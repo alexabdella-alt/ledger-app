@@ -1093,6 +1093,8 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           });
 
           setInvoices(prev => [...newInvoices, ...prev]);
+          // Persist each invoice to Supabase
+          newInvoices.forEach(inv => persistJournalEntry(inv));
           // Run AP screening on expense invoices automatically
           runAPScreen(newInvoices, [...newInvoices, ...invoices]);
           checkWatchTriggers(newInvoices, unknownDocs);
@@ -1168,6 +1170,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
             status:"booked", booked_at:new Date().toISOString(), source:"universal_upload", payment_status:"unmatched",
           }));
           setInvoices(prev => [...newInvoices, ...prev]);
+          newInvoices.forEach(inv => persistJournalEntry(inv));
           if (uncertain.length > 0) {
             setBankTransactions(prev => [...uncertain.map((t,i)=>({...t, id:Date.now()+Math.random(), checked:false})), ...prev]);
           }
