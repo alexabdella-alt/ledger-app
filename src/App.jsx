@@ -1019,7 +1019,7 @@ Rules:
 
           if (extractedList.length === 0) {
             setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:"Could not extract invoice data — try a clearer scan"} : q));
-            continue;
+            return;
           }
 
           // Batch GL code all invoices in one call
