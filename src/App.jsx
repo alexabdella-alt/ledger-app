@@ -449,11 +449,18 @@ Guidelines:
   const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 2000, system: systemPrompt, messages })
+    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, system: systemPrompt, messages })
   });
   const data = await res.json();
   const text = data.content?.find(b => b.type === "text")?.text || "{}";
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  const cleaned = text.replace(/```json|```/g, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch(e) {
+    // If JSON parse fails, extract just the reply text and return it gracefully
+    const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
+    return { reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : cleaned, actions: [] };
+  }
 }
 
 function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany, onSignOut, supabase }) {
