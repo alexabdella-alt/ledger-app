@@ -329,7 +329,7 @@ const glPLType        = (code) => glIsRevenue(code) ? "revenue" : glIsExpense(co
 async function classifyIntent(userMessage, recentHistory) {
   const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${(await supabase.auth.getSession()).data?.session?.access_token || ""}` },
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 20,
@@ -432,7 +432,7 @@ Guidelines:
 
   const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${(await supabase.auth.getSession()).data?.session?.access_token || ""}` },
     body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 2000, system: systemPrompt, messages })
   });
   const data = await res.json();
@@ -820,7 +820,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     setIsAILoading(true); setAiStep("extracting"); setAiSuggestion(null);
     try {
       const extractRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514", max_tokens: 1000,
           system: `Extract invoice fields. "vendor" = exact legal name of the company issuing the invoice. Respond ONLY with valid JSON: {"vendor":"...","description":"...","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","notes":"line items, tax, invoice number etc"}`,
@@ -847,7 +847,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       setForm(extracted);
       setAiStep("coding");
       const codeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514", max_tokens: 1000,
           system: `Expert accountant. Suggest GL coding for this transaction. Respond ONLY with valid JSON: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","debit_credit":"debit or credit","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
@@ -898,7 +898,7 @@ CRITICAL RULES:
     const ext = fileName.split(".").pop().toLowerCase();
     if (["csv","xlsx","xls"].includes(ext)) return "bank_statement";
     const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
       body: JSON.stringify({
         model:"claude-sonnet-4-20250514", max_tokens:20,
         system:`Classify this document. Reply with ONLY one word:
@@ -979,7 +979,7 @@ Reply with only the single word.`,
         if (docType === "invoice") {
           // Extract ALL invoices in the document (handles single and multi-invoice PDFs)
           const extractRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-            method:"POST", headers:{"Content-Type":"application/json"},
+            method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
             body: JSON.stringify({
               model:"claude-sonnet-4-20250514", max_tokens:4000,
               system:`You are an expert at reading invoice documents. This document may contain ONE invoice or MULTIPLE invoices/receipts on separate pages or sections.
@@ -1024,7 +1024,7 @@ Rules:
 
           // Batch GL code all invoices in one call
           const codeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-            method:"POST", headers:{"Content-Type":"application/json"},
+            method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
             body: JSON.stringify({
               model:"claude-sonnet-4-20250514", max_tokens:3000,
               system:`Expert accountant. Assign GL codes to each invoice. Return a JSON array with one coding object per invoice, in the same order as input.
@@ -1097,7 +1097,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           if (isSpreadsheet) {
             const text = await new Promise(res => { const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsText(file); });
             const parseRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-              method:"POST", headers:{"Content-Type":"application/json"},
+              method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
               body: JSON.stringify({
                 model:"claude-sonnet-4-20250514", max_tokens:4000,
                 system:`Parse this bank statement CSV/text and extract ALL transactions. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
@@ -1108,7 +1108,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             rawTxns = JSON.parse((pd.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
           } else {
             const parseRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-              method:"POST", headers:{"Content-Type":"application/json"},
+              method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
               body: JSON.stringify({
                 model:"claude-sonnet-4-20250514", max_tokens:4000,
                 system:`Extract ALL transactions from this bank statement PDF. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
@@ -1121,7 +1121,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
 
           // Categorize transactions
           const catRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-            method:"POST", headers:{"Content-Type":"application/json"},
+            method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
             body: JSON.stringify({
               model:"claude-sonnet-4-20250514", max_tokens:6000,
               system:`Categorize each bank transaction with GL coding. Respond ONLY with JSON array: [{"id":0,"date":"YYYY-MM-DD","vendor":"Clean Name","description":"original","amount":123.45,"type":"expense or revenue","gl_code":"XXXX","gl_name":"Name","confidence":85,"needs_review":false}]
@@ -1162,7 +1162,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
         } else if (docType === "contract") {
           // Full contract analysis
           const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-            method:"POST", headers:{"Content-Type":"application/json"},
+            method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
             body: JSON.stringify({
               model:"claude-sonnet-4-20250514", max_tokens:4000,
               system:`Expert CPA. Analyze this contract and generate accounting treatment + journal entry schedule. Respond ONLY with JSON: {"contract_type":"loan|revenue_contract|lease|subscription_paid|subscription_received|equipment_financing|service_agreement","counterparty":"...","description":"...","total_value":0,"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","payment_amount":0,"payment_frequency":"monthly","interest_rate":0,"accounting_treatment":"...","key_terms":[],"journal_entries":[{"date":"YYYY-MM-DD","description":"...","memo":"...","lines":[{"account_code":"XXXX","account_name":"...","debit":0,"credit":0}]}]}\nChart of Accounts:\n${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name}`).join("\n")}`,
@@ -1185,7 +1185,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
         } else if (docType === "unknown") {
           // Ask Claude to explain AND propose a journal entry (or explicitly say none needed)
           const explainRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-            method:"POST", headers:{"Content-Type":"application/json"},
+            method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
             body: JSON.stringify({
               model:"claude-sonnet-4-20250514", max_tokens:1500,
               system:`You are an expert CPA reviewing an unusual document. Analyze it and respond ONLY with valid JSON (no markdown):
@@ -1304,7 +1304,7 @@ Rules:
         const base64 = await fileToBase64(file);
         setBankStep("categorizing"); setBankProgress(40);
         const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-          method:"POST", headers:{"Content-Type":"application/json"},
+          method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
           body: JSON.stringify({
             model:"claude-sonnet-4-20250514", max_tokens:4000,
             system:`You are an expert at reading bank statements. Extract ALL transactions from this bank statement. Respond ONLY with valid JSON array, no markdown:
@@ -1329,7 +1329,7 @@ Extract every single transaction row. Use negative amounts for debits/expenses i
         setBankStep("categorizing"); setBankProgress(30);
         // Send raw text to Claude to parse + extract transactions
         const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-          method:"POST", headers:{"Content-Type":"application/json"},
+          method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
           body: JSON.stringify({
             model:"claude-sonnet-4-20250514", max_tokens:4000,
             system:`You are an expert at parsing bank statement exports. Parse this CSV/Excel text and extract ALL transactions. Respond ONLY with valid JSON array, no markdown:
@@ -1350,7 +1350,7 @@ Handle any column format — the file might have columns in different orders. Pa
 
       setBankStep("categorizing"); setBankProgress(70);
       const categorizeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
         body: JSON.stringify({
           model:"claude-sonnet-4-20250514", max_tokens:6000,
           system:`You are an expert accountant. For each bank transaction, extract the vendor name and suggest the best GL account coding. Use your knowledge of common merchants (e.g. "AMZN" = Amazon, "SQ *" = Square merchant, "ACH" = bank transfer, etc).
@@ -1455,7 +1455,7 @@ Keep the same array order and index as input.`,
       const mediaType = ext===".pdf" ? "application/pdf" : `image/${ext.slice(1)}`;
 
       const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
         body: JSON.stringify({
           model:"claude-sonnet-4-20250514", max_tokens:4000,
           system:`You are an expert CPA and contract analyst. Read this contract/agreement and extract all key terms, then generate the correct accounting treatment including a full journal entry schedule.
@@ -1613,7 +1613,7 @@ Limit to first 12 entries if term is longer than 12 months, with a note.`,
     setMatchProcessing(true);
     try {
       const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514", max_tokens: 4000,
           system: `You are an expert bookkeeper running a matching engine. Your job is to match bank transactions against open invoices/accruals and determine if they clear each other.
@@ -1849,7 +1849,7 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
 
     try {
       const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
         body: JSON.stringify({
           model:"claude-sonnet-4-20250514", max_tokens:3000,
           system:`You are an AP automation system. Screen each invoice and return enriched data.
@@ -2956,7 +2956,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               setArAgingLoading(true); setArAgingNarration(null);
               try {
                 const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-                  method:"POST", headers:{"Content-Type":"application/json"},
+                  method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
                   body: JSON.stringify({
                     model:"claude-sonnet-4-20250514", max_tokens:700,
                     system:`You are a CFO advisor reviewing an accounts receivable aging report. Be direct, practical, specific. 3-4 short paragraphs. Flag collection risks. Suggest concrete follow-up actions. No jargon.`,
@@ -5306,7 +5306,7 @@ ${draft.notes?`<div class="footer">Notes: ${draft.notes}</div>`:""}
               try {
                 const text = await file.text();
                 const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-                  method:"POST", headers:{"Content-Type":"application/json"},
+                  method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
                   body: JSON.stringify({
                     model:"claude-sonnet-4-20250514", max_tokens:2000,
                     system:`You are a payroll accountant. Parse this payroll export (Gusto, ADP, or generic CSV) and return ONLY valid JSON:
@@ -5922,7 +5922,7 @@ Journal entry rules:
               try {
                 const text = await file.text();
                 const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-                  method:"POST", headers:{"Content-Type":"application/json"},
+                  method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${(await supabase.auth.getSession()).data?.session?.access_token||""}`},
                   body: JSON.stringify({
                     model:"claude-sonnet-4-20250514", max_tokens:4000,
                     system:`You are a QBO migration expert. Parse this QuickBooks Online export (CSV, IIF, or tabular format) and return ONLY valid JSON:
