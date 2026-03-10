@@ -743,24 +743,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   // ── SUPABASE PERSISTENCE ──────────────────────────────────────
   // Write a journal entry to Supabase when an invoice is booked
   const persistJournalEntry = async (invoice) => {
-    console.log("persistJournalEntry called", invoice?.vendor, invoice?.amount, "company:", currentCompany?.id, "user:", session?.user?.id);
-    if (!currentCompany?.id || !session?.user?.id) {
-      console.error("persistJournalEntry: missing company or session", {company: currentCompany?.id, user: session?.user?.id});
-      return;
-    }
+    if (!currentCompany?.id || !session?.user?.id) return;
     try {
-      // Find account IDs
-      const { data: debitAcct, error: debitErr } = await supabase.from("accounts")
+      const { data: debitAcct } = await supabase.from("accounts")
         .select("id").eq("company_id", currentCompany.id).eq("code", invoice.gl_code).single();
-      const { data: creditAcct, error: creditErr } = await supabase.from("accounts")
+      const { data: creditAcct } = await supabase.from("accounts")
         .select("id").eq("company_id", currentCompany.id).eq("code", invoice.secondary_gl_code||"2000").single();
-      
-      console.log("Account lookup:", {gl_code: invoice.gl_code, debitAcct, debitErr, secondary: invoice.secondary_gl_code, creditAcct, creditErr});
-      
-      if (!debitAcct || !creditAcct) {
-        console.error("persistJournalEntry: account not found", {gl_code: invoice.gl_code, secondary_gl_code: invoice.secondary_gl_code});
-        return;
-      }
+      if (!debitAcct || !creditAcct) return;
 
       const { data: je, error: jeErr } = await supabase.from("journal_entries").insert({
         company_id: currentCompany.id, entry_date: invoice.date||new Date().toISOString().slice(0,10),
@@ -768,8 +757,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         source: invoice.source||"manual", status: "posted",
         posted_at: new Date().toISOString(), created_by: session.user.id
       }).select().single();
-      
-      console.log("JE insert:", {je, jeErr});
       if (jeErr) { console.error("JE insert error:", jeErr); return; }
 
       await supabase.from("journal_entry_lines").insert({
@@ -787,7 +774,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         action: "invoice_booked",
         detail: `${invoice.vendor} $${invoice.amount} → ${invoice.gl_name}`
       });
-      console.log("✓ Journal entry saved successfully");
     } catch(e) { console.error("persistJournalEntry error:", e); }
   };
 
