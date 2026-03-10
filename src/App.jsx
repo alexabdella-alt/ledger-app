@@ -962,7 +962,6 @@ Reply with only the single word.`,
 
   const processUploadItem = async (item, file) => {
     try {
-      try {
         const ext = item.name.split(".").pop().toLowerCase();
         const isSpreadsheet = ["csv","xlsx","xls"].includes(ext);
 
