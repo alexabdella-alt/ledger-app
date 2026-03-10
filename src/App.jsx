@@ -368,7 +368,7 @@ async function classifyIntent(userMessage, recentHistory) {
   return "general";
 }
 
-async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, contacts }) {
+async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, contacts, chartOfAccounts }) {
   // ── 1. Truncate history to last 10 turns (5 user + 5 assistant) ───────────────
   const truncatedHistory = chatHistory.slice(-10);
 
@@ -404,7 +404,7 @@ ${contacts.map(c =>
   const systemPrompt = `You are an intelligent accounting assistant and CFO advisor embedded in an ERP system. You help business owners manage their books, vendors, customers, and finances through natural conversation — no accounting knowledge required.
 
 Chart of Accounts:
-${CHART_OF_ACCOUNTS.map(a => `${a.code} - ${a.name} (${a.category})`).join("\n")}
+${(chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name} (${a.category})`).join("\n")}
 
 Available Projects: ${[...PROJECTS, ...projects].filter((v,i,a) => a.indexOf(v) === i).join(", ")}
 
@@ -1980,7 +1980,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
     try {
       const historyForAI = chatHistory.filter(m => m.id !== 0).map(m => ({ role: m.role, content: m.content }));
-      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, contacts });
+      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, contacts, chartOfAccounts: CHART_OF_ACCOUNTS });
 
       // Execute actions
       let actionSummary = [];
@@ -2092,6 +2092,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       setChatHistory(h => [...h, assistantMsg]);
       if (!chatOpen) setHasUnread(true);
     } catch(e) {
+      console.error("Chat error:", e);
       setChatHistory(h => [...h, { role:"assistant", content:"Sorry, I ran into an error. Please try again.", id: Date.now()+1 }]);
     }
     setChatLoading(false);
