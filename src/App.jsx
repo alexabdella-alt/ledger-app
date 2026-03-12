@@ -2179,8 +2179,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
       <div style={{ display:"flex", minHeight:"100vh" }}>
         {/* Sidebar */}
-        <div style={{ width:220, background:"#14141A", borderRight:"1px solid #1E1E2E", padding:"28px 0", flexShrink:0 }}>
-          <div style={{ padding:"0 20px 28px", borderBottom:"1px solid #1E1E2E" }}>
+        <div style={{ width:220, background:"#14141A", borderRight:"1px solid #1E1E2E", flexShrink:0, height:"100vh", overflowY:"auto", position:"sticky", top:0, display:"flex", flexDirection:"column" }}>
+          <div style={{ padding:"28px 20px 28px", borderBottom:"1px solid #1E1E2E", flexShrink:0 }}>
             <div style={{ fontSize:10, letterSpacing:3, color:"#6B6B8A", fontWeight:600, marginBottom:6 }}>LEDGER AI</div>
             <CompanySwitcher
               companies={companies}
@@ -5019,11 +5019,13 @@ What should this business owner know and do?`}]
           {view==="opening-balances" && (() => {
             const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const asOfDate = openingBalAsOfDate; const setAsOfDate = setOpeningBalAsOfDate;
-            const [balances, setBalances] = useState(() => {
+            const balancesInit = (() => {
               const existing = {};
               openingBalances.forEach(b => { existing[b.account_code] = b.balance; });
               return CHART_OF_ACCOUNTS.filter(a=>["Assets","Liabilities","Equity"].includes(a.category)).reduce((acc,a) => ({...acc,[a.code]: existing[a.code]||""}), {});
-            });
+            })();
+            const balances = Object.keys(openingBalBalances).length > 0 ? openingBalBalances : balancesInit;
+            const setBalances = setOpeningBalBalances;
             const totalAssets = CHART_OF_ACCOUNTS.filter(a=>a.category==="Assets").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
             const totalLiab = CHART_OF_ACCOUNTS.filter(a=>a.category==="Liabilities").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
             const totalEquity = CHART_OF_ACCOUNTS.filter(a=>a.category==="Equity").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
@@ -5112,13 +5114,14 @@ What should this business owner know and do?`}]
             const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const nextNum = `INV-${String((sentInvoices.length+1)).padStart(4,"0")}`;
             const emptyLine = () => ({id:Date.now()+Math.random(),description:"",qty:1,rate:"",amount:0});
-            const [draft, setDraft] = useState(sentInvoiceDraft || {
+            const draft = sendInvoiceDraftState || sentInvoiceDraft || {
               invoice_number: nextNum, customer:"", customer_email:"",
               issue_date: new Date().toISOString().slice(0,10),
               due_date: "", notes:"", terms:"Net 30",
               line_items:[emptyLine()],
               status:"draft"
-            });
+            };
+            const setDraft = setSendInvoiceDraftState;
             const showPreview = sendInvoiceShowPreview; const setShowPreview = setSendInvoiceShowPreview;
 
             const updateLine = (id, field, val) => {
