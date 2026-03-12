@@ -2177,69 +2177,64 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         </div>
       )}
 
-      <div style={{ display:"flex", height:"100vh", overflow:"hidden" }}>
-        {/* Sidebar */}
-        <div style={{ width:220, background:"#14141A", borderRight:"1px solid #1E1E2E", flexShrink:0, height:"100vh", overflowY:"auto", display:"flex", flexDirection:"column" }}>
-          <div style={{ padding:"28px 20px 28px", borderBottom:"1px solid #1E1E2E", flexShrink:0 }}>
-            <div style={{ fontSize:10, letterSpacing:3, color:"#6B6B8A", fontWeight:600, marginBottom:6 }}>LEDGER AI</div>
-            <CompanySwitcher
-              companies={companies}
-              currentCompany={currentCompany}
-              onSwitch={onSwitchCompany}
-              onNew={onNewCompany}
-            />
+      <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
+        {/* Top Bar */}
+        <div style={{ background:"#14141A", borderBottom:"1px solid #1E1E2E", flexShrink:0 }}>
+          {/* Brand + Company + User row */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 24px", height:52, borderBottom:"1px solid #1E1E2E" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:20 }}>
+              <div style={{ fontSize:11, letterSpacing:3, color:"#C8B8FF", fontWeight:700 }}>LEDGER AI</div>
+              <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#6D28D9,#4C1D95)", border:"none", color:"#E8E8F0", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>✦ AI Assistant</button>
+              <span style={{ fontSize:11, color:"#6B6B8A" }}>{session?.user?.email}</span>
+              <button onClick={onSignOut} style={{ padding:"5px 12px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:12, cursor:"pointer" }}>Sign out</button>
+            </div>
           </div>
-          {[
-            { id:"dashboard", label:"Dashboard", icon:"⬡" },
-            { id:"add", label:"Upload Files", icon:"⬆", action: ()=>{ setView("dashboard"); setTimeout(()=>document.getElementById("universal-upload")?.click(),100); } },
-            { id:"bank", label:"Bank Feed", icon:"⇄", badge: bankTransactions.filter(t=>t.needs_review).length||null },
-            { id:"ap", label:"Accounts Payable", icon:"📤", badge: invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status!=="paid"&&(i.approval_status==="pending_approval"||i.approval_status==="flagged")).length||null },
-            { id:"ar", label:"Accounts Receivable", icon:"📥", badge: invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.payment_status!=="paid").length||null },
-            { id:"review", label:"Needs Review", icon:"❓", badge: (unknownDocs.length + unknownDocs.reduce((s,d)=>(d.watch_matches||[]).filter(m=>!m.posted).length+s,0))||null },
-            { id:"payroll", label:"Payroll", icon:"💼", badge:null },
-            { id:"recurring", label:"Recurring", icon:"🔄", badge:recurring.filter(r=>r.active).length||null },
-            { id:"recon", label:"Reconciliation", icon:"⚖", badge:reconSessions.filter(s=>s.status==="open").length||null },
-            { id:"tax1099", label:"1099 Tracker", icon:"📋", badge:contacts.filter(c=>c.is1099&&(invoices.filter(i=>i.vendor?.toLowerCase()===c.name?.toLowerCase()&&i.type==="expense").reduce((s,i)=>s+i.amount,0))>=600).length||null },
-            { id:"docs", label:"Documents", icon:"📁", badge:docLibrary.length||null },
-            { id:"audit", label:"Audit Trail", icon:"🔍", badge:null },
-            { id:"onboard", label:"Import from QBO", icon:"⬆", badge:null },
-            { id:"send-invoice", label:"Send Invoice", icon:"📤", badge:sentInvoices.filter(i=>i.status==="draft").length||null },
-            { id:"coa", label:"Chart of Accounts", icon:"⚙", badge:null },
-            { id:"settings", label:"Settings", icon:"⚙", badge:!companySettings.name?1:null },
-            { id:"opening-balances", label:"Opening Balances", icon:"⚖", badge:openingBalances.length===0?1:null },
-            { id:"matching", label:"Matching", icon:"⇋", badge: matchQueue.length||null },
-            { id:"invoices", label:"All Invoices", icon:"≡" },
-            { id:"contracts", label:"Contracts", icon:"◻", badge: contracts.length||null },
-            { id:"reports", label:"Reports", icon:"▦" },
-            { id:"vendors", label:"Vendors", icon:"◈", badge:(vendorSummary.length + contacts.filter(c=>c.type==="vendor").length)||null },
-            { id:"customers", label:"Customers", icon:"◉", badge:contacts.filter(c=>c.type==="customer").length||null },
-            { id:"rules", label:"Vendor Rules", icon:"⚡", badge:rules.length||null },
-          ].map(item => (
-            <button key={item.id} onClick={()=>{ if(item.action){item.action();}else{setView(item.id); setVendorFilter("all");} }} style={{
-              display:"flex", alignItems:"center", gap:12, width:"100%", padding:"12px 20px",
-              background:view===item.id?"#1E1E2E":"transparent", border:"none",
-              color:view===item.id?"#C8B8FF":"#6B6B8A", fontSize:14, fontWeight:view===item.id?500:400,
-              cursor:"pointer", textAlign:"left", borderLeft:view===item.id?"2px solid #C8B8FF":"2px solid transparent", transition:"all 0.15s"
-            }}>
-              <span style={{ fontSize:15 }}>{item.icon}</span> {item.label}
-              {item.badge>0 && <span style={{ marginLeft:"auto", background:"#1E1E2E", borderRadius:20, padding:"1px 8px", fontSize:11, color:"#6B6B8A" }}>{item.badge}</span>}
-            </button>
-          ))}
-          <div style={{ margin:"20px 20px 0", padding:"14px", background:"#0A0A14", border:"1px solid #3B3B5E", borderRadius:10 }}>
-            <div style={{ fontSize:11, color:"#C8B8FF", marginBottom:6 }}>✦ AI Assistant</div>
-            <div style={{ fontSize:12, color:"#6B6B8A", lineHeight:1.5 }}>Ask me anything about your books</div>
-            <button onClick={()=>setChatOpen(true)} style={{ marginTop:10, background:"linear-gradient(135deg,#6D28D9,#4C1D95)", border:"none", color:"#E8E8F0", borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", width:"100%" }}>Open Chat</button>
-          </div>
-          <div style={{ margin:"12px 20px 0" }}>
-            <div style={{ fontSize:11, color:"#6B6B8A", marginBottom:4, paddingLeft:2 }}>{session?.user?.email}</div>
-            <button onClick={onSignOut} style={{ width:"100%", padding:"8px 12px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:12, cursor:"pointer", textAlign:"left" }}>
-              Sign out
-            </button>
+          {/* Nav tabs row */}
+          <div style={{ display:"flex", alignItems:"center", overflowX:"auto", padding:"0 16px", gap:2, height:42 }}>
+            {[
+              { id:"dashboard", label:"Dashboard" },
+              { id:"add", label:"⬆ Upload", action: ()=>{ setView("dashboard"); setTimeout(()=>document.getElementById("universal-upload")?.click(),100); } },
+              { id:"invoices", label:"Ledger" },
+              { id:"bank", label:"Bank Feed", badge: bankTransactions.filter(t=>t.needs_review).length||null },
+              { id:"ap", label:"Payables", badge: invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status!=="paid"&&(i.approval_status==="pending_approval"||i.approval_status==="flagged")).length||null },
+              { id:"ar", label:"Receivables", badge: invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.payment_status!=="paid").length||null },
+              { id:"send-invoice", label:"Send Invoice", badge:sentInvoices.filter(i=>i.status==="draft").length||null },
+              { id:"reports", label:"Reports" },
+              { id:"review", label:"Needs Review", badge: (unknownDocs.length)||null },
+              { id:"payroll", label:"Payroll" },
+              { id:"recurring", label:"Recurring", badge:recurring.filter(r=>r.active).length||null },
+              { id:"recon", label:"Reconciliation", badge:reconSessions.filter(s=>s.status==="open").length||null },
+              { id:"contracts", label:"Contracts", badge: contracts.length||null },
+              { id:"vendors", label:"Vendors" },
+              { id:"customers", label:"Customers" },
+              { id:"rules", label:"GL Rules", badge:rules.length||null },
+              { id:"tax1099", label:"1099s" },
+              { id:"docs", label:"Documents", badge:docLibrary.length||null },
+              { id:"audit", label:"Audit Trail" },
+              { id:"matching", label:"Matching", badge: matchQueue.length||null },
+              { id:"coa", label:"Chart of Accounts" },
+              { id:"opening-balances", label:"Opening Balances", badge:openingBalances.length===0?1:null },
+              { id:"onboard", label:"Import QBO" },
+              { id:"settings", label:"Settings", badge:!companySettings.name?1:null },
+            ].map(item => (
+              <button key={item.id} onClick={()=>{ if(item.action){item.action();}else{setView(item.id); setVendorFilter("all");} }} style={{
+                display:"flex", alignItems:"center", gap:5, padding:"0 12px", height:42, flexShrink:0,
+                background:"transparent", border:"none", borderBottom: view===item.id?"2px solid #C8B8FF":"2px solid transparent",
+                color:view===item.id?"#C8B8FF":"#6B6B8A", fontSize:12, fontWeight:view===item.id?500:400,
+                cursor:"pointer", whiteSpace:"nowrap", transition:"all 0.15s"
+              }}>
+                {item.label}
+                {item.badge>0 && <span style={{ background:"#6D28D9", borderRadius:20, padding:"1px 6px", fontSize:10, color:"#E8E8F0" }}>{item.badge}</span>}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Main */}
-        <div style={{ flex:1, padding:"36px 40px", overflowY:"auto", height:"100vh" }}>
+        {/* Main Content */}
+        <div style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
 
           {/* DASHBOARD */}
           {view==="dashboard" && (
