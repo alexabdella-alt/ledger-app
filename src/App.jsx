@@ -2177,9 +2177,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         </div>
       )}
 
-      <div style={{ display:"flex", minHeight:"100vh" }}>
+      <div style={{ display:"flex", height:"100vh", overflow:"hidden" }}>
         {/* Sidebar */}
-        <div style={{ width:220, background:"#14141A", borderRight:"1px solid #1E1E2E", flexShrink:0, height:"100vh", overflowY:"auto", position:"sticky", top:0, display:"flex", flexDirection:"column" }}>
+        <div style={{ width:220, background:"#14141A", borderRight:"1px solid #1E1E2E", flexShrink:0, height:"100vh", overflowY:"auto", display:"flex", flexDirection:"column" }}>
           <div style={{ padding:"28px 20px 28px", borderBottom:"1px solid #1E1E2E", flexShrink:0 }}>
             <div style={{ fontSize:10, letterSpacing:3, color:"#6B6B8A", fontWeight:600, marginBottom:6 }}>LEDGER AI</div>
             <CompanySwitcher
@@ -2239,7 +2239,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         </div>
 
         {/* Main */}
-        <div style={{ flex:1, padding:"36px 40px", overflowY:"auto" }}>
+        <div style={{ flex:1, padding:"36px 40px", overflowY:"auto", height:"100vh" }}>
 
           {/* DASHBOARD */}
           {view==="dashboard" && (
