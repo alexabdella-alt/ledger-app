@@ -2161,7 +2161,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
   return (
     <div style={{ fontFamily:"'DM Sans', sans-serif", minHeight:"100vh", background:"#0F0F13", color:"#E8E8F0" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet" />
       <style>{`
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
         @keyframes fadein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
@@ -2181,20 +2181,20 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         {/* Top Bar */}
         <div style={{ background:"#14141A", borderBottom:"1px solid #1E1E2E", flexShrink:0 }}>
           {/* Brand + Company + User row */}
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 24px", height:52, borderBottom:"1px solid #1E1E2E" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:20 }}>
-              <div style={{ fontSize:11, letterSpacing:3, color:"#C8B8FF", fontWeight:700 }}>LEDGER AI</div>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 28px", height:54, borderBottom:"1px solid #1E1E2E" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:24 }}>
+              <div style={{ fontSize:18, letterSpacing:4, color:"#C8B8FF", fontWeight:800, fontFamily:"'Montserrat', 'DM Sans', sans-serif", background:"linear-gradient(135deg,#C8B8FF,#8B5CF6)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>CFAI</div>
               <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#6D28D9,#4C1D95)", border:"none", color:"#E8E8F0", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>✦ AI Assistant</button>
-              <span style={{ fontSize:11, color:"#6B6B8A" }}>{session?.user?.email}</span>
-              <button onClick={onSignOut} style={{ padding:"5px 12px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:12, cursor:"pointer" }}>Sign out</button>
+              <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#6D28D9,#4C1D95)", border:"none", color:"#E8E8F0", borderRadius:8, padding:"7px 16px", fontSize:12, cursor:"pointer", fontWeight:500, letterSpacing:0.5 }}>✦ AI Assistant</button>
+              <span style={{ fontSize:11, color:"#4B4B6A" }}>{session?.user?.email}</span>
+              <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
-          {/* Nav tabs row */}
-          <div style={{ display:"flex", alignItems:"center", overflowX:"auto", padding:"0 16px", gap:2, height:42 }}>
-            {[
+          {/* Nav tabs row — 2 rows */}
+          {[
+            [
               { id:"dashboard", label:"Dashboard" },
               { id:"add", label:"⬆ Upload", action: ()=>{ setView("dashboard"); setTimeout(()=>document.getElementById("universal-upload")?.click(),100); } },
               { id:"invoices", label:"Ledger" },
@@ -2203,10 +2203,12 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               { id:"ar", label:"Receivables", badge: invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.payment_status!=="paid").length||null },
               { id:"send-invoice", label:"Send Invoice", badge:sentInvoices.filter(i=>i.status==="draft").length||null },
               { id:"reports", label:"Reports" },
-              { id:"review", label:"Needs Review", badge: (unknownDocs.length)||null },
+              { id:"review", label:"Needs Review", badge: unknownDocs.length||null },
               { id:"payroll", label:"Payroll" },
               { id:"recurring", label:"Recurring", badge:recurring.filter(r=>r.active).length||null },
               { id:"recon", label:"Reconciliation", badge:reconSessions.filter(s=>s.status==="open").length||null },
+            ],
+            [
               { id:"contracts", label:"Contracts", badge: contracts.length||null },
               { id:"vendors", label:"Vendors" },
               { id:"customers", label:"Customers" },
@@ -2219,22 +2221,29 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               { id:"opening-balances", label:"Opening Balances", badge:openingBalances.length===0?1:null },
               { id:"onboard", label:"Import QBO" },
               { id:"settings", label:"Settings", badge:!companySettings.name?1:null },
-            ].map(item => (
-              <button key={item.id} onClick={()=>{ if(item.action){item.action();}else{setView(item.id); setVendorFilter("all");} }} style={{
-                display:"flex", alignItems:"center", gap:5, padding:"0 12px", height:42, flexShrink:0,
-                background:"transparent", border:"none", borderBottom: view===item.id?"2px solid #C8B8FF":"2px solid transparent",
-                color:view===item.id?"#C8B8FF":"#6B6B8A", fontSize:12, fontWeight:view===item.id?500:400,
-                cursor:"pointer", whiteSpace:"nowrap", transition:"all 0.15s"
-              }}>
-                {item.label}
-                {item.badge>0 && <span style={{ background:"#6D28D9", borderRadius:20, padding:"1px 6px", fontSize:10, color:"#E8E8F0" }}>{item.badge}</span>}
-              </button>
-            ))}
-          </div>
+            ]
+          ].map((row, rowIdx) => (
+            <div key={rowIdx} style={{ display:"flex", alignItems:"center", padding:"0 8px", borderBottom: rowIdx===0?"1px solid #1A1A28":"none", gap:0 }}>
+              {row.map(item => (
+                <button key={item.id} onClick={()=>{ if(item.action){item.action();}else{setView(item.id); setVendorFilter("all"); document.getElementById("main-content")?.scrollTo(0,0);} }} style={{
+                  display:"flex", alignItems:"center", gap:5, padding:"0 16px", height:38, flexShrink:0,
+                  background: view===item.id?"#1E1E2E":"transparent",
+                  border:"none",
+                  borderBottom: view===item.id?"2px solid #8B5CF6":"2px solid transparent",
+                  borderRadius: view===item.id?"6px 6px 0 0":"0",
+                  color:view===item.id?"#C8B8FF":"#6B6B8A", fontSize:12, fontWeight:view===item.id?600:400,
+                  cursor:"pointer", whiteSpace:"nowrap", transition:"all 0.15s"
+                }}>
+                  {item.label}
+                  {item.badge>0 && <span style={{ background:"#6D28D9", borderRadius:20, padding:"1px 6px", fontSize:10, color:"#E8E8F0", marginLeft:2 }}>{item.badge}</span>}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
 
         {/* Main Content */}
-        <div style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
+        <div id="main-content" style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
 
           {/* DASHBOARD */}
           {view==="dashboard" && (
