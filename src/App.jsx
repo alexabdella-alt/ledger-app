@@ -6110,7 +6110,6 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
           })()}
 
         </div>
-        </div>
 
       {/* ── FLOATING AI CHAT ───────────────────────────────────────────────── */}
       {/* Bubble button */}
@@ -6209,6 +6208,7 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
