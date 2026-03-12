@@ -6109,9 +6109,8 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
             );
           })()}
 
-
-      </div>{/* end absolute scroll container */}
-      </div>{/* end relative wrapper */}
+        </div>
+        </div>
 
       {/* ── FLOATING AI CHAT ───────────────────────────────────────────────── */}
       {/* Bubble button */}
