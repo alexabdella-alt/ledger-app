@@ -438,7 +438,8 @@ Guidelines:
 - "X always bills around $500–800/month" → update_contact with min_expected/max_expected
 - "Set a rule for X" → set_contact_rule + add_rule so future invoices auto-code
 - For any report request, compute real numbers from ledger data and include them directly in the reply
-- Always be warm and confident — the business owner trusts you like a CFO`;
+- Always be warm and confident — the business owner trusts you like a CFO
+- NEVER use markdown formatting — no asterisks, no bold, no headers, no bullet points with dashes. Write in plain conversational sentences only. Use numbers and line breaks for lists if needed.`;
 
   // ── 5. Call the main model ────────────────────────────────────────────────────
   const messages = [
@@ -607,6 +608,30 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const uploadActiveRef = useRef(false); // prevents concurrent processing
 
   const allProjects = useMemo(() => [...new Set([...PROJECTS, ...customProjects])], [customProjects]);
+
+  // ── VIEW-LEVEL STATE (must be at top level, not inside view IIFEs) ────────────
+  const [arAgingNarration, setArAgingNarration] = useState(null);
+  const [arAgingLoading, setArAgingLoading] = useState(false);
+  const [arView, setArView] = useState("inbox");
+  const [vendorsSelectedContact, setVendorsSelectedContact] = useState(null);
+  const [vendorsEditingId, setVendorsEditingId] = useState(null);
+  const [vendorsEditDraft, setVendorsEditDraft] = useState({});
+  const [customersEditingId, setCustomersEditingId] = useState(null);
+  const [customersEditDraft, setCustomersEditDraft] = useState({});
+  const [settingsDraft, setSettingsDraft] = useState(null);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsLogoPreview, setSettingsLogoPreview] = useState(null);
+  const [coaEditingCode, setCoaEditingCode] = useState(null);
+  const [coaEditDraft, setCoaEditDraft] = useState({});
+  const [coaAddDraft, setCoaAddDraft] = useState({code:"",name:"",category:"Expenses"});
+  const [coaShowAdd, setCoaShowAdd] = useState(false);
+  const [openingBalAsOfDate, setOpeningBalAsOfDate] = useState(new Date().toISOString().slice(0,10));
+  const [openingBalBalances, setOpeningBalBalances] = useState({});
+  const [sendInvoiceDraftState, setSendInvoiceDraftState] = useState(null);
+  const [sendInvoiceShowPreview, setSendInvoiceShowPreview] = useState(false);
+  const [recurringNewRec, setRecurringNewRec] = useState({name:"",vendor:"",amount:"",gl_code:"5200",gl_name:"Rent & Occupancy",frequency:"monthly",next_date:new Date().toISOString().slice(0,10),project:"General"});
+  const [docsPreview, setDocsPreview] = useState(null);
+  const [docsFilterType, setDocsFilterType] = useState("all");
 
   useEffect(() => {
     if (chatOpen) { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); setHasUnread(false); }
@@ -2946,9 +2971,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {view==="ar" && (() => {
             const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const today = new Date().toISOString().slice(0,10);
-            const [arAgingNarration, setArAgingNarration] = React.useState(null);
-            const [arAgingLoading, setArAgingLoading] = React.useState(false);
-            const [arView, setArView] = React.useState("inbox");
+            // arAgingNarration moved to top-level state
+            // arAgingLoading moved to top-level state
+            // arView moved to top-level state
 
             // All revenue invoices = AR
             const arAll   = invoices.filter(i => glIsRevenue(i.gl_code) || i.type==="revenue");
@@ -3670,9 +3695,8 @@ What should this business owner know and do?`}]
           {/* VENDORS */}
           {view==="vendors" && (() => {
             const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
-            const [selectedContact, setSelectedContact] = React.useState(null);
-            const [editingId, setEditingId] = React.useState(null);
-            const [editDraft, setEditDraft] = React.useState({});
+            const selectedContact = vendorsSelectedContact; const setSelectedContact = setVendorsSelectedContact;
+            const editingId = vendorsEditingId; const setEditingId = setVendorsEditingId; const editDraft = vendorsEditDraft; const setEditDraft = setVendorsEditDraft;
 
             // Merge ledger-derived vendors with contact book
             const ledgerVendors = vendorSummary.filter(v => glIsExpense(
@@ -3819,8 +3843,8 @@ What should this business owner know and do?`}]
           {/* CUSTOMERS */}
           {view==="customers" && (() => {
             const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
-            const [editingId, setEditingId] = React.useState(null);
-            const [editDraft, setEditDraft] = React.useState({});
+            const editingId = customersEditingId; const setEditingId = setCustomersEditingId;
+            const editDraft = customersEditDraft; const setEditDraft = setCustomersEditDraft;
 
             const customerContacts = contacts.filter(c => c.type==="customer");
             // Also pull customers from ledger (revenue invoices) not yet in contacts
@@ -4760,9 +4784,9 @@ What should this business owner know and do?`}]
     
           {/* ── SETTINGS ─────────────────────────────────────────────────────── */}
           {view==="settings" && (() => {
-            const [draft, setDraft] = React.useState(companySettings);
-            const [saved, setSaved] = React.useState(false);
-            const [logoPreview, setLogoPreview] = React.useState(companySettings.logoBase64);
+            if (!settingsDraft) setSettingsDraft(companySettings); const draft = settingsDraft || companySettings; const setDraft = setSettingsDraft;
+            const saved = settingsSaved; const setSaved = setSettingsSaved;
+            const logoPreview = settingsLogoPreview ?? companySettings.logoBase64; const setLogoPreview = setSettingsLogoPreview;
             const save = () => {
               setCompanySettings(draft);
               logAudit("settings_saved", `Company settings updated: ${draft.name}`);
@@ -4875,10 +4899,10 @@ What should this business owner know and do?`}]
 
           {/* ── CHART OF ACCOUNTS ─────────────────────────────────────────────── */}
           {view==="coa" && (() => {
-            const [editingCode, setEditingCode] = React.useState(null);
-            const [editDraft, setEditDraft] = React.useState({});
-            const [addDraft, setAddDraft] = React.useState({code:"",name:"",category:"Expenses"});
-            const [showAdd, setShowAdd] = React.useState(false);
+            const editingCode = coaEditingCode; const setEditingCode = setCoaEditingCode;
+            const editDraft = coaEditDraft; const setEditDraft = setCoaEditDraft;
+            const addDraft = coaAddDraft; const setAddDraft = setCoaAddDraft;
+            const showAdd = coaShowAdd; const setShowAdd = setCoaShowAdd;
             const categories = ["Assets","Liabilities","Equity","Revenue","Expenses"];
             const grouped = categories.map(cat => ({cat, accounts: customCOA.filter(a=>a.category===cat)}));
 
@@ -4994,8 +5018,8 @@ What should this business owner know and do?`}]
           {/* ── OPENING BALANCES ──────────────────────────────────────────────── */}
           {view==="opening-balances" && (() => {
             const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
-            const [asOfDate, setAsOfDate] = React.useState(new Date().toISOString().slice(0,10));
-            const [balances, setBalances] = React.useState(() => {
+            const asOfDate = openingBalAsOfDate; const setAsOfDate = setOpeningBalAsOfDate;
+            const [balances, setBalances] = useState(() => {
               const existing = {};
               openingBalances.forEach(b => { existing[b.account_code] = b.balance; });
               return CHART_OF_ACCOUNTS.filter(a=>["Assets","Liabilities","Equity"].includes(a.category)).reduce((acc,a) => ({...acc,[a.code]: existing[a.code]||""}), {});
@@ -5088,14 +5112,14 @@ What should this business owner know and do?`}]
             const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const nextNum = `INV-${String((sentInvoices.length+1)).padStart(4,"0")}`;
             const emptyLine = () => ({id:Date.now()+Math.random(),description:"",qty:1,rate:"",amount:0});
-            const [draft, setDraft] = React.useState(sentInvoiceDraft || {
+            const [draft, setDraft] = useState(sentInvoiceDraft || {
               invoice_number: nextNum, customer:"", customer_email:"",
               issue_date: new Date().toISOString().slice(0,10),
               due_date: "", notes:"", terms:"Net 30",
               line_items:[emptyLine()],
               status:"draft"
             });
-            const [showPreview, setShowPreview] = React.useState(false);
+            const showPreview = sendInvoiceShowPreview; const setShowPreview = setSendInvoiceShowPreview;
 
             const updateLine = (id, field, val) => {
               setDraft(d => ({...d, line_items: d.line_items.map(l => {
@@ -5474,7 +5498,7 @@ Journal entry rules:
               logAudit("recurring_posted", `Recurring posted: ${r.name} ${fmt(r.amount)}`);
               showNotification(`Posted: ${r.name} ${fmt(r.amount)} ✓`);
             };
-            const [newRec, setNewRec] = React.useState({name:"",vendor:"",amount:"",gl_code:"5200",gl_name:"Rent & Occupancy",frequency:"monthly",next_date:today,project:"General"});
+            const newRec = recurringNewRec; const setNewRec = setRecurringNewRec;
             const addRecurring = () => {
               if (!newRec.name||!newRec.amount) return;
               const r = {...newRec, id:Date.now()+Math.random(), amount:parseFloat(newRec.amount), active:true, created_at:new Date().toISOString(), last_run:null};
@@ -5831,8 +5855,8 @@ Journal entry rules:
 
           {/* ── DOCUMENT LIBRARY ─────────────────────────────────────────────── */}
           {view==="docs" && (() => {
-            const [preview, setPreview] = React.useState(null);
-            const [filterType, setFilterType] = React.useState("all");
+            const preview = docsPreview; const setPreview = setDocsPreview;
+            const filterType = docsFilterType; const setFilterType = setDocsFilterType;
             const types = ["all",...new Set(docLibrary.map(d=>d.type))];
             const filtered = filterType==="all"?docLibrary:docLibrary.filter(d=>d.type===filterType);
             return (
