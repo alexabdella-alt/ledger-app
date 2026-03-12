@@ -2192,7 +2192,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
-          {/* Nav tabs row — 2 rows */}
+          {/* Nav tabs — 2 rows, stretch full width */}
           {[
             [
               { id:"dashboard", label:"Dashboard" },
@@ -2223,19 +2223,24 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               { id:"settings", label:"Settings", badge:!companySettings.name?1:null },
             ]
           ].map((row, rowIdx) => (
-            <div key={rowIdx} style={{ display:"flex", alignItems:"center", padding:"0 8px", borderBottom: rowIdx===0?"1px solid #1A1A28":"none", gap:0 }}>
+            <div key={rowIdx} style={{ display:"flex", width:"100%", borderBottom: rowIdx===0?"1px solid #1A1A28":"none" }}>
               {row.map(item => (
-                <button key={item.id} onClick={()=>{ if(item.action){item.action();}else{setView(item.id); setVendorFilter("all"); document.getElementById("main-content")?.scrollTo(0,0);} }} style={{
-                  display:"flex", alignItems:"center", gap:5, padding:"0 16px", height:38, flexShrink:0,
-                  background: view===item.id?"#1E1E2E":"transparent",
-                  border:"none",
-                  borderBottom: view===item.id?"2px solid #8B5CF6":"2px solid transparent",
-                  borderRadius: view===item.id?"6px 6px 0 0":"0",
-                  color:view===item.id?"#C8B8FF":"#6B6B8A", fontSize:12, fontWeight:view===item.id?600:400,
-                  cursor:"pointer", whiteSpace:"nowrap", transition:"all 0.15s"
-                }}>
+                <button key={item.id}
+                  onClick={()=>{ if(item.action){item.action();}else{setView(item.id); setVendorFilter("all");} }}
+                  onMouseEnter={e=>{ if(view!==item.id){ e.currentTarget.style.background="#1A1A28"; e.currentTarget.style.color="#A78BFA"; }}}
+                  onMouseLeave={e=>{ if(view!==item.id){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#6B6B8A"; }}}
+                  style={{
+                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4,
+                    height:36, padding:"0 2px",
+                    background: view===item.id?"#1E1E2E":"transparent",
+                    border:"none",
+                    borderBottom: view===item.id?"2px solid #8B5CF6":"2px solid transparent",
+                    color:view===item.id?"#C8B8FF":"#6B6B8A",
+                    fontSize:11, fontWeight:view===item.id?600:400,
+                    cursor:"pointer", whiteSpace:"nowrap", transition:"all 0.12s",
+                  }}>
                   {item.label}
-                  {item.badge>0 && <span style={{ background:"#6D28D9", borderRadius:20, padding:"1px 6px", fontSize:10, color:"#E8E8F0", marginLeft:2 }}>{item.badge}</span>}
+                  {item.badge>0 && <span style={{ background:"#6D28D9", borderRadius:20, padding:"1px 5px", fontSize:9, color:"#E8E8F0" }}>{item.badge}</span>}
                 </button>
               ))}
             </div>
@@ -2243,7 +2248,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         </div>
 
         {/* Main Content */}
-        <div id="main-content" style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
+        <div id="main-content" key={view} style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
 
           {/* DASHBOARD */}
           {view==="dashboard" && (
