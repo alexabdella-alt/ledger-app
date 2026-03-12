@@ -637,6 +637,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     if (chatOpen) { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); setHasUnread(false); }
   }, [chatHistory, chatOpen]);
 
+  useEffect(() => {
+    document.getElementById("main-content")?.scrollTo({ top: 0 });
+  }, [view]);
+
   // ── SUPABASE DATA LOADING ──────────────────────────────────
   useEffect(() => {
     if (!currentCompany?.id) return;
@@ -2248,8 +2252,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         </div>
 
         {/* Main Content */}
-        <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
-          <div id="main-content" key={view} style={{ position:"absolute", inset:0, padding:"32px 40px", overflowY:"auto" }}>
+        <div id="main-content" key={view} style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
 
           {/* DASHBOARD */}
           {view==="dashboard" && (
@@ -6109,8 +6112,6 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
             );
           })()}
 
-        </div>
-
       {/* ── FLOATING AI CHAT ───────────────────────────────────────────────── */}
       {/* Bubble button */}
       <button onClick={()=>{ setChatOpen(o=>!o); setHasUnread(false); }} style={{
@@ -6208,7 +6209,6 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
           </div>
         </div>
       )}
-      </div>
     </div>
   );
 }
