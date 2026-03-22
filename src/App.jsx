@@ -401,7 +401,7 @@ ${contacts.map(c =>
     : `Vendor Rules: ${rules.length} active (not loaded for this query).`;
 
   // ── 4. Build system prompt ────────────────────────────────────────────────────
-  const systemPrompt = `You are an intelligent accounting assistant and CFO advisor embedded in an ERP system. You help business owners manage their books, vendors, customers, and finances through natural conversation — no accounting knowledge required.
+  const systemPrompt = `You are CFAI — an AI CFO and bookkeeper in one, built for business owners who need real financial intelligence without the jargon. You think like a seasoned CFO who also handles the books. You proactively surface what matters, not just what was asked.
 
 Chart of Accounts:
 ${(chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name} (${a.category})`).join("\n")}
@@ -416,12 +416,13 @@ ${ledgerSection}
 
 Respond ONLY with a JSON object (no markdown):
 {
-  "reply": "Warm, direct plain-English response. For reports, include real computed numbers inline. Never use markdown tables or asterisks.",
+  "reply": "Direct, intelligent response in plain English. Always include real numbers from the ledger. No markdown, no asterisks, no headers. Write like a trusted CFO talking to their CEO.",
   "actions": [
     // Ledger: { "type": "recode", "invoiceIds": [id], "gl_code": "XXXX", "gl_name": "Name" }
     // Ledger: { "type": "retag_project", "invoiceIds": [id], "project": "Name" }
     // Ledger: { "type": "add_rule", "vendor": "Name", "gl_code": "XXXX", "gl_name": "Name", "project": "optional" }
     // Ledger: { "type": "delete_rule", "vendor": "Name" }
+    // COA: { "type": "add_account", "code": "XXXX", "name": "Name", "category": "Revenue|Expenses|Assets|Liabilities|Equity" }
     // Contact: { "type": "add_contact", "contact_type": "vendor|customer", "name": "Name", "gl_code": "XXXX", "gl_name": "Name", "payment_terms": "Net 30", "email": "...", "phone": "...", "notes": "...", "tags": [], "min_expected": 0, "max_expected": 0 }
     // Contact: { "type": "update_contact", "name": "Name", "updates": { "email": "...", "phone": "...", "payment_terms": "...", "notes": "...", "min_expected": 0, "max_expected": 0, "tags": [] } }
     // Contact: { "type": "set_contact_rule", "name": "Name", "gl_code": "XXXX", "gl_name": "Name", "project": "optional" }
@@ -431,15 +432,49 @@ Respond ONLY with a JSON object (no markdown):
   ]
 }
 
-Guidelines:
-- "Add X as a vendor/customer" → add_contact with smart defaults for anything not provided
-- "Update X's email/phone/terms" → update_contact with only the changed fields
-- "What do we owe X?" or any financial question → query the ledger data above, reply with real numbers
-- "X always bills around $500–800/month" → update_contact with min_expected/max_expected
-- "Set a rule for X" → set_contact_rule + add_rule so future invoices auto-code
-- For any report request, compute real numbers from ledger data and include them directly in the reply
-- Always be warm and confident — the business owner trusts you like a CFO
-- NEVER use markdown formatting — no asterisks, no bold, no headers, no bullet points with dashes. Write in plain conversational sentences only. Use numbers and line breaks for lists if needed.`;
+CFO Intelligence Guidelines:
+BURN RATE & CASH — these are the #1 priority for most founders and small business owners:
+- Always compute burn rate from the ledger when asked (total expenses in period)
+- Net burn = expenses minus revenue. Always distinguish gross burn vs net burn.
+- Runway = estimated cash / average monthly burn. Flag if under 6 months.
+- When asked about cash, give: current position, monthly burn, runway, and top 3 burn drivers
+- Proactively flag if burn is accelerating month over month
+- Example: "Your burn is $42k/mo, up 18% from last month. At that rate your runway is about 8 months. Your top driver is payroll at $28k — everything else is pretty lean."
+
+TAX AWARENESS:
+- Track which expenses are tax-deductible and flag non-deductible items
+- Remind about quarterly estimated tax deadlines (Apr 15, Jun 15, Sep 15, Jan 15)
+- Estimated federal tax ≈ 25-30% of net income for most small businesses
+- 1099 threshold: vendors paid $600+ annually need a 1099-NEC
+- Flag when a vendor is approaching the $600 threshold
+- Year-end reminder: W-2s due Jan 31, 1099s due Jan 31
+
+CASH FLOW (cash basis, not accrual):
+- Cash in = collected receivables + direct cash revenue
+- Cash out = paid invoices + payroll + direct expenses
+- Always distinguish between "revenue recorded" and "cash actually received"
+- When asked about cash flow, use payment_status to determine actual cash movement
+
+BUSINESS TYPE AWARENESS — adapt your guidance based on what you observe:
+- High payroll + low revenue = startup burning VC money → focus on runway
+- High AR outstanding = services/consulting business → focus on collections
+- High COGS = product business → focus on margins
+- Lots of 1099 vendors = agency/contractor model → flag compliance
+- Recurring subscription revenue = SaaS → focus on MRR and churn cost
+
+FOLLOW-UP QUESTIONS — if a request is ambiguous, ask ONE targeted question before acting:
+- "Which month did you mean — this month or last month?"
+- "Should I recode all past invoices from this vendor, or just going forward?"
+- "Is this a one-time expense or should I set up a recurring entry?"
+Never make a low-confidence change without confirming first.
+
+GAAP AWARENESS — maintain proper books but explain simply:
+- Accrual vs cash: explain the difference when relevant
+- Always keep proper double-entry records behind the scenes
+- But surface cash-basis numbers when that's what the owner cares about
+
+- Always be warm, direct, and confident — you're their CFO, not a compliance officer
+- NEVER use markdown — no asterisks, no bold, no dashes for bullets. Plain sentences only.`;
 
   // ── 5. Call the main model ────────────────────────────────────────────────────
   const messages = [
@@ -471,6 +506,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [contacts, setContacts] = useState([]);
   const [customProjects, setCustomProjects] = useState([]);
   const [view, setView] = useState("dashboard");
+  // ── CLARIFICATION QUEUE ── invoices waiting for user input before booking
+  const [clarificationQueue, setClarificationQueue] = useState([]); // [{id, invoice, question, options, queueItemId}]
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isAILoading, setIsAILoading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -1097,13 +1134,18 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             codings = Array.isArray(parsed) ? parsed : [parsed];
           } catch(e) { codings = []; }
 
-          // Build and book all invoices
-          const newInvoices = extractedList.map((extracted, idx) => {
+          // Split invoices by confidence — high confidence books immediately, low confidence asks user
+          const highConfidence = [];
+          const needsClarification = [];
+
+          extractedList.forEach((extracted, idx) => {
             const coding = codings[idx] || {};
             const rule = rules.find(r => r.vendor?.toLowerCase()===extracted.vendor?.toLowerCase());
+            const confidence = rule ? 99 : (coding.confidence || 75);
             const finalCode = rule ? rule.gl_code : (coding.gl_code || (extracted.type==="revenue" ? "4000" : "5900"));
             const finalName = rule ? rule.gl_name : (coding.gl_name || (extracted.type==="revenue" ? "Sales Revenue" : "Miscellaneous Expense"));
-            return {
+
+            const invoice = {
               id: Date.now() + Math.random() + idx,
               vendor: extracted.vendor?.trim() || "Unknown",
               description: extracted.description || "",
@@ -1117,29 +1159,65 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               secondary_gl_code: rule ? "2000" : (coding.secondary_gl_code || "2000"),
               secondary_gl_name: rule ? "Accounts Payable" : (coding.secondary_gl_name || "Accounts Payable"),
               debit_credit: "debit",
-              confidence: rule ? 99 : (coding.confidence || 75),
+              confidence,
               reasoning: rule ? `Vendor rule: ${finalName}` : (coding.reasoning || "Auto-coded"),
               status: "booked",
               booked_at: new Date().toISOString(),
               source: "universal_upload",
             };
+
+            if (confidence >= 85 || rule) {
+              highConfidence.push(invoice);
+            } else {
+              // Build targeted clarification question
+              const topAlternatives = CHART_OF_ACCOUNTS
+                .filter(a => (extracted.type==="revenue" ? a.category==="Revenue" : a.category==="Expenses"))
+                .sort((a,b) => {
+                  // Sort by relevance to current coding
+                  if (a.code === finalCode) return -1;
+                  if (b.code === finalCode) return 1;
+                  return 0;
+                })
+                .slice(0, 4);
+
+              needsClarification.push({
+                id: Date.now() + Math.random(),
+                invoice,
+                queueItemId: item.id,
+                question: confidence < 60
+                  ? `I'm not sure how to code this ${extracted.type} from ${extracted.vendor} for $${parseFloat(extracted.amount).toFixed(2)}. ${coding.reasoning || "Which category fits best?"}:`
+                  : `I coded this to "${finalName}" (${confidence}% confident). Does that look right?`,
+                options: topAlternatives.map(a => ({ code: a.code, name: a.name })),
+                suggestedCode: finalCode,
+                suggestedName: finalName,
+              });
+            }
           });
 
-          setInvoices(prev => [...newInvoices, ...prev]);
-          // Persist each invoice to Supabase
-          newInvoices.forEach(inv => persistJournalEntry(inv));
-          // Run AP screening on expense invoices automatically
-          runAPScreen(newInvoices, [...newInvoices, ...invoices]);
-          checkWatchTriggers(newInvoices, unknownDocs);
-          storeDocument(item.name, base64, mediaType, "invoice", newInvoices[0]?.id||null, ["uploaded"]);
-          logAudit("invoice_uploaded", `Uploaded ${item.name}: ${newInvoices.length} invoice(s) extracted`);
+          // Book high-confidence invoices immediately
+          if (highConfidence.length > 0) {
+            setInvoices(prev => [...highConfidence, ...prev]);
+            highConfidence.forEach(inv => persistJournalEntry(inv));
+            runAPScreen(highConfidence, [...highConfidence, ...invoices]);
+            checkWatchTriggers(highConfidence, unknownDocs);
+          }
+
+          // Queue low-confidence invoices for clarification
+          if (needsClarification.length > 0) {
+            setClarificationQueue(prev => [...prev, ...needsClarification]);
+          }
+
+          const newInvoices = [...highConfidence];
           const totalAmt = newInvoices.reduce((s,i)=>s+i.amount, 0);
+          storeDocument(item.name, base64, mediaType, "invoice", newInvoices[0]?.id||null, ["uploaded"]);
+          logAudit("invoice_uploaded", `Uploaded ${item.name}: ${extractedList.length} invoice(s) extracted`);
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
-            invoiceCount: newInvoices.length,
-            vendor: newInvoices.length===1 ? newInvoices[0].vendor : `${newInvoices.length} invoices`,
+            invoiceCount: highConfidence.length,
+            needsClarification: needsClarification.length,
+            vendor: highConfidence.length===1 ? highConfidence[0].vendor : needsClarification.length>0 ? `${highConfidence.length} booked, ${needsClarification.length} need input` : `${highConfidence.length} invoices`,
             amount: totalAmt,
-            gl_name: newInvoices.length===1 ? newInvoices[0].gl_name : `avg ${Math.round(newInvoices.reduce((s,i)=>s+i.confidence,0)/newInvoices.length)}% confidence`,
-            confidence: Math.round(newInvoices.reduce((s,i)=>s+i.confidence,0)/newInvoices.length),
+            gl_name: needsClarification.length>0 ? `${needsClarification.length} need your review below` : highConfidence.length===1 ? highConfidence[0].gl_name : "all coded",
+            confidence: highConfidence.length > 0 ? Math.round(highConfidence.reduce((s,i)=>s+i.confidence,0)/highConfidence.length) : null,
           }} : q));
 
         } else if (docType === "bank_statement") {
@@ -2042,6 +2120,15 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           if (!allProjects.includes(action.project)) setCustomProjects(p => [...p, action.project]);
           actionSummary.push(`Tagged ${action.invoiceIds.length} invoice(s) → Project: ${action.project}`);
         }
+        if (action.type === "add_account") {
+          if (action.code && action.name && action.category) {
+            setCustomCOA(prev => {
+              if (prev.find(a => a.code === action.code)) return prev;
+              return [...prev, { code: action.code, name: action.name, category: action.category }].sort((a,b) => a.code.localeCompare(b.code));
+            });
+            actionSummary.push(`Added account: ${action.code} ${action.name} (${action.category})`);
+          }
+        }
         if (action.type === "add_rule") {
           const idx = newRules.findIndex(r => r.vendor?.toLowerCase() === action.vendor?.toLowerCase());
           const rule = { vendor: action.vendor, gl_code: action.gl_code, gl_name: action.gl_name, project: action.project || null };
@@ -2199,63 +2286,117 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
-          {/* Nav tabs — 2 rows, stretch full width */}
-          {[
-            [
-              { id:"dashboard", label:"Dashboard" },
-              { id:"add", label:"⬆ Upload", action: ()=>{ setView("dashboard"); setTimeout(()=>document.getElementById("universal-upload")?.click(),100); } },
-              { id:"invoices", label:"Ledger" },
-              { id:"bank", label:"Bank Feed", badge: bankTransactions.filter(t=>t.needs_review).length||null },
-              { id:"ap", label:"Payables", badge: invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status!=="paid"&&(i.approval_status==="pending_approval"||i.approval_status==="flagged")).length||null },
-              { id:"ar", label:"Receivables", badge: invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.payment_status!=="paid").length||null },
-              { id:"send-invoice", label:"Send Invoice", badge:sentInvoices.filter(i=>i.status==="draft").length||null },
-              { id:"reports", label:"Reports" },
-              { id:"review", label:"Needs Review", badge: unknownDocs.length||null },
-              { id:"payroll", label:"Payroll" },
-              { id:"recurring", label:"Recurring", badge:recurring.filter(r=>r.active).length||null },
-              { id:"recon", label:"Reconciliation", badge:reconSessions.filter(s=>s.status==="open").length||null },
-            ],
-            [
-              { id:"contracts", label:"Contracts", badge: contracts.length||null },
-              { id:"vendors", label:"Vendors" },
-              { id:"customers", label:"Customers" },
-              { id:"rules", label:"GL Rules", badge:rules.length||null },
-              { id:"tax1099", label:"1099s" },
-              { id:"docs", label:"Documents", badge:docLibrary.length||null },
-              { id:"audit", label:"Audit Trail" },
-              { id:"matching", label:"Matching", badge: matchQueue.length||null },
-              { id:"coa", label:"Chart of Accounts" },
-              { id:"opening-balances", label:"Opening Balances", badge:openingBalances.length===0?1:null },
-              { id:"onboard", label:"Import QBO" },
-              { id:"settings", label:"Settings", badge:!companySettings.name?1:null },
-            ]
-          ].map((row, rowIdx) => (
-            <div key={rowIdx} style={{ display:"flex", width:"100%", borderBottom: rowIdx===0?"1px solid #1A1A28":"none" }}>
-              {row.map(item => (
-                <button key={item.id}
-                  onClick={()=>{ if(item.action){item.action();}else{setView(item.id); setVendorFilter("all");} }}
-                  onMouseEnter={e=>{ if(view!==item.id){ e.currentTarget.style.background="#1A1A28"; e.currentTarget.style.color="#A78BFA"; }}}
-                  onMouseLeave={e=>{ if(view!==item.id){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#6B6B8A"; }}}
+          {/* Nav — 6 core tabs, stretch full width */}
+          <div style={{ display:"flex", width:"100%", borderBottom:"1px solid #1A1A28" }}>
+            {[
+              { id:"dashboard", label:"Dashboard", sub:[] },
+              { id:"ledger", label:"Ledger", sub:["invoices","bank","matching","recon","docs"] },
+              { id:"money-in", label:"Money In", sub:["ar","send-invoice","customers"] },
+              { id:"money-out", label:"Money Out", sub:["ap","payroll","vendors","rules","contracts","recurring"] },
+              { id:"reports", label:"Reports", sub:["tax1099","audit"] },
+              { id:"settings", label:"Settings", sub:["coa","opening-balances","onboard","settings"] },
+            ].map(tab => {
+              const isActive = view === tab.id || tab.sub.includes(view);
+              return (
+                <button key={tab.id}
+                  onClick={()=>{ setView(tab.id); setVendorFilter("all"); }}
+                  onMouseEnter={e=>{ if(!isActive){ e.currentTarget.style.background="#1A1A28"; e.currentTarget.style.color="#A78BFA"; }}}
+                  onMouseLeave={e=>{ if(!isActive){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#6B6B8A"; }}}
                   style={{
-                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4,
-                    height:36, padding:"0 2px",
-                    background: view===item.id?"#1E1E2E":"transparent",
+                    flex:1, height:44, display:"flex", alignItems:"center", justifyContent:"center",
+                    background: isActive?"#1E1E2E":"transparent",
                     border:"none",
-                    borderBottom: view===item.id?"2px solid #8B5CF6":"2px solid transparent",
-                    color:view===item.id?"#C8B8FF":"#6B6B8A",
-                    fontSize:11, fontWeight:view===item.id?600:400,
-                    cursor:"pointer", whiteSpace:"nowrap", transition:"all 0.12s",
+                    borderBottom: isActive?"3px solid #8B5CF6":"3px solid transparent",
+                    color: isActive?"#C8B8FF":"#6B6B8A",
+                    fontSize:13, fontWeight: isActive?600:400,
+                    cursor:"pointer", transition:"all 0.12s", letterSpacing:0.3,
                   }}>
-                  {item.label}
-                  {item.badge>0 && <span style={{ background:"#6D28D9", borderRadius:20, padding:"1px 5px", fontSize:9, color:"#E8E8F0" }}>{item.badge}</span>}
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Sub-nav — shown when a main tab has sub-views */}
+          {["ledger","money-in","money-out","reports","settings"].includes(view) || ["invoices","bank","matching","recon","docs","ar","send-invoice","customers","ap","payroll","vendors","rules","contracts","recurring","tax1099","audit","coa","opening-balances","onboard"].includes(view) ? (
+            <div style={{ display:"flex", background:"#0F0F13", borderBottom:"1px solid #1A1A28", padding:"0 16px", gap:4 }}>
+              {(view==="ledger"||["invoices","bank","matching","recon","docs"].includes(view)) && [
+                { id:"invoices", label:"All Transactions" },
+                { id:"bank", label:"Bank Feed", badge: bankTransactions.filter(t=>t.needs_review).length||null },
+                { id:"recon", label:"Reconciliation" },
+                { id:"matching", label:"Matching", badge: matchQueue.length||null },
+                { id:"docs", label:"Documents", badge: docLibrary.length||null },
+              ].map(s => (
+                <button key={s.id} onClick={()=>setView(s.id)}
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C8B8FF"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B6B8A"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B5CF6":"2px solid transparent", color:view===s.id?"#C8B8FF":"#6B6B8A", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
+                  {s.label}{s.badge>0&&<span style={{background:"#6D28D9",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
+                </button>
+              ))}
+              {(view==="money-in"||["ar","send-invoice","customers"].includes(view)) && [
+                { id:"ar", label:"Receivables", badge: invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected").length||null },
+                { id:"send-invoice", label:"Send Invoice" },
+                { id:"customers", label:"Customers", badge: contacts.filter(c=>c.type==="customer").length||null },
+              ].map(s => (
+                <button key={s.id} onClick={()=>setView(s.id)}
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C8B8FF"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B6B8A"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B5CF6":"2px solid transparent", color:view===s.id?"#C8B8FF":"#6B6B8A", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
+                  {s.label}{s.badge>0&&<span style={{background:"#6D28D9",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
+                </button>
+              ))}
+              {(view==="money-out"||["ap","payroll","vendors","rules","contracts","recurring"].includes(view)) && [
+                { id:"ap", label:"Payables", badge: invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status!=="paid"&&i.approval_status==="pending_approval").length||null },
+                { id:"vendors", label:"Vendors", badge: contacts.filter(c=>c.type==="vendor").length||null },
+                { id:"contracts", label:"Contracts", badge: contracts.length||null },
+                { id:"recurring", label:"Recurring", badge: recurring.filter(r=>r.active).length||null },
+                { id:"payroll", label:"Payroll" },
+                { id:"rules", label:"GL Rules", badge: rules.length||null },
+              ].map(s => (
+                <button key={s.id} onClick={()=>setView(s.id)}
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C8B8FF"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B6B8A"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B5CF6":"2px solid transparent", color:view===s.id?"#C8B8FF":"#6B6B8A", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
+                  {s.label}{s.badge>0&&<span style={{background:"#6D28D9",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
+                </button>
+              ))}
+              {(view==="reports"||["tax1099","audit"].includes(view)) && [
+                { id:"reports", label:"Reports" },
+                { id:"tax1099", label:"1099s" },
+                { id:"audit", label:"Audit Trail" },
+              ].map(s => (
+                <button key={s.id} onClick={()=>setView(s.id)}
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C8B8FF"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B6B8A"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B5CF6":"2px solid transparent", color:view===s.id?"#C8B8FF":"#6B6B8A", fontSize:12, cursor:"pointer", transition:"color 0.12s" }}>
+                  {s.label}
+                </button>
+              ))}
+              {(view==="settings"||["coa","opening-balances","onboard"].includes(view)) && [
+                { id:"settings", label:"Company" },
+                { id:"coa", label:"Chart of Accounts" },
+                { id:"opening-balances", label:"Opening Balances" },
+                { id:"onboard", label:"Import QBO" },
+              ].map(s => (
+                <button key={s.id} onClick={()=>setView(s.id)}
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C8B8FF"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B6B8A"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B5CF6":"2px solid transparent", color:view===s.id?"#C8B8FF":"#6B6B8A", fontSize:12, cursor:"pointer", transition:"color 0.12s" }}>
+                  {s.label}
                 </button>
               ))}
             </div>
-          ))}
+          ) : null}
         </div>
 
         {/* Main Content */}
         <div ref={mainContentRef} id="main-content" key={view} style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
+
+          {/* Top-level tab redirects */}
+          {view==="ledger" && (() => { setView("invoices"); return null; })()}
+          {view==="money-in" && (() => { setView("ar"); return null; })()}
+          {view==="money-out" && (() => { setView("ap"); return null; })()}
 
           {/* DASHBOARD */}
           {view==="dashboard" && (
@@ -2359,7 +2500,146 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                 </div>
               )}
 
-              {/* ── FINANCIAL SUMMARY ── */}
+              {/* ── CLARIFICATION QUEUE ── */}
+              {clarificationQueue.length > 0 && (
+                <div style={{ marginBottom:24 }}>
+                  <div style={{ fontSize:11, color:"#F59E0B", letterSpacing:2, marginBottom:12 }}>⚠ NEEDS YOUR INPUT — {clarificationQueue.length} invoice{clarificationQueue.length>1?"s":""}</div>
+                  {clarificationQueue.map(item => (
+                    <div key={item.id} style={{ background:"#1A1400", border:"1px solid #F59E0B44", borderRadius:14, padding:20, marginBottom:12 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+                        <div>
+                          <div style={{ fontSize:15, fontWeight:600, marginBottom:4 }}>{item.invoice.vendor} — ${item.invoice.amount.toFixed(2)}</div>
+                          <div style={{ fontSize:13, color:"#9CA3AF" }}>{item.question}</div>
+                        </div>
+                        <div style={{ fontSize:11, color:"#F59E0B", background:"#F59E0B22", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12 }}>
+                          {Math.round(item.invoice.confidence)}% confident
+                        </div>
+                      </div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:12 }}>
+                        {item.options.map(opt => (
+                          <button key={opt.code}
+                            onClick={() => {
+                              const finalInv = {...item.invoice, gl_code: opt.code, gl_name: opt.name, confidence: 100, status:"booked"};
+                              setInvoices(prev => [finalInv, ...prev]);
+                              persistJournalEntry(finalInv);
+                              setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
+                              showNotification(`Booked to ${opt.name} ✓`);
+                            }}
+                            style={{
+                              padding:"8px 16px", borderRadius:20, fontSize:12, cursor:"pointer",
+                              background: opt.code === item.suggestedCode ? "#3B1F7A" : "#1E1E2E",
+                              border: `1px solid ${opt.code === item.suggestedCode ? "#8B5CF6" : "#2A2A3E"}`,
+                              color: opt.code === item.suggestedCode ? "#C8B8FF" : "#9CA3AF",
+                              fontWeight: opt.code === item.suggestedCode ? 600 : 400,
+                            }}>
+                            {opt.code === item.suggestedCode ? "★ " : ""}{opt.name}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <button onClick={() => {
+                          const finalInv = {...item.invoice, confidence:100, status:"booked"};
+                          setInvoices(prev => [finalInv, ...prev]);
+                          persistJournalEntry(finalInv);
+                          setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
+                          showNotification(`Booked to ${item.invoice.gl_name} ✓`);
+                        }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#065F46", border:"1px solid #10B98144", color:"#6EE7B7", cursor:"pointer" }}>
+                          ✓ Use suggested: {item.suggestedName}
+                        </button>
+                        <button onClick={() => setClarificationQueue(prev => prev.filter(c => c.id !== item.id))}
+                          style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", cursor:"pointer" }}>
+                          Skip for now
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── BURN RATE & CASH COMMAND CENTER ── */}
+              {(() => {
+                const today = new Date();
+                const currentMonth = today.toISOString().slice(0,7);
+                const lastMonth = new Date(today.getFullYear(), today.getMonth()-1, 1).toISOString().slice(0,7);
+                const twoMonthsAgo = new Date(today.getFullYear(), today.getMonth()-2, 1).toISOString().slice(0,7);
+                const monthlyBurn = (m) => invoices.filter(i => glIsExpense(i.gl_code) && i.date?.startsWith(m)).reduce((s,i) => s+i.amount, 0);
+                const burnThisMonth = monthlyBurn(currentMonth);
+                const burnLastMonth = monthlyBurn(lastMonth);
+                const burnTwoMonths = monthlyBurn(twoMonthsAgo);
+                const avg3mo = [burnThisMonth, burnLastMonth, burnTwoMonths].filter(b=>b>0);
+                const avgBurn = avg3mo.length>0 ? avg3mo.reduce((s,b)=>s+b,0)/avg3mo.length : 0;
+                const revenueThisMonth = invoices.filter(i => glIsRevenue(i.gl_code) && i.date?.startsWith(currentMonth)).reduce((s,i)=>s+i.amount,0);
+                const netBurn = burnThisMonth - revenueThisMonth;
+                const openingCash = openingBalances.filter(b=>b.account_code==="1000"||b.account_code==="1010").reduce((s,b)=>s+(parseFloat(b.balance)||0),0);
+                const cashInflows = invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status==="collected").reduce((s,i)=>s+i.amount,0);
+                const cashOutflows = invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status==="paid").reduce((s,i)=>s+i.amount,0);
+                const estimatedCash = openingCash + cashInflows - cashOutflows;
+                const runway = avgBurn>0 ? Math.floor(estimatedCash/avgBurn) : null;
+                const runwayColor = runway===null?"#6B6B8A":runway<=3?"#EF4444":runway<=6?"#F59E0B":"#10B981";
+                const burnTrend = burnLastMonth>0 ? ((burnThisMonth-burnLastMonth)/burnLastMonth*100) : 0;
+                const burnDrivers = Object.entries(invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(currentMonth)).reduce((acc,i)=>{acc[i.gl_name]=(acc[i.gl_name]||0)+i.amount;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
+                const ytdNet = invoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0) - invoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+                const estimatedTax = Math.max(0, ytdNet*0.25);
+                const m = today.getMonth();
+                const nextQtr = m<3?"Apr 15":m<5?"Jun 15":m<8?"Sep 15":"Jan 15";
+                return (
+                  <div style={{marginBottom:24}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
+                      <div style={{background:"#1A0A0A",border:"1px solid #EF444433",borderRadius:14,padding:"20px 22px"}}>
+                        <div style={{fontSize:10,color:"#EF4444",letterSpacing:2,marginBottom:8}}>MONTHLY BURN</div>
+                        <div style={{fontSize:26,fontWeight:700,color:"#EF4444",fontFamily:"'DM Mono',monospace"}}>${burnThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                        <div style={{fontSize:11,color:"#6B6B8A",marginTop:6}}>
+                          {Math.abs(burnTrend)>5 ? (burnTrend>0?<span style={{color:"#EF4444"}}>↑ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>:<span style={{color:"#10B981"}}>↓ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>) : "Stable vs last month"}
+                        </div>
+                      </div>
+                      <div style={{background:"#0A0A1A",border:"1px solid #6D28D933",borderRadius:14,padding:"20px 22px"}}>
+                        <div style={{fontSize:10,color:"#A78BFA",letterSpacing:2,marginBottom:8}}>NET BURN</div>
+                        <div style={{fontSize:26,fontWeight:700,color:netBurn>0?"#EF4444":"#10B981",fontFamily:"'DM Mono',monospace"}}>{netBurn>0?"-":"+"} ${Math.abs(netBurn).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                        <div style={{fontSize:11,color:"#6B6B8A",marginTop:6}}>{revenueThisMonth>0?`$${revenueThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})} revenue offset`:"No revenue this month"}</div>
+                      </div>
+                      <div style={{background:runway!==null&&runway<=3?"#1A0A0A":runway!==null&&runway<=6?"#1A1200":"#0A1A0A",border:`1px solid ${runwayColor}33`,borderRadius:14,padding:"20px 22px"}}>
+                        <div style={{fontSize:10,color:runwayColor,letterSpacing:2,marginBottom:8}}>RUNWAY</div>
+                        <div style={{fontSize:26,fontWeight:700,color:runwayColor,fontFamily:"'DM Mono',monospace"}}>{runway===null?"∞":`${runway}mo`}</div>
+                        <div style={{fontSize:11,color:"#6B6B8A",marginTop:6}}>{runway===null?"Set cash balance for runway":runway<=3?"⚠ Critical — act now":runway<=6?"Watch closely":"Healthy"}</div>
+                      </div>
+                      <div style={{background:"#0A1400",border:"1px solid #10B98133",borderRadius:14,padding:"20px 22px"}}>
+                        <div style={{fontSize:10,color:"#10B981",letterSpacing:2,marginBottom:8}}>EST. TAX DUE</div>
+                        <div style={{fontSize:26,fontWeight:700,color:"#10B981",fontFamily:"'DM Mono',monospace"}}>${estimatedTax.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                        <div style={{fontSize:11,color:"#6B6B8A",marginTop:6}}>Next: {nextQtr} · ~25% of net income</div>
+                      </div>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                      <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:"18px 20px"}}>
+                        <div style={{fontSize:10,color:"#6B6B8A",letterSpacing:2,marginBottom:14}}>TOP BURN DRIVERS THIS MONTH</div>
+                        {burnDrivers.length===0 ? <div style={{fontSize:13,color:"#6B6B8A"}}>No expenses this month yet</div> :
+                          burnDrivers.map(([name,amt])=>(
+                            <div key={name} style={{marginBottom:12}}>
+                              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                                <div style={{fontSize:13,color:"#E8E8F0"}}>{name}</div>
+                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#EF4444"}}>${amt.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                              </div>
+                              <div style={{height:3,background:"#1E1E2E",borderRadius:2}}>
+                                <div style={{height:"100%",width:`${Math.min(100,burnThisMonth>0?amt/burnThisMonth*100:0)}%`,background:"linear-gradient(90deg,#EF4444,#F59E0B)",borderRadius:2}} />
+                              </div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                      <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:"18px 20px"}}>
+                        <div style={{fontSize:10,color:"#6B6B8A",letterSpacing:2,marginBottom:10}}>CASH POSITION</div>
+                        <div style={{fontSize:32,fontWeight:700,color:estimatedCash>=0?"#E8E8F0":"#EF4444",fontFamily:"'DM Mono',monospace",marginBottom:12}}>${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                        <div style={{display:"flex",gap:20}}>
+                          <div><div style={{fontSize:10,color:"#6B6B8A",marginBottom:2}}>COLLECTED</div><div style={{fontSize:13,color:"#10B981",fontFamily:"'DM Mono',monospace"}}>+${cashInflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
+                          <div><div style={{fontSize:10,color:"#6B6B8A",marginBottom:2}}>PAID OUT</div><div style={{fontSize:13,color:"#EF4444",fontFamily:"'DM Mono',monospace"}}>-${cashOutflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
+                          <div><div style={{fontSize:10,color:"#6B6B8A",marginBottom:2}}>AVG BURN/MO</div><div style={{fontSize:13,color:"#F59E0B",fontFamily:"'DM Mono',monospace"}}>${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
+                        </div>
+                        {openingCash===0&&<button onClick={()=>setView("opening-balances")} style={{marginTop:12,background:"none",border:"1px solid #2A2A3E",borderRadius:8,padding:"6px 12px",color:"#C8B8FF",fontSize:11,cursor:"pointer"}}>+ Add opening cash balance →</button>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:16, marginBottom:24 }}>
                 {[
                   { label:"Total Revenue", value:totalRevenue, color:"#10B981" },
