@@ -603,6 +603,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [hasUnread, setHasUnread] = useState(false);
   const chatBottomRef = useRef(null);
   const chatInputRef = useRef(null);
+  const mainContentRef = useRef(null);
   // Keeps File objects alive across view changes (File objects can't live in React state reliably)
   const fileStoreRef = useRef({}); // { [queueItemId]: File }
   const uploadActiveRef = useRef(false); // prevents concurrent processing
@@ -638,7 +639,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   }, [chatHistory, chatOpen]);
 
   useEffect(() => {
-    document.getElementById("main-content")?.scrollTo({ top: 0 });
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
   }, [view]);
 
   // ── SUPABASE DATA LOADING ──────────────────────────────────
@@ -2252,7 +2255,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         </div>
 
         {/* Main Content */}
-        <div id="main-content" key={view} style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
+        <div ref={mainContentRef} id="main-content" key={view} style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
 
           {/* DASHBOARD */}
           {view==="dashboard" && (
