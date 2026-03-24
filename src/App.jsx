@@ -1494,7 +1494,8 @@ Rules:
 
     } catch(e) {
       console.error("Upload error:", item.name, e);
-      setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:"Processing failed — try again"} : q));
+      const errMsg = e?.message || String(e) || "Processing failed";
+      setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:`${errMsg} — try again`} : q));
     } finally {
       // Clean up file ref and release lock so next pending item can run
       delete fileStoreRef.current[item.id];
@@ -1787,8 +1788,24 @@ CRITICAL RULES:
       });
 
       const data = await res.json();
+      if (!data.content) throw new Error(`API error: ${JSON.stringify(data)}`);
       const raw = (data.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim();
-      const contract = JSON.parse(raw);
+      
+      // Handle truncated JSON by attempting to close it
+      let contract;
+      try {
+        contract = JSON.parse(raw);
+      } catch(parseErr) {
+        // Try to recover truncated JSON by finding the last complete entry
+        const lastCompleteEntry = raw.lastIndexOf('{"date"');
+        if (lastCompleteEntry > 0) {
+          const truncated = raw.slice(0, lastCompleteEntry).replace(/,\s*$/, "") + "]}";
+          try { contract = JSON.parse(truncated + "}"); } 
+          catch { contract = JSON.parse(raw.slice(0, raw.lastIndexOf("]")) + "]}"); }
+        } else {
+          throw new Error("Could not parse contract analysis response. Try again.");
+        }
+      }
 
       const saved = {
         ...contract,
@@ -1803,8 +1820,9 @@ CRITICAL RULES:
       persistContract(saved);
       showNotification(`Contract analyzed — ${contract.journal_entries?.length||0} journal entries generated ✓`);
     } catch(e) {
-      showNotification("Failed to analyze contract. Please try again.", "error");
-      console.error(e);
+      const msg = e?.message || String(e);
+      showNotification(`Contract analysis failed: ${msg}`, "error");
+      console.error("Contract error:", e);
     }
     setContractProcessing(false);
   };
