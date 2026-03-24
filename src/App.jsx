@@ -676,16 +676,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   }, [chatHistory, chatOpen]);
 
   useEffect(() => {
+    // Initialize settings draft when entering settings view
     if (view === "settings" && !settingsDraft) {
       setSettingsDraft(companySettings);
     }
-  }, [view]);
-
-  useEffect(() => {
+    // Scroll to top — use double rAF to ensure any state-triggered re-renders finish first
     const frame = requestAnimationFrame(() => {
-      if (mainContentRef.current) {
-        mainContentRef.current.scrollTop = 0;
-      }
+      requestAnimationFrame(() => {
+        if (mainContentRef.current) {
+          mainContentRef.current.scrollTop = 0;
+        }
+      });
     });
     return () => cancelAnimationFrame(frame);
   }, [view]);
@@ -4362,14 +4363,20 @@ What should this business owner know and do?`}]
             });
             const vendorRows = Object.values(byVendor).sort((a,b)=>b.total-a.total);
 
-            // Cash flow by month — revenue = inflow (4xxx), expense = outflow (5xxx/6xxx)
+            // Cash flow by month — ACTUAL cash only (collected receivables + paid expenses)
             const byMonth = {};
-            filtered.filter(i=>glPLType(i.gl_code)).forEach(inv => {
+            filtered.forEach(inv => {
               if (!inv.date) return;
               const m = inv.date.slice(0,7);
               if (!byMonth[m]) byMonth[m] = { month:m, inflow:0, outflow:0 };
-              if (glIsRevenue(inv.gl_code)) byMonth[m].inflow+=inv.amount;
-              else byMonth[m].outflow+=inv.amount;
+              // Cash in = revenue that has been collected
+              if (glIsRevenue(inv.gl_code) && (inv.payment_status==="collected" || inv.payment_status==="paid")) {
+                byMonth[m].inflow += inv.amount;
+              }
+              // Cash out = expenses that have been paid
+              if (glIsExpense(inv.gl_code) && inv.payment_status==="paid") {
+                byMonth[m].outflow += inv.amount;
+              }
             });
             const cashRows = Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month));
 
@@ -4539,11 +4546,14 @@ What should this business owner know and do?`}]
                     {/* CASH FLOW */}
                     {reportType==="cashflow" && (
                       <div style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:14, overflow:"hidden" }}>
-                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between" }}>
-                          <div style={{ fontSize:14, fontWeight:600 }}>Cash Flow Summary</div>
+                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div>
+                            <div style={{ fontSize:14, fontWeight:600 }}>Cash Flow Statement</div>
+                            <div style={{ fontSize:11, color:"#6B6B8A", marginTop:3 }}>Cash basis — collected receipts and paid expenses only</div>
+                          </div>
                           <div style={{ fontSize:12, color:"#6B6B8A" }}>{rangeLabels[reportRange]}</div>
                         </div>
-                        {cashRows.length===0 ? <div style={{ padding:24, color:"#6B6B8A", fontSize:13 }}>No data for selected range.</div> : (
+                        {cashRows.length===0 ? <div style={{ padding:24, color:"#6B6B8A", fontSize:13 }}>No cash transactions recorded yet. Mark invoices as paid/collected to see cash flow.</div> : (
                           <table style={{ width:"100%", borderCollapse:"collapse" }}>
                             <thead><tr style={{ background:"#0F0F13" }}>
                               {["Month","Inflow","Outflow","Net","Running"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#6B6B8A", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
