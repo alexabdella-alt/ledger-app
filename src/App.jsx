@@ -286,19 +286,32 @@ function AppWrapper() {
 
 const DEFAULT_CHART_OF_ACCOUNTS = [
   { code: "1000", name: "Cash & Cash Equivalents", category: "Assets" },
+  { code: "1010", name: "Savings Account", category: "Assets" },
   { code: "1100", name: "Accounts Receivable", category: "Assets" },
   { code: "1200", name: "Inventory", category: "Assets" },
   { code: "1300", name: "Prepaid Expenses", category: "Assets" },
+  { code: "1400", name: "Other Current Assets", category: "Assets" },
   { code: "1500", name: "Property, Plant & Equipment", category: "Assets" },
+  { code: "1510", name: "Accumulated Depreciation", category: "Assets" },
+  { code: "1600", name: "Intangible Assets", category: "Assets" },
+  { code: "1700", name: "Security Deposits", category: "Assets" },
+  { code: "1800", name: "Right-of-Use Asset (ASC 842)", category: "Assets" },
+  { code: "1810", name: "Accumulated Amortization - ROU", category: "Assets" },
   { code: "2000", name: "Accounts Payable", category: "Liabilities" },
   { code: "2100", name: "Accrued Liabilities", category: "Liabilities" },
   { code: "2200", name: "Short-Term Debt", category: "Liabilities" },
+  { code: "2300", name: "Deferred Revenue", category: "Liabilities" },
+  { code: "2400", name: "Lease Liability - Current (ASC 842)", category: "Liabilities" },
+  { code: "2450", name: "Lease Liability - Non-Current (ASC 842)", category: "Liabilities" },
   { code: "2500", name: "Long-Term Debt", category: "Liabilities" },
+  { code: "2600", name: "Notes Payable", category: "Liabilities" },
   { code: "3000", name: "Common Stock", category: "Equity" },
   { code: "3100", name: "Retained Earnings", category: "Equity" },
+  { code: "3200", name: "Additional Paid-In Capital", category: "Equity" },
   { code: "4000", name: "Sales Revenue", category: "Revenue" },
   { code: "4100", name: "Service Revenue", category: "Revenue" },
   { code: "4200", name: "Other Income", category: "Revenue" },
+  { code: "4300", name: "Interest Income", category: "Revenue" },
   { code: "5000", name: "Cost of Goods Sold", category: "Expenses" },
   { code: "5100", name: "Salaries & Wages", category: "Expenses" },
   { code: "5200", name: "Rent & Occupancy", category: "Expenses" },
@@ -309,9 +322,14 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
   { code: "5700", name: "Insurance", category: "Expenses" },
   { code: "5800", name: "Professional Services", category: "Expenses" },
   { code: "5900", name: "Technology & Software", category: "Expenses" },
-  { code: "6000", name: "Depreciation", category: "Expenses" },
+  { code: "6000", name: "Depreciation & Amortization", category: "Expenses" },
+  { code: "6050", name: "ROU Asset Amortization", category: "Expenses" },
   { code: "6100", name: "Interest Expense", category: "Expenses" },
+  { code: "6150", name: "Lease Expense - Operating", category: "Expenses" },
   { code: "6200", name: "Miscellaneous Expense", category: "Expenses" },
+  { code: "6300", name: "Bad Debt Expense", category: "Expenses" },
+  { code: "6400", name: "Payroll Tax Expense", category: "Expenses" },
+  { code: "6500", name: "Employee Benefits", category: "Expenses" },
 ];
 
 const PROJECTS = ["General", "Marketing Campaign", "Office Renovation", "Product Launch", "Cloud Infrastructure", "R&D", "Sales Ops"];
@@ -823,6 +841,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         })));
       }
 
+      // Load contracts
+      await loadContractsFromDB();
+
     } catch(e) { console.error("loadAllData error:", e); }
   };
 
@@ -881,6 +902,46 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         if (data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
       }
     } catch(e) { console.error("persistContact error:", e); }
+  };
+
+  const persistContract = async (contract) => {
+    if (!currentCompany?.id || !session?.user?.id) return;
+    try {
+      const { data, error } = await supabase.from("unknown_documents").upsert({
+        id: contract.db_id || undefined,
+        company_id: currentCompany.id,
+        name: contract.file_name || contract.description,
+        document_type: `contract_${contract.contract_type}`,
+        ai_explanation: JSON.stringify(contract),
+        entry_needed: true,
+        entry_summary: contract.description,
+        posted: (contract.posted_entries?.length || 0) >= (contract.journal_entries?.length || 1),
+        created_at: contract.uploaded_at || new Date().toISOString(),
+      }).select().single();
+      if (data && !contract.db_id) {
+        setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
+      }
+    } catch(e) { console.error("persistContract error:", e); }
+  };
+
+  const loadContractsFromDB = async () => {
+    if (!currentCompany?.id) return;
+    try {
+      const { data } = await supabase.from("unknown_documents")
+        .select("*")
+        .eq("company_id", currentCompany.id)
+        .like("document_type", "contract_%")
+        .order("created_at", { ascending: false });
+      if (data?.length) {
+        const loaded = data.map(row => {
+          try {
+            const parsed = JSON.parse(row.ai_explanation);
+            return { ...parsed, db_id: row.id, id: row.id, file_name: row.name, uploaded_at: row.created_at };
+          } catch { return null; }
+        }).filter(Boolean);
+        setContracts(loaded);
+      }
+    } catch(e) { console.error("loadContractsFromDB error:", e); }
   };
 
   const showNotification = (msg, type="success") => {
@@ -1598,54 +1659,71 @@ Keep the same array order and index as input.`,
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
           model:"claude-sonnet-4-20250514", max_tokens:4000,
-          system:`You are an expert CPA and contract analyst. Read this contract/agreement and extract all key terms, then generate the correct accounting treatment including a full journal entry schedule.
+          system:`You are a Big 4 CPA specializing in technical accounting under US GAAP. Read this contract and generate the precise accounting treatment and journal entries required.
 
-Contract types to identify: loan, revenue_contract, lease, subscription_paid, subscription_received, equipment_financing, service_agreement.
+Contract types: loan, revenue_contract, lease, subscription_paid, subscription_received, equipment_financing, service_agreement.
 
-For each contract, generate:
-1. Key extracted terms
-2. The correct accounting treatment explanation (plain English, no jargon)
-3. A schedule of journal entries
+GAAP GUIDANCE BY TYPE:
+
+LEASE (ASC 842):
+- Determine if operating or finance lease (finance = ownership transfer, bargain purchase, >75% economic life, >90% fair value, specialized asset)
+- BOTH types require: Day 1: Dr Right-of-Use Asset / Cr Lease Liability (PV of future payments)
+- Operating lease monthly: Dr Lease Expense (straight-line) / Cr Cash; adjust ROU asset and liability separately
+- Finance lease monthly: Dr Interest Expense + Dr Lease Liability / Cr Cash; Dr Amortization / Cr Accumulated Amortization-ROU
+- ROU Asset = PV of lease payments + initial direct costs
+- Lease Liability = PV of remaining lease payments using implicit rate (or incremental borrowing rate)
+- Use account 1800 for ROU Asset, 2400 for Lease Liability (current), 2500 for Lease Liability (non-current)
+
+LOAN (ASC 470):
+- Day 1: Dr Cash / Cr Notes Payable (full principal)
+- Monthly: Dr Interest Expense / Cr Accrued Interest; Dr Notes Payable / Cr Cash (principal portion)
+- Use effective interest method
+
+REVENUE CONTRACT (ASC 606):
+- Identify performance obligations, transaction price, allocation
+- Day 1: Dr Accounts Receivable / Cr Deferred Revenue
+- Monthly recognition: Dr Deferred Revenue / Cr Revenue
+
+SUBSCRIPTION PAID:
+- Day 1: Dr Prepaid Expense / Cr Cash
+- Monthly: Dr Subscription Expense / Cr Prepaid Expense
+
+EQUIPMENT FINANCING:
+- Day 1: Dr Equipment (asset) / Cr Notes Payable
+- Monthly: Dr Interest Expense + Dr Notes Payable / Cr Cash
 
 Respond ONLY with valid JSON, no markdown:
 {
-  "contract_type": "loan|revenue_contract|lease|subscription_paid|subscription_received|equipment_financing|service_agreement",
+  "contract_type": "lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement",
   "counterparty": "Other party name",
-  "description": "One line summary of what this contract is",
-  "total_value": 10000.00,
+  "description": "One line summary",
+  "total_value": 0,
   "start_date": "YYYY-MM-DD",
   "end_date": "YYYY-MM-DD",
-  "payment_amount": 500.00,
+  "payment_amount": 0,
   "payment_frequency": "monthly|quarterly|annual|one-time",
-  "interest_rate": 0.05,
-  "accounting_treatment": "Plain English explanation of how this should be accounted for and why",
+  "interest_rate": 0,
+  "lease_type": "operating|finance|null",
+  "rou_asset_value": 0,
+  "lease_liability_value": 0,
+  "accounting_treatment": "Plain English GAAP explanation including which standard applies (ASC 842, ASC 470, etc.)",
   "key_terms": ["term 1", "term 2"],
   "journal_entries": [
     {
       "date": "YYYY-MM-DD",
       "description": "Entry description",
-      "memo": "Why this entry is made",
+      "memo": "GAAP basis for this entry",
       "lines": [
-        {"account_code": "XXXX", "account_name": "Account Name", "debit": 1000.00, "credit": 0},
-        {"account_code": "XXXX", "account_name": "Account Name", "debit": 0, "credit": 1000.00}
+        {"account_code": "XXXX", "account_name": "Account Name", "debit": 0, "credit": 0}
       ]
     }
   ]
 }
 
-Chart of Accounts available:
+Chart of Accounts:
 ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}
 
-Generate journal entries for:
-- Loan: initial draw, then monthly interest + principal entries for full term
-- Revenue contract: initial deferred revenue booking, then monthly recognition entries
-- Lease: initial right-of-use asset (or just monthly expense for operating lease), monthly entries
-- Subscription paid: prepaid asset booking + monthly amortization
-- Subscription received: deferred revenue + monthly recognition
-- Equipment financing: asset booking, liability, monthly interest + principal
-- Service agreement: monthly accrual entries over term
-
-Limit to first 12 entries if term is longer than 12 months, with a note.`,
+CRITICAL: For leases, the FIRST journal entry MUST be the Day 1 ROU Asset + Lease Liability recognition. Every entry must balance (total debits = total credits). Limit to first 13 entries (Day 1 + 12 monthly) with a note if term is longer.`,
           messages:[{role:"user", content:[
             {type: ext===".pdf"?"document":"image", source:{type:"base64", media_type:mediaType, data:base64}},
             {type:"text", text:"Analyze this contract and generate the full accounting treatment and journal entry schedule."}
@@ -1667,6 +1745,7 @@ Limit to first 12 entries if term is longer than 12 months, with a note.`,
       setContracts(prev => [saved, ...prev]);
       setSelectedContract(saved);
       setContractView("detail");
+      persistContract(saved);
       showNotification(`Contract analyzed — ${contract.journal_entries?.length||0} journal entries generated ✓`);
     } catch(e) {
       showNotification("Failed to analyze contract. Please try again.", "error");
@@ -1697,12 +1776,12 @@ Limit to first 12 entries if term is longer than 12 months, with a note.`,
       status:"booked", booked_at: new Date().toISOString(), source:"contract"
     }));
     setInvoices(prev => [...newInvoices, ...prev]);
+    newInvoices.forEach(inv => persistJournalEntry(inv));
     // Mark entry as posted
-    setContracts(prev => prev.map(c => c.id===contract.id
-      ? {...c, posted_entries: [...(c.posted_entries||[]), entryIdx]}
-      : c
-    ));
+    const updatedContract = {...contract, posted_entries: [...(contract.posted_entries||[]), entryIdx]};
+    setContracts(prev => prev.map(c => c.id===contract.id ? updatedContract : c));
     setSelectedContract(prev => ({...prev, posted_entries: [...(prev.posted_entries||[]), entryIdx]}));
+    persistContract(updatedContract);
     showNotification(`Journal entry posted to ledger ✓`);
   };
 
@@ -4404,7 +4483,7 @@ What should this business owner know and do?`}]
 
                 {/* Controls */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
-                  {[["pl","P&L"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"]].map(([id,label])=>(
+                  {[["pl","P&L"],["balance","Balance Sheet"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"]].map(([id,label])=>(
                     <button key={id} onClick={()=>setReportType(id)} style={{ padding:"8px 16px", borderRadius:20, fontSize:13, background:reportType===id?"#C8B8FF":"transparent", border:`1px solid ${reportType===id?"#C8B8FF":"#2A2A3E"}`, color:reportType===id?"#0F0F13":"#6B6B8A", cursor:"pointer", fontWeight:reportType===id?600:400 }}>{label}</button>
                   ))}
                   <div style={{ flex:1 }} />
@@ -4472,6 +4551,114 @@ What should this business owner know and do?`}]
                         </div>
                       </div>
                     )}
+
+                    {/* BALANCE SHEET */}
+                    {reportType==="balance" && (() => {
+                      const asOf = reportRange==="month" ? new Date().toISOString().slice(0,7) :
+                                   reportRange==="quarter" ? new Date().toISOString().slice(0,7) :
+                                   new Date().getFullYear().toString();
+                      const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
+
+                      // Assets from opening balances + movements
+                      const openingByCode = {};
+                      openingBalances.forEach(b => { openingByCode[b.account_code] = parseFloat(b.balance)||0; });
+
+                      // Journal entry movements by account code
+                      const movements = {};
+                      invoices.forEach(inv => {
+                        // Debit side (gl_code)
+                        if (!movements[inv.gl_code]) movements[inv.gl_code] = 0;
+                        // Credit side (secondary)
+                        if (!movements[inv.secondary_gl_code]) movements[inv.secondary_gl_code] = 0;
+
+                        const acct = CHART_OF_ACCOUNTS.find(a => a.code === inv.gl_code);
+                        if (acct) {
+                          if (["Assets"].includes(acct.category)) movements[inv.gl_code] += inv.amount;
+                          else if (["Liabilities","Equity"].includes(acct.category)) movements[inv.gl_code] -= inv.amount;
+                          else if (acct.category === "Expenses") movements[inv.gl_code] += inv.amount;
+                          else if (acct.category === "Revenue") movements[inv.gl_code] -= inv.amount;
+                        }
+                        const secAcct = CHART_OF_ACCOUNTS.find(a => a.code === inv.secondary_gl_code);
+                        if (secAcct) {
+                          if (["Liabilities","Equity"].includes(secAcct.category)) movements[inv.secondary_gl_code] += inv.amount;
+                          else if (["Assets"].includes(secAcct.category)) movements[inv.secondary_gl_code] -= inv.amount;
+                        }
+                      });
+
+                      const getBalance = (code) => (openingByCode[code]||0) + (movements[code]||0);
+
+                      const assets = CHART_OF_ACCOUNTS.filter(a => a.category==="Assets");
+                      const liabilities = CHART_OF_ACCOUNTS.filter(a => a.category==="Liabilities");
+                      const equity = CHART_OF_ACCOUNTS.filter(a => a.category==="Equity");
+
+                      const totalAssets = assets.reduce((s,a) => s + getBalance(a.code), 0);
+                      const totalLiabilities = liabilities.reduce((s,a) => s + getBalance(a.code), 0);
+                      const totalEquity = equity.reduce((s,a) => s + getBalance(a.code), 0);
+                      const ytdNet = totalRevenue - totalExpenses;
+                      const totalLiabEquity = totalLiabilities + totalEquity + ytdNet;
+                      const isBalanced = Math.abs(totalAssets - totalLiabEquity) < 1;
+
+                      const Section = ({title, accounts, total, totalLabel}) => (
+                        <div style={{marginBottom:28}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#C8B8FF",letterSpacing:2,marginBottom:12,paddingBottom:8,borderBottom:"1px solid #2A2A3E"}}>{title}</div>
+                          {accounts.filter(a => getBalance(a.code) !== 0 || openingByCode[a.code]).map(a => (
+                            <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1A1A28"}}>
+                              <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace"}}>{a.code}</span>{a.name}</div>
+                              <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBalance(a.code)<0?"#EF4444":"#E8E8F0"}}>{fmt(getBalance(a.code))}</div>
+                            </div>
+                          ))}
+                          <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",marginTop:4}}>
+                            <div style={{fontSize:13,fontWeight:700,color:"#E8E8F0"}}>{totalLabel}</div>
+                            <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{fmt(total)}</div>
+                          </div>
+                        </div>
+                      );
+
+                      return (
+                        <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,overflow:"hidden"}}>
+                          <div style={{padding:"18px 24px",borderBottom:"1px solid #1E1E2E",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                            <div>
+                              <div style={{fontSize:14,fontWeight:600}}>Balance Sheet</div>
+                              <div style={{fontSize:11,color:"#6B6B8A",marginTop:3}}>As of {new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · GAAP basis</div>
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:10}}>
+                              {!isBalanced && <div style={{fontSize:11,color:"#F59E0B",background:"#1A1200",border:"1px solid #F59E0B44",borderRadius:8,padding:"4px 10px"}}>⚠ Out of balance by {fmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
+                              {isBalanced && <div style={{fontSize:11,color:"#10B981",background:"#0A2A1A",border:"1px solid #10B98133",borderRadius:8,padding:"4px 10px"}}>✓ Balanced</div>}
+                            </div>
+                          </div>
+                          <div style={{padding:"24px 28px"}}>
+                            <Section title="ASSETS" accounts={assets} total={totalAssets} totalLabel="Total Assets" />
+                            <Section title="LIABILITIES" accounts={liabilities} total={totalLiabilities} totalLabel="Total Liabilities" />
+                            <div style={{marginBottom:28}}>
+                              <div style={{fontSize:11,fontWeight:700,color:"#C8B8FF",letterSpacing:2,marginBottom:12,paddingBottom:8,borderBottom:"1px solid #2A2A3E"}}>EQUITY</div>
+                              {equity.filter(a => getBalance(a.code) !== 0).map(a => (
+                                <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1A1A28"}}>
+                                  <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace"}}>{a.code}</span>{a.name}</div>
+                                  <div style={{fontSize:13,fontFamily:"'DM Mono',monospace"}}>{fmt(getBalance(a.code))}</div>
+                                </div>
+                              ))}
+                              <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1A1A28"}}>
+                                <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace"}}>—</span>YTD Net Income (Retained)</div>
+                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:ytdNet>=0?"#10B981":"#EF4444"}}>{fmt(ytdNet)}</div>
+                              </div>
+                              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",marginTop:4}}>
+                                <div style={{fontSize:13,fontWeight:700,color:"#E8E8F0"}}>Total Equity</div>
+                                <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{fmt(totalEquity + ytdNet)}</div>
+                              </div>
+                            </div>
+                            <div style={{borderTop:"2px solid #2A2A3E",paddingTop:16,display:"flex",justifyContent:"space-between"}}>
+                              <div style={{fontSize:14,fontWeight:700}}>Total Liabilities + Equity</div>
+                              <div style={{fontSize:16,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{fmt(totalLiabEquity)}</div>
+                            </div>
+                            {openingBalances.length===0 && (
+                              <div style={{marginTop:16,background:"#1A1200",border:"1px solid #F59E0B44",borderRadius:8,padding:"12px 16px",fontSize:12,color:"#F59E0B"}}>
+                                ⚠ No opening balances set. Go to Settings → Opening Balances to enter your starting balances for an accurate balance sheet.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* BY VENDOR */}
                     {reportType==="vendor" && (
