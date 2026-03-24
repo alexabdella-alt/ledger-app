@@ -441,6 +441,11 @@ Respond ONLY with a JSON object (no markdown):
     // Ledger: { "type": "add_rule", "vendor": "Name", "gl_code": "XXXX", "gl_name": "Name", "project": "optional" }
     // Ledger: { "type": "delete_rule", "vendor": "Name" }
     // COA: { "type": "add_account", "code": "XXXX", "name": "Name", "category": "Revenue|Expenses|Assets|Liabilities|Equity" }
+    // Delete/Void: { "type": "delete_invoice", "vendor": "Name", "amount": 0, "date": "YYYY-MM-DD" } — removes entry entirely
+    // Delete/Void: { "type": "delete_invoice", "invoice_id": "id" } — removes by ID (use if ID is known)
+    // Void: { "type": "void_invoice", "vendor": "Name", "reason": "Why voided" } — keeps for audit trail, marks voided
+    // Reverse: { "type": "reverse_entry", "invoice_id": "id", "date": "YYYY-MM-DD" } — creates offsetting reversing entry (GAAP preferred)
+    // Contract: { "type": "delete_contract", "counterparty": "Name" } — removes a contract
     // Contact: { "type": "add_contact", "contact_type": "vendor|customer", "name": "Name", "gl_code": "XXXX", "gl_name": "Name", "payment_terms": "Net 30", "email": "...", "phone": "...", "notes": "...", "tags": [], "min_expected": 0, "max_expected": 0 }
     // Contact: { "type": "update_contact", "name": "Name", "updates": { "email": "...", "phone": "...", "payment_terms": "...", "notes": "...", "min_expected": 0, "max_expected": 0, "tags": [] } }
     // Contact: { "type": "set_contact_rule", "name": "Name", "gl_code": "XXXX", "gl_name": "Name", "project": "optional" }
@@ -479,6 +484,14 @@ BUSINESS TYPE AWARENESS — adapt your guidance based on what you observe:
 - High COGS = product business → focus on margins
 - Lots of 1099 vendors = agency/contractor model → flag compliance
 - Recurring subscription revenue = SaaS → focus on MRR and churn cost
+
+DELETING / VOIDING / REVERSING ENTRIES:
+- "Delete that invoice" / "I didn't mean to upload that" → use delete_invoice (removes entirely, no audit trail)
+- "Void that entry" → use void_invoice (keeps for audit trail, marks as voided — preferred for compliance)
+- "We backed out of that lease" / "reverse that entry" → use reverse_entry (creates offsetting entry on today's date — GAAP correct approach for already-posted entries)
+- "Delete that contract" / "We didn't sign that lease" → use delete_contract
+- ALWAYS confirm before deleting/voiding: "Are you sure you want to delete the [vendor] entry for $[amount] on [date]? I'll create a reversing entry instead if it was already recorded in a closed period."
+- For leases already posted: recommend reversing entries (not deletion) to maintain clean audit trail
 
 FOLLOW-UP QUESTIONS — if a request is ambiguous, ask ONE targeted question before acting:
 - "Which month did you mean — this month or last month?"
@@ -1659,38 +1672,64 @@ Keep the same array order and index as input.`,
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
           model:"claude-sonnet-4-20250514", max_tokens:4000,
-          system:`You are a Big 4 CPA specializing in technical accounting under US GAAP. Read this contract and generate the precise accounting treatment and journal entries required.
+          system:`You are a Big 4 CPA (PWC/Deloitte/KPMG level) specializing in US GAAP technical accounting. Generate precise journal entries per the authoritative guidance below.
 
-Contract types: loan, revenue_contract, lease, subscription_paid, subscription_received, equipment_financing, service_agreement.
+LEASE ACCOUNTING — ASC 842 (FASB, effective 2022):
 
-GAAP GUIDANCE BY TYPE:
+STEP 1 — CLASSIFY THE LEASE:
+Finance lease if ANY of: (a) title transfers at end, (b) bargain purchase option likely to be exercised, (c) lease term is major part of economic life (generally ≥75%), (d) PV of payments is substantially all of fair value (generally ≥90%), (e) specialized asset with no alternative use to lessor.
+Otherwise: Operating lease.
 
-LEASE (ASC 842):
-- Determine if operating or finance lease (finance = ownership transfer, bargain purchase, >75% economic life, >90% fair value, specialized asset)
-- BOTH types require: Day 1: Dr Right-of-Use Asset / Cr Lease Liability (PV of future payments)
-- Operating lease monthly: Dr Lease Expense (straight-line) / Cr Cash; adjust ROU asset and liability separately
-- Finance lease monthly: Dr Interest Expense + Dr Lease Liability / Cr Cash; Dr Amortization / Cr Accumulated Amortization-ROU
-- ROU Asset = PV of lease payments + initial direct costs
-- Lease Liability = PV of remaining lease payments using implicit rate (or incremental borrowing rate)
-- Use account 1800 for ROU Asset, 2400 for Lease Liability (current), 2500 for Lease Liability (non-current)
+STEP 2 — MEASURE AT COMMENCEMENT:
+- Lease Liability = PV of remaining lease payments (fixed payments + reasonably certain variable + purchase option if likely) discounted at IMPLICIT RATE if determinable, else INCREMENTAL BORROWING RATE (IBR)
+- ROU Asset = Lease Liability + prepaid rent + initial direct costs - lease incentives received
 
-LOAN (ASC 470):
-- Day 1: Dr Cash / Cr Notes Payable (full principal)
-- Monthly: Dr Interest Expense / Cr Accrued Interest; Dr Notes Payable / Cr Cash (principal portion)
-- Use effective interest method
+STEP 3 — JOURNAL ENTRIES:
 
-REVENUE CONTRACT (ASC 606):
-- Identify performance obligations, transaction price, allocation
-- Day 1: Dr Accounts Receivable / Cr Deferred Revenue
-- Monthly recognition: Dr Deferred Revenue / Cr Revenue
+OPERATING LEASE (most office/equipment leases):
+Day 1 (Commencement):
+  Dr  Right-of-Use Asset (1800)          [= PV of lease payments]
+    Cr  Operating Lease Liability - ST (2400)   [current portion = next 12 months of principal]
+    Cr  Operating Lease Liability - LT (2450)   [remaining]
+
+Each Month:
+  Dr  Operating Lease Expense (6150)     [straight-line = total payments / total months]
+    Cr  Cash / Accounts Payable (1000/2000)    [actual cash payment]
+  AND:
+  Dr  Operating Lease Liability (2400/2450)   [interest + principal reduction: payment × (liability/total remaining payments)]
+    Cr  Right-of-Use Asset (1800)              [same amount — reduces ROU]
+  NOTE: Operating lease expense is SINGLE LINE on P&L. ROU and liability reduce at the same rate.
+  SIMPLER APPROACH FOR OPERATING: 
+    Dr Operating Lease Expense (6150) [straight-line monthly amount]
+    Cr Cash (1000) [cash payment]
+    Dr Operating Lease Liability (2400) [principal portion only]
+    Cr ROU Asset (1800) [principal portion only — mirrors liability reduction]
+
+FINANCE LEASE:
+Day 1: Same as operating (Dr ROU 1800 / Cr Lease Liability 2400 current + 2450 LT)
+Each Month:
+  Dr  Interest Expense (6100)            [liability × monthly interest rate]
+  Dr  Operating Lease Liability (2400)   [cash - interest = principal]
+    Cr  Cash (1000)                        [contractual payment]
+  Dr  ROU Asset Amortization (6050)      [ROU / lease term in months]
+    Cr  Accumulated Amortization-ROU (1810) [same]
+
+LOAN — ASC 470:
+Day 1: Dr Cash (1000) / Cr Notes Payable (2600) [full principal]
+Monthly: Dr Interest Expense (6100) + Dr Notes Payable (2600) / Cr Cash (1000)
+Use effective interest method — interest = outstanding balance × monthly rate
+
+REVENUE CONTRACT — ASC 606:
+Day 1: Dr AR (1100) / Cr Deferred Revenue (2300)
+Monthly: Dr Deferred Revenue (2300) / Cr Service Revenue (4100)
 
 SUBSCRIPTION PAID:
-- Day 1: Dr Prepaid Expense / Cr Cash
-- Monthly: Dr Subscription Expense / Cr Prepaid Expense
+Day 1: Dr Prepaid Expenses (1300) / Cr Cash (1000)  
+Monthly: Dr Technology/appropriate expense / Cr Prepaid Expenses (1300)
 
 EQUIPMENT FINANCING:
-- Day 1: Dr Equipment (asset) / Cr Notes Payable
-- Monthly: Dr Interest Expense + Dr Notes Payable / Cr Cash
+Day 1: Dr PP&E (1500) / Cr Notes Payable (2600) [FMV or PV]
+Monthly: Dr Interest Expense (6100) + Dr Notes Payable (2600) / Cr Cash (1000)
 
 Respond ONLY with valid JSON, no markdown:
 {
@@ -1703,16 +1742,18 @@ Respond ONLY with valid JSON, no markdown:
   "payment_amount": 0,
   "payment_frequency": "monthly|quarterly|annual|one-time",
   "interest_rate": 0,
-  "lease_type": "operating|finance|null",
+  "lease_type": "operating|finance|not_applicable",
   "rou_asset_value": 0,
-  "lease_liability_value": 0,
-  "accounting_treatment": "Plain English GAAP explanation including which standard applies (ASC 842, ASC 470, etc.)",
+  "lease_liability_current": 0,
+  "lease_liability_noncurrent": 0,
+  "discount_rate_used": 0,
+  "accounting_treatment": "Plain English explanation citing the specific ASC standard and why each entry is made",
   "key_terms": ["term 1", "term 2"],
   "journal_entries": [
     {
       "date": "YYYY-MM-DD",
       "description": "Entry description",
-      "memo": "GAAP basis for this entry",
+      "memo": "ASC 842 / specific GAAP basis for this entry",
       "lines": [
         {"account_code": "XXXX", "account_name": "Account Name", "debit": 0, "credit": 0}
       ]
@@ -1723,7 +1764,13 @@ Respond ONLY with valid JSON, no markdown:
 Chart of Accounts:
 ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}
 
-CRITICAL: For leases, the FIRST journal entry MUST be the Day 1 ROU Asset + Lease Liability recognition. Every entry must balance (total debits = total credits). Limit to first 13 entries (Day 1 + 12 monthly) with a note if term is longer.`,
+CRITICAL RULES:
+1. Every journal entry MUST balance: sum(debits) = sum(credits) exactly
+2. For leases: Entry 1 = Day 1 ROU Asset recognition. Split lease liability into current (2400) and non-current (2450)
+3. Current portion = principal payments due within 12 months
+4. Use account 1800 for ROU Asset, 2400 for current lease liability, 2450 for non-current
+5. Limit to 13 entries max (Day 1 + 12 monthly). Note if lease is longer.
+6. Show the discount rate / IBR used in accounting_treatment`,
           messages:[{role:"user", content:[
             {type: ext===".pdf"?"document":"image", source:{type:"base64", media_type:mediaType, data:base64}},
             {type:"text", text:"Analyze this contract and generate the full accounting treatment and journal entry schedule."}
@@ -1757,27 +1804,46 @@ CRITICAL: For leases, the FIRST journal entry MUST be the Day 1 ROU Asset + Leas
   const postContractEntry = (contract, entryIdx) => {
     const entry = contract.journal_entries[entryIdx];
     if (!entry) return;
-    // Post each line as a ledger transaction
-    const newInvoices = entry.lines.filter(l=>l.debit>0).map(l => ({
-      id: Date.now() + Math.random(),
-      vendor: contract.counterparty,
-      description: `${entry.description} — ${entry.memo}`,
-      amount: l.debit,
-      date: entry.date,
-      // Use GL code to derive type — balance sheet lines stored but won't appear on P&L reports
-      type: glIsRevenue(l.account_code) ? "revenue" : "expense",
-      project: "General",
-      gl_code: l.account_code,
-      gl_name: l.account_name,
-      secondary_gl_code: entry.lines.find(x=>x.credit>0)?.account_code||"2000",
-      secondary_gl_name: entry.lines.find(x=>x.credit>0)?.account_name||"Accounts Payable",
-      debit_credit: "debit", confidence: 99,
-      reasoning: `Posted from contract: ${contract.description}`,
-      status:"booked", booked_at: new Date().toISOString(), source:"contract"
-    }));
+
+    // Post EVERY line as a proper ledger record — both debit and credit sides
+    // This ensures balance sheet accounts (ROU Asset, Lease Liability) are captured
+    const newInvoices = entry.lines.map((l, li) => {
+      const isDebit = l.debit > 0;
+      const amount = isDebit ? l.debit : l.credit;
+      const acct = CHART_OF_ACCOUNTS.find(a => a.code === l.account_code);
+      const category = acct?.category || "Expenses";
+
+      // Find the offsetting line for this entry line
+      const offsetLine = isDebit
+        ? entry.lines.find(x => x.credit > 0)
+        : entry.lines.find(x => x.debit > 0);
+
+      return {
+        id: Date.now() + Math.random() + li,
+        vendor: contract.counterparty,
+        description: `${entry.description}${entry.memo ? ` — ${entry.memo}` : ""}`,
+        amount,
+        date: entry.date,
+        type: ["Revenue"].includes(category) ? "revenue" : "expense",
+        project: "General",
+        gl_code: l.account_code,
+        gl_name: l.account_name,
+        secondary_gl_code: offsetLine?.account_code || "2000",
+        secondary_gl_name: offsetLine?.account_name || "Accounts Payable",
+        debit_credit: isDebit ? "debit" : "credit",
+        confidence: 99,
+        reasoning: `Posted from contract (ASC 842/GAAP): ${contract.description}`,
+        status: "booked",
+        booked_at: new Date().toISOString(),
+        source: "contract",
+        contract_id: contract.id,
+        balance_sheet_account: ["Assets","Liabilities","Equity"].includes(category),
+      };
+    });
+
     setInvoices(prev => [...newInvoices, ...prev]);
     newInvoices.forEach(inv => persistJournalEntry(inv));
-    // Mark entry as posted
+
     const updatedContract = {...contract, posted_entries: [...(contract.posted_entries||[]), entryIdx]};
     setContracts(prev => prev.map(c => c.id===contract.id ? updatedContract : c));
     setSelectedContract(prev => ({...prev, posted_entries: [...(prev.posted_entries||[]), entryIdx]}));
@@ -2216,6 +2282,72 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               return [...prev, { code: action.code, name: action.name, category: action.category }].sort((a,b) => a.code.localeCompare(b.code));
             });
             actionSummary.push(`Added account: ${action.code} ${action.name} (${action.category})`);
+          }
+        }
+        if (action.type === "delete_invoice") {
+          // Delete by ID or by vendor+amount match
+          if (action.invoice_id) {
+            setInvoices(prev => prev.filter(i => String(i.id) !== String(action.invoice_id)));
+            actionSummary.push(`Deleted entry: ${action.invoice_id}`);
+          } else if (action.vendor) {
+            const toDelete = invoices.filter(i =>
+              i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) &&
+              (!action.amount || Math.abs(i.amount - parseFloat(action.amount)) < 1) &&
+              (!action.date || i.date === action.date)
+            );
+            if (toDelete.length > 0) {
+              setInvoices(prev => prev.filter(i => !toDelete.find(d => d.id === i.id)));
+              actionSummary.push(`Deleted ${toDelete.length} entr${toDelete.length===1?"y":"ies"} for ${action.vendor}`);
+            } else {
+              actionSummary.push(`No matching entries found for ${action.vendor}`);
+            }
+          }
+        }
+        if (action.type === "void_invoice") {
+          // Void = mark as voided but keep for audit trail
+          if (action.invoice_id) {
+            setInvoices(prev => prev.map(i => String(i.id) === String(action.invoice_id) ? {...i, status:"voided", voided_at:new Date().toISOString(), voided_reason: action.reason||"Voided via AI"} : i));
+            actionSummary.push(`Voided entry: ${action.invoice_id}`);
+          } else if (action.vendor) {
+            setInvoices(prev => prev.map(i =>
+              i.vendor?.toLowerCase().includes(action.vendor.toLowerCase())
+              ? {...i, status:"voided", voided_at:new Date().toISOString(), voided_reason: action.reason||"Voided via AI"}
+              : i
+            ));
+            actionSummary.push(`Voided entries for ${action.vendor}`);
+          }
+        }
+        if (action.type === "reverse_entry") {
+          // Create reversing journal entry (opposite debits/credits)
+          const toReverse = invoices.find(i => String(i.id) === String(action.invoice_id));
+          if (toReverse) {
+            const reversed = {
+              ...toReverse,
+              id: Date.now() + Math.random(),
+              amount: toReverse.amount,
+              description: `REVERSAL: ${toReverse.description || toReverse.vendor}`,
+              debit_credit: toReverse.debit_credit === "debit" ? "credit" : "debit",
+              gl_code: toReverse.secondary_gl_code,
+              gl_name: toReverse.secondary_gl_name,
+              secondary_gl_code: toReverse.gl_code,
+              secondary_gl_name: toReverse.gl_name,
+              status: "booked",
+              booked_at: new Date().toISOString(),
+              source: "reversal",
+              date: action.date || new Date().toISOString().slice(0,10),
+            };
+            setInvoices(prev => [reversed, ...prev]);
+            persistJournalEntry(reversed);
+            actionSummary.push(`Reversing entry created for ${toReverse.vendor} $${toReverse.amount}`);
+          }
+        }
+        if (action.type === "delete_contract") {
+          if (action.contract_id || action.counterparty) {
+            setContracts(prev => prev.filter(c =>
+              action.contract_id ? String(c.id) !== String(action.contract_id)
+              : !c.counterparty?.toLowerCase().includes(action.counterparty?.toLowerCase())
+            ));
+            actionSummary.push(`Contract removed: ${action.counterparty || action.contract_id}`);
           }
         }
         if (action.type === "add_rule") {
@@ -4048,26 +4180,47 @@ What should this business owner know and do?`}]
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead>
                       <tr style={{ background:"#0F0F13" }}>
-                        {["Vendor","Date","Description","GL Account","Project","Amount"].map(h=>(
+                        {["Vendor","Date","Description","GL Account","Project","Amount",""].map(h=>(
                           <th key={h} style={{ padding:"13px 16px", textAlign:"left", fontSize:11, color:"#6B6B8A", letterSpacing:1.5, fontWeight:500 }}>{h.toUpperCase()}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {filteredInvoices.map((inv,i)=>(
-                        <tr key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} style={{ borderTop:"1px solid #1E1E2E", cursor:"pointer", background:i%2===0?"transparent":"#0A0A10" }}>
-                          <td style={{ padding:"13px 16px" }}>
+                        <tr key={inv.id} style={{ borderTop:"1px solid #1E1E2E", background:inv.status==="voided"?"#1A0A0A":i%2===0?"transparent":"#0A0A10", opacity:inv.status==="voided"?0.5:1 }}>
+                          <td style={{ padding:"13px 16px", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>
                             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                               <div style={{ width:28, height:28, borderRadius:6, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
-                              <span style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</span>
+                              <div>
+                                <span style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</span>
+                                {inv.status==="voided" && <span style={{ fontSize:10, color:"#EF4444", marginLeft:6, background:"#2A0A0A", padding:"1px 6px", borderRadius:10 }}>VOIDED</span>}
+                              </div>
                             </div>
                           </td>
-                          <td style={{ padding:"13px 16px", fontSize:13, color:"#9CA3AF" }}>{inv.date}</td>
-                          <td style={{ padding:"13px 16px", fontSize:13, color:"#9CA3AF", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description}</td>
-                          <td style={{ padding:"13px 16px", fontSize:12 }}><span style={{ background:"#1E1E2E", padding:"3px 10px", borderRadius:20, color:"#C8B8FF" }}>{inv.gl_code} · {inv.gl_name}</span></td>
-                          <td style={{ padding:"13px 16px", fontSize:12, color:"#9CA3AF" }}>{inv.project||"General"}</td>
-                          <td style={{ padding:"13px 16px", fontSize:13, fontFamily:"'DM Mono', monospace", color:inv.type==="revenue"?"#10B981":"#EF4444" }}>
+                          <td style={{ padding:"13px 16px", fontSize:13, color:"#9CA3AF", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>{inv.date}</td>
+                          <td style={{ padding:"13px 16px", fontSize:13, color:"#9CA3AF", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>{inv.description}</td>
+                          <td style={{ padding:"13px 16px", fontSize:12, cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}><span style={{ background:"#1E1E2E", padding:"3px 10px", borderRadius:20, color:"#C8B8FF" }}>{inv.gl_code} · {inv.gl_name}</span></td>
+                          <td style={{ padding:"13px 16px", fontSize:12, color:"#9CA3AF", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>{inv.project||"General"}</td>
+                          <td style={{ padding:"13px 16px", fontSize:13, fontFamily:"'DM Mono', monospace", color:inv.type==="revenue"?"#10B981":"#EF4444", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>
                             {inv.type==="revenue"?"+":"-"}${inv.amount.toLocaleString("en-US",{minimumFractionDigits:2})}
+                          </td>
+                          <td style={{ padding:"8px 16px" }}>
+                            <div style={{ display:"flex", gap:4 }}>
+                              {inv.status !== "voided" && (
+                                <button
+                                  onClick={e=>{ e.stopPropagation(); if(window.confirm(`Void this entry?\n${inv.vendor} · $${inv.amount} · ${inv.date}\n\nVoiding keeps an audit trail. Use Delete to remove entirely.`)) { setInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"voided",voided_at:new Date().toISOString()}:i)); showNotification("Entry voided ✓"); }}}
+                                  style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:11, cursor:"pointer" }}
+                                  title="Void (keeps audit trail)">
+                                  Void
+                                </button>
+                              )}
+                              <button
+                                onClick={e=>{ e.stopPropagation(); if(window.confirm(`Permanently delete this entry?\n${inv.vendor} · $${inv.amount} · ${inv.date}\n\nThis cannot be undone.`)) { setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}}
+                                style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #EF444433", color:"#EF4444", fontSize:11, cursor:"pointer" }}
+                                title="Delete permanently">
+                                ×
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
