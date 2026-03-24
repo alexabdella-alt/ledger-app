@@ -1378,8 +1378,14 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-20250514", max_tokens:4000,
-              system:`Expert CPA. Analyze this contract and generate accounting treatment + journal entry schedule. Respond ONLY with JSON: {"contract_type":"loan|revenue_contract|lease|subscription_paid|subscription_received|equipment_financing|service_agreement","counterparty":"...","description":"...","total_value":0,"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","payment_amount":0,"payment_frequency":"monthly","interest_rate":0,"accounting_treatment":"...","key_terms":[],"journal_entries":[{"date":"YYYY-MM-DD","description":"...","memo":"...","lines":[{"account_code":"XXXX","account_name":"...","debit":0,"credit":0}]}]}\nChart of Accounts:\n${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name}`).join("\n")}`,
+              model:"claude-sonnet-4-20250514", max_tokens:8000,
+              system:`You are a Big 4 CPA (ASC 842 specialist). Analyze this contract and generate ALL required journal entries for the full term.
+
+For LEASES (ASC 842 operating): Day 1 entry Dr ROU Asset 1800 / Cr Lease Liability Current 2400 + Lease Liability LT 2450. Monthly: Dr Operating Lease Expense 6150 / Cr Cash 1000 AND Dr Lease Liability Current 2400 / Cr ROU Asset 1800 (principal reduction). NO depreciation for operating leases. Generate ALL monthly entries for the complete term.
+
+Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement","counterparty":"...","description":"...","total_value":0,"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","payment_amount":0,"payment_frequency":"monthly","interest_rate":0,"lease_type":"operating|finance|not_applicable","rou_asset_value":0,"lease_liability_current":0,"lease_liability_noncurrent":0,"discount_rate_used":0,"lease_term_months":0,"monthly_straight_line_expense":0,"accounting_treatment":"...","key_terms":[],"journal_entries":[{"date":"YYYY-MM-DD","description":"...","memo":"ASC 842","lines":[{"account_code":"XXXX","account_name":"...","debit":0,"credit":0}]}]}
+Chart of Accounts:\n${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name}`).join("\n")}
+CRITICAL: Generate entries for the FULL lease term. Every entry must balance. No depreciation for operating leases.`,
               messages:[{role:"user",content:[
                 {type:mediaType==="application/pdf"?"document":"image", source:{type:"base64",media_type:mediaType,data:base64}},
                 {type:"text",text:"Analyze this contract and generate the full accounting treatment."}
@@ -1671,71 +1677,70 @@ Keep the same array order and index as input.`,
       const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:"claude-sonnet-4-20250514", max_tokens:4000,
-          system:`You are a Big 4 CPA (PWC/Deloitte/KPMG level) specializing in US GAAP technical accounting. Generate precise journal entries per the authoritative guidance below.
+          model:"claude-sonnet-4-20250514", max_tokens:8000,
+          system:`You are a Big 4 CPA (PWC/Deloitte/KPMG level) specializing in US GAAP ASC 842 lease accounting. Generate ALL required journal entries for the full lease term.
 
-LEASE ACCOUNTING — ASC 842 (FASB, effective 2022):
+═══════════════════════════════════════
+ASC 842 OPERATING LEASE — EXACT TREATMENT
+═══════════════════════════════════════
 
-STEP 1 — CLASSIFY THE LEASE:
-Finance lease if ANY of: (a) title transfers at end, (b) bargain purchase option likely to be exercised, (c) lease term is major part of economic life (generally ≥75%), (d) PV of payments is substantially all of fair value (generally ≥90%), (e) specialized asset with no alternative use to lessor.
-Otherwise: Operating lease.
+CLASSIFICATION: Operating lease unless finance criteria met (ownership transfer, bargain purchase option, ≥75% economic life, ≥90% fair value, no alternative use).
 
-STEP 2 — MEASURE AT COMMENCEMENT:
-- Lease Liability = PV of remaining lease payments (fixed payments + reasonably certain variable + purchase option if likely) discounted at IMPLICIT RATE if determinable, else INCREMENTAL BORROWING RATE (IBR)
-- ROU Asset = Lease Liability + prepaid rent + initial direct costs - lease incentives received
+COMMENCEMENT DATE — Entry 1 (Day 1):
+  Dr  Right-of-Use Asset         1800   [= PV of all lease payments at IBR/implicit rate]
+    Cr  Lease Liability - Current  2400   [principal portion due in next 12 months]
+    Cr  Lease Liability - LT       2450   [remaining PV beyond 12 months]
 
-STEP 3 — JOURNAL ENTRIES:
+IMPORTANT: Split is ALWAYS required. 2400 = current year principal reduction. 2450 = everything else.
 
-OPERATING LEASE (most office/equipment leases):
-Day 1 (Commencement):
-  Dr  Right-of-Use Asset (1800)          [= PV of lease payments]
-    Cr  Operating Lease Liability - ST (2400)   [current portion = next 12 months of principal]
-    Cr  Operating Lease Liability - LT (2450)   [remaining]
+EACH MONTHLY PAYMENT (operating lease):
+  Dr  Operating Lease Expense    6150   [straight-line = total undiscounted payments ÷ total months]
+    Cr  Cash / AP                 1000   [actual contractual payment amount]
 
-Each Month:
-  Dr  Operating Lease Expense (6150)     [straight-line = total payments / total months]
-    Cr  Cash / Accounts Payable (1000/2000)    [actual cash payment]
-  AND:
-  Dr  Operating Lease Liability (2400/2450)   [interest + principal reduction: payment × (liability/total remaining payments)]
-    Cr  Right-of-Use Asset (1800)              [same amount — reduces ROU]
-  NOTE: Operating lease expense is SINGLE LINE on P&L. ROU and liability reduce at the same rate.
-  SIMPLER APPROACH FOR OPERATING: 
-    Dr Operating Lease Expense (6150) [straight-line monthly amount]
-    Cr Cash (1000) [cash payment]
-    Dr Operating Lease Liability (2400) [principal portion only]
-    Cr ROU Asset (1800) [principal portion only — mirrors liability reduction]
+  PLUS the liability/ROU amortization entry (non-cash, same period):
+  Dr  Lease Liability - Current  2400   [principal reduction this month = payment - interest accrual]
+    Cr  Right-of-Use Asset        1800   [same amount — ROU reduces as liability reduces]
 
-FINANCE LEASE:
-Day 1: Same as operating (Dr ROU 1800 / Cr Lease Liability 2400 current + 2450 LT)
-Each Month:
-  Dr  Interest Expense (6100)            [liability × monthly interest rate]
-  Dr  Operating Lease Liability (2400)   [cash - interest = principal]
-    Cr  Cash (1000)                        [contractual payment]
-  Dr  ROU Asset Amortization (6050)      [ROU / lease term in months]
-    Cr  Accumulated Amortization-ROU (1810) [same]
+  NOTE: For operating leases under ASC 842, there is NO separate depreciation entry and NO amortization expense line. The ROU asset simply decreases dollar-for-dollar with the lease liability principal reduction. The only P&L line is Operating Lease Expense (6150) straight-line.
 
-LOAN — ASC 470:
-Day 1: Dr Cash (1000) / Cr Notes Payable (2600) [full principal]
-Monthly: Dr Interest Expense (6100) + Dr Notes Payable (2600) / Cr Cash (1000)
-Use effective interest method — interest = outstanding balance × monthly rate
+CURRENT VS NON-CURRENT RECLASSIFICATION (annual, or show monthly):
+  Dr  Lease Liability - LT       2450   [next year's principal portion]
+    Cr  Lease Liability - Current  2400   [reclassify]
 
-REVENUE CONTRACT — ASC 606:
-Day 1: Dr AR (1100) / Cr Deferred Revenue (2300)
-Monthly: Dr Deferred Revenue (2300) / Cr Service Revenue (4100)
+═══════════════════════════════════════
+ASC 842 FINANCE LEASE — EXACT TREATMENT  
+═══════════════════════════════════════
+Day 1: Same split (Dr 1800 / Cr 2400 + 2450)
+Monthly:
+  Dr  Interest Expense           6100   [outstanding liability × monthly rate]
+  Dr  Lease Liability - Current  2400   [principal = payment - interest]
+    Cr  Cash                      1000   [contractual payment]
+  Dr  ROU Amortization Expense   6050   [ROU asset ÷ lease term months — finance lease ONLY]
+    Cr  Accum Amortization-ROU   1810   [same]
 
-SUBSCRIPTION PAID:
-Day 1: Dr Prepaid Expenses (1300) / Cr Cash (1000)  
-Monthly: Dr Technology/appropriate expense / Cr Prepaid Expenses (1300)
+═══════════════════════════════════════
+OTHER CONTRACT TYPES
+═══════════════════════════════════════
+LOAN (ASC 470): Dr Cash 1000 / Cr Notes Payable 2600 [Day 1]
+  Monthly: Dr Interest 6100 + Dr Notes Payable 2600 / Cr Cash 1000
 
-EQUIPMENT FINANCING:
-Day 1: Dr PP&E (1500) / Cr Notes Payable (2600) [FMV or PV]
-Monthly: Dr Interest Expense (6100) + Dr Notes Payable (2600) / Cr Cash (1000)
+REVENUE CONTRACT (ASC 606): Dr AR 1100 / Cr Deferred Revenue 2300 [Day 1]
+  Monthly: Dr Deferred Revenue 2300 / Cr Service Revenue 4100
 
+SUBSCRIPTION PAID: Dr Prepaid 1300 / Cr Cash 1000 [Day 1]
+  Monthly: Dr expense / Cr Prepaid 1300
+
+EQUIPMENT FINANCING: Dr PP&E 1500 / Cr Notes Payable 2600 [Day 1]
+  Monthly: Dr Interest 6100 + Dr Notes Payable 2600 / Cr Cash 1000
+
+═══════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════
 Respond ONLY with valid JSON, no markdown:
 {
   "contract_type": "lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement",
-  "counterparty": "Other party name",
-  "description": "One line summary",
+  "counterparty": "string",
+  "description": "string",
   "total_value": 0,
   "start_date": "YYYY-MM-DD",
   "end_date": "YYYY-MM-DD",
@@ -1746,16 +1751,19 @@ Respond ONLY with valid JSON, no markdown:
   "rou_asset_value": 0,
   "lease_liability_current": 0,
   "lease_liability_noncurrent": 0,
-  "discount_rate_used": 0,
-  "accounting_treatment": "Plain English explanation citing the specific ASC standard and why each entry is made",
-  "key_terms": ["term 1", "term 2"],
+  "discount_rate_used": 0.05,
+  "total_lease_payments": 0,
+  "lease_term_months": 0,
+  "monthly_straight_line_expense": 0,
+  "accounting_treatment": "Cite ASC 842 / specific standard. State IBR used. Explain operating vs finance determination.",
+  "key_terms": [],
   "journal_entries": [
     {
       "date": "YYYY-MM-DD",
-      "description": "Entry description",
-      "memo": "ASC 842 / specific GAAP basis for this entry",
+      "description": "string",
+      "memo": "ASC 842 basis",
       "lines": [
-        {"account_code": "XXXX", "account_name": "Account Name", "debit": 0, "credit": 0}
+        {"account_code": "XXXX", "account_name": "string", "debit": 0, "credit": 0}
       ]
     }
   ]
@@ -1765,12 +1773,12 @@ Chart of Accounts:
 ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}
 
 CRITICAL RULES:
-1. Every journal entry MUST balance: sum(debits) = sum(credits) exactly
-2. For leases: Entry 1 = Day 1 ROU Asset recognition. Split lease liability into current (2400) and non-current (2450)
-3. Current portion = principal payments due within 12 months
-4. Use account 1800 for ROU Asset, 2400 for current lease liability, 2450 for non-current
-5. Limit to 13 entries max (Day 1 + 12 monthly). Note if lease is longer.
-6. Show the discount rate / IBR used in accounting_treatment`,
+1. Generate ALL monthly entries for the FULL lease term — do not stop at 12 or 13. If the lease is 36 months, generate 37 entries (Day 1 + 36 monthly).
+2. Every entry MUST balance: sum(debits) = sum(credits)
+3. Operating leases: NO depreciation, NO amortization expense. Only 6150 on P&L.
+4. Always split lease liability into current (2400) and non-current (2450) at Day 1
+5. Use realistic IBR if not stated (typically 4-8% for commercial leases)
+6. Monthly straight-line expense = total undiscounted payments ÷ lease term in months`,
           messages:[{role:"user", content:[
             {type: ext===".pdf"?"document":"image", source:{type:"base64", media_type:mediaType, data:base64}},
             {type:"text", text:"Analyze this contract and generate the full accounting treatment and journal entry schedule."}
