@@ -676,9 +676,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   }, [chatHistory, chatOpen]);
 
   useEffect(() => {
-    if (mainContentRef.current) {
-      mainContentRef.current.scrollTop = 0;
-    }
+    // Use requestAnimationFrame to ensure DOM has updated after key-based remount
+    const frame = requestAnimationFrame(() => {
+      if (mainContentRef.current) {
+        mainContentRef.current.scrollTop = 0;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [view]);
 
   // ── SUPABASE DATA LOADING ──────────────────────────────────
@@ -2391,7 +2395,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         </div>
 
         {/* Main Content */}
-        <div ref={mainContentRef} id="main-content" key={view} style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
+        <div ref={mainContentRef} id="main-content" style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
 
           {/* Top-level tab redirects */}
           {view==="ledger" && (() => { setView("invoices"); return null; })()}
