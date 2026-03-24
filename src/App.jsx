@@ -2401,7 +2401,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         </div>
 
         {/* Main Content */}
-        <div ref={mainContentRef} id="main-content" style={{ flex:1, padding:"32px 40px", overflowY:"auto" }}>
+        <div ref={mainContentRef} id="main-content" style={{ flex:1, overflowY:"auto" }}>
+          <div style={{ padding:"32px 40px" }}>
 
           {/* Top-level tab redirects */}
           {view==="ledger" && (() => { setView("invoices"); return null; })()}
@@ -6413,6 +6414,8 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
               </div>
             );
           })()}
+
+          </div>
 
       {/* ── FLOATING AI CHAT ───────────────────────────────────────────────── */}
       {/* Bubble button */}
