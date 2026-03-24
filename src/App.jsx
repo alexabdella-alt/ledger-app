@@ -676,7 +676,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   }, [chatHistory, chatOpen]);
 
   useEffect(() => {
-    // Use requestAnimationFrame to ensure DOM has updated after key-based remount
+    if (view === "settings" && !settingsDraft) {
+      setSettingsDraft(companySettings);
+    }
+  }, [view]);
+
+  useEffect(() => {
     const frame = requestAnimationFrame(() => {
       if (mainContentRef.current) {
         mainContentRef.current.scrollTop = 0;
@@ -5084,7 +5089,7 @@ What should this business owner know and do?`}]
     
           {/* ── SETTINGS ─────────────────────────────────────────────────────── */}
           {view==="settings" && (() => {
-            if (!settingsDraft) setSettingsDraft(companySettings); const draft = settingsDraft || companySettings; const setDraft = setSettingsDraft;
+            const draft = settingsDraft || companySettings; const setDraft = setSettingsDraft;
             const saved = settingsSaved; const setSaved = setSettingsSaved;
             const logoPreview = settingsLogoPreview ?? companySettings.logoBase64; const setLogoPreview = setSettingsLogoPreview;
             const save = () => {
