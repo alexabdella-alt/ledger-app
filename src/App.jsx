@@ -1374,28 +1374,63 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           }} : q));
 
         } else if (docType === "contract") {
-          // Full contract analysis
-          const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          // Full contract analysis — two calls to avoid token limits
+          // Call 1: Extract terms + Day 1 entry
+          const res1 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-20250514", max_tokens:8000,
-              system:`You are a Big 4 CPA (ASC 842 specialist). Analyze this contract and generate ALL required journal entries for the full term.
-
-For LEASES (ASC 842 operating): Day 1 entry Dr ROU Asset 1800 / Cr Lease Liability Current 2400 + Lease Liability LT 2450. Monthly: Dr Operating Lease Expense 6150 / Cr Cash 1000 AND Dr Lease Liability Current 2400 / Cr ROU Asset 1800 (principal reduction). NO depreciation for operating leases. Generate ALL monthly entries for the complete term.
-
-Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement","counterparty":"...","description":"...","total_value":0,"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","payment_amount":0,"payment_frequency":"monthly","interest_rate":0,"lease_type":"operating|finance|not_applicable","rou_asset_value":0,"lease_liability_current":0,"lease_liability_noncurrent":0,"discount_rate_used":0,"lease_term_months":0,"monthly_straight_line_expense":0,"accounting_treatment":"...","key_terms":[],"journal_entries":[{"date":"YYYY-MM-DD","description":"...","memo":"ASC 842","lines":[{"account_code":"XXXX","account_name":"...","debit":0,"credit":0}]}]}
-Chart of Accounts:\n${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name}`).join("\n")}
-CRITICAL: Generate entries for the FULL lease term. Every entry must balance. No depreciation for operating leases.`,
+              model:"claude-sonnet-4-20250514", max_tokens:3000,
+              system:`You are a Big 4 CPA (ASC 842 specialist). Extract contract terms and generate ONLY the Day 1 journal entry.
+For OPERATING LEASE: Day 1: Dr ROU Asset 1800 [PV of payments at IBR] / Cr Lease Liability Current 2400 [next 12mo principal] + Cr Lease Liability LT 2450 [remainder]. NO depreciation entries.
+Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement","counterparty":"...","description":"...","total_value":0,"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","payment_amount":0,"payment_frequency":"monthly","interest_rate":0,"lease_type":"operating|finance|not_applicable","rou_asset_value":0,"lease_liability_current":0,"lease_liability_noncurrent":0,"discount_rate_used":0.05,"lease_term_months":0,"monthly_straight_line_expense":0,"accounting_treatment":"...","key_terms":[],"journal_entries":[{"date":"YYYY-MM-DD","description":"Lease commencement","memo":"ASC 842-20-30","lines":[{"account_code":"1800","account_name":"Right-of-Use Asset","debit":0,"credit":0}]}]}`,
               messages:[{role:"user",content:[
                 {type:mediaType==="application/pdf"?"document":"image", source:{type:"base64",media_type:mediaType,data:base64}},
-                {type:"text",text:"Analyze this contract and generate the full accounting treatment."}
+                {type:"text",text:"Extract contract terms and generate Day 1 entry only."}
               ]}]
             })
           });
-          const d = await res.json();
-          const contract = JSON.parse((d.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
+          const d1 = await res1.json();
+          const contract = JSON.parse((d1.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
+
+          // Call 2: Generate monthly entries
+          const monthlyEntries = [];
+          const leaseTermMonths = contract.lease_term_months || 0;
+          if (leaseTermMonths > 0) {
+            const ibrMonthly = (contract.discount_rate_used || 0.05) / 12;
+            const monthlyPayment = contract.payment_amount || 0;
+            const straightLine = contract.monthly_straight_line_expense || monthlyPayment;
+            const initLiability = (contract.lease_liability_current||0) + (contract.lease_liability_noncurrent||0);
+            const res2 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+              method:"POST", headers:getAuthHeaders(),
+              body: JSON.stringify({
+                model:"claude-sonnet-4-20250514", max_tokens:8000,
+                system:`Generate all ${leaseTermMonths} monthly journal entries for this ${contract.lease_type} lease (ASC 842). Return ONLY a JSON array, no other text.
+Lease: payment=$${monthlyPayment}/mo, straight-line=$${straightLine.toFixed(2)}/mo, initial liability=$${initLiability.toFixed(2)}, IBR monthly=${(ibrMonthly*100).toFixed(4)}%, start=${contract.start_date}
+Operating lease monthly entries:
+A) Dr Operating Lease Expense 6150 $${straightLine.toFixed(2)} / Cr Cash 1000 $${monthlyPayment.toFixed(2)}
+B) Dr Lease Liability Current 2400 [principal=payment-interest] / Cr ROU Asset 1800 [same]
+Return: [{"date":"YYYY-MM-DD","description":"...","memo":"ASC 842","lines":[{"account_code":"XXXX","account_name":"...","debit":0,"credit":0}]}]
+Generate all ${leaseTermMonths} months. Every entry must balance.`,
+                messages:[{role:"user",content:`Generate entries for all ${leaseTermMonths} months starting ${contract.start_date}. Initial liability: $${initLiability.toFixed(2)}`}]
+              })
+            });
+            const d2 = await res2.json();
+            const raw2 = (d2.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
+            try {
+              const p = JSON.parse(raw2);
+              if (Array.isArray(p)) monthlyEntries.push(...p);
+            } catch {
+              const lastClose = raw2.lastIndexOf("}]");
+              if (lastClose > 0) {
+                try { const p = JSON.parse(raw2.slice(0,lastClose+2)); if(Array.isArray(p)) monthlyEntries.push(...p); } catch {}
+              }
+            }
+          }
+
+          contract.journal_entries = [...(contract.journal_entries||[]), ...monthlyEntries];
           const saved = { ...contract, id:Date.now()+Math.random(), file_name:item.name, uploaded_at:new Date().toISOString(), posted_entries:[] };
           setContracts(prev => [saved, ...prev]);
+          persistContract(saved);
           storeDocument(item.name, base64, mediaType, "contract", saved.id, ["contract"]);
           logAudit("contract_uploaded", `Contract uploaded: ${item.name}`);
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
@@ -2528,6 +2563,24 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {notification && (
         <div style={{ position:"fixed", top:20, right:20, zIndex:9999, background:notification.type==="error"?"#2A0A0A":"#0A2A1A", border:`1px solid ${notification.type==="error"?"#EF4444":"#10B981"}`, color:notification.type==="error"?"#FCA5A5":"#6EE7B7", padding:"12px 20px", borderRadius:10, fontSize:14, animation:"fadein 0.2s ease", boxShadow:"0 8px 32px rgba(0,0,0,0.6)" }}>
           {notification.msg}
+        </div>
+      )}
+
+      {/* Persistent upload status — visible from any tab */}
+      {uploadQueue.some(q => q.status==="pending"||q.status==="classifying"||q.status==="processing") && (
+        <div style={{ position:"fixed", bottom:100, left:"50%", transform:"translateX(-50%)", zIndex:999, background:"#14141A", border:"1px solid #3B3B5E", borderRadius:12, padding:"12px 20px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 8px 32px rgba(0,0,0,0.6)", minWidth:280 }}>
+          <div style={{ display:"flex", gap:3 }}>
+            {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"#C8B8FF", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+          </div>
+          <div>
+            <div style={{ fontSize:13, color:"#E8E8F0", fontWeight:500 }}>
+              Processing {uploadQueue.filter(q=>q.status==="pending"||q.status==="classifying"||q.status==="processing").length} file{uploadQueue.filter(q=>q.status==="pending"||q.status==="classifying"||q.status==="processing").length>1?"s":""}...
+            </div>
+            <div style={{ fontSize:11, color:"#6B6B8A", marginTop:2 }}>
+              {uploadQueue.find(q=>q.status==="processing"||q.status==="classifying")?.name || ""}
+            </div>
+          </div>
+          <button onClick={()=>setView("dashboard")} style={{ marginLeft:"auto", background:"none", border:"1px solid #3B3B5E", borderRadius:6, padding:"4px 10px", color:"#C8B8FF", fontSize:11, cursor:"pointer", flexShrink:0 }}>View</button>
         </div>
       )}
 
