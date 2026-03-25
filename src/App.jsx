@@ -1675,69 +1675,20 @@ Keep the same array order and index as input.`,
       const base64 = await fileToBase64(file);
       const mediaType = ext===".pdf" ? "application/pdf" : `image/${ext.slice(1)}`;
 
-      const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+      // ── CALL 1: Extract contract terms + Day 1 entry only ────────────────
+      const res1 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:"claude-sonnet-4-20250514", max_tokens:8000,
-          system:`You are a Big 4 CPA (PWC/Deloitte/KPMG level) specializing in US GAAP ASC 842 lease accounting. Generate ALL required journal entries for the full lease term.
+          model:"claude-sonnet-4-20250514", max_tokens:3000,
+          system:`You are a Big 4 CPA specializing in ASC 842. Extract contract terms and generate ONLY the Day 1 commencement journal entry.
 
-═══════════════════════════════════════
-ASC 842 OPERATING LEASE — EXACT TREATMENT
-═══════════════════════════════════════
+For OPERATING LEASE (ASC 842):
+Day 1: Dr Right-of-Use Asset 1800 [PV of payments] / Cr Lease Liability Current 2400 [next 12mo principal] + Cr Lease Liability LT 2450 [remainder]
+ROU Asset = PV of all lease payments discounted at IBR (use 5% if not stated)
+Current portion = first 12 months of principal reduction
+Non-current = total PV minus current
 
-CLASSIFICATION: Operating lease unless finance criteria met (ownership transfer, bargain purchase option, ≥75% economic life, ≥90% fair value, no alternative use).
-
-COMMENCEMENT DATE — Entry 1 (Day 1):
-  Dr  Right-of-Use Asset         1800   [= PV of all lease payments at IBR/implicit rate]
-    Cr  Lease Liability - Current  2400   [principal portion due in next 12 months]
-    Cr  Lease Liability - LT       2450   [remaining PV beyond 12 months]
-
-IMPORTANT: Split is ALWAYS required. 2400 = current year principal reduction. 2450 = everything else.
-
-EACH MONTHLY PAYMENT (operating lease):
-  Dr  Operating Lease Expense    6150   [straight-line = total undiscounted payments ÷ total months]
-    Cr  Cash / AP                 1000   [actual contractual payment amount]
-
-  PLUS the liability/ROU amortization entry (non-cash, same period):
-  Dr  Lease Liability - Current  2400   [principal reduction this month = payment - interest accrual]
-    Cr  Right-of-Use Asset        1800   [same amount — ROU reduces as liability reduces]
-
-  NOTE: For operating leases under ASC 842, there is NO separate depreciation entry and NO amortization expense line. The ROU asset simply decreases dollar-for-dollar with the lease liability principal reduction. The only P&L line is Operating Lease Expense (6150) straight-line.
-
-CURRENT VS NON-CURRENT RECLASSIFICATION (annual, or show monthly):
-  Dr  Lease Liability - LT       2450   [next year's principal portion]
-    Cr  Lease Liability - Current  2400   [reclassify]
-
-═══════════════════════════════════════
-ASC 842 FINANCE LEASE — EXACT TREATMENT  
-═══════════════════════════════════════
-Day 1: Same split (Dr 1800 / Cr 2400 + 2450)
-Monthly:
-  Dr  Interest Expense           6100   [outstanding liability × monthly rate]
-  Dr  Lease Liability - Current  2400   [principal = payment - interest]
-    Cr  Cash                      1000   [contractual payment]
-  Dr  ROU Amortization Expense   6050   [ROU asset ÷ lease term months — finance lease ONLY]
-    Cr  Accum Amortization-ROU   1810   [same]
-
-═══════════════════════════════════════
-OTHER CONTRACT TYPES
-═══════════════════════════════════════
-LOAN (ASC 470): Dr Cash 1000 / Cr Notes Payable 2600 [Day 1]
-  Monthly: Dr Interest 6100 + Dr Notes Payable 2600 / Cr Cash 1000
-
-REVENUE CONTRACT (ASC 606): Dr AR 1100 / Cr Deferred Revenue 2300 [Day 1]
-  Monthly: Dr Deferred Revenue 2300 / Cr Service Revenue 4100
-
-SUBSCRIPTION PAID: Dr Prepaid 1300 / Cr Cash 1000 [Day 1]
-  Monthly: Dr expense / Cr Prepaid 1300
-
-EQUIPMENT FINANCING: Dr PP&E 1500 / Cr Notes Payable 2600 [Day 1]
-  Monthly: Dr Interest 6100 + Dr Notes Payable 2600 / Cr Cash 1000
-
-═══════════════════════════════════════
-OUTPUT FORMAT
-═══════════════════════════════════════
-Respond ONLY with valid JSON, no markdown:
+Respond ONLY with JSON (no markdown):
 {
   "contract_type": "lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement",
   "counterparty": "string",
@@ -1746,66 +1697,128 @@ Respond ONLY with valid JSON, no markdown:
   "start_date": "YYYY-MM-DD",
   "end_date": "YYYY-MM-DD",
   "payment_amount": 0,
-  "payment_frequency": "monthly|quarterly|annual|one-time",
+  "payment_frequency": "monthly",
   "interest_rate": 0,
   "lease_type": "operating|finance|not_applicable",
   "rou_asset_value": 0,
   "lease_liability_current": 0,
   "lease_liability_noncurrent": 0,
   "discount_rate_used": 0.05,
-  "total_lease_payments": 0,
   "lease_term_months": 0,
   "monthly_straight_line_expense": 0,
-  "accounting_treatment": "Cite ASC 842 / specific standard. State IBR used. Explain operating vs finance determination.",
+  "accounting_treatment": "Cite ASC 842. State IBR used. Explain classification.",
   "key_terms": [],
   "journal_entries": [
     {
       "date": "YYYY-MM-DD",
-      "description": "string",
-      "memo": "ASC 842 basis",
+      "description": "Lease commencement — recognize ROU asset and lease liability",
+      "memo": "ASC 842-20-30: Initial measurement at commencement date",
       "lines": [
-        {"account_code": "XXXX", "account_name": "string", "debit": 0, "credit": 0}
+        {"account_code": "1800", "account_name": "Right-of-Use Asset", "debit": 0, "credit": 0},
+        {"account_code": "2400", "account_name": "Lease Liability - Current", "debit": 0, "credit": 0},
+        {"account_code": "2450", "account_name": "Lease Liability - Non-Current", "debit": 0, "credit": 0}
       ]
     }
   ]
 }
 
 Chart of Accounts:
-${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}
-
-CRITICAL RULES:
-1. Generate ALL monthly entries for the FULL lease term — do not stop at 12 or 13. If the lease is 36 months, generate 37 entries (Day 1 + 36 monthly).
-2. Every entry MUST balance: sum(debits) = sum(credits)
-3. Operating leases: NO depreciation, NO amortization expense. Only 6150 on P&L.
-4. Always split lease liability into current (2400) and non-current (2450) at Day 1
-5. Use realistic IBR if not stated (typically 4-8% for commercial leases)
-6. Monthly straight-line expense = total undiscounted payments ÷ lease term in months`,
+${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`,
           messages:[{role:"user", content:[
             {type: ext===".pdf"?"document":"image", source:{type:"base64", media_type:mediaType, data:base64}},
-            {type:"text", text:"Analyze this contract and generate the full accounting treatment and journal entry schedule."}
+            {type:"text", text:"Extract all contract terms and generate the Day 1 journal entry only."}
           ]}]
         })
       });
 
-      const data = await res.json();
-      if (!data.content) throw new Error(`API error: ${JSON.stringify(data)}`);
-      const raw = (data.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim();
-      
-      // Handle truncated JSON by attempting to close it
-      let contract;
-      try {
-        contract = JSON.parse(raw);
-      } catch(parseErr) {
-        // Try to recover truncated JSON by finding the last complete entry
-        const lastCompleteEntry = raw.lastIndexOf('{"date"');
-        if (lastCompleteEntry > 0) {
-          const truncated = raw.slice(0, lastCompleteEntry).replace(/,\s*$/, "") + "]}";
-          try { contract = JSON.parse(truncated + "}"); } 
-          catch { contract = JSON.parse(raw.slice(0, raw.lastIndexOf("]")) + "]}"); }
-        } else {
-          throw new Error("Could not parse contract analysis response. Try again.");
+      const data1 = await res1.json();
+      if (!data1.content) throw new Error(`API error: ${JSON.stringify(data1)}`);
+      const raw1 = (data1.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim();
+      const contract = JSON.parse(raw1);
+
+      // ── CALL 2: Generate all monthly entries (pure math, no document) ────
+      const leaseTermMonths = contract.lease_term_months || 0;
+      const monthlyEntries = [];
+
+      if (contract.contract_type === "lease" && leaseTermMonths > 0) {
+        const ibrMonthly = (contract.discount_rate_used || 0.05) / 12;
+        const monthlyPayment = contract.payment_amount || 0;
+        const straightLine = contract.monthly_straight_line_expense || monthlyPayment;
+        let liabilityBalance = (contract.lease_liability_current || 0) + (contract.lease_liability_noncurrent || 0);
+        const startDate = new Date(contract.start_date || new Date());
+
+        const res2 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          method:"POST", headers:getAuthHeaders(),
+          body: JSON.stringify({
+            model:"claude-sonnet-4-20250514", max_tokens:8000,
+            system:`Generate ALL ${leaseTermMonths} monthly journal entries for this ${contract.lease_type} lease under ASC 842. Return ONLY a JSON array of journal entries, no other text.
+
+Lease terms:
+- Monthly payment: $${monthlyPayment}
+- Straight-line expense: $${straightLine.toFixed(2)}/month
+- Initial lease liability: $${liabilityBalance.toFixed(2)}
+- IBR (monthly): ${(ibrMonthly*100).toFixed(4)}%
+- Start date: ${contract.start_date}
+- Term: ${leaseTermMonths} months
+- Lease type: ${contract.lease_type}
+
+For OPERATING lease, each month generate TWO entries:
+Entry A (P&L):
+  Dr Operating Lease Expense 6150 $${straightLine.toFixed(2)}
+  Cr Cash/AP 1000 $${monthlyPayment.toFixed(2)}
+  ${straightLine !== monthlyPayment ? `Cr/Dr ROU Asset 1800 $${Math.abs(straightLine-monthlyPayment).toFixed(2)} [straight-line adjustment]` : ""}
+
+Entry B (Balance sheet reduction - non-cash):
+  Dr Lease Liability Current 2400 [principal portion = payment - interest]
+  Cr Right-of-Use Asset 1800 [same amount]
+
+Calculate interest each month as: outstanding liability × ${(ibrMonthly*100).toFixed(4)}%
+Principal = payment - interest
+Update liability balance each month.
+
+Return ONLY a JSON array:
+[{"date":"YYYY-MM-DD","description":"string","memo":"string","lines":[{"account_code":"XXXX","account_name":"string","debit":0,"credit":0}]}]
+
+Generate all ${leaseTermMonths} months. Every entry must balance.`,
+            messages:[{role:"user", content:`Generate all ${leaseTermMonths} monthly entries starting ${contract.start_date}. Initial liability balance: $${liabilityBalance.toFixed(2)}`}]
+          })
+        });
+
+        const data2 = await res2.json();
+        const raw2 = (data2.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
+        try {
+          const parsed = JSON.parse(raw2);
+          if (Array.isArray(parsed)) monthlyEntries.push(...parsed);
+        } catch(e2) {
+          // Try to recover partial array
+          const lastClose = raw2.lastIndexOf("}]");
+          if (lastClose > 0) {
+            try {
+              const partial = JSON.parse(raw2.slice(0, lastClose+2));
+              if (Array.isArray(partial)) monthlyEntries.push(...partial);
+            } catch { /* use what we have */ }
+          }
         }
+      } else if (contract.contract_type !== "lease") {
+        // For non-lease contracts, generate monthly entries in one call
+        const res2 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          method:"POST", headers:getAuthHeaders(),
+          body: JSON.stringify({
+            model:"claude-sonnet-4-20250514", max_tokens:4000,
+            system:`Generate all monthly journal entries for this contract. Return ONLY a JSON array of entries, no other text.
+Contract: ${JSON.stringify({type:contract.contract_type, payment:contract.payment_amount, start:contract.start_date, end:contract.end_date, rate:contract.interest_rate, counterparty:contract.counterparty})}
+Return: [{"date":"YYYY-MM-DD","description":"string","memo":"string","lines":[{"account_code":"XXXX","account_name":"string","debit":0,"credit":0}]}]`,
+            messages:[{role:"user", content:`Generate monthly entries for ${contract.contract_type} from ${contract.start_date} to ${contract.end_date}`}]
+          })
+        });
+        const data2 = await res2.json();
+        const raw2 = (data2.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
+        try { const p = JSON.parse(raw2); if (Array.isArray(p)) monthlyEntries.push(...p); } catch {}
       }
+
+      // Combine Day 1 + monthly entries
+      const allEntries = [...(contract.journal_entries||[]), ...monthlyEntries];
+      contract.journal_entries = allEntries;
 
       const saved = {
         ...contract,
