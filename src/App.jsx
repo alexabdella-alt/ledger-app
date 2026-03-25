@@ -5376,21 +5376,50 @@ What should this business owner know and do?`}]
                     <button onClick={()=>setContractView("list")} style={{ background:"none", border:"none", color:"#6B6B8A", cursor:"pointer", fontSize:14, marginBottom:24, padding:0 }}>← Back to contracts</button>
 
                     {/* Header */}
-                    <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:28 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
                       <div style={{ width:52, height:52, borderRadius:14, background:ct.color+"22", border:`1px solid ${ct.color}55`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{ct.icon}</div>
                       <div>
                         <div style={{ fontSize:11, color:ct.color, letterSpacing:2, marginBottom:4 }}>{ct.label.toUpperCase()}</div>
                         <h1 style={{ fontSize:24, fontWeight:600, margin:0 }}>{selectedContract.counterparty}</h1>
                         <div style={{ fontSize:13, color:"#6B6B8A", marginTop:2 }}>{selectedContract.description}</div>
                       </div>
-                      <div style={{ marginLeft:"auto" }}>
+                      <div style={{ marginLeft:"auto", display:"flex", gap:10 }}>
+                        <button onClick={()=>{
+                          if(window.confirm(`Delete this contract and all its entries?\n\n${selectedContract.counterparty} — ${selectedContract.description}\n\nThis cannot be undone.`)) {
+                            setContracts(prev=>prev.filter(c=>c.id!==selectedContract.id));
+                            setContractView("list");
+                            showNotification("Contract deleted ✓");
+                          }
+                        }} style={{ padding:"10px 16px", borderRadius:10, fontSize:12, background:"transparent", border:"1px solid #EF444433", color:"#EF4444", cursor:"pointer" }}>
+                          Delete
+                        </button>
                         <button onClick={()=>postAllContractEntries(selectedContract)}
                           disabled={(selectedContract.posted_entries?.length||0)>=(selectedContract.journal_entries?.length||0)}
                           style={{ padding:"10px 20px", borderRadius:10, fontSize:13, fontWeight:600, background:(selectedContract.posted_entries?.length||0)>=(selectedContract.journal_entries?.length||0)?"#1E1E2E":"linear-gradient(135deg,#065F46,#047857)", border:"none", color:(selectedContract.posted_entries?.length||0)>=(selectedContract.journal_entries?.length||0)?"#6B6B8A":"#6EE7B7", cursor:(selectedContract.posted_entries?.length||0)>=(selectedContract.journal_entries?.length||0)?"not-allowed":"pointer" }}>
-                          {(selectedContract.posted_entries?.length||0)>=(selectedContract.journal_entries?.length||0)?"✓ All Posted":"Post All Entries"}
+                          {(selectedContract.posted_entries?.length||0)>=(selectedContract.journal_entries?.length||0)?"✓ All Posted":`Post All ${selectedContract.journal_entries?.length||0} Entries`}
                         </button>
                       </div>
                     </div>
+
+                    {/* ASC 842 Rate disclosure banner */}
+                    {selectedContract.contract_type==="lease" && (
+                      <div style={{ background:"#0A1400", border:"1px solid #10B98133", borderRadius:10, padding:"12px 18px", marginBottom:20, display:"flex", gap:16, alignItems:"flex-start" }}>
+                        <div style={{ fontSize:18, flexShrink:0 }}>📊</div>
+                        <div>
+                          <div style={{ fontSize:12, fontWeight:600, color:"#10B981", marginBottom:4 }}>ASC 842 Measurement Disclosure</div>
+                          <div style={{ fontSize:12, color:"#9CA3AF", lineHeight:1.7 }}>
+                            <strong style={{color:"#E8E8F0"}}>Lease type:</strong> {selectedContract.lease_type==="operating"?"Operating lease (ASC 842-20)":"Finance lease (ASC 842-20)"} &nbsp;·&nbsp;
+                            <strong style={{color:"#E8E8F0"}}>Discount rate:</strong> {selectedContract.discount_rate_used ? `${(selectedContract.discount_rate_used*100).toFixed(2)}%` : "5.00%"} &nbsp;·&nbsp;
+                            <strong style={{color:"#E8E8F0"}}>Rate basis:</strong> {selectedContract.lease_type==="operating" ? "Risk-free rate practical expedient (ASC 842-20-30-3) or IBR" : "Incremental borrowing rate"} &nbsp;·&nbsp;
+                            <strong style={{color:"#E8E8F0"}}>ROU Asset:</strong> {fmt(selectedContract.rou_asset_value)} &nbsp;·&nbsp;
+                            <strong style={{color:"#E8E8F0"}}>Lease liability:</strong> {fmt((selectedContract.lease_liability_current||0)+(selectedContract.lease_liability_noncurrent||0))} (Current: {fmt(selectedContract.lease_liability_current||0)} / LT: {fmt(selectedContract.lease_liability_noncurrent||0)})
+                          </div>
+                          <div style={{ fontSize:11, color:"#6B6B8A", marginTop:6 }}>
+                            Note: Non-public entities may elect the risk-free rate practical expedient per ASC 842-20-30-3. Current US Treasury rates: verify at treasury.gov/resource-center/data-chart-center/interest-rates. Update the discount rate in Settings if needed.
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:24 }}>
                       {/* Key terms */}
@@ -5401,7 +5430,17 @@ What should this business owner know and do?`}]
                           ["Payment", `${fmt(selectedContract.payment_amount)} / ${selectedContract.payment_frequency||"—"}`],
                           ["Start Date", selectedContract.start_date||"—"],
                           ["End Date", selectedContract.end_date||"—"],
-                          ["Interest Rate", selectedContract.interest_rate ? `${(selectedContract.interest_rate*100).toFixed(2)}%` : "N/A"],
+                          ...(selectedContract.contract_type==="lease" ? [
+                            ["Lease Term", selectedContract.lease_term_months ? `${selectedContract.lease_term_months} months` : "—"],
+                            ["Lease Type", selectedContract.lease_type==="operating" ? "Operating (ASC 842)" : selectedContract.lease_type==="finance" ? "Finance (ASC 842)" : "—"],
+                            ["Discount Rate", selectedContract.discount_rate_used ? `${(selectedContract.discount_rate_used*100).toFixed(2)}% (IBR/Risk-free)` : "5.00%"],
+                            ["ROU Asset", fmt(selectedContract.rou_asset_value||0)],
+                            ["Liability - Current", fmt(selectedContract.lease_liability_current||0)],
+                            ["Liability - LT", fmt(selectedContract.lease_liability_noncurrent||0)],
+                            ["Straight-line Exp/mo", fmt(selectedContract.monthly_straight_line_expense||selectedContract.payment_amount||0)],
+                          ] : [
+                            ["Interest Rate", selectedContract.interest_rate ? `${(selectedContract.interest_rate*100).toFixed(2)}%` : "N/A"],
+                          ]),
                           ["File", selectedContract.file_name],
                         ].map(([l,v])=>(
                           <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"9px 0", borderBottom:"1px solid #1E1E2E" }}>
@@ -5430,29 +5469,46 @@ What should this business owner know and do?`}]
                     <div style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:14, overflow:"hidden" }}>
                       <div style={{ padding:"16px 22px", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         <div>
-                          <div style={{ fontSize:14, fontWeight:600 }}>Journal Entry Schedule</div>
-                          <div style={{ fontSize:12, color:"#6B6B8A", marginTop:2 }}>{selectedContract.journal_entries?.length||0} entries generated · {selectedContract.posted_entries?.length||0} posted to ledger</div>
+                          <div style={{ fontSize:14, fontWeight:600 }}>Full Journal Entry Schedule</div>
+                          <div style={{ fontSize:12, color:"#6B6B8A", marginTop:2 }}>
+                            {selectedContract.journal_entries?.length||0} entries · {selectedContract.posted_entries?.length||0} posted · {(selectedContract.journal_entries?.length||0)-(selectedContract.posted_entries?.length||0)} pending
+                            {selectedContract.contract_type==="lease" && " · Future-dated entries are scheduled — post all at once or individually"}
+                          </div>
                         </div>
+                        {(selectedContract.posted_entries?.length||0) < (selectedContract.journal_entries?.length||0) && (
+                          <button onClick={()=>postAllContractEntries(selectedContract)} style={{ padding:"8px 16px", borderRadius:8, fontSize:12, fontWeight:600, background:"linear-gradient(135deg,#065F46,#047857)", border:"none", color:"#6EE7B7", cursor:"pointer" }}>
+                            Post All Remaining
+                          </button>
+                        )}
                       </div>
                       {(selectedContract.journal_entries||[]).map((entry, idx) => {
                         const isPosted = selectedContract.posted_entries?.includes(idx);
+                        const isFuture = entry.date > new Date().toISOString().slice(0,10);
                         return (
-                          <div key={idx} style={{ borderBottom:"1px solid #1E1E2E", background:isPosted?"#0A1A0A":idx%2===0?"transparent":"#0A0A10" }}>
+                          <div key={idx} style={{ borderBottom:"1px solid #1E1E2E", background:isPosted?"#0A1A0A":isFuture?"#0A0A14":idx%2===0?"transparent":"#0A0A10" }}>
                             <div style={{ padding:"14px 22px", display:"flex", alignItems:"center", gap:14 }}>
                               <div style={{ flexShrink:0 }}>
                                 {isPosted
                                   ? <div style={{ width:28, height:28, borderRadius:8, background:"#10B98122", border:"1px solid #10B98155", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>✓</div>
-                                  : <div style={{ width:28, height:28, borderRadius:8, background:"#1E1E2E", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"#6B6B8A", fontFamily:"'DM Mono',monospace" }}>{idx+1}</div>
+                                  : <div style={{ width:28, height:28, borderRadius:8, background:isFuture?"#1A1A2E":"#1E1E2E", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:isFuture?"#6B6B8A":"#6B6B8A", fontFamily:"'DM Mono',monospace" }}>{idx+1}</div>
                                 }
                               </div>
                               <div style={{ flex:1 }}>
                                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:2 }}>
                                   <span style={{ fontSize:13, fontWeight:600 }}>{entry.description}</span>
                                   <span style={{ fontSize:11, color:"#6B6B8A", fontFamily:"'DM Mono',monospace" }}>{entry.date}</span>
+                                  {isFuture && <span style={{ fontSize:10, color:"#6B6B8A", background:"#1E1E2E", borderRadius:10, padding:"1px 7px" }}>Scheduled</span>}
+                                  {idx===0 && selectedContract.contract_type==="lease" && <span style={{ fontSize:10, color:"#F59E0B", background:"#1A1200", borderRadius:10, padding:"1px 7px" }}>Day 1 — Commencement</span>}
                                 </div>
                                 <div style={{ fontSize:12, color:"#6B6B8A" }}>{entry.memo}</div>
                                 {/* Entry lines */}
                                 <div style={{ marginTop:10, background:"#0F0F13", borderRadius:8, padding:"10px 14px" }}>
+                                  <div style={{ display:"grid", gridTemplateColumns:"80px 1fr 120px 120px", gap:8, marginBottom:6 }}>
+                                    <span style={{ fontSize:10, color:"#4B4B6A" }}>CODE</span>
+                                    <span style={{ fontSize:10, color:"#4B4B6A" }}>ACCOUNT</span>
+                                    <span style={{ fontSize:10, color:"#4B4B6A", textAlign:"right" }}>DEBIT</span>
+                                    <span style={{ fontSize:10, color:"#4B4B6A", textAlign:"right" }}>CREDIT</span>
+                                  </div>
                                   {entry.lines?.map((line,li)=>(
                                     <div key={li} style={{ display:"grid", gridTemplateColumns:"80px 1fr 120px 120px", gap:8, marginBottom:li<entry.lines.length-1?6:0, alignItems:"center" }}>
                                       <span style={{ fontSize:11, color:"#C8B8FF", fontFamily:"'DM Mono',monospace" }}>{line.account_code}</span>
