@@ -920,19 +920,53 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const persistContract = async (contract) => {
     if (!currentCompany?.id || !session?.user?.id) return;
     try {
-      const { data, error } = await supabase.from("unknown_documents").upsert({
-        id: contract.db_id || undefined,
+      // Store contract without the full journal entry lines (too large) — store just metadata + entry dates
+      const contractToStore = {
+        ...contract,
+        journal_entries: (contract.journal_entries || []).map(e => ({
+          date: e.date,
+          description: e.description,
+          memo: e.memo,
+          lines: e.lines,
+        }))
+      };
+      const jsonStr = JSON.stringify(contractToStore);
+      // If still too large, store without lines detail
+      const storeData = jsonStr.length > 65000 ? JSON.stringify({
+        ...contractToStore,
+        journal_entries: (contract.journal_entries || []).map(e => ({
+          date: e.date,
+          description: e.description,
+          memo: e.memo,
+          lines: e.lines?.slice(0, 10) // keep first 10 lines max per entry
+        }))
+      }) : jsonStr;
+
+      const payload = {
         company_id: currentCompany.id,
-        name: contract.file_name || contract.description,
+        name: contract.file_name || contract.description || "Contract",
         document_type: `contract_${contract.contract_type}`,
-        ai_explanation: JSON.stringify(contract),
+        ai_explanation: storeData,
         entry_needed: true,
         entry_summary: contract.description,
         posted: (contract.posted_entries?.length || 0) >= (contract.journal_entries?.length || 1),
         created_at: contract.uploaded_at || new Date().toISOString(),
-      }).select().single();
-      if (data && !contract.db_id) {
-        setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
+      };
+
+      if (contract.db_id) {
+        // Update existing
+        const { error } = await supabase.from("unknown_documents")
+          .update(payload)
+          .eq("id", contract.db_id);
+        if (error) console.error("persistContract update error:", error);
+      } else {
+        // Insert new
+        const { data, error } = await supabase.from("unknown_documents")
+          .insert(payload).select().single();
+        if (error) console.error("persistContract insert error:", error);
+        if (data) {
+          setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
+        }
       }
     } catch(e) { console.error("persistContract error:", e); }
   };
@@ -940,19 +974,24 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const loadContractsFromDB = async () => {
     if (!currentCompany?.id) return;
     try {
-      const { data } = await supabase.from("unknown_documents")
+      const { data, error } = await supabase.from("unknown_documents")
         .select("*")
         .eq("company_id", currentCompany.id)
         .like("document_type", "contract_%")
         .order("created_at", { ascending: false });
-      if (data?.length) {
+      if (error) { console.error("loadContractsFromDB error:", error); return; }
+      // Only update state if we got data — don't overwrite with empty array
+      if (data && data.length > 0) {
         const loaded = data.map(row => {
           try {
             const parsed = JSON.parse(row.ai_explanation);
-            return { ...parsed, db_id: row.id, id: row.id, file_name: row.name, uploaded_at: row.created_at };
+            return { ...parsed, db_id: row.id, id: row.id, file_name: row.name || parsed.file_name, uploaded_at: row.created_at };
           } catch { return null; }
         }).filter(Boolean);
         setContracts(loaded);
+      } else {
+        // Explicitly clear contracts if none in DB (clean state)
+        setContracts([]);
       }
     } catch(e) { console.error("loadContractsFromDB error:", e); }
   };
