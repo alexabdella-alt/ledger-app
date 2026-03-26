@@ -1864,35 +1864,59 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
       // ── GENERATE MONTHLY ENTRIES IN JS (no second API call needed) ────────
       const monthlyEntries = [];
 
-      if (contract.contract_type === "lease" && leaseTermMonths > 0) {
+      if (contract.contract_type === "lease") {
         const ibr = contract.discount_rate_used || 0.05;
         const monthlyPayment = parseFloat(contract.payment_amount) || 0;
+        // Ensure we have term months — calculate from dates if missing
+        if (!leaseTermMonths && contract.start_date && contract.end_date) {
+          leaseTermMonths = Math.round((new Date(contract.end_date) - new Date(contract.start_date)) / (1000*60*60*24*30.44));
+          contract.lease_term_months = leaseTermMonths;
+        }
+        console.log(`Lease: payment=$${monthlyPayment}, term=${leaseTermMonths}mo, ibr=${(ibr*100).toFixed(2)}%`);
 
-        // Use audit-ready ASC 842 calculation
-        const asc842 = calcASC842(monthlyPayment, leaseTermMonths, ibr);
-        const aiLiability = (parseFloat(contract.lease_liability_current) || 0) + (parseFloat(contract.lease_liability_noncurrent) || 0);
+        // ALWAYS compute with JS — never use AI arithmetic
+        const asc842 = (leaseTermMonths > 0 && monthlyPayment > 0)
+          ? calcASC842(monthlyPayment, leaseTermMonths, ibr)
+          : null;
 
-        // Always use our JS calculation — it's more reliable than AI's numbers
-        const liabilityBalance = asc842.leaseLiability;
-        contract.rou_asset_value = asc842.rouAsset;
-        contract.lease_liability_current = asc842.currentPortion;
-        contract.lease_liability_noncurrent = asc842.nonCurrentPortion;
-        contract.monthly_straight_line_expense = asc842.straightLineMonthly;
+        if (asc842) {
+          console.log(`ASC842 result: Liability=$${asc842.leaseLiability}, Current=$${asc842.currentPortion}, LT=$${asc842.nonCurrentPortion}, ROU=$${asc842.rouAsset}`);
+          // Override everything the AI calculated
+          contract.rou_asset_value = asc842.rouAsset;
+          contract.lease_liability_current = asc842.currentPortion;
+          contract.lease_liability_noncurrent = asc842.nonCurrentPortion;
+          contract.monthly_straight_line_expense = asc842.straightLineMonthly;
+        } else {
+          console.warn(`calcASC842 skipped: term=${leaseTermMonths}, payment=${monthlyPayment}`);
+        }
 
-        // Patch Day 1 entry with correct values
-        if (contract.journal_entries?.[0]) {
-          contract.journal_entries[0].lines = [
-            { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouAsset, credit: 0 },
-            { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
-            { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
-          ];
-          contract.journal_entries[0].memo = `ASC 842-20-30: Lease Liability = PV of ${leaseTermMonths} payments of $${monthlyPayment} @ ${(ibr*100).toFixed(2)}% IBR (monthly compounding). Current portion = principal reduction months 1-12 ($${asc842.currentPortion.toLocaleString()}), not gross cash. ROU Asset = Lease Liability at commencement.`;
+        // ALWAYS patch Day 1 entry with correct computed values
+        if (asc842) {
+          if (contract.journal_entries?.[0]) {
+            contract.journal_entries[0].lines = [
+              { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouAsset, credit: 0 },
+              { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
+              { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
+            ];
+            contract.journal_entries[0].memo = `ASC 842-20-30: PV of ${leaseTermMonths} × $${monthlyPayment} @ ${(ibr*100).toFixed(2)}% IBR (monthly compounding). Current = principal reduction months 1-12 ($${asc842.currentPortion.toLocaleString()}), NOT gross cash.`;
+          } else {
+            contract.journal_entries = [{
+              date: contract.start_date || new Date().toISOString().slice(0,10),
+              description: "Lease commencement — ASC 842 initial recognition",
+              memo: `ASC 842-20-30: PV of ${leaseTermMonths} × $${monthlyPayment} @ ${(ibr*100).toFixed(2)}% IBR`,
+              lines: [
+                { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouAsset, credit: 0 },
+                { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
+                { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
+              ]
+            }];
+          }
         }
 
         const startDate = new Date(contract.start_date || new Date());
 
         // Use pre-computed amortization schedule from calcASC842
-        asc842.schedule.forEach((row, i) => {
+        if (asc842) asc842.schedule.forEach((row, i) => {
           const entryDate = new Date(startDate);
           entryDate.setMonth(entryDate.getMonth() + i + 1);
           const dateStr = entryDate.toISOString().slice(0, 10);
@@ -1946,7 +1970,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
             });
           }
         });
-        console.log(`Generated ${monthlyEntries.length} entries. Liability: $${asc842.leaseLiability}, Current: $${asc842.currentPortion}, LT: $${asc842.nonCurrentPortion}`);
+        if (asc842) console.log(`Generated ${monthlyEntries.length} entries. Liability=$${asc842.leaseLiability}, Current=$${asc842.currentPortion}, LT=$${asc842.nonCurrentPortion}`);
 
       } else if (contract.contract_type !== "lease" && contract.start_date && contract.end_date && contract.payment_amount) {
         // For non-lease: generate simple monthly entries in JS too
