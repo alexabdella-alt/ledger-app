@@ -5508,19 +5508,51 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
 
                   {/* Contract list */}
                   {contracts.length===0 ? null : (
+                    <div>
+                      {contracts.length > 1 && (
+                        <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+                          <button onClick={()=>setDeleteConfirm({
+                            label:`Delete ALL ${contracts.length} contracts? This permanently removes them from the database and cannot be undone.`,
+                            onConfirm: async () => {
+                              for (const c of contracts) {
+                                if (c.db_id) await supabase.from("contracts").delete().eq("id", c.db_id);
+                              }
+                              setContracts([]);
+                              showNotification("All contracts deleted ✓");
+                            }
+                          })} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #EF444433", color:"#EF4444", fontSize:12, cursor:"pointer" }}>
+                            Delete All
+                          </button>
+                        </div>
+                      )}
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))", gap:16 }}>
                       {contracts.map(c => {
                         const ct = CONTRACT_TYPES[c.contract_type] || { label:c.contract_type, color:"#6B6B8A", icon:"📄" };
                         const postedCount = c.posted_entries?.length||0;
                         const totalEntries = c.journal_entries?.length||0;
                         return (
-                          <div key={c.id} onClick={()=>{ setSelectedContract(c); setContractView("detail"); }}
-                            style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:14, padding:22, cursor:"pointer", transition:"border-color 0.15s" }}
+                          <div key={c.id}
+                            style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:14, padding:22, transition:"border-color 0.15s", position:"relative" }}
                             onMouseEnter={e=>e.currentTarget.style.borderColor=ct.color}
                             onMouseLeave={e=>e.currentTarget.style.borderColor="#1E1E2E"}>
+                            {/* Delete button on card */}
+                            <button
+                              onClick={e=>{ e.stopPropagation(); setDeleteConfirm({
+                                label:`Permanently delete contract with ${c.counterparty}?\n\n${c.description}\n\nThis removes it from the database permanently.`,
+                                onConfirm: async () => {
+                                  if (c.db_id) await supabase.from("contracts").delete().eq("id", c.db_id);
+                                  setContracts(prev => prev.filter(x => x.id !== c.id));
+                                  showNotification("Contract deleted ✓");
+                                }
+                              }); }}
+                              style={{ position:"absolute", top:12, right:12, width:24, height:24, borderRadius:6, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1 }}
+                              title="Delete contract">
+                              ×
+                            </button>
+                            <div onClick={()=>{ setSelectedContract(c); setContractView("detail"); }} style={{ cursor:"pointer" }}>
                             <div style={{ display:"flex", alignItems:"flex-start", gap:12, marginBottom:14 }}>
                               <div style={{ width:42, height:42, borderRadius:10, background:ct.color+"22", border:`1px solid ${ct.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{ct.icon}</div>
-                              <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ flex:1, minWidth:0, paddingRight:24 }}>
                                 <div style={{ fontSize:11, color:ct.color, letterSpacing:1, marginBottom:4 }}>{ct.label.toUpperCase()}</div>
                                 <div style={{ fontSize:14, fontWeight:600, lineHeight:1.3 }}>{c.counterparty}</div>
                                 <div style={{ fontSize:12, color:"#6B6B8A", marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.description}</div>
@@ -5536,7 +5568,6 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                                 <div style={{ fontSize:13, color:"#C8C8D8" }}>{c.start_date||"—"} → {c.end_date||"—"}</div>
                               </div>
                             </div>
-                            {/* Entry progress bar */}
                             <div>
                               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
                                 <span style={{ fontSize:11, color:"#6B6B8A" }}>Journal entries posted</span>
@@ -5546,9 +5577,11 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                                 <div style={{ height:"100%", width:totalEntries>0?`${(postedCount/totalEntries)*100}%`:"0%", background:postedCount===totalEntries&&totalEntries>0?"#10B981":ct.color, borderRadius:2, transition:"width 0.4s" }} />
                               </div>
                             </div>
+                            </div>
                           </div>
                         );
                       })}
+                    </div>
                     </div>
                   )}
                 </div>
