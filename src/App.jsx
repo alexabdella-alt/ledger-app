@@ -353,32 +353,58 @@ function vendorColor(name) {
 const glIsRevenue     = (code) => typeof code === "string" && code.startsWith("4");
 const glIsExpense     = (code) => typeof code === "string" && (code.startsWith("5") || code.startsWith("6"));
 
-// ASC 842 Lease Calculation Helper
-// Per ASC 842-20-30: Lease Liability = PV of future lease payments at commencement date
-// ROU Asset = Lease Liability + prepaid rent + initial direct costs - lease incentives
-// For simplicity (no prepaid/incentives): ROU Asset = Lease Liability
-const calcASC842 = (monthlyPayment, termMonths, annualRate) => {
-  const r = annualRate / 12; // monthly rate
-  // PV of ordinary annuity (payments at end of period)
-  const leaseLIABILITY = r > 0
+// ── ASC 842 LEASE CALCULATION — AUDIT-READY ──────────────────────────────────
+// Per ASC 842-20-30-1: Lease Liability = PV of remaining lease payments
+// discounted at the rate implicit in the lease, or if not determinable,
+// the lessee's incremental borrowing rate (IBR).
+// 
+// PV Formula: PMT × (1 - (1 + r)^-n) / r  where r = monthly IBR, n = term months
+// This discounts each payment individually (monthly compounding) — the only
+// method that produces audit-ready numbers per ASC 842.
+//
+// Current Portion = PRINCIPAL REDUCTION over next 12 months (NOT cash payments)
+// This is what reduces the present value of the liability, NOT gross cash paid.
+// Using gross cash as current portion overstates current liabilities (common error).
+//
+// ROU Asset at commencement = Lease Liability (+ prepaid rent + IDC - incentives)
+// For standard leases with no prepaid/incentives: ROU Asset = Lease Liability exactly.
+const calcASC842 = (monthlyPayment, termMonths, annualIBR) => {
+  const r = annualIBR / 12; // monthly rate (e.g. 5% annual = 0.4167%/mo)
+
+  // Step 1: Calculate initial lease liability using PV of ordinary annuity
+  // (payments at end of period — standard for operating leases)
+  const leaseLiability = r > 0
     ? monthlyPayment * (1 - Math.pow(1 + r, -termMonths)) / r
-    : monthlyPayment * termMonths; // zero rate edge case
-  const rouASSET = leaseLIABILITY; // ROU = Lease Liability at commencement (no prepaid/incentives)
-  // Current portion = principal payments in next 12 months
-  let bal = leaseLIABILITY;
+    : monthlyPayment * termMonths;
+
+  // Step 2: ROU Asset = Lease Liability at commencement
+  const rouAsset = leaseLiability;
+
+  // Step 3: Build amortization schedule to get GAAP-correct current portion
+  // Current portion = total principal reduction in months 1-12
+  // This is calculated by running the effective interest method month by month
+  let balance = leaseLiability;
   let currentPortion = 0;
-  for (let i = 0; i < Math.min(12, termMonths); i++) {
-    const interest = bal * r;
-    const principal = monthlyPayment - interest;
-    currentPortion += principal;
-    bal -= principal;
+  const schedule = [];
+
+  for (let i = 0; i < termMonths; i++) {
+    const interestExpense = balance * r;
+    const principalReduction = monthlyPayment - interestExpense;
+    balance = Math.max(0, balance - principalReduction);
+    schedule.push({ month: i + 1, interest: interestExpense, principal: principalReduction, balance });
+    if (i < 12) currentPortion += principalReduction; // first 12 months = current
   }
+
+  const nonCurrentPortion = leaseLiability - currentPortion;
+  const straightLineMonthly = monthlyPayment; // for operating lease, SL expense = cash payment when payments are level
+
   return {
-    leaseLIABILITY: Math.round(leaseLIABILITY * 100) / 100,
-    rouASSET: Math.round(rouASSET * 100) / 100,
-    currentPortion: Math.round(currentPortion * 100) / 100,
-    nonCurrentPortion: Math.round((leaseLIABILITY - currentPortion) * 100) / 100,
-    straightLineMonthly: Math.round((monthlyPayment * termMonths / termMonths) * 100) / 100,
+    leaseLiability:    Math.round(leaseLiability * 100) / 100,
+    rouAsset:          Math.round(rouAsset * 100) / 100,
+    currentPortion:    Math.round(currentPortion * 100) / 100,
+    nonCurrentPortion: Math.round(nonCurrentPortion * 100) / 100,
+    straightLineMonthly: Math.round(straightLineMonthly * 100) / 100,
+    schedule, // full amortization schedule for reference
   };
 };
 const glIsBalSheet    = (code) => typeof code === "string" && (code.startsWith("1") || code.startsWith("2") || code.startsWith("3"));
@@ -1840,103 +1866,87 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
 
       if (contract.contract_type === "lease" && leaseTermMonths > 0) {
         const ibr = contract.discount_rate_used || 0.05;
-        const ibrMonthly = ibr / 12;
         const monthlyPayment = parseFloat(contract.payment_amount) || 0;
-        const totalPayments = monthlyPayment * leaseTermMonths;
-        const straightLine = contract.monthly_straight_line_expense || (totalPayments / leaseTermMonths);
 
-        // Use calcASC842 to get correct values, fallback to AI-provided if available
+        // Use audit-ready ASC 842 calculation
         const asc842 = calcASC842(monthlyPayment, leaseTermMonths, ibr);
         const aiLiability = (parseFloat(contract.lease_liability_current) || 0) + (parseFloat(contract.lease_liability_noncurrent) || 0);
-        let liabilityBalance = aiLiability > 0 ? aiLiability : asc842.leaseLIABILITY;
 
-        // Update contract with correct values if AI returned zeros
-        if (aiLiability === 0) {
-          contract.rou_asset_value = asc842.rouASSET;
-          contract.lease_liability_current = asc842.currentPortion;
-          contract.lease_liability_noncurrent = asc842.nonCurrentPortion;
-          contract.monthly_straight_line_expense = asc842.straightLineMonthly;
-          // Also fix Day 1 entry lines if they have zero values
-          if (contract.journal_entries?.[0]?.lines) {
-            contract.journal_entries[0].lines = [
-              { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouASSET, credit: 0 },
-              { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
-              { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
-            ];
-          }
+        // Always use our JS calculation — it's more reliable than AI's numbers
+        const liabilityBalance = asc842.leaseLiability;
+        contract.rou_asset_value = asc842.rouAsset;
+        contract.lease_liability_current = asc842.currentPortion;
+        contract.lease_liability_noncurrent = asc842.nonCurrentPortion;
+        contract.monthly_straight_line_expense = asc842.straightLineMonthly;
+
+        // Patch Day 1 entry with correct values
+        if (contract.journal_entries?.[0]) {
+          contract.journal_entries[0].lines = [
+            { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouAsset, credit: 0 },
+            { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
+            { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
+          ];
+          contract.journal_entries[0].memo = `ASC 842-20-30: Lease Liability = PV of ${leaseTermMonths} payments of $${monthlyPayment} @ ${(ibr*100).toFixed(2)}% IBR (monthly compounding). Current portion = principal reduction months 1-12 ($${asc842.currentPortion.toLocaleString()}), not gross cash. ROU Asset = Lease Liability at commencement.`;
         }
 
         const startDate = new Date(contract.start_date || new Date());
 
-        for (let i = 0; i < leaseTermMonths; i++) {
+        // Use pre-computed amortization schedule from calcASC842
+        asc842.schedule.forEach((row, i) => {
           const entryDate = new Date(startDate);
           entryDate.setMonth(entryDate.getMonth() + i + 1);
           const dateStr = entryDate.toISOString().slice(0, 10);
+          const principal = Math.round(row.principal * 100) / 100;
+          const interest = Math.round(row.interest * 100) / 100;
 
-          const interestThisMonth = liabilityBalance * ibrMonthly;
-          const principalThisMonth = Math.min(monthlyPayment - interestThisMonth, liabilityBalance);
-          liabilityBalance = Math.max(0, liabilityBalance - principalThisMonth);
-
-          const slDiff = Math.abs(straightLine - monthlyPayment);
-
-          if (contract.lease_type === "operating") {
-            // Entry A: P&L — Operating Lease Expense (straight-line)
-            const linesA = [
-              { account_code: "6150", account_name: "Operating Lease Expense", debit: parseFloat(straightLine.toFixed(2)), credit: 0 },
-              { account_code: "1000", account_name: "Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
-            ];
-            // If straight-line ≠ cash payment, adjust ROU asset
-            if (slDiff > 0.01) {
-              if (straightLine > monthlyPayment) {
-                linesA.push({ account_code: "1800", account_name: "Right-of-Use Asset", debit: 0, credit: parseFloat(slDiff.toFixed(2)) });
-              } else {
-                linesA.push({ account_code: "1800", account_name: "Right-of-Use Asset", debit: parseFloat(slDiff.toFixed(2)), credit: 0 });
-              }
-            }
+          if (contract.lease_type === "operating" || !contract.lease_type) {
+            // Entry A: P&L — Operating Lease Expense (straight-line = cash payment for level payments)
             monthlyEntries.push({
               date: dateStr,
               description: `Operating lease payment — Month ${i + 1}`,
-              memo: `ASC 842-20: Straight-line lease expense $${straightLine.toFixed(2)}/mo`,
-              lines: linesA
+              memo: `ASC 842-20: SL expense $${monthlyPayment.toFixed(2)}. Interest component $${interest.toFixed(2)}, principal $${principal.toFixed(2)}. Liability balance after: $${Math.round(row.balance * 100) / 100}`,
+              lines: [
+                { account_code:"6150", account_name:"Operating Lease Expense", debit: parseFloat(monthlyPayment.toFixed(2)), credit: 0 },
+                { account_code:"1000", account_name:"Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
+              ]
             });
-
-            // Entry B: Balance sheet — Liability reduction / ROU amortization (non-cash)
-            if (principalThisMonth > 0.01) {
+            // Entry B: Balance sheet — non-cash liability reduction and ROU amortization
+            if (principal > 0.01) {
               monthlyEntries.push({
                 date: dateStr,
-                description: `Lease liability reduction — Month ${i + 1}`,
-                memo: `ASC 842-20: Principal reduction $${principalThisMonth.toFixed(2)}, interest $${interestThisMonth.toFixed(2)}`,
+                description: `Lease liability & ROU amortization — Month ${i + 1}`,
+                memo: `ASC 842-20: Non-cash. Principal reduction of liability = $${principal.toFixed(2)}. ROU asset decreases by same amount.`,
                 lines: [
-                  { account_code: "2400", account_name: "Lease Liability - Current (ASC 842)", debit: parseFloat(principalThisMonth.toFixed(2)), credit: 0 },
-                  { account_code: "1800", account_name: "Right-of-Use Asset", debit: 0, credit: parseFloat(principalThisMonth.toFixed(2)) },
+                  { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: principal, credit: 0 },
+                  { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: 0, credit: principal },
                 ]
               });
             }
           } else {
             // Finance lease
-            const rouAmort = parseFloat((contract.rou_asset_value || liabilityBalance) / leaseTermMonths).toFixed(2);
+            const rouAmort = Math.round(asc842.rouAsset / leaseTermMonths * 100) / 100;
             monthlyEntries.push({
               date: dateStr,
               description: `Finance lease payment — Month ${i + 1}`,
-              memo: `ASC 842-20: Interest $${interestThisMonth.toFixed(2)}, Principal $${principalThisMonth.toFixed(2)}`,
+              memo: `ASC 842-20: Interest $${interest.toFixed(2)} (liability × monthly rate), principal $${principal.toFixed(2)}`,
               lines: [
-                { account_code: "6100", account_name: "Interest Expense", debit: parseFloat(interestThisMonth.toFixed(2)), credit: 0 },
-                { account_code: "2400", account_name: "Lease Liability - Current (ASC 842)", debit: parseFloat(principalThisMonth.toFixed(2)), credit: 0 },
-                { account_code: "1000", account_name: "Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
+                { account_code:"6100", account_name:"Interest Expense", debit: interest, credit: 0 },
+                { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: principal, credit: 0 },
+                { account_code:"1000", account_name:"Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
               ]
             });
             monthlyEntries.push({
               date: dateStr,
               description: `ROU asset amortization — Month ${i + 1}`,
-              memo: `ASC 842-20: Finance lease ROU amortization`,
+              memo: `ASC 842-20: Finance lease — straight-line amortization of ROU asset`,
               lines: [
-                { account_code: "6050", account_name: "ROU Asset Amortization", debit: parseFloat(rouAmort), credit: 0 },
-                { account_code: "1810", account_name: "Accumulated Amortization - ROU", debit: 0, credit: parseFloat(rouAmort) },
+                { account_code:"6050", account_name:"ROU Asset Amortization", debit: rouAmort, credit: 0 },
+                { account_code:"1810", account_name:"Accumulated Amortization - ROU", debit: 0, credit: rouAmort },
               ]
             });
           }
-        }
-        console.log(`Generated ${monthlyEntries.length} monthly entries in JS`);
+        });
+        console.log(`Generated ${monthlyEntries.length} entries. Liability: $${asc842.leaseLiability}, Current: $${asc842.currentPortion}, LT: $${asc842.nonCurrentPortion}`);
 
       } else if (contract.contract_type !== "lease" && contract.start_date && contract.end_date && contract.payment_amount) {
         // For non-lease: generate simple monthly entries in JS too
@@ -2523,10 +2533,14 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         }
         if (action.type === "delete_contract") {
           if (action.contract_id || action.counterparty) {
-            setContracts(prev => prev.filter(c =>
-              action.contract_id ? String(c.id) !== String(action.contract_id)
-              : !c.counterparty?.toLowerCase().includes(action.counterparty?.toLowerCase())
-            ));
+            const toDelete = contracts.filter(c =>
+              action.contract_id ? String(c.id) === String(action.contract_id)
+              : c.counterparty?.toLowerCase().includes(action.counterparty?.toLowerCase())
+            );
+            setContracts(prev => prev.filter(c => !toDelete.find(d => d.id === c.id)));
+            toDelete.forEach(async c => {
+              if (c.db_id) await supabase.from("contracts").delete().eq("id", c.db_id);
+            });
             actionSummary.push(`Contract removed: ${action.counterparty || action.contract_id}`);
           }
         }
@@ -5507,7 +5521,14 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                       </div>
                       <div style={{ marginLeft:"auto", display:"flex", gap:10 }}>
                         <button onClick={()=>{
-                          setDeleteConfirm({ label:`Delete contract with ${selectedContract.counterparty}? All generated entries will be removed. This cannot be undone.`, onConfirm:()=>{ setContracts(prev=>prev.filter(c=>c.id!==selectedContract.id)); setContractView("list"); showNotification("Contract deleted ✓"); }});
+                          setDeleteConfirm({ label:`Delete contract with ${selectedContract.counterparty}? All generated entries will be removed. This cannot be undone.`, onConfirm:async ()=>{
+                            setContracts(prev=>prev.filter(c=>c.id!==selectedContract.id));
+                            setContractView("list");
+                            if (selectedContract.db_id) {
+                              await supabase.from("contracts").delete().eq("id", selectedContract.db_id);
+                            }
+                            showNotification("Contract deleted ✓");
+                          }});
                         }} style={{ padding:"10px 16px", borderRadius:10, fontSize:12, background:"transparent", border:"1px solid #EF444433", color:"#EF4444", cursor:"pointer" }}>
                           Delete
                         </button>
