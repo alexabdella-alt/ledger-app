@@ -1420,39 +1420,32 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
           const d1 = await res1.json();
           const contract = JSON.parse((d1.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
 
-          // Call 2: Generate monthly entries
+          // Generate all monthly entries in JS (no second API call needed)
           const monthlyEntries = [];
-          const leaseTermMonths = contract.lease_term_months || 0;
-          if (leaseTermMonths > 0) {
-            const ibrMonthly = (contract.discount_rate_used || 0.05) / 12;
-            const monthlyPayment = contract.payment_amount || 0;
-            const straightLine = contract.monthly_straight_line_expense || monthlyPayment;
-            const initLiability = (contract.lease_liability_current||0) + (contract.lease_liability_noncurrent||0);
-            const res2 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-              method:"POST", headers:getAuthHeaders(),
-              body: JSON.stringify({
-                model:"claude-sonnet-4-20250514", max_tokens:8000,
-                system:`Generate all ${leaseTermMonths} monthly journal entries for this ${contract.lease_type} lease (ASC 842). Return ONLY a JSON array, no other text.
-Lease: payment=$${monthlyPayment}/mo, straight-line=$${straightLine.toFixed(2)}/mo, initial liability=$${initLiability.toFixed(2)}, IBR monthly=${(ibrMonthly*100).toFixed(4)}%, start=${contract.start_date}
-Operating lease monthly entries:
-A) Dr Operating Lease Expense 6150 $${straightLine.toFixed(2)} / Cr Cash 1000 $${monthlyPayment.toFixed(2)}
-B) Dr Lease Liability Current 2400 [principal=payment-interest] / Cr ROU Asset 1800 [same]
-Return: [{"date":"YYYY-MM-DD","description":"...","memo":"ASC 842","lines":[{"account_code":"XXXX","account_name":"...","debit":0,"credit":0}]}]
-Generate all ${leaseTermMonths} months. Every entry must balance.`,
-                messages:[{role:"user",content:`Generate entries for all ${leaseTermMonths} months starting ${contract.start_date}. Initial liability: $${initLiability.toFixed(2)}`}]
-              })
-            });
-            const d2 = await res2.json();
-            const raw2 = (d2.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
-            try {
-              const p = JSON.parse(raw2);
-              if (Array.isArray(p)) monthlyEntries.push(...p);
-            } catch {
-              const lastClose = raw2.lastIndexOf("}]");
-              if (lastClose > 0) {
-                try { const p = JSON.parse(raw2.slice(0,lastClose+2)); if(Array.isArray(p)) monthlyEntries.push(...p); } catch {}
-              }
+          let calcLeaseTermMonths = contract.lease_term_months || 0;
+          if (!calcLeaseTermMonths && contract.start_date && contract.end_date) {
+            calcLeaseTermMonths = Math.round((new Date(contract.end_date) - new Date(contract.start_date)) / (1000 * 60 * 60 * 24 * 30.44));
+          }
+          if (contract.contract_type === "lease" && calcLeaseTermMonths > 0) {
+            const ibr = contract.discount_rate_used || 0.05;
+            const ibrM = ibr / 12;
+            const pmt = parseFloat(contract.payment_amount) || 0;
+            const sl = contract.monthly_straight_line_expense || pmt;
+            let liab = (parseFloat(contract.lease_liability_current)||0) + (parseFloat(contract.lease_liability_noncurrent)||0);
+            if (liab === 0 && pmt > 0) liab = ibrM > 0 ? pmt * (1 - Math.pow(1+ibrM,-calcLeaseTermMonths)) / ibrM : pmt * calcLeaseTermMonths;
+            const start = new Date(contract.start_date || new Date());
+            for (let i = 0; i < calcLeaseTermMonths; i++) {
+              const d = new Date(start); d.setMonth(d.getMonth() + i + 1);
+              const ds = d.toISOString().slice(0,10);
+              const interest = liab * ibrM;
+              const principal = Math.min(pmt - interest, liab);
+              liab = Math.max(0, liab - principal);
+              monthlyEntries.push({ date:ds, description:`Operating lease payment — Month ${i+1}`, memo:`ASC 842-20: Straight-line $${sl.toFixed(2)}/mo`,
+                lines:[{account_code:"6150",account_name:"Operating Lease Expense",debit:parseFloat(sl.toFixed(2)),credit:0},{account_code:"1000",account_name:"Cash",debit:0,credit:parseFloat(pmt.toFixed(2))}]});
+              if (principal > 0.01) monthlyEntries.push({ date:ds, description:`Lease liability reduction — Month ${i+1}`, memo:`ASC 842-20: Principal $${principal.toFixed(2)}`,
+                lines:[{account_code:"2400",account_name:"Lease Liability - Current (ASC 842)",debit:parseFloat(principal.toFixed(2)),credit:0},{account_code:"1800",account_name:"Right-of-Use Asset",debit:0,credit:parseFloat(principal.toFixed(2))}]});
             }
+            contract.lease_term_months = calcLeaseTermMonths;
           }
 
           contract.journal_entries = [...(contract.journal_entries||[]), ...monthlyEntries];
@@ -1808,93 +1801,115 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
       }
       console.log(`Contract: type=${contract.contract_type}, lease_type=${contract.lease_type}, term=${leaseTermMonths}mo, payment=$${contract.payment_amount}`);
 
-      // ── CALL 2: Generate all monthly entries (pure math, no document) ────
+      // ── GENERATE MONTHLY ENTRIES IN JS (no second API call needed) ────────
       const monthlyEntries = [];
 
       if (contract.contract_type === "lease" && leaseTermMonths > 0) {
-        const ibrMonthly = (contract.discount_rate_used || 0.05) / 12;
-        const monthlyPayment = contract.payment_amount || 0;
-        const straightLine = contract.monthly_straight_line_expense || monthlyPayment;
-        let liabilityBalance = (contract.lease_liability_current || 0) + (contract.lease_liability_noncurrent || 0);
+        const ibr = contract.discount_rate_used || 0.05;
+        const ibrMonthly = ibr / 12;
+        const monthlyPayment = parseFloat(contract.payment_amount) || 0;
+        // Straight-line = total undiscounted payments / term
+        const totalPayments = monthlyPayment * leaseTermMonths;
+        const straightLine = contract.monthly_straight_line_expense || (totalPayments / leaseTermMonths);
+        let liabilityBalance = (parseFloat(contract.lease_liability_current) || 0) + (parseFloat(contract.lease_liability_noncurrent) || 0);
+
+        // If liability is 0 (AI didn't calc), estimate PV ourselves
+        if (liabilityBalance === 0 && monthlyPayment > 0) {
+          // PV of annuity formula
+          liabilityBalance = ibrMonthly > 0
+            ? monthlyPayment * (1 - Math.pow(1 + ibrMonthly, -leaseTermMonths)) / ibrMonthly
+            : monthlyPayment * leaseTermMonths;
+        }
+
         const startDate = new Date(contract.start_date || new Date());
 
-        const res2 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-          method:"POST", headers:getAuthHeaders(),
-          body: JSON.stringify({
-            model:"claude-sonnet-4-20250514", max_tokens:8000,
-            system:`Generate ALL ${leaseTermMonths} monthly journal entries for this ${contract.lease_type} lease under ASC 842. Return ONLY a JSON array of journal entries, no other text.
+        for (let i = 0; i < leaseTermMonths; i++) {
+          const entryDate = new Date(startDate);
+          entryDate.setMonth(entryDate.getMonth() + i + 1);
+          const dateStr = entryDate.toISOString().slice(0, 10);
 
-Lease terms:
-- Monthly payment: $${monthlyPayment}
-- Straight-line expense: $${straightLine.toFixed(2)}/month
-- Initial lease liability: $${liabilityBalance.toFixed(2)}
-- IBR (monthly): ${(ibrMonthly*100).toFixed(4)}%
-- Start date: ${contract.start_date}
-- Term: ${leaseTermMonths} months
-- Lease type: ${contract.lease_type}
+          const interestThisMonth = liabilityBalance * ibrMonthly;
+          const principalThisMonth = Math.min(monthlyPayment - interestThisMonth, liabilityBalance);
+          liabilityBalance = Math.max(0, liabilityBalance - principalThisMonth);
 
-For OPERATING lease, each month generate TWO entries:
-Entry A (P&L):
-  Dr Operating Lease Expense 6150 $${straightLine.toFixed(2)}
-  Cr Cash/AP 1000 $${monthlyPayment.toFixed(2)}
-  ${straightLine !== monthlyPayment ? `Cr/Dr ROU Asset 1800 $${Math.abs(straightLine-monthlyPayment).toFixed(2)} [straight-line adjustment]` : ""}
+          const slDiff = Math.abs(straightLine - monthlyPayment);
 
-Entry B (Balance sheet reduction - non-cash):
-  Dr Lease Liability Current 2400 [principal portion = payment - interest]
-  Cr Right-of-Use Asset 1800 [same amount]
-
-Calculate interest each month as: outstanding liability × ${(ibrMonthly*100).toFixed(4)}%
-Principal = payment - interest
-Update liability balance each month.
-
-Return ONLY a JSON array:
-[{"date":"YYYY-MM-DD","description":"string","memo":"string","lines":[{"account_code":"XXXX","account_name":"string","debit":0,"credit":0}]}]
-
-Generate all ${leaseTermMonths} months. Every entry must balance.`,
-            messages:[{role:"user", content:`Generate all ${leaseTermMonths} monthly entries starting ${contract.start_date}. Initial liability balance: $${liabilityBalance.toFixed(2)}`}]
-          })
-        });
-
-        const data2 = await res2.json();
-        console.log("Call 2 response:", data2.content?.find(b=>b.type==="text")?.text?.slice(0, 200));
-        const raw2 = (data2.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
-        try {
-          const parsed = JSON.parse(raw2);
-          if (Array.isArray(parsed)) {
-            monthlyEntries.push(...parsed);
-            console.log(`Got ${parsed.length} monthly entries`);
-          } else {
-            console.error("Call 2 returned non-array:", typeof parsed);
-          }
-        } catch(e2) {
-          console.error("Call 2 parse error:", e2.message, "raw:", raw2.slice(0, 300));
-          // Try to recover partial array
-          const lastClose = raw2.lastIndexOf("}]");
-          if (lastClose > 0) {
-            try {
-              const partial = JSON.parse(raw2.slice(0, lastClose+2));
-              if (Array.isArray(partial)) {
-                monthlyEntries.push(...partial);
-                console.log(`Recovered ${partial.length} partial entries`);
+          if (contract.lease_type === "operating") {
+            // Entry A: P&L — Operating Lease Expense (straight-line)
+            const linesA = [
+              { account_code: "6150", account_name: "Operating Lease Expense", debit: parseFloat(straightLine.toFixed(2)), credit: 0 },
+              { account_code: "1000", account_name: "Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
+            ];
+            // If straight-line ≠ cash payment, adjust ROU asset
+            if (slDiff > 0.01) {
+              if (straightLine > monthlyPayment) {
+                linesA.push({ account_code: "1800", account_name: "Right-of-Use Asset", debit: 0, credit: parseFloat(slDiff.toFixed(2)) });
+              } else {
+                linesA.push({ account_code: "1800", account_name: "Right-of-Use Asset", debit: parseFloat(slDiff.toFixed(2)), credit: 0 });
               }
-            } catch { /* use what we have */ }
+            }
+            monthlyEntries.push({
+              date: dateStr,
+              description: `Operating lease payment — Month ${i + 1}`,
+              memo: `ASC 842-20: Straight-line lease expense $${straightLine.toFixed(2)}/mo`,
+              lines: linesA
+            });
+
+            // Entry B: Balance sheet — Liability reduction / ROU amortization (non-cash)
+            if (principalThisMonth > 0.01) {
+              monthlyEntries.push({
+                date: dateStr,
+                description: `Lease liability reduction — Month ${i + 1}`,
+                memo: `ASC 842-20: Principal reduction $${principalThisMonth.toFixed(2)}, interest $${interestThisMonth.toFixed(2)}`,
+                lines: [
+                  { account_code: "2400", account_name: "Lease Liability - Current (ASC 842)", debit: parseFloat(principalThisMonth.toFixed(2)), credit: 0 },
+                  { account_code: "1800", account_name: "Right-of-Use Asset", debit: 0, credit: parseFloat(principalThisMonth.toFixed(2)) },
+                ]
+              });
+            }
+          } else {
+            // Finance lease
+            const rouAmort = parseFloat((contract.rou_asset_value || liabilityBalance) / leaseTermMonths).toFixed(2);
+            monthlyEntries.push({
+              date: dateStr,
+              description: `Finance lease payment — Month ${i + 1}`,
+              memo: `ASC 842-20: Interest $${interestThisMonth.toFixed(2)}, Principal $${principalThisMonth.toFixed(2)}`,
+              lines: [
+                { account_code: "6100", account_name: "Interest Expense", debit: parseFloat(interestThisMonth.toFixed(2)), credit: 0 },
+                { account_code: "2400", account_name: "Lease Liability - Current (ASC 842)", debit: parseFloat(principalThisMonth.toFixed(2)), credit: 0 },
+                { account_code: "1000", account_name: "Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
+              ]
+            });
+            monthlyEntries.push({
+              date: dateStr,
+              description: `ROU asset amortization — Month ${i + 1}`,
+              memo: `ASC 842-20: Finance lease ROU amortization`,
+              lines: [
+                { account_code: "6050", account_name: "ROU Asset Amortization", debit: parseFloat(rouAmort), credit: 0 },
+                { account_code: "1810", account_name: "Accumulated Amortization - ROU", debit: 0, credit: parseFloat(rouAmort) },
+              ]
+            });
           }
         }
-      } else if (contract.contract_type !== "lease") {
-        // For non-lease contracts, generate monthly entries in one call
-        const res2 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-          method:"POST", headers:getAuthHeaders(),
-          body: JSON.stringify({
-            model:"claude-sonnet-4-20250514", max_tokens:4000,
-            system:`Generate all monthly journal entries for this contract. Return ONLY a JSON array of entries, no other text.
-Contract: ${JSON.stringify({type:contract.contract_type, payment:contract.payment_amount, start:contract.start_date, end:contract.end_date, rate:contract.interest_rate, counterparty:contract.counterparty})}
-Return: [{"date":"YYYY-MM-DD","description":"string","memo":"string","lines":[{"account_code":"XXXX","account_name":"string","debit":0,"credit":0}]}]`,
-            messages:[{role:"user", content:`Generate monthly entries for ${contract.contract_type} from ${contract.start_date} to ${contract.end_date}`}]
-          })
-        });
-        const data2 = await res2.json();
-        const raw2 = (data2.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
-        try { const p = JSON.parse(raw2); if (Array.isArray(p)) monthlyEntries.push(...p); } catch {}
+        console.log(`Generated ${monthlyEntries.length} monthly entries in JS`);
+
+      } else if (contract.contract_type !== "lease" && contract.start_date && contract.end_date && contract.payment_amount) {
+        // For non-lease: generate simple monthly entries in JS too
+        const start = new Date(contract.start_date);
+        const end = new Date(contract.end_date);
+        const months = Math.round((end - start) / (1000 * 60 * 60 * 24 * 30.44));
+        for (let i = 0; i < Math.min(months, 60); i++) {
+          const d = new Date(start);
+          d.setMonth(d.getMonth() + i + 1);
+          const dateStr = d.toISOString().slice(0, 10);
+          if (contract.contract_type === "subscription_paid") {
+            monthlyEntries.push({ date: dateStr, description: `Subscription expense — Month ${i+1}`, memo: "Monthly amortization of prepaid",
+              lines: [{ account_code:"5900", account_name:"Technology & Software", debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:"1300", account_name:"Prepaid Expenses", debit:0, credit:parseFloat(contract.payment_amount) }]});
+          } else if (contract.contract_type === "revenue_contract") {
+            monthlyEntries.push({ date: dateStr, description: `Revenue recognition — Month ${i+1}`, memo: "ASC 606: Performance obligation satisfied",
+              lines: [{ account_code:"2300", account_name:"Deferred Revenue", debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:"4100", account_name:"Service Revenue", debit:0, credit:parseFloat(contract.payment_amount) }]});
+          }
+        }
       }
 
       // Combine Day 1 + monthly entries
