@@ -918,57 +918,52 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   };
 
   const persistContract = async (contract) => {
-    if (!currentCompany?.id || !session?.user?.id) return;
+    if (!currentCompany?.id || !session?.user?.id) {
+      console.error("persistContract: missing company or session");
+      return;
+    }
     try {
-      // Store contract without the full journal entry lines (too large) — store just metadata + entry dates
-      const contractToStore = {
+      // Trim journal entries to just the essential fields to avoid size issues
+      const slim = {
         ...contract,
         journal_entries: (contract.journal_entries || []).map(e => ({
           date: e.date,
           description: e.description,
           memo: e.memo,
-          lines: e.lines,
+          lines: e.lines || []
         }))
       };
-      const jsonStr = JSON.stringify(contractToStore);
-      // If still too large, store without lines detail
-      const storeData = jsonStr.length > 65000 ? JSON.stringify({
-        ...contractToStore,
-        journal_entries: (contract.journal_entries || []).map(e => ({
-          date: e.date,
-          description: e.description,
-          memo: e.memo,
-          lines: e.lines?.slice(0, 10) // keep first 10 lines max per entry
-        }))
-      }) : jsonStr;
+      const jsonStr = JSON.stringify(slim);
+      console.log(`persistContract: saving ${contract.file_name}, ${jsonStr.length} chars, ${slim.journal_entries?.length} entries, db_id=${contract.db_id}`);
 
       const payload = {
         company_id: currentCompany.id,
-        name: contract.file_name || contract.description || "Contract",
+        name: (contract.file_name || contract.description || "Contract").slice(0, 255),
         document_type: `contract_${contract.contract_type}`,
-        ai_explanation: storeData,
+        ai_explanation: jsonStr,
         entry_needed: true,
-        entry_summary: contract.description,
+        entry_summary: (contract.description || "").slice(0, 500),
         posted: (contract.posted_entries?.length || 0) >= (contract.journal_entries?.length || 1),
         created_at: contract.uploaded_at || new Date().toISOString(),
       };
 
       if (contract.db_id) {
-        // Update existing
         const { error } = await supabase.from("unknown_documents")
-          .update(payload)
-          .eq("id", contract.db_id);
-        if (error) console.error("persistContract update error:", error);
+          .update(payload).eq("id", contract.db_id);
+        if (error) console.error("persistContract UPDATE error:", error);
+        else console.log("persistContract: updated", contract.db_id);
       } else {
-        // Insert new
         const { data, error } = await supabase.from("unknown_documents")
-          .insert(payload).select().single();
-        if (error) console.error("persistContract insert error:", error);
-        if (data) {
-          setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
+          .insert(payload).select("id").single();
+        if (error) console.error("persistContract INSERT error:", error);
+        else {
+          console.log("persistContract: inserted, new db_id=", data?.id);
+          if (data?.id) {
+            setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
+          }
         }
       }
-    } catch(e) { console.error("persistContract error:", e); }
+    } catch(e) { console.error("persistContract exception:", e); }
   };
 
   const loadContractsFromDB = async () => {
@@ -1859,17 +1854,27 @@ Generate all ${leaseTermMonths} months. Every entry must balance.`,
         });
 
         const data2 = await res2.json();
+        console.log("Call 2 response:", data2.content?.find(b=>b.type==="text")?.text?.slice(0, 200));
         const raw2 = (data2.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
         try {
           const parsed = JSON.parse(raw2);
-          if (Array.isArray(parsed)) monthlyEntries.push(...parsed);
+          if (Array.isArray(parsed)) {
+            monthlyEntries.push(...parsed);
+            console.log(`Got ${parsed.length} monthly entries`);
+          } else {
+            console.error("Call 2 returned non-array:", typeof parsed);
+          }
         } catch(e2) {
+          console.error("Call 2 parse error:", e2.message, "raw:", raw2.slice(0, 300));
           // Try to recover partial array
           const lastClose = raw2.lastIndexOf("}]");
           if (lastClose > 0) {
             try {
               const partial = JSON.parse(raw2.slice(0, lastClose+2));
-              if (Array.isArray(partial)) monthlyEntries.push(...partial);
+              if (Array.isArray(partial)) {
+                monthlyEntries.push(...partial);
+                console.log(`Recovered ${partial.length} partial entries`);
+              }
             } catch { /* use what we have */ }
           }
         }
