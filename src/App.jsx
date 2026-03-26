@@ -1,4 +1,4 @@
-=import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── SUPABASE CLIENT ───────────────────────────────────────────
@@ -918,48 +918,43 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   };
 
   const persistContract = async (contract) => {
-    if (!currentCompany?.id || !session?.user?.id) {
-      console.error("persistContract: missing company or session");
-      return;
-    }
+    if (!currentCompany?.id || !session?.user?.id) return;
     try {
-      // Trim journal entries to just the essential fields to avoid size issues
-      const slim = {
-        ...contract,
-        journal_entries: (contract.journal_entries || []).map(e => ({
-          date: e.date,
-          description: e.description,
-          memo: e.memo,
-          lines: e.lines || []
-        }))
-      };
-      const jsonStr = JSON.stringify(slim);
-      console.log(`persistContract: saving ${contract.file_name}, ${jsonStr.length} chars, ${slim.journal_entries?.length} entries, db_id=${contract.db_id}`);
-
       const payload = {
         company_id: currentCompany.id,
-        name: (contract.file_name || contract.description || "Contract").slice(0, 255),
-        document_type: `contract_${contract.contract_type}`,
-        ai_explanation: jsonStr,
-        entry_needed: true,
-        entry_summary: (contract.description || "").slice(0, 500),
-        posted: (contract.posted_entries?.length || 0) >= (contract.journal_entries?.length || 1),
+        file_name: (contract.file_name || "Contract").slice(0, 500),
+        contract_type: contract.contract_type || "unknown",
+        counterparty: contract.counterparty || "",
+        description: contract.description || "",
+        total_value: contract.total_value || 0,
+        start_date: contract.start_date || null,
+        end_date: contract.end_date || null,
+        payment_amount: contract.payment_amount || 0,
+        payment_frequency: contract.payment_frequency || "monthly",
+        interest_rate: contract.interest_rate || 0,
+        lease_type: contract.lease_type || null,
+        rou_asset_value: contract.rou_asset_value || 0,
+        lease_liability_current: contract.lease_liability_current || 0,
+        lease_liability_noncurrent: contract.lease_liability_noncurrent || 0,
+        discount_rate_used: contract.discount_rate_used || 0,
+        lease_term_months: contract.lease_term_months || 0,
+        monthly_straight_line_expense: contract.monthly_straight_line_expense || 0,
+        accounting_treatment: contract.accounting_treatment || "",
+        key_terms: contract.key_terms || [],
+        journal_entries: contract.journal_entries || [],
+        posted_entries: contract.posted_entries || [],
       };
-
       if (contract.db_id) {
-        const { error } = await supabase.from("unknown_documents")
+        const { error } = await supabase.from("contracts")
           .update(payload).eq("id", contract.db_id);
         if (error) console.error("persistContract UPDATE error:", JSON.stringify(error));
-        else console.log("persistContract: updated", contract.db_id);
       } else {
-        const { data, error } = await supabase.from("unknown_documents")
+        const { data, error } = await supabase.from("contracts")
           .insert(payload).select("id").single();
         if (error) console.error("persistContract INSERT error:", JSON.stringify(error));
-        else {
-          console.log("persistContract: inserted, new db_id=", data?.id);
-          if (data?.id) {
-            setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
-          }
+        else if (data?.id) {
+          console.log("Contract saved, db_id=", data.id);
+          setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
         }
       }
     } catch(e) { console.error("persistContract exception:", e); }
@@ -968,19 +963,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const loadContractsFromDB = async () => {
     if (!currentCompany?.id) return;
     try {
-      const { data, error } = await supabase.from("unknown_documents")
+      const { data, error } = await supabase.from("contracts")
         .select("*")
         .eq("company_id", currentCompany.id)
-        .like("document_type", "contract_%");
+        .order("created_at", { ascending: false });
       if (error) { console.error("loadContractsFromDB error:", JSON.stringify(error)); return; }
       if (data && data.length > 0) {
-        const loaded = data.map(row => {
-          try {
-            const parsed = JSON.parse(row.ai_explanation);
-            return { ...parsed, db_id: row.id, id: row.id, file_name: row.name || parsed.file_name, uploaded_at: row.created_at || row.uploaded_at };
-          } catch { return null; }
-        }).filter(Boolean);
+        const loaded = data.map(row => ({
+          ...row,
+          db_id: row.id,
+          id: row.id,
+          posted_entries: row.posted_entries || [],
+          journal_entries: row.journal_entries || [],
+          key_terms: row.key_terms || [],
+        }));
         setContracts(loaded);
+        console.log(`Loaded ${loaded.length} contracts from DB`);
       } else {
         setContracts([]);
       }
