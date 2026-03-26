@@ -656,9 +656,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
   // Reports state
   const [reportType, setReportType] = useState("pl");
-  const [reportRange, setReportRange] = useState("all");
-  const [reportDateFrom, setReportDateFrom] = useState("");
-  const [reportDateTo, setReportDateTo] = useState("");
+  const [reportRange, setReportRange] = useState("custom");
+  const [reportDateFrom, setReportDateFrom] = useState(() => new Date().getFullYear() + "-01-01");
+  const [reportDateTo, setReportDateTo] = useState(() => new Date().toISOString().slice(0,10));
   const [basisMode, setBasisMode] = useState("cash"); // "cash" | "accrual" | "comparison"
   const [basisNarration, setBasisNarration] = useState(null);
   const [basisNarrationLoading, setBasisNarrationLoading] = useState(false);
@@ -959,35 +959,45 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const persistJournalEntry = async (invoice) => {
     if (!currentCompany?.id || !session?.user?.id) return;
     try {
-      const { data: debitAcct } = await supabase.from("accounts")
-        .select("id").eq("company_id", currentCompany.id).eq("code", invoice.gl_code).single();
-      const { data: creditAcct } = await supabase.from("accounts")
-        .select("id").eq("company_id", currentCompany.id).eq("code", invoice.secondary_gl_code||"2000").single();
-      if (!debitAcct || !creditAcct) return;
+      // Get or create debit account
+      const ensureAccount = async (code, name) => {
+        if (!code) return null;
+        let { data } = await supabase.from("accounts")
+          .select("id").eq("company_id", currentCompany.id).eq("code", code).single();
+        if (data) return data;
+        // Account doesn't exist — create it
+        const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === code);
+        const { data: created } = await supabase.from("accounts").insert({
+          company_id: currentCompany.id,
+          code,
+          name: name || acctDef?.name || code,
+          account_type: acctDef?.category?.toLowerCase() || "expense",
+        }).select("id").single();
+        return created;
+      };
+
+      const debitAcct  = await ensureAccount(invoice.gl_code, invoice.gl_name);
+      const creditAcct = await ensureAccount(invoice.secondary_gl_code || "2000", invoice.secondary_gl_name || "Accounts Payable");
+      if (!debitAcct || !creditAcct) {
+        console.error("persistJournalEntry: could not find/create accounts", invoice.gl_code, invoice.secondary_gl_code);
+        return;
+      }
 
       const { data: je, error: jeErr } = await supabase.from("journal_entries").insert({
-        company_id: currentCompany.id, entry_date: invoice.date||new Date().toISOString().slice(0,10),
-        description: `${invoice.vendor} – ${invoice.description||invoice.vendor}`,
-        source: invoice.source||"manual", status: "posted",
-        posted_at: new Date().toISOString(), created_by: session.user.id
+        company_id: currentCompany.id,
+        entry_date: invoice.date || new Date().toISOString().slice(0,10),
+        description: `${invoice.vendor} – ${invoice.description || invoice.vendor}`,
+        source: invoice.source || "manual",
+        status: "posted",
+        posted_at: new Date().toISOString(),
+        created_by: session.user.id
       }).select().single();
       if (jeErr) { console.error("JE insert error:", jeErr); return; }
 
-      await supabase.from("journal_entry_lines").insert({
-        journal_entry_id: je.id, company_id: currentCompany.id,
-        account_id: debitAcct.id, debit: invoice.amount, credit: 0,
-        memo: invoice.description
-      });
-      await supabase.from("journal_entry_lines").insert({
-        journal_entry_id: je.id, company_id: currentCompany.id,
-        account_id: creditAcct.id, debit: 0, credit: invoice.amount,
-        memo: invoice.description
-      });
-      await supabase.from("audit_log").insert({
-        company_id: currentCompany.id, user_id: session.user.id,
-        action: "invoice_booked",
-        detail: `${invoice.vendor} $${invoice.amount} → ${invoice.gl_name}`
-      });
+      await supabase.from("journal_entry_lines").insert([
+        { journal_entry_id: je.id, company_id: currentCompany.id, account_id: debitAcct.id,  debit: invoice.amount, credit: 0, memo: invoice.description },
+        { journal_entry_id: je.id, company_id: currentCompany.id, account_id: creditAcct.id, debit: 0, credit: invoice.amount, memo: invoice.description },
+      ]);
     } catch(e) { console.error("persistJournalEntry error:", e); }
   };
 
@@ -4994,7 +5004,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
             const projectRows = Object.values(byProject).sort((a,b)=>b.expenses-a.expenses);
 
             const fmt = (n) => "$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2});
-            const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom:"Custom Range" };
+            const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${reportDateFrom} → ${reportDateTo}` : "Custom Range" };
 
             return (
               <div>
@@ -5009,14 +5019,13 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                     <button key={id} onClick={()=>setReportType(id)} style={{ padding:"8px 16px", borderRadius:20, fontSize:13, background:reportType===id?"#C8B8FF":"transparent", border:`1px solid ${reportType===id?"#C8B8FF":"#2A2A3E"}`, color:reportType===id?"#0F0F13":"#6B6B8A", cursor:"pointer", fontWeight:reportType===id?600:400 }}>{label}</button>
                   ))}
                   <div style={{ flex:1 }} />
-                  <select value={reportRange} onChange={e=>setReportRange(e.target.value)} style={{ background:"#14141A", border:"1px solid #2A2A3E", borderRadius:8, padding:"8px 12px", color:"#E8E8F0", fontSize:13, outline:"none", cursor:"pointer" }}>
+                  {/* Date range — custom inputs always visible, preset buttons for quick selection */}
+                  <input type="date" value={reportDateFrom} onChange={e=>{ setReportDateFrom(e.target.value); setReportRange("custom"); }} style={{ background:"#14141A", border:"1px solid #2A2A3E", borderRadius:8, padding:"7px 10px", color:"#E8E8F0", fontSize:13, outline:"none" }} />
+                  <span style={{ color:"#6B6B8A", fontSize:13 }}>to</span>
+                  <input type="date" value={reportDateTo} onChange={e=>{ setReportDateTo(e.target.value); setReportRange("custom"); }} style={{ background:"#14141A", border:"1px solid #2A2A3E", borderRadius:8, padding:"7px 10px", color:"#E8E8F0", fontSize:13, outline:"none" }} />
+                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const now=new Date(); if(e.target.value==="thismonth"){setReportDateFrom(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-01");setReportDateTo(now.toISOString().slice(0,10));} else if(e.target.value==="ytd"){setReportDateFrom(now.getFullYear()+"-01-01");setReportDateTo(now.toISOString().slice(0,10));} else if(e.target.value==="all"){setReportDateFrom("");setReportDateTo("");} }} style={{ background:"#14141A", border:"1px solid #2A2A3E", borderRadius:8, padding:"8px 12px", color:"#E8E8F0", fontSize:13, outline:"none", cursor:"pointer" }}>
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
-                  {reportRange==="custom" && <>
-                    <input type="date" value={reportDateFrom} onChange={e=>setReportDateFrom(e.target.value)} style={{ background:"#14141A", border:"1px solid #2A2A3E", borderRadius:8, padding:"7px 10px", color:"#E8E8F0", fontSize:13, outline:"none" }} />
-                    <span style={{ color:"#6B6B8A", fontSize:13 }}>to</span>
-                    <input type="date" value={reportDateTo} onChange={e=>setReportDateTo(e.target.value)} style={{ background:"#14141A", border:"1px solid #2A2A3E", borderRadius:8, padding:"7px 10px", color:"#E8E8F0", fontSize:13, outline:"none" }} />
-                  </>}
                 </div>
 
                 {invoices.length===0 && <div style={{ color:"#6B6B8A", fontSize:14 }}>No data yet. Upload invoices or a bank statement to generate reports.</div>}
