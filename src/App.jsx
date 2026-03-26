@@ -1029,14 +1029,41 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         .order("created_at", { ascending: false });
       if (error) { console.error("loadContractsFromDB error:", JSON.stringify(error)); return; }
       if (data && data.length > 0) {
-        const loaded = data.map(row => ({
-          ...row,
-          db_id: row.id,
-          id: row.id,
-          posted_entries: row.posted_entries || [],
-          journal_entries: row.journal_entries || [],
-          key_terms: row.key_terms || [],
-        }));
+        const loaded = data.map(row => {
+          let c = {
+            ...row,
+            db_id: row.id,
+            id: row.id,
+            posted_entries: row.posted_entries || [],
+            journal_entries: row.journal_entries || [],
+            key_terms: row.key_terms || [],
+          };
+          // Always recalculate ASC 842 values — never trust stored AI numbers
+          if (c.contract_type === "lease" && c.payment_amount > 0) {
+            const term = c.lease_term_months ||
+              (c.start_date && c.end_date
+                ? Math.round((new Date(c.end_date) - new Date(c.start_date)) / (1000*60*60*24*30.44))
+                : 0);
+            if (term > 0) {
+              const ibr = c.discount_rate_used || 0.05;
+              const asc842 = calcASC842(c.payment_amount, term, ibr);
+              console.log(`Recalculated ${c.counterparty}: ROU=$${asc842.rouAsset}, Current=$${asc842.currentPortion}, LT=$${asc842.nonCurrentPortion}`);
+              c.rou_asset_value = asc842.rouAsset;
+              c.lease_liability_current = asc842.currentPortion;
+              c.lease_liability_noncurrent = asc842.nonCurrentPortion;
+              c.lease_term_months = term;
+              // Also patch Day 1 entry if it has wrong values
+              if (c.journal_entries?.[0]) {
+                c.journal_entries[0].lines = [
+                  { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouAsset, credit: 0 },
+                  { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
+                  { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
+                ];
+              }
+            }
+          }
+          return c;
+        });
         setContracts(loaded);
         console.log(`Loaded ${loaded.length} contracts from DB`);
       } else {
