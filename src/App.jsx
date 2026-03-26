@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+=import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── SUPABASE CLIENT ───────────────────────────────────────────
@@ -944,18 +944,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         entry_needed: true,
         entry_summary: (contract.description || "").slice(0, 500),
         posted: (contract.posted_entries?.length || 0) >= (contract.journal_entries?.length || 1),
-        created_at: contract.uploaded_at || new Date().toISOString(),
       };
 
       if (contract.db_id) {
         const { error } = await supabase.from("unknown_documents")
           .update(payload).eq("id", contract.db_id);
-        if (error) console.error("persistContract UPDATE error:", error);
+        if (error) console.error("persistContract UPDATE error:", JSON.stringify(error));
         else console.log("persistContract: updated", contract.db_id);
       } else {
         const { data, error } = await supabase.from("unknown_documents")
           .insert(payload).select("id").single();
-        if (error) console.error("persistContract INSERT error:", error);
+        if (error) console.error("persistContract INSERT error:", JSON.stringify(error));
         else {
           console.log("persistContract: inserted, new db_id=", data?.id);
           if (data?.id) {
@@ -972,20 +971,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const { data, error } = await supabase.from("unknown_documents")
         .select("*")
         .eq("company_id", currentCompany.id)
-        .like("document_type", "contract_%")
-        .order("created_at", { ascending: false });
-      if (error) { console.error("loadContractsFromDB error:", error); return; }
-      // Only update state if we got data — don't overwrite with empty array
+        .like("document_type", "contract_%");
+      if (error) { console.error("loadContractsFromDB error:", JSON.stringify(error)); return; }
       if (data && data.length > 0) {
         const loaded = data.map(row => {
           try {
             const parsed = JSON.parse(row.ai_explanation);
-            return { ...parsed, db_id: row.id, id: row.id, file_name: row.name || parsed.file_name, uploaded_at: row.created_at };
+            return { ...parsed, db_id: row.id, id: row.id, file_name: row.name || parsed.file_name, uploaded_at: row.created_at || row.uploaded_at };
           } catch { return null; }
         }).filter(Boolean);
         setContracts(loaded);
       } else {
-        // Explicitly clear contracts if none in DB (clean state)
         setContracts([]);
       }
     } catch(e) { console.error("loadContractsFromDB error:", e); }
@@ -1805,8 +1801,16 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
       const raw1 = (data1.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim();
       const contract = JSON.parse(raw1);
 
+      // Calculate lease term from dates if AI didn't return it
+      let leaseTermMonths = contract.lease_term_months || 0;
+      if (!leaseTermMonths && contract.start_date && contract.end_date) {
+        const start = new Date(contract.start_date);
+        const end = new Date(contract.end_date);
+        leaseTermMonths = Math.round((end - start) / (1000 * 60 * 60 * 24 * 30.44));
+      }
+      console.log(`Contract: type=${contract.contract_type}, lease_type=${contract.lease_type}, term=${leaseTermMonths}mo, payment=$${contract.payment_amount}`);
+
       // ── CALL 2: Generate all monthly entries (pure math, no document) ────
-      const leaseTermMonths = contract.lease_term_months || 0;
       const monthlyEntries = [];
 
       if (contract.contract_type === "lease" && leaseTermMonths > 0) {
