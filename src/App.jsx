@@ -224,8 +224,9 @@ function AppWrapper() {
       if (session) loadCompanies(session);
       else setAppLoading(false);
     });
-    // Listen for auth changes
+    // Listen for auth changes — but don't reload on token refresh (causes view reset)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === "TOKEN_REFRESHED") return; // ignore token refreshes
       setSession(session);
       if (session) loadCompanies(session);
       else { setCompanies([]); setCurrentCompany(null); setAppLoading(false); }
@@ -242,8 +243,9 @@ function AppWrapper() {
       .not("accepted_at", "is", null);
     const cos = (data||[]).map(r=>({...r.companies, role:r.role}));
     setCompanies(cos);
-    if (cos.length > 0) setCurrentCompany(cos[0]);
-    else setShowCompanySetup(true);
+    // Only set currentCompany if not already set
+    setCurrentCompany(prev => prev || (cos.length > 0 ? cos[0] : null));
+    if (cos.length === 0) setShowCompanySetup(true);
     setAppLoading(false);
   };
 
@@ -350,6 +352,35 @@ function vendorColor(name) {
 // Balance sheet accounts (1xxx assets, 2xxx liabilities, 3xxx equity) never appear on P&L.
 const glIsRevenue     = (code) => typeof code === "string" && code.startsWith("4");
 const glIsExpense     = (code) => typeof code === "string" && (code.startsWith("5") || code.startsWith("6"));
+
+// ASC 842 Lease Calculation Helper
+// Per ASC 842-20-30: Lease Liability = PV of future lease payments at commencement date
+// ROU Asset = Lease Liability + prepaid rent + initial direct costs - lease incentives
+// For simplicity (no prepaid/incentives): ROU Asset = Lease Liability
+const calcASC842 = (monthlyPayment, termMonths, annualRate) => {
+  const r = annualRate / 12; // monthly rate
+  // PV of ordinary annuity (payments at end of period)
+  const leaseLIABILITY = r > 0
+    ? monthlyPayment * (1 - Math.pow(1 + r, -termMonths)) / r
+    : monthlyPayment * termMonths; // zero rate edge case
+  const rouASSET = leaseLIABILITY; // ROU = Lease Liability at commencement (no prepaid/incentives)
+  // Current portion = principal payments in next 12 months
+  let bal = leaseLIABILITY;
+  let currentPortion = 0;
+  for (let i = 0; i < Math.min(12, termMonths); i++) {
+    const interest = bal * r;
+    const principal = monthlyPayment - interest;
+    currentPortion += principal;
+    bal -= principal;
+  }
+  return {
+    leaseLIABILITY: Math.round(leaseLIABILITY * 100) / 100,
+    rouASSET: Math.round(rouASSET * 100) / 100,
+    currentPortion: Math.round(currentPortion * 100) / 100,
+    nonCurrentPortion: Math.round((leaseLIABILITY - currentPortion) * 100) / 100,
+    straightLineMonthly: Math.round((monthlyPayment * termMonths / termMonths) * 100) / 100,
+  };
+};
 const glIsBalSheet    = (code) => typeof code === "string" && (code.startsWith("1") || code.startsWith("2") || code.startsWith("3"));
 // Returns "revenue" | "expense" | null (null = balance sheet — exclude from P&L entirely)
 const glPLType        = (code) => glIsRevenue(code) ? "revenue" : glIsExpense(code) ? "expense" : null;
@@ -638,6 +669,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [customCOA, setCustomCOA] = useState(DEFAULT_CHART_OF_ACCOUNTS);
   // Shadow the static const so all existing code works unchanged
   const CHART_OF_ACCOUNTS = customCOA;
+
+  // ── DELETE CONFIRMATION ───────────────────────────────────────────────────────
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, label, onConfirm }
 
   // ── OPENING BALANCES ─────────────────────────────────────────────────────────
   // { account_code, account_name, balance, as_of_date, posted }
@@ -1808,17 +1842,28 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
         const ibr = contract.discount_rate_used || 0.05;
         const ibrMonthly = ibr / 12;
         const monthlyPayment = parseFloat(contract.payment_amount) || 0;
-        // Straight-line = total undiscounted payments / term
         const totalPayments = monthlyPayment * leaseTermMonths;
         const straightLine = contract.monthly_straight_line_expense || (totalPayments / leaseTermMonths);
-        let liabilityBalance = (parseFloat(contract.lease_liability_current) || 0) + (parseFloat(contract.lease_liability_noncurrent) || 0);
 
-        // If liability is 0 (AI didn't calc), estimate PV ourselves
-        if (liabilityBalance === 0 && monthlyPayment > 0) {
-          // PV of annuity formula
-          liabilityBalance = ibrMonthly > 0
-            ? monthlyPayment * (1 - Math.pow(1 + ibrMonthly, -leaseTermMonths)) / ibrMonthly
-            : monthlyPayment * leaseTermMonths;
+        // Use calcASC842 to get correct values, fallback to AI-provided if available
+        const asc842 = calcASC842(monthlyPayment, leaseTermMonths, ibr);
+        const aiLiability = (parseFloat(contract.lease_liability_current) || 0) + (parseFloat(contract.lease_liability_noncurrent) || 0);
+        let liabilityBalance = aiLiability > 0 ? aiLiability : asc842.leaseLIABILITY;
+
+        // Update contract with correct values if AI returned zeros
+        if (aiLiability === 0) {
+          contract.rou_asset_value = asc842.rouASSET;
+          contract.lease_liability_current = asc842.currentPortion;
+          contract.lease_liability_noncurrent = asc842.nonCurrentPortion;
+          contract.monthly_straight_line_expense = asc842.straightLineMonthly;
+          // Also fix Day 1 entry lines if they have zero values
+          if (contract.journal_entries?.[0]?.lines) {
+            contract.journal_entries[0].lines = [
+              { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouASSET, credit: 0 },
+              { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
+              { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
+            ];
+          }
         }
 
         const startDate = new Date(contract.start_date || new Date());
@@ -2624,6 +2669,20 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {notification && (
         <div style={{ position:"fixed", top:20, right:20, zIndex:9999, background:notification.type==="error"?"#2A0A0A":"#0A2A1A", border:`1px solid ${notification.type==="error"?"#EF4444":"#10B981"}`, color:notification.type==="error"?"#FCA5A5":"#6EE7B7", padding:"12px 20px", borderRadius:10, fontSize:14, animation:"fadein 0.2s ease", boxShadow:"0 8px 32px rgba(0,0,0,0.6)" }}>
           {notification.msg}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:"#14141A", border:"1px solid #EF444433", borderRadius:16, padding:28, maxWidth:400, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
+            <div style={{ fontSize:16, fontWeight:600, marginBottom:10 }}>Confirm Delete</div>
+            <div style={{ fontSize:13, color:"#9CA3AF", marginBottom:20, lineHeight:1.6 }}>{deleteConfirm.label}</div>
+            <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+              <button onClick={()=>setDeleteConfirm(null)} style={{ padding:"8px 20px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#9CA3AF", fontSize:13, cursor:"pointer" }}>Cancel</button>
+              <button onClick={()=>{ deleteConfirm.onConfirm(); setDeleteConfirm(null); }} style={{ padding:"8px 20px", borderRadius:8, background:"#7F1D1D", border:"1px solid #EF4444", color:"#FCA5A5", fontSize:13, cursor:"pointer", fontWeight:600 }}>Delete</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -4361,14 +4420,16 @@ What should this business owner know and do?`}]
                             <div style={{ display:"flex", gap:4 }}>
                               {inv.status !== "voided" && (
                                 <button
-                                  onClick={e=>{ e.stopPropagation(); if(window.confirm(`Void this entry?\n${inv.vendor} · $${inv.amount} · ${inv.date}\n\nVoiding keeps an audit trail. Use Delete to remove entirely.`)) { setInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"voided",voided_at:new Date().toISOString()}:i)); showNotification("Entry voided ✓"); }}}
+                                  onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Void entry for ${inv.vendor} · $${inv.amount} on ${inv.date}?
+
+Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"voided",voided_at:new Date().toISOString()}:i)); showNotification("Entry voided ✓"); }}); }}
                                   style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", fontSize:11, cursor:"pointer" }}
                                   title="Void (keeps audit trail)">
                                   Void
                                 </button>
                               )}
                               <button
-                                onClick={e=>{ e.stopPropagation(); if(window.confirm(`Permanently delete this entry?\n${inv.vendor} · $${inv.amount} · ${inv.date}\n\nThis cannot be undone.`)) { setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}}
+                                onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Permanently delete ${inv.vendor} · $${inv.amount} on ${inv.date}? This cannot be undone.`, onConfirm:()=>{ setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}); }}
                                 style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #EF444433", color:"#EF4444", fontSize:11, cursor:"pointer" }}
                                 title="Delete permanently">
                                 ×
@@ -5446,11 +5507,7 @@ What should this business owner know and do?`}]
                       </div>
                       <div style={{ marginLeft:"auto", display:"flex", gap:10 }}>
                         <button onClick={()=>{
-                          if(window.confirm(`Delete this contract and all its entries?\n\n${selectedContract.counterparty} — ${selectedContract.description}\n\nThis cannot be undone.`)) {
-                            setContracts(prev=>prev.filter(c=>c.id!==selectedContract.id));
-                            setContractView("list");
-                            showNotification("Contract deleted ✓");
-                          }
+                          setDeleteConfirm({ label:`Delete contract with ${selectedContract.counterparty}? All generated entries will be removed. This cannot be undone.`, onConfirm:()=>{ setContracts(prev=>prev.filter(c=>c.id!==selectedContract.id)); setContractView("list"); showNotification("Contract deleted ✓"); }});
                         }} style={{ padding:"10px 16px", borderRadius:10, fontSize:12, background:"transparent", border:"1px solid #EF444433", color:"#EF4444", cursor:"pointer" }}>
                           Delete
                         </button>
