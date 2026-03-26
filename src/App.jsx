@@ -211,45 +211,67 @@ function CompanySwitcher({ companies, currentCompany, onSwitch, onNew, userName 
 
 // ── APP WRAPPER — handles auth state ─────────────────────────
 function AppWrapper() {
-  const [session, setSession] = React.useState(undefined); // undefined = loading
+  const [session, setSession] = React.useState(undefined);
   const [companies, setCompanies] = React.useState([]);
   const [currentCompany, setCurrentCompany] = React.useState(null);
   const [showCompanySetup, setShowCompanySetup] = React.useState(false);
   const [appLoading, setAppLoading] = React.useState(true);
+  // View lives here so it survives ERP remounts on auth/company changes
+  const [persistedView, setPersistedView] = React.useState(() => {
+    try { return localStorage.getItem("cfai_view") || "dashboard"; } catch { return "dashboard"; }
+  });
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) loadCompanies(session, true); // isInitial=true
-      else setAppLoading(false);
-    });
-    // Listen for auth changes — but don't reload on token refresh (causes view reset)
+    // Single source of truth: onAuthStateChange handles everything
+    // getSession just primes the initial state
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (_event === "TOKEN_REFRESHED") return; // ignore — causes view reset
-      if (_event === "SIGNED_IN" && session) {
+      // TOKEN_REFRESHED fires when tab regains focus — ignore completely
+      if (_event === "TOKEN_REFRESHED") return;
+      
+      if (session) {
         setSession(session);
-        loadCompanies(session, false); // isInitial=false — don't show loading screen
-        return;
+        // Only load companies if not already loaded (prevents remount on tab switch)
+        setCurrentCompany(prev => {
+          if (prev) return prev; // already loaded — don't trigger reload
+          loadCompanies(session);
+          return prev;
+        });
+      } else {
+        setSession(null);
+        setCompanies([]);
+        setCurrentCompany(null);
+        setAppLoading(false);
       }
-      if (!session) { setSession(null); setCompanies([]); setCurrentCompany(null); setAppLoading(false); }
     });
+
+    // Prime with existing session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setSession(session);
+        loadCompanies(session);
+      } else {
+        setAppLoading(false);
+      }
+    });
+
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadCompanies = async (sess, isInitial = false) => {
-    if (isInitial) setAppLoading(true);
-    const { data } = await supabase
-      .from("company_users")
-      .select("company_id, role, companies(*)")
-      .eq("user_id", sess.user.id)
-      .not("accepted_at", "is", null);
-    const cos = (data||[]).map(r=>({...r.companies, role:r.role}));
-    setCompanies(cos);
-    // Only set currentCompany if not already set
-    setCurrentCompany(prev => prev || (cos.length > 0 ? cos[0] : null));
-    if (cos.length === 0) setShowCompanySetup(true);
-    if (isInitial) setAppLoading(false);
+  const loadCompanies = async (sess) => {
+    setAppLoading(true);
+    try {
+      const { data } = await supabase
+        .from("company_users")
+        .select("company_id, role, companies(*)")
+        .eq("user_id", sess.user.id)
+        .not("accepted_at", "is", null);
+      const cos = (data||[]).map(r=>({...r.companies, role:r.role}));
+      setCompanies(cos);
+      setCurrentCompany(prev => prev || (cos.length > 0 ? cos[0] : null));
+      if (cos.length === 0) setShowCompanySetup(true);
+    } finally {
+      setAppLoading(false);
+    }
   };
 
   const handleSignOut = async () => {
@@ -285,6 +307,8 @@ function AppWrapper() {
       onNewCompany={()=>setShowCompanySetup(true)}
       onSignOut={handleSignOut}
       supabase={supabase}
+      persistedView={persistedView}
+      onViewChange={v=>{ setPersistedView(v); try{localStorage.setItem("cfai_view",v);}catch{} }}
     />
   );
 }
@@ -590,13 +614,20 @@ GAAP AWARENESS — maintain proper books but explain simply:
   }
 }
 
-function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany, onSignOut, supabase }) {
+function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany, onSignOut, supabase, persistedView, onViewChange }) {
   const [invoices, setInvoices] = useState([]);
   const [rules, setRules] = useState([]); // { vendor, gl_code, gl_name, project }
   // Contacts: { id, name, type:"vendor"|"customer", gl_code, gl_name, payment_terms, email, phone, notes, tags:[], min_expected, max_expected, created_at }
   const [contacts, setContacts] = useState([]);
   const [customProjects, setCustomProjects] = useState([]);
-  const [view, setView] = useState("dashboard");
+  // View is lifted to AppWrapper so it survives remounts — never resets on refresh or tab switch
+  const [view, setViewRaw] = useState(persistedView || "dashboard");
+  const setView = (v) => { setViewRaw(v); onViewChange?.(v); };
+
+  // Sync if persistedView changes (e.g. company switch)
+  useEffect(() => {
+    if (persistedView && persistedView !== view) setViewRaw(persistedView);
+  }, [persistedView]); // eslint-disable-line
   // ── CLARIFICATION QUEUE ── invoices waiting for user input before booking
   const [clarificationQueue, setClarificationQueue] = useState([]); // [{id, invoice, question, options, queueItemId}]
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -5054,56 +5085,61 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
 
                     {/* BALANCE SHEET */}
                     {reportType==="balance" && (() => {
-                      const asOf = reportRange==="month" ? new Date().toISOString().slice(0,7) :
-                                   reportRange==="quarter" ? new Date().toISOString().slice(0,7) :
-                                   new Date().getFullYear().toString();
                       const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
 
-                      // Assets from opening balances + movements
-                      const openingByCode = {};
-                      openingBalances.forEach(b => { openingByCode[b.account_code] = parseFloat(b.balance)||0; });
-
-                      // Journal entry movements by account code
+                      // Build movements from ALL invoice entries using debit_credit flag
+                      // Each invoice row is ONE side of a journal entry
                       const movements = {};
-                      invoices.forEach(inv => {
-                        // Debit side (gl_code)
-                        if (!movements[inv.gl_code]) movements[inv.gl_code] = 0;
-                        // Credit side (secondary)
-                        if (!movements[inv.secondary_gl_code]) movements[inv.secondary_gl_code] = 0;
+                      invoices.filter(i => i.status !== "voided").forEach(inv => {
+                        const code = inv.gl_code;
+                        const acct = CHART_OF_ACCOUNTS.find(a => a.code === code);
+                        if (!acct) return;
+                        if (!movements[code]) movements[code] = 0;
 
-                        const acct = CHART_OF_ACCOUNTS.find(a => a.code === inv.gl_code);
-                        if (acct) {
-                          if (["Assets"].includes(acct.category)) movements[inv.gl_code] += inv.amount;
-                          else if (["Liabilities","Equity"].includes(acct.category)) movements[inv.gl_code] -= inv.amount;
-                          else if (acct.category === "Expenses") movements[inv.gl_code] += inv.amount;
-                          else if (acct.category === "Revenue") movements[inv.gl_code] -= inv.amount;
-                        }
-                        const secAcct = CHART_OF_ACCOUNTS.find(a => a.code === inv.secondary_gl_code);
-                        if (secAcct) {
-                          if (["Liabilities","Equity"].includes(secAcct.category)) movements[inv.secondary_gl_code] += inv.amount;
-                          else if (["Assets"].includes(secAcct.category)) movements[inv.secondary_gl_code] -= inv.amount;
+                        const isDebit = inv.debit_credit !== "credit"; // default debit
+                        const amount = inv.amount || 0;
+
+                        // Normal balance rules:
+                        // Assets/Expenses: debit increases, credit decreases
+                        // Liabilities/Equity/Revenue: credit increases, debit decreases
+                        if (["Assets","Expenses"].includes(acct.category)) {
+                          movements[code] += isDebit ? amount : -amount;
+                        } else {
+                          movements[code] += isDebit ? -amount : amount;
                         }
                       });
 
+                      const openingByCode = {};
+                      openingBalances.forEach(b => { openingByCode[b.account_code] = parseFloat(b.balance)||0; });
+
                       const getBalance = (code) => (openingByCode[code]||0) + (movements[code]||0);
 
-                      const assets = CHART_OF_ACCOUNTS.filter(a => a.category==="Assets");
+                      const assets      = CHART_OF_ACCOUNTS.filter(a => a.category==="Assets");
                       const liabilities = CHART_OF_ACCOUNTS.filter(a => a.category==="Liabilities");
-                      const equity = CHART_OF_ACCOUNTS.filter(a => a.category==="Equity");
+                      const equity      = CHART_OF_ACCOUNTS.filter(a => a.category==="Equity");
 
-                      const totalAssets = assets.reduce((s,a) => s + getBalance(a.code), 0);
+                      const totalAssets      = assets.reduce((s,a) => s + getBalance(a.code), 0);
                       const totalLiabilities = liabilities.reduce((s,a) => s + getBalance(a.code), 0);
-                      const totalEquity = equity.reduce((s,a) => s + getBalance(a.code), 0);
-                      const ytdNet = totalRevenue - totalExpenses;
-                      const totalLiabEquity = totalLiabilities + totalEquity + ytdNet;
-                      const isBalanced = Math.abs(totalAssets - totalLiabEquity) < 1;
+                      const totalEquityAccts = equity.reduce((s,a) => s + getBalance(a.code), 0);
+
+                      // YTD net income closes to retained earnings
+                      const ytdRevenue  = invoices.filter(i=>i.status!=="voided"&&glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+                      const ytdExpenses = invoices.filter(i=>i.status!=="voided"&&glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+                      const ytdNet = ytdRevenue - ytdExpenses;
+                      const totalLiabEquity = totalLiabilities + totalEquityAccts + ytdNet;
+                      const diff = Math.abs(totalAssets - totalLiabEquity);
+                      const isBalanced = diff < 1;
 
                       const Section = ({title, accounts, total, totalLabel}) => (
                         <div style={{marginBottom:28}}>
                           <div style={{fontSize:11,fontWeight:700,color:"#C8B8FF",letterSpacing:2,marginBottom:12,paddingBottom:8,borderBottom:"1px solid #2A2A3E"}}>{title}</div>
-                          {accounts.filter(a => getBalance(a.code) !== 0 || openingByCode[a.code]).map(a => (
+                          {accounts.filter(a => getBalance(a.code) !== 0 || openingByCode[a.code]).length === 0
+                            ? <div style={{fontSize:12,color:"#4B4B6A",paddingLeft:8,marginBottom:8}}>No balances recorded</div>
+                            : accounts.filter(a => getBalance(a.code) !== 0 || openingByCode[a.code]).map(a => (
                             <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1A1A28"}}>
-                              <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace"}}>{a.code}</span>{a.name}</div>
+                              <div style={{fontSize:13,color:"#C8C8D8"}}>
+                                <span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}
+                              </div>
                               <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBalance(a.code)<0?"#EF4444":"#E8E8F0"}}>{fmt(getBalance(a.code))}</div>
                             </div>
                           ))}
@@ -5143,7 +5179,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                               </div>
                               <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",marginTop:4}}>
                                 <div style={{fontSize:13,fontWeight:700,color:"#E8E8F0"}}>Total Equity</div>
-                                <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{fmt(totalEquity + ytdNet)}</div>
+                                <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{fmt(totalEquityAccts + ytdNet)}</div>
                               </div>
                             </div>
                             <div style={{borderTop:"2px solid #2A2A3E",paddingTop:16,display:"flex",justifyContent:"space-between"}}>
