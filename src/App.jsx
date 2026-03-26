@@ -221,21 +221,24 @@ function AppWrapper() {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) loadCompanies(session);
+      if (session) loadCompanies(session, true); // isInitial=true
       else setAppLoading(false);
     });
     // Listen for auth changes — but don't reload on token refresh (causes view reset)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (_event === "TOKEN_REFRESHED") return; // ignore token refreshes
-      setSession(session);
-      if (session) loadCompanies(session);
-      else { setCompanies([]); setCurrentCompany(null); setAppLoading(false); }
+      if (_event === "TOKEN_REFRESHED") return; // ignore — causes view reset
+      if (_event === "SIGNED_IN" && session) {
+        setSession(session);
+        loadCompanies(session, false); // isInitial=false — don't show loading screen
+        return;
+      }
+      if (!session) { setSession(null); setCompanies([]); setCurrentCompany(null); setAppLoading(false); }
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadCompanies = async (sess) => {
-    setAppLoading(true);
+  const loadCompanies = async (sess, isInitial = false) => {
+    if (isInitial) setAppLoading(true);
     const { data } = await supabase
       .from("company_users")
       .select("company_id, role, companies(*)")
@@ -246,7 +249,7 @@ function AppWrapper() {
     // Only set currentCompany if not already set
     setCurrentCompany(prev => prev || (cos.length > 0 ? cos[0] : null));
     if (cos.length === 0) setShowCompanySetup(true);
-    setAppLoading(false);
+    if (isInitial) setAppLoading(false);
   };
 
   const handleSignOut = async () => {
@@ -2093,12 +2096,58 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
   };
 
   const postAllContractEntries = (contract) => {
-    const unposted = contract.journal_entries?.filter((_,i) => !contract.posted_entries?.includes(i)) || [];
-    unposted.forEach((_,idx) => {
-      const realIdx = contract.journal_entries.indexOf(_);
-      postContractEntry(contract, realIdx);
+    const unpostedIndexes = (contract.journal_entries || [])
+      .map((_, i) => i)
+      .filter(i => !(contract.posted_entries || []).includes(i));
+
+    if (unpostedIndexes.length === 0) return;
+
+    // Collect all new invoices from all entries at once
+    const allNewInvoices = [];
+    unpostedIndexes.forEach(idx => {
+      const entry = contract.journal_entries[idx];
+      if (!entry) return;
+      entry.lines.forEach((l, li) => {
+        const isDebit = l.debit > 0;
+        const amount = isDebit ? l.debit : l.credit;
+        const acct = CHART_OF_ACCOUNTS.find(a => a.code === l.account_code);
+        const category = acct?.category || "Expenses";
+        const offsetLine = isDebit ? entry.lines.find(x => x.credit > 0) : entry.lines.find(x => x.debit > 0);
+        allNewInvoices.push({
+          id: Date.now() + Math.random() + idx * 100 + li,
+          vendor: contract.counterparty,
+          description: `${entry.description}${entry.memo ? ` — ${entry.memo}` : ""}`,
+          amount,
+          date: entry.date,
+          type: ["Revenue"].includes(category) ? "revenue" : "expense",
+          project: "General",
+          gl_code: l.account_code,
+          gl_name: l.account_name,
+          secondary_gl_code: offsetLine?.account_code || "2000",
+          secondary_gl_name: offsetLine?.account_name || "Accounts Payable",
+          debit_credit: isDebit ? "debit" : "credit",
+          confidence: 99,
+          reasoning: `Posted from contract: ${contract.description}`,
+          status: "booked",
+          booked_at: new Date().toISOString(),
+          source: "contract",
+          contract_id: contract.id,
+          balance_sheet_account: ["Assets","Liabilities","Equity"].includes(category),
+        });
+      });
     });
-    showNotification(`All ${unposted.length} entries posted ✓`);
+
+    // Single state update for all invoices
+    setInvoices(prev => [...allNewInvoices, ...prev]);
+    allNewInvoices.forEach(inv => persistJournalEntry(inv));
+
+    // Single contract state update
+    const allPosted = [...(contract.posted_entries || []), ...unpostedIndexes];
+    const updatedContract = {...contract, posted_entries: allPosted};
+    setContracts(prev => prev.map(c => c.id === contract.id ? updatedContract : c));
+    setSelectedContract(updatedContract);
+    persistContract(updatedContract);
+    showNotification(`✓ Posted all ${unpostedIndexes.length} entries to ledger`);
   };
 
   // ── MATCHING ENGINE ───────────────────────────────────────────────────────────
@@ -4852,19 +4901,29 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
               });
             };
             const filtered = filterByRange(invoices);
-            // Strictly GL-code driven — balance sheet accounts never touch the P&L
-            const revenue  = filtered.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
-            const expenses = filtered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+            // Only include non-voided entries on P&L (exclude balance sheet accounts)
+            const plFiltered = filtered.filter(i => i.status !== "voided" && glPLType(i.gl_code));
+            const revenue  = plFiltered.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+            const expenses = plFiltered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
             const net = revenue - expenses;
 
-            // Group by GL for expense breakdown — expenses only (5xxx/6xxx)
+            // Group by GL for revenue breakdown — with account codes
+            const byRevGL = {};
+            plFiltered.filter(i=>glIsRevenue(i.gl_code)).forEach(inv => {
+              const k = inv.gl_code;
+              if (!byRevGL[k]) byRevGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
+              byRevGL[k].total += inv.amount; byRevGL[k].count++;
+            });
+            const revRows = Object.values(byRevGL).sort((a,b)=>b.total-a.total);
+
+            // Group by GL for expense breakdown — with account codes
             const byGL = {};
-            filtered.filter(i=>glIsExpense(i.gl_code)).forEach(inv => {
-              const k = `${inv.gl_code} · ${inv.gl_name}`;
+            plFiltered.filter(i=>glIsExpense(i.gl_code)).forEach(inv => {
+              const k = inv.gl_code;
               if (!byGL[k]) byGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
               byGL[k].total += inv.amount; byGL[k].count++;
             });
-            const glRows = Object.values(byGL).sort((a,b)=>b.total-a.total);
+            const glRows = Object.values(byGL).sort((a,b) => a.code?.localeCompare(b.code));
 
             // Group by vendor — only P&L accounts (income statement items)
             const byVendor = {};
@@ -4938,18 +4997,24 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                       <div>
                         <div style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
                           <div style={{ padding:"18px 24px", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between" }}>
-                            <div style={{ fontSize:14, fontWeight:600 }}>Profit & Loss Statement</div>
-                            <div style={{ fontSize:12, color:"#6B6B8A" }}>{rangeLabels[reportRange]} · {filtered.length} transactions</div>
+                            <div>
+                              <div style={{ fontSize:14, fontWeight:600 }}>Profit & Loss Statement</div>
+                              <div style={{ fontSize:11, color:"#6B6B8A", marginTop:3 }}>Accrual basis · Income statement accounts only</div>
+                            </div>
+                            <div style={{ fontSize:12, color:"#6B6B8A" }}>{rangeLabels[reportRange]} · {plFiltered.length} transactions</div>
                           </div>
                           <div style={{ padding:"0 24px" }}>
                             {/* Revenue */}
                             <div style={{ padding:"16px 0", borderBottom:"1px solid #1E1E2E" }}>
                               <div style={{ fontSize:11, color:"#6B6B8A", letterSpacing:2, marginBottom:12 }}>REVENUE</div>
-                              {filtered.filter(i=>glIsRevenue(i.gl_code)).length===0 ? <div style={{ fontSize:13, color:"#6B6B8A" }}>No revenue recorded</div> :
-                                Object.entries(filtered.filter(i=>glIsRevenue(i.gl_code)).reduce((a,i)=>{ a[i.gl_name]=(a[i.gl_name]||0)+i.amount; return a; },{})).map(([name,amt])=>(
-                                  <div key={name} style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                                    <span style={{ fontSize:13, color:"#C8C8D8", paddingLeft:12 }}>{name}</span>
-                                    <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#10B981" }}>{fmt(amt)}</span>
+                              {revRows.length===0 ? <div style={{ fontSize:13, color:"#6B6B8A" }}>No revenue recorded</div> :
+                                revRows.map(row=>(
+                                  <div key={row.code} style={{ display:"flex", justifyContent:"space-between", marginBottom:8, alignItems:"center" }}>
+                                    <span style={{ fontSize:13, color:"#C8C8D8", paddingLeft:12, display:"flex", alignItems:"center", gap:10 }}>
+                                      <span style={{ fontSize:10, color:"#4B4B6A", fontFamily:"monospace", background:"#1E1E2E", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      {row.name}
+                                    </span>
+                                    <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#10B981" }}>{fmt(row.total)}</span>
                                   </div>
                                 ))
                               }
@@ -4963,8 +5028,11 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                               <div style={{ fontSize:11, color:"#6B6B8A", letterSpacing:2, marginBottom:12 }}>EXPENSES</div>
                               {glRows.length===0 ? <div style={{ fontSize:13, color:"#6B6B8A" }}>No expenses recorded</div> :
                                 glRows.map(row=>(
-                                  <div key={row.code} style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                                    <span style={{ fontSize:13, color:"#C8C8D8", paddingLeft:12 }}>{row.name}</span>
+                                  <div key={row.code} style={{ display:"flex", justifyContent:"space-between", marginBottom:8, alignItems:"center" }}>
+                                    <span style={{ fontSize:13, color:"#C8C8D8", paddingLeft:12, display:"flex", alignItems:"center", gap:10 }}>
+                                      <span style={{ fontSize:10, color:"#4B4B6A", fontFamily:"monospace", background:"#1E1E2E", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      {row.name}
+                                    </span>
                                     <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#EF4444" }}>({fmt(row.total)})</span>
                                   </div>
                                 ))
@@ -4977,7 +5045,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                             {/* Net */}
                             <div style={{ padding:"18px 0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                               <span style={{ fontSize:16, fontWeight:700 }}>Net {net>=0?"Income":"Loss"}</span>
-                              <span style={{ fontSize:20, fontFamily:"'DM Mono', monospace", fontWeight:700, color:net>=0?"#10B981":"#EF4444" }}>{net<0?"-":""}{fmt(net)}</span>
+                              <span style={{ fontSize:20, fontFamily:"'DM Mono', monospace", fontWeight:700, color:net>=0?"#10B981":"#EF4444" }}>{net<0?"-":""}{fmt(Math.abs(net))}</span>
                             </div>
                           </div>
                         </div>
