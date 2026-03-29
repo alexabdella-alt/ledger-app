@@ -825,31 +825,67 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const loadAllData = async () => {
     const cid = currentCompany.id;
     try {
-      // Load journal entries + lines as flat invoices for backward compat
+      // Load journal entries — expand each line individually for correct balance sheet mapping
       const { data: entries } = await supabase
         .from("journal_entries")
         .select("*, journal_entry_lines(*, accounts(code,name))")
         .eq("company_id", cid)
         .eq("status", "posted")
         .order("entry_date", { ascending: false })
-        .limit(200);
+        .limit(500);
 
       if (entries) {
-        const mapped = entries.map(e => {
-          const debitLine = e.journal_entry_lines?.find(l => l.debit > 0);
-          const creditLine = e.journal_entry_lines?.find(l => l.credit > 0);
-          return {
-            id: e.id, vendor: e.description?.split(" – ")[0] || e.description,
-            description: e.description, amount: debitLine?.debit || creditLine?.credit || 0,
-            date: e.entry_date, type: debitLine?.accounts?.code?.startsWith("4") ? "revenue" : "expense",
-            gl_code: debitLine?.accounts?.code || creditLine?.accounts?.code,
-            gl_name: debitLine?.accounts?.name || creditLine?.accounts?.name,
-            secondary_gl_code: creditLine?.accounts?.code, secondary_gl_name: creditLine?.accounts?.name,
-            debit_credit: debitLine ? "debit" : "credit",
-            status: "booked", booked_at: e.created_at, source: e.source,
-            payment_status: "unpaid", confidence: 99, reasoning: "Loaded from database",
-            db_entry_id: e.id
-          };
+        const mapped = [];
+        entries.forEach(e => {
+          const lines = e.journal_entry_lines || [];
+          const vendor = e.description?.split(" – ")[0] || e.description;
+          // Find the primary P&L line for display (first debit or revenue line)
+          const primaryDebit = lines.find(l => l.debit > 0);
+          const primaryCredit = lines.find(l => l.credit > 0);
+
+          if (lines.length <= 2) {
+            // Simple two-line entry — map as single invoice row (backward compat)
+            const debitLine = primaryDebit;
+            const creditLine = primaryCredit;
+            mapped.push({
+              id: e.id, vendor, description: e.description,
+              amount: debitLine?.debit || creditLine?.credit || 0,
+              date: e.entry_date,
+              type: debitLine?.accounts?.code?.startsWith("4") ? "revenue" : "expense",
+              gl_code: debitLine?.accounts?.code || creditLine?.accounts?.code,
+              gl_name: debitLine?.accounts?.name || creditLine?.accounts?.name,
+              secondary_gl_code: creditLine?.accounts?.code,
+              secondary_gl_name: creditLine?.accounts?.name,
+              debit_credit: debitLine ? "debit" : "credit",
+              status: "booked", booked_at: e.created_at, source: e.source,
+              payment_status: "unpaid", confidence: 99,
+              reasoning: "Loaded from database", db_entry_id: e.id
+            });
+          } else {
+            // Multi-line entry (e.g. lease commencement, payroll) — expand each line
+            lines.forEach((l, li) => {
+              const isDebit = l.debit > 0;
+              const amount = isDebit ? l.debit : l.credit;
+              if (amount === 0) return;
+              const code = l.accounts?.code;
+              const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === code);
+              mapped.push({
+                id: `${e.id}_${li}`, vendor, description: e.description,
+                amount,
+                date: e.entry_date,
+                type: acctDef?.category === "Revenue" ? "revenue" : "expense",
+                gl_code: code,
+                gl_name: l.accounts?.name,
+                secondary_gl_code: isDebit ? primaryCredit?.accounts?.code : primaryDebit?.accounts?.code,
+                secondary_gl_name: isDebit ? primaryCredit?.accounts?.name : primaryDebit?.accounts?.name,
+                debit_credit: isDebit ? "debit" : "credit",
+                status: "booked", booked_at: e.created_at, source: e.source,
+                payment_status: "unpaid", confidence: 99,
+                reasoning: "Loaded from database", db_entry_id: e.id,
+                balance_sheet_account: ["Assets","Liabilities","Equity"].includes(acctDef?.category),
+              });
+            });
+          }
         });
         setInvoices(mapped);
       }
@@ -959,34 +995,29 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const persistJournalEntry = async (invoice) => {
     if (!currentCompany?.id || !session?.user?.id) return;
     try {
-      // Get or create debit account
       const ensureAccount = async (code, name) => {
         if (!code) return null;
         let { data } = await supabase.from("accounts")
           .select("id").eq("company_id", currentCompany.id).eq("code", code).single();
         if (data) return data;
-        // Account doesn't exist — create it
         const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === code);
         const { data: created } = await supabase.from("accounts").insert({
-          company_id: currentCompany.id,
-          code,
+          company_id: currentCompany.id, code,
           name: name || acctDef?.name || code,
           account_type: acctDef?.category?.toLowerCase() || "expense",
         }).select("id").single();
         return created;
       };
 
-      const debitAcct  = await ensureAccount(invoice.gl_code, invoice.gl_name);
-      const creditAcct = await ensureAccount(invoice.secondary_gl_code || "2000", invoice.secondary_gl_name || "Accounts Payable");
-      if (!debitAcct || !creditAcct) {
-        console.error("persistJournalEntry: could not find/create accounts", invoice.gl_code, invoice.secondary_gl_code);
-        return;
-      }
+      const isDebit = invoice.debit_credit !== "credit";
+      const primaryAcct    = await ensureAccount(invoice.gl_code, invoice.gl_name);
+      const secondaryAcct  = await ensureAccount(invoice.secondary_gl_code || "2000", invoice.secondary_gl_name || "Accounts Payable");
+      if (!primaryAcct) { console.error("persistJournalEntry: no primary account", invoice.gl_code); return; }
 
       const { data: je, error: jeErr } = await supabase.from("journal_entries").insert({
         company_id: currentCompany.id,
         entry_date: invoice.date || new Date().toISOString().slice(0,10),
-        description: `${invoice.vendor} – ${invoice.description || invoice.vendor}`,
+        description: `${invoice.vendor || ""} – ${invoice.description || invoice.vendor || ""}`,
         source: invoice.source || "manual",
         status: "posted",
         posted_at: new Date().toISOString(),
@@ -994,10 +1025,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       }).select().single();
       if (jeErr) { console.error("JE insert error:", jeErr); return; }
 
-      await supabase.from("journal_entry_lines").insert([
-        { journal_entry_id: je.id, company_id: currentCompany.id, account_id: debitAcct.id,  debit: invoice.amount, credit: 0, memo: invoice.description },
-        { journal_entry_id: je.id, company_id: currentCompany.id, account_id: creditAcct.id, debit: 0, credit: invoice.amount, memo: invoice.description },
-      ]);
+      const lines = [];
+      if (secondaryAcct) {
+        // Respect the debit_credit flag
+        if (isDebit) {
+          lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: primaryAcct.id,   debit: invoice.amount, credit: 0,              memo: invoice.description });
+          lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: secondaryAcct.id, debit: 0,              credit: invoice.amount, memo: invoice.description });
+        } else {
+          lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: primaryAcct.id,   debit: 0,              credit: invoice.amount, memo: invoice.description });
+          lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: secondaryAcct.id, debit: invoice.amount, credit: 0,              memo: invoice.description });
+        }
+      } else {
+        lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: primaryAcct.id, debit: isDebit ? invoice.amount : 0, credit: isDebit ? 0 : invoice.amount, memo: invoice.description });
+      }
+      await supabase.from("journal_entry_lines").insert(lines);
     } catch(e) { console.error("persistJournalEntry error:", e); }
   };
 
