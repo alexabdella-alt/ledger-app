@@ -634,7 +634,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [isAILoading, setIsAILoading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  const [form, setForm] = useState({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General" });
+  const [form, setForm] = useState({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General", invoice_number:"" });
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [notification, setNotification] = useState(null);
   const [aiStep, setAiStep] = useState(null);
@@ -1182,7 +1182,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     const base64 = await fileToBase64(file);
     setUploadedFile({ base64, mediaType: file.type, name: file.name });
     setAiSuggestion(null);
-    setForm({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General" });
+    setForm({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General", invoice_number:"" });
     runFullAI(base64, file.type);
   };
 
@@ -1193,7 +1193,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514", max_tokens: 1000,
-          system: `Extract invoice fields. "vendor" = exact legal name of the company issuing the invoice. Respond ONLY with valid JSON: {"vendor":"...","description":"...","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","notes":"line items, tax, invoice number etc"}`,
+          system: `Extract invoice fields. "vendor" = exact legal name of the company issuing the invoice. Respond ONLY with valid JSON: {"vendor":"...","description":"...","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details"}`,
           messages: [{ role:"user", content:[
             { type: mediaType==="application/pdf"?"document":"image", source:{ type:"base64", media_type:mediaType, data:base64 }},
             { type:"text", text:"Extract all invoice fields. Capture exact vendor name." }
@@ -1239,27 +1239,52 @@ CRITICAL RULES:
 
   const handleFormChange = (field, value) => setForm(f => ({...f, [field]:value}));
 
-  const handleBookInvoice = () => {
+  const handleBookInvoice = (force = false) => {
     if (!form.vendor?.trim()) { showNotification("Vendor name is required.", "error"); return; }
     if (!form.description || !form.amount || !form.date) { showNotification("Please fill all fields.", "error"); return; }
     if (!aiSuggestion) { showNotification("Waiting for AI coding.", "error"); return; }
-    const invoice = {
-      id: Date.now(), ...form, vendor: form.vendor.trim(),
-      amount: parseFloat(form.amount), project: form.project || "General",
-      gl_code: aiSuggestion.gl_code, gl_name: aiSuggestion.gl_name,
-      secondary_gl_code: aiSuggestion.secondary_gl_code, secondary_gl_name: aiSuggestion.secondary_gl_name,
-      debit_credit: aiSuggestion.debit_credit, confidence: aiSuggestion.confidence,
-      reasoning: aiSuggestion.reasoning, status: "booked", booked_at: new Date().toISOString(),
+
+    const doBook = () => {
+      const invoice = {
+        id: Date.now(), ...form, vendor: form.vendor.trim(),
+        amount: parseFloat(form.amount), project: form.project || "General",
+        invoice_number: form.invoice_number?.trim() || "",
+        gl_code: aiSuggestion.gl_code, gl_name: aiSuggestion.gl_name,
+        secondary_gl_code: aiSuggestion.secondary_gl_code, secondary_gl_name: aiSuggestion.secondary_gl_name,
+        debit_credit: aiSuggestion.debit_credit, confidence: aiSuggestion.confidence,
+        reasoning: aiSuggestion.reasoning, status: "booked", booked_at: new Date().toISOString(),
+      };
+      setInvoices(prev => [invoice, ...prev]);
+      runAPScreen([invoice], [invoice, ...invoices]);
+      checkWatchTriggers([invoice], unknownDocs);
+      logAudit("invoice_booked", `Manual entry: ${invoice.vendor} $${invoice.amount} → ${invoice.gl_name}`, null, invoice);
+      persistJournalEntry(invoice);
+      setForm({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General", invoice_number:"" });
+      setAiSuggestion(null); setUploadedFile(null);
+      setView("dashboard");
+      showNotification(`Booked to ${aiSuggestion.gl_name} ✓`);
     };
-    setInvoices(prev => [invoice, ...prev]);
-    runAPScreen([invoice], [invoice, ...invoices]);
-    checkWatchTriggers([invoice], unknownDocs);
-    logAudit("invoice_booked", `Manual entry: ${invoice.vendor} $${invoice.amount} → ${invoice.gl_name}`, null, invoice);
-    persistJournalEntry(invoice); // save to Supabase
-    setForm({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General" });
-    setAiSuggestion(null); setUploadedFile(null);
-    setView("dashboard");
-    showNotification(`Booked to ${aiSuggestion.gl_name} ✓`);
+
+    // Duplicate invoice number check for manual entry
+    const invNum = form.invoice_number?.trim();
+    if (!force && invNum) {
+      const dup = invoices.find(ex =>
+        ex.invoice_number &&
+        ex.invoice_number.toLowerCase() === invNum.toLowerCase() &&
+        ex.vendor?.toLowerCase() === form.vendor.trim().toLowerCase()
+      );
+      if (dup) {
+        setDeleteConfirm({
+          title: "Duplicate Invoice Detected",
+          label: `Invoice #${invNum} from ${form.vendor.trim()} was already booked on ${dup.date} for $${dup.amount.toFixed(2)} (${dup.gl_name}). Are you sure this is a different charge?`,
+          confirmLabel: "Book Anyway",
+          confirmBg: "#1A3A1A", confirmBorder: "1px solid #10B98144", confirmColor: "#6EE7B7",
+          onConfirm: doBook,
+        });
+        return;
+      }
+    }
+    doBook();
   };
 
   // ── UNIVERSAL UPLOAD ENGINE ───────────────────────────────────────────────────
@@ -1356,7 +1381,7 @@ Reply with only the single word.`,
 
 Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if there is only one invoice:
 [
-  {"vendor":"Exact vendor name","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","notes":"invoice number, line items, tax etc"},
+  {"vendor":"Exact vendor name","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details"},
   ...one object per invoice...
 ]
 
@@ -1437,6 +1462,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               date: extracted.date || new Date().toISOString().slice(0,10),
               type: extracted.type || "expense",
               notes: extracted.notes || "",
+              invoice_number: extracted.invoice_number || "",
               project: rule?.project || "General",
               gl_code: finalCode,
               gl_name: finalName,
@@ -1450,9 +1476,30 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               source: "universal_upload",
             };
 
+            // Duplicate invoice number check — runs before any other routing
+            const dupExisting = invoice.invoice_number
+              ? invoices.find(ex =>
+                  ex.invoice_number &&
+                  ex.invoice_number.toLowerCase() === invoice.invoice_number.toLowerCase() &&
+                  ex.vendor?.toLowerCase() === invoice.vendor?.toLowerCase()
+                )
+              : null;
+
+            if (dupExisting) {
+              needsClarification.push({
+                id: Date.now() + Math.random(),
+                invoice,
+                queueItemId: item.id,
+                isDuplicate: true,
+                existingInvoice: dupExisting,
+                question: `Invoice #${invoice.invoice_number} from ${invoice.vendor} was already booked on ${dupExisting.date} for $${dupExisting.amount.toFixed(2)} (coded to ${dupExisting.gl_name}). Is this the same charge?`,
+                options: [],
+                suggestedCode: invoice.gl_code,
+                suggestedName: invoice.gl_name,
+              });
             // Revenue classification always needs human confirmation — the prompt defaults to expense,
             // so a "revenue" result means the AI saw a signal but it may still be wrong.
-            if (!rule && isRevenue) {
+            } else if (!rule && isRevenue) {
               const revenueAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Revenue").slice(0, 2);
               const expenseAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Expenses")
                 .filter(a => ["5000","5800","5900"].includes(a.code));
@@ -2892,11 +2939,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {deleteConfirm && (
         <div style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div style={{ background:"#14141A", border:"1px solid #EF444433", borderRadius:16, padding:28, maxWidth:400, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
-            <div style={{ fontSize:16, fontWeight:600, marginBottom:10 }}>Confirm Delete</div>
+            <div style={{ fontSize:16, fontWeight:600, marginBottom:10 }}>{deleteConfirm.title || "Confirm Delete"}</div>
             <div style={{ fontSize:13, color:"#9CA3AF", marginBottom:20, lineHeight:1.6 }}>{deleteConfirm.label}</div>
             <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
               <button onClick={()=>setDeleteConfirm(null)} style={{ padding:"8px 20px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#9CA3AF", fontSize:13, cursor:"pointer" }}>Cancel</button>
-              <button onClick={()=>{ deleteConfirm.onConfirm(); setDeleteConfirm(null); }} style={{ padding:"8px 20px", borderRadius:8, background:"#7F1D1D", border:"1px solid #EF4444", color:"#FCA5A5", fontSize:13, cursor:"pointer", fontWeight:600 }}>Delete</button>
+              <button onClick={()=>{ deleteConfirm.onConfirm(); setDeleteConfirm(null); }} style={{ padding:"8px 20px", borderRadius:8, background: deleteConfirm.confirmBg||"#7F1D1D", border: deleteConfirm.confirmBorder||"1px solid #EF4444", color: deleteConfirm.confirmColor||"#FCA5A5", fontSize:13, cursor:"pointer", fontWeight:600 }}>{deleteConfirm.confirmLabel || "Delete"}</button>
             </div>
           </div>
         </div>
@@ -3155,52 +3202,97 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                 <div style={{ marginBottom:24 }}>
                   <div style={{ fontSize:11, color:"#F59E0B", letterSpacing:2, marginBottom:12 }}>⚠ NEEDS YOUR INPUT — {clarificationQueue.length} invoice{clarificationQueue.length>1?"s":""}</div>
                   {clarificationQueue.map(item => (
-                    <div key={item.id} style={{ background:"#1A1400", border:"1px solid #F59E0B44", borderRadius:14, padding:20, marginBottom:12 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
-                        <div>
-                          <div style={{ fontSize:15, fontWeight:600, marginBottom:4 }}>{item.invoice.vendor} — ${item.invoice.amount.toFixed(2)}</div>
-                          <div style={{ fontSize:13, color:"#9CA3AF" }}>{item.question}</div>
-                        </div>
-                        <div style={{ fontSize:11, color:"#F59E0B", background:"#F59E0B22", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12 }}>
-                          {Math.round(item.invoice.confidence)}% confident
-                        </div>
-                      </div>
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:12 }}>
-                        {item.options.map(opt => (
-                          <button key={opt.code}
-                            onClick={() => {
-                              const finalInv = {...item.invoice, gl_code: opt.code, gl_name: opt.name, confidence: 100, status:"booked", ...(opt.typeOverride || {})};
+                    <div key={item.id} style={{ background: item.isDuplicate ? "#1A0808" : "#1A1400", border: `1px solid ${item.isDuplicate ? "#EF444444" : "#F59E0B44"}`, borderRadius:14, padding:20, marginBottom:12 }}>
+                      {item.isDuplicate ? (
+                        /* ── DUPLICATE WARNING CARD ── */
+                        <>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+                            <div>
+                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                                <span style={{ fontSize:16, lineHeight:1 }}>⚠</span>
+                                <div style={{ fontSize:15, fontWeight:700, color:"#EF4444" }}>Possible Duplicate Invoice</div>
+                              </div>
+                              <div style={{ fontSize:13, color:"#9CA3AF", lineHeight:1.5 }}>{item.question}</div>
+                            </div>
+                            <div style={{ fontSize:11, color:"#EF4444", background:"#EF444422", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12, whiteSpace:"nowrap" }}>
+                              Duplicate
+                            </div>
+                          </div>
+                          <div style={{ background:"#0F0F13", borderRadius:10, padding:"10px 14px", marginBottom:14 }}>
+                            <div style={{ fontSize:11, color:"#6B6B8A", marginBottom:6, letterSpacing:1 }}>NEW — ABOUT TO BOOK:</div>
+                            <div style={{ fontSize:13, color:"#E8E8F0" }}>
+                              {item.invoice.vendor} · <span style={{ fontFamily:"'DM Mono',monospace" }}>${item.invoice.amount.toFixed(2)}</span> · {item.invoice.date}
+                              {item.invoice.invoice_number && <span style={{ color:"#9CA3AF" }}> · #{item.invoice.invoice_number}</span>}
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", gap:8 }}>
+                            <button onClick={() => {
+                              setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
+                              showNotification("Duplicate skipped ✓");
+                            }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"#3B0A0A", border:"1px solid #EF444466", color:"#FCA5A5", cursor:"pointer", fontWeight:600 }}>
+                              ✕ Skip — already booked
+                            </button>
+                            <button onClick={() => {
+                              const finalInv = {...item.invoice, confidence:100, status:"booked"};
                               setInvoices(prev => [finalInv, ...prev]);
                               persistJournalEntry(finalInv);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-                              showNotification(`Booked to ${opt.name} ✓`);
-                            }}
-                            style={{
-                              padding:"8px 16px", borderRadius:20, fontSize:12, cursor:"pointer",
-                              background: opt.code === item.suggestedCode ? "#3B1F7A" : "#1E1E2E",
-                              border: `1px solid ${opt.code === item.suggestedCode ? "#8B5CF6" : "#2A2A3E"}`,
-                              color: opt.code === item.suggestedCode ? "#C8B8FF" : "#9CA3AF",
-                              fontWeight: opt.code === item.suggestedCode ? 600 : 400,
-                            }}>
-                            {opt.code === item.suggestedCode ? "★ " : ""}{opt.name}
-                          </button>
-                        ))}
-                      </div>
-                      <div style={{ display:"flex", gap:8 }}>
-                        <button onClick={() => {
-                          const finalInv = {...item.invoice, confidence:100, status:"booked"};
-                          setInvoices(prev => [finalInv, ...prev]);
-                          persistJournalEntry(finalInv);
-                          setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-                          showNotification(`Booked to ${item.invoice.gl_name} ✓`);
-                        }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#065F46", border:"1px solid #10B98144", color:"#6EE7B7", cursor:"pointer" }}>
-                          ✓ Use suggested: {item.suggestedName}
-                        </button>
-                        <button onClick={() => setClarificationQueue(prev => prev.filter(c => c.id !== item.id))}
-                          style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", cursor:"pointer" }}>
-                          Skip for now
-                        </button>
-                      </div>
+                              showNotification(`Booked to ${item.invoice.gl_name} ✓`);
+                            }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#9CA3AF", cursor:"pointer" }}>
+                              Book anyway (different charge)
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        /* ── NORMAL GL CLARIFICATION CARD ── */
+                        <>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+                            <div>
+                              <div style={{ fontSize:15, fontWeight:600, marginBottom:4 }}>{item.invoice.vendor} — ${item.invoice.amount.toFixed(2)}</div>
+                              <div style={{ fontSize:13, color:"#9CA3AF" }}>{item.question}</div>
+                            </div>
+                            <div style={{ fontSize:11, color:"#F59E0B", background:"#F59E0B22", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12 }}>
+                              {Math.round(item.invoice.confidence)}% confident
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:12 }}>
+                            {item.options.map(opt => (
+                              <button key={opt.code}
+                                onClick={() => {
+                                  const finalInv = {...item.invoice, gl_code: opt.code, gl_name: opt.name, confidence: 100, status:"booked", ...(opt.typeOverride || {})};
+                                  setInvoices(prev => [finalInv, ...prev]);
+                                  persistJournalEntry(finalInv);
+                                  setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
+                                  showNotification(`Booked to ${opt.name} ✓`);
+                                }}
+                                style={{
+                                  padding:"8px 16px", borderRadius:20, fontSize:12, cursor:"pointer",
+                                  background: opt.code === item.suggestedCode ? "#3B1F7A" : "#1E1E2E",
+                                  border: `1px solid ${opt.code === item.suggestedCode ? "#8B5CF6" : "#2A2A3E"}`,
+                                  color: opt.code === item.suggestedCode ? "#C8B8FF" : "#9CA3AF",
+                                  fontWeight: opt.code === item.suggestedCode ? 600 : 400,
+                                }}>
+                                {opt.code === item.suggestedCode ? "★ " : ""}{opt.name}
+                              </button>
+                            ))}
+                          </div>
+                          <div style={{ display:"flex", gap:8 }}>
+                            <button onClick={() => {
+                              const finalInv = {...item.invoice, confidence:100, status:"booked"};
+                              setInvoices(prev => [finalInv, ...prev]);
+                              persistJournalEntry(finalInv);
+                              setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
+                              showNotification(`Booked to ${item.invoice.gl_name} ✓`);
+                            }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#065F46", border:"1px solid #10B98144", color:"#6EE7B7", cursor:"pointer" }}>
+                              ✓ Use suggested: {item.suggestedName}
+                            </button>
+                            <button onClick={() => setClarificationQueue(prev => prev.filter(c => c.id !== item.id))}
+                              style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", cursor:"pointer" }}>
+                              Skip for now
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3441,6 +3533,16 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                       <div style={{ marginBottom:14 }}>
                         <label style={labelStyle}>DESCRIPTION</label>
                         <input value={form.description} onChange={e=>handleFormChange("description",e.target.value)} style={inputStyle} />
+                      </div>
+                      <div style={{ marginBottom:14 }}>
+                        <label style={labelStyle}>INVOICE NUMBER <span style={{ color:"#6B6B8A", fontWeight:400, fontSize:10 }}>(optional — used for duplicate detection)</span></label>
+                        <input value={form.invoice_number||""} onChange={e=>handleFormChange("invoice_number",e.target.value)} placeholder="e.g. INV-2025-001" style={{
+                          ...inputStyle,
+                          border: form.invoice_number && invoices.find(ex=>ex.invoice_number&&ex.invoice_number.toLowerCase()===form.invoice_number.toLowerCase()&&ex.vendor?.toLowerCase()===form.vendor?.toLowerCase()) ? "1px solid #F59E0B" : inputStyle.border
+                        }} />
+                        {form.invoice_number && invoices.find(ex=>ex.invoice_number&&ex.invoice_number.toLowerCase()===form.invoice_number.toLowerCase()&&ex.vendor?.toLowerCase()===form.vendor?.toLowerCase()) && (
+                          <div style={{ fontSize:11, color:"#F59E0B", marginTop:5 }}>⚠ This invoice number already exists for {form.vendor || "this vendor"} — you'll be asked to confirm before booking</div>
+                        )}
                       </div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
                         <div>
