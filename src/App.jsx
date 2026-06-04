@@ -824,15 +824,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     if (view === "settings" && !settingsDraft) {
       setSettingsDraft(companySettings);
     }
-    // Scroll to top — use double rAF to ensure any state-triggered re-renders finish first
-    const frame = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (mainContentRef.current) {
-          mainContentRef.current.scrollTop = 0;
-        }
-      });
-    });
-    return () => cancelAnimationFrame(frame);
+    // Scroll to top immediately on view change
+    if (mainContentRef.current) mainContentRef.current.scrollTop = 0;
   }, [view]);
 
   // ── SUPABASE DATA LOADING ──────────────────────────────────
@@ -1109,32 +1102,39 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     });
   };
 
-  // Mark a journal entry as deleted in Supabase so it never reloads
+  // Remove a journal entry from Supabase so it never reloads.
+  // Hard-deletes the rows (lines first, then header) to avoid any status-enum constraints.
+  // The immutable record lives in the audit_log table, not here.
   const deleteJournalEntry = async (invoice) => {
     if (!currentCompany?.id) return;
+
+    const hardDelete = async (jeId) => {
+      // Delete lines first to avoid FK constraint violations on servers without CASCADE
+      await supabase.from("journal_entry_lines")
+        .delete()
+        .eq("journal_entry_id", jeId);
+      const { error } = await supabase.from("journal_entries")
+        .delete()
+        .eq("id", jeId)
+        .eq("company_id", currentCompany.id);
+      if (error) console.error("deleteJournalEntry hard-delete failed:", jeId, error.message);
+    };
+
     try {
       if (invoice?.db_entry_id) {
-        // Fast path — we know the exact JE id
-        await supabase.from("journal_entries")
-          .update({ status: "deleted" })
-          .eq("id", invoice.db_entry_id)
-          .eq("company_id", currentCompany.id);
+        await hardDelete(invoice.db_entry_id);
       } else if (invoice?.vendor && invoice?.date) {
-        // Slow path — entry was booked in this session and db_entry_id wasn't captured yet.
-        // Look it up by company + date + vendor prefix + status:"posted".
-        const vendorPrefix = (invoice.vendor || "").split(" ")[0]; // first word is most distinctive
+        // Fallback for entries booked in current session before db_entry_id was written back.
+        // Look up by company + date + vendor prefix.
+        const prefix = (invoice.vendor || "").split(" ")[0];
         const { data: matches } = await supabase.from("journal_entries")
           .select("id")
           .eq("company_id", currentCompany.id)
           .eq("entry_date", invoice.date)
           .eq("status", "posted")
-          .ilike("description", `${vendorPrefix}%`);
+          .ilike("description", `${prefix}%`);
         if (matches?.length) {
-          // Mark all matches deleted — safe because user explicitly requested deletion
-          await supabase.from("journal_entries")
-            .update({ status: "deleted" })
-            .in("id", matches.map(m => m.id))
-            .eq("company_id", currentCompany.id);
+          for (const m of matches) await hardDelete(m.id);
         }
       }
     } catch(e) { console.error("deleteJournalEntry error:", e); }
