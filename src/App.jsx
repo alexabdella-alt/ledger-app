@@ -1580,7 +1580,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           const newInvoices = confident.map((t,i)=>({
             id:Date.now()+Math.random(), vendor:t.vendor, description:t.description, amount:Math.abs(t.amount),
             date:t.date, type:t.type, project:"General", gl_code:t.gl_code, gl_name:t.gl_name,
-            secondary_gl_code:t.type==="expense"?"2000":"1000", secondary_gl_name:t.type==="expense"?"Accounts Payable":"Cash",
+            secondary_gl_code:"1000", secondary_gl_name:"Cash & Cash Equivalents",
             debit_credit:"debit", confidence:t.confidence, reasoning:"Imported via universal upload",
             status:"booked", booked_at:new Date().toISOString(), source:"universal_upload", payment_status:"unmatched",
           }));
@@ -1862,8 +1862,8 @@ Keep the same array order and index as input.`,
     const newInvoices = toBook.map(t => ({
       id: t.id, vendor: t.vendor, description: t.description, amount: Math.abs(t.amount),
       date: t.date, type: t.type, project: "General", gl_code: t.gl_code, gl_name: t.gl_name,
-      secondary_gl_code: t.type==="expense"?"2000":"1000",
-      secondary_gl_name: t.type==="expense"?"Accounts Payable":"Cash & Cash Equivalents",
+      secondary_gl_code: "1000",
+      secondary_gl_name: "Cash & Cash Equivalents",
       debit_credit: t.type==="expense"?"debit":"credit", confidence: t.confidence,
       reasoning: `Imported from bank statement${t.rule_applied?" (vendor rule applied)":""}`,
       status:"booked", booked_at: new Date().toISOString(), source:"bank_feed",
@@ -5003,13 +5003,20 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
               });
             };
             const filtered = filterByRange(invoices);
-            // Only include non-voided entries on P&L (exclude balance sheet accounts)
-            const plFiltered = filtered.filter(i => i.status !== "voided" && glPLType(i.gl_code));
+            // P&L filter: date range + voided + P&L accounts + optional basis mode
+            const plFiltered = filtered.filter(i => {
+              if (i.status === "voided" || !glPLType(i.gl_code)) return false;
+              if (basisMode === "cash") {
+                // Cash basis: bank feed entries are actual cash; otherwise require marked paid/collected
+                return i.source === "bank_feed" || i.payment_status === "paid" || i.payment_status === "collected";
+              }
+              return true; // accrual: all posted entries
+            });
             const revenue  = plFiltered.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
             const expenses = plFiltered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
             const net = revenue - expenses;
 
-            // Group by GL for revenue breakdown — with account codes
+            // Group revenue by GL
             const byRevGL = {};
             plFiltered.filter(i=>glIsRevenue(i.gl_code)).forEach(inv => {
               const k = inv.gl_code;
@@ -5018,13 +5025,21 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
             });
             const revRows = Object.values(byRevGL).sort((a,b)=>b.total-a.total);
 
-            // Group by GL for expense breakdown — with account codes
-            const byGL = {};
+            // GAAP P&L groupings: COGS (5000 only) vs Operating Expenses (all other 5xxx/6xxx)
+            const allExpGL = {};
             plFiltered.filter(i=>glIsExpense(i.gl_code)).forEach(inv => {
               const k = inv.gl_code;
-              if (!byGL[k]) byGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
-              byGL[k].total += inv.amount; byGL[k].count++;
+              if (!allExpGL[k]) allExpGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
+              allExpGL[k].total += inv.amount; allExpGL[k].count++;
             });
+            const cogsRows = Object.values(allExpGL).filter(r=>r.code==="5000");
+            const opexRows = Object.values(allExpGL).filter(r=>r.code!=="5000").sort((a,b)=>a.code.localeCompare(b.code));
+            const cogs = cogsRows.reduce((s,r)=>s+r.total, 0);
+            const opex = opexRows.reduce((s,r)=>s+r.total, 0);
+            const grossProfit = revenue - cogs;
+            const operatingIncome = grossProfit - opex;
+            // glRows used by "By Category" tab
+            const byGL = allExpGL;
             const glRows = Object.values(byGL).sort((a,b) => a.code?.localeCompare(b.code));
 
             // Group by vendor — only P&L accounts (income statement items)
@@ -5097,12 +5112,16 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                     {reportType==="pl" && (
                       <div>
                         <div style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
-                          <div style={{ padding:"18px 24px", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between" }}>
+                          <div style={{ padding:"18px 24px", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
                             <div>
                               <div style={{ fontSize:14, fontWeight:600 }}>Profit & Loss Statement</div>
-                              <div style={{ fontSize:11, color:"#6B6B8A", marginTop:3 }}>Accrual basis · Income statement accounts only</div>
+                              <div style={{ fontSize:11, color:"#6B6B8A", marginTop:3 }}>{basisMode==="cash"?"Cash basis":"Accrual basis"} · {rangeLabels[reportRange]} · {plFiltered.length} transactions</div>
                             </div>
-                            <div style={{ fontSize:12, color:"#6B6B8A" }}>{rangeLabels[reportRange]} · {plFiltered.length} transactions</div>
+                            <div style={{ display:"flex", background:"#0F0F13", border:"1px solid #2A2A3E", borderRadius:8, overflow:"hidden" }}>
+                              {[["accrual","Accrual"],["cash","Cash"]].map(([m,label])=>(
+                                <button key={m} onClick={()=>setBasisMode(m)} style={{ padding:"6px 14px", fontSize:12, border:"none", cursor:"pointer", background:basisMode===m?"#2A2A3E":"transparent", color:basisMode===m?"#E8E8F0":"#6B6B8A", fontWeight:basisMode===m?600:400 }}>{label}</button>
+                              ))}
+                            </div>
                           </div>
                           <div style={{ padding:"0 24px" }}>
                             {/* Revenue */}
@@ -5124,11 +5143,30 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                                 <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"#10B981" }}>{fmt(revenue)}</span>
                               </div>
                             </div>
-                            {/* Expenses */}
+                            {/* COGS — only shown when code 5000 has activity */}
+                            {cogsRows.length > 0 && (
+                              <div style={{ padding:"16px 0", borderBottom:"1px solid #1E1E2E" }}>
+                                <div style={{ fontSize:11, color:"#6B6B8A", letterSpacing:2, marginBottom:12 }}>COST OF REVENUE</div>
+                                {cogsRows.map(row=>(
+                                  <div key={row.code} style={{ display:"flex", justifyContent:"space-between", marginBottom:8, alignItems:"center" }}>
+                                    <span style={{ fontSize:13, color:"#C8C8D8", paddingLeft:12, display:"flex", alignItems:"center", gap:10 }}>
+                                      <span style={{ fontSize:10, color:"#4B4B6A", fontFamily:"monospace", background:"#1E1E2E", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      {row.name}
+                                    </span>
+                                    <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#EF4444" }}>({fmt(row.total)})</span>
+                                  </div>
+                                ))}
+                                <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #1E1E2E" }}>
+                                  <span style={{ fontSize:13, fontWeight:600 }}>Gross Profit</span>
+                                  <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:grossProfit>=0?"#10B981":"#EF4444" }}>{grossProfit<0?"-":""}{fmt(Math.abs(grossProfit))}</span>
+                                </div>
+                              </div>
+                            )}
+                            {/* Operating Expenses */}
                             <div style={{ padding:"16px 0", borderBottom:"1px solid #1E1E2E" }}>
-                              <div style={{ fontSize:11, color:"#6B6B8A", letterSpacing:2, marginBottom:12 }}>EXPENSES</div>
-                              {glRows.length===0 ? <div style={{ fontSize:13, color:"#6B6B8A" }}>No expenses recorded</div> :
-                                glRows.map(row=>(
+                              <div style={{ fontSize:11, color:"#6B6B8A", letterSpacing:2, marginBottom:12 }}>OPERATING EXPENSES</div>
+                              {opexRows.length===0 ? <div style={{ fontSize:13, color:"#6B6B8A" }}>No expenses recorded</div> :
+                                opexRows.map(row=>(
                                   <div key={row.code} style={{ display:"flex", justifyContent:"space-between", marginBottom:8, alignItems:"center" }}>
                                     <span style={{ fontSize:13, color:"#C8C8D8", paddingLeft:12, display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ fontSize:10, color:"#4B4B6A", fontFamily:"monospace", background:"#1E1E2E", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
@@ -5139,11 +5177,16 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                                 ))
                               }
                               <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #1E1E2E" }}>
-                                <span style={{ fontSize:13, fontWeight:600 }}>Total Expenses</span>
-                                <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"#EF4444" }}>({fmt(expenses)})</span>
+                                <span style={{ fontSize:13, fontWeight:600 }}>Total Operating Expenses</span>
+                                <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"#EF4444" }}>({fmt(opex)})</span>
                               </div>
                             </div>
-                            {/* Net */}
+                            {/* Operating Income subtotal */}
+                            <div style={{ padding:"12px 0", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                              <span style={{ fontSize:14, fontWeight:600, color:"#C8C8D8" }}>Operating Income</span>
+                              <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:operatingIncome>=0?"#10B981":"#EF4444" }}>{operatingIncome<0?"-":""}{fmt(Math.abs(operatingIncome))}</span>
+                            </div>
+                            {/* Net Income */}
                             <div style={{ padding:"18px 0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                               <span style={{ fontSize:16, fontWeight:700 }}>Net {net>=0?"Income":"Loss"}</span>
                               <span style={{ fontSize:20, fontFamily:"'DM Mono', monospace", fontWeight:700, color:net>=0?"#10B981":"#EF4444" }}>{net<0?"-":""}{fmt(Math.abs(net))}</span>
@@ -5155,68 +5198,94 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
 
                     {/* BALANCE SHEET */}
                     {reportType==="balance" && (() => {
-                      const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
+                      const bsFmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 
-                      // Build movements from ALL invoice entries using debit_credit flag
-                      // Each invoice row is ONE side of a journal entry
+                      // "As of" date — accumulate all transactions through reportDateTo
+                      const asOf = reportDateTo || new Date().toISOString().slice(0,10);
+                      const bsInvoices = invoices.filter(i => i.status !== "voided" && (!i.date || i.date <= asOf));
+
+                      // Build account balance movements.
+                      // Each invoice row represents ONE side of a double-entry (the primary/gl_code side).
+                      // For simple entries (single-row JEs and client-side), we must ALSO book the
+                      // secondary/offset side — otherwise balance sheet accounts (AP, Cash, AR) stay $0.
+                      // Multi-line DB expansions use "_" in their id: each line is already a separate row,
+                      // so we only process gl_code for those to avoid double-counting.
                       const movements = {};
-                      invoices.filter(i => i.status !== "voided").forEach(inv => {
-                        const code = inv.gl_code;
+                      const applyLine = (code, isDebit, amount) => {
                         const acct = CHART_OF_ACCOUNTS.find(a => a.code === code);
                         if (!acct) return;
                         if (!movements[code]) movements[code] = 0;
-
-                        const isDebit = inv.debit_credit !== "credit"; // default debit
-                        const amount = inv.amount || 0;
-
-                        // Normal balance rules:
-                        // Assets/Expenses: debit increases, credit decreases
-                        // Liabilities/Equity/Revenue: credit increases, debit decreases
+                        // Normal balance: Assets/Expenses increase on debit; Liab/Equity/Revenue on credit
                         if (["Assets","Expenses"].includes(acct.category)) {
                           movements[code] += isDebit ? amount : -amount;
                         } else {
                           movements[code] += isDebit ? -amount : amount;
                         }
+                      };
+                      bsInvoices.forEach(inv => {
+                        const isDebit = inv.debit_credit !== "credit";
+                        const amount = inv.amount || 0;
+                        applyLine(inv.gl_code, isDebit, amount);
+                        // Book the offsetting account for non-expanded entries
+                        if (!String(inv.id).includes("_") && inv.secondary_gl_code) {
+                          applyLine(inv.secondary_gl_code, !isDebit, amount);
+                        }
                       });
 
                       const openingByCode = {};
                       openingBalances.forEach(b => { openingByCode[b.account_code] = parseFloat(b.balance)||0; });
+                      const getBal = (code) => (openingByCode[code]||0) + (movements[code]||0);
 
-                      const getBalance = (code) => (openingByCode[code]||0) + (movements[code]||0);
+                      // GAAP groupings — current vs non-current
+                      const currentAssets    = CHART_OF_ACCOUNTS.filter(a => a.category==="Assets"      && parseInt(a.code) < 1500);
+                      const nonCurrentAssets = CHART_OF_ACCOUNTS.filter(a => a.category==="Assets"      && parseInt(a.code) >= 1500);
+                      const currentLiab      = CHART_OF_ACCOUNTS.filter(a => a.category==="Liabilities" && parseInt(a.code) < 2450);
+                      const nonCurrentLiab   = CHART_OF_ACCOUNTS.filter(a => a.category==="Liabilities" && parseInt(a.code) >= 2450);
+                      const bsEquity         = CHART_OF_ACCOUNTS.filter(a => a.category==="Equity");
 
-                      const assets      = CHART_OF_ACCOUNTS.filter(a => a.category==="Assets");
-                      const liabilities = CHART_OF_ACCOUNTS.filter(a => a.category==="Liabilities");
-                      const equity      = CHART_OF_ACCOUNTS.filter(a => a.category==="Equity");
+                      const totalCurrentAssets    = currentAssets.reduce((s,a)=>s+getBal(a.code),0);
+                      const totalNonCurrentAssets = nonCurrentAssets.reduce((s,a)=>s+getBal(a.code),0);
+                      const totalAssets            = totalCurrentAssets + totalNonCurrentAssets;
+                      const totalCurrentLiab       = currentLiab.reduce((s,a)=>s+getBal(a.code),0);
+                      const totalNonCurrentLiab    = nonCurrentLiab.reduce((s,a)=>s+getBal(a.code),0);
+                      const totalLiabilities       = totalCurrentLiab + totalNonCurrentLiab;
+                      const totalEquityAccts       = bsEquity.reduce((s,a)=>s+getBal(a.code),0);
 
-                      const totalAssets      = assets.reduce((s,a) => s + getBalance(a.code), 0);
-                      const totalLiabilities = liabilities.reduce((s,a) => s + getBalance(a.code), 0);
-                      const totalEquityAccts = equity.reduce((s,a) => s + getBalance(a.code), 0);
-
-                      // YTD net income closes to retained earnings
-                      const ytdRevenue  = invoices.filter(i=>i.status!=="voided"&&glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
-                      const ytdExpenses = invoices.filter(i=>i.status!=="voided"&&glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
-                      const ytdNet = ytdRevenue - ytdExpenses;
+                      // Current year net income flows into retained earnings
+                      const bsRevenue  = bsInvoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+                      const bsExpenses = bsInvoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+                      const ytdNet     = bsRevenue - bsExpenses;
                       const totalLiabEquity = totalLiabilities + totalEquityAccts + ytdNet;
-                      const diff = Math.abs(totalAssets - totalLiabEquity);
-                      const isBalanced = diff < 1;
+                      const isBalanced = Math.abs(totalAssets - totalLiabEquity) < 1;
 
-                      const Section = ({title, accounts, total, totalLabel}) => (
-                        <div style={{marginBottom:28}}>
-                          <div style={{fontSize:11,fontWeight:700,color:"#C8B8FF",letterSpacing:2,marginBottom:12,paddingBottom:8,borderBottom:"1px solid #2A2A3E"}}>{title}</div>
-                          {accounts.filter(a => getBalance(a.code) !== 0 || openingByCode[a.code]).length === 0
-                            ? <div style={{fontSize:12,color:"#4B4B6A",paddingLeft:8,marginBottom:8}}>No balances recorded</div>
-                            : accounts.filter(a => getBalance(a.code) !== 0 || openingByCode[a.code]).map(a => (
-                            <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1A1A28"}}>
-                              <div style={{fontSize:13,color:"#C8C8D8"}}>
-                                <span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}
-                              </div>
-                              <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBalance(a.code)<0?"#EF4444":"#E8E8F0"}}>{fmt(getBalance(a.code))}</div>
+                      const AcctRow = ({a}) => {
+                        const bal = getBal(a.code);
+                        if (bal === 0 && !openingByCode[a.code]) return null;
+                        return (
+                          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #1A1A28"}}>
+                            <div style={{fontSize:13,color:"#C8C8D8"}}>
+                              <span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}
                             </div>
-                          ))}
-                          <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",marginTop:4}}>
-                            <div style={{fontSize:13,fontWeight:700,color:"#E8E8F0"}}>{totalLabel}</div>
-                            <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{fmt(total)}</div>
+                            <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:bal<0?"#EF4444":"#E8E8F0"}}>{bsFmt(bal)}</div>
                           </div>
+                        );
+                      };
+                      const SubtotalRow = ({label, total}) => (
+                        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 8px 16px",marginTop:2}}>
+                          <div style={{fontSize:12,fontWeight:600,color:"#9CA3AF",fontStyle:"italic"}}>{label}</div>
+                          <div style={{fontSize:13,fontWeight:600,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{bsFmt(total)}</div>
+                        </div>
+                      );
+                      const SectionTitle = ({label}) => (
+                        <div style={{fontSize:11,fontWeight:700,color:"#C8B8FF",letterSpacing:2,marginBottom:8,paddingBottom:6,borderBottom:"1px solid #2A2A3E",marginTop:8}}>{label}</div>
+                      );
+                      const SubLabel = ({label}) => (
+                        <div style={{fontSize:10,color:"#6B6B8A",letterSpacing:1,marginTop:12,marginBottom:4,paddingLeft:4}}>{label}</div>
+                      );
+                      const TotalRow = ({label, total, large}) => (
+                        <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:"2px solid #2A2A3E",marginTop:4,marginBottom:large?0:20}}>
+                          <div style={{fontSize:large?15:13,fontWeight:700}}>{label}</div>
+                          <div style={{fontSize:large?16:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{bsFmt(total)}</div>
                         </div>
                       );
 
@@ -5225,37 +5294,55 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                           <div style={{padding:"18px 24px",borderBottom:"1px solid #1E1E2E",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                             <div>
                               <div style={{fontSize:14,fontWeight:600}}>Balance Sheet</div>
-                              <div style={{fontSize:11,color:"#6B6B8A",marginTop:3}}>As of {new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · GAAP basis</div>
+                              <div style={{fontSize:11,color:"#6B6B8A",marginTop:3}}>As of {new Date(asOf+"T12:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · GAAP basis</div>
                             </div>
                             <div style={{display:"flex",alignItems:"center",gap:10}}>
-                              {!isBalanced && <div style={{fontSize:11,color:"#F59E0B",background:"#1A1200",border:"1px solid #F59E0B44",borderRadius:8,padding:"4px 10px"}}>⚠ Out of balance by {fmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
+                              {!isBalanced && <div style={{fontSize:11,color:"#F59E0B",background:"#1A1200",border:"1px solid #F59E0B44",borderRadius:8,padding:"4px 10px"}}>⚠ Out of balance by {bsFmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
                               {isBalanced && <div style={{fontSize:11,color:"#10B981",background:"#0A2A1A",border:"1px solid #10B98133",borderRadius:8,padding:"4px 10px"}}>✓ Balanced</div>}
                             </div>
                           </div>
                           <div style={{padding:"24px 28px"}}>
-                            <Section title="ASSETS" accounts={assets} total={totalAssets} totalLabel="Total Assets" />
-                            <Section title="LIABILITIES" accounts={liabilities} total={totalLiabilities} totalLabel="Total Liabilities" />
-                            <div style={{marginBottom:28}}>
-                              <div style={{fontSize:11,fontWeight:700,color:"#C8B8FF",letterSpacing:2,marginBottom:12,paddingBottom:8,borderBottom:"1px solid #2A2A3E"}}>EQUITY</div>
-                              {equity.filter(a => getBalance(a.code) !== 0).map(a => (
-                                <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1A1A28"}}>
-                                  <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace"}}>{a.code}</span>{a.name}</div>
-                                  <div style={{fontSize:13,fontFamily:"'DM Mono',monospace"}}>{fmt(getBalance(a.code))}</div>
-                                </div>
-                              ))}
-                              <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1A1A28"}}>
-                                <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace"}}>—</span>YTD Net Income (Retained)</div>
-                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:ytdNet>=0?"#10B981":"#EF4444"}}>{fmt(ytdNet)}</div>
+
+                            {/* ASSETS */}
+                            <SectionTitle label="ASSETS" />
+                            <SubLabel label="Current Assets" />
+                            {currentAssets.map(a=><AcctRow key={a.code} a={a}/>)}
+                            <SubtotalRow label="Total Current Assets" total={totalCurrentAssets} />
+                            <SubLabel label="Non-Current Assets" />
+                            {nonCurrentAssets.map(a=><AcctRow key={a.code} a={a}/>)}
+                            <SubtotalRow label="Total Non-Current Assets" total={totalNonCurrentAssets} />
+                            <TotalRow label="Total Assets" total={totalAssets} />
+
+                            {/* LIABILITIES */}
+                            <SectionTitle label="LIABILITIES" />
+                            <SubLabel label="Current Liabilities" />
+                            {currentLiab.map(a=><AcctRow key={a.code} a={a}/>)}
+                            <SubtotalRow label="Total Current Liabilities" total={totalCurrentLiab} />
+                            <SubLabel label="Non-Current Liabilities" />
+                            {nonCurrentLiab.map(a=><AcctRow key={a.code} a={a}/>)}
+                            <SubtotalRow label="Total Non-Current Liabilities" total={totalNonCurrentLiab} />
+                            <TotalRow label="Total Liabilities" total={totalLiabilities} />
+
+                            {/* EQUITY */}
+                            <SectionTitle label="STOCKHOLDERS' EQUITY" />
+                            {bsEquity.filter(a=>getBal(a.code)!==0||openingByCode[a.code]).map(a=>(
+                              <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #1A1A28"}}>
+                                <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}</div>
+                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"#EF4444":"#E8E8F0"}}>{bsFmt(getBal(a.code))}</div>
                               </div>
-                              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",marginTop:4}}>
-                                <div style={{fontSize:13,fontWeight:700,color:"#E8E8F0"}}>Total Equity</div>
-                                <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{fmt(totalEquityAccts + ytdNet)}</div>
-                              </div>
+                            ))}
+                            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #1A1A28"}}>
+                              <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace",fontSize:11}}>—</span>Current Year Net Income</div>
+                              <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:ytdNet>=0?"#10B981":"#EF4444"}}>{ytdNet<0?"-":""}{bsFmt(Math.abs(ytdNet))}</div>
                             </div>
-                            <div style={{borderTop:"2px solid #2A2A3E",paddingTop:16,display:"flex",justifyContent:"space-between"}}>
-                              <div style={{fontSize:14,fontWeight:700}}>Total Liabilities + Equity</div>
-                              <div style={{fontSize:16,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{fmt(totalLiabEquity)}</div>
+                            <TotalRow label="Total Equity" total={totalEquityAccts+ytdNet} />
+
+                            {/* TOTAL L+E */}
+                            <div style={{borderTop:"2px solid #C8B8FF55",paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                              <div style={{fontSize:15,fontWeight:700}}>Total Liabilities + Equity</div>
+                              <div style={{fontSize:17,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{bsFmt(totalLiabEquity)}</div>
                             </div>
+
                             {openingBalances.length===0 && (
                               <div style={{marginTop:16,background:"#1A1200",border:"1px solid #F59E0B44",borderRadius:8,padding:"12px 16px",fontSize:12,color:"#F59E0B"}}>
                                 ⚠ No opening balances set. Go to Settings → Opening Balances to enter your starting balances for an accurate balance sheet.
