@@ -682,16 +682,24 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       id: Date.now()+Math.random(), ts: new Date().toISOString(),
       action, detail, before, after, user:"owner"
     }, ...prev]);
-    // Persist every audit entry to Supabase — fire-and-forget so it never blocks UI
+    // Persist every audit entry to Supabase — fire-and-forget
     if (currentCompany?.id) {
+      // Slim the before/after payload: strip any large fields (base64, line items) to keep row size small
+      const slim = (obj) => {
+        if (!obj) return null;
+        if (typeof obj !== "object") return obj;
+        if (Array.isArray(obj)) return obj.slice(0, 5).map(slim);
+        const { base64, raw_text, notes_for_reviewer, ...rest } = obj;
+        return rest;
+      };
       supabase.from("audit_log").insert({
         company_id: currentCompany.id,
         action,
         detail,
-        before_state: before ? JSON.stringify(before) : null,
-        after_state: after ? JSON.stringify(after) : null,
-        created_by: session?.user?.id,
-      }).then(() => {}).catch(e => console.error("Audit persist:", e));
+        before_state: before ? slim(before) : null,
+        after_state:  after  ? slim(after)  : null,
+      }).then(({ error }) => { if (error) console.error("Audit persist failed:", error.message, error.details); })
+        .catch(e => console.error("Audit persist error:", e));
     }
   };
 
@@ -1060,7 +1068,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const isDebit = invoice.debit_credit !== "credit";
       const primaryAcct    = await ensureAccount(invoice.gl_code, invoice.gl_name);
       const secondaryAcct  = await ensureAccount(invoice.secondary_gl_code || "2000", invoice.secondary_gl_name || "Accounts Payable");
-      if (!primaryAcct) { console.error("persistJournalEntry: no primary account", invoice.gl_code); return; }
+      if (!primaryAcct) { console.error("persistJournalEntry: no primary account", invoice.gl_code); return null; }
 
       const { data: je, error: jeErr } = await supabase.from("journal_entries").insert({
         company_id: currentCompany.id,
@@ -1087,17 +1095,48 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: primaryAcct.id, debit: isDebit ? invoice.amount : 0, credit: isDebit ? 0 : invoice.amount, memo: invoice.description });
       }
       await supabase.from("journal_entry_lines").insert(lines);
-    } catch(e) { console.error("persistJournalEntry error:", e); }
+      return je.id; // callers use this to store db_entry_id on the invoice
+    } catch(e) { console.error("persistJournalEntry error:", e); return null; }
+  };
+
+  // Persist a journal entry and write the returned Supabase ID back into invoices state
+  // so that deleteJournalEntry can find and mark it deleted later.
+  const bookToDb = (invoice) => {
+    persistJournalEntry(invoice).then(jeId => {
+      if (jeId) {
+        setInvoices(prev => prev.map(i => i.id === invoice.id ? { ...i, db_entry_id: jeId } : i));
+      }
+    });
   };
 
   // Mark a journal entry as deleted in Supabase so it never reloads
   const deleteJournalEntry = async (invoice) => {
-    if (!currentCompany?.id || !invoice?.db_entry_id) return;
+    if (!currentCompany?.id) return;
     try {
-      await supabase.from("journal_entries")
-        .update({ status: "deleted" })
-        .eq("id", invoice.db_entry_id)
-        .eq("company_id", currentCompany.id);
+      if (invoice?.db_entry_id) {
+        // Fast path — we know the exact JE id
+        await supabase.from("journal_entries")
+          .update({ status: "deleted" })
+          .eq("id", invoice.db_entry_id)
+          .eq("company_id", currentCompany.id);
+      } else if (invoice?.vendor && invoice?.date) {
+        // Slow path — entry was booked in this session and db_entry_id wasn't captured yet.
+        // Look it up by company + date + vendor prefix + status:"posted".
+        const vendorPrefix = (invoice.vendor || "").split(" ")[0]; // first word is most distinctive
+        const { data: matches } = await supabase.from("journal_entries")
+          .select("id")
+          .eq("company_id", currentCompany.id)
+          .eq("entry_date", invoice.date)
+          .eq("status", "posted")
+          .ilike("description", `${vendorPrefix}%`);
+        if (matches?.length) {
+          // Mark all matches deleted — safe because user explicitly requested deletion
+          await supabase.from("journal_entries")
+            .update({ status: "deleted" })
+            .in("id", matches.map(m => m.id))
+            .eq("company_id", currentCompany.id);
+        }
+      }
     } catch(e) { console.error("deleteJournalEntry error:", e); }
   };
 
@@ -1317,7 +1356,7 @@ CRITICAL RULES:
       runAPScreen([invoice], [invoice, ...invoices]);
       checkWatchTriggers([invoice], unknownDocs);
       logAudit("invoice_booked", `Manual entry: ${invoice.vendor} $${invoice.amount} → ${invoice.gl_name}`, null, invoice);
-      persistJournalEntry(invoice);
+      bookToDb(invoice);
       setForm({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General", invoice_number:"" });
       setAiSuggestion(null); setUploadedFile(null);
       setView("dashboard");
@@ -1607,7 +1646,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           // Book high-confidence invoices immediately
           if (highConfidence.length > 0) {
             setInvoices(prev => [...highConfidence, ...prev]);
-            highConfidence.forEach(inv => persistJournalEntry(inv));
+            highConfidence.forEach(inv => bookToDb(inv));
             runAPScreen(highConfidence, [...highConfidence, ...invoices]);
             checkWatchTriggers(highConfidence, unknownDocs);
           }
@@ -1691,7 +1730,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
             status:"booked", booked_at:new Date().toISOString(), source:"universal_upload", payment_status:"unmatched",
           }));
           setInvoices(prev => [...newInvoices, ...prev]);
-          newInvoices.forEach(inv => persistJournalEntry(inv));
+          newInvoices.forEach(inv => bookToDb(inv));
           if (uncertain.length > 0) {
             setBankTransactions(prev => [...uncertain.map((t,i)=>({...t, id:Date.now()+Math.random(), checked:false})), ...prev]);
           }
@@ -2294,7 +2333,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
     });
 
     setInvoices(prev => [...newInvoices, ...prev]);
-    newInvoices.forEach(inv => persistJournalEntry(inv));
+    newInvoices.forEach(inv => bookToDb(inv));
 
     const updatedContract = {...contract, posted_entries: [...(contract.posted_entries||[]), entryIdx]};
     setContracts(prev => prev.map(c => c.id===contract.id ? updatedContract : c));
@@ -2347,7 +2386,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
 
     // Single state update for all invoices
     setInvoices(prev => [...allNewInvoices, ...prev]);
-    allNewInvoices.forEach(inv => persistJournalEntry(inv));
+    allNewInvoices.forEach(inv => bookToDb(inv));
 
     // Single contract state update
     const allPosted = [...(contract.posted_entries || []), ...unpostedIndexes];
@@ -2846,7 +2885,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               date: action.date || new Date().toISOString().slice(0,10),
             };
             setInvoices(prev => [reversed, ...prev]);
-            persistJournalEntry(reversed);
+            bookToDb(reversed);
             actionSummary.push(`Reversing entry created for ${toReverse.vendor} $${toReverse.amount}`);
           }
         }
@@ -3319,7 +3358,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                             <button onClick={() => {
                               const finalInv = {...item.invoice, confidence:100, status:"booked"};
                               setInvoices(prev => [finalInv, ...prev]);
-                              persistJournalEntry(finalInv);
+                              bookToDb(finalInv);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
                               showNotification(`Booked to ${item.invoice.gl_name} ✓`);
                             }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#9CA3AF", cursor:"pointer" }}>
@@ -3345,7 +3384,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                                 onClick={() => {
                                   const finalInv = {...item.invoice, gl_code: opt.code, gl_name: opt.name, confidence: 100, status:"booked", ...(opt.typeOverride || {})};
                                   setInvoices(prev => [finalInv, ...prev]);
-                                  persistJournalEntry(finalInv);
+                                  bookToDb(finalInv);
                                   setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
                                   showNotification(`Booked to ${opt.name} ✓`);
                                 }}
@@ -3364,7 +3403,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                             <button onClick={() => {
                               const finalInv = {...item.invoice, confidence:100, status:"booked"};
                               setInvoices(prev => [finalInv, ...prev]);
-                              persistJournalEntry(finalInv);
+                              bookToDb(finalInv);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
                               showNotification(`Booked to ${item.invoice.gl_name} ✓`);
                             }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#065F46", border:"1px solid #10B98144", color:"#6EE7B7", cursor:"pointer" }}>
