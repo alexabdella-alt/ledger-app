@@ -570,7 +570,7 @@ BUSINESS TYPE AWARENESS — adapt your guidance based on what you observe:
 - Recurring subscription revenue = SaaS → focus on MRR and churn cost
 
 DELETING / VOIDING / REVERSING ENTRIES:
-- "Delete that invoice" / "I didn't mean to upload that" → use delete_invoice (removes entirely, no audit trail)
+- "Delete that invoice" / "I didn't mean to upload that" → use delete_invoice (removed from ledger but logged in the immutable audit trail)
 - "Void that entry" → use void_invoice (keeps for audit trail, marks as voided — preferred for compliance)
 - "We backed out of that lease" / "reverse that entry" → use reverse_entry (creates offsetting entry on today's date — GAAP correct approach for already-posted entries)
 - "Delete that contract" / "We didn't sign that lease" → use delete_contract
@@ -682,6 +682,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       id: Date.now()+Math.random(), ts: new Date().toISOString(),
       action, detail, before, after, user:"owner"
     }, ...prev]);
+    // Persist every audit entry to Supabase — fire-and-forget so it never blocks UI
+    if (currentCompany?.id) {
+      supabase.from("audit_log").insert({
+        company_id: currentCompany.id,
+        action,
+        detail,
+        before_state: before ? JSON.stringify(before) : null,
+        after_state: after ? JSON.stringify(after) : null,
+        created_by: session?.user?.id,
+      }).then(() => {}).catch(e => console.error("Audit persist:", e));
+    }
   };
 
   // ── DOCUMENT STORAGE ─────────────────────────────────────────────────────────
@@ -991,6 +1002,43 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   };
 
   // ── SUPABASE PERSISTENCE ──────────────────────────────────────
+  // Reclassify the debit line of an existing journal entry in Supabase
+  const persistRecode = async (recodedInvoices, newGlCode, newGlName) => {
+    if (!currentCompany?.id) return;
+    const withDbId = recodedInvoices.filter(i => i.db_entry_id);
+    if (withDbId.length === 0) return;
+    try {
+      // Ensure the new account exists in Supabase
+      let { data: acctRow } = await supabase.from("accounts")
+        .select("id").eq("company_id", currentCompany.id).eq("code", newGlCode).single();
+      if (!acctRow) {
+        const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === newGlCode);
+        const { data: created } = await supabase.from("accounts").insert({
+          company_id: currentCompany.id, code: newGlCode,
+          name: newGlName || acctDef?.name || newGlCode,
+          account_type: acctDef?.category?.toLowerCase() || "expense",
+        }).select("id").single();
+        acctRow = created;
+      }
+      if (!acctRow?.id) return;
+      // Update the primary (debit) line of each journal entry
+      for (const inv of withDbId) {
+        const isDebit = inv.debit_credit !== "credit";
+        if (isDebit) {
+          await supabase.from("journal_entry_lines")
+            .update({ account_id: acctRow.id })
+            .eq("journal_entry_id", inv.db_entry_id)
+            .gt("debit", 0);
+        } else {
+          await supabase.from("journal_entry_lines")
+            .update({ account_id: acctRow.id })
+            .eq("journal_entry_id", inv.db_entry_id)
+            .gt("credit", 0);
+        }
+      }
+    } catch(e) { console.error("persistRecode error:", e); }
+  };
+
   // Write a journal entry to Supabase when an invoice is booked
   const persistJournalEntry = async (invoice) => {
     if (!currentCompany?.id || !session?.user?.id) return;
@@ -2699,13 +2747,16 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
       for (const action of (result.actions || [])) {
         if (action.type === "recode" && action.invoiceIds?.length) {
+          const toRecode = invoices.filter(inv => action.invoiceIds.includes(inv.id));
+          const beforeState = toRecode.map(i => ({ id:i.id, gl_code:i.gl_code, gl_name:i.gl_name }));
           setInvoices(prev => prev.map(inv =>
             action.invoiceIds.includes(inv.id)
               ? { ...inv, gl_code: action.gl_code, gl_name: action.gl_name, recode_note: `Recoded by AI assistant` }
               : inv
           ));
-          logAudit("ai_recode", `AI recoded ${action.invoiceIds.length} invoice(s) → ${action.gl_name}`, null, { ids: action.invoiceIds, gl: action.gl_name });
-          actionSummary.push(`Recoded ${action.invoiceIds.length} invoice(s) → ${action.gl_name}`);
+          logAudit("ai_recode", `AI recoded ${toRecode.length} invoice(s) → ${action.gl_name}`, beforeState, { gl_code: action.gl_code, gl_name: action.gl_name });
+          persistRecode(toRecode, action.gl_code, action.gl_name); // fire-and-forget
+          actionSummary.push(`Recoded ${toRecode.length} invoice(s) → ${action.gl_name}`);
         }
         if (action.type === "retag_project" && action.invoiceIds?.length) {
           setInvoices(prev => prev.map(inv =>
@@ -2724,10 +2775,16 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           }
         }
         if (action.type === "delete_invoice") {
-          // Delete by ID or by vendor+amount match
+          // Delete by ID or by vendor+amount match — always log before removing
           if (action.invoice_id) {
-            setInvoices(prev => prev.filter(i => String(i.id) !== String(action.invoice_id)));
-            actionSummary.push(`Deleted entry: ${action.invoice_id}`);
+            const target = invoices.find(i => String(i.id) === String(action.invoice_id));
+            if (target) {
+              logAudit("invoice_deleted", `Deleted: ${target.vendor} $${target.amount} on ${target.date} (${target.gl_name})`, target, null);
+              setInvoices(prev => prev.filter(i => String(i.id) !== String(action.invoice_id)));
+              actionSummary.push(`Deleted entry: ${target.vendor} $${target.amount}`);
+            } else {
+              actionSummary.push(`Entry ${action.invoice_id} not found`);
+            }
           } else if (action.vendor) {
             const toDelete = invoices.filter(i =>
               i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) &&
@@ -2735,6 +2792,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               (!action.date || i.date === action.date)
             );
             if (toDelete.length > 0) {
+              toDelete.forEach(d => logAudit("invoice_deleted", `Deleted: ${d.vendor} $${d.amount} on ${d.date} (${d.gl_name})`, d, null));
               setInvoices(prev => prev.filter(i => !toDelete.find(d => d.id === i.id)));
               actionSummary.push(`Deleted ${toDelete.length} entr${toDelete.length===1?"y":"ies"} for ${action.vendor}`);
             } else {
@@ -3088,6 +3146,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
         {/* Main Content */}
         <div ref={mainContentRef} id="main-content" style={{ flex:1, overflowY:"auto" }}>
+          {/* Sticky review banner — visible from ANY view when items need input */}
+          {clarificationQueue.length > 0 && view !== "dashboard" && (
+            <div style={{ position:"sticky", top:0, zIndex:50, background:"#1A1200", borderBottom:"1px solid #F59E0B55", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={{ fontSize:13, color:"#F59E0B" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need{clarificationQueue.length===1?"s":""} your review before {clarificationQueue.length===1?"it can be":"they can be"} booked</div>
+              <button onClick={()=>setView("dashboard")} style={{ background:"#F59E0B22", border:"1px solid #F59E0B55", color:"#F59E0B", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer", fontWeight:500 }}>Review Now →</button>
+            </div>
+          )}
           <div style={{ padding:"32px 40px" }}>
 
           {/* Top-level tab redirects */}
@@ -3173,6 +3238,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                       );
                     })}
                   </div>
+                  {/* Invoice clarification prompt */}
+                  {clarificationQueue.length > 0 && (
+                    <div style={{ marginTop:12, background:"#1A1200", border:"1px solid #F59E0B44", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:13, color:"#F59E0B" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need your input before booking — scroll down to review</div>
+                      <button onClick={()=>{ window.scrollTo({top:9999,behavior:"smooth"}); }} style={{ background:"#F59E0B22", border:"1px solid #F59E0B44", color:"#F59E0B", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Below ↓</button>
+                    </div>
+                  )}
                   {/* Bank review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="bank_statement"&&q.result?.needsReview>0) && (
                     <div style={{ marginTop:12, background:"#1A1200", border:"1px solid #F59E0B44", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -4747,7 +4819,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                                 </button>
                               )}
                               <button
-                                onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Permanently delete ${inv.vendor} · $${inv.amount} on ${inv.date}? This cannot be undone.`, onConfirm:()=>{ setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}); }}
+                                onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Permanently delete ${inv.vendor} · $${inv.amount} on ${inv.date}? This cannot be undone.`, onConfirm:()=>{ logAudit("invoice_deleted",`Deleted: ${inv.vendor} $${inv.amount} on ${inv.date} (${inv.gl_name})`,inv,null); setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}); }}
                                 style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #EF444433", color:"#EF4444", fontSize:11, cursor:"pointer" }}
                                 title="Delete permanently">
                                 ×
@@ -5334,9 +5406,9 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                         }
                       });
 
-                      const openingByCode = {};
-                      openingBalances.forEach(b => { openingByCode[b.account_code] = parseFloat(b.balance)||0; });
-                      const getBal = (code) => (openingByCode[code]||0) + (movements[code]||0);
+                      // Opening balance invoice entries are already in `movements` (source:"opening_balance").
+                      // Do NOT also add openingBalances state — that would double-count the same amounts.
+                      const getBal = (code) => movements[code] || 0;
 
                       // GAAP groupings — current vs non-current
                       const currentAssets    = CHART_OF_ACCOUNTS.filter(a => a.category==="Assets"      && parseInt(a.code) < 1500);
@@ -5362,7 +5434,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
 
                       const AcctRow = ({a}) => {
                         const bal = getBal(a.code);
-                        if (bal === 0 && !openingByCode[a.code]) return null;
+                        if (bal === 0) return null;
                         return (
                           <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #1A1A28"}}>
                             <div style={{fontSize:13,color:"#C8C8D8"}}>
@@ -5427,7 +5499,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
 
                             {/* EQUITY */}
                             <SectionTitle label="STOCKHOLDERS' EQUITY" />
-                            {bsEquity.filter(a=>getBal(a.code)!==0||openingByCode[a.code]).map(a=>(
+                            {bsEquity.filter(a=>getBal(a.code)!==0).map(a=>(
                               <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #1A1A28"}}>
                                 <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}</div>
                                 <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"#EF4444":"#E8E8F0"}}>{bsFmt(getBal(a.code))}</div>
@@ -5903,6 +5975,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                               onClick={e=>{ e.stopPropagation(); setDeleteConfirm({
                                 label:`Permanently delete contract with ${c.counterparty}?\n\n${c.description}\n\nThis removes it from the database permanently.`,
                                 onConfirm: async () => {
+                                  logAudit("contract_deleted",`Deleted contract: ${c.counterparty} (${c.contract_type||"contract"})`,c,null);
                                   if (c.db_id) await supabase.from("contracts").delete().eq("id", c.db_id);
                                   setContracts(prev => prev.filter(x => x.id !== c.id));
                                   showNotification("Contract deleted ✓");
@@ -5969,6 +6042,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                       <div style={{ marginLeft:"auto", display:"flex", gap:10 }}>
                         <button onClick={()=>{
                           setDeleteConfirm({ label:`Delete contract with ${selectedContract.counterparty}? All generated entries will be removed. This cannot be undone.`, onConfirm:async ()=>{
+                            logAudit("contract_deleted",`Deleted contract: ${selectedContract.counterparty} (${selectedContract.contract_type||"contract"})`,selectedContract,null);
                             setContracts(prev=>prev.filter(c=>c.id!==selectedContract.id));
                             setContractView("list");
                             if (selectedContract.db_id) {
