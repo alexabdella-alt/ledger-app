@@ -1090,6 +1090,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     } catch(e) { console.error("persistJournalEntry error:", e); }
   };
 
+  // Mark a journal entry as deleted in Supabase so it never reloads
+  const deleteJournalEntry = async (invoice) => {
+    if (!currentCompany?.id || !invoice?.db_entry_id) return;
+    try {
+      await supabase.from("journal_entries")
+        .update({ status: "deleted" })
+        .eq("id", invoice.db_entry_id)
+        .eq("company_id", currentCompany.id);
+    } catch(e) { console.error("deleteJournalEntry error:", e); }
+  };
+
   const persistContact = async (contact) => {
     if (!currentCompany?.id) return;
     try {
@@ -1516,7 +1527,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               gl_name: finalName,
               secondary_gl_code: rule ? "2000" : (coding.secondary_gl_code || (isRevenue ? "1100" : "2000")),
               secondary_gl_name: rule ? "Accounts Payable" : (coding.secondary_gl_name || (isRevenue ? "Accounts Receivable" : "Accounts Payable")),
-              debit_credit: "debit",
+              debit_credit: isRevenue ? "credit" : "debit",
               confidence,
               reasoning: rule ? `Vendor rule: ${finalName}` : (coding.reasoning || "Auto-coded"),
               status: "booked",
@@ -2780,6 +2791,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             const target = invoices.find(i => String(i.id) === String(action.invoice_id));
             if (target) {
               logAudit("invoice_deleted", `Deleted: ${target.vendor} $${target.amount} on ${target.date} (${target.gl_name})`, target, null);
+              deleteJournalEntry(target);
               setInvoices(prev => prev.filter(i => String(i.id) !== String(action.invoice_id)));
               actionSummary.push(`Deleted entry: ${target.vendor} $${target.amount}`);
             } else {
@@ -2792,7 +2804,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               (!action.date || i.date === action.date)
             );
             if (toDelete.length > 0) {
-              toDelete.forEach(d => logAudit("invoice_deleted", `Deleted: ${d.vendor} $${d.amount} on ${d.date} (${d.gl_name})`, d, null));
+              toDelete.forEach(d => { logAudit("invoice_deleted", `Deleted: ${d.vendor} $${d.amount} on ${d.date} (${d.gl_name})`, d, null); deleteJournalEntry(d); });
               setInvoices(prev => prev.filter(i => !toDelete.find(d => d.id === i.id)));
               actionSummary.push(`Deleted ${toDelete.length} entr${toDelete.length===1?"y":"ies"} for ${action.vendor}`);
             } else {
@@ -4819,7 +4831,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                                 </button>
                               )}
                               <button
-                                onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Permanently delete ${inv.vendor} · $${inv.amount} on ${inv.date}? This cannot be undone.`, onConfirm:()=>{ logAudit("invoice_deleted",`Deleted: ${inv.vendor} $${inv.amount} on ${inv.date} (${inv.gl_name})`,inv,null); setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}); }}
+                                onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Permanently delete ${inv.vendor} · $${inv.amount} on ${inv.date}? This cannot be undone.`, onConfirm:()=>{ logAudit("invoice_deleted",`Deleted: ${inv.vendor} $${inv.amount} on ${inv.date} (${inv.gl_name})`,inv,null); deleteJournalEntry(inv); setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}); }}
                                 style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #EF444433", color:"#EF4444", fontSize:11, cursor:"pointer" }}
                                 title="Delete permanently">
                                 ×
@@ -5397,8 +5409,13 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                         }
                       };
                       bsInvoices.forEach(inv => {
-                        const isDebit = inv.debit_credit !== "credit";
                         const amount = inv.amount || 0;
+                        // Revenue accounts (4xxx) always have a credit normal balance.
+                        // Some uploaded invoices were incorrectly stored with debit_credit:"debit"
+                        // on the revenue account — override so the math is always correct.
+                        const isDebit = glIsRevenue(inv.gl_code)
+                          ? false
+                          : inv.debit_credit !== "credit";
                         applyLine(inv.gl_code, isDebit, amount);
                         // Book the offsetting account for non-expanded entries
                         if (!String(inv.id).includes("_") && inv.secondary_gl_code) {
