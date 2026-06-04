@@ -759,7 +759,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState([
-    { role: "assistant", content: "Hi! I'm your accounting assistant. Tell me what you need — I can recode invoices, tag projects, create vendor rules, or answer any question about your books. Just speak naturally!", id: 0 }
+    { role: "assistant", content: "Hey — I'm CFAI, your AI controller. Ask me anything about your finances: burn rate, P&L, cash runway, expense breakdowns, or just tell me to recode entries and set up rules. I know your full ledger. What do you want to know?", id: 0 }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
@@ -1360,11 +1360,10 @@ Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if
   ...one object per invoice...
 ]
 
-To determine type, reason about document direction:
-- Look at who is BILLING whom. If a company is issuing the invoice TO this business (requesting payment), type = "expense"
-- If this business is issuing the invoice TO a customer (requesting payment from them), type = "revenue"
-- Signals of expense: "Bill To: [your company]", "Please remit", "Amount Due", vendor name is a supplier/service provider
-- Signals of revenue: "Invoice To: [customer name]", "Payment from", this business appears as the issuing party
+To determine type — DEFAULT TO "expense" when unclear. The vast majority of uploaded documents are vendor bills this business must pay.
+- type = "expense": a vendor/supplier is billing this business. Signals: "Bill To: [your company]", "Please remit", "Amount Due", vendor is a supplier/service provider, utility, or contractor.
+- type = "revenue": ONLY use this when there are clear, unambiguous signals the business itself issued the invoice TO a customer. Signals: this business name appears as the FROM/issuing party, "Invoice To: [customer name]", customer is being charged.
+- When in doubt or ambiguous, always use "expense".
 
 Rules:
 - Do NOT merge multiple invoices into one — each distinct invoice gets its own object
@@ -1425,9 +1424,10 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           extractedList.forEach((extracted, idx) => {
             const coding = codings[idx] || {};
             const rule = rules.find(r => r.vendor?.toLowerCase()===extracted.vendor?.toLowerCase());
+            const isRevenue = extracted.type === "revenue";
             const confidence = rule ? 99 : (coding.confidence || 75);
-            const finalCode = rule ? rule.gl_code : (coding.gl_code || (extracted.type==="revenue" ? "4000" : "5900"));
-            const finalName = rule ? rule.gl_name : (coding.gl_name || (extracted.type==="revenue" ? "Sales Revenue" : "Miscellaneous Expense"));
+            const finalCode = rule ? rule.gl_code : (coding.gl_code || (isRevenue ? "4000" : "5900"));
+            const finalName = rule ? rule.gl_name : (coding.gl_name || (isRevenue ? "Sales Revenue" : "Miscellaneous Expense"));
 
             const invoice = {
               id: Date.now() + Math.random() + idx,
@@ -1440,8 +1440,8 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               project: rule?.project || "General",
               gl_code: finalCode,
               gl_name: finalName,
-              secondary_gl_code: rule ? "2000" : (coding.secondary_gl_code || "2000"),
-              secondary_gl_name: rule ? "Accounts Payable" : (coding.secondary_gl_name || "Accounts Payable"),
+              secondary_gl_code: rule ? "2000" : (coding.secondary_gl_code || (isRevenue ? "1100" : "2000")),
+              secondary_gl_name: rule ? "Accounts Payable" : (coding.secondary_gl_name || (isRevenue ? "Accounts Receivable" : "Accounts Payable")),
               debit_credit: "debit",
               confidence,
               reasoning: rule ? `Vendor rule: ${finalName}` : (coding.reasoning || "Auto-coded"),
@@ -1450,14 +1450,34 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               source: "universal_upload",
             };
 
-            if (confidence >= 85 || rule) {
+            // Revenue classification always needs human confirmation — the prompt defaults to expense,
+            // so a "revenue" result means the AI saw a signal but it may still be wrong.
+            if (!rule && isRevenue) {
+              const revenueAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Revenue").slice(0, 2);
+              const expenseAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Expenses")
+                .filter(a => ["5000","5800","5900"].includes(a.code));
+              needsClarification.push({
+                id: Date.now() + Math.random(),
+                invoice,
+                queueItemId: item.id,
+                question: `This looks like revenue — confirm: did your business issue this invoice TO a customer? Or is it a bill you received?`,
+                options: [
+                  ...revenueAccts.map(a => ({ code: a.code, name: a.name })),
+                  ...expenseAccts.map(a => ({
+                    code: a.code, name: a.name,
+                    typeOverride: { type: "expense", secondary_gl_code: "2000", secondary_gl_name: "Accounts Payable" }
+                  })),
+                ],
+                suggestedCode: finalCode,
+                suggestedName: finalName,
+              });
+            } else if (confidence >= 85 || rule) {
               highConfidence.push(invoice);
             } else {
-              // Build targeted clarification question
+              // Build targeted clarification question for low GL confidence
               const topAlternatives = CHART_OF_ACCOUNTS
-                .filter(a => (extracted.type==="revenue" ? a.category==="Revenue" : a.category==="Expenses"))
+                .filter(a => a.category === "Expenses")
                 .sort((a,b) => {
-                  // Sort by relevance to current coding
                   if (a.code === finalCode) return -1;
                   if (b.code === finalCode) return 1;
                   return 0;
@@ -1469,7 +1489,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
                 invoice,
                 queueItemId: item.id,
                 question: confidence < 60
-                  ? `I'm not sure how to code this ${extracted.type} from ${extracted.vendor} for $${parseFloat(extracted.amount).toFixed(2)}. ${coding.reasoning || "Which category fits best?"}:`
+                  ? `I'm not sure how to code this from ${extracted.vendor} for $${parseFloat(extracted.amount).toFixed(2)}. ${coding.reasoning || "Which category fits best?"}:`
                   : `I coded this to "${finalName}" (${confidence}% confident). Does that look right?`,
                 options: topAlternatives.map(a => ({ code: a.code, name: a.name })),
                 suggestedCode: finalCode,
@@ -3149,7 +3169,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                         {item.options.map(opt => (
                           <button key={opt.code}
                             onClick={() => {
-                              const finalInv = {...item.invoice, gl_code: opt.code, gl_name: opt.name, confidence: 100, status:"booked"};
+                              const finalInv = {...item.invoice, gl_code: opt.code, gl_name: opt.name, confidence: 100, status:"booked", ...(opt.typeOverride || {})};
                               setInvoices(prev => [finalInv, ...prev]);
                               persistJournalEntry(finalInv);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
@@ -7300,7 +7320,7 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
       {/* Chat panel */}
       {chatOpen && (
         <div style={{
-          position:"fixed", bottom:100, right:28, width:400, height:560,
+          position:"fixed", bottom:100, right:28, width:440, height:560,
           background:"#14141A", border:"1px solid #2A2A3E", borderRadius:20,
           boxShadow:"0 24px 80px rgba(0,0,0,0.7)", display:"flex", flexDirection:"column",
           zIndex:999, animation:"slideup 0.25s cubic-bezier(0.34,1.56,0.64,1)", overflow:"hidden"
@@ -7310,8 +7330,8 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
               <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#6D28D9,#9333EA)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
               <div>
-                <div style={{ fontSize:14, fontWeight:600 }}>AI Accounting Assistant</div>
-                <div style={{ fontSize:11, color:"#10B981" }}>● Online · Knows your full ledger</div>
+                <div style={{ fontSize:14, fontWeight:600 }}>CFAI — CFO Brain</div>
+                <div style={{ fontSize:11, color:"#10B981" }}>● Online · V4.0 · Your AI Controller</div>
               </div>
             </div>
           </div>
@@ -7330,9 +7350,13 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
                     fontSize:13, lineHeight:1.6, color:"#E8E8F0", whiteSpace:"pre-wrap"
                   }}>{msg.content}</div>
                   {msg.actions?.length>0 && (
-                    <div style={{ marginTop:8 }}>
+                    <div style={{ marginTop:10, background:"#0C1F14", border:"1px solid #10B98144", borderRadius:12, padding:"12px 14px" }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:"#10B981", letterSpacing:1, marginBottom:8 }}>✓ ACTIONS TAKEN</div>
                       {msg.actions.map((a,i)=>(
-                        <div key={i} style={{ fontSize:11, color:"#10B981", background:"#0A2A1A", border:"1px solid #10B98133", borderRadius:8, padding:"4px 10px", marginBottom:4 }}>⚡ {a}</div>
+                        <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:12, color:"#6EE7B7", marginBottom: i < msg.actions.length-1 ? 6 : 0, lineHeight:1.4 }}>
+                          <span style={{ color:"#10B981", flexShrink:0, marginTop:1 }}>⚡</span>
+                          <span>{a}</span>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -7360,7 +7384,7 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
           {/* Suggestions */}
           {chatHistory.length < 3 && (
             <div style={{ padding:"0 16px 8px", display:"flex", flexWrap:"wrap", gap:6 }}>
-              {["Show me a P&L for this month","How much have we spent this month?","Tag all AWS invoices to Cloud Infrastructure","What's our biggest expense category?"].map(s=>(
+              {["What's our burn rate?","Show me this month's P&L","Recode all Stripe entries to Payment Processing","Are there any unusual expenses?"].map(s=>(
                 <button key={s} onClick={()=>{ setChatInput(s); chatInputRef.current?.focus(); }} style={{ fontSize:11, padding:"5px 10px", borderRadius:20, background:"#1E1E2E", border:"1px solid #2A2A3E", color:"#9CA3AF", cursor:"pointer", textAlign:"left" }}>{s}</button>
               ))}
             </div>
