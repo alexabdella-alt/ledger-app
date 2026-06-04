@@ -1643,10 +1643,13 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             }
           });
 
-          // Book high-confidence invoices immediately
+          // Book high-confidence invoices immediately — log each one individually
           if (highConfidence.length > 0) {
             setInvoices(prev => [...highConfidence, ...prev]);
-            highConfidence.forEach(inv => bookToDb(inv));
+            highConfidence.forEach(inv => {
+              logAudit("invoice_booked", `${inv.vendor} · $${(inv.amount||0).toFixed(2)} → ${inv.gl_name} (${inv.confidence}% confidence · ${inv.date})`, null, { vendor: inv.vendor, amount: inv.amount, date: inv.date, gl_code: inv.gl_code, gl_name: inv.gl_name });
+              bookToDb(inv);
+            });
             runAPScreen(highConfidence, [...highConfidence, ...invoices]);
             checkWatchTriggers(highConfidence, unknownDocs);
           }
@@ -3197,11 +3200,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
         {/* Main Content */}
         <div ref={mainContentRef} id="main-content" style={{ flex:1, overflowY:"auto" }}>
-          {/* Sticky review banner — visible from ANY view when items need input */}
+          {/* Review banner — visible from any non-dashboard view when items need input */}
           {clarificationQueue.length > 0 && view !== "dashboard" && (
-            <div style={{ position:"sticky", top:0, zIndex:50, background:"#1A1200", borderBottom:"1px solid #F59E0B55", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div style={{ fontSize:13, color:"#F59E0B" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need{clarificationQueue.length===1?"s":""} your review before {clarificationQueue.length===1?"it can be":"they can be"} booked</div>
-              <button onClick={()=>setView("dashboard")} style={{ background:"#F59E0B22", border:"1px solid #F59E0B55", color:"#F59E0B", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer", fontWeight:500 }}>Review Now →</button>
+            <div style={{ background:"#1A1200", borderBottom:"1px solid #F59E0B44", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
+              <div style={{ fontSize:13, color:"#F59E0B" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need{clarificationQueue.length===1?"s":""} review before booking</div>
+              <button onClick={()=>setView("dashboard")} style={{ background:"#F59E0B22", border:"1px solid #F59E0B44", color:"#F59E0B", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer" }}>Review →</button>
             </div>
           )}
           <div style={{ padding:"32px 40px" }}>
@@ -3357,6 +3360,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                             </button>
                             <button onClick={() => {
                               const finalInv = {...item.invoice, confidence:100, status:"booked"};
+                              logAudit("invoice_booked", `${finalInv.vendor} · $${(finalInv.amount||0).toFixed(2)} → ${finalInv.gl_name} (confirmed — different charge)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
                               setInvoices(prev => [finalInv, ...prev]);
                               bookToDb(finalInv);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
@@ -3383,6 +3387,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                               <button key={opt.code}
                                 onClick={() => {
                                   const finalInv = {...item.invoice, gl_code: opt.code, gl_name: opt.name, confidence: 100, status:"booked", ...(opt.typeOverride || {})};
+                                  logAudit("invoice_booked", `${finalInv.vendor} · $${(finalInv.amount||0).toFixed(2)} → ${opt.name} (user confirmed)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: opt.code, gl_name: opt.name });
                                   setInvoices(prev => [finalInv, ...prev]);
                                   bookToDb(finalInv);
                                   setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
@@ -3402,6 +3407,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                           <div style={{ display:"flex", gap:8 }}>
                             <button onClick={() => {
                               const finalInv = {...item.invoice, confidence:100, status:"booked"};
+                              logAudit("invoice_booked", `${finalInv.vendor} · $${(finalInv.amount||0).toFixed(2)} → ${finalInv.gl_name} (user confirmed)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
                               setInvoices(prev => [finalInv, ...prev]);
                               bookToDb(finalInv);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
@@ -7450,28 +7456,71 @@ Journal entry rules:
             <div>
               <div style={{marginBottom:24}}>
                 <div style={{fontSize:10,letterSpacing:3,color:"#6B6B8A",marginBottom:8}}>COMPLIANCE</div>
-                <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Audit Trail</h1>
-                <div style={{fontSize:13,color:"#6B6B8A",marginTop:6}}>Every action logged with timestamp. Immutable record of who did what and when.</div>
+                <h1 style={{fontSize:28,fontWeight:600,margin:"0 0 6px",letterSpacing:-0.5}}>Audit Trail</h1>
+                <div style={{fontSize:13,color:"#6B6B8A"}}>Permanent, immutable record of every action. Entries are never modified or deleted.</div>
               </div>
+
+              {/* Stats row */}
+              <div style={{display:"flex",gap:14,marginBottom:24,flexWrap:"wrap"}}>
+                {[
+                  {label:"Total Events", value: auditLog.length, color:"#C8B8FF"},
+                  {label:"Bookings", value: auditLog.filter(e=>e.action==="invoice_booked").length, color:"#10B981"},
+                  {label:"Deletions", value: auditLog.filter(e=>e.action==="invoice_deleted"||e.action==="contract_deleted").length, color:"#EF4444"},
+                  {label:"Recodes", value: auditLog.filter(e=>e.action==="ai_recode").length, color:"#0EA5E9"},
+                ].map(s=>(
+                  <div key={s.label} style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:12,padding:"14px 20px",minWidth:130}}>
+                    <div style={{fontSize:11,color:"#6B6B8A",marginBottom:4,letterSpacing:1}}>{s.label.toUpperCase()}</div>
+                    <div style={{fontSize:24,fontWeight:700,color:s.color,fontFamily:"'DM Mono',monospace"}}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+
               {auditLog.length===0 ? (
-                <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:48,textAlign:"center"}}>
-                  <div style={{fontSize:32,marginBottom:12}}>🔍</div>
-                  <div style={{fontSize:15,fontWeight:500,marginBottom:8}}>No activity yet</div>
-                  <div style={{fontSize:13,color:"#6B6B8A"}}>Every booking, recode, contact change, and reconciliation will appear here.</div>
+                <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:"60px 40px",textAlign:"center"}}>
+                  <div style={{fontSize:36,marginBottom:14}}>🔍</div>
+                  <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>No activity recorded yet</div>
+                  <div style={{fontSize:13,color:"#6B6B8A",maxWidth:380,margin:"0 auto",lineHeight:1.6}}>
+                    Every invoice booking, recode, deletion, contact change, and reconciliation will appear here permanently.
+                  </div>
                 </div>
               ) : (
                 <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,overflow:"hidden"}}>
+                  <div style={{padding:"14px 20px",borderBottom:"1px solid #1E1E2E",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{fontSize:13,fontWeight:600}}>{auditLog.length} event{auditLog.length!==1?"s":""}</div>
+                    <div style={{fontSize:11,color:"#6B6B8A"}}>Newest first</div>
+                  </div>
                   <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead><tr style={{background:"#0F0F13"}}>{["Timestamp","Action","Detail","User"].map(h=><th key={h} style={{padding:"11px 16px",textAlign:"left",fontSize:10,color:"#6B6B8A",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}</tr></thead>
+                    <thead>
+                      <tr style={{background:"#0F0F13"}}>
+                        {["Timestamp","Action","Detail"].map(h=>(
+                          <th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:10,color:"#6B6B8A",letterSpacing:1.2,fontWeight:500}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
                     <tbody>
                       {auditLog.map((entry,i)=>{
-                        const actionColor = {invoice_booked:"#10B981",ai_recode:"#C8B8FF",contact_added:"#0EA5E9",payroll_posted:"#F59E0B",recon_complete:"#10B981",recurring_posted:"#C8B8FF","1099_flagged":"#F59E0B","1099_exported":"#9CA3AF",payroll_upload_started:"#6B6B8A",qbo_imported:"#10B981"}[entry.action]||"#6B6B8A";
+                        const colorMap = {
+                          invoice_booked:"#10B981", invoice_uploaded:"#10B981",
+                          invoice_deleted:"#EF4444", contract_deleted:"#EF4444",
+                          ai_recode:"#C8B8FF", ai_retag:"#C8B8FF",
+                          contact_added:"#0EA5E9", contact_updated:"#0EA5E9",
+                          payroll_posted:"#F59E0B", recurring_posted:"#F59E0B", recurring_created:"#F59E0B",
+                          recon_complete:"#10B981", opening_balances_posted:"#10B981",
+                          "1099_flagged":"#F59E0B", "1099_exported":"#9CA3AF",
+                          contract_uploaded:"#0EA5E9", settings_saved:"#6B6B8A",
+                        };
+                        const c = colorMap[entry.action] || "#6B6B8A";
                         return (
-                          <tr key={entry.id} style={{borderTop:"1px solid #1E1E2E",background:i%2===0?"transparent":"#0A0A10"}}>
-                            <td style={{padding:"12px 16px",fontSize:11,color:"#6B6B8A",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{entry.ts?.replace("T"," ").slice(0,19)}</td>
-                            <td style={{padding:"12px 16px"}}><span style={{fontSize:11,background:actionColor+"22",color:actionColor,borderRadius:20,padding:"2px 9px",fontWeight:500,whiteSpace:"nowrap"}}>{entry.action.replace(/_/g," ")}</span></td>
-                            <td style={{padding:"12px 16px",fontSize:13,color:"#C8C8D8"}}>{entry.detail}</td>
-                            <td style={{padding:"12px 16px",fontSize:12,color:"#6B6B8A"}}>{entry.user}</td>
+                          <tr key={entry.id} style={{borderTop:"1px solid #1A1A28",background:i%2===0?"transparent":"#0A0A10"}}>
+                            <td style={{padding:"11px 16px",fontSize:11,color:"#6B6B8A",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap",verticalAlign:"top"}}>
+                              {entry.ts?.replace("T"," ").slice(0,19)}
+                            </td>
+                            <td style={{padding:"11px 16px",verticalAlign:"top",whiteSpace:"nowrap"}}>
+                              <span style={{fontSize:11,background:c+"22",color:c,borderRadius:20,padding:"3px 10px",fontWeight:600}}>
+                                {entry.action.replace(/_/g," ")}
+                              </span>
+                            </td>
+                            <td style={{padding:"11px 16px",fontSize:13,color:"#C8C8D8",lineHeight:1.5}}>{entry.detail}</td>
                           </tr>
                         );
                       })}
