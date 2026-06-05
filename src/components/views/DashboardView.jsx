@@ -6,6 +6,9 @@ import { getAuthHeaders } from "../../lib/supabase";
 
 export default function DashboardView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const [burnModalOpen, setBurnModalOpen] = React.useState(false);
+  const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
+  const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "#8B7BFF" : "#1C1C20"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
   return (
             <div>
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
@@ -264,8 +267,13 @@ export default function DashboardView() {
                 return (
                   <div style={{marginBottom:24}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
-                      <div style={{background:"#1A0A0A",border:"1px solid #EF444433",borderRadius:14,padding:"20px 22px"}}>
-                        <div style={{fontSize:10,color:"#EF4444",letterSpacing:2,marginBottom:8}}>MONTHLY BURN</div>
+                      <div onClick={()=>setBurnModalOpen(true)} title="View monthly burn breakdown"
+                        onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor="#EF444433";e.currentTarget.style.transform="none";}}
+                        style={{background:"#1A0A0A",border:"1px solid #EF444433",borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                          <div style={{fontSize:10,color:"#EF4444",letterSpacing:2}}>MONTHLY BURN</div>
+                          <span style={{fontSize:11,color:"#86868F"}}>›</span>
+                        </div>
                         <div style={{fontSize:26,fontWeight:700,color:"#EF4444",fontFamily:"'DM Mono',monospace"}}>${burnThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
                         <div style={{fontSize:11,color:"#86868F",marginTop:6}}>
                           {Math.abs(burnTrend)>5 ? (burnTrend>0?<span style={{color:"#EF4444"}}>↑ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>:<span style={{color:"#10B981"}}>↓ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>) : "Stable vs last month"}
@@ -276,8 +284,13 @@ export default function DashboardView() {
                         <div style={{fontSize:26,fontWeight:700,color:netBurn>0?"#EF4444":"#10B981",fontFamily:"'DM Mono',monospace"}}>{netBurn>0?"-":"+"} ${Math.abs(netBurn).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
                         <div style={{fontSize:11,color:"#86868F",marginTop:6}}>{revenueThisMonth>0?`$${revenueThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})} revenue offset`:"No revenue this month"}</div>
                       </div>
-                      <div style={{background:runway!==null&&runway<=3?"#1A0A0A":runway!==null&&runway<=6?"#1A1200":"#0A1A0A",border:`1px solid ${runwayColor}33`,borderRadius:14,padding:"20px 22px"}}>
-                        <div style={{fontSize:10,color:runwayColor,letterSpacing:2,marginBottom:8}}>RUNWAY</div>
+                      <div onClick={()=>setBurnModalOpen(true)} title="View runway & burn breakdown"
+                        onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor=`${runwayColor}33`;e.currentTarget.style.transform="none";}}
+                        style={{background:runway!==null&&runway<=3?"#1A0A0A":runway!==null&&runway<=6?"#1A1200":"#0A1A0A",border:`1px solid ${runwayColor}33`,borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                          <div style={{fontSize:10,color:runwayColor,letterSpacing:2}}>RUNWAY</div>
+                          <span style={{fontSize:11,color:"#86868F"}}>›</span>
+                        </div>
                         <div style={{fontSize:26,fontWeight:700,color:runwayColor,fontFamily:"'DM Mono',monospace"}}>{runway===null?"∞":`${runway}mo`}</div>
                         <div style={{fontSize:11,color:"#86868F",marginTop:6}}>{runway===null?"Set cash balance for runway":runway<=3?"⚠ Critical — act now":runway<=6?"Watch closely":"Healthy"}</div>
                       </div>
@@ -304,17 +317,77 @@ export default function DashboardView() {
                           ))
                         }
                       </div>
-                      <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:"18px 20px"}}>
-                        <div style={{fontSize:10,color:"#86868F",letterSpacing:2,marginBottom:10}}>CASH POSITION</div>
+                      <div onClick={()=>setView("settings")} title="Manage bank accounts in Settings"
+                        onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
+                        style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:"18px 20px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                          <div style={{fontSize:10,color:"#86868F",letterSpacing:2}}>CASH POSITION</div>
+                          <span style={{fontSize:11,color:"#86868F"}}>Bank accounts ›</span>
+                        </div>
                         <div style={{fontSize:32,fontWeight:700,color:estimatedCash>=0?"#F2F2F4":"#EF4444",fontFamily:"'DM Mono',monospace",marginBottom:12}}>${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
                         <div style={{display:"flex",gap:20}}>
                           <div><div style={{fontSize:10,color:"#86868F",marginBottom:2}}>COLLECTED</div><div style={{fontSize:13,color:"#10B981",fontFamily:"'DM Mono',monospace"}}>+${cashInflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
                           <div><div style={{fontSize:10,color:"#86868F",marginBottom:2}}>PAID OUT</div><div style={{fontSize:13,color:"#EF4444",fontFamily:"'DM Mono',monospace"}}>-${cashOutflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
                           <div><div style={{fontSize:10,color:"#86868F",marginBottom:2}}>AVG BURN/MO</div><div style={{fontSize:13,color:"#F59E0B",fontFamily:"'DM Mono',monospace"}}>${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
                         </div>
-                        {openingCash===0&&<button onClick={()=>setView("opening-balances")} style={{marginTop:12,background:"none",border:"1px solid #262629",borderRadius:8,padding:"6px 12px",color:"#C7BFFF",fontSize:11,cursor:"pointer"}}>+ Add opening cash balance →</button>}
+                        {openingCash===0&&<button onClick={(e)=>{e.stopPropagation();setView("opening-balances");}} style={{marginTop:12,background:"none",border:"1px solid #262629",borderRadius:8,padding:"6px 12px",color:"#C7BFFF",fontSize:11,cursor:"pointer"}}>+ Add opening cash balance →</button>}
                       </div>
                     </div>
+
+                    {/* ── BURN BREAKDOWN MODAL ── */}
+                    {burnModalOpen && (() => {
+                      const months = Array.from({length:6}, (_,k) => {
+                        const dd = new Date(today.getFullYear(), today.getMonth()-k, 1);
+                        const key = dd.toISOString().slice(0,7);
+                        const exp = monthlyBurn(key);
+                        const rev = invoices.filter(i=>glIsRevenue(i.gl_code)&&i.date?.startsWith(key)).reduce((s,i)=>s+i.amount,0);
+                        return { key, label: dd.toLocaleDateString("en-US",{month:"short",year:"2-digit"}), exp, rev, net: rev-exp };
+                      });
+                      const maxExp = Math.max(1, ...months.map(mm=>mm.exp));
+                      return (
+                        <div onClick={()=>setBurnModalOpen(false)} style={{position:"fixed",inset:0,zIndex:10001,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+                          <div className="sc-scale" onClick={e=>e.stopPropagation()} style={{width:560,maxWidth:"94vw",maxHeight:"86vh",overflowY:"auto",background:"#141416",border:"1px solid #262629",borderRadius:18,padding:26,boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+                              <div>
+                                <div style={{fontSize:10,letterSpacing:2,color:"#86868F",marginBottom:6}}>CASH BURN</div>
+                                <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Monthly burn &amp; runway</h2>
+                              </div>
+                              <button onClick={()=>setBurnModalOpen(false)} style={{background:"none",border:"none",color:"#86868F",fontSize:24,cursor:"pointer",lineHeight:1,padding:0}}>×</button>
+                            </div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:22}}>
+                              {[["AVG BURN/MO",`$${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}`,"#F59E0B"],["RUNWAY",runway===null?"∞":`${runway} mo`,runwayColor],["EST. CASH",`$${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}`,estimatedCash>=0?"#10B981":"#EF4444"]].map(([l,v,c])=>(
+                                <div key={l} style={{background:"#0C0C0E",border:"1px solid #1C1C20",borderRadius:12,padding:"14px 16px"}}>
+                                  <div style={{fontSize:10,color:"#86868F",letterSpacing:1,marginBottom:6}}>{l}</div>
+                                  <div style={{fontSize:18,fontWeight:700,color:c,fontFamily:"'DM Mono',monospace"}}>{v}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                              <div style={{fontSize:10,letterSpacing:2,color:"#86868F"}}>LAST 6 MONTHS</div>
+                              <div style={{fontSize:10,color:"#86868F",display:"flex",gap:12}}><span style={{color:"#EF4444"}}>● expense</span><span style={{color:"#10B981"}}>● revenue</span><span>● net</span></div>
+                            </div>
+                            {months.map(mo=>(
+                              <div key={mo.key} style={{marginBottom:14}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5,fontSize:12}}>
+                                  <span style={{color:"#D2D2D6",fontWeight:500,width:64}}>{mo.label}</span>
+                                  <span style={{display:"flex",gap:16,fontFamily:"'DM Mono',monospace"}}>
+                                    <span style={{color:"#EF4444"}}>-${mo.exp.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                    <span style={{color:"#10B981"}}>+${mo.rev.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                    <span style={{color:mo.net>=0?"#10B981":"#EF4444",width:96,textAlign:"right"}}>{mo.net>=0?"+":"-"}${Math.abs(mo.net).toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                  </span>
+                                </div>
+                                <div style={{height:6,background:"#1C1C20",borderRadius:3,overflow:"hidden"}}>
+                                  <div style={{height:"100%",width:`${Math.min(100,mo.exp/maxExp*100)}%`,background:"linear-gradient(90deg,#EF4444,#F59E0B)",borderRadius:3}} />
+                                </div>
+                              </div>
+                            ))}
+                            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:18}}>
+                              <button onClick={()=>{setBurnModalOpen(false);setView("reports");}} style={{padding:"8px 16px",borderRadius:9,background:"#1C1C20",border:"1px solid #262629",color:"#C7BFFF",fontSize:12,cursor:"pointer"}}>Open full reports →</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}
@@ -325,8 +398,13 @@ export default function DashboardView() {
                   { label:"Total Expenses", value:totalExpenses, color:"#EF4444" },
                   { label:"Net Income", value:netIncome, color:netIncome>=0?"#10B981":"#EF4444" },
                 ].map(card => (
-                  <div key={card.label} style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:"22px 26px" }}>
-                    <div style={{ fontSize:11, color:"#86868F", marginBottom:10, letterSpacing:1 }}>{card.label.toUpperCase()}</div>
+                  <div key={card.label} onClick={goReports} title="Open the P&L report"
+                    onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
+                    style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:"22px 26px", cursor:"pointer", transition:"transform .16s, border-color .2s" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                      <div style={{ fontSize:11, color:"#86868F", letterSpacing:1 }}>{card.label.toUpperCase()}</div>
+                      <span style={{ fontSize:11, color:"#86868F" }}>P&amp;L ›</span>
+                    </div>
                     <div style={{ fontSize:28, fontWeight:600, color:card.color, fontFamily:"'DM Mono', monospace" }}>
                       {netIncome<0&&card.label==="Net Income"?"-":""}${Math.abs(card.value).toLocaleString("en-US",{minimumFractionDigits:2})}
                     </div>

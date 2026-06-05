@@ -37,8 +37,49 @@ export default function DocsView() {
                       {preview.base64 && preview.mediaType==="application/pdf" && (
                         <iframe src={`data:application/pdf;base64,${preview.base64}`} style={{width:"100%",height:500,border:"none",borderRadius:8}} title={preview.name}/>
                       )}
-                      {!preview.base64 && <div style={{color:"#86868F",fontSize:13,textAlign:"center",padding:40}}>File content not available for preview. Metadata stored.</div>}
-                      <div style={{marginTop:16,fontSize:12,color:"#86868F"}}>Uploaded {preview.uploaded_at?.slice(0,10)} · Type: {preview.type} · {preview.mediaType}</div>
+                      {!preview.base64 && (() => {
+                        const rows = [
+                          ["File name", preview.name],
+                          ["Document type", preview.type],
+                          ["Media type", preview.mediaType || "—"],
+                          ["Uploaded", preview.uploaded_at ? new Date(preview.uploaded_at).toLocaleString() : "—"],
+                          ["Tags", (preview.tags||[]).length ? preview.tags.join(", ") : "—"],
+                          ["Linked entry", preview.linked_invoice_id || "—"],
+                          ["Entry needed", preview.entry_needed==null ? "—" : (preview.entry_needed ? "Yes" : "No")],
+                          ["Posted", preview.posted==null ? "—" : (preview.posted ? "Yes" : "No")],
+                        ];
+                        return (
+                          <div>
+                            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"28px 0 22px"}}>
+                              <div style={{fontSize:40,opacity:0.5}}>{preview.mediaType==="application/pdf"?"📄":preview.mediaType?.startsWith("image")?"🖼":"📁"}</div>
+                              <div style={{fontSize:13,color:"#86868F",textAlign:"center",maxWidth:420,lineHeight:1.55}}>
+                                The file itself isn't stored in the database (only its metadata). Re-upload the file to preview its contents.
+                              </div>
+                            </div>
+                            <div style={{background:"#0C0C0E",border:"1px solid #1C1C20",borderRadius:12,padding:"6px 16px"}}>
+                              {rows.map(([k,v])=>(
+                                <div key={k} style={{display:"flex",justifyContent:"space-between",gap:16,padding:"10px 0",borderBottom:"1px solid #161619",fontSize:13}}>
+                                  <span style={{color:"#86868F"}}>{k}</span>
+                                  <span style={{color:"#F2F2F4",textAlign:"right",wordBreak:"break-word",maxWidth:"70%"}}>{v}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {preview.ai_explanation && (
+                              <div style={{marginTop:14,background:"#0C0C0E",border:"1px solid #1C1C20",borderRadius:12,padding:"14px 16px"}}>
+                                <div style={{fontSize:10,letterSpacing:1,color:"#A99CFF",marginBottom:6}}>AI EXPLANATION</div>
+                                <div style={{fontSize:13,color:"#9A9AA2",lineHeight:1.6}}>{preview.ai_explanation}</div>
+                              </div>
+                            )}
+                            {preview.entry_summary && (
+                              <div style={{marginTop:14,background:"#0C0C0E",border:"1px solid #1C1C20",borderRadius:12,padding:"14px 16px"}}>
+                                <div style={{fontSize:10,letterSpacing:1,color:"#86868F",marginBottom:6}}>ENTRY SUMMARY</div>
+                                <div style={{fontSize:13,color:"#9A9AA2",lineHeight:1.6}}>{preview.entry_summary}</div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {preview.base64 && <div style={{marginTop:16,fontSize:12,color:"#86868F"}}>Uploaded {preview.uploaded_at?.slice(0,10)} · Type: {preview.type} · {preview.mediaType}</div>}
                     </div>
                   </div>
                 )}

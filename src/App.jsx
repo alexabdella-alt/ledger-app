@@ -232,21 +232,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     const doc = { id: Date.now()+Math.random(), name, base64, mediaType, type, uploaded_at: new Date().toISOString(), linked_invoice_id: linkedId, tags };
     setDocLibrary(prev => [doc, ...prev]);
     // Persist metadata only — base64 is intentionally NOT stored (too large).
-    if (currentCompany?.id) {
-      supabase.from("documents").insert({
-        company_id: currentCompany.id,
-        file_name: name,
-        media_type: mediaType || null,
-        document_type: type || null,
-        tags: tags || [],
-        linked_invoice_id: linkedId != null ? String(linkedId) : null,
-        uploaded_at: doc.uploaded_at,
-      }).select("id").single().then(({ data, error }) => {
-        if (error) { console.error("Document persist failed:", error.message); return; }
-        // Swap the temp client id for the DB id so it matches on next reload.
-        if (data?.id) setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data.id } : d));
-      });
+    if (!currentCompany?.id) {
+      console.warn("[documents] storeDocument: no currentCompany.id — NOT persisting", { name, type });
+      return doc.id;
     }
+    const payload = {
+      company_id: currentCompany.id,
+      file_name: name,
+      media_type: mediaType || null,
+      document_type: type || null,
+      tags: tags || [],
+      linked_invoice_id: linkedId != null ? String(linkedId) : null,
+      uploaded_at: doc.uploaded_at,
+    };
+    console.log("[documents] storeDocument → inserting:", payload);
+    supabase.from("documents").insert(payload).select("id").single().then(({ data, error }) => {
+      if (error) { console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error); return; }
+      console.log("[documents] insert OK, db id:", data?.id);
+      // Swap the temp client id for the DB id so it matches on next reload.
+      if (data?.id) setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data.id } : d));
+    });
     return doc.id;
   };
 
@@ -547,9 +552,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       }
 
       // Load documents (metadata only — base64 file content is not stored)
-      const { data: docsData } = await supabase
+      const { data: docsData, error: docsErr } = await supabase
         .from("documents").select("*").eq("company_id", cid)
         .order("uploaded_at", { ascending: false });
+      if (docsErr) console.error("[documents] loadAllData fetch error:", docsErr.message, docsErr.details || "", docsErr.hint || "");
+      console.log(`[documents] loadAllData fetched ${docsData?.length ?? 0} document(s) for company ${cid}`, docsData);
       if (docsData) {
         setDocLibrary(docsData.map(d => ({
           id: d.id,
@@ -2383,6 +2390,22 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       const newRules = [...rules];
 
       for (const action of (result.actions || [])) {
+        if (action.type === "navigate" && action.view) {
+          // Map the AI's view name to an internal view id (with common aliases)
+          const viewAliases = {
+            audittrail:"audit", "audit-trail":"audit", "audit trail":"audit",
+            pl:"reports", "p&l":"reports", "profit-loss":"reports", report:"reports",
+            documents:"docs", document:"docs", "document-library":"docs",
+            ledger:"invoices", transactions:"invoices", invoice:"invoices",
+            "money-in":"ar", receivables:"ar", "money-out":"ap", payables:"ap",
+            "1099":"tax1099", taxes:"tax1099", bank:"bank", "bank-feed":"bank",
+            home:"dashboard",
+          };
+          const target = viewAliases[String(action.view).toLowerCase().trim()] || action.view;
+          setView(target);
+          if (target === "contracts") setContractView("list");
+          actionSummary.push(`Opened ${target}`);
+        }
         if (action.type === "recode" && action.invoiceIds?.length) {
           const toRecode = invoices.filter(inv => action.invoiceIds.includes(inv.id));
           const beforeState = toRecode.map(i => ({ id:i.id, gl_code:i.gl_code, gl_name:i.gl_name }));
@@ -2858,11 +2881,6 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
           {/* DETAIL */}
           {view==="detail" && selectedInvoice && <DetailView />}
-        </div>
-      </div>
-
-
-    
           {/* ── SETTINGS ─────────────────────────────────────────────────────── */}
           {view==="settings" && <SettingsView />}
 
@@ -2896,8 +2914,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
           {/* ── QBO ONBOARDING ────────────────────────────────────────────────── */}
           {view==="onboard" && <OnboardView />}
-
           </div>
+        </div>
+      </div>
 
       {/* ── FLOATING AI CHAT ───────────────────────────────────────────────── */}
       {/* Bubble button */}
