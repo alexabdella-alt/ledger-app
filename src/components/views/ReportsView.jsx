@@ -6,6 +6,7 @@ import { getAuthHeaders } from "../../lib/supabase";
 
 export default function ReportsView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const [plDrill, setPlDrill] = React.useState(null); // {type:"rev-acct"|"exp-acct"|"exp-vendor", code, name, vendor?}
             // Date filter helper
             const filterByRange = (invList) => {
               if (reportRange === "all") return invList;
@@ -133,6 +134,76 @@ export default function ReportsView() {
                     {/* P&L */}
                     {reportType==="pl" && (
                       <div>
+                        {plDrill ? (() => {
+                          const amtColor = plDrill.type==="rev-acct" ? "#10B981" : "#EF4444";
+                          let crumbs, back, kind, data, total;
+                          if (plDrill.type==="rev-acct") {
+                            crumbs = ["Income Statement","Revenue",plDrill.name]; back = () => setPlDrill(null);
+                            data = plFiltered.filter(i=>glIsRevenue(i.gl_code) && i.gl_code===plDrill.code).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+                            total = data.reduce((s,i)=>s+i.amount,0); kind = "txns";
+                          } else if (plDrill.type==="exp-acct") {
+                            crumbs = ["Income Statement",plDrill.name]; back = () => setPlDrill(null);
+                            const byV = {}; plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===plDrill.code).forEach(i=>{ const v=i.vendor||"Unknown"; if(!byV[v]) byV[v]={vendor:v,total:0,count:0}; byV[v].total+=i.amount; byV[v].count++; });
+                            data = Object.values(byV).sort((a,b)=>b.total-a.total); total = data.reduce((s,r)=>s+r.total,0); kind = "vendors";
+                          } else {
+                            crumbs = ["Income Statement",plDrill.name,plDrill.vendor]; back = () => setPlDrill({type:"exp-acct",code:plDrill.code,name:plDrill.name});
+                            data = plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===plDrill.code && (i.vendor||"Unknown")===plDrill.vendor).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+                            total = data.reduce((s,i)=>s+i.amount,0); kind = "txns";
+                          }
+                          return (
+                            <div className="sc-rise" style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
+                              <div style={{ padding:"16px 24px", borderBottom:"1px solid #1C1C20", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                                <button onClick={back} style={{ background:"#1C1C20", border:"1px solid #262629", color:"#C7BFFF", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer" }}>← Back</button>
+                                <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                                  {crumbs.map((c,ci)=>(
+                                    <span key={ci} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                      <span style={{ color: ci===crumbs.length-1?"#F2F2F4":"#86868F", fontWeight: ci===crumbs.length-1?600:400 }}>{c}</span>
+                                      {ci<crumbs.length-1 && <span style={{ color:"#55555C" }}>→</span>}
+                                    </span>
+                                  ))}
+                                </div>
+                                <span style={{ marginLeft:"auto", fontSize:11, color:"#86868F" }}>{data.length} {kind==="vendors"?"vendor":"transaction"}{data.length!==1?"s":""}</span>
+                                <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:amtColor }}>{fmt(total)}</span>
+                              </div>
+                              {kind==="vendors" ? (
+                                data.map(v=>(
+                                  <div key={v.vendor} onClick={()=>setPlDrill({type:"exp-vendor",code:plDrill.code,name:plDrill.name,vendor:v.vendor})}
+                                    onMouseEnter={e=>e.currentTarget.style.background="#18181C"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 24px", cursor:"pointer", borderTop:"1px solid #161619" }}>
+                                    <span style={{ fontSize:13, color:"#D2D2D6", display:"flex", alignItems:"center", gap:10 }}>
+                                      <span style={{ width:26, height:26, borderRadius:7, background:vendorColor(v.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff" }}>{initials(v.vendor)}</span>
+                                      {v.vendor}<span style={{ fontSize:11, color:"#55555C" }}>· {v.count} txn{v.count!==1?"s":""}</span>
+                                    </span>
+                                    <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#EF4444" }}>{fmt(v.total)}</span>
+                                      <span style={{ fontSize:12, color:"#55555C" }}>›</span>
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                data.length===0 ? <div style={{ padding:24, fontSize:13, color:"#86868F" }}>No transactions in range.</div> :
+                                data.map(inv=>(
+                                  <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}
+                                    onMouseEnter={e=>e.currentTarget.style.background="#18181C"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 24px", cursor:"pointer", borderTop:"1px solid #161619" }}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
+                                      <span style={{ fontSize:11, color:"#86868F", fontFamily:"'DM Mono', monospace", width:78, flexShrink:0 }}>{inv.date}</span>
+                                      <span style={{ width:26, height:26, borderRadius:7, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</span>
+                                      <div style={{ minWidth:0 }}>
+                                        <div style={{ fontSize:13, color:"#F2F2F4", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor}</div>
+                                        <div style={{ fontSize:11, color:"#86868F", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.description||"—"}</div>
+                                      </div>
+                                    </div>
+                                    <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+                                      <span style={{ fontSize:10, color:"#55555C", fontFamily:"monospace", background:"#1C1C20", padding:"1px 6px", borderRadius:4 }}>{inv.gl_code}</span>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:amtColor, width:100, textAlign:"right" }}>{fmt(inv.amount)}</span>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          );
+                        })() : (
                         <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
                           <div style={{ padding:"18px 24px", borderBottom:"1px solid #1C1C20", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
                             <div>
@@ -151,12 +222,17 @@ export default function ReportsView() {
                               <div style={{ fontSize:11, color:"#86868F", letterSpacing:2, marginBottom:12 }}>REVENUE</div>
                               {revRows.length===0 ? <div style={{ fontSize:13, color:"#86868F" }}>No revenue recorded</div> :
                                 revRows.map(row=>(
-                                  <div key={row.code} style={{ display:"flex", justifyContent:"space-between", marginBottom:8, alignItems:"center" }}>
-                                    <span style={{ fontSize:13, color:"#D2D2D6", paddingLeft:12, display:"flex", alignItems:"center", gap:10 }}>
+                                  <div key={row.code} onClick={()=>setPlDrill({type:"rev-acct",code:row.code,name:row.name})} title="View transactions"
+                                    onMouseEnter={e=>e.currentTarget.style.background="#1C1C20"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
+                                    <span style={{ fontSize:13, color:"#D2D2D6", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ fontSize:10, color:"#55555C", fontFamily:"monospace", background:"#1C1C20", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
                                       {row.name}
                                     </span>
-                                    <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#10B981" }}>{fmt(row.total)}</span>
+                                    <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#10B981" }}>{fmt(row.total)}</span>
+                                      <span style={{ fontSize:12, color:"#55555C" }}>›</span>
+                                    </span>
                                   </div>
                                 ))
                               }
@@ -170,12 +246,17 @@ export default function ReportsView() {
                               <div style={{ padding:"16px 0", borderBottom:"1px solid #1C1C20" }}>
                                 <div style={{ fontSize:11, color:"#86868F", letterSpacing:2, marginBottom:12 }}>COST OF REVENUE</div>
                                 {cogsRows.map(row=>(
-                                  <div key={row.code} style={{ display:"flex", justifyContent:"space-between", marginBottom:8, alignItems:"center" }}>
-                                    <span style={{ fontSize:13, color:"#D2D2D6", paddingLeft:12, display:"flex", alignItems:"center", gap:10 }}>
+                                  <div key={row.code} onClick={()=>setPlDrill({type:"exp-acct",code:row.code,name:row.name})} title="Drill into vendors"
+                                    onMouseEnter={e=>e.currentTarget.style.background="#1C1C20"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
+                                    <span style={{ fontSize:13, color:"#D2D2D6", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ fontSize:10, color:"#55555C", fontFamily:"monospace", background:"#1C1C20", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
                                       {row.name}
                                     </span>
-                                    <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#EF4444" }}>({fmt(row.total)})</span>
+                                    <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#EF4444" }}>({fmt(row.total)})</span>
+                                      <span style={{ fontSize:12, color:"#55555C" }}>›</span>
+                                    </span>
                                   </div>
                                 ))}
                                 <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #1C1C20" }}>
@@ -189,12 +270,17 @@ export default function ReportsView() {
                               <div style={{ fontSize:11, color:"#86868F", letterSpacing:2, marginBottom:12 }}>OPERATING EXPENSES</div>
                               {opexRows.length===0 ? <div style={{ fontSize:13, color:"#86868F" }}>No expenses recorded</div> :
                                 opexRows.map(row=>(
-                                  <div key={row.code} style={{ display:"flex", justifyContent:"space-between", marginBottom:8, alignItems:"center" }}>
-                                    <span style={{ fontSize:13, color:"#D2D2D6", paddingLeft:12, display:"flex", alignItems:"center", gap:10 }}>
+                                  <div key={row.code} onClick={()=>setPlDrill({type:"exp-acct",code:row.code,name:row.name})} title="Drill into vendors"
+                                    onMouseEnter={e=>e.currentTarget.style.background="#1C1C20"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
+                                    <span style={{ fontSize:13, color:"#D2D2D6", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ fontSize:10, color:"#55555C", fontFamily:"monospace", background:"#1C1C20", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
                                       {row.name}
                                     </span>
-                                    <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#EF4444" }}>({fmt(row.total)})</span>
+                                    <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#EF4444" }}>({fmt(row.total)})</span>
+                                      <span style={{ fontSize:12, color:"#55555C" }}>›</span>
+                                    </span>
                                   </div>
                                 ))
                               }
@@ -215,6 +301,7 @@ export default function ReportsView() {
                             </div>
                           </div>
                         </div>
+                        )}
                       </div>
                     )}
 

@@ -182,7 +182,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [reportRange, setReportRange] = useState("custom");
   const [reportDateFrom, setReportDateFrom] = useState(() => new Date().getFullYear() + "-01-01");
   const [reportDateTo, setReportDateTo] = useState(() => new Date().toISOString().slice(0,10));
-  const [basisMode, setBasisMode] = useState("cash"); // "cash" | "accrual" | "comparison"
+  const [basisMode, setBasisMode] = useState("accrual"); // "cash" | "accrual" | "comparison"
   const [basisNarration, setBasisNarration] = useState(null);
   const [basisNarrationLoading, setBasisNarrationLoading] = useState(false);
 

@@ -7,6 +7,7 @@ import { getAuthHeaders } from "../../lib/supabase";
 export default function DashboardView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
+  const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
   const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "#8B7BFF" : "#1C1C20"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
   return (
@@ -301,21 +302,83 @@ export default function DashboardView() {
                       </div>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                      <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:"18px 20px"}}>
-                        <div style={{fontSize:10,color:"#86868F",letterSpacing:2,marginBottom:14}}>TOP BURN DRIVERS THIS MONTH</div>
-                        {burnDrivers.length===0 ? <div style={{fontSize:13,color:"#86868F"}}>No expenses this month yet</div> :
-                          burnDrivers.map(([name,amt])=>(
-                            <div key={name} style={{marginBottom:12}}>
-                              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                                <div style={{fontSize:13,color:"#F2F2F4"}}>{name}</div>
-                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#EF4444"}}>${amt.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                      <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:"18px 20px",display:"flex",flexDirection:"column"}}>
+                        {(() => {
+                          const monthExp = invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(currentMonth));
+                          const back = burnDrill.vendor ? ()=>setBurnDrill({cat:burnDrill.cat,vendor:null})
+                                     : burnDrill.cat ? ()=>setBurnDrill({cat:null,vendor:null}) : null;
+                          const crumbs = ["Expenses"]; if (burnDrill.cat) crumbs.push(burnDrill.cat); if (burnDrill.vendor) crumbs.push(burnDrill.vendor);
+                          const hov = (on)=>(e)=>{ e.currentTarget.style.background = on?"#1C1C20":"transparent"; };
+                          return (
+                            <>
+                              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,minHeight:22}}>
+                                {back && <button onClick={back} title="Back" style={{background:"#1C1C20",border:"1px solid #262629",color:"#C7BFFF",borderRadius:7,padding:"3px 9px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>←</button>}
+                                <div style={{fontSize:10,letterSpacing:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                  {crumbs.map((c,i)=>(
+                                    <span key={i} style={{display:"flex",alignItems:"center",gap:6}}>
+                                      <span style={{color:i===crumbs.length-1?"#F2F2F4":"#86868F"}}>{String(c).toUpperCase()}</span>
+                                      {i<crumbs.length-1 && <span style={{color:"#55555C"}}>→</span>}
+                                    </span>
+                                  ))}
+                                  {!burnDrill.cat && <span style={{color:"#86868F"}}>· THIS MONTH</span>}
+                                </div>
                               </div>
-                              <div style={{height:3,background:"#1C1C20",borderRadius:2}}>
-                                <div style={{height:"100%",width:`${Math.min(100,burnThisMonth>0?amt/burnThisMonth*100:0)}%`,background:"linear-gradient(90deg,#EF4444,#F59E0B)",borderRadius:2}} />
+                              <div style={{overflowY:"auto",maxHeight:232,margin:"0 -4px",paddingRight:2}}>
+                                {(() => {
+                                  // Level 1 — categories
+                                  if (!burnDrill.cat) {
+                                    const cats = Object.values(monthExp.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0}; a[k].total+=i.amount; return a;},{})).sort((x,y)=>y.total-x.total);
+                                    if (cats.length===0) return <div style={{fontSize:13,color:"#86868F"}}>No expenses this month yet</div>;
+                                    return cats.map(c=>(
+                                      <div key={c.name} onClick={()=>setBurnDrill({cat:c.name,vendor:null})} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{marginBottom:8,cursor:"pointer",padding:"5px 4px",borderRadius:8}}>
+                                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
+                                          <div style={{fontSize:13,color:"#F2F2F4"}}>{c.name}</div>
+                                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                            <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#EF4444"}}>${c.total.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                                            <span style={{fontSize:11,color:"#55555C"}}>›</span>
+                                          </div>
+                                        </div>
+                                        <div style={{height:3,background:"#1C1C20",borderRadius:2}}>
+                                          <div style={{height:"100%",width:`${Math.min(100,burnThisMonth>0?c.total/burnThisMonth*100:0)}%`,background:"linear-gradient(90deg,#EF4444,#F59E0B)",borderRadius:2}} />
+                                        </div>
+                                      </div>
+                                    ));
+                                  }
+                                  // Level 2 — vendors within category
+                                  if (!burnDrill.vendor) {
+                                    const vends = Object.values(monthExp.filter(i=>(i.gl_name||"Uncoded")===burnDrill.cat).reduce((a,i)=>{const v=i.vendor||"Unknown"; if(!a[v])a[v]={vendor:v,total:0,count:0}; a[v].total+=i.amount; a[v].count++; return a;},{})).sort((x,y)=>y.total-x.total);
+                                    if (vends.length===0) return <div style={{fontSize:13,color:"#86868F"}}>No vendors.</div>;
+                                    return vends.map(v=>(
+                                      <div key={v.vendor} onClick={()=>setBurnDrill({cat:burnDrill.cat,vendor:v.vendor})} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 4px",cursor:"pointer",borderRadius:8}}>
+                                        <span style={{fontSize:13,color:"#D2D2D6",display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                                          <span style={{width:24,height:24,borderRadius:6,background:vendorColor(v.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{initials(v.vendor)}</span>
+                                          <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.vendor}</span>
+                                          <span style={{fontSize:11,color:"#55555C",flexShrink:0}}>· {v.count}</span>
+                                        </span>
+                                        <span style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                                          <span style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#EF4444"}}>${v.total.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                          <span style={{fontSize:11,color:"#55555C"}}>›</span>
+                                        </span>
+                                      </div>
+                                    ));
+                                  }
+                                  // Level 3 — transactions for vendor
+                                  const txns = monthExp.filter(i=>(i.gl_name||"Uncoded")===burnDrill.cat && (i.vendor||"Unknown")===burnDrill.vendor).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+                                  if (txns.length===0) return <div style={{fontSize:13,color:"#86868F"}}>No transactions.</div>;
+                                  return txns.map(inv=>(
+                                    <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 4px",cursor:"pointer",borderRadius:8}}>
+                                      <div style={{minWidth:0}}>
+                                        <div style={{fontSize:12,color:"#F2F2F4",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{inv.description||inv.vendor}</div>
+                                        <div style={{fontSize:11,color:"#86868F"}}>{inv.date} · {inv.gl_code}</div>
+                                      </div>
+                                      <span style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#EF4444",flexShrink:0}}>${inv.amount.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                    </div>
+                                  ));
+                                })()}
                               </div>
-                            </div>
-                          ))
-                        }
+                            </>
+                          );
+                        })()}
                       </div>
                       <div onClick={()=>setView("settings")} title="Manage bank accounts in Settings"
                         onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
