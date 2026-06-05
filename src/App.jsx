@@ -814,6 +814,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [recurringNewRec, setRecurringNewRec] = useState({name:"",vendor:"",amount:"",gl_code:"5200",gl_name:"Rent & Occupancy",frequency:"monthly",next_date:new Date().toISOString().slice(0,10),project:"General"});
   const [docsPreview, setDocsPreview] = useState(null);
   const [docsFilterType, setDocsFilterType] = useState("all");
+  const [auditSearch, setAuditSearch] = useState("");
+  const [auditActionFilter, setAuditActionFilter] = useState("all");
 
   useEffect(() => {
     if (chatOpen) { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); setHasUnread(false); }
@@ -993,7 +995,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       // Load audit log
       const { data: auditData } = await supabase
         .from("audit_log").select("*").eq("company_id", cid)
-        .order("created_at", { ascending: false }).limit(100);
+        .order("created_at", { ascending: false }).limit(1000);
       if (auditData) {
         setAuditLog(auditData.map(a => ({
           id: a.id, ts: a.created_at, action: a.action,
@@ -5584,19 +5586,35 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                             <SubtotalRow label="Total Non-Current Liabilities" total={totalNonCurrentLiab} />
                             <TotalRow label="Total Liabilities" total={totalLiabilities} />
 
-                            {/* EQUITY */}
+                            {/* EQUITY — GAAP interim presentation */}
                             <SectionTitle label="STOCKHOLDERS' EQUITY" />
-                            {bsEquity.filter(a=>getBal(a.code)!==0).map(a=>(
+
+                            {/* Paid-in capital accounts (Common Stock, APIC) — show all except Retained Earnings (3100) */}
+                            {bsEquity.filter(a => a.code !== "3100" && getBal(a.code) !== 0).map(a=>(
                               <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #1A1A28"}}>
                                 <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}</div>
                                 <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"#EF4444":"#E8E8F0"}}>{bsFmt(getBal(a.code))}</div>
                               </div>
                             ))}
-                            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #1A1A28"}}>
-                              <div style={{fontSize:13,color:"#C8C8D8"}}><span style={{color:"#4B4B6A",marginRight:8,fontFamily:"monospace",fontSize:11}}>—</span>Current Year Net Income</div>
+
+                            {/* Retained Earnings detail — GAAP interim balance sheet shows prior + current period separately */}
+                            <SubLabel label="Retained Earnings" />
+                            {getBal("3100") !== 0 && (
+                              <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 28px",borderBottom:"1px solid #1A1A28"}}>
+                                <div style={{fontSize:13,color:"#C8C8D8"}}>Retained Earnings, beginning of period</div>
+                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal("3100")<0?"#EF4444":"#E8E8F0"}}>{bsFmt(getBal("3100"))}</div>
+                              </div>
+                            )}
+                            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 28px",borderBottom:"1px solid #1A1A28"}}>
+                              <div style={{fontSize:13,color:"#C8C8D8"}}>Net {ytdNet>=0?"Income":"Loss"} (current period)</div>
                               <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:ytdNet>=0?"#10B981":"#EF4444"}}>{ytdNet<0?"-":""}{bsFmt(Math.abs(ytdNet))}</div>
                             </div>
-                            <TotalRow label="Total Equity" total={totalEquityAccts+ytdNet} />
+                            <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0 7px 28px",borderBottom:"1px solid #2A2A3E",marginBottom:2}}>
+                              <div style={{fontSize:12,fontWeight:600,color:"#9CA3AF",fontStyle:"italic"}}>Total Retained Earnings</div>
+                              <div style={{fontSize:13,fontWeight:600,fontFamily:"'DM Mono',monospace",color:"#C8B8FF"}}>{bsFmt(getBal("3100")+ytdNet)}</div>
+                            </div>
+
+                            <TotalRow label="Total Stockholders' Equity" total={totalEquityAccts+ytdNet} />
 
                             {/* TOTAL L+E */}
                             <div style={{borderTop:"2px solid #C8B8FF55",paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -7477,84 +7495,149 @@ Journal entry rules:
           })()}
 
           {/* ── AUDIT TRAIL ──────────────────────────────────────────────────── */}
-          {view==="audit" && (
-            <div>
-              <div style={{marginBottom:24}}>
-                <div style={{fontSize:10,letterSpacing:3,color:"#6B6B8A",marginBottom:8}}>COMPLIANCE</div>
-                <h1 style={{fontSize:28,fontWeight:600,margin:"0 0 6px",letterSpacing:-0.5}}>Audit Trail</h1>
-                <div style={{fontSize:13,color:"#6B6B8A"}}>Permanent, immutable record of every action. Entries are never modified or deleted.</div>
-              </div>
+          {view==="audit" && (() => {
+            const colorMap = {
+              invoice_booked:"#10B981", invoice_uploaded:"#10B981", invoice_rejected:"#F59E0B",
+              invoice_deleted:"#EF4444", contract_deleted:"#EF4444",
+              ai_recode:"#C8B8FF", ai_retag:"#C8B8FF",
+              contact_added:"#0EA5E9", contact_updated:"#0EA5E9",
+              payroll_posted:"#F59E0B", recurring_posted:"#F59E0B", recurring_created:"#F59E0B",
+              recon_complete:"#10B981", opening_balances_posted:"#10B981",
+              "1099_flagged":"#F59E0B", "1099_exported":"#9CA3AF",
+              contract_uploaded:"#0EA5E9", settings_saved:"#6B6B8A",
+            };
 
-              {/* Stats row */}
-              <div style={{display:"flex",gap:14,marginBottom:24,flexWrap:"wrap"}}>
-                {[
-                  {label:"Total Events", value: auditLog.length, color:"#C8B8FF"},
-                  {label:"Bookings", value: auditLog.filter(e=>e.action==="invoice_booked").length, color:"#10B981"},
-                  {label:"Deletions", value: auditLog.filter(e=>e.action==="invoice_deleted"||e.action==="contract_deleted").length, color:"#EF4444"},
-                  {label:"Recodes", value: auditLog.filter(e=>e.action==="ai_recode").length, color:"#0EA5E9"},
-                ].map(s=>(
-                  <div key={s.label} style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:12,padding:"14px 20px",minWidth:130}}>
-                    <div style={{fontSize:11,color:"#6B6B8A",marginBottom:4,letterSpacing:1}}>{s.label.toUpperCase()}</div>
-                    <div style={{fontSize:24,fontWeight:700,color:s.color,fontFamily:"'DM Mono',monospace"}}>{s.value}</div>
-                  </div>
-                ))}
-              </div>
+            // Unique action types for the filter dropdown
+            const actionTypes = ["all", ...new Set(auditLog.map(e => e.action))].sort();
 
-              {auditLog.length===0 ? (
-                <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:"60px 40px",textAlign:"center"}}>
-                  <div style={{fontSize:36,marginBottom:14}}>🔍</div>
-                  <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>No activity recorded yet</div>
-                  <div style={{fontSize:13,color:"#6B6B8A",maxWidth:380,margin:"0 auto",lineHeight:1.6}}>
-                    Every invoice booking, recode, deletion, contact change, and reconciliation will appear here permanently.
+            // Apply search + action filter
+            const filteredLog = auditLog.filter(e => {
+              const matchesAction = auditActionFilter === "all" || e.action === auditActionFilter;
+              const q = auditSearch.toLowerCase();
+              const matchesSearch = !q || (e.detail||"").toLowerCase().includes(q) || (e.action||"").replace(/_/g," ").includes(q);
+              return matchesAction && matchesSearch;
+            });
+
+            // CSV download — exports the FULL unfiltered log
+            const downloadCSV = () => {
+              const headers = ["Timestamp","Action","Detail","User"];
+              const rows = auditLog.map(e => [
+                (e.ts||"").replace("T"," ").slice(0,19),
+                e.action||"",
+                `"${(e.detail||"").replace(/"/g,'""')}"`,
+                e.user||"owner"
+              ]);
+              const csv = [headers.join(","), ...rows.map(r=>r.join(","))].join("\n");
+              const blob = new Blob([csv], {type:"text/csv"});
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a"); a.href=url; a.download="audit_trail.csv"; a.click();
+              URL.revokeObjectURL(url);
+            };
+
+            return (
+              <div>
+                <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16}}>
+                  <div>
+                    <div style={{fontSize:10,letterSpacing:3,color:"#6B6B8A",marginBottom:8}}>COMPLIANCE</div>
+                    <h1 style={{fontSize:28,fontWeight:600,margin:"0 0 6px",letterSpacing:-0.5}}>Audit Trail</h1>
+                    <div style={{fontSize:13,color:"#6B6B8A"}}>Permanent, immutable record of every action. Entries are never modified or deleted.</div>
                   </div>
+                  <button onClick={downloadCSV} style={{background:"#1E1E2E",border:"1px solid #2A2A3E",color:"#C8B8FF",borderRadius:10,padding:"9px 18px",fontSize:13,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    ↓ Download CSV ({auditLog.length} events)
+                  </button>
                 </div>
-              ) : (
-                <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,overflow:"hidden"}}>
-                  <div style={{padding:"14px 20px",borderBottom:"1px solid #1E1E2E",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{fontSize:13,fontWeight:600}}>{auditLog.length} event{auditLog.length!==1?"s":""}</div>
-                    <div style={{fontSize:11,color:"#6B6B8A"}}>Newest first</div>
+
+                {/* Stats row */}
+                <div style={{display:"flex",gap:14,marginBottom:20,flexWrap:"wrap"}}>
+                  {[
+                    {label:"Total Events",  value: auditLog.length,                                                                            color:"#C8B8FF"},
+                    {label:"Bookings",      value: auditLog.filter(e=>e.action==="invoice_booked").length,                                     color:"#10B981"},
+                    {label:"Deletions",     value: auditLog.filter(e=>e.action==="invoice_deleted"||e.action==="contract_deleted").length,      color:"#EF4444"},
+                    {label:"Recodes",       value: auditLog.filter(e=>e.action==="ai_recode").length,                                          color:"#0EA5E9"},
+                    {label:"Rejections",    value: auditLog.filter(e=>e.action==="invoice_rejected").length,                                   color:"#F59E0B"},
+                  ].map(s=>(
+                    <div key={s.label} style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:12,padding:"12px 18px",minWidth:120,cursor:"pointer"}}
+                      onClick={()=>setAuditActionFilter(s.label==="Total Events"?"all":auditLog.find(e=>colorMap[e.action]===s.color)?.action||"all")}>
+                      <div style={{fontSize:10,color:"#6B6B8A",marginBottom:4,letterSpacing:1}}>{s.label.toUpperCase()}</div>
+                      <div style={{fontSize:22,fontWeight:700,color:s.color,fontFamily:"'DM Mono',monospace"}}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Search + Filter bar */}
+                <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+                  <input
+                    value={auditSearch} onChange={e=>setAuditSearch(e.target.value)}
+                    placeholder="Search by action or detail..."
+                    style={{flex:1,minWidth:200,background:"#14141A",border:"1px solid #2A2A3E",borderRadius:8,padding:"8px 14px",color:"#E8E8F0",fontSize:13,outline:"none"}}
+                  />
+                  <select value={auditActionFilter} onChange={e=>setAuditActionFilter(e.target.value)}
+                    style={{background:"#14141A",border:"1px solid #2A2A3E",borderRadius:8,padding:"8px 14px",color:"#E8E8F0",fontSize:13,outline:"none",cursor:"pointer"}}>
+                    {actionTypes.map(a=>(
+                      <option key={a} value={a}>{a==="all"?"All actions":a.replace(/_/g," ")}</option>
+                    ))}
+                  </select>
+                  {(auditSearch||auditActionFilter!=="all") && (
+                    <button onClick={()=>{setAuditSearch("");setAuditActionFilter("all");}} style={{background:"transparent",border:"1px solid #2A2A3E",color:"#9CA3AF",borderRadius:8,padding:"8px 14px",fontSize:13,cursor:"pointer"}}>
+                      Clear ×
+                    </button>
+                  )}
+                </div>
+
+                {auditLog.length===0 ? (
+                  <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:"60px 40px",textAlign:"center"}}>
+                    <div style={{fontSize:36,marginBottom:14}}>🔍</div>
+                    <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>No activity recorded yet</div>
+                    <div style={{fontSize:13,color:"#6B6B8A",maxWidth:380,margin:"0 auto",lineHeight:1.6}}>
+                      Every invoice booking, recode, deletion, contact change, and reconciliation will appear here permanently.
+                    </div>
                   </div>
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead>
-                      <tr style={{background:"#0F0F13"}}>
-                        {["Timestamp","Action","Detail"].map(h=>(
-                          <th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:10,color:"#6B6B8A",letterSpacing:1.2,fontWeight:500}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditLog.map((entry,i)=>{
-                        const colorMap = {
-                          invoice_booked:"#10B981", invoice_uploaded:"#10B981",
-                          invoice_deleted:"#EF4444", contract_deleted:"#EF4444",
-                          ai_recode:"#C8B8FF", ai_retag:"#C8B8FF",
-                          contact_added:"#0EA5E9", contact_updated:"#0EA5E9",
-                          payroll_posted:"#F59E0B", recurring_posted:"#F59E0B", recurring_created:"#F59E0B",
-                          recon_complete:"#10B981", opening_balances_posted:"#10B981",
-                          "1099_flagged":"#F59E0B", "1099_exported":"#9CA3AF",
-                          contract_uploaded:"#0EA5E9", settings_saved:"#6B6B8A",
-                        };
-                        const c = colorMap[entry.action] || "#6B6B8A";
-                        return (
-                          <tr key={entry.id} style={{borderTop:"1px solid #1A1A28",background:i%2===0?"transparent":"#0A0A10"}}>
-                            <td style={{padding:"11px 16px",fontSize:11,color:"#6B6B8A",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap",verticalAlign:"top"}}>
-                              {entry.ts?.replace("T"," ").slice(0,19)}
-                            </td>
-                            <td style={{padding:"11px 16px",verticalAlign:"top",whiteSpace:"nowrap"}}>
-                              <span style={{fontSize:11,background:c+"22",color:c,borderRadius:20,padding:"3px 10px",fontWeight:600}}>
-                                {entry.action.replace(/_/g," ")}
-                              </span>
-                            </td>
-                            <td style={{padding:"11px 16px",fontSize:13,color:"#C8C8D8",lineHeight:1.5}}>{entry.detail}</td>
+                ) : (
+                  <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14}}>
+                    <div style={{padding:"12px 20px",borderBottom:"1px solid #1E1E2E",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{fontSize:13,fontWeight:600}}>
+                        {filteredLog.length < auditLog.length
+                          ? `Showing ${filteredLog.length} of ${auditLog.length} events`
+                          : `${auditLog.length} event${auditLog.length!==1?"s":""}`}
+                      </div>
+                      <div style={{fontSize:11,color:"#6B6B8A"}}>Newest first · scroll to see all</div>
+                    </div>
+                    {filteredLog.length===0 ? (
+                      <div style={{padding:40,textAlign:"center",color:"#6B6B8A",fontSize:13}}>No events match your search.</div>
+                    ) : (
+                      <table style={{width:"100%",borderCollapse:"collapse"}}>
+                        <thead>
+                          <tr style={{background:"#0F0F13"}}>
+                            {["Timestamp","Action","Detail"].map(h=>(
+                              <th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:10,color:"#6B6B8A",letterSpacing:1.2,fontWeight:500}}>{h}</th>
+                            ))}
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+                        </thead>
+                        <tbody>
+                          {filteredLog.map((entry,i)=>{
+                            const c = colorMap[entry.action] || "#6B6B8A";
+                            return (
+                              <tr key={entry.id} style={{borderTop:"1px solid #1A1A28",background:i%2===0?"transparent":"#0A0A10"}}>
+                                <td style={{padding:"11px 16px",fontSize:11,color:"#6B6B8A",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap",verticalAlign:"top"}}>
+                                  {(entry.ts||"").replace("T"," ").slice(0,19)}
+                                </td>
+                                <td style={{padding:"11px 16px",verticalAlign:"top",whiteSpace:"nowrap"}}>
+                                  <span style={{fontSize:11,background:c+"22",color:c,borderRadius:20,padding:"3px 10px",fontWeight:600}}>
+                                    {(entry.action||"").replace(/_/g," ")}
+                                  </span>
+                                </td>
+                                <td style={{padding:"11px 16px",fontSize:13,color:"#C8C8D8",lineHeight:1.5}}>{entry.detail}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── QBO ONBOARDING ────────────────────────────────────────────────── */}
           {view==="onboard" && (() => {
