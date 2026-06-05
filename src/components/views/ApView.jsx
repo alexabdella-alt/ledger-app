@@ -5,418 +5,262 @@ import { initials, vendorColor } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function ApView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
-            const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
-            const today = new Date().toISOString().slice(0,10);
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const [payPickerId, setPayPickerId] = React.useState(null);
+  const [rejectId, setRejectId] = React.useState(null);
+  const [rejectText, setRejectText] = React.useState("");
+  const [infoId, setInfoId] = React.useState(null);
+  const [infoText, setInfoText] = React.useState("");
 
-            // All open expense invoices that have been AP-screened or are payable
-            const apAll = invoices.filter(i => glIsExpense(i.gl_code) || i.type==="expense");
-            const apOpen = apAll.filter(i => i.payment_status !== "paid" && i.approval_status !== "rejected");
-            const apPending = apAll.filter(i => i.approval_status === "pending_approval" || i.approval_status === "flagged");
-            const apApproved = apOpen.filter(i => i.approval_status === "approved" || i.approval_status === "auto_approved");
-            const apOverdue = apOpen.filter(i => i.due_date && i.due_date < today);
+  const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
+  const today = new Date().toISOString().slice(0,10);
+  const weekFromNow = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
 
-            // Aging buckets (based on invoice date)
-            const agingBuckets = { current:{count:0,total:0,items:[]}, d60:{count:0,total:0,items:[]}, d90:{count:0,total:0,items:[]}, d90plus:{count:0,total:0,items:[]} };
-            apOpen.forEach(inv => {
-              const days = Math.floor((new Date(today)-new Date(inv.date||today))/86400000);
-              const bucket = days<=30?"current":days<=60?"d60":days<=90?"d90":"d90plus";
-              agingBuckets[bucket].count++; agingBuckets[bucket].total+=inv.amount; agingBuckets[bucket].items.push(inv);
-            });
+  // All payables (expense entries)
+  const apAll = invoices.filter(i => (glIsExpense(i.gl_code) || i.type==="expense") && i.status!=="voided");
+  const isPaidI = i => i.payment_status==="paid";
+  const isRejectedI = i => i.approval_status==="rejected";
+  const isApprovedI = i => (i.approval_status==="approved"||i.approval_status==="auto_approved") && !isPaidI(i) && !isRejectedI(i);
+  const inbox    = apAll.filter(i => !isPaidI(i) && !isRejectedI(i) && i.approval_status!=="approved" && i.approval_status!=="auto_approved")
+                       .sort((a,b)=>(a.due_date||"9999").localeCompare(b.due_date||"9999"));
+  const approved = apAll.filter(isApprovedI).sort((a,b)=>(a.due_date||"9999").localeCompare(b.due_date||"9999"));
+  const paid     = apAll.filter(isPaidI).sort((a,b)=>(b.paid_at||"").localeCompare(a.paid_at||""));
+  const rejected = apAll.filter(isRejectedI).sort((a,b)=>(b.rejected_at||"").localeCompare(a.rejected_at||""));
 
-            const totalOpen = apOpen.reduce((s,i)=>s+i.amount,0);
-            const cashAmt = parseFloat(cashBalance)||0;
+  const approvedTotal = approved.reduce((s,i)=>s+i.amount,0);
+  const dueThisWeek   = approved.filter(i=>i.due_date && i.due_date<=weekFromNow).reduce((s,i)=>s+i.amount,0);
 
-            const priorityConfig = {
-              critical:{ color:"#EF4444", bg:"#2A0A0A", label:"Critical" },
-              high:    { color:"#F59E0B", bg:"#1A1200", label:"High" },
-              normal:  { color:"#C7BFFF", bg:"#18181C", label:"Normal" },
-              low:     { color:"#86868F", bg:"#141416", label:"Low" },
-            };
-            const approvalConfig = {
-              auto_approved:    { color:"#10B981", label:"Auto-approved" },
-              approved:         { color:"#10B981", label:"Approved" },
-              pending_approval: { color:"#F59E0B", label:"Needs approval" },
-              flagged:          { color:"#EF4444", label:"Flagged" },
-              rejected:         { color:"#86868F", label:"Rejected" },
-            };
+  const methods = [["check","Check"],["ach","ACH"],["wire","Wire"],["card","Credit Card"],["other","Other"]];
+  const methodLabel = m => ({check:"Check",ach:"ACH",wire:"Wire",card:"Credit Card",other:"Other"}[m] || (m?String(m).toUpperCase():"—"));
+  const payNow = () => showNotification("Coming Soon — Integrated payments launching soon ✦");
 
-            return (
-              <div>
-                {/* Header */}
-                <div style={{ marginBottom:24, display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
-                  <div>
-                    <div style={{ fontSize:10, letterSpacing:3, color:"#86868F", marginBottom:8 }}>ACCOUNTS PAYABLE</div>
-                    <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>AP Management</h1>
-                  </div>
-                  {/* Cash input */}
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:12, color:"#86868F" }}>Available cash:</span>
-                    <div style={{ position:"relative" }}>
-                      <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#86868F", fontSize:13 }}>$</span>
-                      <input value={cashBalance} onChange={e=>setCashBalance(e.target.value.replace(/[^0-9.]/g,""))}
-                        placeholder="0.00" style={{ background:"#141416", border:"1px solid #262629", borderRadius:8, padding:"8px 12px 8px 22px", color:"#F2F2F4", fontSize:13, outline:"none", width:130 }} />
+  const statusBadge = (inv) => {
+    const map = {
+      approved:        ["#10B981","Approved"],
+      auto_approved:   ["#10B981","Auto-approved"],
+      rejected:        ["#86868F","Rejected"],
+      info_requested:  ["#0EA5E9","Info requested"],
+      flagged:         ["#EF4444","Flagged"],
+      pending_approval:["#F59E0B","Pending review"],
+    };
+    const [c,l] = map[inv.approval_status] || ["#F59E0B","Pending review"];
+    return <span style={{ fontSize:10, fontWeight:600, color:c, background:c+"22", border:`1px solid ${c}44`, borderRadius:20, padding:"2px 9px" }}>{l}</span>;
+  };
+
+  const tabs = [["inbox","Inbox",inbox.length],["approved","Approved",approved.length],["paid","Paid",paid.length],["rejected","Rejected",rejected.length],["aging","Aging",null]];
+  const active = ["inbox","approved","paid","rejected","aging"].includes(apView) ? apView : "inbox";
+
+  // Shared row chrome
+  const Avatar = ({name,size=38}) => <div style={{ width:size,height:size,borderRadius:10,background:vendorColor(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.34,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(name)}</div>;
+
+  const InvoiceMeta = ({inv}) => (
+    <div style={{ display:"flex", alignItems:"center", gap:13, minWidth:0 }}>
+      <Avatar name={inv.vendor} />
+      <div style={{ minWidth:0 }}>
+        <div style={{ fontSize:14, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"Unknown vendor"}</div>
+        <div style={{ fontSize:11, color:"#86868F", display:"flex", gap:10, flexWrap:"wrap", marginTop:2 }}>
+          <span style={{ fontFamily:"'DM Mono',monospace", background:"#1C1C20", padding:"1px 6px", borderRadius:4, color:"#9A9AA2" }}>{inv.gl_code} · {inv.gl_name}</span>
+          {inv.due_date && <span style={{ color: inv.due_date<today ? "#EF4444" : "#86868F" }}>Due {inv.due_date}{inv.due_date<today?" · overdue":""}</span>}
+          {!inv.due_date && <span>No due date</span>}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ marginBottom:18 }}>
+        <div style={{ fontSize:10, letterSpacing:3, color:"#86868F", marginBottom:8 }}>MONEY OUT</div>
+        <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Accounts Payable</h1>
+        <div style={{ fontSize:13, color:"#86868F", marginTop:6 }}>Review, approve, and pay your bills — every action is logged to the audit trail.</div>
+      </div>
+
+      {/* Summary chips */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:18 }}>
+        {[
+          ["PENDING REVIEW", inbox.length, fmt(inbox.reduce((s,i)=>s+i.amount,0)), "#F59E0B", "inbox"],
+          ["APPROVED · TO PAY", approved.length, fmt(approvedTotal), "#10B981", "approved"],
+          ["PAID", paid.length, fmt(paid.reduce((s,i)=>s+i.amount,0)), "#C7BFFF", "paid"],
+          ["REJECTED", rejected.length, fmt(rejected.reduce((s,i)=>s+i.amount,0)), "#86868F", "rejected"],
+        ].map(([label,count,amt,color,tab])=>(
+          <div key={label} onClick={()=>setApView(tab)} style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:"16px 18px", cursor:"pointer", transition:"border-color .2s" }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=color} onMouseLeave={e=>e.currentTarget.style.borderColor="#1C1C20"}>
+            <div style={{ fontSize:10, color:"#86868F", letterSpacing:1.5, marginBottom:8 }}>{label}</div>
+            <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between" }}>
+              <div style={{ fontSize:24, fontWeight:700, color }}>{count}</div>
+              <div style={{ fontSize:13, color:"#9A9AA2", fontFamily:"'DM Mono',monospace" }}>{amt}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", gap:6, marginBottom:18, borderBottom:"1px solid #1C1C20", paddingBottom:2 }}>
+        {tabs.map(([id,label,count])=>(
+          <button key={id} onClick={()=>setApView(id)} style={{ padding:"9px 16px", borderRadius:"8px 8px 0 0", fontSize:13, fontWeight:active===id?600:400, background:"transparent", border:"none", borderBottom:active===id?"2px solid #8B7BFF":"2px solid transparent", color:active===id?"#F2F2F4":"#86868F", cursor:"pointer", display:"flex", alignItems:"center", gap:7 }}>
+            {label}
+            {count>0 && <span style={{ fontSize:10, fontWeight:700, color:active===id?"#0C0C0E":"#0C0C0E", background:active===id?"#8B7BFF":"#33333A", borderRadius:20, padding:"1px 7px" }}>{count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* ── INBOX ── */}
+      {active==="inbox" && (
+        inbox.length===0
+          ? <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:48, textAlign:"center", color:"#86868F" }}><div style={{ fontSize:30, marginBottom:10 }}>📥</div><div style={{ fontSize:14, color:"#F2F2F4", marginBottom:4 }}>Inbox zero</div>No bills pending review. Upload a bill and it'll land here.</div>
+          : <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {inbox.map(inv=>(
+                <div key={inv.id} className="sc-card" style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:"16px 18px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                    <InvoiceMeta inv={inv} />
+                    <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                      {statusBadge(inv)}
+                      <div style={{ fontSize:17, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#EF4444" }}>{fmt(inv.amount)}</div>
                     </div>
                   </div>
+                  {inv.approval_status==="info_requested" && inv.approval_reason && <div style={{ marginTop:10, fontSize:12, color:"#0EA5E9", background:"#0EA5E911", border:"1px solid #0EA5E933", borderRadius:8, padding:"7px 12px" }}>ℹ {inv.approval_reason}</div>}
+                  {rejectId===inv.id ? (
+                    <div style={{ marginTop:12, display:"flex", gap:8 }}>
+                      <input autoFocus value={rejectText} onChange={e=>setRejectText(e.target.value)} placeholder="Reason for rejection…" onKeyDown={e=>{ if(e.key==="Enter"){ rejectInvoice(inv.id, rejectText); setRejectId(null); setRejectText(""); } }}
+                        style={{ flex:1, background:"#0C0C0E", border:"1px solid #262629", borderRadius:8, padding:"8px 12px", color:"#F2F2F4", fontSize:13, outline:"none" }} />
+                      <button onClick={()=>{ rejectInvoice(inv.id, rejectText); setRejectId(null); setRejectText(""); }} style={{ padding:"8px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:"#3B0A0A", border:"1px solid #EF444444", color:"#FCA5A5", cursor:"pointer" }}>Confirm reject</button>
+                      <button onClick={()=>{ setRejectId(null); setRejectText(""); }} style={{ padding:"8px 12px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #262629", color:"#86868F", cursor:"pointer" }}>Cancel</button>
+                    </div>
+                  ) : infoId===inv.id ? (
+                    <div style={{ marginTop:12, display:"flex", gap:8 }}>
+                      <input autoFocus value={infoText} onChange={e=>setInfoText(e.target.value)} placeholder="What info do you need?" onKeyDown={e=>{ if(e.key==="Enter"){ requestInfo(inv.id, infoText); setInfoId(null); setInfoText(""); } }}
+                        style={{ flex:1, background:"#0C0C0E", border:"1px solid #262629", borderRadius:8, padding:"8px 12px", color:"#F2F2F4", fontSize:13, outline:"none" }} />
+                      <button onClick={()=>{ requestInfo(inv.id, infoText); setInfoId(null); setInfoText(""); }} style={{ padding:"8px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:"#0EA5E922", border:"1px solid #0EA5E944", color:"#7DD3FC", cursor:"pointer" }}>Send request</button>
+                      <button onClick={()=>{ setInfoId(null); setInfoText(""); }} style={{ padding:"8px 12px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #262629", color:"#86868F", cursor:"pointer" }}>Cancel</button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop:12, display:"flex", gap:8, flexWrap:"wrap" }}>
+                      <button onClick={()=>approveInvoice(inv.id)} style={{ padding:"7px 16px", borderRadius:8, fontSize:12, fontWeight:600, background:"#065F4622", border:"1px solid #10B98144", color:"#10B981", cursor:"pointer" }}>✓ Approve</button>
+                      <button onClick={()=>{ setRejectId(inv.id); setInfoId(null); }} style={{ padding:"7px 16px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #262629", color:"#9A9AA2", cursor:"pointer" }}>✗ Reject</button>
+                      <button onClick={()=>{ setInfoId(inv.id); setRejectId(null); }} style={{ padding:"7px 16px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #262629", color:"#9A9AA2", cursor:"pointer" }}>ℹ Request Info</button>
+                      <button onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} style={{ marginLeft:"auto", padding:"7px 12px", borderRadius:8, fontSize:12, background:"transparent", border:"none", color:"#86868F", cursor:"pointer" }}>View entry →</button>
+                    </div>
+                  )}
                 </div>
+              ))}
+            </div>
+      )}
 
-                {/* Summary cards */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
-                  {[
-                    { label:"Total Open AP",    value:fmt(totalOpen),        sub:`${apOpen.length} invoices`,              color:"#F2F2F4" },
-                    { label:"Needs Approval",   value:apPending.length,      sub:`${fmt(apPending.reduce((s,i)=>s+i.amount,0))} held`, color:"#F59E0B" },
-                    { label:"Overdue",          value:apOverdue.length,      sub:`${fmt(apOverdue.reduce((s,i)=>s+i.amount,0))} past due`, color:"#EF4444" },
-                    { label:"Cash vs AP",       value:cashAmt>0?fmt(cashAmt-totalOpen):"—", sub:cashAmt>0?(cashAmt>=totalOpen?"Sufficient to pay all":"Shortfall — prioritize"):"Enter cash balance", color:cashAmt>0?(cashAmt>=totalOpen?"#10B981":"#EF4444"):"#86868F" },
-                  ].map(c=>(
-                    <div key={c.label} style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:12, padding:"16px 18px" }}>
-                      <div style={{ fontSize:11, color:"#86868F", letterSpacing:1, marginBottom:8 }}>{c.label.toUpperCase()}</div>
-                      <div style={{ fontSize:22, fontWeight:700, fontFamily:"'DM Mono',monospace", color:c.color }}>{c.value}</div>
-                      <div style={{ fontSize:11, color:"#86868F", marginTop:4 }}>{c.sub}</div>
-                    </div>
-                  ))}
+      {/* ── APPROVED ── */}
+      {active==="approved" && (
+        approved.length===0
+          ? <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:48, textAlign:"center", color:"#86868F" }}><div style={{ fontSize:30, marginBottom:10 }}>✅</div>Nothing approved yet. Approve bills in the Inbox to queue them for payment.</div>
+          : <div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:14, flexWrap:"wrap", background:"#0C0C0E", border:"1px solid #1C1C20", borderRadius:12, padding:"14px 18px", marginBottom:14 }}>
+                <div>
+                  <div style={{ fontSize:12, color:"#86868F" }}>{approved.length} bill{approved.length!==1?"s":""} ready to pay · <span style={{ color:"#F59E0B" }}>{fmt(dueThisWeek)} due this week</span></div>
+                  <div style={{ fontSize:24, fontWeight:700, color:"#10B981", fontFamily:"'DM Mono',monospace", marginTop:2 }}>{fmt(approvedTotal)} <span style={{ fontSize:12, color:"#86868F", fontWeight:400 }}>total due</span></div>
                 </div>
-
-                {/* Tab bar */}
-                <div style={{ display:"flex", gap:2, background:"#0C0C0E", borderRadius:10, padding:3, border:"1px solid #1C1C20", marginBottom:20, width:"fit-content" }}>
-                  {[["inbox","📥 Inbox"],["queue","💳 Payment Queue"],["approvals","✓ Approvals"],["aging","📊 Aging"]].map(([id,label])=>(
-                    <button key={id} onClick={()=>setApView(id)} style={{ padding:"8px 18px", borderRadius:8, fontSize:13, fontWeight:apView===id?600:400,
-                      background:apView===id?"#1C1C20":"transparent", border:"none", color:apView===id?"#C7BFFF":"#86868F", cursor:"pointer",
-                      display:"flex", alignItems:"center", gap:6 }}>
-                      {label}
-                      {id==="approvals"&&apPending.length>0&&<span style={{ background:"#F59E0B", color:"#000", borderRadius:20, fontSize:10, fontWeight:700, padding:"1px 6px" }}>{apPending.length}</span>}
-                    </button>
-                  ))}
-                </div>
-
-                {/* ── INBOX TAB ── */}
-                {apView==="inbox" && (
-                  <div>
-                    {apAll.length===0 && (
-                      <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:48, textAlign:"center" }}>
-                        <div style={{ fontSize:32, marginBottom:12 }}>📥</div>
-                        <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No invoices yet</div>
-                        <div style={{ fontSize:13, color:"#86868F" }}>Upload invoices from the dashboard — each one is automatically screened for duplicates, anomalies, and routed for approval.</div>
-                      </div>
-                    )}
-                    {apAll.length>0 && (
-                      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                        {apAll.sort((a,b)=>{
-                          const po = {critical:0,high:1,normal:2,low:3};
-                          return (po[a.payment_priority==="1"?"critical":a.payment_priority==="2"?"high":"low"]||2) - (po[b.payment_priority==="1"?"critical":b.payment_priority==="2"?"high":"low"]||2);
-                        }).map(inv => {
-                          const pc = priorityConfig[inv.payment_priority==="1"?"critical":inv.payment_priority==="2"?"high":inv.payment_priority==="3"?"low":"normal"] || priorityConfig.normal;
-                          const ac = approvalConfig[inv.approval_status] || approvalConfig.pending_approval;
-                          const daysUntilDue = inv.due_date ? Math.floor((new Date(inv.due_date)-new Date(today))/86400000) : null;
-                          const isPaid = inv.payment_status==="paid";
-                          return (
-                            <div key={inv.id} style={{ background:"#141416", border:`1px solid ${isPaid?"#1C1C20":(inv.duplicate_flag||inv.anomaly_flag)?"#EF444433":inv.approval_status==="pending_approval"?"#F59E0B33":"#1C1C20"}`, borderRadius:14, overflow:"hidden", opacity:isPaid?0.5:1 }}>
-                              <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
-                                {/* Vendor avatar */}
-                                <div style={{ width:40, height:40, borderRadius:10, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
-                                {/* Main info */}
-                                <div style={{ flex:1, minWidth:0 }}>
-                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3, flexWrap:"wrap" }}>
-                                    <span style={{ fontSize:14, fontWeight:600 }}>{inv.vendor}</span>
-                                    <span style={{ fontSize:11, background:ac.color+"22", color:ac.color, borderRadius:20, padding:"2px 8px" }}>{ac.label}</span>
-                                    {inv.early_pay_discount && <span style={{ fontSize:11, background:"#10B98122", color:"#10B981", borderRadius:20, padding:"2px 8px" }}>💰 Early discount</span>}
-                                    {inv.duplicate_flag && <span style={{ fontSize:11, background:"#EF444422", color:"#EF4444", borderRadius:20, padding:"2px 8px" }}>⚠ Possible duplicate</span>}
-                                    {inv.anomaly_flag && <span style={{ fontSize:11, background:"#F59E0B22", color:"#F59E0B", borderRadius:20, padding:"2px 8px" }}>⚠ Unusual amount</span>}
-                                    {isPaid && <span style={{ fontSize:11, background:"#10B98122", color:"#10B981", borderRadius:20, padding:"2px 8px" }}>✓ Paid{inv.payment_method_used ? ` via ${inv.payment_method_used.toUpperCase()}` : ""}</span>}
-                                  </div>
-                                  <div style={{ fontSize:12, color:"#9A9AA2" }}>
-                                    {inv.description} · {inv.gl_name} · {inv.date}
-                                    {inv.payment_terms && <span style={{ marginLeft:8, color:"#86868F" }}>{inv.payment_terms}</span>}
-                                  </div>
-                                  {inv.notes_for_reviewer && <div style={{ fontSize:11, color:"#C7BFFF", marginTop:4 }}>✦ {inv.notes_for_reviewer}</div>}
-                                  {inv.duplicate_reason && <div style={{ fontSize:11, color:"#EF4444", marginTop:3 }}>⚠ {inv.duplicate_reason}</div>}
-                                  {inv.anomaly_reason && <div style={{ fontSize:11, color:"#F59E0B", marginTop:3 }}>⚠ {inv.anomaly_reason}</div>}
-                                </div>
-                                {/* Amount + due date */}
-                                <div style={{ textAlign:"right", flexShrink:0 }}>
-                                  <div style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#EF4444" }}>{fmt(inv.amount)}</div>
-                                  {daysUntilDue!==null && !isPaid && (
-                                    <div style={{ fontSize:11, marginTop:3, color:daysUntilDue<0?"#EF4444":daysUntilDue<=7?"#F59E0B":"#86868F" }}>
-                                      {daysUntilDue<0?`${Math.abs(daysUntilDue)}d overdue`:daysUntilDue===0?"Due today":`Due in ${daysUntilDue}d`}
-                                    </div>
-                                  )}
-                                  {inv.due_date && <div style={{ fontSize:10, color:"#86868F" }}>{inv.due_date}</div>}
-                                </div>
-                              </div>
-                              {/* Action row */}
-                              {!isPaid && (
-                                <div style={{ padding:"10px 20px", borderTop:"1px solid #1C1C20", background:"#0C0C0E", display:"flex", gap:8, alignItems:"center" }}>
-                                  {(inv.approval_status==="pending_approval"||inv.approval_status==="flagged") && <>
-                                    <button onClick={()=>approveInvoice(inv.id)} style={{ padding:"6px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:"#065F4622", border:"1px solid #10B98144", color:"#10B981", cursor:"pointer" }}>✓ Approve</button>
-                                    <button onClick={()=>rejectInvoice(inv.id)} style={{ padding:"6px 14px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #262629", color:"#86868F", cursor:"pointer" }}>✗ Reject</button>
-                                    <div style={{ width:1, height:20, background:"#262629", margin:"0 4px" }} />
-                                  </>}
-                                  {(inv.approval_status==="approved"||inv.approval_status==="auto_approved") && <>
-                                    <button onClick={()=>markPaid(inv.id,"ach")} style={{ padding:"6px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:"#18181C", border:"1px solid #C7BFFF44", color:"#C7BFFF", cursor:"pointer" }}>Pay ACH</button>
-                                    <button onClick={()=>markPaid(inv.id,"check")} style={{ padding:"6px 14px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #262629", color:"#9A9AA2", cursor:"pointer" }}>Pay Check</button>
-                                  </>}
-                                  <button onClick={()=>{ setApView("queue"); }} style={{ marginLeft:"auto", padding:"6px 12px", borderRadius:8, fontSize:11, background:"transparent", border:"none", color:"#86868F", cursor:"pointer" }}>Add to queue →</button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ── PAYMENT QUEUE TAB ── */}
-                {apView==="queue" && (
-                  <div>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-                      <div style={{ fontSize:13, color:"#86868F" }}>
-                        {apApproved.length} approved invoices ready to pay · {fmt(apApproved.reduce((s,i)=>s+i.amount,0))} total
-                      </div>
-                      <div style={{ display:"flex", gap:8 }}>
-                        {checkRunMode ? <>
-                          <button onClick={()=>{ const ids=[...selectedPayments]; markPaid(ids,"check"); setCheckRunMode(false); }} disabled={selectedPayments.size===0}
-                            style={{ padding:"8px 18px", borderRadius:10, fontSize:13, fontWeight:600, background:selectedPayments.size>0?"linear-gradient(135deg,#065F46,#047857)":"#1C1C20", border:"none", color:selectedPayments.size>0?"#6EE7B7":"#86868F", cursor:selectedPayments.size>0?"pointer":"not-allowed" }}>
-                            Print Check Run ({selectedPayments.size})
-                          </button>
-                          <button onClick={()=>{ setCheckRunMode(false); setSelectedPayments(new Set()); }} style={{ padding:"8px 14px", borderRadius:10, fontSize:13, background:"transparent", border:"1px solid #262629", color:"#86868F", cursor:"pointer" }}>Cancel</button>
-                        </> : <>
-                          <button onClick={()=>setCheckRunMode(true)} style={{ padding:"8px 16px", borderRadius:10, fontSize:13, background:"transparent", border:"1px solid #262629", color:"#9A9AA2", cursor:"pointer" }}>🗒 Check Run</button>
-                          <button onClick={()=>{ const ids=apApproved.map(i=>i.id); markPaid(ids,"ach"); }} disabled={apApproved.length===0}
-                            style={{ padding:"8px 18px", borderRadius:10, fontSize:13, fontWeight:600, background:apApproved.length>0?"linear-gradient(135deg,#6D5EF6,#4A3DB8)":"#1C1C20", border:"none", color:apApproved.length>0?"#F2F2F4":"#86868F", cursor:apApproved.length>0?"pointer":"not-allowed" }}>
-                            Pay All via ACH
-                          </button>
-                        </>}
-                      </div>
-                    </div>
-
-                    {/* Cash coverage bar */}
-                    {cashAmt>0 && (
-                      <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:12, padding:"14px 18px", marginBottom:16, display:"flex", alignItems:"center", gap:14 }}>
-                        <div style={{ flex:1 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:6 }}>
-                            <span style={{ color:"#86868F" }}>Cash available: {fmt(cashAmt)}</span>
-                            <span style={{ color: cashAmt>=totalOpen?"#10B981":"#EF4444" }}>Total open AP: {fmt(totalOpen)}</span>
-                          </div>
-                          <div style={{ height:6, background:"#1C1C20", borderRadius:3 }}>
-                            <div style={{ height:"100%", width:`${Math.min(100,(cashAmt/totalOpen)*100||0)}%`, background:cashAmt>=totalOpen?"#10B981":"#EF4444", borderRadius:3, transition:"width 0.4s" }} />
-                          </div>
-                        </div>
-                        <div style={{ fontSize:12, fontFamily:"'DM Mono',monospace", color:cashAmt>=totalOpen?"#10B981":"#EF4444", flexShrink:0 }}>
-                          {cashAmt>=totalOpen ? "✓ Can pay all" : `${fmt(totalOpen-cashAmt)} shortfall`}
-                        </div>
-                      </div>
-                    )}
-
-                    {apApproved.length===0 ? (
-                      <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:12, padding:32, textAlign:"center", color:"#86868F", fontSize:13 }}>
-                        No approved invoices ready for payment.{apPending.length>0?` ${apPending.length} awaiting approval.`:""}
-                      </div>
-                    ) : (
-                      <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, overflow:"hidden" }}>
-                        <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                          <thead><tr style={{ background:"#0C0C0E" }}>
-                            {checkRunMode && <th style={{ padding:"10px 16px", width:40 }}><input type="checkbox" onChange={e=>{ if(e.target.checked)setSelectedPayments(new Set(apApproved.map(i=>i.id))); else setSelectedPayments(new Set()); }} /></th>}
-                            {["Vendor","Due Date","Terms","Amount","Method","Action"].map(h=><th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:11, color:"#86868F", letterSpacing:1.2, fontWeight:500 }}>{h}</th>)}
-                          </tr></thead>
-                          <tbody>
-                            {[...apApproved].sort((a,b)=>{
-                              if(!a.due_date) return 1; if(!b.due_date) return -1;
-                              return a.due_date.localeCompare(b.due_date);
-                            }).map((inv,i)=>{
-                              const daysUntilDue = inv.due_date ? Math.floor((new Date(inv.due_date)-new Date(today))/86400000) : 30;
-                              const isSelected = selectedPayments.has(inv.id);
-                              return (
-                                <tr key={inv.id} style={{ borderTop:"1px solid #1C1C20", background:isSelected?"#18181C":i%2===0?"transparent":"#0A0A0C" }}
-                                  onClick={()=>checkRunMode&&setSelectedPayments(prev=>{ const n=new Set(prev); isSelected?n.delete(inv.id):n.add(inv.id); return n; })}>
-                                  {checkRunMode && <td style={{ padding:"12px 16px" }}><input type="checkbox" checked={isSelected} readOnly /></td>}
-                                  <td style={{ padding:"12px 16px" }}>
-                                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                      <div style={{ width:26, height:26, borderRadius:6, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#fff" }}>{initials(inv.vendor)}</div>
-                                      <div>
-                                        <div style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</div>
-                                        <div style={{ fontSize:11, color:"#86868F" }}>{inv.description?.slice(0,30)}</div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td style={{ padding:"12px 16px" }}>
-                                    <div style={{ fontSize:13, color:daysUntilDue<0?"#EF4444":daysUntilDue<=7?"#F59E0B":"#F2F2F4" }}>{inv.due_date||"—"}</div>
-                                    <div style={{ fontSize:11, color:"#86868F" }}>{daysUntilDue<0?`${Math.abs(daysUntilDue)}d overdue`:daysUntilDue===0?"Today":`${daysUntilDue}d`}</div>
-                                  </td>
-                                  <td style={{ padding:"12px 16px", fontSize:12, color:"#9A9AA2" }}>{inv.payment_terms||"Net 30"}</td>
-                                  <td style={{ padding:"12px 16px", fontSize:14, fontFamily:"'DM Mono',monospace", color:"#EF4444", fontWeight:600 }}>{fmt(inv.amount)}</td>
-                                  <td style={{ padding:"12px 16px" }}>
-                                    <span style={{ fontSize:11, background:"#1C1C20", borderRadius:20, padding:"3px 10px", color:"#9A9AA2" }}>{inv.payment_method==="ach"?"ACH":"Check"}</span>
-                                    {inv.early_pay_discount && <div style={{ fontSize:10, color:"#10B981", marginTop:3 }}>💰 Discount available</div>}
-                                  </td>
-                                  <td style={{ padding:"12px 16px" }}>
-                                    {!checkRunMode && (
-                                      <div style={{ display:"flex", gap:6 }}>
-                                        <button onClick={()=>markPaid(inv.id,"ach")} style={{ padding:"5px 12px", borderRadius:7, fontSize:11, fontWeight:600, background:"#18181C", border:"1px solid #C7BFFF44", color:"#C7BFFF", cursor:"pointer" }}>ACH</button>
-                                        <button onClick={()=>markPaid(inv.id,"check")} style={{ padding:"5px 10px", borderRadius:7, fontSize:11, background:"transparent", border:"1px solid #262629", color:"#9A9AA2", cursor:"pointer" }}>Check</button>
-                                      </div>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot>
-                            <tr style={{ borderTop:"2px solid #262629", background:"#0C0C0E" }}>
-                              {checkRunMode && <td />}
-                              <td colSpan={3} style={{ padding:"12px 16px", fontSize:13, fontWeight:600 }}>Total</td>
-                              <td style={{ padding:"12px 16px", fontSize:15, fontFamily:"'DM Mono',monospace", fontWeight:700, color:"#EF4444" }}>{fmt(apApproved.reduce((s,i)=>s+i.amount,0))}</td>
-                              <td colSpan={2} />
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ── APPROVALS TAB ── */}
-                {apView==="approvals" && (
-                  <div>
-                    <div style={{ fontSize:13, color:"#86868F", marginBottom:16 }}>
-                      Auto-approve threshold: <strong style={{ color:"#C7BFFF" }}>${apSettings.autoApproveThreshold.toLocaleString()}</strong> · Invoices above this amount need manual approval.
-                    </div>
-                    {apPending.length===0 ? (
-                      <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:12, padding:32, textAlign:"center", color:"#86868F", fontSize:13 }}>
-                        ✓ No invoices pending approval
-                      </div>
-                    ) : (
-                      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                        {apPending.map(inv => {
-                          const ac = approvalConfig[inv.approval_status] || approvalConfig.pending_approval;
-                          return (
-                            <div key={inv.id} style={{ background:"#141416", border:`1px solid ${inv.approval_status==="flagged"?"#EF444433":"#F59E0B33"}`, borderRadius:14, padding:"18px 20px" }}>
-                              <div style={{ display:"flex", alignItems:"flex-start", gap:14 }}>
-                                <div style={{ width:40, height:40, borderRadius:10, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
-                                <div style={{ flex:1 }}>
-                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                                    <span style={{ fontSize:14, fontWeight:600 }}>{inv.vendor}</span>
-                                    <span style={{ fontSize:11, background:ac.color+"22", color:ac.color, borderRadius:20, padding:"2px 8px" }}>{ac.label}</span>
-                                  </div>
-                                  <div style={{ fontSize:12, color:"#9A9AA2", marginBottom:8 }}>{inv.description} · {inv.date} · {inv.gl_name}</div>
-                                  {inv.notes_for_reviewer && (
-                                    <div style={{ background:"#0A0A0C", border:"1px solid #C7BFFF33", borderRadius:8, padding:"10px 14px", marginBottom:10 }}>
-                                      <div style={{ fontSize:11, color:"#C7BFFF", marginBottom:4 }}>✦ AI REVIEW NOTE</div>
-                                      <div style={{ fontSize:12, color:"#D2D2D6", lineHeight:1.6 }}>{inv.notes_for_reviewer}</div>
-                                    </div>
-                                  )}
-                                  {inv.duplicate_reason && <div style={{ fontSize:12, color:"#EF4444", marginBottom:6 }}>⚠ Duplicate flag: {inv.duplicate_reason}</div>}
-                                  {inv.anomaly_reason && <div style={{ fontSize:12, color:"#F59E0B", marginBottom:6 }}>⚠ Anomaly: {inv.anomaly_reason}</div>}
-                                  {inv.approval_reason && <div style={{ fontSize:12, color:"#86868F", marginBottom:8 }}>Reason: {inv.approval_reason}</div>}
-                                  <div style={{ display:"flex", gap:8 }}>
-                                    <button onClick={()=>approveInvoice(inv.id)} style={{ padding:"8px 20px", borderRadius:9, fontSize:13, fontWeight:600, background:"linear-gradient(135deg,#065F46,#047857)", border:"none", color:"#6EE7B7", cursor:"pointer" }}>✓ Approve {fmt(inv.amount)}</button>
-                                    <button onClick={()=>rejectInvoice(inv.id)} style={{ padding:"8px 16px", borderRadius:9, fontSize:13, background:"transparent", border:"1px solid #262629", color:"#9A9AA2", cursor:"pointer" }}>✗ Reject</button>
-                                  </div>
-                                </div>
-                                <div style={{ fontSize:20, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#EF4444", flexShrink:0 }}>{fmt(inv.amount)}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Audit trail */}
-                    {apAll.filter(i=>i.approved_at||i.rejected_at).length>0 && (
-                      <div style={{ marginTop:24 }}>
-                        <div style={{ fontSize:11, color:"#86868F", letterSpacing:2, marginBottom:12 }}>AUDIT TRAIL</div>
-                        <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:12, overflow:"hidden" }}>
-                          {apAll.filter(i=>i.approved_at||i.rejected_at).map((inv,i)=>(
-                            <div key={inv.id} style={{ padding:"12px 18px", borderTop:i>0?"1px solid #1C1C20":"none", display:"flex", alignItems:"center", gap:10 }}>
-                              <div style={{ width:20, height:20, borderRadius:"50%", background:inv.approved_at?"#10B98122":"#EF444422", border:`1px solid ${inv.approved_at?"#10B98155":"#EF444455"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10 }}>
-                                {inv.approved_at?"✓":"✗"}
-                              </div>
-                              <div style={{ flex:1, fontSize:12 }}>
-                                <span style={{ fontWeight:500 }}>{inv.vendor}</span>
-                                <span style={{ color:"#86868F", marginLeft:8 }}>{inv.approved_at?"Approved":"Rejected"} · {fmt(inv.amount)}</span>
-                              </div>
-                              <div style={{ fontSize:11, color:"#86868F" }}>{(inv.approved_at||inv.rejected_at||"").slice(0,10)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ── AGING TAB ── */}
-                {apView==="aging" && (
-                  <div>
-                    {/* Aging buckets */}
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
-                      {[
-                        { label:"Current (0–30d)",  bucket:agingBuckets.current, color:"#10B981" },
-                        { label:"31–60 Days",        bucket:agingBuckets.d60,     color:"#F59E0B" },
-                        { label:"61–90 Days",        bucket:agingBuckets.d90,     color:"#EF4444" },
-                        { label:"90+ Days",          bucket:agingBuckets.d90plus, color:"#7F1D1D" },
-                      ].map(({label,bucket,color})=>(
-                        <div key={label} style={{ background:"#141416", border:`1px solid ${color}33`, borderRadius:12, padding:"16px 18px" }}>
-                          <div style={{ fontSize:11, color:"#86868F", marginBottom:8 }}>{label}</div>
-                          <div style={{ fontSize:24, fontWeight:700, fontFamily:"'DM Mono',monospace", color }}>{fmt(bucket.total)}</div>
-                          <div style={{ fontSize:11, color:"#86868F", marginTop:4 }}>{bucket.count} invoice{bucket.count!==1?"s":""}</div>
-                          <div style={{ marginTop:10, height:3, background:"#1C1C20", borderRadius:2 }}>
-                            <div style={{ height:"100%", width:totalOpen>0?`${Math.min(100,(bucket.total/totalOpen)*100)}%`:"0%", background:color, borderRadius:2 }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* AI commentary */}
-                    <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:20, marginBottom:20 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:apAgingNarration||apAgingLoading?16:0 }}>
-                        <div style={{ fontSize:13, fontWeight:500 }}>✦ CFO Commentary</div>
-                        <button onClick={()=>handleAgingNarration(agingBuckets)} disabled={apAgingLoading}
-                          style={{ padding:"7px 16px", borderRadius:8, fontSize:12, background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)", border:"none", color:"#F2F2F4", cursor:apAgingLoading?"wait":"pointer" }}>
-                          {apAgingLoading?"⟳ Analyzing...":"Generate Analysis"}
-                        </button>
-                      </div>
-                      {apAgingLoading && <div style={{ display:"flex", gap:5, alignItems:"center" }}>{[0,1,2].map(i=><div key={i} style={{ width:6,height:6,borderRadius:"50%",background:"#86868F",animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}</div>}
-                      {apAgingNarration && <div style={{ fontSize:13, color:"#D2D2D6", lineHeight:1.8, whiteSpace:"pre-wrap" }}>{apAgingNarration}</div>}
-                      {!apAgingNarration && !apAgingLoading && <div style={{ fontSize:13, color:"#86868F" }}>Click Generate Analysis for AI commentary on your AP aging position.</div>}
-                    </div>
-
-                    {/* Aged invoice detail */}
-                    {apOpen.length>0 && (
-                      <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, overflow:"hidden" }}>
-                        <div style={{ padding:"14px 20px", borderBottom:"1px solid #1C1C20", fontSize:13, fontWeight:600 }}>All Open Payables</div>
-                        <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                          <thead><tr style={{ background:"#0C0C0E" }}>
-                            {["Vendor","Invoice Date","Due Date","Age","Amount","Status"].map(h=><th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:11, color:"#86868F", letterSpacing:1.2, fontWeight:500 }}>{h}</th>)}
-                          </tr></thead>
-                          <tbody>
-                            {[...apOpen].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map((inv,i)=>{
-                              const ageDays = Math.floor((new Date(today)-new Date(inv.date||today))/86400000);
-                              const ageColor = ageDays<=30?"#10B981":ageDays<=60?"#F59E0B":ageDays<=90?"#EF4444":"#7F1D1D";
-                              return (
-                                <tr key={inv.id} style={{ borderTop:"1px solid #1C1C20", background:i%2===0?"transparent":"#0A0A0C" }}>
-                                  <td style={{ padding:"11px 16px" }}>
-                                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                      <div style={{ width:24,height:24,borderRadius:6,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff" }}>{initials(inv.vendor)}</div>
-                                      <span style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</span>
-                                    </div>
-                                  </td>
-                                  <td style={{ padding:"11px 16px", fontSize:12, color:"#9A9AA2" }}>{inv.date||"—"}</td>
-                                  <td style={{ padding:"11px 16px", fontSize:12, color:inv.due_date&&inv.due_date<today?"#EF4444":"#9A9AA2" }}>{inv.due_date||"—"}</td>
-                                  <td style={{ padding:"11px 16px" }}><span style={{ fontSize:12, color:ageColor, fontFamily:"'DM Mono',monospace" }}>{ageDays}d</span></td>
-                                  <td style={{ padding:"11px 16px", fontSize:13, fontFamily:"'DM Mono',monospace", color:"#EF4444", fontWeight:600 }}>{fmt(inv.amount)}</td>
-                                  <td style={{ padding:"11px 16px" }}>
-                                    <span style={{ fontSize:11, background:(approvalConfig[inv.approval_status]?.color||"#86868F")+"22", color:approvalConfig[inv.approval_status]?.color||"#86868F", borderRadius:20, padding:"2px 9px" }}>
-                                      {approvalConfig[inv.approval_status]?.label||"Pending"}
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <button onClick={payNow} className="sc-cta" style={{ padding:"11px 22px", borderRadius:10, fontSize:13, fontWeight:600, background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)", border:"none", color:"#fff", cursor:"pointer", boxShadow:"0 6px 18px rgba(109,94,246,.3)" }}>⚡ Pay Now</button>
               </div>
-            );
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {approved.map(inv=>(
+                  <div key={inv.id} className="sc-card" style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:"16px 18px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                      <InvoiceMeta inv={inv} />
+                      <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                        {inv.approved_by && <span style={{ fontSize:11, color:"#86868F" }}>Approved by {inv.approved_by}</span>}
+                        <div style={{ fontSize:17, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#F2F2F4" }}>{fmt(inv.amount)}</div>
+                      </div>
+                    </div>
+                    {payPickerId===inv.id ? (
+                      <div style={{ marginTop:12, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                        <span style={{ fontSize:12, color:"#86868F", marginRight:2 }}>Pay via:</span>
+                        {methods.map(([m,l])=>(
+                          <button key={m} onClick={()=>{ markPaid(inv.id, m); setPayPickerId(null); }} style={{ padding:"7px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:"#18181C", border:"1px solid #8B7BFF44", color:"#C7BFFF", cursor:"pointer" }}>{l}</button>
+                        ))}
+                        <button onClick={()=>setPayPickerId(null)} style={{ padding:"7px 12px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #262629", color:"#86868F", cursor:"pointer" }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop:12, display:"flex", gap:8, flexWrap:"wrap" }}>
+                        <button onClick={()=>setPayPickerId(inv.id)} style={{ padding:"7px 16px", borderRadius:8, fontSize:12, fontWeight:600, background:"#065F4622", border:"1px solid #10B98144", color:"#10B981", cursor:"pointer" }}>💵 Mark as Paid</button>
+                        <button onClick={payNow} style={{ padding:"7px 16px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #8B7BFF44", color:"#C7BFFF", cursor:"pointer" }}>⚡ Pay Now</button>
+                        <button onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} style={{ marginLeft:"auto", padding:"7px 12px", borderRadius:8, fontSize:12, background:"transparent", border:"none", color:"#86868F", cursor:"pointer" }}>View entry →</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+      )}
+
+      {/* ── PAID ── */}
+      {active==="paid" && (
+        paid.length===0
+          ? <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:48, textAlign:"center", color:"#86868F" }}><div style={{ fontSize:30, marginBottom:10 }}>💸</div>No payments recorded yet.</div>
+          : <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, overflow:"hidden" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                <thead><tr>{["Vendor","GL Account","Method","Date Paid","Amount"].map(h=><th key={h} style={{ padding:"12px 18px", textAlign:h==="Amount"?"right":"left", fontSize:11, color:"#86868F", letterSpacing:1, fontWeight:500, borderBottom:"1px solid #1C1C20" }}>{h.toUpperCase()}</th>)}</tr></thead>
+                <tbody>
+                  {paid.map(inv=>(
+                    <tr key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} style={{ cursor:"pointer", borderBottom:"1px solid #161619" }} onMouseEnter={e=>e.currentTarget.style.background="#18181C"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{ padding:"12px 18px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><Avatar name={inv.vendor} size={28} /><span style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</span></div></td>
+                      <td style={{ padding:"12px 18px", fontSize:12, color:"#9A9AA2", fontFamily:"'DM Mono',monospace" }}>{inv.gl_code}</td>
+                      <td style={{ padding:"12px 18px" }}><span style={{ fontSize:11, fontWeight:600, color:"#C7BFFF", background:"#8B7BFF1F", border:"1px solid #8B7BFF33", borderRadius:20, padding:"2px 10px" }}>{methodLabel(inv.payment_method_used)}</span></td>
+                      <td style={{ padding:"12px 18px", fontSize:12, color:"#9A9AA2" }}>{inv.paid_at ? new Date(inv.paid_at).toLocaleDateString() : "—"}</td>
+                      <td style={{ padding:"12px 18px", textAlign:"right", fontSize:14, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"#10B981" }}>{fmt(inv.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+      )}
+
+      {/* ── REJECTED ── */}
+      {active==="rejected" && (
+        rejected.length===0
+          ? <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:48, textAlign:"center", color:"#86868F" }}><div style={{ fontSize:30, marginBottom:10 }}>🚫</div>No rejected bills.</div>
+          : <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {rejected.map(inv=>(
+                <div key={inv.id} style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:"16px 18px", opacity:0.92 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                    <InvoiceMeta inv={inv} />
+                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                      <span style={{ fontSize:11, color:"#86868F" }}>{inv.rejected_at ? new Date(inv.rejected_at).toLocaleDateString() : ""}</span>
+                      <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#86868F", textDecoration:"line-through" }}>{fmt(inv.amount)}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop:10, fontSize:12, color:"#FCA5A5", background:"#3B0A0A", border:"1px solid #EF444433", borderRadius:8, padding:"8px 12px" }}>
+                    ✗ Rejected{inv.approved_by?` by ${inv.approved_by}`:""} — {inv.rejection_reason || inv.approval_reason || "No reason given"}
+                  </div>
+                </div>
+              ))}
+            </div>
+      )}
+
+      {/* ── AGING ── */}
+      {active==="aging" && (() => {
+        const open = apAll.filter(i => !isPaidI(i) && !isRejectedI(i));
+        const buckets = [["Current (0–30d)",0,30,"#10B981"],["31–60 days",31,60,"#F59E0B"],["61–90 days",61,90,"#EF4444"],["90+ days",91,1e9,"#7F1D1D"]];
+        const aged = buckets.map(([label,lo,hi,color])=>{
+          const items = open.filter(i=>{ const d=Math.floor((new Date(today)-new Date(i.date||today))/86400000); return d>=lo && d<=hi; });
+          return { label, color, total: items.reduce((s,i)=>s+i.amount,0), count: items.length };
+        });
+        const grand = open.reduce((s,i)=>s+i.amount,0);
+        return (
+          <div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:14 }}>
+              {aged.map(b=>(
+                <div key={b.label} style={{ background:"#141416", border:`1px solid ${b.color}33`, borderRadius:14, padding:"16px 18px" }}>
+                  <div style={{ fontSize:10, color:b.color, letterSpacing:1, marginBottom:8 }}>{b.label.toUpperCase()}</div>
+                  <div style={{ fontSize:20, fontWeight:700, fontFamily:"'DM Mono',monospace", color:b.color }}>{fmt(b.total)}</div>
+                  <div style={{ fontSize:11, color:"#86868F", marginTop:4 }}>{b.count} bill{b.count!==1?"s":""}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background:"#0C0C0E", border:"1px solid #1C1C20", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span style={{ fontSize:13, color:"#86868F" }}>Total outstanding payables</span>
+              <span style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#EF4444" }}>{fmt(grand)}</span>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
 }

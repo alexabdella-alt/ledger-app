@@ -125,6 +125,33 @@ export default function DashboardView() {
                 </div>
               )}
 
+              {/* ── AP ACTIONABLE ALERTS ── */}
+              {(() => {
+                const ap = invoices.filter(i => (glIsExpense(i.gl_code)||i.type==="expense") && i.status!=="voided");
+                const pending = ap.filter(i => i.payment_status!=="paid" && i.approval_status!=="rejected" && i.approval_status!=="approved" && i.approval_status!=="auto_approved");
+                const approvedList = ap.filter(i => (i.approval_status==="approved"||i.approval_status==="auto_approved") && i.payment_status!=="paid");
+                const wk = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+                const dueWk = approvedList.filter(i=>i.due_date && i.due_date<=wk).reduce((s,i)=>s+i.amount,0);
+                const approvedTotal = approvedList.reduce((s,i)=>s+i.amount,0);
+                if (pending.length===0 && approvedList.length===0) return null;
+                return (
+                  <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
+                    {pending.length>0 && (
+                      <div onClick={()=>{ setView("ap"); setApView("inbox"); }} style={{ flex:"1 1 280px", cursor:"pointer", background:"#1A1200", border:"1px solid #F59E0B44", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#F59E0B"} onMouseLeave={e=>e.currentTarget.style.borderColor="#F59E0B44"}>
+                        <div><div style={{ fontSize:13, fontWeight:600, color:"#F59E0B" }}>⏳ {pending.length} bill{pending.length!==1?"s":""} pending approval</div><div style={{ fontSize:11, color:"#86868F", marginTop:3 }}>Review and approve in the inbox</div></div>
+                        <span style={{ fontSize:12, color:"#F59E0B" }}>Review →</span>
+                      </div>
+                    )}
+                    {approvedList.length>0 && (
+                      <div onClick={()=>{ setView("ap"); setApView("approved"); }} style={{ flex:"1 1 280px", cursor:"pointer", background:"#0A1400", border:"1px solid #10B98144", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#10B981"} onMouseLeave={e=>e.currentTarget.style.borderColor="#10B98144"}>
+                        <div><div style={{ fontSize:13, fontWeight:600, color:"#10B981" }}>✅ {approvedList.length} bill{approvedList.length!==1?"s":""} approved · ${approvedTotal.toLocaleString("en-US",{maximumFractionDigits:0})} total due</div><div style={{ fontSize:11, color:"#86868F", marginTop:3 }}>${dueWk.toLocaleString("en-US",{maximumFractionDigits:0})} due this week — ready to pay</div></div>
+                        <span style={{ fontSize:12, color:"#10B981" }}>Pay →</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* ── CLARIFICATION QUEUE ── */}
               {clarificationQueue.length > 0 && (
                 <div id="clarification-section" style={{ marginBottom:24, background:"#1A1200", border:"2px solid #F59E0B", borderRadius:16, padding:20 }}>

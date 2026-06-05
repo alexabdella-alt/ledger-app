@@ -421,7 +421,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
               secondary_gl_name: creditLine?.accounts?.name,
               debit_credit: debitLine ? "debit" : "credit",
               status: "booked", booked_at: e.created_at, source: e.source,
-              payment_status: "unpaid",
+              payment_status: e.payment_status || "unpaid",
+              approval_status: e.approval_status || undefined,
+              approved_at: e.approved_at || undefined,
+              approved_by: e.approved_by || undefined,
+              rejected_at: e.rejected_at || undefined,
+              rejection_reason: e.rejection_reason || undefined,
+              payment_method_used: e.payment_method || undefined,
+              paid_at: e.paid_at || undefined,
+              due_date: e.due_date || undefined,
               confidence: e.ai_confidence ?? 99,
               reasoning: e.ai_reasoning || "Loaded from database",
               db_entry_id: e.id
@@ -654,6 +662,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const aiFields = {
         ai_reasoning: invoice.reasoning || null,
         ai_confidence: invoice.confidence ?? null,
+        approval_status: invoice.approval_status || null,
+        payment_status: invoice.payment_status || null,
+        payment_method: invoice.payment_method_used || invoice.payment_method || null,
+        due_date: invoice.due_date || null,
       };
       let { data: je, error: jeErr } = await supabase.from("journal_entries")
         .insert({ ...baseEntry, ...aiFields }).select().single();
@@ -2337,39 +2349,73 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     }
   };
 
+  // Persist AP workflow status onto the source journal_entries row.
+  // Resilient: warns (instead of throwing) if the columns aren't migrated yet.
+  const persistApStatus = async (dbEntryId, fields) => {
+    if (!dbEntryId || !currentCompany?.id) return;
+    const { error } = await supabase.from("journal_entries")
+      .update(fields).eq("id", dbEntryId).eq("company_id", currentCompany.id);
+    if (error) console.warn("[AP] status persist failed (apply migration 003_ap_workflow.sql?):", error.message);
+  };
+
   const approveInvoice = (invId) => {
-    setInvoices(prev => prev.map(inv => inv.id !== invId ? inv : {
-      ...inv,
-      approval_status: "approved",
-      approval_reason: "Manually approved",
-      approved_at: new Date().toISOString(),
+    const inv = invoices.find(i => i.id === invId);
+    const who = session?.user?.email || "owner";
+    const at = new Date().toISOString();
+    setInvoices(prev => prev.map(i => i.id !== invId ? i : {
+      ...i, approval_status: "approved", approval_reason: "Manually approved", approved_at: at, approved_by: who,
     }));
+    if (inv) {
+      logAudit("invoice_approved", `${who} approved ${inv.vendor} · $${(inv.amount||0).toFixed(2)} (${inv.gl_name})`, { approval_status: inv.approval_status }, { approval_status: "approved", approved_by: who });
+      persistApStatus(inv.db_entry_id, { approval_status: "approved", approved_at: at, approved_by: who });
+    }
     showNotification("Invoice approved ✓");
   };
 
-  const rejectInvoice = (invId) => {
-    setInvoices(prev => prev.map(inv => inv.id !== invId ? inv : {
-      ...inv,
-      approval_status: "rejected",
-      approval_reason: "Manually rejected",
-      rejected_at: new Date().toISOString(),
-      payment_status: "rejected",
+  const rejectInvoice = (invId, reason) => {
+    const inv = invoices.find(i => i.id === invId);
+    const who = session?.user?.email || "owner";
+    const at = new Date().toISOString();
+    const why = (reason && String(reason).trim()) || "No reason given";
+    setInvoices(prev => prev.map(i => i.id !== invId ? i : {
+      ...i, approval_status: "rejected", approval_reason: why, rejection_reason: why, rejected_at: at, approved_by: who, payment_status: "rejected",
     }));
+    if (inv) {
+      logAudit("invoice_rejected", `${who} rejected ${inv.vendor} · $${(inv.amount||0).toFixed(2)} — reason: ${why}`, { approval_status: inv.approval_status }, { approval_status: "rejected", reason: why, by: who });
+      persistApStatus(inv.db_entry_id, { approval_status: "rejected", rejected_at: at, rejection_reason: why, approved_by: who, payment_status: "rejected" });
+    }
     showNotification("Invoice rejected", "error");
+  };
+
+  const requestInfo = (invId, note) => {
+    const inv = invoices.find(i => i.id === invId);
+    const who = session?.user?.email || "owner";
+    const msg = (note && String(note).trim()) || "More information requested";
+    setInvoices(prev => prev.map(i => i.id !== invId ? i : {
+      ...i, approval_status: "info_requested", approval_reason: msg,
+    }));
+    if (inv) {
+      logAudit("invoice_info_requested", `${who} requested info on ${inv.vendor} · $${(inv.amount||0).toFixed(2)} — ${msg}`, null, { vendor: inv.vendor, amount: inv.amount });
+      persistApStatus(inv.db_entry_id, { approval_status: "info_requested" });
+    }
+    showNotification("Marked as info requested");
   };
 
   const markPaid = (invIds, method = "ach") => {
     const ids = Array.isArray(invIds) ? invIds : [invIds];
+    const who = session?.user?.email || "owner";
+    const at = new Date().toISOString();
+    const paid = invoices.filter(i => ids.includes(i.id));
     setInvoices(prev => prev.map(inv => !ids.includes(inv.id) ? inv : {
-      ...inv,
-      payment_status: "paid",
-      payment_method_used: method,
-      paid_at: new Date().toISOString(),
-      matched: true,
+      ...inv, payment_status: "paid", payment_method_used: method, paid_at: at, matched: true,
     }));
+    paid.forEach(inv => {
+      logAudit("invoice_paid", `${who} paid ${inv.vendor} · $${(inv.amount||0).toFixed(2)} via ${String(method).toUpperCase()}`, { payment_status: inv.payment_status }, { payment_status: "paid", method, by: who });
+      persistApStatus(inv.db_entry_id, { payment_status: "paid", payment_method: method, paid_at: at });
+    });
     setSelectedPayments(new Set());
     setCheckRunMode(false);
-    showNotification(`${ids.length} payment${ids.length!==1?"s":""} recorded as ${method.toUpperCase()} ✓`);
+    showNotification(`${ids.length} payment${ids.length!==1?"s":""} recorded as ${String(method).toUpperCase()} ✓`);
   };
 
   // ── CHAT HANDLER ────────────────────────────────────────────────────────────
@@ -2637,7 +2683,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#86868F", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
 
   return (
     <ERPContext.Provider value={erpCtx}>
