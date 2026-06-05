@@ -1,0 +1,142 @@
+import React from "react";
+import { useERP } from "../ERPContext";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
+import { initials, vendorColor } from "../../lib/format";
+import { getAuthHeaders } from "../../lib/supabase";
+
+export default function OnboardView() {
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+            const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
+            const handleQBOFile = async (file) => {
+              setQboProcessing(true);
+              try {
+                const text = await file.text();
+                const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+                  method:"POST", headers:getAuthHeaders(),
+                  body: JSON.stringify({
+                    model:"claude-sonnet-4-20250514", max_tokens:4000,
+                    system:`You are a QBO migration expert. Parse this QuickBooks Online export (CSV, IIF, or tabular format) and return ONLY valid JSON:
+{
+  "source_accounts": [
+    { "qbo_name": "Checking Account", "qbo_code": "1010", "suggested_our_code": "1000", "suggested_our_name": "Cash & Cash Equivalents", "category": "Assets" }
+  ],
+  "transactions": [
+    { "date": "YYYY-MM-DD", "vendor": "Vendor Name", "description": "Description", "amount": 0, "type": "expense|revenue", "qbo_account": "QBO Account Name", "suggested_gl_code": "5XXX", "suggested_gl_name": "GL Name" }
+  ],
+  "summary": { "total_transactions": 0, "date_range_start": "YYYY-MM-DD", "date_range_end": "YYYY-MM-DD", "total_vendors": 0 }
+}
+Our Chart of Accounts:
+${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}
+Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`,
+                    messages:[{role:"user", content:`Parse this QBO export:\n\n${text.slice(0,12000)}`}]
+                  })
+                });
+                const d = await res.json();
+                const parsed = JSON.parse((d.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
+                setQboData(parsed);
+                const mapping = {};
+                (parsed.source_accounts||[]).forEach(a=>{ mapping[a.qbo_name]=a.suggested_our_code; });
+                setQboMapping(mapping);
+                setQboStep("mapping");
+              } catch(e) { console.error(e); showNotification("Could not parse QBO file. Try exporting as CSV from QBO.", "error"); }
+              setQboProcessing(false);
+            };
+            const confirmImport = () => {
+              const mapped = (qboData?.transactions||[]).map((t,i) => ({
+                id:Date.now()+i, vendor:t.vendor, description:t.description, amount:Math.abs(t.amount),
+                date:t.date, type:t.type,
+                gl_code: qboMapping[t.qbo_account]||t.suggested_gl_code||"6200",
+                gl_name: CHART_OF_ACCOUNTS.find(a=>a.code===(qboMapping[t.qbo_account]||t.suggested_gl_code))?.name||t.suggested_gl_name||"Miscellaneous",
+                project:"General", secondary_gl_code:t.type==="expense"?"2000":"1000",
+                secondary_gl_name:t.type==="expense"?"Accounts Payable":"Cash & Cash Equivalents",
+                debit_credit:t.type==="expense"?"debit":"credit", confidence:90,
+                reasoning:"Imported from QBO", status:"booked", booked_at:new Date().toISOString(), source:"qbo_import", payment_status:"unpaid"
+              }));
+              setInvoices(prev=>[...mapped,...prev]);
+              logAudit("qbo_imported",`QBO import complete: ${mapped.length} transactions imported from ${qboData?.summary?.date_range_start} to ${qboData?.summary?.date_range_end}`);
+              showNotification(`QBO import complete: ${mapped.length} transactions added ✓`);
+              setQboStep("done");
+            };
+            return (
+              <div>
+                <div style={{marginBottom:24}}>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#6B6B8A",marginBottom:8}}>MIGRATION</div>
+                  <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Import from QuickBooks Online</h1>
+                  <div style={{fontSize:13,color:"#6B6B8A",marginTop:6}}>Export your data from QBO and upload here. AI maps their accounts to ours and imports everything.</div>
+                </div>
+                {/* Steps indicator */}
+                <div style={{display:"flex",gap:0,marginBottom:28}}>
+                  {[["upload","1. Upload"],["mapping","2. Review Mapping"],["done","3. Complete"]].map(([s,l],i,arr)=>(
+                    <div key={s} style={{display:"flex",alignItems:"center"}}>
+                      <div style={{padding:"6px 18px",borderRadius:20,fontSize:12,fontWeight:500,background:qboStep===s?"linear-gradient(135deg,#6D28D9,#4C1D95)":["done","mapping"].includes(qboStep)&&i<["upload","mapping","done"].indexOf(qboStep)?"#10B98122":"#1E1E2E",color:qboStep===s?"#E8E8F0":"#6B6B8A",border:"none"}}>{l}</div>
+                      {i<arr.length-1 && <div style={{width:24,height:1,background:"#2A2A3E"}}/>}
+                    </div>
+                  ))}
+                </div>
+                {qboStep==="upload" && (
+                  <div>
+                    <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:24,marginBottom:20}}>
+                      <div style={{fontSize:13,fontWeight:500,marginBottom:12}}>How to export from QuickBooks Online:</div>
+                      {[["1","Go to Reports → Transaction List by Date"],["2","Set date range to All Dates"],["3","Click Export → Export to Excel or CSV"],["4","Upload that file below"]].map(([n,t])=>(
+                        <div key={n} style={{display:"flex",gap:10,marginBottom:8,alignItems:"flex-start"}}>
+                          <div style={{width:22,height:22,borderRadius:"50%",background:"#6D28D9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{n}</div>
+                          <div style={{fontSize:13,color:"#C8C8D8",paddingTop:2}}>{t}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div onDragOver={e=>{e.preventDefault();setQboDragOver(true);}} onDragLeave={()=>setQboDragOver(false)}
+                      onDrop={e=>{e.preventDefault();setQboDragOver(false);const f=e.dataTransfer.files[0];if(f)handleQBOFile(f);}}
+                      style={{border:`2px dashed ${qboDragOver?"#6D28D9":"#2A2A3E"}`,borderRadius:14,padding:40,textAlign:"center",background:qboDragOver?"#1A0A2E":"#0F0F13",transition:"all 0.2s",cursor:"pointer"}}
+                      onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".csv,.xlsx,.xls,.iif,.txt";i.onchange=e=>handleQBOFile(e.target.files[0]);i.click();}}>
+                      {qboProcessing ? <div style={{color:"#C8B8FF",fontSize:14}}>⏳ Reading your QBO data... mapping accounts...</div> : (
+                        <div>
+                          <div style={{fontSize:36,marginBottom:10}}>⬆</div>
+                          <div style={{fontSize:15,fontWeight:500,marginBottom:4}}>Drop your QBO export here</div>
+                          <div style={{fontSize:12,color:"#6B6B8A"}}>CSV, Excel, IIF · AI reads the format automatically</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {qboStep==="mapping" && qboData && (
+                  <div>
+                    <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:"14px 20px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{fontSize:13,color:"#9CA3AF"}}>Found <strong style={{color:"#E8E8F0"}}>{qboData.summary?.total_transactions||0} transactions</strong> from {qboData.summary?.date_range_start} to {qboData.summary?.date_range_end} · {qboData.summary?.total_vendors||0} vendors</div>
+                      <button onClick={confirmImport} style={{padding:"9px 24px",borderRadius:9,fontWeight:600,fontSize:13,background:"linear-gradient(135deg,#6D28D9,#4C1D95)",border:"none",color:"#E8E8F0",cursor:"pointer"}}>Import Everything →</button>
+                    </div>
+                    <div style={{fontSize:12,color:"#6B6B8A",marginBottom:12}}>Review how QBO accounts map to our chart of accounts. Edit any mapping before importing.</div>
+                    <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,overflow:"hidden",marginBottom:20}}>
+                      <table style={{width:"100%",borderCollapse:"collapse"}}>
+                        <thead><tr style={{background:"#0F0F13"}}>{["QBO Account","→","Our Account"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:10,color:"#6B6B8A",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}</tr></thead>
+                        <tbody>
+                          {(qboData.source_accounts||[]).map((a,i)=>(
+                            <tr key={a.qbo_name} style={{borderTop:"1px solid #1E1E2E",background:i%2===0?"transparent":"#0A0A10"}}>
+                              <td style={{padding:"11px 16px",fontSize:13,color:"#C8C8D8"}}>{a.qbo_name} <span style={{fontSize:11,color:"#6B6B8A"}}>({a.qbo_code})</span></td>
+                              <td style={{padding:"11px 16px",color:"#6B6B8A"}}>→</td>
+                              <td style={{padding:"11px 16px"}}>
+                                <select value={qboMapping[a.qbo_name]||a.suggested_our_code||""} onChange={e=>setQboMapping(m=>({...m,[a.qbo_name]:e.target.value}))}
+                                  style={{background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"6px 10px",color:"#E8E8F0",fontSize:12,outline:"none",width:"100%"}}>
+                                  {CHART_OF_ACCOUNTS.map(ac=><option key={ac.code} value={ac.code}>{ac.code} – {ac.name}</option>)}
+                                </select>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                {qboStep==="done" && (
+                  <div style={{background:"#14141A",border:"1px solid #10B98133",borderRadius:14,padding:48,textAlign:"center"}}>
+                    <div style={{fontSize:48,marginBottom:16}}>✓</div>
+                    <div style={{fontSize:22,fontWeight:700,marginBottom:8,color:"#10B981"}}>Import Complete</div>
+                    <div style={{fontSize:14,color:"#9CA3AF",marginBottom:24}}>Your QBO data is now in your ledger, categorized and ready. Check the Audit Trail for a full import log.</div>
+                    <div style={{display:"flex",gap:12,justifyContent:"center"}}>
+                      <button onClick={()=>setView("invoices")} style={{padding:"10px 24px",borderRadius:10,fontSize:14,background:"linear-gradient(135deg,#6D28D9,#4C1D95)",border:"none",color:"#E8E8F0",cursor:"pointer"}}>View Ledger →</button>
+                      <button onClick={()=>setView("reports")} style={{padding:"10px 24px",borderRadius:10,fontSize:14,background:"#1E1E2E",border:"1px solid #2A2A3E",color:"#9CA3AF",cursor:"pointer"}}>View Reports →</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+}

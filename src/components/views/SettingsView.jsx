@@ -1,0 +1,120 @@
+import React from "react";
+import { useERP } from "../ERPContext";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
+import { initials, vendorColor } from "../../lib/format";
+import { getAuthHeaders } from "../../lib/supabase";
+
+export default function SettingsView() {
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+            const draft = settingsDraft || companySettings; const setDraft = setSettingsDraft;
+            const saved = settingsSaved; const setSaved = setSettingsSaved;
+            const logoPreview = settingsLogoPreview ?? companySettings.logoBase64; const setLogoPreview = setSettingsLogoPreview;
+            const save = () => {
+              setCompanySettings(draft);
+              logAudit("settings_saved", `Company settings updated: ${draft.name}`);
+              setSaved(true); setTimeout(()=>setSaved(false), 2000);
+            };
+            const handleLogo = (file) => {
+              const r = new FileReader();
+              r.onload = e => { const b64 = e.target.result; setLogoPreview(b64); setDraft(d=>({...d, logoBase64:b64})); };
+              r.readAsDataURL(file);
+            };
+            const inp = (k,l,p,type="text") => (
+              <div>
+                <div style={{fontSize:11,color:"#6B6B8A",marginBottom:4}}>{l}</div>
+                <input type={type} value={draft[k]||""} onChange={e=>setDraft(d=>({...d,[k]:e.target.value}))} placeholder={p}
+                  style={{width:"100%",boxSizing:"border-box",background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"9px 12px",color:"#E8E8F0",fontSize:13,outline:"none"}}/>
+              </div>
+            );
+            return (
+              <div style={{maxWidth:720}}>
+                <div style={{marginBottom:28}}>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#6B6B8A",marginBottom:8}}>CONFIGURATION</div>
+                  <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Settings</h1>
+                </div>
+
+                {/* Company identity */}
+                <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:24,marginBottom:16}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"#C8B8FF",letterSpacing:0.5,marginBottom:16}}>COMPANY</div>
+                  <div style={{display:"flex",gap:16,marginBottom:16,alignItems:"flex-start"}}>
+                    {/* Logo */}
+                    <div style={{flexShrink:0}}>
+                      <div style={{fontSize:11,color:"#6B6B8A",marginBottom:6}}>LOGO</div>
+                      <div onClick={()=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=e=>handleLogo(e.target.files[0]);i.click();}}
+                        style={{width:80,height:80,borderRadius:12,border:"2px dashed #2A2A3E",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",background:"#0F0F13"}}>
+                        {logoPreview ? <img src={logoPreview} style={{width:"100%",height:"100%",objectFit:"contain"}} alt="logo"/> : <span style={{fontSize:24}}>🏢</span>}
+                      </div>
+                    </div>
+                    <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                      {inp("name","Company Name","Acme Corp")}
+                      {inp("taxId","EIN / Tax ID","XX-XXXXXXX")}
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:12}}>
+                    {inp("address","Street Address","123 Main St")}
+                    {inp("city","City","Austin")}
+                    {inp("state","State","TX")}
+                    {inp("zip","ZIP","78701")}
+                  </div>
+                </div>
+
+                {/* Accounting settings */}
+                <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:24,marginBottom:16}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"#C8B8FF",letterSpacing:0.5,marginBottom:16}}>ACCOUNTING</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+                    <div>
+                      <div style={{fontSize:11,color:"#6B6B8A",marginBottom:4}}>FISCAL YEAR END</div>
+                      <select value={draft.fiscalYearEnd} onChange={e=>setDraft(d=>({...d,fiscalYearEnd:e.target.value}))}
+                        style={{width:"100%",background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"9px 12px",color:"#E8E8F0",fontSize:13,outline:"none"}}>
+                        {[["12-31","December 31"],["03-31","March 31"],["06-30","June 30"],["09-30","September 30"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:"#6B6B8A",marginBottom:4}}>DEFAULT CASH ACCOUNT</div>
+                      <select value={draft.defaultCashAccount} onChange={e=>setDraft(d=>({...d,defaultCashAccount:e.target.value}))}
+                        style={{width:"100%",background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"9px 12px",color:"#E8E8F0",fontSize:13,outline:"none"}}>
+                        {CHART_OF_ACCOUNTS.filter(a=>a.category==="Assets").map(a=><option key={a.code} value={a.code}>{a.code} – {a.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:"#6B6B8A",marginBottom:4}}>CURRENCY</div>
+                      <select value={draft.currency||"USD"} onChange={e=>setDraft(d=>({...d,currency:e.target.value}))}
+                        style={{width:"100%",background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"9px 12px",color:"#E8E8F0",fontSize:13,outline:"none"}}>
+                        {["USD","EUR","GBP","CAD","AUD"].map(c=><option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bank accounts */}
+                <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:24,marginBottom:16}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"#C8B8FF",letterSpacing:0.5,marginBottom:16}}>BANK ACCOUNTS</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
+                    {bankAccounts.map(ba=>(
+                      <div key={ba.id} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:10,alignItems:"center"}}>
+                        <input value={ba.name} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,name:e.target.value}:b))}
+                          placeholder="Account name" style={{background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"8px 10px",color:"#E8E8F0",fontSize:12,outline:"none"}}/>
+                        <select value={ba.type} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,type:e.target.value}:b))}
+                          style={{background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"8px 10px",color:"#E8E8F0",fontSize:12,outline:"none"}}>
+                          {["checking","savings","credit_card","loan","other"].map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}
+                        </select>
+                        <select value={ba.gl_code} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,gl_code:e.target.value}:b))}
+                          style={{background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"8px 10px",color:"#E8E8F0",fontSize:12,outline:"none"}}>
+                          {CHART_OF_ACCOUNTS.filter(a=>["Assets","Liabilities"].includes(a.category)).map(a=><option key={a.code} value={a.code}>{a.code}</option>)}
+                        </select>
+                        <input value={ba.institution||""} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,institution:e.target.value}:b))}
+                          placeholder="Bank name" style={{background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"8px 10px",color:"#E8E8F0",fontSize:12,outline:"none"}}/>
+                        <button onClick={()=>setBankAccounts(prev=>prev.filter(b=>b.id!==ba.id))} style={{background:"transparent",border:"1px solid #2A2A3E",borderRadius:7,padding:"7px 10px",color:"#EF4444",cursor:"pointer",fontSize:13}}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={()=>setBankAccounts(prev=>[...prev,{id:Date.now()+Math.random(),name:"",type:"checking",gl_code:"1000",institution:""}])}
+                    style={{fontSize:12,background:"transparent",border:"1px dashed #2A2A3E",borderRadius:8,padding:"7px 16px",color:"#9CA3AF",cursor:"pointer"}}>+ Add Bank Account</button>
+                </div>
+
+                <button onClick={save} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,#065F46,#047857)":"linear-gradient(135deg,#6D28D9,#4C1D95)",border:"none",color:saved?"#6EE7B7":"#E8E8F0",cursor:"pointer",transition:"all 0.3s"}}>
+                  {saved ? "✓ Saved" : "Save Settings"}
+                </button>
+              </div>
+            );
+}

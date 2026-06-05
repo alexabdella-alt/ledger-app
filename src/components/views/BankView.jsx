@@ -1,0 +1,172 @@
+import React from "react";
+import { useERP } from "../ERPContext";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
+import { initials, vendorColor } from "../../lib/format";
+import { getAuthHeaders } from "../../lib/supabase";
+
+export default function BankView() {
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  return (
+            <div>
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:10, letterSpacing:3, color:"#6B6B8A", marginBottom:8 }}>BANK FEED</div>
+                <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Import Bank Transactions</h1>
+                <div style={{ fontSize:13, color:"#6B6B8A", marginTop:6 }}>Upload a CSV, Excel, or PDF bank statement — AI reads every transaction, auto-categorizes, and flags anything it's unsure about.</div>
+              </div>
+
+              {/* Upload zone */}
+              {!bankProcessing && bankTransactions.length === 0 && (
+                <div onDragOver={e=>{e.preventDefault();setBankDragOver(true);}} onDragLeave={()=>setBankDragOver(false)}
+                  onDrop={e=>{e.preventDefault();setBankDragOver(false);handleBankFile(e.dataTransfer.files[0]);}}
+                  onClick={()=>document.getElementById("bank-upload").click()}
+                  style={{ border:`2px dashed ${bankDragOver?"#0EA5E9":"#2A2A3E"}`, borderRadius:16, padding:"52px 32px", textAlign:"center", cursor:"pointer", background:bankDragOver?"#0A1A2E":"#14141A", transition:"all 0.2s", marginBottom:24 }}>
+                  <div style={{ fontSize:40, marginBottom:14 }}>🏦</div>
+                  <div style={{ fontSize:16, fontWeight:500, marginBottom:8 }}>Drop your bank statement here</div>
+                  <div style={{ fontSize:13, color:"#6B6B8A", marginBottom:16 }}>CSV · Excel (.xlsx) · PDF — from any bank</div>
+                  <div style={{ display:"flex", justifyContent:"center", gap:10 }}>
+                    {["CSV","XLSX","PDF"].map(f=><span key={f} style={{ background:"#1E1E2E", border:"1px solid #2A2A3E", borderRadius:6, padding:"4px 12px", fontSize:11, color:"#6B6B8A" }}>{f}</span>)}
+                  </div>
+                  <input id="bank-upload" type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display:"none" }} onChange={e=>handleBankFile(e.target.files[0])} />
+                </div>
+              )}
+
+              {/* Processing state */}
+              {bankProcessing && (
+                <div style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:16, padding:36, textAlign:"center", marginBottom:24 }}>
+                  <div style={{ fontSize:13, color:"#C8B8FF", marginBottom:20 }}>
+                    {bankStep==="parsing" ? "⟳ Reading bank statement..." : "⟳ AI is categorizing all transactions..."}
+                  </div>
+                  <div style={{ height:6, background:"#1E1E2E", borderRadius:3, overflow:"hidden", maxWidth:400, margin:"0 auto 12px" }}>
+                    <div style={{ height:"100%", background:"linear-gradient(90deg,#0EA5E9,#6D28D9)", borderRadius:3, width:`${bankProgress}%`, transition:"width 0.8s ease", animation:"pulse 2s ease-in-out infinite" }} />
+                  </div>
+                  <div style={{ fontSize:12, color:"#6B6B8A" }}>{bankFileName}</div>
+                </div>
+              )}
+
+              {/* Transaction review table */}
+              {bankTransactions.length > 0 && (
+                <div>
+                  {/* Summary bar */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:20 }}>
+                    {[
+                      { label:"Total Transactions", value:bankTransactions.length, color:"#E8E8F0" },
+                      { label:"Auto-Categorized", value:bankTransactions.filter(t=>!t.needs_review).length, color:"#10B981" },
+                      { label:"Needs Review", value:bankTransactions.filter(t=>t.needs_review).length, color:"#F59E0B" },
+                    ].map(s=>(
+                      <div key={s.label} style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:12, padding:"16px 20px" }}>
+                        <div style={{ fontSize:11, color:"#6B6B8A", marginBottom:6, letterSpacing:1 }}>{s.label.toUpperCase()}</div>
+                        <div style={{ fontSize:24, fontWeight:600, color:s.color, fontFamily:"'DM Mono', monospace" }}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Needs review section */}
+                  {bankTransactions.filter(t=>t.needs_review).length > 0 && (
+                    <div style={{ background:"#1A1200", border:"1px solid #F59E0B44", borderRadius:14, padding:20, marginBottom:20 }}>
+                      <div style={{ fontSize:12, color:"#F59E0B", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
+                        <span>⚠</span> <span>These transactions need your input — AI wasn't confident enough to auto-categorize</span>
+                      </div>
+                      {bankTransactions.filter(t=>t.needs_review).map(t=>(
+                        <div key={t.id} style={{ background:"#14141A", border:"1px solid #2A2A3E", borderRadius:10, padding:"14px 16px", marginBottom:10 }}>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 120px 160px 40px", gap:12, alignItems:"center" }}>
+                            <div>
+                              <div style={{ fontSize:13, fontWeight:500 }}>{t.description}</div>
+                              <div style={{ fontSize:11, color:"#6B6B8A", marginTop:2 }}>{t.date} · Detected vendor: <span style={{ color:"#C8B8FF" }}>{t.vendor||"Unknown"}</span></div>
+                            </div>
+                            <div style={{ fontSize:14, fontFamily:"'DM Mono', monospace", color:t.type==="revenue"?"#10B981":"#EF4444", textAlign:"right" }}>
+                              {t.type==="revenue"?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
+                            </div>
+                            <select value={t.gl_code} onChange={e=>{
+                              const acct = CHART_OF_ACCOUNTS.find(a=>a.code===e.target.value);
+                              setBankTransactions(prev=>prev.map(tx=>tx.id===t.id?{...tx,gl_code:acct.code,gl_name:acct.name,needs_review:false,checked:true}:tx));
+                            }} style={{ background:"#0F0F13", border:"1px solid #3B3B5E", borderRadius:8, padding:"6px 10px", color:"#E8E8F0", fontSize:12, outline:"none", cursor:"pointer" }}>
+                              <option value="">— Select GL Account —</option>
+                              {CHART_OF_ACCOUNTS.map(a=><option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
+                            </select>
+                            <input type="checkbox" checked={t.checked||false} onChange={e=>setBankTransactions(prev=>prev.map(tx=>tx.id===t.id?{...tx,checked:e.target.checked}:tx))}
+                              style={{ width:18, height:18, cursor:"pointer", accentColor:"#10B981" }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Auto-categorized table */}
+                  {bankTransactions.filter(t=>!t.needs_review).length > 0 && (
+                    <div style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:14, overflow:"hidden", marginBottom:20 }}>
+                      <div style={{ padding:"14px 20px", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <div style={{ fontSize:12, color:"#10B981" }}>✓ Auto-categorized — review & uncheck any you want to skip</div>
+                        <div style={{ display:"flex", gap:8 }}>
+                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>t.needs_review?t:{...t,checked:true}))} style={{ background:"none", border:"1px solid #2A2A3E", color:"#9CA3AF", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Select all</button>
+                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>t.needs_review?t:{...t,checked:false}))} style={{ background:"none", border:"1px solid #2A2A3E", color:"#9CA3AF", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Deselect all</button>
+                        </div>
+                      </div>
+                      <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                        <thead>
+                          <tr style={{ background:"#0F0F13" }}>
+                            {["","Vendor","Date","Description","GL Account","Amount"].map((h,i)=>(
+                              <th key={i} style={{ padding:"11px 14px", textAlign:"left", fontSize:11, color:"#6B6B8A", letterSpacing:1.2, fontWeight:500 }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bankTransactions.filter(t=>!t.needs_review).map((t,i)=>(
+                            <tr key={t.id} style={{ borderTop:"1px solid #1E1E2E", background:i%2===0?"transparent":"#0A0A10", opacity:t.checked?1:0.45 }}>
+                              <td style={{ padding:"11px 14px" }}>
+                                <input type="checkbox" checked={t.checked||false} onChange={e=>setBankTransactions(prev=>prev.map(tx=>tx.id===t.id?{...tx,checked:e.target.checked}:tx))}
+                                  style={{ width:16, height:16, cursor:"pointer", accentColor:"#10B981" }} />
+                              </td>
+                              <td style={{ padding:"11px 14px" }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                  <div style={{ width:26, height:26, borderRadius:6, background:vendorColor(t.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(t.vendor)}</div>
+                                  <span style={{ fontSize:13, fontWeight:500 }}>{t.vendor}</span>
+                                  {t.rule_applied && <span style={{ fontSize:10, color:"#C8B8FF", background:"#1E1E2E", borderRadius:10, padding:"1px 6px" }}>⚡rule</span>}
+                                </div>
+                              </td>
+                              <td style={{ padding:"11px 14px", fontSize:12, color:"#9CA3AF" }}>{t.date}</td>
+                              <td style={{ padding:"11px 14px", fontSize:12, color:"#9CA3AF", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.description}</td>
+                              <td style={{ padding:"11px 14px" }}>
+                                <select value={t.gl_code} onChange={e=>{
+                                  const acct=CHART_OF_ACCOUNTS.find(a=>a.code===e.target.value);
+                                  if(acct) setBankTransactions(prev=>prev.map(tx=>tx.id===t.id?{...tx,gl_code:acct.code,gl_name:acct.name}:tx));
+                                }} style={{ background:"#0F0F13", border:"1px solid #2A2A3E", borderRadius:6, padding:"4px 8px", color:"#C8B8FF", fontSize:11, outline:"none", cursor:"pointer" }}>
+                                  {CHART_OF_ACCOUNTS.map(a=><option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
+                                </select>
+                              </td>
+                              <td style={{ padding:"11px 14px", fontSize:13, fontFamily:"'DM Mono', monospace", color:t.type==="revenue"?"#10B981":"#EF4444" }}>
+                                {t.type==="revenue"?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Action bar */}
+                  <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                    <button onClick={bookBankTransactions} style={{
+                      flex:1, padding:"14px", borderRadius:12, fontSize:14, fontWeight:600,
+                      background:"linear-gradient(135deg,#065F46,#047857)", border:"none", color:"#6EE7B7", cursor:"pointer"
+                    }}>
+                      ✓ Book {bankTransactions.filter(t=>t.checked).length} Selected Transaction{bankTransactions.filter(t=>t.checked).length!==1?"s":""} to Ledger
+                    </button>
+                    <button onClick={()=>{setBankTransactions([]);setBankFileName("");}} style={{ padding:"14px 20px", borderRadius:12, fontSize:13, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", cursor:"pointer" }}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Upload new while reviewing */}
+              {bankTransactions.length > 0 && !bankProcessing && (
+                <div style={{ marginTop:16, textAlign:"center" }}>
+                  <button onClick={()=>document.getElementById("bank-upload-2").click()} style={{ background:"none", border:"none", color:"#C8B8FF", fontSize:13, cursor:"pointer" }}>
+                    + Upload another statement
+                  </button>
+                  <input id="bank-upload-2" type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display:"none" }} onChange={e=>handleBankFile(e.target.files[0])} />
+                </div>
+              )}
+            </div>
+  );
+}
