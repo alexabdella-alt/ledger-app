@@ -400,8 +400,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
               secondary_gl_name: creditLine?.accounts?.name,
               debit_credit: debitLine ? "debit" : "credit",
               status: "booked", booked_at: e.created_at, source: e.source,
-              payment_status: "unpaid", confidence: 99,
-              reasoning: "Loaded from database", db_entry_id: e.id
+              payment_status: "unpaid",
+              confidence: e.ai_confidence ?? 99,
+              reasoning: e.ai_reasoning || "Loaded from database",
+              db_entry_id: e.id
             });
           } else {
             // Multi-line entry (e.g. lease commencement, payroll) — expand each line
@@ -422,8 +424,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
                 secondary_gl_name: isDebit ? primaryCredit?.accounts?.name : primaryDebit?.accounts?.name,
                 debit_credit: isDebit ? "debit" : "credit",
                 status: "booked", booked_at: e.created_at, source: e.source,
-                payment_status: "unpaid", confidence: 99,
-                reasoning: "Loaded from database", db_entry_id: e.id,
+                payment_status: "unpaid",
+                confidence: e.ai_confidence ?? 99,
+                reasoning: e.ai_reasoning || "Loaded from database",
+                db_entry_id: e.id,
                 balance_sheet_account: ["Assets","Liabilities","Equity"].includes(acctDef?.category),
               });
             });
@@ -593,7 +597,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const secondaryAcct  = await ensureAccount(invoice.secondary_gl_code || "2000", invoice.secondary_gl_name || "Accounts Payable");
       if (!primaryAcct) { console.error("persistJournalEntry: no primary account", invoice.gl_code); return null; }
 
-      const { data: je, error: jeErr } = await supabase.from("journal_entries").insert({
+      const baseEntry = {
         company_id: currentCompany.id,
         entry_date: invoice.date || new Date().toISOString().slice(0,10),
         description: `${invoice.vendor || ""} – ${invoice.description || invoice.vendor || ""}`,
@@ -601,7 +605,21 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         status: "posted",
         posted_at: new Date().toISOString(),
         created_by: session.user.id
-      }).select().single();
+      };
+      // Persist the AI's coding rationale + confidence so they survive a reload.
+      // Requires the ai_reasoning / ai_confidence columns (see migration in repo).
+      const aiFields = {
+        ai_reasoning: invoice.reasoning || null,
+        ai_confidence: invoice.confidence ?? null,
+      };
+      let { data: je, error: jeErr } = await supabase.from("journal_entries")
+        .insert({ ...baseEntry, ...aiFields }).select().single();
+      if (jeErr && /ai_reasoning|ai_confidence|column/i.test(jeErr.message || "")) {
+        // Columns not migrated yet — fall back so booking still works.
+        console.warn("journal_entries is missing ai_reasoning/ai_confidence; booking without them. Run the migration to persist AI reasoning.");
+        ({ data: je, error: jeErr } = await supabase.from("journal_entries")
+          .insert(baseEntry).select().single());
+      }
       if (jeErr) { console.error("JE insert error:", jeErr); return; }
 
       const lines = [];
