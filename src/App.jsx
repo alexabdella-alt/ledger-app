@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── SUPABASE CLIENT ───────────────────────────────────────────
@@ -819,14 +819,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     if (chatOpen) { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); setHasUnread(false); }
   }, [chatHistory, chatOpen]);
 
+  // useLayoutEffect fires synchronously after DOM mutations but BEFORE the browser paints.
+  // This guarantees the scroll position is reset before the user ever sees the new view,
+  // preventing the "content appears at old scroll position" bug on tab switches.
+  useLayoutEffect(() => {
+    if (mainContentRef.current) mainContentRef.current.scrollTop = 0;
+  }, [view]);
+
   useEffect(() => {
     // Initialize settings draft when entering settings view
     if (view === "settings" && !settingsDraft) {
       setSettingsDraft(companySettings);
     }
-    // Scroll to top immediately on view change
-    if (mainContentRef.current) mainContentRef.current.scrollTop = 0;
-  }, [view]);
+  }, [view]); // eslint-disable-line
 
   // ── SUPABASE DATA LOADING ──────────────────────────────────
   useEffect(() => {
@@ -3111,7 +3116,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                   onMouseEnter={e=>{ if(!isActive){ e.currentTarget.style.background="#1A1A28"; e.currentTarget.style.color="#A78BFA"; }}}
                   onMouseLeave={e=>{ if(!isActive){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#6B6B8A"; }}}
                   style={{
-                    flex:1, height:44, display:"flex", alignItems:"center", justifyContent:"center",
+                    flex:1, height:44, display:"flex", alignItems:"center", justifyContent:"center", gap:6, position:"relative",
                     background: isActive?"#1E1E2E":"transparent",
                     border:"none",
                     borderBottom: isActive?"3px solid #8B5CF6":"3px solid transparent",
@@ -3120,6 +3125,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                     cursor:"pointer", transition:"all 0.12s", letterSpacing:0.3,
                   }}>
                   {tab.label}
+                  {tab.id==="dashboard" && clarificationQueue.length>0 && (
+                    <span style={{ background:"#F59E0B", color:"#000", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.length}</span>
+                  )}
                 </button>
               );
             })}
@@ -3255,8 +3263,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                         unknown:       { icon:"❓", label:"Unknown",         color:"#EF4444" },
                       };
                       const tc = typeConfig[item.type] || { icon:"📄", label:"Document", color:"#6B6B8A" };
+                      const pendingReview = item.status==="done" && clarificationQueue.some(c => c.queueItemId === item.id);
                       return (
-                        <div key={item.id} style={{ background:"#14141A", border:`1px solid ${item.status==="error"?"#EF444433":item.status==="done"?"#10B98133":"#1E1E2E"}`, borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
+                        <div key={item.id} style={{ background:"#14141A", border:`1px solid ${item.status==="error"?"#EF444433":pendingReview?"#F59E0B66":item.status==="done"?"#10B98133":"#1E1E2E"}`, borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
                           {/* File icon */}
                           <div style={{ width:38, height:38, borderRadius:10, background:"#1E1E2E", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
                             {item.status==="done" ? tc.icon : item.status==="error" ? "⚠" : "📄"}
@@ -3285,7 +3294,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                                 {[0,1,2].map(i=><div key={i} style={{ width:5, height:5, borderRadius:"50%", background:"#6B6B8A", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
                               </div>
                             )}
-                            {item.status==="done" && <span style={{ fontSize:11, color:"#10B981", background:"#0A2A1A", border:"1px solid #10B98133", borderRadius:20, padding:"3px 10px" }}>Done</span>}
+                            {item.status==="done" && pendingReview && (
+                              <span onClick={()=>{ document.getElementById("clarification-section")?.scrollIntoView({behavior:"smooth"}); }}
+                                style={{ fontSize:11, color:"#F59E0B", background:"#1A1200", border:"1px solid #F59E0B66", borderRadius:20, padding:"3px 10px", cursor:"pointer", fontWeight:600 }}>
+                                ⚠ Needs Review
+                              </span>
+                            )}
+                            {item.status==="done" && !pendingReview && <span style={{ fontSize:11, color:"#10B981", background:"#0A2A1A", border:"1px solid #10B98133", borderRadius:20, padding:"3px 10px" }}>Done</span>}
                             {item.status==="error" && <span style={{ fontSize:11, color:"#EF4444", background:"#2A0A0A", border:"1px solid #EF444433", borderRadius:20, padding:"3px 10px" }}>Error</span>}
                           </div>
                         </div>
@@ -3325,8 +3340,14 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
               {/* ── CLARIFICATION QUEUE ── */}
               {clarificationQueue.length > 0 && (
-                <div style={{ marginBottom:24 }}>
-                  <div style={{ fontSize:11, color:"#F59E0B", letterSpacing:2, marginBottom:12 }}>⚠ NEEDS YOUR INPUT — {clarificationQueue.length} invoice{clarificationQueue.length>1?"s":""}</div>
+                <div id="clarification-section" style={{ marginBottom:24, background:"#1A1200", border:"2px solid #F59E0B", borderRadius:16, padding:20 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                    <span style={{ fontSize:20 }}>⚠</span>
+                    <div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"#F59E0B" }}>{clarificationQueue.length} Invoice{clarificationQueue.length>1?"s":""} Need Your Review</div>
+                      <div style={{ fontSize:12, color:"#9CA3AF", marginTop:2 }}>These items cannot be booked until you review them. Click a category below to confirm or reject each one.</div>
+                    </div>
+                  </div>
                   {clarificationQueue.map(item => (
                     <div key={item.id} style={{ background: item.isDuplicate ? "#1A0808" : "#1A1400", border: `1px solid ${item.isDuplicate ? "#EF444444" : "#F59E0B44"}`, borderRadius:14, padding:20, marginBottom:12 }}>
                       {item.isDuplicate ? (
@@ -3353,10 +3374,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                           </div>
                           <div style={{ display:"flex", gap:8 }}>
                             <button onClick={() => {
+                              logAudit("invoice_rejected", `Rejected (duplicate): ${item.invoice.vendor} · $${(item.invoice.amount||0).toFixed(2)} on ${item.invoice.date} — already booked`, item.invoice, null);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-                              showNotification("Duplicate skipped ✓");
+                              showNotification("Duplicate rejected ✓");
                             }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"#3B0A0A", border:"1px solid #EF444466", color:"#FCA5A5", cursor:"pointer", fontWeight:600 }}>
-                              ✕ Skip — already booked
+                              ✕ Reject — already booked
                             </button>
                             <button onClick={() => {
                               const finalInv = {...item.invoice, confidence:100, status:"booked"};
@@ -3415,9 +3437,12 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                             }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#065F46", border:"1px solid #10B98144", color:"#6EE7B7", cursor:"pointer" }}>
                               ✓ Use suggested: {item.suggestedName}
                             </button>
-                            <button onClick={() => setClarificationQueue(prev => prev.filter(c => c.id !== item.id))}
-                              style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", cursor:"pointer" }}>
-                              Skip for now
+                            <button onClick={() => {
+                              logAudit("invoice_rejected", `Rejected: ${item.invoice.vendor} · $${(item.invoice.amount||0).toFixed(2)} on ${item.invoice.date} — not relevant or not approved`, item.invoice, null);
+                              setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
+                              showNotification("Invoice rejected ✓");
+                            }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#2A0A0A", border:"1px solid #EF444433", color:"#FCA5A5", cursor:"pointer" }}>
+                              ✕ Reject
                             </button>
                           </div>
                         </>
