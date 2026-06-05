@@ -10,18 +10,15 @@ function CompanySetup({ session, onComplete }) {
     if (!name.trim()) return;
     setLoading(true); setError(null);
     try {
-      // Create company
+      // Create company + owner membership atomically (RLS-compatible).
+      // create_company() is SECURITY DEFINER and inserts the company_users
+      // owner row in the same transaction, so the caller can read it back.
       const { data: company, error: ce } = await supabase
-        .from("companies").insert({ name: name.trim() }).select().single();
+        .rpc("create_company", { p_name: name.trim() });
       if (ce) throw ce;
+      if (!company?.id) throw new Error("Company creation failed — no company returned.");
       // Seed chart of accounts
       await supabase.rpc("seed_company_accounts", { p_company_id: company.id });
-      // Make user owner
-      const { error: me } = await supabase.from("company_users").insert({
-        company_id: company.id, user_id: session.user.id,
-        role: "owner", accepted_at: new Date().toISOString()
-      });
-      if (me) throw me;
       // Create default bank account
       const { data: cashAcct } = await supabase.from("accounts")
         .select("id").eq("company_id", company.id).eq("code", "1000").single();
