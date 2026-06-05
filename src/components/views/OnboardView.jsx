@@ -60,39 +60,39 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
             return (
               <div>
                 <div style={{marginBottom:24}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"#6B6B8A",marginBottom:8}}>MIGRATION</div>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#86868F",marginBottom:8}}>MIGRATION</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Import from QuickBooks Online</h1>
-                  <div style={{fontSize:13,color:"#6B6B8A",marginTop:6}}>Export your data from QBO and upload here. AI maps their accounts to ours and imports everything.</div>
+                  <div style={{fontSize:13,color:"#86868F",marginTop:6}}>Export your data from QBO and upload here. AI maps their accounts to ours and imports everything.</div>
                 </div>
                 {/* Steps indicator */}
                 <div style={{display:"flex",gap:0,marginBottom:28}}>
                   {[["upload","1. Upload"],["mapping","2. Review Mapping"],["done","3. Complete"]].map(([s,l],i,arr)=>(
                     <div key={s} style={{display:"flex",alignItems:"center"}}>
-                      <div style={{padding:"6px 18px",borderRadius:20,fontSize:12,fontWeight:500,background:qboStep===s?"linear-gradient(135deg,#6D28D9,#4C1D95)":["done","mapping"].includes(qboStep)&&i<["upload","mapping","done"].indexOf(qboStep)?"#10B98122":"#1E1E2E",color:qboStep===s?"#E8E8F0":"#6B6B8A",border:"none"}}>{l}</div>
-                      {i<arr.length-1 && <div style={{width:24,height:1,background:"#2A2A3E"}}/>}
+                      <div style={{padding:"6px 18px",borderRadius:20,fontSize:12,fontWeight:500,background:qboStep===s?"linear-gradient(135deg,#6D5EF6,#4A3DB8)":["done","mapping"].includes(qboStep)&&i<["upload","mapping","done"].indexOf(qboStep)?"#10B98122":"#1C1C20",color:qboStep===s?"#F2F2F4":"#86868F",border:"none"}}>{l}</div>
+                      {i<arr.length-1 && <div style={{width:24,height:1,background:"#262629"}}/>}
                     </div>
                   ))}
                 </div>
                 {qboStep==="upload" && (
                   <div>
-                    <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:24,marginBottom:20}}>
+                    <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:24,marginBottom:20}}>
                       <div style={{fontSize:13,fontWeight:500,marginBottom:12}}>How to export from QuickBooks Online:</div>
                       {[["1","Go to Reports → Transaction List by Date"],["2","Set date range to All Dates"],["3","Click Export → Export to Excel or CSV"],["4","Upload that file below"]].map(([n,t])=>(
                         <div key={n} style={{display:"flex",gap:10,marginBottom:8,alignItems:"flex-start"}}>
-                          <div style={{width:22,height:22,borderRadius:"50%",background:"#6D28D9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{n}</div>
-                          <div style={{fontSize:13,color:"#C8C8D8",paddingTop:2}}>{t}</div>
+                          <div style={{width:22,height:22,borderRadius:"50%",background:"#6D5EF6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{n}</div>
+                          <div style={{fontSize:13,color:"#D2D2D6",paddingTop:2}}>{t}</div>
                         </div>
                       ))}
                     </div>
                     <div onDragOver={e=>{e.preventDefault();setQboDragOver(true);}} onDragLeave={()=>setQboDragOver(false)}
                       onDrop={e=>{e.preventDefault();setQboDragOver(false);const f=e.dataTransfer.files[0];if(f)handleQBOFile(f);}}
-                      style={{border:`2px dashed ${qboDragOver?"#6D28D9":"#2A2A3E"}`,borderRadius:14,padding:40,textAlign:"center",background:qboDragOver?"#1A0A2E":"#0F0F13",transition:"all 0.2s",cursor:"pointer"}}
+                      style={{border:`2px dashed ${qboDragOver?"#6D5EF6":"#262629"}`,borderRadius:14,padding:40,textAlign:"center",background:qboDragOver?"#16121F":"#0C0C0E",transition:"all 0.2s",cursor:"pointer"}}
                       onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".csv,.xlsx,.xls,.iif,.txt";i.onchange=e=>handleQBOFile(e.target.files[0]);i.click();}}>
-                      {qboProcessing ? <div style={{color:"#C8B8FF",fontSize:14}}>⏳ Reading your QBO data... mapping accounts...</div> : (
+                      {qboProcessing ? <div style={{color:"#C7BFFF",fontSize:14}}>⏳ Reading your QBO data... mapping accounts...</div> : (
                         <div>
                           <div style={{fontSize:36,marginBottom:10}}>⬆</div>
                           <div style={{fontSize:15,fontWeight:500,marginBottom:4}}>Drop your QBO export here</div>
-                          <div style={{fontSize:12,color:"#6B6B8A"}}>CSV, Excel, IIF · AI reads the format automatically</div>
+                          <div style={{fontSize:12,color:"#86868F"}}>CSV, Excel, IIF · AI reads the format automatically</div>
                         </div>
                       )}
                     </div>
@@ -100,22 +100,22 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
                 )}
                 {qboStep==="mapping" && qboData && (
                   <div>
-                    <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:"14px 20px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <div style={{fontSize:13,color:"#9CA3AF"}}>Found <strong style={{color:"#E8E8F0"}}>{qboData.summary?.total_transactions||0} transactions</strong> from {qboData.summary?.date_range_start} to {qboData.summary?.date_range_end} · {qboData.summary?.total_vendors||0} vendors</div>
-                      <button onClick={confirmImport} style={{padding:"9px 24px",borderRadius:9,fontWeight:600,fontSize:13,background:"linear-gradient(135deg,#6D28D9,#4C1D95)",border:"none",color:"#E8E8F0",cursor:"pointer"}}>Import Everything →</button>
+                    <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:"14px 20px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{fontSize:13,color:"#9A9AA2"}}>Found <strong style={{color:"#F2F2F4"}}>{qboData.summary?.total_transactions||0} transactions</strong> from {qboData.summary?.date_range_start} to {qboData.summary?.date_range_end} · {qboData.summary?.total_vendors||0} vendors</div>
+                      <button onClick={confirmImport} style={{padding:"9px 24px",borderRadius:9,fontWeight:600,fontSize:13,background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)",border:"none",color:"#F2F2F4",cursor:"pointer"}}>Import Everything →</button>
                     </div>
-                    <div style={{fontSize:12,color:"#6B6B8A",marginBottom:12}}>Review how QBO accounts map to our chart of accounts. Edit any mapping before importing.</div>
-                    <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,overflow:"hidden",marginBottom:20}}>
+                    <div style={{fontSize:12,color:"#86868F",marginBottom:12}}>Review how QBO accounts map to our chart of accounts. Edit any mapping before importing.</div>
+                    <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,overflow:"hidden",marginBottom:20}}>
                       <table style={{width:"100%",borderCollapse:"collapse"}}>
-                        <thead><tr style={{background:"#0F0F13"}}>{["QBO Account","→","Our Account"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:10,color:"#6B6B8A",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}</tr></thead>
+                        <thead><tr style={{background:"#0C0C0E"}}>{["QBO Account","→","Our Account"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:10,color:"#86868F",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}</tr></thead>
                         <tbody>
                           {(qboData.source_accounts||[]).map((a,i)=>(
-                            <tr key={a.qbo_name} style={{borderTop:"1px solid #1E1E2E",background:i%2===0?"transparent":"#0A0A10"}}>
-                              <td style={{padding:"11px 16px",fontSize:13,color:"#C8C8D8"}}>{a.qbo_name} <span style={{fontSize:11,color:"#6B6B8A"}}>({a.qbo_code})</span></td>
-                              <td style={{padding:"11px 16px",color:"#6B6B8A"}}>→</td>
+                            <tr key={a.qbo_name} style={{borderTop:"1px solid #1C1C20",background:i%2===0?"transparent":"#0A0A0C"}}>
+                              <td style={{padding:"11px 16px",fontSize:13,color:"#D2D2D6"}}>{a.qbo_name} <span style={{fontSize:11,color:"#86868F"}}>({a.qbo_code})</span></td>
+                              <td style={{padding:"11px 16px",color:"#86868F"}}>→</td>
                               <td style={{padding:"11px 16px"}}>
                                 <select value={qboMapping[a.qbo_name]||a.suggested_our_code||""} onChange={e=>setQboMapping(m=>({...m,[a.qbo_name]:e.target.value}))}
-                                  style={{background:"#0F0F13",border:"1px solid #2A2A3E",borderRadius:8,padding:"6px 10px",color:"#E8E8F0",fontSize:12,outline:"none",width:"100%"}}>
+                                  style={{background:"#0C0C0E",border:"1px solid #262629",borderRadius:8,padding:"6px 10px",color:"#F2F2F4",fontSize:12,outline:"none",width:"100%"}}>
                                   {CHART_OF_ACCOUNTS.map(ac=><option key={ac.code} value={ac.code}>{ac.code} – {ac.name}</option>)}
                                 </select>
                               </td>
@@ -127,13 +127,13 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
                   </div>
                 )}
                 {qboStep==="done" && (
-                  <div style={{background:"#14141A",border:"1px solid #10B98133",borderRadius:14,padding:48,textAlign:"center"}}>
+                  <div style={{background:"#141416",border:"1px solid #10B98133",borderRadius:14,padding:48,textAlign:"center"}}>
                     <div style={{fontSize:48,marginBottom:16}}>✓</div>
                     <div style={{fontSize:22,fontWeight:700,marginBottom:8,color:"#10B981"}}>Import Complete</div>
-                    <div style={{fontSize:14,color:"#9CA3AF",marginBottom:24}}>Your QBO data is now in your ledger, categorized and ready. Check the Audit Trail for a full import log.</div>
+                    <div style={{fontSize:14,color:"#9A9AA2",marginBottom:24}}>Your QBO data is now in your ledger, categorized and ready. Check the Audit Trail for a full import log.</div>
                     <div style={{display:"flex",gap:12,justifyContent:"center"}}>
-                      <button onClick={()=>setView("invoices")} style={{padding:"10px 24px",borderRadius:10,fontSize:14,background:"linear-gradient(135deg,#6D28D9,#4C1D95)",border:"none",color:"#E8E8F0",cursor:"pointer"}}>View Ledger →</button>
-                      <button onClick={()=>setView("reports")} style={{padding:"10px 24px",borderRadius:10,fontSize:14,background:"#1E1E2E",border:"1px solid #2A2A3E",color:"#9CA3AF",cursor:"pointer"}}>View Reports →</button>
+                      <button onClick={()=>setView("invoices")} style={{padding:"10px 24px",borderRadius:10,fontSize:14,background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)",border:"none",color:"#F2F2F4",cursor:"pointer"}}>View Ledger →</button>
+                      <button onClick={()=>setView("reports")} style={{padding:"10px 24px",borderRadius:10,fontSize:14,background:"#1C1C20",border:"1px solid #262629",color:"#9A9AA2",cursor:"pointer"}}>View Reports →</button>
                     </div>
                   </div>
                 )}

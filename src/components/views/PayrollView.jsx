@@ -69,23 +69,23 @@ Journal entry rules:
             return (
               <div>
                 <div style={{marginBottom:24}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"#6B6B8A",marginBottom:8}}>PAYROLL</div>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#86868F",marginBottom:8}}>PAYROLL</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Payroll Import</h1>
-                  <div style={{fontSize:13,color:"#6B6B8A",marginTop:6}}>Upload a Gusto or ADP payroll export (CSV). AI reads it, generates the journal entries, and posts to your books.</div>
+                  <div style={{fontSize:13,color:"#86868F",marginTop:6}}>Upload a Gusto or ADP payroll export (CSV). AI reads it, generates the journal entries, and posts to your books.</div>
                 </div>
                 {/* Upload zone */}
                 <div onDragOver={e=>{e.preventDefault();setPayrollDragOver(true);}} onDragLeave={()=>setPayrollDragOver(false)}
                   onDrop={e=>{e.preventDefault();setPayrollDragOver(false);const f=e.dataTransfer.files[0];if(f)handlePayrollFile(f);}}
-                  style={{border:`2px dashed ${payrollDragOver?"#6D28D9":"#2A2A3E"}`,borderRadius:14,padding:32,textAlign:"center",marginBottom:24,background:payrollDragOver?"#1A0A2E":"#0F0F13",transition:"all 0.2s",cursor:"pointer"}}
+                  style={{border:`2px dashed ${payrollDragOver?"#6D5EF6":"#262629"}`,borderRadius:14,padding:32,textAlign:"center",marginBottom:24,background:payrollDragOver?"#16121F":"#0C0C0E",transition:"all 0.2s",cursor:"pointer"}}
                   onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".csv,.xlsx,.xls";i.onchange=e=>handlePayrollFile(e.target.files[0]);i.click();}}>
-                  {payrollProcessing ? <div style={{color:"#C8B8FF",fontSize:14}}>⏳ Parsing payroll data...</div> : (
+                  {payrollProcessing ? <div style={{color:"#C7BFFF",fontSize:14}}>⏳ Parsing payroll data...</div> : (
                     <div>
                       <div style={{fontSize:28,marginBottom:8}}>💼</div>
                       <div style={{fontSize:14,fontWeight:500,marginBottom:4}}>Drop Gusto or ADP export here</div>
-                      <div style={{fontSize:12,color:"#6B6B8A"}}>CSV or Excel · AI auto-detects format and generates journal entries</div>
+                      <div style={{fontSize:12,color:"#86868F"}}>CSV or Excel · AI auto-detects format and generates journal entries</div>
                       <div style={{marginTop:16,display:"flex",gap:10,justifyContent:"center"}}>
                         {["Gusto CSV","ADP RUN","ADP Workforce Now","Generic Payroll CSV"].map(s=>(
-                          <span key={s} style={{fontSize:11,background:"#1E1E2E",color:"#9CA3AF",borderRadius:20,padding:"3px 10px"}}>{s}</span>
+                          <span key={s} style={{fontSize:11,background:"#1C1C20",color:"#9A9AA2",borderRadius:20,padding:"3px 10px"}}>{s}</span>
                         ))}
                       </div>
                     </div>
@@ -93,40 +93,40 @@ Journal entry rules:
                 </div>
                 {/* Import history */}
                 {payrollImports.length===0 ? (
-                  <div style={{background:"#14141A",border:"1px solid #1E1E2E",borderRadius:14,padding:40,textAlign:"center"}}>
-                    <div style={{fontSize:13,color:"#6B6B8A"}}>No payroll imports yet. Upload a payroll export above.</div>
+                  <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:40,textAlign:"center"}}>
+                    <div style={{fontSize:13,color:"#86868F"}}>No payroll imports yet. Upload a payroll export above.</div>
                   </div>
                 ) : payrollImports.map(imp => (
-                  <div key={imp.id} style={{background:"#14141A",border:`1px solid ${imp.posted?"#10B98133":"#1E1E2E"}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
+                  <div key={imp.id} style={{background:"#141416",border:`1px solid ${imp.posted?"#10B98133":"#1C1C20"}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
                     <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:16}}>
                       <div style={{flex:1}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                           <span style={{fontSize:15,fontWeight:600}}>{imp.source} Payroll</span>
                           {imp.posted && <span style={{fontSize:11,background:"#10B98122",color:"#10B981",borderRadius:20,padding:"2px 9px"}}>✓ Posted</span>}
                         </div>
-                        <div style={{fontSize:12,color:"#6B6B8A"}}>{imp.period} · Pay date: {imp.pay_date} · {imp.employees?.length||0} employees</div>
+                        <div style={{fontSize:12,color:"#86868F"}}>{imp.period} · Pay date: {imp.pay_date} · {imp.employees?.length||0} employees</div>
                       </div>
                       <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:11,color:"#6B6B8A"}}>GROSS PAYROLL</div>
+                        <div style={{fontSize:11,color:"#86868F"}}>GROSS PAYROLL</div>
                         <div style={{fontSize:20,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#EF4444"}}>{fmt(imp.total_gross)}</div>
                       </div>
-                      {!imp.posted && <button onClick={()=>postPayroll(imp)} style={{padding:"9px 20px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#6D28D9,#4C1D95)",border:"none",color:"#E8E8F0",cursor:"pointer"}}>Post to Ledger</button>}
+                      {!imp.posted && <button onClick={()=>postPayroll(imp)} style={{padding:"9px 20px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)",border:"none",color:"#F2F2F4",cursor:"pointer"}}>Post to Ledger</button>}
                     </div>
                     {/* Journal entries preview */}
-                    <div style={{borderTop:"1px solid #1E1E2E",overflow:"hidden"}}>
+                    <div style={{borderTop:"1px solid #1C1C20",overflow:"hidden"}}>
                       <table style={{width:"100%",borderCollapse:"collapse"}}>
-                        <thead><tr style={{background:"#0F0F13"}}>
-                          {["Account","Debit","Credit"].map(h=><th key={h} style={{padding:"8px 16px",textAlign:"left",fontSize:10,color:"#6B6B8A",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}
+                        <thead><tr style={{background:"#0C0C0E"}}>
+                          {["Account","Debit","Credit"].map(h=><th key={h} style={{padding:"8px 16px",textAlign:"left",fontSize:10,color:"#86868F",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}
                         </tr></thead>
                         <tbody>
                           {(imp.journal_entries||[]).map((e,i)=>(
-                            <tr key={i} style={{borderTop:"1px solid #1E1E2E"}}>
+                            <tr key={i} style={{borderTop:"1px solid #1C1C20"}}>
                               <td style={{padding:"10px 16px"}}>
-                                <span style={{fontSize:11,background:"#1E1E2E",color:"#9CA3AF",borderRadius:4,padding:"2px 7px",marginRight:8}}>{e.account_code}</span>
-                                <span style={{fontSize:13,color:e.debit>0?"#E8E8F0":"#9CA3AF",paddingLeft:e.credit>0?16:0}}>{e.account_name}</span>
+                                <span style={{fontSize:11,background:"#1C1C20",color:"#9A9AA2",borderRadius:4,padding:"2px 7px",marginRight:8}}>{e.account_code}</span>
+                                <span style={{fontSize:13,color:e.debit>0?"#F2F2F4":"#9A9AA2",paddingLeft:e.credit>0?16:0}}>{e.account_name}</span>
                               </td>
-                              <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#E8E8F0"}}>{e.debit>0?fmt(e.debit):"—"}</td>
-                              <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#9CA3AF"}}>{e.credit>0?fmt(e.credit):"—"}</td>
+                              <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#F2F2F4"}}>{e.debit>0?fmt(e.debit):"—"}</td>
+                              <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#9A9AA2"}}>{e.credit>0?fmt(e.credit):"—"}</td>
                             </tr>
                           ))}
                         </tbody>

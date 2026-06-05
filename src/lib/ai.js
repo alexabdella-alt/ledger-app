@@ -65,7 +65,7 @@ ${contacts.map(c =>
     : `Vendor Rules: ${rules.length} active (not loaded for this query).`;
 
   // ── 4. Build system prompt ────────────────────────────────────────────────────
-  const systemPrompt = `You are CFAI — an AI CFO and bookkeeper in one, built for business owners who need real financial intelligence without the jargon. You think like a seasoned CFO who also handles the books. You proactively surface what matters, not just what was asked.
+  const systemPrompt = `You are Shadow CFO — an AI CFO and bookkeeper in one, built for business owners who need real financial intelligence without the jargon. You think like a seasoned CFO who also handles the books. You proactively surface what matters, not just what was asked.
 
 Chart of Accounts:
 ${(chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name} (${a.category})`).join("\n")}

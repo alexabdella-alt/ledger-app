@@ -9,9 +9,9 @@ export default function BankView() {
   return (
             <div>
               <div style={{ marginBottom:28 }}>
-                <div style={{ fontSize:10, letterSpacing:3, color:"#6B6B8A", marginBottom:8 }}>BANK FEED</div>
+                <div style={{ fontSize:10, letterSpacing:3, color:"#86868F", marginBottom:8 }}>BANK FEED</div>
                 <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Import Bank Transactions</h1>
-                <div style={{ fontSize:13, color:"#6B6B8A", marginTop:6 }}>Upload a CSV, Excel, or PDF bank statement — AI reads every transaction, auto-categorizes, and flags anything it's unsure about.</div>
+                <div style={{ fontSize:13, color:"#86868F", marginTop:6 }}>Upload a CSV, Excel, or PDF bank statement — AI reads every transaction, auto-categorizes, and flags anything it's unsure about.</div>
               </div>
 
               {/* Upload zone */}
@@ -19,12 +19,12 @@ export default function BankView() {
                 <div onDragOver={e=>{e.preventDefault();setBankDragOver(true);}} onDragLeave={()=>setBankDragOver(false)}
                   onDrop={e=>{e.preventDefault();setBankDragOver(false);handleBankFile(e.dataTransfer.files[0]);}}
                   onClick={()=>document.getElementById("bank-upload").click()}
-                  style={{ border:`2px dashed ${bankDragOver?"#0EA5E9":"#2A2A3E"}`, borderRadius:16, padding:"52px 32px", textAlign:"center", cursor:"pointer", background:bankDragOver?"#0A1A2E":"#14141A", transition:"all 0.2s", marginBottom:24 }}>
+                  style={{ border:`2px dashed ${bankDragOver?"#8B7BFF":"#262629"}`, borderRadius:16, padding:"52px 32px", textAlign:"center", cursor:"pointer", background:bankDragOver?"#0A1A2E":"#141416", transition:"all 0.2s", marginBottom:24 }}>
                   <div style={{ fontSize:40, marginBottom:14 }}>🏦</div>
                   <div style={{ fontSize:16, fontWeight:500, marginBottom:8 }}>Drop your bank statement here</div>
-                  <div style={{ fontSize:13, color:"#6B6B8A", marginBottom:16 }}>CSV · Excel (.xlsx) · PDF — from any bank</div>
+                  <div style={{ fontSize:13, color:"#86868F", marginBottom:16 }}>CSV · Excel (.xlsx) · PDF — from any bank</div>
                   <div style={{ display:"flex", justifyContent:"center", gap:10 }}>
-                    {["CSV","XLSX","PDF"].map(f=><span key={f} style={{ background:"#1E1E2E", border:"1px solid #2A2A3E", borderRadius:6, padding:"4px 12px", fontSize:11, color:"#6B6B8A" }}>{f}</span>)}
+                    {["CSV","XLSX","PDF"].map(f=><span key={f} style={{ background:"#1C1C20", border:"1px solid #262629", borderRadius:6, padding:"4px 12px", fontSize:11, color:"#86868F" }}>{f}</span>)}
                   </div>
                   <input id="bank-upload" type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display:"none" }} onChange={e=>handleBankFile(e.target.files[0])} />
                 </div>
@@ -32,14 +32,14 @@ export default function BankView() {
 
               {/* Processing state */}
               {bankProcessing && (
-                <div style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:16, padding:36, textAlign:"center", marginBottom:24 }}>
-                  <div style={{ fontSize:13, color:"#C8B8FF", marginBottom:20 }}>
+                <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:16, padding:36, textAlign:"center", marginBottom:24 }}>
+                  <div style={{ fontSize:13, color:"#C7BFFF", marginBottom:20 }}>
                     {bankStep==="parsing" ? "⟳ Reading bank statement..." : "⟳ AI is categorizing all transactions..."}
                   </div>
-                  <div style={{ height:6, background:"#1E1E2E", borderRadius:3, overflow:"hidden", maxWidth:400, margin:"0 auto 12px" }}>
-                    <div style={{ height:"100%", background:"linear-gradient(90deg,#0EA5E9,#6D28D9)", borderRadius:3, width:`${bankProgress}%`, transition:"width 0.8s ease", animation:"pulse 2s ease-in-out infinite" }} />
+                  <div style={{ height:6, background:"#1C1C20", borderRadius:3, overflow:"hidden", maxWidth:400, margin:"0 auto 12px" }}>
+                    <div style={{ height:"100%", background:"linear-gradient(90deg,#8B7BFF,#6D5EF6)", borderRadius:3, width:`${bankProgress}%`, transition:"width 0.8s ease", animation:"pulse 2s ease-in-out infinite" }} />
                   </div>
-                  <div style={{ fontSize:12, color:"#6B6B8A" }}>{bankFileName}</div>
+                  <div style={{ fontSize:12, color:"#86868F" }}>{bankFileName}</div>
                 </div>
               )}
 
@@ -49,12 +49,12 @@ export default function BankView() {
                   {/* Summary bar */}
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:20 }}>
                     {[
-                      { label:"Total Transactions", value:bankTransactions.length, color:"#E8E8F0" },
+                      { label:"Total Transactions", value:bankTransactions.length, color:"#F2F2F4" },
                       { label:"Auto-Categorized", value:bankTransactions.filter(t=>!t.needs_review).length, color:"#10B981" },
                       { label:"Needs Review", value:bankTransactions.filter(t=>t.needs_review).length, color:"#F59E0B" },
                     ].map(s=>(
-                      <div key={s.label} style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:12, padding:"16px 20px" }}>
-                        <div style={{ fontSize:11, color:"#6B6B8A", marginBottom:6, letterSpacing:1 }}>{s.label.toUpperCase()}</div>
+                      <div key={s.label} style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:12, padding:"16px 20px" }}>
+                        <div style={{ fontSize:11, color:"#86868F", marginBottom:6, letterSpacing:1 }}>{s.label.toUpperCase()}</div>
                         <div style={{ fontSize:24, fontWeight:600, color:s.color, fontFamily:"'DM Mono', monospace" }}>{s.value}</div>
                       </div>
                     ))}
@@ -67,11 +67,11 @@ export default function BankView() {
                         <span>⚠</span> <span>These transactions need your input — AI wasn't confident enough to auto-categorize</span>
                       </div>
                       {bankTransactions.filter(t=>t.needs_review).map(t=>(
-                        <div key={t.id} style={{ background:"#14141A", border:"1px solid #2A2A3E", borderRadius:10, padding:"14px 16px", marginBottom:10 }}>
+                        <div key={t.id} style={{ background:"#141416", border:"1px solid #262629", borderRadius:10, padding:"14px 16px", marginBottom:10 }}>
                           <div style={{ display:"grid", gridTemplateColumns:"1fr 120px 160px 40px", gap:12, alignItems:"center" }}>
                             <div>
                               <div style={{ fontSize:13, fontWeight:500 }}>{t.description}</div>
-                              <div style={{ fontSize:11, color:"#6B6B8A", marginTop:2 }}>{t.date} · Detected vendor: <span style={{ color:"#C8B8FF" }}>{t.vendor||"Unknown"}</span></div>
+                              <div style={{ fontSize:11, color:"#86868F", marginTop:2 }}>{t.date} · Detected vendor: <span style={{ color:"#C7BFFF" }}>{t.vendor||"Unknown"}</span></div>
                             </div>
                             <div style={{ fontSize:14, fontFamily:"'DM Mono', monospace", color:t.type==="revenue"?"#10B981":"#EF4444", textAlign:"right" }}>
                               {t.type==="revenue"?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
@@ -79,7 +79,7 @@ export default function BankView() {
                             <select value={t.gl_code} onChange={e=>{
                               const acct = CHART_OF_ACCOUNTS.find(a=>a.code===e.target.value);
                               setBankTransactions(prev=>prev.map(tx=>tx.id===t.id?{...tx,gl_code:acct.code,gl_name:acct.name,needs_review:false,checked:true}:tx));
-                            }} style={{ background:"#0F0F13", border:"1px solid #3B3B5E", borderRadius:8, padding:"6px 10px", color:"#E8E8F0", fontSize:12, outline:"none", cursor:"pointer" }}>
+                            }} style={{ background:"#0C0C0E", border:"1px solid #33333A", borderRadius:8, padding:"6px 10px", color:"#F2F2F4", fontSize:12, outline:"none", cursor:"pointer" }}>
                               <option value="">— Select GL Account —</option>
                               {CHART_OF_ACCOUNTS.map(a=><option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
                             </select>
@@ -93,25 +93,25 @@ export default function BankView() {
 
                   {/* Auto-categorized table */}
                   {bankTransactions.filter(t=>!t.needs_review).length > 0 && (
-                    <div style={{ background:"#14141A", border:"1px solid #1E1E2E", borderRadius:14, overflow:"hidden", marginBottom:20 }}>
-                      <div style={{ padding:"14px 20px", borderBottom:"1px solid #1E1E2E", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, overflow:"hidden", marginBottom:20 }}>
+                      <div style={{ padding:"14px 20px", borderBottom:"1px solid #1C1C20", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         <div style={{ fontSize:12, color:"#10B981" }}>✓ Auto-categorized — review & uncheck any you want to skip</div>
                         <div style={{ display:"flex", gap:8 }}>
-                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>t.needs_review?t:{...t,checked:true}))} style={{ background:"none", border:"1px solid #2A2A3E", color:"#9CA3AF", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Select all</button>
-                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>t.needs_review?t:{...t,checked:false}))} style={{ background:"none", border:"1px solid #2A2A3E", color:"#9CA3AF", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Deselect all</button>
+                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>t.needs_review?t:{...t,checked:true}))} style={{ background:"none", border:"1px solid #262629", color:"#9A9AA2", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Select all</button>
+                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>t.needs_review?t:{...t,checked:false}))} style={{ background:"none", border:"1px solid #262629", color:"#9A9AA2", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Deselect all</button>
                         </div>
                       </div>
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>
                         <thead>
-                          <tr style={{ background:"#0F0F13" }}>
+                          <tr style={{ background:"#0C0C0E" }}>
                             {["","Vendor","Date","Description","GL Account","Amount"].map((h,i)=>(
-                              <th key={i} style={{ padding:"11px 14px", textAlign:"left", fontSize:11, color:"#6B6B8A", letterSpacing:1.2, fontWeight:500 }}>{h}</th>
+                              <th key={i} style={{ padding:"11px 14px", textAlign:"left", fontSize:11, color:"#86868F", letterSpacing:1.2, fontWeight:500 }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {bankTransactions.filter(t=>!t.needs_review).map((t,i)=>(
-                            <tr key={t.id} style={{ borderTop:"1px solid #1E1E2E", background:i%2===0?"transparent":"#0A0A10", opacity:t.checked?1:0.45 }}>
+                            <tr key={t.id} style={{ borderTop:"1px solid #1C1C20", background:i%2===0?"transparent":"#0A0A0C", opacity:t.checked?1:0.45 }}>
                               <td style={{ padding:"11px 14px" }}>
                                 <input type="checkbox" checked={t.checked||false} onChange={e=>setBankTransactions(prev=>prev.map(tx=>tx.id===t.id?{...tx,checked:e.target.checked}:tx))}
                                   style={{ width:16, height:16, cursor:"pointer", accentColor:"#10B981" }} />
@@ -120,16 +120,16 @@ export default function BankView() {
                                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                                   <div style={{ width:26, height:26, borderRadius:6, background:vendorColor(t.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(t.vendor)}</div>
                                   <span style={{ fontSize:13, fontWeight:500 }}>{t.vendor}</span>
-                                  {t.rule_applied && <span style={{ fontSize:10, color:"#C8B8FF", background:"#1E1E2E", borderRadius:10, padding:"1px 6px" }}>⚡rule</span>}
+                                  {t.rule_applied && <span style={{ fontSize:10, color:"#C7BFFF", background:"#1C1C20", borderRadius:10, padding:"1px 6px" }}>⚡rule</span>}
                                 </div>
                               </td>
-                              <td style={{ padding:"11px 14px", fontSize:12, color:"#9CA3AF" }}>{t.date}</td>
-                              <td style={{ padding:"11px 14px", fontSize:12, color:"#9CA3AF", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.description}</td>
+                              <td style={{ padding:"11px 14px", fontSize:12, color:"#9A9AA2" }}>{t.date}</td>
+                              <td style={{ padding:"11px 14px", fontSize:12, color:"#9A9AA2", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.description}</td>
                               <td style={{ padding:"11px 14px" }}>
                                 <select value={t.gl_code} onChange={e=>{
                                   const acct=CHART_OF_ACCOUNTS.find(a=>a.code===e.target.value);
                                   if(acct) setBankTransactions(prev=>prev.map(tx=>tx.id===t.id?{...tx,gl_code:acct.code,gl_name:acct.name}:tx));
-                                }} style={{ background:"#0F0F13", border:"1px solid #2A2A3E", borderRadius:6, padding:"4px 8px", color:"#C8B8FF", fontSize:11, outline:"none", cursor:"pointer" }}>
+                                }} style={{ background:"#0C0C0E", border:"1px solid #262629", borderRadius:6, padding:"4px 8px", color:"#C7BFFF", fontSize:11, outline:"none", cursor:"pointer" }}>
                                   {CHART_OF_ACCOUNTS.map(a=><option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
                                 </select>
                               </td>
@@ -151,7 +151,7 @@ export default function BankView() {
                     }}>
                       ✓ Book {bankTransactions.filter(t=>t.checked).length} Selected Transaction{bankTransactions.filter(t=>t.checked).length!==1?"s":""} to Ledger
                     </button>
-                    <button onClick={()=>{setBankTransactions([]);setBankFileName("");}} style={{ padding:"14px 20px", borderRadius:12, fontSize:13, background:"transparent", border:"1px solid #2A2A3E", color:"#6B6B8A", cursor:"pointer" }}>
+                    <button onClick={()=>{setBankTransactions([]);setBankFileName("");}} style={{ padding:"14px 20px", borderRadius:12, fontSize:13, background:"transparent", border:"1px solid #262629", color:"#86868F", cursor:"pointer" }}>
                       Clear
                     </button>
                   </div>
@@ -161,7 +161,7 @@ export default function BankView() {
               {/* Upload new while reviewing */}
               {bankTransactions.length > 0 && !bankProcessing && (
                 <div style={{ marginTop:16, textAlign:"center" }}>
-                  <button onClick={()=>document.getElementById("bank-upload-2").click()} style={{ background:"none", border:"none", color:"#C8B8FF", fontSize:13, cursor:"pointer" }}>
+                  <button onClick={()=>document.getElementById("bank-upload-2").click()} style={{ background:"none", border:"none", color:"#C7BFFF", fontSize:13, cursor:"pointer" }}>
                     + Upload another statement
                   </button>
                   <input id="bank-upload-2" type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display:"none" }} onChange={e=>handleBankFile(e.target.files[0])} />

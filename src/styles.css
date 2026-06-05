@@ -1,0 +1,167 @@
+/* =====================================================================
+   Shadow CFO — global design layer
+   Monochrome graphite surfaces + a single iris accent. Applies app-wide
+   (every inline-styled view inherits the resets, scrollbars, focus rings,
+   selection color and motion utilities below).
+   ===================================================================== */
+
+:root {
+  /* surfaces */
+  --sc-bg:        #08080A;
+  --sc-surface:   #0C0C0E;
+  --sc-card:      #141416;
+  --sc-raised:    #1C1C20;
+  --sc-border:    #262629;
+  --sc-border-2:  #33333A;
+  /* text */
+  --sc-text:      #F2F2F4;
+  --sc-text-dim:  #9A9AA2;
+  --sc-text-mut:  #86868F;
+  /* single accent ramp */
+  --sc-accent:        #8B7BFF;
+  --sc-accent-deep:   #6D5EF6;
+  --sc-accent-bright: #A99CFF;
+  --sc-accent-soft:   #C7BFFF;
+  --sc-accent-glow:   rgba(139,123,255,0.35);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--sc-bg);
+  color: var(--sc-text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Subtle living backdrop — a faint accent aura that drifts behind the app */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20vmax;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(40vmax 40vmax at 12% -8%, rgba(139,123,255,0.10), transparent 60%),
+    radial-gradient(38vmax 38vmax at 100% 0%, rgba(109,94,246,0.08), transparent 60%),
+    radial-gradient(50vmax 50vmax at 60% 120%, rgba(139,123,255,0.06), transparent 60%);
+  animation: scAurora 24s ease-in-out infinite alternate;
+}
+#root { position: relative; z-index: 1; }
+
+/* Text selection */
+::selection { background: rgba(139,123,255,0.30); color: #fff; }
+
+/* Refined, quiet scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #2A2A30 transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: #2A2A30;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover { background: #3A3A44; background-clip: padding-box; }
+
+/* Accessible keyboard focus ring (does not affect mouse clicks) */
+:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Inputs gain a soft accent ring on focus, app-wide */
+input:focus, textarea:focus, select:focus {
+  border-color: var(--sc-accent) !important;
+  box-shadow: 0 0 0 3px rgba(139,123,255,0.14);
+}
+::placeholder { color: #5C5C64; }
+
+/* Buttons everywhere feel responsive without per-view edits */
+button { transition: transform .14s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease; }
+button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
+
+/* =====================  Keyframes  ===================== */
+@keyframes scAurora {
+  0%   { transform: translate3d(0,0,0) scale(1); }
+  100% { transform: translate3d(0,-2%,0) scale(1.08); }
+}
+@keyframes scRise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scScaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes scShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes scGradient {
+  0%,100% { background-position: 0% 50%; }
+  50%     { background-position: 100% 50%; }
+}
+@keyframes scGlow {
+  0%,100% { box-shadow: 0 0 0 0 rgba(139,123,255,0.0); }
+  50%     { box-shadow: 0 0 22px 1px rgba(139,123,255,0.28); }
+}
+@keyframes scFloat {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-6px); }
+}
+@keyframes scSpin { to { transform: rotate(360deg); } }
+@keyframes scEclipse {
+  0%,100% { transform: translateX(0); }
+  50%     { transform: translateX(26%); }
+}
+
+/* =====================  Utilities  ===================== */
+.sc-rise   { animation: scRise .5s cubic-bezier(.22,1,.36,1) both; }
+.sc-fade   { animation: scFade .6s ease both; }
+.sc-scale  { animation: scScaleIn .4s cubic-bezier(.22,1,.36,1) both; }
+.sc-rise-1 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .06s both; }
+.sc-rise-2 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .12s both; }
+.sc-rise-3 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .18s both; }
+.sc-rise-4 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .24s both; }
+.sc-float  { animation: scFloat 5s ease-in-out infinite; }
+
+/* Animated gradient wordmark */
+.sc-wordmark {
+  background: linear-gradient(100deg, var(--sc-text) 10%, var(--sc-accent-bright) 40%, var(--sc-accent-soft) 55%, var(--sc-text) 90%);
+  background-size: 220% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: scShimmer 6s linear infinite;
+}
+
+/* Card hover-lift — opt-in via className on inline-styled cards */
+.sc-card { transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, border-color .25s ease; will-change: transform; }
+.sc-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,.45); border-color: var(--sc-accent) !important; }
+
+/* Shimmer skeleton / loading sheen */
+.sc-shimmer {
+  background: linear-gradient(90deg, #16161A 25%, #20202A 37%, #16161A 63%);
+  background-size: 400% 100%;
+  animation: scShimmer 1.4s ease infinite;
+}
+
+/* Primary action sheen */
+.sc-cta { position: relative; overflow: hidden; }
+.sc-cta::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.18) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .6s ease;
+}
+.sc-cta:hover::after { transform: translateX(120%); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}

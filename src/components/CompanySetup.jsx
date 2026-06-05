@@ -38,13 +38,13 @@ function CompanySetup({ session, onComplete }) {
   };
 
   const s = {
-    wrap: { minHeight:"100vh", background:"#0A0A0F", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',system-ui,sans-serif" },
-    card: { background:"#14141A", border:"1px solid #2A2A3E", borderRadius:20, padding:40, width:440, boxShadow:"0 24px 80px rgba(0,0,0,0.7)" },
-    h1: { fontSize:24, fontWeight:700, color:"#E8E8F0", margin:"0 0 8px", letterSpacing:-0.5 },
-    sub: { fontSize:13, color:"#6B6B8A", marginBottom:28 },
-    label: { fontSize:11, color:"#6B6B8A", marginBottom:4, letterSpacing:0.5 },
-    input: { width:"100%", boxSizing:"border-box", background:"#0F0F13", border:"1px solid #2A2A3E", borderRadius:10, padding:"12px 14px", color:"#E8E8F0", fontSize:15, outline:"none", marginBottom:20 },
-    btn: { width:"100%", padding:"13px", borderRadius:10, fontSize:14, fontWeight:600, background:name.trim()?"linear-gradient(135deg,#6D28D9,#4C1D95)":"#1E1E2E", border:"none", color:"#E8E8F0", cursor:name.trim()?"pointer":"not-allowed" },
+    wrap: { minHeight:"100vh", background:"#08080A", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',system-ui,sans-serif" },
+    card: { background:"#141416", border:"1px solid #262629", borderRadius:20, padding:40, width:440, boxShadow:"0 24px 80px rgba(0,0,0,0.7)" },
+    h1: { fontSize:24, fontWeight:700, color:"#F2F2F4", margin:"0 0 8px", letterSpacing:-0.5 },
+    sub: { fontSize:13, color:"#86868F", marginBottom:28 },
+    label: { fontSize:11, color:"#86868F", marginBottom:4, letterSpacing:0.5 },
+    input: { width:"100%", boxSizing:"border-box", background:"#0C0C0E", border:"1px solid #262629", borderRadius:10, padding:"12px 14px", color:"#F2F2F4", fontSize:15, outline:"none", marginBottom:20 },
+    btn: { width:"100%", padding:"13px", borderRadius:10, fontSize:14, fontWeight:600, background:name.trim()?"linear-gradient(135deg,#6D5EF6,#4A3DB8)":"#1C1C20", border:"none", color:"#F2F2F4", cursor:name.trim()?"pointer":"not-allowed" },
     error: { background:"#2A0A0A", border:"1px solid #EF444433", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#EF4444", marginBottom:12 },
   };
 
