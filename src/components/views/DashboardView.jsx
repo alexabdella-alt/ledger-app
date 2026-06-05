@@ -5,7 +5,7 @@ import { initials, vendorColor } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function DashboardView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   return (
             <div>
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
@@ -338,9 +338,13 @@ export default function DashboardView() {
                   <div style={{ fontSize:11, color:"#6B6B8A", marginBottom:18, letterSpacing:1 }}>GL ACCOUNT BREAKDOWN</div>
                   {Object.keys(glBreakdown).length===0 ? <div style={{ color:"#6B6B8A", fontSize:13 }}>No transactions yet.</div> :
                     Object.entries(glBreakdown).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([name,amt])=>(
-                      <div key={name} style={{ display:"flex", justifyContent:"space-between", marginBottom:11 }}>
+                      <div key={name} onClick={()=>setGlDrilldown(name)} title="View transactions in this account" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:11, padding:"4px 8px", margin:"0 -8px 7px", borderRadius:8, cursor:"pointer" }}
+                        onMouseEnter={e=>e.currentTarget.style.background="#1E1E2E"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                         <div style={{ fontSize:13, color:"#C8C8D8" }}>{name}</div>
-                        <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#C8B8FF" }}>${amt.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#C8B8FF" }}>${amt.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
+                          <span style={{ fontSize:12, color:"#6B6B8A" }}>›</span>
+                        </div>
                       </div>
                     ))
                   }
@@ -387,6 +391,58 @@ export default function DashboardView() {
                   </div>
                 ))}
               </div>
+
+              {/* ── GL ACCOUNT DRILL-DOWN PANEL ── */}
+              {glDrilldown && (() => {
+                const rows = invoices
+                  .filter(inv => glPLType(inv.gl_code) && (inv.gl_name||"Uncoded")===glDrilldown)
+                  .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+                const total = rows.reduce((s,i)=>s+i.amount,0);
+                const isRev = rows.length>0 && glIsRevenue(rows[0].gl_code);
+                return (
+                  <div onClick={()=>setGlDrilldown(null)} style={{ position:"fixed", inset:0, zIndex:10001, background:"rgba(0,0,0,0.6)", display:"flex", justifyContent:"flex-end" }}>
+                    <style>{`@keyframes slideinright{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
+                    <div onClick={e=>e.stopPropagation()} style={{ width:540, maxWidth:"92vw", height:"100%", background:"#14141A", borderLeft:"1px solid #2A2A3E", display:"flex", flexDirection:"column", animation:"slideinright 0.25s cubic-bezier(0.22,1,0.36,1)", boxShadow:"-24px 0 80px rgba(0,0,0,0.5)" }}>
+                      <div style={{ padding:"22px 24px", borderBottom:"1px solid #1E1E2E", flexShrink:0 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
+                          <div style={{ minWidth:0 }}>
+                            <div style={{ fontSize:10, letterSpacing:2, color:"#6B6B8A", marginBottom:6 }}>{isRev?"REVENUE ACCOUNT":"EXPENSE ACCOUNT"}</div>
+                            <h2 style={{ fontSize:20, fontWeight:600, margin:0 }}>{glDrilldown}</h2>
+                            <div style={{ fontSize:13, color:"#6B6B8A", marginTop:6 }}>{rows.length} transaction{rows.length!==1?"s":""}</div>
+                          </div>
+                          <button onClick={()=>setGlDrilldown(null)} style={{ background:"none", border:"none", color:"#6B6B8A", fontSize:26, cursor:"pointer", lineHeight:1, padding:0, flexShrink:0 }}>×</button>
+                        </div>
+                        <div style={{ marginTop:16, padding:"12px 16px", background:"#0F0F13", borderRadius:10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <span style={{ fontSize:12, color:"#6B6B8A", letterSpacing:1 }}>TOTAL</span>
+                          <span style={{ fontSize:18, fontWeight:600, fontFamily:"'DM Mono', monospace", color:isRev?"#10B981":"#C8B8FF" }}>${total.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+                        </div>
+                      </div>
+                      <div style={{ flex:1, overflowY:"auto", padding:"8px 16px 24px" }}>
+                        {rows.length===0 ? <div style={{ color:"#6B6B8A", fontSize:13, padding:"24px 8px" }}>No transactions in this account.</div> :
+                          rows.map(inv=>(
+                            <div key={inv.id} style={{ padding:"14px 8px", borderBottom:"1px solid #1E1E2E" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+                                  <div style={{ width:30, height:30, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
+                                  <div style={{ minWidth:0 }}>
+                                    <div style={{ fontSize:13, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor}</div>
+                                    <div style={{ fontSize:11, color:"#6B6B8A" }}>{inv.date}</div>
+                                  </div>
+                                </div>
+                                <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", flexShrink:0, color:isRev?"#10B981":"#E8E8F0" }}>${inv.amount.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
+                              </div>
+                              {inv.description && <div style={{ fontSize:12, color:"#9CA3AF", marginTop:6, marginLeft:40, lineHeight:1.5 }}>{inv.description}</div>}
+                              <div style={{ marginLeft:40, marginTop:6 }}>
+                                <button onClick={()=>{ setSelectedInvoice(inv); setGlDrilldown(null); setView("detail"); }} style={{ background:"none", border:"none", color:"#C8B8FF", fontSize:12, cursor:"pointer", padding:0 }}>View full entry →</button>
+                              </div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
   );
 }
