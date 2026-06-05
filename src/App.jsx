@@ -231,6 +231,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const storeDocument = (name, base64, mediaType, type, linkedId=null, tags=[]) => {
     const doc = { id: Date.now()+Math.random(), name, base64, mediaType, type, uploaded_at: new Date().toISOString(), linked_invoice_id: linkedId, tags };
     setDocLibrary(prev => [doc, ...prev]);
+    // Persist metadata only — base64 is intentionally NOT stored (too large).
+    if (currentCompany?.id) {
+      supabase.from("documents").insert({
+        company_id: currentCompany.id,
+        file_name: name,
+        media_type: mediaType || null,
+        document_type: type || null,
+        tags: tags || [],
+        linked_invoice_id: linkedId != null ? String(linkedId) : null,
+        uploaded_at: doc.uploaded_at,
+      }).select("id").single().then(({ data, error }) => {
+        if (error) { console.error("Document persist failed:", error.message); return; }
+        // Swap the temp client id for the DB id so it matches on next reload.
+        if (data?.id) setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data.id } : d));
+      });
+    }
     return doc.id;
   };
 
@@ -527,6 +543,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         setAuditLog(auditData.map(a => ({
           id: a.id, ts: a.created_at, action: a.action,
           detail: a.detail, before: a.before_state, after: a.after_state, user: "owner"
+        })));
+      }
+
+      // Load documents (metadata only — base64 file content is not stored)
+      const { data: docsData } = await supabase
+        .from("documents").select("*").eq("company_id", cid)
+        .order("uploaded_at", { ascending: false });
+      if (docsData) {
+        setDocLibrary(docsData.map(d => ({
+          id: d.id,
+          name: d.file_name,
+          mediaType: d.media_type,
+          type: d.document_type,
+          tags: d.tags || [],
+          linked_invoice_id: d.linked_invoice_id,
+          uploaded_at: d.uploaded_at,
+          ai_explanation: d.ai_explanation,
+          entry_needed: d.entry_needed,
+          entry_summary: d.entry_summary,
+          posted: d.posted,
         })));
       }
 
