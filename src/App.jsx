@@ -32,6 +32,7 @@ import PayrollView from "./components/views/PayrollView";
 import RecurringView from "./components/views/RecurringView";
 import ReconView from "./components/views/ReconView";
 import Tax1099View from "./components/views/Tax1099View";
+import TaxView from "./components/views/TaxView";
 import DocsView from "./components/views/DocsView";
 import AuditView from "./components/views/AuditView";
 import OnboardView from "./components/views/OnboardView";
@@ -834,6 +835,134 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     }
   };
 
+  // ── SMART GAAP CLASSIFICATION ──────────────────────────────────────────────
+  // Detects expenses that need a clarifying question before they can be booked
+  // correctly under GAAP, and books the answer (incl. prepaid amortization).
+  const fmtMoney = n => "$"+(Math.round((Number(n)||0)*100)/100).toLocaleString("en-US",{minimumFractionDigits:2});
+  const GAAP_ASSET_RE = /\b(laptop|computer|macbook|imac|iphone|ipad|tablet|equipment|machinery|machine|furniture|desk|chair|vehicle|car|truck|server|camera|monitor|printer|hardware|appliance)\b|software license|perpetual license/i;
+  const GAAP_PREPAID_RE = /\b(annual|yearly|12[\s-]?months?|retainer)\b|insurance|maintenance contract|service agreement/i;
+  const GAAP_LEASEHOLD_RE = /renovation|build[\s-]?out|leasehold|improvement|installation|flooring|remodel|contractor|construction|electrical work|plumbing/i;
+  const GAAP_VEHICLE_RE = /\b(gas|fuel|mileage|auto|gasoline)\b/i;
+  const GAAP_MEALS_RE = /\b(restaurant|meal|meals|dining|cafe|café|coffee|catering|lunch|dinner|bar|grill)\b|grubhub|doordash|uber eats|seamless/i;
+
+  const buildGaapClarification = (invoice) => {
+    if (invoice.type === "revenue") return null;
+    const amt = Number(invoice.amount) || 0;
+    const text = `${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase();
+    const base = { gaap: true, invoice, suggestedCode: invoice.gl_code, suggestedName: invoice.gl_name };
+
+    // A) Capital vs expense (ASC 360 materiality threshold)
+    if (amt >= 2000 && GAAP_ASSET_RE.test(text)) {
+      const capitalize = amt >= 2500;
+      return { ...base, gaapType:"capital",
+        question:`This looks like a larger purchase — how will you use it?`,
+        explanation:`Under GAAP (ASC 360), purchases over $2,500 with a useful life greater than one year must be capitalized as fixed assets and depreciated over their useful life rather than expensed immediately. This affects both your balance sheet and your taxes.`,
+        options:[
+          { label: capitalize ? "Business use, and I'll use it more than a year" : "Business use, more than a year",
+            gl_code: capitalize?"1500":"5900", gl_name: capitalize?"Property, Plant & Equipment":"Technology & Software", depreciate: capitalize,
+            reasoning: capitalize
+              ? `Capitalized as fixed asset per ASC 360 — user confirmed business use >1 year, amount ${fmtMoney(amt)} exceeds $2,500 threshold. Flagged for depreciation.`
+              : `Expensed — business use but amount ${fmtMoney(amt)} is under the $2,500 capitalization threshold (de minimis safe harbor).` },
+          { label:"It's a subscription, or I'll use it under a year", gl_code:"5900", gl_name:"Technology & Software",
+            reasoning:`Expensed to Technology & Software — subscription or useful life under one year, so ASC 360 capitalization does not apply.` },
+          { label:"Mostly personal use", gl_code:"5900", gl_name:"Technology & Software", nondeductible:true,
+            reasoning:`Booked but flagged as primarily personal use — not deductible as a business expense.` },
+        ] };
+    }
+
+    // B) Prepaid expenses (matching principle, ASC 340)
+    if (GAAP_PREPAID_RE.test(text)) {
+      return { ...base, gaapType:"prepaid",
+        question:`How many months does this cover? If it's more than a few, we'll spread it out so your monthly profit stays accurate.`,
+        explanation:`When an invoice pays for several months of service up front, GAAP records it as a prepaid asset and recognizes the expense evenly over the coverage period.`,
+        options:[
+          { label:"3 months or less — expense it now", gl_code: invoice.gl_code, gl_name: invoice.gl_name,
+            reasoning:`Expensed immediately — coverage is 3 months or less, so prepaid treatment isn't needed.` },
+          { label:"6 months", prepaidMonths:6, reasoning:`Recorded as Prepaid Expenses (1300) and amortized evenly over 6 months from ${invoice.date} to ${invoice.gl_name}.` },
+          { label:"12 months (annual)", prepaidMonths:12, reasoning:`Recorded as Prepaid Expenses (1300) and amortized evenly over 12 months from ${invoice.date} to ${invoice.gl_name}.` },
+        ] };
+    }
+
+    // C) Leasehold improvements
+    if (amt >= 1000 && GAAP_LEASEHOLD_RE.test(text)) {
+      return { ...base, gaapType:"leasehold",
+        question:`Is this a permanent improvement, and to a space you lease or own?`,
+        explanation:`Permanent improvements to a leased space are capitalized as leasehold improvements and amortized over the lease term. Improvements to property you own are capitalized and depreciated. Routine repairs are expensed right away.`,
+        options:[
+          { label:"Permanent improvement to a space I LEASE", gl_code:"1600", gl_name:"Intangible Assets", depreciate:false,
+            reasoning:`Capitalized as a leasehold improvement (1600) per GAAP — permanent improvement to leased space, amortize over the remaining lease term.` },
+          { label:"Permanent improvement to a space I OWN", gl_code:"1500", gl_name:"Property, Plant & Equipment", depreciate:true,
+            reasoning:`Capitalized to Property, Plant & Equipment (1500) — permanent improvement to owned property, depreciate over its useful life.` },
+          { label:"It's a repair / maintenance", gl_code:"6200", gl_name:"Miscellaneous Expense",
+            reasoning:`Expensed as repairs & maintenance — routine upkeep, not a capital improvement.` },
+        ] };
+    }
+
+    // D) Vehicle operating costs (business-use percentage)
+    if (GAAP_VEHICLE_RE.test(text)) {
+      const mk = pct => ({ label: pct===100?"100% business use":`Mixed — about ${pct}% business`, vehiclePct:pct, gl_code: invoice.gl_code, gl_name: invoice.gl_name,
+        reasoning: pct===100 ? `Fully deductible — user confirmed 100% business use.`
+          : `Business use ${pct}% — deductible portion ${fmtMoney(amt*pct/100)} of ${fmtMoney(amt)}; remainder is personal and not deductible.` });
+      return { ...base, gaapType:"vehicle",
+        question:`Is this vehicle used only for business, or mixed personal/business?`,
+        explanation:`Only the business-use portion of vehicle costs is deductible. Roughly how much of this vehicle's use is for business?`,
+        options:[ mk(100), mk(75), mk(50) ] };
+    }
+
+    return null;
+  };
+
+  // Books a prepaid invoice: prepaid asset on purchase + monthly amortization entries.
+  const bookPrepaid = (inv, months, opt) => {
+    const amt = Number(inv.amount) || 0;
+    const expenseCode = inv.gl_code, expenseName = inv.gl_name;
+    const prepaidEntry = { ...inv, gl_code:"1300", gl_name:"Prepaid Expenses",
+      secondary_gl_code:"2000", secondary_gl_name:"Accounts Payable", debit_credit:"debit",
+      confidence:100, status:"booked", booked_at:new Date().toISOString(), source:"gaap_prepaid",
+      reasoning: opt.reasoning || `Recorded as a prepaid asset, amortizing over ${months} months.`, prepaid_months: months };
+    setInvoices(prev => [prepaidEntry, ...prev]);
+    bookToDb(prepaidEntry);
+    if (prepaidEntry._contact) createOrUpdateContact({ ...prepaidEntry._contact, gl_code:"1300", gl_name:"Prepaid Expenses" });
+
+    const per = Math.round((amt / months) * 100) / 100;
+    const start = inv.date ? new Date(inv.date+"T12:00:00") : new Date();
+    const amortInvoices = [];
+    for (let k=0;k<Math.min(months,60);k++){
+      const dt = new Date(start.getFullYear(), start.getMonth()+k, start.getDate());
+      amortInvoices.push({ id: Date.now()+Math.random()+k, vendor: inv.vendor,
+        description:`${inv.description||expenseName} — amortization ${k+1}/${months}`, amount: per,
+        date: dt.toISOString().slice(0,10), type:"expense", project: inv.project||"General",
+        gl_code: expenseCode, gl_name: expenseName, secondary_gl_code:"1300", secondary_gl_name:"Prepaid Expenses",
+        debit_credit:"debit", confidence:100, reasoning:`Monthly amortization of prepaid ${expenseName} (${k+1} of ${months}).`,
+        status:"booked", booked_at:new Date().toISOString(), source:"gaap_prepaid_amort", payment_status:"paid" });
+    }
+    setInvoices(prev => [...amortInvoices, ...prev]);
+    amortInvoices.forEach(e => bookToDb(e));
+    logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid (1300), amortizing over ${months} months`, null, { vendor:inv.vendor, amount:amt, gl_code:"1300", months });
+    showNotification(`Recorded as prepaid — spread over ${months} months ✓`);
+  };
+
+  // Applies the user's answer to a GAAP clarification card and books the entry.
+  const applyGaapAnswer = (item, opt) => {
+    const inv = item.invoice;
+    setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
+    if (opt.prepaidMonths) { bookPrepaid(inv, opt.prepaidMonths, opt); return; }
+    const finalInv = { ...inv,
+      gl_code: opt.gl_code || inv.gl_code, gl_name: opt.gl_name || inv.gl_name,
+      secondary_gl_code:"2000", secondary_gl_name:"Accounts Payable", debit_credit:"debit",
+      confidence:100, status:"booked", booked_at:new Date().toISOString(), source:"gaap_classification",
+      reasoning: opt.reasoning || inv.reasoning,
+      needs_depreciation: opt.depreciate ? true : undefined,
+      nondeductible: opt.nondeductible ? true : undefined,
+      business_use_pct: opt.vehiclePct || undefined,
+      deductible_amount: opt.vehiclePct ? (Number(inv.amount)||0)*opt.vehiclePct/100 : undefined };
+    setInvoices(prev => [finalInv, ...prev]);
+    bookToDb(finalInv);
+    if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+    logAudit("invoice_booked", `${finalInv.vendor} · ${fmtMoney(finalInv.amount)} → ${finalInv.gl_name} (GAAP ${item.gaapType})`, null, { vendor:finalInv.vendor, amount:finalInv.amount, gl_code:finalInv.gl_code, gl_name:finalInv.gl_name, reasoning: finalInv.reasoning });
+    showNotification(`Booked to ${finalInv.gl_name} ✓`);
+  };
+
   const persistContract = async (contract) => {
     if (!currentCompany?.id || !session?.user?.id) return;
     try {
@@ -1220,6 +1349,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           // Split invoices by confidence — high confidence books immediately, low confidence asks user
           const highConfidence = [];
           const needsClarification = [];
+          let mealsBooked = 0;
 
           extractedList.forEach((extracted, idx) => {
             const coding = codings[idx] || {};
@@ -1259,6 +1389,16 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
                 tax_id: extracted.tax_id || "", gl_code: finalCode, gl_name: finalName,
               },
             };
+
+            // Meals: auto-apply the 50% deductibility rule (no question needed) and notify.
+            if (invoice.type !== "revenue" && GAAP_MEALS_RE.test(`${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase())) {
+              invoice.meals_pct = 50;
+              invoice.deductible_amount = (Number(invoice.amount)||0) * 0.5;
+              invoice.reasoning = `Meals are 50% deductible under current tax law — deductible portion ${fmtMoney(invoice.deductible_amount)}. ${invoice.reasoning||""}`.trim();
+              mealsBooked += 1;
+            }
+            // GAAP review — capital vs expense, prepaid, leasehold, vehicle.
+            const gaapItem = buildGaapClarification(invoice);
 
             // Duplicate invoice number check — runs before any other routing
             const dupExisting = invoice.invoice_number
@@ -1302,6 +1442,9 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
                 suggestedCode: finalCode,
                 suggestedName: finalName,
               });
+            } else if (gaapItem) {
+              // Needs a GAAP clarifying question before it can be booked correctly.
+              needsClarification.push({ id: Date.now() + Math.random(), queueItemId: item.id, ...gaapItem });
             } else if (confidence >= 85 || rule) {
               highConfidence.push(invoice);
             } else {
@@ -1345,6 +1488,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           if (needsClarification.length > 0) {
             setClarificationQueue(prev => [...prev, ...needsClarification]);
           }
+          if (mealsBooked > 0) showNotification(`Meals are 50% deductible — we booked ${mealsBooked===1?"it":"them"} at 50% per IRS rules.`);
 
           const newInvoices = [...highConfidence];
           const totalAmt = newInvoices.reduce((s,i)=>s+i.amount, 0);
@@ -2635,7 +2779,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             reports:"reports", report:"reports", pl:"reports", "p&l":"reports", "profit-loss":"reports",
             "balance-sheet":"reports", "cash-flow":"reports",
             audittrail:"audit", "audit-trail":"audit", "audit trail":"audit", audit:"audit",
-            "1099":"tax1099", "1099s":"tax1099", taxes:"tax1099", tax1099:"tax1099",
+            "1099":"tax1099", "1099s":"tax1099", tax1099:"tax1099",
+            tax:"tax", taxes:"tax", "tax-center":"tax", "estimated-tax":"tax", "estimated taxes":"tax", "tax-compliance":"tax", deadlines:"tax",
             // contracts now live inside Books (contracts filter)
             contracts:"books", leases:"books", lease:"books", contract:"books",
             settings:"settings", company:"settings", coa:"coa", "chart-of-accounts":"coa",
@@ -2897,9 +3042,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#6B7280", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
 
-  const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","audit"];
+  const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   return (
     <ERPContext.Provider value={erpCtx}>
     <div style={{ fontFamily:"'DM Sans', sans-serif", minHeight:"100vh", background:"#F8F9FB", color:"#111827" }}>
@@ -3023,11 +3168,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {(() => {
             const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports"];
-            const SETTINGS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","audit"];
+            const SETTINGS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
             let subs = null;
             if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["payroll","Payroll"],["docs","Documents"]];
             // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
-            else if (SETTINGS.includes(view)) subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["audit","Audit Trail"],["tax1099","1099s"],["onboard","Import QBO"]];
+            else if (SETTINGS.includes(view)) subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import QBO"]];
             if (!subs) return null;
             const activeSub = (id) => {
               if (id.startsWith("reports:")) return view==="reports" && (reportType||"pl")===id.split(":")[1];
@@ -3138,6 +3283,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
           {/* ── 1099 TRACKER ─────────────────────────────────────────────────── */}
           {view==="tax1099" && <Tax1099View />}
+          {view==="tax" && <TaxView />}
 
           {/* ── DOCUMENT LIBRARY ─────────────────────────────────────────────── */}
           {view==="docs" && <DocsView />}
