@@ -1,4 +1,5 @@
 import { getAuthHeaders } from "./supabase";
+import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS } from "./constants";
 
 // ── AI BRAIN ──────────────────────────────────────────────────────────────────
 // Sends full ledger context + rules + chat history to Claude.
