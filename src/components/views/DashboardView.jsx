@@ -10,6 +10,7 @@ export default function DashboardView() {
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   const [dashDrill, setDashDrill] = React.useState(null); // unified dashboard drill-down
   const [feedCount, setFeedCount] = React.useState(20); // activity feed page size
+  const [showCommit, setShowCommit] = React.useState(false); // active commitments expander
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
   const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "#6366F1" : "#E5E7EB"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
 
@@ -486,6 +487,46 @@ export default function DashboardView() {
                         <div style={{ fontSize:11, color:"#6B7280", marginTop:6 }}>{c.sub}</div>
                       </div>
                     ))}
+                  </div>
+                );
+              })()}
+
+              {/* ── ACTIVE COMMITMENTS (contracts / leases) ── */}
+              {(() => {
+                const active = (contracts||[]).filter(c => c.end_date ? new Date(c.end_date) >= new Date() : true);
+                if (active.length===0) return null;
+                const monthly = active.reduce((s,c)=>s+(c.payment_amount||0),0);
+                const monthsLeft = (c) => { if(!c.end_date) return null; const d=Math.ceil((new Date(c.end_date)-new Date())/(86400000*30)); return d>0?d:0; };
+                return (
+                  <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
+                    <div onClick={()=>setShowCommit(s=>!s)} style={{ padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+                      <div>
+                        <div style={{ fontSize:13, fontWeight:600, color:"#111827" }}>📋 {active.length} active {active.length===1?"commitment":"commitments"} · ${monthly.toLocaleString("en-US",{maximumFractionDigits:0})}/mo total</div>
+                        <div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>Leases &amp; recurring contracts (ASC 842)</div>
+                      </div>
+                      <span style={{ fontSize:12, color:"#4F46E5", fontWeight:600 }}>{showCommit?"Hide":"Show"} {showCommit?"▲":"▼"}</span>
+                    </div>
+                    {showCommit && (
+                      <div style={{ borderTop:"1px solid #F3F4F6" }}>
+                        {active.map((c,i)=>{
+                          const ml = monthsLeft(c);
+                          return (
+                            <div key={c.id||i} onClick={()=>{ setSelectedContract(c); setContractView("detail"); setView("contracts"); }}
+                              onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 20px", borderTop: i?"1px solid #F3F4F6":"none", cursor:"pointer" }}>
+                              <div style={{ minWidth:0 }}>
+                                <div style={{ fontSize:13, fontWeight:500, color:"#111827" }}>{c.counterparty||"Contract"}</div>
+                                <div style={{ fontSize:11, color:"#6B7280" }}>{c.contract_type||"contract"}{ml!=null?` · ${ml} mo remaining`:""}</div>
+                              </div>
+                              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>${(c.payment_amount||0).toLocaleString("en-US",{maximumFractionDigits:0})}/mo</span>
+                                <span style={{ color:"#9CA3AF" }}>›</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })()}

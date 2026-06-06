@@ -107,12 +107,12 @@ Respond ONLY with a JSON object (no markdown):
     // Recurring: { "type": "add_recurring", "name": "e.g. Office Rent", "vendor": "...", "amount": 4500, "gl_code": "5200", "gl_name": "Rent & Occupancy", "frequency": "monthly|weekly|quarterly|annual", "next_date": "YYYY-MM-DD" }
     // Recurring: { "type": "pause_recurring", "name": "..." }
     // Navigate: { "type": "navigate", "view": "books", "filter": "unpaid" } — opens a page for the user.
-    //   The app has 5 tabs. Use these view names:
-    //   "home"      → upload documents, key numbers (cash, burn, runway, net income), activity feed
-    //   "books"     → ALL transactions (revenue + expenses, the ledger, money in & money out, bills). Optional "filter": "all"|"revenue"|"expenses"|"unpaid"|"review"
+    //   The app has 3 tabs (Home, Books, Reports) plus a Settings gear. Use these view names:
+    //   "home"      → upload documents, key numbers (cash, burn, runway, net income), active commitments, activity feed
+    //   "books"     → ALL financial activity incl. contracts. Optional "filter": "all"|"revenue"|"expenses"|"contracts"|"unpaid"|"review"
     //   "reports"   → P&L, Balance Sheet, Cash Flow
-    //   "contracts" → contracts / leases (ASC 842)
-    //   "settings"  → company, chart of accounts, bank accounts, rules, contacts, recurring
+    //   "settings"  → company, chart of accounts, bank accounts, rules, contacts, recurring (opens the gear panel)
+    //   Contracts/leases live in Books → use {"view":"books","filter":"contracts"}
     //   Sub-tools (also valid views): "send-invoice", "bank", "recon", "docs", "audit", "tax1099"
     // { "type": "none" }
   ]
@@ -125,10 +125,10 @@ NAVIGATION — be a proactive guide (the app has just 5 tabs: Home, Books, Repor
   • "show me my invoices/transactions/the ledger" → "books"
   • "show me unpaid bills" / "what do we owe" / "I need to pay a bill" → "books" with "filter":"unpaid"
   • "money coming in" / receivables / revenue → "books" with "filter":"revenue"
+  • "show me contracts" / leases → "books" with "filter":"contracts"
   • "what needs review" → "books" with "filter":"review"
   • P&L / income statement / balance sheet / cash flow → "reports"
-  • contracts / leases → "contracts"
-  • company info / chart of accounts / bank accounts / GL rules / contacts / recurring → "settings"
+  • company info / chart of accounts / bank accounts / GL rules / contacts / recurring / settings → "settings"
   • send an invoice → "send-invoice"; bank import → "bank"; reconcile → "recon"; 1099s → "tax1099"; audit history → "audit"; documents → "docs"
 - You can pair navigation with an answer. Only navigate when the user is trying to find or go somewhere.
 

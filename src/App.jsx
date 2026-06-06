@@ -2479,8 +2479,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             "balance-sheet":"reports", "cash-flow":"reports",
             audittrail:"audit", "audit-trail":"audit", "audit trail":"audit", audit:"audit",
             "1099":"tax1099", "1099s":"tax1099", taxes:"tax1099", tax1099:"tax1099",
-            // contracts / settings
-            contracts:"contracts",
+            // contracts now live inside Books (contracts filter)
+            contracts:"books", leases:"books", lease:"books", contract:"books",
             settings:"settings", company:"settings", coa:"coa", "chart-of-accounts":"coa",
             rules:"rules", vendors:"vendors", contacts:"vendors", recurring:"recurring",
             "opening-balances":"opening-balances", "bank-accounts":"opening-balances",
@@ -2489,9 +2489,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           // Apply a Books filter when the AI specifies one (e.g. "show unpaid bills")
           if (target === "books") {
             const f = String(action.filter || "").toLowerCase().trim();
-            const fMap = { unpaid:"unpaid", bills:"unpaid", payables:"unpaid", expenses:"expenses", expense:"expenses", revenue:"revenue", income:"revenue", review:"review", "needs-review":"review", all:"all" };
+            const fMap = { unpaid:"unpaid", bills:"unpaid", payables:"unpaid", expenses:"expenses", expense:"expenses", revenue:"revenue", income:"revenue", review:"review", "needs-review":"review", contracts:"contracts", contract:"contracts", leases:"contracts", all:"all" };
             // infer from the requested view if no explicit filter
-            const inferred = /money-out|payable|unpaid|bill/.test(String(action.view).toLowerCase()) ? "unpaid"
+            const inferred = /contract|lease/.test(String(action.view).toLowerCase()) ? "contracts"
+                           : /money-out|payable|unpaid|bill/.test(String(action.view).toLowerCase()) ? "unpaid"
                            : /money-in|receivable|revenue|income/.test(String(action.view).toLowerCase()) ? "revenue" : null;
             setBooksFilter(fMap[f] || inferred || "all");
           }
@@ -2741,6 +2742,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
   const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
 
+  const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","vendors","recurring"];
   return (
     <ERPContext.Provider value={erpCtx}>
     <div style={{ fontFamily:"'DM Sans', sans-serif", minHeight:"100vh", background:"#F8F9FB", color:"#111827" }}>
@@ -2797,39 +2799,36 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         <div style={{ background:"#FFFFFF", borderBottom:"1px solid #E5E7EB", flexShrink:0 }}>
           {/* Brand + Company + User row */}
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 28px", height:54, borderBottom:"1px solid #E5E7EB" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:24 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
-                  <defs>
-                    <linearGradient id="scTopMark" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#818CF8" />
-                      <stop offset="100%" stopColor="#4F46E5" />
-                    </linearGradient>
-                  </defs>
-                  <circle cx="24" cy="24" r="13" fill="url(#scTopMark)" />
-                  <circle cx="30.5" cy="20.5" r="11" fill="#FFFFFF" />
-                </svg>
-                <span className="sc-wordmark" style={{ fontSize:16, letterSpacing:3, fontWeight:700, fontFamily:"'Space Grotesk','Montserrat','DM Sans',sans-serif" }}>SHADOW CFO</span>
-              </div>
-              <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
+                <defs>
+                  <linearGradient id="scTopMark" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#818CF8" />
+                    <stop offset="100%" stopColor="#4F46E5" />
+                  </linearGradient>
+                </defs>
+                <circle cx="24" cy="24" r="13" fill="url(#scTopMark)" />
+                <circle cx="30.5" cy="20.5" r="11" fill="#FFFFFF" />
+              </svg>
+              <span className="sc-wordmark" style={{ fontSize:16, letterSpacing:3, fontWeight:700, fontFamily:"'Space Grotesk','Montserrat','DM Sans',sans-serif" }}>SHADOW CFO</span>
             </div>
-            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <button className="sc-cta" onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", borderRadius:8, padding:"7px 16px", fontSize:12, cursor:"pointer", fontWeight:500, letterSpacing:0.5, boxShadow:"0 4px 14px rgba(109,94,246,.28)" }}>✦ Ask Shadow CFO</button>
-              <span style={{ fontSize:11, color:"#9CA3AF" }}>{session?.user?.email}</span>
+            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+              <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
+              <button onClick={()=>setView("settings")} title="Settings" aria-label="Settings"
+                style={{ width:34, height:34, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", background: SETTINGS_VIEWS.includes(view)?"#EEF2FF":"transparent", border:`1px solid ${SETTINGS_VIEWS.includes(view)?"#4F46E5":"#E5E7EB"}`, color: SETTINGS_VIEWS.includes(view)?"#4F46E5":"#6B7280", fontSize:17, cursor:"pointer", transition:"all .15s" }}
+                onMouseEnter={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="#F3F4F6"; }}} onMouseLeave={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="transparent"; }}}>⚙</button>
+              <span style={{ fontSize:11, color:"#9CA3AF", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session?.user?.email}</span>
               <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #D1D5DB", color:"#6B7280", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
           {/* Nav — 5 tabs */}
           {(() => {
-            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","bank","matching","recon","send-invoice","customers","payroll","docs","detail"];
+            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","bank","matching","recon","send-invoice","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports","tax1099","audit"];
-            const SETTINGS = ["settings","coa","opening-balances","onboard","rules","vendors","recurring"];
             const tabs = [
               { id:"home", label:"Home", group:["home","dashboard","add","review"] },
               { id:"books", label:"Books", group:BOOKS },
               { id:"reports", label:"Reports", group:REPORTS },
-              { id:"contracts", label:"Contracts", group:["contracts"] },
-              { id:"settings", label:"Settings", group:SETTINGS },
             ];
             return (
               <div style={{ display:"flex", width:"100%", borderBottom:"1px solid #F3F4F6" }}>
@@ -2858,16 +2857,26 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
           {/* Sub-nav for Books / Reports / Settings */}
           {(() => {
-            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","bank","matching","recon","send-invoice","customers","payroll","docs","detail"];
+            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","bank","matching","recon","send-invoice","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports","tax1099","audit"];
             const SETTINGS = ["settings","coa","opening-balances","onboard","rules","vendors","recurring"];
             let subs = null;
-            if (BOOKS.includes(view)) subs = [["books","Transactions"],["bank","Bank Feed"],["recon","Reconcile"],["send-invoice","Send Invoice"],["customers","Customers"],["payroll","Payroll"],["docs","Documents"]];
+            if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["bank","Bank Feed"],["recon","Reconcile"],["send-invoice","Send Invoice"],["customers","Customers"],["payroll","Payroll"],["docs","Documents"]];
             else if (REPORTS.includes(view)) subs = [["reports:pl","P&L"],["reports:balance","Balance Sheet"],["reports:cashflow","Cash Flow"],["audit","Audit Trail"],["tax1099","1099s"]];
             else if (SETTINGS.includes(view)) subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["vendors","Contacts"],["recurring","Recurring"],["onboard","Import QBO"]];
             if (!subs) return null;
-            const activeSub = (id) => id.startsWith("reports:") ? (view==="reports" && (reportType||"pl")===id.split(":")[1]) : view===id;
-            const go = (id) => { if (id.startsWith("reports:")) { setReportType(id.split(":")[1]); setView("reports"); } else setView(id); };
+            const activeSub = (id) => {
+              if (id.startsWith("reports:")) return view==="reports" && (reportType||"pl")===id.split(":")[1];
+              if (id==="books:contracts") return view==="books" && booksFilter==="contracts";
+              if (id==="books") return (view==="books"||view==="detail") && booksFilter!=="contracts";
+              return view===id;
+            };
+            const go = (id) => {
+              if (id.startsWith("reports:")) { setReportType(id.split(":")[1]); setView("reports"); }
+              else if (id==="books:contracts") { setBooksFilter("contracts"); setView("books"); }
+              else if (id==="books") { if (booksFilter==="contracts") setBooksFilter("all"); setView("books"); }
+              else setView(id);
+            };
             return (
               <div style={{ display:"flex", background:"#FFFFFF", borderBottom:"1px solid #F3F4F6", padding:"0 16px", gap:4, overflowX:"auto" }}>
                 {subs.map(([id,label])=>(
@@ -3060,7 +3069,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {/* Suggestions */}
           {chatHistory.length < 3 && (
             <div style={{ padding:"0 16px 8px", display:"flex", flexWrap:"wrap", gap:6 }}>
-              {["What's my burn rate?","Show me unpaid bills","Upload an invoice","What's my P&L this month?"].map(s=>(
+              {["What's my burn rate?","Show me unpaid bills","What's my P&L this month?","Did anything need my attention?"].map(s=>(
                 <button key={s} onClick={()=>{ setChatInput(s); chatInputRef.current?.focus(); }} style={{ fontSize:11, padding:"5px 10px", borderRadius:20, background:"#E5E7EB", border:"1px solid #D1D5DB", color:"#6B7280", cursor:"pointer", textAlign:"left" }}>{s}</button>
               ))}
             </div>

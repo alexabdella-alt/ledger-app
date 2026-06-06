@@ -8,10 +8,12 @@ export default function BooksView() {
     invoices, setInvoices, markPaid, persistRecode, logAudit,
     setSelectedInvoice, setView, CHART_OF_ACCOUNTS,
     booksFilter, setBooksFilter,
+    contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
   } = useERP();
 
   const [search, setSearch] = React.useState("");
   const [selId, setSelId] = React.useState(null);
+  const [selContract, setSelContract] = React.useState(null);
   const [payRowId, setPayRowId] = React.useState(null);
   const [payMethod, setPayMethod] = React.useState("ach");
   const [payDate, setPayDate] = React.useState(new Date().toISOString().slice(0,10));
@@ -85,10 +87,43 @@ export default function BooksView() {
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendor, amount, date, description…"
           style={{ flex:"1 1 320px", minWidth:0, background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:10, padding:"10px 14px", fontSize:14, color:"#111827", outline:"none" }} />
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
+          {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
         </div>
       </div>
 
+      {/* ── CONTRACTS TABLE (filter = contracts) ── */}
+      {filter==="contracts" && (
+        <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr style={{ background:"#F3F4F6" }}>
+              {["Counterparty","Type","Monthly","Term","Status",""].map((h,i)=>(
+                <th key={i} style={{ padding:"11px 16px", textAlign:h==="Monthly"?"right":"left", fontSize:11, color:"#6B7280", letterSpacing:1, fontWeight:600, borderBottom:"1px solid #E5E7EB", whiteSpace:"nowrap" }}>{h.toUpperCase()}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {(contracts||[]).length===0 ? (
+                <tr><td colSpan={6} style={{ padding:"44px", textAlign:"center", color:"#6B7280", fontSize:13 }}>No contracts yet. Drop a lease or contract on Home — AI extracts the ASC 842 schedule automatically.</td></tr>
+              ) : (contracts||[]).filter(c => !q || (c.counterparty||"").toLowerCase().includes(q) || (c.contract_type||"").toLowerCase().includes(q) || (c.description||"").toLowerCase().includes(q)).map((c,idx)=>{
+                const posted = (c.posted_entries?.length||0) >= (c.journal_entries?.length||0) && (c.journal_entries?.length||0)>0;
+                const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"#4F46E5", icon:"📄" };
+                return (
+                  <tr key={c.id||idx} onClick={()=>setSelContract(c)} style={{ cursor:"pointer", background:idx%2?"#F9FAFB":"#FFFFFF", borderBottom:"1px solid #F3F4F6" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=idx%2?"#F9FAFB":"#FFFFFF"}>
+                    <td style={{ padding:"12px 16px", fontSize:13, fontWeight:500, color:"#111827" }}>{c.counterparty||"—"}</td>
+                    <td style={{ padding:"12px 16px" }}><span style={{ fontSize:11, fontWeight:600, color:ct.color, background:ct.color+"14", border:`1px solid ${ct.color}33`, borderRadius:20, padding:"2px 9px" }}>{ct.icon} {ct.label}</span></td>
+                    <td style={{ padding:"12px 16px", textAlign:"right", fontSize:13, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>{c.payment_amount?fmt(c.payment_amount):"—"}</td>
+                    <td style={{ padding:"12px 16px", fontSize:12, color:"#6B7280" }}>{c.lease_term_months?`${c.lease_term_months} mo`:"—"}</td>
+                    <td style={{ padding:"12px 16px" }}><span style={pill(posted?"#059669":"#D97706")}>{posted?"Posted":"Draft"}</span></td>
+                    <td style={{ padding:"12px 16px", textAlign:"right", color:"#9CA3AF" }}>›</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {filter!=="contracts" && (<>
       {/* Table */}
       <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -142,6 +177,65 @@ export default function BooksView() {
         </table>
       </div>
       <div style={{ fontSize:12, color:"#6B7280", marginTop:10 }}>{rows.length} transaction{rows.length!==1?"s":""}{filter!=="all"?` · ${filter}`:""}</div>
+      </>)}
+
+      {/* ── CONTRACT SLIDE-IN ── */}
+      {selContract && (() => {
+        const c = selContract;
+        const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"#4F46E5", icon:"📄" };
+        const entries = c.journal_entries || [];
+        const postedCount = c.posted_entries?.length || 0;
+        return (
+          <div onClick={()=>setSelContract(null)} style={{ position:"fixed", inset:0, zIndex:10001, background:"rgba(17,24,39,0.35)", display:"flex", justifyContent:"flex-end" }}>
+            <style>{`@keyframes booksIn2{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
+            <div onClick={e=>e.stopPropagation()} style={{ width:520, maxWidth:"94vw", height:"100%", background:"#FFFFFF", borderLeft:"1px solid #E5E7EB", boxShadow:"-12px 0 40px rgba(17,24,39,0.12)", display:"flex", flexDirection:"column", animation:"booksIn2 .25s cubic-bezier(.22,1,.36,1)" }}>
+              <div style={{ padding:"20px 24px", borderBottom:"1px solid #F3F4F6", display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
+                <div style={{ minWidth:0 }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:ct.color, background:ct.color+"14", border:`1px solid ${ct.color}33`, borderRadius:20, padding:"2px 9px" }}>{ct.icon} {ct.label}</span>
+                  <div style={{ fontSize:18, fontWeight:600, marginTop:8, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.counterparty||"Contract"}</div>
+                </div>
+                <button onClick={()=>setSelContract(null)} style={{ background:"none", border:"none", color:"#6B7280", fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
+              </div>
+              <div style={{ flex:1, overflowY:"auto", padding:"20px 24px" }}>
+                {c.description && <div style={{ fontSize:13, color:"#374151", lineHeight:1.6, marginBottom:16 }}>{c.description}</div>}
+                {[
+                  ["Monthly payment", c.payment_amount?fmt(c.payment_amount):"—"],
+                  ["Frequency", c.payment_frequency||"monthly"],
+                  ["Term", c.lease_term_months?`${c.lease_term_months} months`:"—"],
+                  ["Start / End", `${c.start_date||"—"} → ${c.end_date||"—"}`],
+                  ["Total value", c.total_value?fmt(c.total_value):"—"],
+                  ["ROU asset (ASC 842)", c.rou_asset_value?fmt(c.rou_asset_value):"—"],
+                  ["Lease liability — current", c.lease_liability_current?fmt(c.lease_liability_current):"—"],
+                  ["Lease liability — non-current", c.lease_liability_noncurrent?fmt(c.lease_liability_noncurrent):"—"],
+                  ["Discount rate", c.discount_rate_used?`${(c.discount_rate_used*100).toFixed(2)}%`:"—"],
+                  ["Treatment", c.accounting_treatment||"—"],
+                ].map(([k,v])=>(
+                  <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:14, padding:"10px 0", borderBottom:"1px solid #F3F4F6", fontSize:13 }}>
+                    <span style={{ color:"#6B7280", flexShrink:0 }}>{k}</span>
+                    <span style={{ color:"#111827", textAlign:"right", wordBreak:"break-word", fontFamily:/payment|value|asset|liability/i.test(k)?"'DM Mono',monospace":"inherit" }}>{v}</span>
+                  </div>
+                ))}
+                {/* Journal entry schedule */}
+                <div style={{ marginTop:18 }}>
+                  <div style={{ fontSize:11, letterSpacing:1, color:"#6B7280", marginBottom:8, fontWeight:600 }}>JOURNAL ENTRY SCHEDULE ({postedCount}/{entries.length} posted)</div>
+                  {entries.length===0 ? <div style={{ fontSize:13, color:"#6B7280" }}>No entries generated.</div> :
+                    entries.map((e,i)=>(
+                      <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:"1px solid #F3F4F6", fontSize:12 }}>
+                        <span style={{ color:"#374151" }}>{e.description||e.memo||`Entry ${i+1}`}{e.date?` · ${e.date}`:""}</span>
+                        <span style={{ fontFamily:"'DM Mono',monospace", color:"#111827" }}>{e.amount!=null?fmt(e.amount):""}{(c.posted_entries||[]).includes(i)?" ✓":""}</span>
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+              <div style={{ padding:"16px 24px", borderTop:"1px solid #F3F4F6", display:"flex", gap:10 }}>
+                <button onClick={()=>{ postAllContractEntries && postAllContractEntries(c); showNotification && showNotification("Posting contract entries…"); setSelContract(null); }} style={{ flex:1, padding:"11px", borderRadius:10, fontSize:13, fontWeight:600, background:"#4F46E5", border:"none", color:"#fff", cursor:"pointer" }}>Post entries</button>
+                <button onClick={()=>{ setSelectedContract(c); setContractView && setContractView("detail"); setView("contracts"); setSelContract(null); }} style={{ padding:"11px 16px", borderRadius:10, fontSize:13, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", cursor:"pointer" }}>Full ASC 842 view →</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── SLIDE-IN DETAIL PANEL ── */}
       {sel && (
