@@ -28,7 +28,7 @@ export default function PayrollView() {
   "total_employer_taxes": 0,
   "total_deductions": 0,
   "journal_entries": [
-    { "account_code": "5100", "account_name": "Salaries & Wages", "debit": 0, "credit": 0, "memo": "..." }
+    { "account_code": "6000", "account_name": "Salaries & Wages", "debit": 0, "credit": 0, "memo": "..." }
   ],
   "employees": [
     { "name": "...", "gross": 0, "net": 0, "taxes": 0 }

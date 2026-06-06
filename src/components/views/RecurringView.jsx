@@ -33,7 +33,7 @@ export default function RecurringView() {
               const r = {...newRec, id:Date.now()+Math.random(), amount:parseFloat(newRec.amount), active:true, created_at:new Date().toISOString(), last_run:null};
               setRecurring(prev => [r, ...prev]);
               logAudit("recurring_created", `Recurring created: ${r.name} ${fmt(r.amount)} ${r.frequency}`);
-              setNewRec({name:"",vendor:"",amount:"",gl_code:"5200",gl_name:"Rent & Occupancy",frequency:"monthly",next_date:today,project:"General"});
+              setNewRec({name:"",vendor:"",amount:"",gl_code:"6100",gl_name:"Rent & Occupancy",frequency:"monthly",next_date:today,project:"General"});
               showNotification(`Recurring "${r.name}" created ✓`);
             };
             return (

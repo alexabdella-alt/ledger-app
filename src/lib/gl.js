@@ -1,6 +1,8 @@
 // Balance sheet accounts (1xxx assets, 2xxx liabilities, 3xxx equity) never appear on P&L.
 const glIsRevenue     = (code) => typeof code === "string" && code.startsWith("4");
-const glIsExpense     = (code) => typeof code === "string" && (code.startsWith("5") || code.startsWith("6"));
+// Income-statement expense accounts: 5xxx COGS, 6xxx operating, 7xxx (bad debt / misc),
+// 8xxx below-the-line (interest, income tax, gain/loss on disposal).
+const glIsExpense     = (code) => typeof code === "string" && (code.startsWith("5") || code.startsWith("6") || code.startsWith("7") || code.startsWith("8"));
 
 // ── ASC 842 LEASE CALCULATION — AUDIT-READY ──────────────────────────────────
 // Per ASC 842-20-30-1: Lease Liability = PV of remaining lease payments

@@ -55,8 +55,8 @@ export default function ReportsView() {
               if (!allExpGL[k]) allExpGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
               allExpGL[k].total += inv.amount; allExpGL[k].count++;
             });
-            const cogsRows = Object.values(allExpGL).filter(r=>r.code==="5000");
-            const opexRows = Object.values(allExpGL).filter(r=>r.code!=="5000").sort((a,b)=>a.code.localeCompare(b.code));
+            const cogsRows = Object.values(allExpGL).filter(r=>String(r.code).startsWith("5"));
+            const opexRows = Object.values(allExpGL).filter(r=>!String(r.code).startsWith("5")).sort((a,b)=>a.code.localeCompare(b.code));
             const cogs = cogsRows.reduce((s,r)=>s+r.total, 0);
             const opex = opexRows.reduce((s,r)=>s+r.total, 0);
             const grossProfit = revenue - cogs;

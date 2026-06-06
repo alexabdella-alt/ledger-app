@@ -38,22 +38,23 @@ function parseBankCSV(text){
 // keyword → GL suggestion (smart default for "add to books")
 function suggestGL(desc, amount){
   const d=(desc||"").toLowerCase();
-  if(amount>0) return {gl_code:"4000",gl_name:"Sales Revenue"};
+  if(amount>0) return {gl_code:"4000",gl_name:"Product Revenue"};
   const map=[
-    [/stripe|square|paypal|processing/, "5900","Technology & Software"],
-    [/aws|amazon web|google cloud|gcp|azure|digitalocean|heroku|vercel|netlify/, "5900","Technology & Software"],
-    [/rent|lease|wework|office/, "5200","Rent & Occupancy"],
-    [/payroll|gusto|adp|salary|wages/, "5100","Salaries & Wages"],
-    [/google ads|facebook|meta|ad spend|marketing|mailchimp|hubspot/, "5400","Marketing & Advertising"],
-    [/uber|lyft|flight|hotel|airbnb|travel/, "5500","Travel & Entertainment"],
-    [/insurance/, "5700","Insurance"],
-    [/electric|water|utility|comcast|internet|phone|verizon|at&t/, "5300","Utilities"],
-    [/legal|accounting|consult|attorney|lawyer/, "5800","Professional Services"],
-    [/staples|office depot/, "5600","Office Supplies"],
-    [/fee|bank charge|interest/, "6200","Miscellaneous Expense"],
+    [/stripe|square|paypal|processing/, "6500","Technology & Software"],
+    [/aws|amazon web|google cloud|gcp|azure|digitalocean|heroku|vercel|netlify/, "6500","Technology & Software"],
+    [/rent|lease|wework|office/, "6100","Rent & Occupancy"],
+    [/payroll|gusto|adp|salary|wages/, "6000","Salaries & Wages"],
+    [/google ads|facebook|meta|ad spend|marketing|mailchimp|hubspot/, "6300","Marketing & Advertising"],
+    [/uber|lyft|flight|hotel|airbnb|travel/, "6400","Travel & Entertainment"],
+    [/insurance/, "6700","Insurance"],
+    [/electric|water|utility|comcast|internet|phone|verizon|at&t/, "6200","Utilities"],
+    [/legal|accounting|consult|attorney|lawyer/, "6800","Professional Services"],
+    [/staples|office depot/, "6600","Office Supplies"],
+    [/fee|bank charge/, "7100","Miscellaneous Expense"],
+    [/interest/, "8000","Interest Expense"],
   ];
   for(const [re,code,name] of map) if(re.test(d)) return {gl_code:code,gl_name:name};
-  return {gl_code:"6200",gl_name:"Miscellaneous Expense"};
+  return {gl_code:"7100",gl_name:"Miscellaneous Expense"};
 }
 
 export default function ReconView() {

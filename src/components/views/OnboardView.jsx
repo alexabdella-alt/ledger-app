@@ -45,8 +45,8 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
               const mapped = (qboData?.transactions||[]).map((t,i) => ({
                 id:Date.now()+i, vendor:t.vendor, description:t.description, amount:Math.abs(t.amount),
                 date:t.date, type:t.type,
-                gl_code: qboMapping[t.qbo_account]||t.suggested_gl_code||"6200",
-                gl_name: CHART_OF_ACCOUNTS.find(a=>a.code===(qboMapping[t.qbo_account]||t.suggested_gl_code))?.name||t.suggested_gl_name||"Miscellaneous",
+                gl_code: qboMapping[t.qbo_account]||t.suggested_gl_code||"7100",
+                gl_name: CHART_OF_ACCOUNTS.find(a=>a.code===(qboMapping[t.qbo_account]||t.suggested_gl_code))?.name||t.suggested_gl_name||"Miscellaneous Expense",
                 project:"General", secondary_gl_code:t.type==="expense"?"2000":"1000",
                 secondary_gl_name:t.type==="expense"?"Accounts Payable":"Cash & Cash Equivalents",
                 debit_credit:t.type==="expense"?"debit":"credit", confidence:90,

@@ -141,7 +141,7 @@ export default function ReviewView() {
                                           amount: match.amount,
                                           date: match.date || new Date().toISOString().slice(0,10),
                                           type: "expense",
-                                          gl_code: match.suggested_gl_code || "5900",
+                                          gl_code: match.suggested_gl_code || "7100",
                                           gl_name: match.suggested_gl_name || "Miscellaneous Expense",
                                           secondary_gl_code: "1000",
                                           secondary_gl_name: "Cash & Cash Equivalents",

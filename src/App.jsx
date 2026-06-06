@@ -363,7 +363,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [openingBalBalances, setOpeningBalBalances] = useState({});
   const [sendInvoiceDraftState, setSendInvoiceDraftState] = useState(null);
   const [sendInvoiceShowPreview, setSendInvoiceShowPreview] = useState(false);
-  const [recurringNewRec, setRecurringNewRec] = useState({name:"",vendor:"",amount:"",gl_code:"5200",gl_name:"Rent & Occupancy",frequency:"monthly",next_date:new Date().toISOString().slice(0,10),project:"General"});
+  const [recurringNewRec, setRecurringNewRec] = useState({name:"",vendor:"",amount:"",gl_code:"6100",gl_name:"Rent & Occupancy",frequency:"monthly",next_date:new Date().toISOString().slice(0,10),project:"General"});
   const [docsPreview, setDocsPreview] = useState(null);
   const [docsFilterType, setDocsFilterType] = useState("all");
   const [auditSearch, setAuditSearch] = useState("");
@@ -897,8 +897,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
             reasoning:`Capitalized as a leasehold improvement (1600) per GAAP — permanent improvement to leased space, amortize over the remaining lease term.` },
           { label:"Permanent improvement to a space I OWN", gl_code:"1500", gl_name:glName("1500","Fixed Assets"), depreciate:true,
             reasoning:`Capitalized to Fixed Assets (1500) — permanent improvement to owned property, depreciate over its useful life.` },
-          { label:"It's a repair / maintenance", gl_code:"6200", gl_name:glName("6200","Repairs & Maintenance"),
-            reasoning:`Expensed as repairs & maintenance — routine upkeep, not a capital improvement.` },
+          { label:"It's a repair / maintenance", gl_code:"6250", gl_name:glName("6250","Repairs & Maintenance"),
+            reasoning:`Expensed as repairs & maintenance (6250) — routine upkeep, not a capital improvement.` },
         ] };
     }
 
@@ -1130,7 +1130,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           system: `Expert accountant. Suggest GL coding for this transaction. Respond ONLY with valid JSON: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","debit_credit":"debit or credit","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
 
 CRITICAL RULES:
-- For EXPENSES: gl_code must be 5xxx or 6xxx (income statement expense accounts). secondary_gl_code = 2000 (Accounts Payable) or 1000 (Cash).
+- For EXPENSES: gl_code must be 5xxx, 6xxx, 7xxx or 8xxx (income statement expense accounts: 5xxx COGS, 6xxx operating, 7xxx bad debt/misc, 8xxx interest/tax). secondary_gl_code = 2000 (Accounts Payable) or 1000 (Cash).
 - For REVENUE: gl_code must be 4xxx (income statement revenue accounts). secondary_gl_code = 1100 (Accounts Receivable) or 1000 (Cash).
 - NEVER use 1xxx/2xxx/3xxx (balance sheet accounts) as the PRIMARY gl_code on an expense or revenue transaction. Those are only ever the offset/secondary account.`,
           messages: [{ role:"user", content:`Vendor: ${extracted.vendor}\nDescription: ${extracted.description}\nAmount: $${extracted.amount}\nType: ${extracted.type}\n\nChart of Accounts:\n${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}\n\nSuggest best GL coding.` }]
@@ -1334,7 +1334,7 @@ Rules:
 Each object: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
 
 CRITICAL RULES:
-- Expenses (type=expense): gl_code must be 5xxx or 6xxx. secondary_gl_code = 2000 (Accounts Payable).
+- Expenses (type=expense): gl_code must be 5xxx, 6xxx, 7xxx or 8xxx. secondary_gl_code = 2000 (Accounts Payable).
 - Revenue (type=revenue): gl_code must be 4xxx. secondary_gl_code = 1100 (Accounts Receivable).  
 - NEVER use balance sheet accounts (1xxx/2xxx/3xxx) as primary gl_code.
 
@@ -1361,8 +1361,8 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             const rule = rules.find(r => r.vendor?.toLowerCase()===extracted.vendor?.toLowerCase());
             const isRevenue = extracted.type === "revenue";
             const confidence = rule ? 99 : (coding.confidence || 75);
-            const finalCode = rule ? rule.gl_code : (coding.gl_code || (isRevenue ? "4000" : "5900"));
-            const finalName = rule ? rule.gl_name : (coding.gl_name || (isRevenue ? "Sales Revenue" : "Miscellaneous Expense"));
+            const finalCode = rule ? rule.gl_code : (coding.gl_code || (isRevenue ? "4000" : "7100"));
+            const finalName = rule ? rule.gl_name : (coding.gl_name || (isRevenue ? "Product Revenue" : "Miscellaneous Expense"));
 
             const invoice = {
               id: Date.now() + Math.random() + idx,
@@ -1433,7 +1433,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             } else if (!rule && isRevenue) {
               const revenueAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Revenue").slice(0, 2);
               const expenseAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Expenses")
-                .filter(a => ["5000","5800","5900"].includes(a.code));
+                .filter(a => ["5000","6800","6500"].includes(a.code));
               needsClarification.push({
                 id: Date.now() + Math.random(),
                 invoice,
@@ -1546,7 +1546,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               system:`Categorize each bank transaction with GL coding. Respond ONLY with JSON array: [{"id":0,"date":"YYYY-MM-DD","vendor":"Clean Name","description":"original","amount":123.45,"type":"expense or revenue","gl_code":"XXXX","gl_name":"Name","confidence":85,"needs_review":false}]
 
 CRITICAL RULES:
-- type "expense" → gl_code must be 5xxx or 6xxx (never 1xxx/2xxx/3xxx)
+- type "expense" → gl_code must be 5xxx, 6xxx, 7xxx or 8xxx (never 1xxx/2xxx/3xxx)
 - type "revenue" → gl_code must be 4xxx (never 1xxx/2xxx/3xxx)
 - Balance sheet accounts (1xxx assets, 2xxx liabilities, 3xxx equity) are NEVER the primary GL code for a transaction
 - Set needs_review:true when confidence<75
@@ -2159,7 +2159,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
               description: `Finance lease payment — Month ${i + 1}`,
               memo: `ASC 842-20: Interest $${interest.toFixed(2)} (liability × monthly rate), principal $${principal.toFixed(2)}`,
               lines: [
-                { account_code:"6100", account_name:"Interest Expense", debit: interest, credit: 0 },
+                { account_code:"8000", account_name:"Interest Expense", debit: interest, credit: 0 },
                 { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: principal, credit: 0 },
                 { account_code:"1000", account_name:"Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
               ]
@@ -2188,7 +2188,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
           const dateStr = d.toISOString().slice(0, 10);
           if (contract.contract_type === "subscription_paid") {
             monthlyEntries.push({ date: dateStr, description: `Subscription expense — Month ${i+1}`, memo: "Monthly amortization of prepaid",
-              lines: [{ account_code:"5900", account_name:"Technology & Software", debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:"1300", account_name:"Prepaid Expenses", debit:0, credit:parseFloat(contract.payment_amount) }]});
+              lines: [{ account_code:"6500", account_name:"Technology & Software", debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:"1300", account_name:"Prepaid Expenses", debit:0, credit:parseFloat(contract.payment_amount) }]});
           } else if (contract.contract_type === "revenue_contract") {
             monthlyEntries.push({ date: dateStr, description: `Revenue recognition — Month ${i+1}`, memo: "ASC 606: Performance obligation satisfied",
               lines: [{ account_code:"2300", account_name:"Deferred Revenue", debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:"4100", account_name:"Service Revenue", debit:0, credit:parseFloat(contract.payment_amount) }]});
