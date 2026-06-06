@@ -9,6 +9,7 @@ export default function DashboardView() {
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   const [dashDrill, setDashDrill] = React.useState(null); // unified dashboard drill-down
+  const [feedCount, setFeedCount] = React.useState(20); // activity feed page size
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
   const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "#6366F1" : "#E5E7EB"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
 
@@ -26,6 +27,7 @@ export default function DashboardView() {
     if (d.type==="revenue") crumbs.push({ label:"Revenue", to:{type:"revenue"} });
     if (d.type==="net")     crumbs.push({ label:"Net Income", to:{type:"net"} });
     if (d.type==="cash")    crumbs.push({ label:"Cash & Bank", to:{type:"cash"} });
+    if (d.type==="runway")  crumbs.push({ label:"Runway", to:{type:"runway"} });
     if (d.type==="ap")      crumbs.push({ label:"Accounts Payable", to:{type:"ap"} });
     if (d.type==="ar")      crumbs.push({ label:"Accounts Receivable", to:{type:"ar"} });
     if (d.type==="burn")    { crumbs.push({ label:"Burn Rate", to:{type:"burn"} }); if (d.month) crumbs.push({ label:d.monthLabel||d.month, to:d }); }
@@ -131,6 +133,27 @@ export default function DashboardView() {
       const txns = exp.filter(i=>i.date?.startsWith(d.month));
       title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${txns.length} transactions · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
       body = txnRows(txns, "#DC2626");
+    } else if (d.type==="runway") {
+      const tdy=new Date();
+      const mk=k=>new Date(tdy.getFullYear(),tdy.getMonth()-k,1).toISOString().slice(0,7);
+      const burns=[0,1,2].map(k=>exp.filter(i=>i.date?.startsWith(mk(k))).reduce((s,i)=>s+i.amount,0)).filter(b=>b>0);
+      const avgBurn=burns.length?burns.reduce((s,b)=>s+b,0)/burns.length:0;
+      const openingCash=openingBalances.filter(b=>b.account_code==="1000"||b.account_code==="1010").reduce((s,b)=>s+(parseFloat(b.balance)||0),0);
+      const cashIn=rev.filter(i=>i.payment_status==="collected"||i.payment_status==="paid").reduce((s,i)=>s+i.amount,0);
+      const cashOut=exp.filter(i=>i.payment_status==="paid").reduce((s,i)=>s+i.amount,0);
+      const cash=openingCash+cashIn-cashOut;
+      const runway=avgBurn>0?Math.floor(cash/avgBurn):null;
+      title="Runway"; subtitle="How long your cash lasts at the current burn rate";
+      body=(<div style={{ padding:"18px 20px" }}>
+        <div style={{ fontSize:30, fontWeight:700, fontFamily:"'DM Mono',monospace", color: runway===null?"#6B7280":runway<6?"#DC2626":runway<=12?"#D97706":"#059669", marginBottom:14 }}>{runway===null?"∞":`${runway} months`}</div>
+        {[["Estimated cash on hand", fmt(cash)],["Average monthly burn (3-mo)", fmt(avgBurn)],["Runway = cash ÷ avg burn", runway===null?"—":`${fmt(cash)} ÷ ${fmt(avgBurn)} ≈ ${runway} mo`]].map(([k,v])=>(
+          <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:"1px solid #F3F4F6", fontSize:13 }}><span style={{ color:"#6B7280" }}>{k}</span><span style={{ fontFamily:"'DM Mono',monospace" }}>{v}</span></div>
+        ))}
+        <div style={{ marginTop:14, display:"flex", gap:10 }}>
+          <button onClick={()=>setDashDrill({type:"burn"})} style={{ padding:"8px 14px", borderRadius:9, fontSize:12, fontWeight:600, background:"#4F46E5", border:"none", color:"#fff", cursor:"pointer" }}>See burn breakdown →</button>
+          <button onClick={()=>setView("opening-balances")} style={{ padding:"8px 14px", borderRadius:9, fontSize:12, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", cursor:"pointer" }}>Update cash balance</button>
+        </div>
+      </div>);
     } else if (d.type==="ap") {
       title = "Open accounts payable"; subtitle = `${openAP.length} unpaid · ${fmt(openAP.reduce((s,i)=>s+i.amount,0))}`;
       body = txnRows(openAP, "#DC2626");
@@ -179,9 +202,17 @@ export default function DashboardView() {
                   marginBottom:20,
                 }}>
                 <input id="universal-upload" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>handleUniversalUpload(e.target.files)} />
-                <div style={{ fontSize:28, marginBottom:12, opacity: universalDragOver ? 1 : 0.4, transition:"opacity 0.18s" }}>⬆</div>
-                <div style={{ fontSize:15, fontWeight:500, color:universalDragOver?"#4F46E5":"#6B7280", transition:"color 0.18s" }}>
-                  {universalDragOver ? "Release to upload" : "Drop anything here, or click to browse"}
+                <div style={{ fontSize:44, marginBottom:14, opacity: universalDragOver ? 1 : 0.5, transition:"opacity 0.18s" }}>⬆</div>
+                <div style={{ fontSize:20, fontWeight:700, color:"#111827", marginBottom:6, letterSpacing:-0.3 }}>
+                  {universalDragOver ? "Release to upload" : "Drop anything here"}
+                </div>
+                <div style={{ fontSize:14, color:"#6B7280", marginBottom:14 }}>
+                  invoices, receipts, bank statements, contracts — AI handles the rest
+                </div>
+                <div style={{ display:"inline-flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
+                  {["PDF","JPG","PNG","CSV","XLSX"].map(f=>(
+                    <span key={f} style={{ fontSize:10, fontWeight:600, color:"#6B7280", background:"#F3F4F6", border:"1px solid #E5E7EB", borderRadius:6, padding:"3px 9px", letterSpacing:0.5 }}>{f}</span>
+                  ))}
                 </div>
               </div>
 
@@ -420,348 +451,75 @@ export default function DashboardView() {
                 </div>
               )}
 
-              {/* ── BURN RATE & CASH COMMAND CENTER ── */}
+              {/* ── KEY NUMBERS ── */}
               {(() => {
-                const today = new Date();
-                const currentMonth = today.toISOString().slice(0,7);
-                const lastMonth = new Date(today.getFullYear(), today.getMonth()-1, 1).toISOString().slice(0,7);
-                const twoMonthsAgo = new Date(today.getFullYear(), today.getMonth()-2, 1).toISOString().slice(0,7);
-                const monthlyBurn = (m) => invoices.filter(i => glIsExpense(i.gl_code) && i.date?.startsWith(m)).reduce((s,i) => s+i.amount, 0);
-                const burnThisMonth = monthlyBurn(currentMonth);
-                const burnLastMonth = monthlyBurn(lastMonth);
-                const burnTwoMonths = monthlyBurn(twoMonthsAgo);
-                const avg3mo = [burnThisMonth, burnLastMonth, burnTwoMonths].filter(b=>b>0);
-                const avgBurn = avg3mo.length>0 ? avg3mo.reduce((s,b)=>s+b,0)/avg3mo.length : 0;
-                const revenueThisMonth = invoices.filter(i => glIsRevenue(i.gl_code) && i.date?.startsWith(currentMonth)).reduce((s,i)=>s+i.amount,0);
-                const netBurn = burnThisMonth - revenueThisMonth;
+                const tdy = new Date();
+                const cm = tdy.toISOString().slice(0,7);
+                const burnThisMonth = invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(cm)&&i.status!=="voided").reduce((s,i)=>s+i.amount,0);
+                const mk = k => new Date(tdy.getFullYear(),tdy.getMonth()-k,1).toISOString().slice(0,7);
+                const burns=[0,1,2].map(k=>invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(mk(k))).reduce((s,i)=>s+i.amount,0)).filter(b=>b>0);
+                const avgBurn = burns.length? burns.reduce((s,b)=>s+b,0)/burns.length : burnThisMonth;
                 const openingCash = openingBalances.filter(b=>b.account_code==="1000"||b.account_code==="1010").reduce((s,b)=>s+(parseFloat(b.balance)||0),0);
-                const cashInflows = invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status==="collected").reduce((s,i)=>s+i.amount,0);
-                const cashOutflows = invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status==="paid").reduce((s,i)=>s+i.amount,0);
-                const estimatedCash = openingCash + cashInflows - cashOutflows;
+                const cashIn = invoices.filter(i=>glIsRevenue(i.gl_code)&&(i.payment_status==="collected"||i.payment_status==="paid")).reduce((s,i)=>s+i.amount,0);
+                const cashOut = invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status==="paid").reduce((s,i)=>s+i.amount,0);
+                const estimatedCash = openingCash + cashIn - cashOut;
                 const runway = avgBurn>0 ? Math.floor(estimatedCash/avgBurn) : null;
-                const runwayColor = runway===null?"#6B7280":runway<=3?"#DC2626":runway<=6?"#D97706":"#059669";
-                const burnTrend = burnLastMonth>0 ? ((burnThisMonth-burnLastMonth)/burnLastMonth*100) : 0;
-                const burnDrivers = Object.entries(invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(currentMonth)).reduce((acc,i)=>{acc[i.gl_name]=(acc[i.gl_name]||0)+i.amount;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
+                const runwayColor = runway===null?"#6B7280":runway<6?"#DC2626":runway<=12?"#D97706":"#059669";
                 const ytdNet = invoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0) - invoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
-                const estimatedTax = Math.max(0, ytdNet*0.25);
-                const m = today.getMonth();
-                const nextQtr = m<3?"Apr 15":m<5?"Jun 15":m<8?"Sep 15":"Jan 15";
+                const fmt0 = n => "$"+Math.round(Math.abs(n)).toLocaleString("en-US");
+                const cards = [
+                  { label:"CASH BALANCE", value:(estimatedCash<0?"-":"")+fmt0(estimatedCash), color:estimatedCash>=0?"#111827":"#DC2626", sub:"Cash on hand", drill:{type:"cash"} },
+                  { label:"MONTHLY BURN", value:fmt0(burnThisMonth), color:"#DC2626", sub:"Expenses this month", drill:{type:"burn"} },
+                  { label:"RUNWAY", value: runway===null?"∞":`${runway} mo`, color:runwayColor, sub: runway===null?"Add cash to calculate":runway<6?"Less than 6 months":runway<=12?"6–12 months":"Healthy", drill:{type:"runway"} },
+                  { label:"NET INCOME (YTD)", value:(ytdNet<0?"-":"")+fmt0(ytdNet), color:ytdNet>=0?"#059669":"#DC2626", sub:"Revenue − expenses", drill:{type:"net"} },
+                ];
                 return (
-                  <div style={{marginBottom:24}}>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
-                      <div onClick={()=>setDashDrill({type:"burn"})} title="Drill into monthly burn"
-                        onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor="#DC262633";e.currentTarget.style.transform="none";}}
-                        style={{background:"#FEF2F2",border:"1px solid #DC262633",borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                          <div style={{fontSize:10,color:"#DC2626",letterSpacing:2}}>MONTHLY BURN</div>
-                          <span style={{fontSize:11,color:"#6B7280"}}>›</span>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:14, marginBottom:24 }}>
+                    {cards.map(c=>(
+                      <div key={c.label} onClick={()=>setDashDrill(c.drill)} className="sc-card"
+                        style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:"20px 22px", cursor:"pointer" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                          <div style={{ fontSize:11, color:"#6B7280", letterSpacing:1 }}>{c.label}</div>
+                          <span style={{ fontSize:13, color:"#4F46E5", fontWeight:600 }}>›</span>
                         </div>
-                        <div style={{fontSize:26,fontWeight:700,color:"#DC2626",fontFamily:"'DM Mono',monospace"}}>${burnThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                        <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>
-                          {Math.abs(burnTrend)>5 ? (burnTrend>0?<span style={{color:"#DC2626"}}>↑ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>:<span style={{color:"#059669"}}>↓ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>) : "Stable vs last month"}
-                        </div>
+                        <div style={{ fontSize:26, fontWeight:700, color:c.color, fontFamily:"'DM Mono',monospace" }}>{c.value}</div>
+                        <div style={{ fontSize:11, color:"#6B7280", marginTop:6 }}>{c.sub}</div>
                       </div>
-                      <div style={{background:"#F8F9FB",border:"1px solid #4F46E533",borderRadius:14,padding:"20px 22px"}}>
-                        <div style={{fontSize:10,color:"#818CF8",letterSpacing:2,marginBottom:8}}>NET BURN</div>
-                        <div style={{fontSize:26,fontWeight:700,color:netBurn>0?"#DC2626":"#059669",fontFamily:"'DM Mono',monospace"}}>{netBurn>0?"-":"+"} ${Math.abs(netBurn).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                        <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>{revenueThisMonth>0?`$${revenueThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})} revenue offset`:"No revenue this month"}</div>
-                      </div>
-                      <div onClick={()=>setDashDrill({type:"burn"})} title="Drill into runway & burn"
-                        onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor=`${runwayColor}33`;e.currentTarget.style.transform="none";}}
-                        style={{background:runway!==null&&runway<=3?"#FEF2F2":runway!==null&&runway<=6?"#FEF3C7":"#ECFDF5",border:`1px solid ${runwayColor}33`,borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                          <div style={{fontSize:10,color:runwayColor,letterSpacing:2}}>RUNWAY</div>
-                          <span style={{fontSize:11,color:"#6B7280"}}>›</span>
-                        </div>
-                        <div style={{fontSize:26,fontWeight:700,color:runwayColor,fontFamily:"'DM Mono',monospace"}}>{runway===null?"∞":`${runway}mo`}</div>
-                        <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>{runway===null?"Set cash balance for runway":runway<=3?"⚠ Critical — act now":runway<=6?"Watch closely":"Healthy"}</div>
-                      </div>
-                      <div style={{background:"#ECFDF5",border:"1px solid #05966933",borderRadius:14,padding:"20px 22px"}}>
-                        <div style={{fontSize:10,color:"#059669",letterSpacing:2,marginBottom:8}}>EST. TAX DUE</div>
-                        <div style={{fontSize:26,fontWeight:700,color:"#059669",fontFamily:"'DM Mono',monospace"}}>${estimatedTax.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                        <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>Next: {nextQtr} · ~25% of net income</div>
-                      </div>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                      <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:"18px 20px",display:"flex",flexDirection:"column"}}>
-                        {(() => {
-                          const monthExp = invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(currentMonth));
-                          const back = burnDrill.vendor ? ()=>setBurnDrill({cat:burnDrill.cat,vendor:null})
-                                     : burnDrill.cat ? ()=>setBurnDrill({cat:null,vendor:null}) : null;
-                          const crumbs = ["Expenses"]; if (burnDrill.cat) crumbs.push(burnDrill.cat); if (burnDrill.vendor) crumbs.push(burnDrill.vendor);
-                          const hov = (on)=>(e)=>{ e.currentTarget.style.background = on?"#E5E7EB":"transparent"; };
-                          return (
-                            <>
-                              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,minHeight:22}}>
-                                {back && <button onClick={back} title="Back" style={{background:"#E5E7EB",border:"1px solid #D1D5DB",color:"#4F46E5",borderRadius:7,padding:"3px 9px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>←</button>}
-                                <div style={{fontSize:10,letterSpacing:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                  {crumbs.map((c,i)=>(
-                                    <span key={i} style={{display:"flex",alignItems:"center",gap:6}}>
-                                      <span style={{color:i===crumbs.length-1?"#111827":"#6B7280"}}>{String(c).toUpperCase()}</span>
-                                      {i<crumbs.length-1 && <span style={{color:"#9CA3AF"}}>→</span>}
-                                    </span>
-                                  ))}
-                                  {!burnDrill.cat && <span style={{color:"#6B7280"}}>· THIS MONTH</span>}
-                                </div>
-                              </div>
-                              <div style={{overflowY:"auto",maxHeight:232,margin:"0 -4px",paddingRight:2}}>
-                                {(() => {
-                                  // Level 1 — categories
-                                  if (!burnDrill.cat) {
-                                    const cats = Object.values(monthExp.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0}; a[k].total+=i.amount; return a;},{})).sort((x,y)=>y.total-x.total);
-                                    if (cats.length===0) return <div style={{fontSize:13,color:"#6B7280"}}>No expenses this month yet</div>;
-                                    return cats.map(c=>(
-                                      <div key={c.name} onClick={()=>setBurnDrill({cat:c.name,vendor:null})} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{marginBottom:8,cursor:"pointer",padding:"5px 4px",borderRadius:8}}>
-                                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
-                                          <div style={{fontSize:13,color:"#111827"}}>{c.name}</div>
-                                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                            <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#DC2626"}}>${c.total.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                                            <span style={{fontSize:11,color:"#9CA3AF"}}>›</span>
-                                          </div>
-                                        </div>
-                                        <div style={{height:3,background:"#E5E7EB",borderRadius:2}}>
-                                          <div style={{height:"100%",width:`${Math.min(100,burnThisMonth>0?c.total/burnThisMonth*100:0)}%`,background:"linear-gradient(90deg,#DC2626,#D97706)",borderRadius:2}} />
-                                        </div>
-                                      </div>
-                                    ));
-                                  }
-                                  // Level 2 — vendors within category
-                                  if (!burnDrill.vendor) {
-                                    const vends = Object.values(monthExp.filter(i=>(i.gl_name||"Uncoded")===burnDrill.cat).reduce((a,i)=>{const v=i.vendor||"Unknown"; if(!a[v])a[v]={vendor:v,total:0,count:0}; a[v].total+=i.amount; a[v].count++; return a;},{})).sort((x,y)=>y.total-x.total);
-                                    if (vends.length===0) return <div style={{fontSize:13,color:"#6B7280"}}>No vendors.</div>;
-                                    return vends.map(v=>(
-                                      <div key={v.vendor} onClick={()=>setBurnDrill({cat:burnDrill.cat,vendor:v.vendor})} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 4px",cursor:"pointer",borderRadius:8}}>
-                                        <span style={{fontSize:13,color:"#374151",display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-                                          <span style={{width:24,height:24,borderRadius:6,background:vendorColor(v.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{initials(v.vendor)}</span>
-                                          <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.vendor}</span>
-                                          <span style={{fontSize:11,color:"#9CA3AF",flexShrink:0}}>· {v.count}</span>
-                                        </span>
-                                        <span style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                                          <span style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#DC2626"}}>${v.total.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-                                          <span style={{fontSize:11,color:"#9CA3AF"}}>›</span>
-                                        </span>
-                                      </div>
-                                    ));
-                                  }
-                                  // Level 3 — transactions for vendor
-                                  const txns = monthExp.filter(i=>(i.gl_name||"Uncoded")===burnDrill.cat && (i.vendor||"Unknown")===burnDrill.vendor).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-                                  if (txns.length===0) return <div style={{fontSize:13,color:"#6B7280"}}>No transactions.</div>;
-                                  return txns.map(inv=>(
-                                    <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 4px",cursor:"pointer",borderRadius:8}}>
-                                      <div style={{minWidth:0}}>
-                                        <div style={{fontSize:12,color:"#111827",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{inv.description||inv.vendor}</div>
-                                        <div style={{fontSize:11,color:"#6B7280"}}>{inv.date} · {inv.gl_code}</div>
-                                      </div>
-                                      <span style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#DC2626",flexShrink:0}}>${inv.amount.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-                                    </div>
-                                  ));
-                                })()}
-                              </div>
-                            </>
-                          );
-                        })()}
-                      </div>
-                      <div onClick={()=>setDashDrill({type:"cash"})} title="Drill into cash & bank"
-                        onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
-                        style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:"18px 20px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                          <div style={{fontSize:10,color:"#6B7280",letterSpacing:2}}>CASH POSITION</div>
-                          <span style={{fontSize:11,color:"#6B7280"}}>Bank accounts ›</span>
-                        </div>
-                        <div style={{fontSize:32,fontWeight:700,color:estimatedCash>=0?"#111827":"#DC2626",fontFamily:"'DM Mono',monospace",marginBottom:12}}>${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                        <div style={{display:"flex",gap:20}}>
-                          <div><div style={{fontSize:10,color:"#6B7280",marginBottom:2}}>COLLECTED</div><div style={{fontSize:13,color:"#059669",fontFamily:"'DM Mono',monospace"}}>+${cashInflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
-                          <div><div style={{fontSize:10,color:"#6B7280",marginBottom:2}}>PAID OUT</div><div style={{fontSize:13,color:"#DC2626",fontFamily:"'DM Mono',monospace"}}>-${cashOutflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
-                          <div><div style={{fontSize:10,color:"#6B7280",marginBottom:2}}>AVG BURN/MO</div><div style={{fontSize:13,color:"#D97706",fontFamily:"'DM Mono',monospace"}}>${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
-                        </div>
-                        {openingCash===0&&<button onClick={(e)=>{e.stopPropagation();setView("opening-balances");}} style={{marginTop:12,background:"none",border:"1px solid #D1D5DB",borderRadius:8,padding:"6px 12px",color:"#4F46E5",fontSize:11,cursor:"pointer"}}>+ Add opening cash balance →</button>}
-                      </div>
-                    </div>
-
-                    {/* ── BURN BREAKDOWN MODAL ── */}
-                    {burnModalOpen && (() => {
-                      const months = Array.from({length:6}, (_,k) => {
-                        const dd = new Date(today.getFullYear(), today.getMonth()-k, 1);
-                        const key = dd.toISOString().slice(0,7);
-                        const exp = monthlyBurn(key);
-                        const rev = invoices.filter(i=>glIsRevenue(i.gl_code)&&i.date?.startsWith(key)).reduce((s,i)=>s+i.amount,0);
-                        return { key, label: dd.toLocaleDateString("en-US",{month:"short",year:"2-digit"}), exp, rev, net: rev-exp };
-                      });
-                      const maxExp = Math.max(1, ...months.map(mm=>mm.exp));
-                      return (
-                        <div onClick={()=>setBurnModalOpen(false)} style={{position:"fixed",inset:0,zIndex:10001,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-                          <div className="sc-scale" onClick={e=>e.stopPropagation()} style={{width:560,maxWidth:"94vw",maxHeight:"86vh",overflowY:"auto",background:"#FFFFFF",border:"1px solid #D1D5DB",borderRadius:18,padding:26,boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
-                              <div>
-                                <div style={{fontSize:10,letterSpacing:2,color:"#6B7280",marginBottom:6}}>CASH BURN</div>
-                                <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Monthly burn &amp; runway</h2>
-                              </div>
-                              <button onClick={()=>setBurnModalOpen(false)} style={{background:"none",border:"none",color:"#6B7280",fontSize:24,cursor:"pointer",lineHeight:1,padding:0}}>×</button>
-                            </div>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:22}}>
-                              {[["AVG BURN/MO",`$${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}`,"#D97706"],["RUNWAY",runway===null?"∞":`${runway} mo`,runwayColor],["EST. CASH",`$${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}`,estimatedCash>=0?"#059669":"#DC2626"]].map(([l,v,c])=>(
-                                <div key={l} style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:12,padding:"14px 16px"}}>
-                                  <div style={{fontSize:10,color:"#6B7280",letterSpacing:1,marginBottom:6}}>{l}</div>
-                                  <div style={{fontSize:18,fontWeight:700,color:c,fontFamily:"'DM Mono',monospace"}}>{v}</div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                              <div style={{fontSize:10,letterSpacing:2,color:"#6B7280"}}>LAST 6 MONTHS</div>
-                              <div style={{fontSize:10,color:"#6B7280",display:"flex",gap:12}}><span style={{color:"#DC2626"}}>● expense</span><span style={{color:"#059669"}}>● revenue</span><span>● net</span></div>
-                            </div>
-                            {months.map(mo=>(
-                              <div key={mo.key} style={{marginBottom:14}}>
-                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5,fontSize:12}}>
-                                  <span style={{color:"#374151",fontWeight:500,width:64}}>{mo.label}</span>
-                                  <span style={{display:"flex",gap:16,fontFamily:"'DM Mono',monospace"}}>
-                                    <span style={{color:"#DC2626"}}>-${mo.exp.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-                                    <span style={{color:"#059669"}}>+${mo.rev.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-                                    <span style={{color:mo.net>=0?"#059669":"#DC2626",width:96,textAlign:"right"}}>{mo.net>=0?"+":"-"}${Math.abs(mo.net).toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-                                  </span>
-                                </div>
-                                <div style={{height:6,background:"#E5E7EB",borderRadius:3,overflow:"hidden"}}>
-                                  <div style={{height:"100%",width:`${Math.min(100,mo.exp/maxExp*100)}%`,background:"linear-gradient(90deg,#DC2626,#D97706)",borderRadius:3}} />
-                                </div>
-                              </div>
-                            ))}
-                            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:18}}>
-                              <button onClick={()=>{setBurnModalOpen(false);setView("reports");}} style={{padding:"8px 16px",borderRadius:9,background:"#E5E7EB",border:"1px solid #D1D5DB",color:"#4F46E5",fontSize:12,cursor:"pointer"}}>Open full reports →</button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    ))}
                   </div>
                 );
               })()}
 
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:16, marginBottom:24 }}>
-                {[
-                  { label:"Total Revenue", value:totalRevenue, color:"#059669", drill:{type:"revenue"}, hint:"Transactions ›" },
-                  { label:"Total Expenses", value:totalExpenses, color:"#DC2626", drill:{type:"expenses"}, hint:"Breakdown ›" },
-                  { label:"Net Income", value:netIncome, color:netIncome>=0?"#059669":"#DC2626", drill:{type:"net"}, hint:"P&L ›" },
-                ].map(card => (
-                  <div key={card.label} onClick={()=>setDashDrill(card.drill)} title={`Drill into ${card.label}`}
-                    onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
-                    style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:"22px 26px", cursor:"pointer", transition:"transform .16s, border-color .2s" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                      <div style={{ fontSize:11, color:"#6B7280", letterSpacing:1 }}>{card.label.toUpperCase()}</div>
-                      <span style={{ fontSize:11, color:"#4F46E5", fontWeight:600 }}>{card.hint}</span>
-                    </div>
-                    <div style={{ fontSize:28, fontWeight:600, color:card.color, fontFamily:"'DM Mono', monospace" }}>
-                      {netIncome<0&&card.label==="Net Income"?"-":""}${Math.abs(card.value).toLocaleString("en-US",{minimumFractionDigits:2})}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:24 }}>
-                <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:24 }}>
-                  <div style={{ fontSize:11, color:"#6B7280", marginBottom:18, letterSpacing:1 }}>GL ACCOUNT BREAKDOWN</div>
-                  {Object.keys(glBreakdown).length===0 ? <div style={{ color:"#6B7280", fontSize:13 }}>No transactions yet.</div> :
-                    Object.entries(glBreakdown).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([name,amt])=>(
-                      <div key={name} onClick={()=>setGlDrilldown(name)} title="View transactions in this account" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:11, padding:"4px 8px", margin:"0 -8px 7px", borderRadius:8, cursor:"pointer" }}
-                        onMouseEnter={e=>e.currentTarget.style.background="#E5E7EB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                        <div style={{ fontSize:13, color:"#374151" }}>{name}</div>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#4F46E5" }}>${amt.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
-                          <span style={{ fontSize:12, color:"#6B7280" }}>›</span>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </div>
-                <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:24 }}>
-                  <div style={{ fontSize:11, color:"#6B7280", marginBottom:18, letterSpacing:1 }}>TOP VENDORS BY SPEND</div>
-                  {vendorSummary.length===0 ? <div style={{ color:"#6B7280", fontSize:13 }}>No vendors yet.</div> :
-                    vendorSummary.slice(0,5).map(v=>(
-                      <div key={v.name} onClick={()=>{ setVendorFilter(v.name); setView("invoices"); }} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, cursor:"pointer" }}>
-                        <div style={{ width:30, height:30, borderRadius:8, background:vendorColor(v.name), display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(v.name)}</div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{v.name}</div>
-                          <div style={{ fontSize:11, color:"#6B7280" }}>{v.count} invoice{v.count!==1?"s":""}</div>
-                        </div>
-                        <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", flexShrink:0 }}>${v.total.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
-                      </div>
-                    ))
-                  }
-                  {vendorSummary.length>0 && <button onClick={()=>setView("vendors")} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:12, cursor:"pointer", padding:0, marginTop:4 }}>View all →</button>}
-                </div>
-              </div>
-              <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:24 }}>
-                <div style={{ fontSize:11, color:"#6B7280", marginBottom:18, letterSpacing:1 }}>RECENT ACTIVITY</div>
-                {invoices.length===0 ? (
-                  <div style={{ color:"#6B7280", fontSize:14, textAlign:"center", padding:"20px 0" }}>No transactions yet — drop files above to get started</div>
-                ) : invoices.slice(0,8).map(inv=>(
-                  <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #E5E7EB", cursor:"pointer" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <div style={{ width:32, height:32, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
-                      <div>
-                        <div style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</div>
-                        <div style={{ fontSize:11, color:"#6B7280" }}>
-                          {inv.gl_name} · {inv.project||"General"} · {inv.date}
-                          {inv.source==="universal_upload"&&<span style={{ color:"#4F46E5", marginLeft:6 }}>⬆</span>}
-                          {inv.source==="bank_feed"&&<span style={{ color:"#6366F1", marginLeft:6 }}>🏦</span>}
-                          {inv.source==="contract"&&<span style={{ color:"#D97706", marginLeft:6 }}>📋</span>}
-                          {inv.source==="matching_engine"&&<span style={{ color:"#059669", marginLeft:6 }}>⇋</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:inv.type==="revenue"?"#059669":"#DC2626" }}>
-                      {inv.type==="revenue"?"+":"-"}${inv.amount.toLocaleString("en-US",{minimumFractionDigits:2})}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* ── GL ACCOUNT DRILL-DOWN PANEL ── */}
-              {glDrilldown && (() => {
-                const rows = invoices
-                  .filter(inv => glPLType(inv.gl_code) && (inv.gl_name||"Uncoded")===glDrilldown)
-                  .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-                const total = rows.reduce((s,i)=>s+i.amount,0);
-                const isRev = rows.length>0 && glIsRevenue(rows[0].gl_code);
+              {/* ── ACTIVITY FEED ── */}
+              {(() => {
+                const items = [];
+                invoices.forEach(inv => items.push({ ts: inv.booked_at||inv.date||"", inv, icon: glIsRevenue(inv.gl_code)?"💰":"🧾", text:`${inv.vendor||"Entry"} — ${inv.gl_name||"Booked"}`, amount: inv.amount, rev: glIsRevenue(inv.gl_code) }));
+                (auditLog||[]).forEach(a => { if (/paid|approv|reject|recode|void|flag|info_requested/i.test(a.action||"")) items.push({ ts:a.ts||a.created_at||"", icon: /paid/i.test(a.action)?"✅":/reject|void/i.test(a.action)?"🚫":/flag|info/i.test(a.action)?"⚠":"✦", text:a.detail||a.action }); });
+                items.sort((x,y)=>String(y.ts).localeCompare(String(x.ts)));
+                const ago = ts => { if(!ts) return ""; const s=(Date.now()-new Date(ts).getTime())/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; if(s<604800)return Math.floor(s/86400)+"d ago"; return new Date(ts).toLocaleDateString(); };
+                const shown = items.slice(0, feedCount);
                 return (
-                  <div onClick={()=>setGlDrilldown(null)} style={{ position:"fixed", inset:0, zIndex:10001, background:"rgba(0,0,0,0.6)", display:"flex", justifyContent:"flex-end" }}>
-                    <style>{`@keyframes slideinright{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
-                    <div onClick={e=>e.stopPropagation()} style={{ width:540, maxWidth:"92vw", height:"100%", background:"#FFFFFF", borderLeft:"1px solid #D1D5DB", display:"flex", flexDirection:"column", animation:"slideinright 0.25s cubic-bezier(0.22,1,0.36,1)", boxShadow:"-24px 0 80px rgba(0,0,0,0.5)" }}>
-                      <div style={{ padding:"22px 24px", borderBottom:"1px solid #E5E7EB", flexShrink:0 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
-                          <div style={{ minWidth:0 }}>
-                            <div style={{ fontSize:10, letterSpacing:2, color:"#6B7280", marginBottom:6 }}>{isRev?"REVENUE ACCOUNT":"EXPENSE ACCOUNT"}</div>
-                            <h2 style={{ fontSize:20, fontWeight:600, margin:0 }}>{glDrilldown}</h2>
-                            <div style={{ fontSize:13, color:"#6B7280", marginTop:6 }}>{rows.length} transaction{rows.length!==1?"s":""}</div>
+                  <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
+                    <div style={{ padding:"16px 20px", borderBottom:"1px solid #F3F4F6", fontSize:13, fontWeight:600 }}>Activity</div>
+                    {shown.length===0 ? <div style={{ padding:"36px", textAlign:"center", color:"#6B7280", fontSize:13 }}>Nothing yet — drop a document above to get started.</div> :
+                      shown.map((it,idx)=>(
+                        <div key={idx} onClick={()=>{ if(it.inv){ setSelectedInvoice(it.inv); setView("detail"); } }}
+                          onMouseEnter={e=>{ if(it.inv) e.currentTarget.style.background="#F9FAFB"; }} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                          style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 20px", borderTop: idx?"1px solid #F3F4F6":"none", cursor: it.inv?"pointer":"default" }}>
+                          <div style={{ width:32, height:32, borderRadius:9, background:"#F3F4F6", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>{it.icon}</div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:13, color:"#111827", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{it.text}</div>
+                            <div style={{ fontSize:11, color:"#6B7280" }}>{ago(it.ts)}</div>
                           </div>
-                          <button onClick={()=>setGlDrilldown(null)} style={{ background:"none", border:"none", color:"#6B7280", fontSize:26, cursor:"pointer", lineHeight:1, padding:0, flexShrink:0 }}>×</button>
+                          {it.amount!=null && <div style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color: it.rev?"#059669":"#DC2626", flexShrink:0 }}>{it.rev?"+":"-"}${Math.abs(it.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</div>}
                         </div>
-                        <div style={{ marginTop:16, padding:"12px 16px", background:"#F3F4F6", borderRadius:10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <span style={{ fontSize:12, color:"#6B7280", letterSpacing:1 }}>TOTAL</span>
-                          <span style={{ fontSize:18, fontWeight:600, fontFamily:"'DM Mono', monospace", color:isRev?"#059669":"#4F46E5" }}>${total.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
-                        </div>
+                      ))
+                    }
+                    {items.length > feedCount && (
+                      <div style={{ padding:"12px", textAlign:"center", borderTop:"1px solid #F3F4F6" }}>
+                        <button onClick={()=>setFeedCount(c=>c+20)} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:13, fontWeight:600, cursor:"pointer" }}>Load more</button>
                       </div>
-                      <div style={{ flex:1, overflowY:"auto", padding:"8px 16px 24px" }}>
-                        {rows.length===0 ? <div style={{ color:"#6B7280", fontSize:13, padding:"24px 8px" }}>No transactions in this account.</div> :
-                          rows.map(inv=>(
-                            <div key={inv.id} style={{ padding:"14px 8px", borderBottom:"1px solid #E5E7EB" }}>
-                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
-                                <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
-                                  <div style={{ width:30, height:30, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
-                                  <div style={{ minWidth:0 }}>
-                                    <div style={{ fontSize:13, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor}</div>
-                                    <div style={{ fontSize:11, color:"#6B7280" }}>{inv.date}</div>
-                                  </div>
-                                </div>
-                                <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", flexShrink:0, color:isRev?"#059669":"#111827" }}>${inv.amount.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
-                              </div>
-                              {inv.description && <div style={{ fontSize:12, color:"#6B7280", marginTop:6, marginLeft:40, lineHeight:1.5 }}>{inv.description}</div>}
-                              <div style={{ marginLeft:40, marginTop:6 }}>
-                                <button onClick={()=>{ setSelectedInvoice(inv); setGlDrilldown(null); setView("detail"); }} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:12, cursor:"pointer", padding:0 }}>View full entry →</button>
-                              </div>
-                            </div>
-                          ))
-                        }
-                      </div>
-                    </div>
+                    )}
                   </div>
                 );
               })()}
