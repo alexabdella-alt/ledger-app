@@ -839,7 +839,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   // Detects expenses that need a clarifying question before they can be booked
   // correctly under GAAP, and books the answer (incl. prepaid amortization).
   const fmtMoney = n => "$"+(Math.round((Number(n)||0)*100)/100).toLocaleString("en-US",{minimumFractionDigits:2});
-  const GAAP_ASSET_RE = /\b(laptop|computer|macbook|imac|iphone|ipad|tablet|equipment|machinery|machine|furniture|desk|chair|vehicle|car|truck|server|camera|monitor|printer|hardware|appliance)\b|software license|perpetual license/i;
+  // Resolve a GL name from the company's actual chart of accounts (falls back to a label).
+  const glName = (code, fallback="") => (CHART_OF_ACCOUNTS.find(a=>a.code===code)?.name) || fallback;
+  // Tight, specific asset keywords — the capital check requires BOTH amount >= $2,000 AND
+  // one of these. A dollar amount alone never triggers it (e.g. a $3,000 Stripe payout).
+  const GAAP_ASSET_RE = /\b(laptop|computer|macbook|imac|ipad|iphone|tablet|monitor|printer|server|camera|equipment|machinery|furniture|desk|chair|vehicle|truck|forklift|appliance)\b|\bcar\b|software license|perpetual license/i;
   const GAAP_PREPAID_RE = /\b(annual|yearly|12[\s-]?months?|retainer)\b|insurance|maintenance contract|service agreement/i;
   const GAAP_LEASEHOLD_RE = /renovation|build[\s-]?out|leasehold|improvement|installation|flooring|remodel|contractor|construction|electrical work|plumbing/i;
   const GAAP_VEHICLE_RE = /\b(gas|fuel|mileage|auto|gasoline)\b/i;
@@ -859,13 +863,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         explanation:`Under GAAP (ASC 360), purchases over $2,500 with a useful life greater than one year must be capitalized as fixed assets and depreciated over their useful life rather than expensed immediately. This affects both your balance sheet and your taxes.`,
         options:[
           { label: capitalize ? "Business use, and I'll use it more than a year" : "Business use, more than a year",
-            gl_code: capitalize?"1500":"5900", gl_name: capitalize?"Property, Plant & Equipment":"Technology & Software", depreciate: capitalize,
+            gl_code: capitalize?"1500":"6600", gl_name: capitalize?glName("1500","Fixed Assets"):glName("6600","Office Supplies & De Minimis Equipment"), depreciate: capitalize,
             reasoning: capitalize
               ? `Capitalized as fixed asset per ASC 360 — user confirmed business use >1 year, amount ${fmtMoney(amt)} exceeds $2,500 threshold. Flagged for depreciation.`
-              : `Expensed — business use but amount ${fmtMoney(amt)} is under the $2,500 capitalization threshold (de minimis safe harbor).` },
-          { label:"It's a subscription, or I'll use it under a year", gl_code:"5900", gl_name:"Technology & Software",
-            reasoning:`Expensed to Technology & Software — subscription or useful life under one year, so ASC 360 capitalization does not apply.` },
-          { label:"Mostly personal use", gl_code:"5900", gl_name:"Technology & Software", nondeductible:true,
+              : `Expensed to de minimis equipment — business use but amount ${fmtMoney(amt)} is under the $2,500 capitalization threshold (de minimis safe harbor).` },
+          { label:"It's a subscription, or I'll use it under a year", gl_code:"6500", gl_name:glName("6500","Technology & Software"),
+            reasoning:`Expensed to Technology — subscription or useful life under one year, so ASC 360 capitalization does not apply.` },
+          { label:"Mostly personal use", gl_code:"6600", gl_name:glName("6600","Office Supplies & De Minimis Equipment"), nondeductible:true,
             reasoning:`Booked but flagged as primarily personal use — not deductible as a business expense.` },
         ] };
     }
@@ -889,11 +893,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         question:`Is this a permanent improvement, and to a space you lease or own?`,
         explanation:`Permanent improvements to a leased space are capitalized as leasehold improvements and amortized over the lease term. Improvements to property you own are capitalized and depreciated. Routine repairs are expensed right away.`,
         options:[
-          { label:"Permanent improvement to a space I LEASE", gl_code:"1600", gl_name:"Intangible Assets", depreciate:false,
+          { label:"Permanent improvement to a space I LEASE", gl_code:"1600", gl_name:glName("1600","Leasehold Improvements"), depreciate:false,
             reasoning:`Capitalized as a leasehold improvement (1600) per GAAP — permanent improvement to leased space, amortize over the remaining lease term.` },
-          { label:"Permanent improvement to a space I OWN", gl_code:"1500", gl_name:"Property, Plant & Equipment", depreciate:true,
-            reasoning:`Capitalized to Property, Plant & Equipment (1500) — permanent improvement to owned property, depreciate over its useful life.` },
-          { label:"It's a repair / maintenance", gl_code:"6200", gl_name:"Miscellaneous Expense",
+          { label:"Permanent improvement to a space I OWN", gl_code:"1500", gl_name:glName("1500","Fixed Assets"), depreciate:true,
+            reasoning:`Capitalized to Fixed Assets (1500) — permanent improvement to owned property, depreciate over its useful life.` },
+          { label:"It's a repair / maintenance", gl_code:"6200", gl_name:glName("6200","Repairs & Maintenance"),
             reasoning:`Expensed as repairs & maintenance — routine upkeep, not a capital improvement.` },
         ] };
     }
@@ -916,13 +920,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const bookPrepaid = (inv, months, opt) => {
     const amt = Number(inv.amount) || 0;
     const expenseCode = inv.gl_code, expenseName = inv.gl_name;
-    const prepaidEntry = { ...inv, gl_code:"1300", gl_name:"Prepaid Expenses",
-      secondary_gl_code:"2000", secondary_gl_name:"Accounts Payable", debit_credit:"debit",
+    const prepaidName = glName("1300","Prepaid Expenses");
+    const prepaidEntry = { ...inv, gl_code:"1300", gl_name:prepaidName,
+      secondary_gl_code:"2000", secondary_gl_name:glName("2000","Accounts Payable"), debit_credit:"debit",
       confidence:100, status:"booked", booked_at:new Date().toISOString(), source:"gaap_prepaid",
       reasoning: opt.reasoning || `Recorded as a prepaid asset, amortizing over ${months} months.`, prepaid_months: months };
     setInvoices(prev => [prepaidEntry, ...prev]);
     bookToDb(prepaidEntry);
-    if (prepaidEntry._contact) createOrUpdateContact({ ...prepaidEntry._contact, gl_code:"1300", gl_name:"Prepaid Expenses" });
+    if (prepaidEntry._contact) createOrUpdateContact({ ...prepaidEntry._contact, gl_code:"1300", gl_name:prepaidName });
 
     const per = Math.round((amt / months) * 100) / 100;
     const start = inv.date ? new Date(inv.date+"T12:00:00") : new Date();
@@ -932,7 +937,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       amortInvoices.push({ id: Date.now()+Math.random()+k, vendor: inv.vendor,
         description:`${inv.description||expenseName} — amortization ${k+1}/${months}`, amount: per,
         date: dt.toISOString().slice(0,10), type:"expense", project: inv.project||"General",
-        gl_code: expenseCode, gl_name: expenseName, secondary_gl_code:"1300", secondary_gl_name:"Prepaid Expenses",
+        gl_code: expenseCode, gl_name: expenseName, secondary_gl_code:"1300", secondary_gl_name:prepaidName,
         debit_credit:"debit", confidence:100, reasoning:`Monthly amortization of prepaid ${expenseName} (${k+1} of ${months}).`,
         status:"booked", booked_at:new Date().toISOString(), source:"gaap_prepaid_amort", payment_status:"paid" });
     }
@@ -1392,9 +1397,11 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
 
             // Meals: auto-apply the 50% deductibility rule (no question needed) and notify.
             if (invoice.type !== "revenue" && GAAP_MEALS_RE.test(`${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase())) {
+              invoice.gl_code = "6400";
+              invoice.gl_name = glName("6400","Travel & Entertainment");
               invoice.meals_pct = 50;
               invoice.deductible_amount = (Number(invoice.amount)||0) * 0.5;
-              invoice.reasoning = `Meals are 50% deductible under current tax law — deductible portion ${fmtMoney(invoice.deductible_amount)}. ${invoice.reasoning||""}`.trim();
+              invoice.reasoning = `Meals booked to Travel & Entertainment (6400) — 50% deductible under current tax law, deductible portion ${fmtMoney(invoice.deductible_amount)}. ${invoice.reasoning||""}`.trim();
               mealsBooked += 1;
             }
             // GAAP review — capital vs expense, prepaid, leasehold, vehicle.
