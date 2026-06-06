@@ -9,7 +9,9 @@ export default function BooksView() {
     setSelectedInvoice, setView, CHART_OF_ACCOUNTS,
     booksFilter, setBooksFilter,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
+    reconciliations,
   } = useERP();
+  const [showReconHistory, setShowReconHistory] = React.useState(false);
 
   const [search, setSearch] = React.useState("");
   const [selId, setSelId] = React.useState(null);
@@ -82,13 +84,14 @@ export default function BooksView() {
         <div style={{ fontSize:13, color:"#6B7280", marginTop:6 }}>Every entry in one place. Click a row for full detail, AI reasoning, and actions.</div>
       </div>
 
-      {/* Search + filters */}
+      {/* Search + filters + Match Bank */}
       <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendor, amount, date, description…"
-          style={{ flex:"1 1 320px", minWidth:0, background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:10, padding:"10px 14px", fontSize:14, color:"#111827", outline:"none" }} />
+          style={{ flex:"1 1 280px", minWidth:0, background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:10, padding:"10px 14px", fontSize:14, color:"#111827", outline:"none" }} />
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
         </div>
+        <button onClick={()=>setView("recon")} style={{ padding:"9px 16px", borderRadius:9, fontSize:13, fontWeight:600, background:"#EEF2FF", border:"1px solid #4F46E533", color:"#4F46E5", cursor:"pointer", whiteSpace:"nowrap" }}>🏦 Match Bank</button>
       </div>
 
       {/* ── CONTRACTS TABLE (filter = contracts) ── */}
@@ -178,6 +181,32 @@ export default function BooksView() {
       </div>
       <div style={{ fontSize:12, color:"#6B7280", marginTop:10 }}>{rows.length} transaction{rows.length!==1?"s":""}{filter!=="all"?` · ${filter}`:""}</div>
       </>)}
+
+      {/* ── RECONCILIATION HISTORY ── */}
+      {(reconciliations||[]).length>0 && (
+        <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, marginTop:16, overflow:"hidden" }}>
+          <div onClick={()=>setShowReconHistory(s=>!s)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+            <div style={{ fontSize:13, fontWeight:600 }}>🏦 Bank reconciliation history</div>
+            <span style={{ fontSize:12, color:"#4F46E5", fontWeight:600 }}>{showReconHistory?"Hide ▲":"Show ▼"}</span>
+          </div>
+          {showReconHistory && (
+            <div style={{ borderTop:"1px solid #F3F4F6" }}>
+              {[...(reconciliations||[])].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))).map(r=>{
+                const od = r.status==="complete" && r.completed_at && (Date.now()-new Date(r.completed_at).getTime())/86400000>35;
+                const color = r.status==="in_progress"?"#D97706":od?"#DC2626":"#059669";
+                const label = r.status==="in_progress"?"In Progress":od?"Overdue":"Complete";
+                return (
+                  <div key={r.id} onClick={()=>setView("recon")} onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 18px", borderTop:"1px solid #F3F4F6", cursor:"pointer" }}>
+                    <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {r.period_start} → {r.period_end}</div><div style={{ fontSize:11, color:"#6B7280" }}>{fmt(r.statement_balance)}{r.completed_at?` · ${new Date(r.completed_at).toLocaleDateString()}`:""}</div></div>
+                    <span style={{ fontSize:11, fontWeight:600, color, background:color+"14", border:`1px solid ${color}33`, borderRadius:20, padding:"3px 10px" }}>{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── CONTRACT SLIDE-IN ── */}
       {selContract && (() => {

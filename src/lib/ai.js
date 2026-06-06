@@ -113,6 +113,7 @@ Respond ONLY with a JSON object (no markdown):
     //   "reports"   → P&L, Balance Sheet, Cash Flow
     //   "settings"  → company, chart of accounts, bank accounts, rules, contacts, recurring (opens the gear panel)
     //   Contracts/leases live in Books → use {"view":"books","filter":"contracts"}
+    //   "reconcile" / "match my bank statement" / "my books don't match my bank" → {"view":"recon"}
     //   Sub-tools (also valid views): "send-invoice", "bank", "recon", "docs", "audit", "tax1099"
     // { "type": "none" }
   ]
@@ -126,6 +127,7 @@ NAVIGATION — be a proactive guide (the app has just 5 tabs: Home, Books, Repor
   • "show me unpaid bills" / "what do we owe" / "I need to pay a bill" → "books" with "filter":"unpaid"
   • "money coming in" / receivables / revenue → "books" with "filter":"revenue"
   • "show me contracts" / leases → "books" with "filter":"contracts"
+  • "reconcile" / "match my bank statement" / "my books don't match my bank" → "recon" (it's a simple "match your bank statement" workflow — offer to open it and explain in one sentence)
   • "what needs review" → "books" with "filter":"review"
   • P&L / income statement / balance sheet / cash flow → "reports"
   • company info / chart of accounts / bank accounts / GL rules / contacts / recurring / settings → "settings"

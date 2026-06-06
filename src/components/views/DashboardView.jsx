@@ -452,6 +452,26 @@ export default function DashboardView() {
                 </div>
               )}
 
+              {/* ── BANK MATCH REMINDER ── */}
+              {(() => {
+                const completed = (reconciliations||[]).filter(r=>r.status==="complete").sort((a,b)=>String(b.completed_at).localeCompare(String(a.completed_at)));
+                const last = completed[0];
+                const days = last?.completed_at ? Math.floor((Date.now()-new Date(last.completed_at).getTime())/86400000) : null;
+                const hasBooks = invoices.some(i=>i.status!=="voided");
+                const overdue = hasBooks && (days===null || days>35);
+                if (!overdue) return null;
+                return (
+                  <div onClick={()=>setView("recon")} style={{ ...{}, cursor:"pointer", background:"#FFFBEB", border:"1px solid #D9770644", borderRadius:14, padding:"16px 20px", marginBottom:24, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}
+                    onMouseEnter={e=>e.currentTarget.style.borderColor="#D97706"} onMouseLeave={e=>e.currentTarget.style.borderColor="#D9770644"}>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:600, color:"#92400E" }}>⚠ {days===null ? "Your books haven't been matched to your bank yet." : `Your books haven't been matched to your bank in ${days} days.`}</div>
+                      <div style={{ fontSize:12, color:"#92400E", opacity:0.8, marginTop:3 }}>Match your bank statement to make sure everything's accounted for.</div>
+                    </div>
+                    <span style={{ fontSize:13, color:"#D97706", fontWeight:600 }}>Match now →</span>
+                  </div>
+                );
+              })()}
+
               {/* ── KEY NUMBERS ── */}
               {(() => {
                 const tdy = new Date();
