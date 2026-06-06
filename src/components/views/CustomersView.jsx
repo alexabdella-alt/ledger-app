@@ -9,6 +9,81 @@ export default function CustomersView() {
             const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const editingId = customersEditingId; const setEditingId = setCustomersEditingId;
             const editDraft = customersEditDraft; const setEditDraft = setCustomersEditDraft;
+            const [selCustomer, setSelCustomer] = React.useState(null);
+            const yr = new Date().getFullYear();
+            const txnsForCustomer = name => invoices
+              .filter(i => i.vendor?.toLowerCase()===(name||"").toLowerCase() && (glIsRevenue(i.gl_code)||i.type==="revenue") && i.status!=="voided")
+              .sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+            const billedYTDfor = txns => txns.filter(i=>String(i.date||"").startsWith(String(yr))).reduce((s,i)=>s+(i.amount||0),0);
+            const openARfor = txns => txns.filter(i=>i.payment_status!=="collected"&&i.payment_status!=="paid").reduce((s,i)=>s+(i.amount||0),0);
+
+            // ── CUSTOMER DETAIL DRILL ──
+            if (selCustomer) {
+              const c = selCustomer;
+              const cTxns = txnsForCustomer(c.name);
+              const billedYTD = billedYTDfor(cTxns);
+              const openAR = openARfor(cTxns);
+              const lastDate = cTxns[0]?.date || "—";
+              const infoRows = [
+                ["Email", c.email], ["Phone", c.phone], ["Website", c.website],
+                ["Mailing address", c.mailing_address], ["Payment terms", c.payment_terms],
+                ["Tax ID / EIN", c.tax_id || c.ein || c.ein_ssn],
+              ].filter(([,val])=>val);
+              return (
+                <div>
+                  <button onClick={()=>setSelCustomer(null)} style={{ background:"transparent", border:"none", color:"#059669", cursor:"pointer", fontSize:13, padding:0, marginBottom:16 }}>← All customers</button>
+                  <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+                    <div style={{ width:52,height:52,borderRadius:14,background:vendorColor(c.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(c.name)}</div>
+                    <h1 style={{ fontSize:26, fontWeight:600, margin:0, letterSpacing:-0.5 }}>{c.name}</h1>
+                  </div>
+
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
+                    {[["Billed YTD", fmt(billedYTD), "#059669"],["Open receivables", fmt(openAR), openAR>0?"#D97706":"#059669"],["Last invoice", lastDate, "#111827"]].map(([k,val,col])=>(
+                      <div key={k} style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:12, padding:"14px 16px" }}>
+                        <div style={{ fontSize:11, color:"#6B7280", marginBottom:5 }}>{k}</div>
+                        <div style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:col }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:"16px 20px", marginBottom:20 }}>
+                    <div style={{ fontSize:11, letterSpacing:1, color:"#059669", fontWeight:600, marginBottom:12 }}>CONTACT INFO</div>
+                    {infoRows.length===0 ? <div style={{ fontSize:13, color:"#9CA3AF" }}>No contact details captured yet — they fill in automatically from uploaded invoices.</div> : (
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"10px 24px" }}>
+                        {infoRows.map(([k,val])=>(
+                          <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:12, fontSize:13, borderBottom:"1px solid #F3F4F6", paddingBottom:6 }}>
+                            <span style={{ color:"#6B7280" }}>{k}</span><span style={{ color:"#111827", textAlign:"right", wordBreak:"break-word" }}>{val}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
+                    <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid #F3F4F6" }}>All transactions ({cTxns.length})</div>
+                    {cTxns.length===0 ? <div style={{ padding:32, textAlign:"center", color:"#9CA3AF", fontSize:13 }}>No transactions with this customer yet.</div> : (
+                      <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                        <thead><tr style={{ background:"#F9FAFB" }}>{["Date","Description","GL Account","Status","Amount"].map((h,i)=><th key={i} style={{ padding:"9px 16px", textAlign:i===4?"right":"left", fontSize:10, color:"#6B7280", letterSpacing:1, fontWeight:600, borderBottom:"1px solid #E5E7EB" }}>{h.toUpperCase()}</th>)}</tr></thead>
+                        <tbody>
+                          {cTxns.map((i,idx)=>{
+                            const collected = i.payment_status==="collected"||i.payment_status==="paid";
+                            return (
+                              <tr key={i.id||idx} style={{ borderBottom:"1px solid #F3F4F6" }}>
+                                <td style={{ padding:"9px 16px", fontSize:12, color:"#6B7280", whiteSpace:"nowrap" }}>{i.date}</td>
+                                <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
+                                <td style={{ padding:"9px 16px", fontSize:12, color:"#6B7280" }}>{i.gl_code} {i.gl_name}</td>
+                                <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:collected?"#059669":"#D97706" }}>{collected?"Collected":"Open"}</span></td>
+                                <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(i.amount)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              );
+            }
 
             const customerContacts = contacts.filter(c => c.type==="customer");
             // Also pull customers from ledger (revenue invoices) not yet in contacts
@@ -54,15 +129,16 @@ export default function CustomersView() {
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                     {allCustomers.map(c => {
                       const isEditing = editingId===(c.id||c.name);
-                      const custInvoices = invoices.filter(i => i.vendor?.toLowerCase()===c.name?.toLowerCase() && (glIsRevenue(i.gl_code)||i.type==="revenue"));
-                      const totalRevenue = custInvoices.reduce((s,i)=>s+i.amount,0);
-                      const openAR = custInvoices.filter(i=>i.payment_status!=="collected"&&i.payment_status!=="paid").reduce((s,i)=>s+i.amount,0);
+                      const custInvoices = txnsForCustomer(c.name);
+                      const billedYTD = billedYTDfor(custInvoices);
+                      const openAR = openARfor(custInvoices);
+                      const lastDate = custInvoices[0]?.date || null;
                       const overdueAR = custInvoices.filter(i=>i.payment_status!=="collected"&&i.payment_status!=="paid"&&i.due_date&&i.due_date<new Date().toISOString().slice(0,10)).reduce((s,i)=>s+i.amount,0);
                       return (
                         <div key={c.id||c.name} style={{ background:"#FFFFFF", border:`1px solid ${overdueAR>0?"#DC262633":"#E5E7EB"}`, borderRadius:14, overflow:"hidden" }}>
                           <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
-                            <div style={{ width:44,height:44,borderRadius:12,background:vendorColor(c.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(c.name)}</div>
-                            <div style={{ flex:1, minWidth:0 }}>
+                            <div onClick={()=>setSelCustomer(c)} style={{ width:44,height:44,borderRadius:12,background:vendorColor(c.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#fff",flexShrink:0, cursor:"pointer" }}>{initials(c.name)}</div>
+                            <div onClick={()=>setSelCustomer(c)} style={{ flex:1, minWidth:0, cursor:"pointer" }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                                 <span style={{ fontSize:15, fontWeight:600 }}>{c.name}</span>
                                 {c.fromContact && <span style={{ fontSize:10, background:"#ECFDF5", color:"#059669", borderRadius:20, padding:"2px 7px" }}>Contact</span>}
@@ -71,18 +147,18 @@ export default function CustomersView() {
                                 {(c.tags||[]).map(t=><span key={t} style={{ fontSize:10, background:"#E5E7EB", color:"#6B7280", borderRadius:20, padding:"2px 7px" }}>{t}</span>)}
                               </div>
                               <div style={{ fontSize:12, color:"#6B7280", marginTop:3 }}>
-                                {custInvoices.length>0 ? `${custInvoices.length} invoice${custInvoices.length!==1?"s":""}` : "No invoices yet"}
+                                {custInvoices.length>0 ? `${custInvoices.length} invoice${custInvoices.length!==1?"s":""}${lastDate?` · last ${lastDate}`:""}` : "No invoices yet"}
                                 {c.email && <span style={{ marginLeft:10 }}>✉ {c.email}</span>}
                                 {c.phone && <span style={{ marginLeft:10 }}>📞 {c.phone}</span>}
                               </div>
                             </div>
                             <div style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
-                              {totalRevenue>0 && <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:11, color:"#6B7280" }}>TOTAL REVENUE</div>
-                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#059669" }}>{fmt(totalRevenue)}</div>
+                              {billedYTD>0 && <div style={{ textAlign:"right" }}>
+                                <div style={{ fontSize:11, color:"#6B7280" }}>BILLED YTD</div>
+                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#059669" }}>{fmt(billedYTD)}</div>
                               </div>}
                               {openAR>0 && <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:11, color:"#6B7280" }}>OPEN AR</div>
+                                <div style={{ fontSize:11, color:"#6B7280" }}>OPEN RECEIVABLES</div>
                                 <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:overdueAR>0?"#DC2626":"#D97706" }}>{fmt(openAR)}</div>
                               </div>}
                               <button onClick={()=>isEditing?saveEdit(c):startEdit(c)} style={{ padding:"7px 14px", borderRadius:8, fontSize:12, background:isEditing?"linear-gradient(135deg,#D1FAE5,#059669)":"#E5E7EB", border:"1px solid #D1D5DB", color:isEditing?"#059669":"#6B7280", cursor:"pointer" }}>

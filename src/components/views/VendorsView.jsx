@@ -9,6 +9,100 @@ export default function VendorsView() {
             const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const selectedContact = vendorsSelectedContact; const setSelectedContact = setVendorsSelectedContact;
             const editingId = vendorsEditingId; const setEditingId = setVendorsEditingId; const editDraft = vendorsEditDraft; const setEditDraft = setVendorsEditDraft;
+            const yr = new Date().getFullYear();
+            const txnsForVendor = name => invoices
+              .filter(i => i.vendor?.toLowerCase()===(name||"").toLowerCase() && (glIsExpense(i.gl_code)||i.type==="expense") && i.status!=="voided")
+              .sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+            const paidYTDfor = txns => txns.filter(i=>i.payment_status==="paid" && String(i.date||"").startsWith(String(yr))).reduce((s,i)=>s+(i.amount||0),0);
+            const openAPfor = txns => txns.filter(i=>i.payment_status!=="paid").reduce((s,i)=>s+(i.amount||0),0);
+            const status1099 = v => v.is_1099_exempt ? {label:"1099 exempt", color:"#6B7280"} : v.is1099 ? {label:"1099 required", color:"#D97706"} : {label:"Not flagged", color:"#9CA3AF"};
+
+            // ── VENDOR DETAIL DRILL ──
+            if (selectedContact) {
+              const v = selectedContact;
+              const vTxns = txnsForVendor(v.name);
+              const paidYTD = paidYTDfor(vTxns);
+              const openAP = openAPfor(vTxns);
+              const lastDate = vTxns[0]?.date || "—";
+              const payHistory = vTxns.filter(i=>i.payment_status==="paid");
+              const st = status1099(v);
+              const infoRows = [
+                ["Email", v.email], ["Phone", v.phone], ["Website", v.website],
+                ["Mailing address", v.mailing_address], ["Payment terms", v.payment_terms],
+                ["Tax ID / EIN", v.tax_id || v.ein || v.ein_ssn], ["Account #", v.vendor_account_number],
+              ].filter(([,val])=>val);
+              return (
+                <div>
+                  <button onClick={()=>setSelectedContact(null)} style={{ background:"transparent", border:"none", color:"#4F46E5", cursor:"pointer", fontSize:13, padding:0, marginBottom:16 }}>← All vendors</button>
+                  <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+                    <div style={{ width:52,height:52,borderRadius:14,background:vendorColor(v.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(v.name)}</div>
+                    <div>
+                      <h1 style={{ fontSize:26, fontWeight:600, margin:0, letterSpacing:-0.5 }}>{v.name}</h1>
+                      <div style={{ display:"flex", gap:8, marginTop:6, alignItems:"center" }}>
+                        <span style={{ fontSize:11, fontWeight:600, color:st.color, background:st.color+"18", border:`1px solid ${st.color}44`, borderRadius:20, padding:"3px 10px" }}>{st.label}</span>
+                        {v.fromContact && <span onClick={()=>{ setContacts(prev=>prev.map(c=>c.id===v.id?{...c,is1099:!c.is1099}:c)); setSelectedContact(s=>({...s,is1099:!s.is1099})); logAudit("1099_flagged",`${v.name} 1099 flag toggled`); }} style={{ fontSize:11, color:"#4F46E5", cursor:"pointer", border:"1px solid #4F46E533", borderRadius:20, padding:"3px 10px" }}>{v.is1099?"Unflag 1099":"Flag for 1099"}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stat cards */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
+                    {[["Paid YTD", fmt(paidYTD), "#DC2626"],["Open payables", fmt(openAP), openAP>0?"#D97706":"#059669"],["Last transaction", lastDate, "#111827"]].map(([k,val,col])=>(
+                      <div key={k} style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:12, padding:"14px 16px" }}>
+                        <div style={{ fontSize:11, color:"#6B7280", marginBottom:5 }}>{k}</div>
+                        <div style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:col }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Contact info */}
+                  <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:"16px 20px", marginBottom:20 }}>
+                    <div style={{ fontSize:11, letterSpacing:1, color:"#4F46E5", fontWeight:600, marginBottom:12 }}>CONTACT INFO</div>
+                    {infoRows.length===0 ? <div style={{ fontSize:13, color:"#9CA3AF" }}>No contact details captured yet — they fill in automatically from uploaded invoices.</div> : (
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"10px 24px" }}>
+                        {infoRows.map(([k,val])=>(
+                          <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:12, fontSize:13, borderBottom:"1px solid #F3F4F6", paddingBottom:6 }}>
+                            <span style={{ color:"#6B7280" }}>{k}</span><span style={{ color:"#111827", textAlign:"right", wordBreak:"break-word" }}>{val}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Transactions */}
+                  <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden", marginBottom:20 }}>
+                    <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid #F3F4F6" }}>All transactions ({vTxns.length})</div>
+                    {vTxns.length===0 ? <div style={{ padding:32, textAlign:"center", color:"#9CA3AF", fontSize:13 }}>No transactions with this vendor yet.</div> : (
+                      <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                        <thead><tr style={{ background:"#F9FAFB" }}>{["Date","Description","GL Account","Status","Amount"].map((h,i)=><th key={i} style={{ padding:"9px 16px", textAlign:i===4?"right":"left", fontSize:10, color:"#6B7280", letterSpacing:1, fontWeight:600, borderBottom:"1px solid #E5E7EB" }}>{h.toUpperCase()}</th>)}</tr></thead>
+                        <tbody>
+                          {vTxns.map((i,idx)=>(
+                            <tr key={i.id||idx} style={{ borderBottom:"1px solid #F3F4F6" }}>
+                              <td style={{ padding:"9px 16px", fontSize:12, color:"#6B7280", whiteSpace:"nowrap" }}>{i.date}</td>
+                              <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
+                              <td style={{ padding:"9px 16px", fontSize:12, color:"#6B7280" }}>{i.gl_code} {i.gl_name}</td>
+                              <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:i.payment_status==="paid"?"#059669":"#D97706" }}>{i.payment_status==="paid"?"Paid":"Open"}</span></td>
+                              <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(i.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* Payment history */}
+                  <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
+                    <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid #F3F4F6" }}>Payment history ({payHistory.length})</div>
+                    {payHistory.length===0 ? <div style={{ padding:32, textAlign:"center", color:"#9CA3AF", fontSize:13 }}>No payments recorded yet.</div> : payHistory.map((i,idx)=>(
+                      <div key={i.id||idx} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 18px", borderBottom:"1px solid #F3F4F6", fontSize:13 }}>
+                        <div><span style={{ fontWeight:500 }}>{fmt(i.amount)}</span> <span style={{ color:"#6B7280" }}>· {i.description||"payment"}</span></div>
+                        <div style={{ fontSize:12, color:"#6B7280" }}>{i.payment_method_used==="bank_transfer"?"Bank transfer":i.payment_method_used||"paid"}{i.paid_at?` · ${new Date(i.paid_at).toLocaleDateString()}`:i.matched_bank_date?` · ${i.matched_bank_date}`:""}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
 
             // Merge ledger-derived vendors with contact book
             const ledgerVendors = vendorSummary.filter(v => glIsExpense(
@@ -74,15 +168,17 @@ export default function VendorsView() {
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                     {allVendors.map(v => {
                       const isEditing = editingId===(v.id||v.name);
-                      const openAP = invoices.filter(i => i.vendor?.toLowerCase()===v.name?.toLowerCase() && glIsExpense(i.gl_code) && i.payment_status!=="paid").reduce((s,i)=>s+i.amount,0);
-                      const totalSpend = v.ledger?.total || 0;
+                      const vTxns = txnsForVendor(v.name);
+                      const openAP = openAPfor(vTxns);
+                      const paidYTD = paidYTDfor(vTxns);
+                      const lastDate = vTxns[0]?.date || v.ledger?.lastDate || null;
                       const rule = rules.find(r=>r.vendor?.toLowerCase()===v.name?.toLowerCase());
                       return (
                         <div key={v.id||v.name} style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
                           {/* Header row */}
                           <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
-                            <div style={{ width:44,height:44,borderRadius:12,background:vendorColor(v.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(v.name)}</div>
-                            <div style={{ flex:1, minWidth:0 }}>
+                            <div onClick={()=>setSelectedContact(v)} style={{ width:44,height:44,borderRadius:12,background:vendorColor(v.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#fff",flexShrink:0, cursor:"pointer" }}>{initials(v.name)}</div>
+                            <div onClick={()=>setSelectedContact(v)} style={{ flex:1, minWidth:0, cursor:"pointer" }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                                 <span style={{ fontSize:15, fontWeight:600 }}>{v.name}</span>
                                 {v.fromContact && <span style={{ fontSize:10, background:"#F3F4F6", color:"#4F46E5", borderRadius:20, padding:"2px 7px" }}>Contact</span>}
@@ -92,18 +188,18 @@ export default function VendorsView() {
                                 {(v.tags||[]).map(t=><span key={t} style={{ fontSize:10, background:"#E5E7EB", color:"#6B7280", borderRadius:20, padding:"2px 7px" }}>{t}</span>)}
                               </div>
                               <div style={{ fontSize:12, color:"#6B7280", marginTop:3 }}>
-                                {v.ledger ? `${v.ledger.count} invoice${v.ledger.count!==1?"s":""} · last ${v.ledger.lastDate}` : "No invoices yet"}
+                                {vTxns.length>0 ? `${vTxns.length} transaction${vTxns.length!==1?"s":""}${lastDate?` · last ${lastDate}`:""}` : "No transactions yet"}
                                 {v.email && <span style={{ marginLeft:10 }}>✉ {v.email}</span>}
                                 {v.phone && <span style={{ marginLeft:10 }}>📞 {v.phone}</span>}
                               </div>
                             </div>
                             <div style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
-                              {totalSpend>0 && <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:11, color:"#6B7280" }}>TOTAL SPEND</div>
-                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>{fmt(totalSpend)}</div>
+                              {paidYTD>0 && <div style={{ textAlign:"right" }}>
+                                <div style={{ fontSize:11, color:"#6B7280" }}>PAID YTD</div>
+                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>{fmt(paidYTD)}</div>
                               </div>}
                               {openAP>0 && <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:11, color:"#6B7280" }}>OPEN AP</div>
+                                <div style={{ fontSize:11, color:"#6B7280" }}>OPEN PAYABLES</div>
                                 <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#D97706" }}>{fmt(openAP)}</div>
                               </div>}
                               <button onClick={()=>isEditing?saveEdit(v):startEdit(v)} style={{ padding:"7px 14px", borderRadius:8, fontSize:12, background:isEditing?"linear-gradient(135deg,#D1FAE5,#059669)":"#E5E7EB", border:"1px solid #D1D5DB", color:isEditing?"#059669":"#6B7280", cursor:"pointer" }}>
