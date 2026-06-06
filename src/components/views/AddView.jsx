@@ -17,7 +17,7 @@ export default function AddView() {
                 <div style={{ display:"flex", gap:10, marginBottom:20 }}>
                   {[
                     { label:"📄 Invoice", active:true },
-                    { label:"🏦 Bank Statement", onClick:()=>setView("bank") },
+                    { label:"🏦 Bank Statement", onClick:()=>setView("home") },
                     { label:"📋 Contract / Agreement", onClick:()=>{ setView("contracts"); setContractView("list"); } },
                   ].map(btn=>(
                     <button key={btn.label} onClick={btn.onClick} style={{ padding:"8px 16px", borderRadius:20, fontSize:12, background:btn.active?"#4F46E5":"transparent", border:`1px solid ${btn.active?"#4F46E5":"#D1D5DB"}`, color:btn.active?"#F3F4F6":"#6B7280", cursor:btn.onClick?"pointer":"default", fontWeight:btn.active?600:400 }}>{btn.label}</button>

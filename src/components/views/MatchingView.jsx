@@ -225,7 +225,7 @@ export default function MatchingView() {
                     <div style={{ fontSize:32, marginBottom:12 }}>⇋</div>
                     <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No open items to match</div>
                     <div style={{ fontSize:13, color:"#6B7280", marginBottom:20 }}>Upload a bank statement to automatically match payments against open invoices and accruals.</div>
-                    <button onClick={()=>setView("bank")} style={{ background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", borderRadius:10, padding:"10px 24px", fontSize:13, cursor:"pointer" }}>Go to Bank Feed →</button>
+                    <button onClick={()=>setView("home")} style={{ background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", borderRadius:10, padding:"10px 24px", fontSize:13, cursor:"pointer" }}>Upload a statement →</button>
                   </div>
                 )}
               </div>

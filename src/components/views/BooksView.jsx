@@ -84,14 +84,13 @@ export default function BooksView() {
         <div style={{ fontSize:13, color:"#6B7280", marginTop:6 }}>Every entry in one place. Click a row for full detail, AI reasoning, and actions.</div>
       </div>
 
-      {/* Search + filters + Match Bank */}
+      {/* Search + filters */}
       <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendor, amount, date, description…"
           style={{ flex:"1 1 280px", minWidth:0, background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:10, padding:"10px 14px", fontSize:14, color:"#111827", outline:"none" }} />
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
         </div>
-        <button onClick={()=>setView("recon")} style={{ padding:"9px 16px", borderRadius:9, fontSize:13, fontWeight:600, background:"#EEF2FF", border:"1px solid #4F46E533", color:"#4F46E5", cursor:"pointer", whiteSpace:"nowrap" }}>🏦 Match Bank</button>
       </div>
 
       {/* ── CONTRACTS TABLE (filter = contracts) ── */}
@@ -196,8 +195,8 @@ export default function BooksView() {
                 const color = r.status==="in_progress"?"#D97706":od?"#DC2626":"#059669";
                 const label = r.status==="in_progress"?"In Progress":od?"Overdue":"Complete";
                 return (
-                  <div key={r.id} onClick={()=>setView("recon")} onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 18px", borderTop:"1px solid #F3F4F6", cursor:"pointer" }}>
+                  <div key={r.id} onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 18px", borderTop:"1px solid #F3F4F6" }}>
                     <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {r.period_start} → {r.period_end}</div><div style={{ fontSize:11, color:"#6B7280" }}>{fmt(r.statement_balance)}{r.completed_at?` · ${new Date(r.completed_at).toLocaleDateString()}`:""}</div></div>
                     <span style={{ fontSize:11, fontWeight:600, color, background:color+"14", border:`1px solid ${color}33`, borderRadius:20, padding:"3px 10px" }}>{label}</span>
                   </div>
@@ -291,6 +290,7 @@ export default function BooksView() {
                 ["Type", isRevenue(sel)?"Revenue":"Expense"],
                 ["AI confidence", sel.confidence!=null ? `${sel.confidence}%` : "—"],
                 sel.payment_status==="paid" ? ["Payment", `${methodLabel(sel.payment_method_used)}${sel.paid_at?` · ${new Date(sel.paid_at).toLocaleDateString()}`:""}${sel.payment_reference?` · ${sel.payment_reference}`:""}`] : null,
+                (sel.payment_status==="paid"||sel.payment_status==="collected") ? ["How paid", (sel.auto_matched || sel.payment_method_used==="bank_transfer") ? `Auto-matched from bank statement${sel.matched_bank_date?` (${sel.matched_bank_date})`:""}` : "Manually marked paid"] : null,
               ].filter(Boolean).map(([k,v])=>(
                 <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:14, padding:"11px 0", borderBottom:"1px solid #F3F4F6", fontSize:13 }}>
                   <span style={{ color:"#6B7280", flexShrink:0 }}>{k}</span>
