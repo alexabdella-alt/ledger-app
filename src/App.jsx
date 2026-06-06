@@ -247,7 +247,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     };
     console.log("[documents] storeDocument → inserting:", payload);
     supabase.from("documents").insert(payload).select("id").single().then(({ data, error }) => {
-      if (error) { console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error); return; }
+      if (error) {
+        console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error);
+        showNotification(`Document not saved to cloud: ${error.message || "missing documents table — apply migration 002"}`, "error");
+        return;
+      }
       console.log("[documents] insert OK, db id:", data?.id);
       // Swap the temp client id for the DB id so it matches on next reload.
       if (data?.id) setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data.id } : d));

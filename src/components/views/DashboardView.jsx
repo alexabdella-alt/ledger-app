@@ -8,8 +8,161 @@ export default function DashboardView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
+  const [dashDrill, setDashDrill] = React.useState(null); // unified dashboard drill-down
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
   const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "#6366F1" : "#E5E7EB"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
+
+  // ── UNIFIED DASHBOARD DRILL-DOWN (breadcrumbed, in-place) ──
+  if (dashDrill) {
+    const d = dashDrill;
+    const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
+    const today = new Date();
+    const exp = invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided");
+    const rev = invoices.filter(i => glIsRevenue(i.gl_code) && i.status!=="voided");
+    const openAP = (getOpenAP ? getOpenAP(invoices) : exp.filter(i=>i.payment_status!=="paid"));
+    const openAR = (getOpenAR ? getOpenAR(invoices) : rev.filter(i=>i.payment_status!=="collected"));
+
+    const crumbs = [{ label:"Dashboard", to:null }];
+    if (d.type==="revenue") crumbs.push({ label:"Revenue", to:{type:"revenue"} });
+    if (d.type==="net")     crumbs.push({ label:"Net Income", to:{type:"net"} });
+    if (d.type==="cash")    crumbs.push({ label:"Cash & Bank", to:{type:"cash"} });
+    if (d.type==="ap")      crumbs.push({ label:"Accounts Payable", to:{type:"ap"} });
+    if (d.type==="ar")      crumbs.push({ label:"Accounts Receivable", to:{type:"ar"} });
+    if (d.type==="burn")    { crumbs.push({ label:"Burn Rate", to:{type:"burn"} }); if (d.month) crumbs.push({ label:d.monthLabel||d.month, to:d }); }
+    if (d.type==="expenses"){ crumbs.push({ label:"Expenses", to:{type:"expenses"} }); if (d.cat) crumbs.push({ label:d.cat, to:{type:"expenses",cat:d.cat} }); if (d.vendor) crumbs.push({ label:d.vendor, to:d }); }
+    const back = crumbs.length>1 ? crumbs[crumbs.length-2].to : null;
+
+    const txnRows = (arr, color="#111827") => arr.length===0
+      ? <div style={{ padding:"28px 18px", fontSize:13, color:"#6B7280", textAlign:"center" }}>No transactions here.</div>
+      : [...arr].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(inv=>(
+          <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}
+            onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+            style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, padding:"11px 18px", cursor:"pointer", borderTop:"1px solid #F3F4F6" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
+              <span style={{ fontSize:11, color:"#6B7280", fontFamily:"'DM Mono',monospace", width:80, flexShrink:0 }}>{inv.date||"—"}</span>
+              <span style={{ width:28, height:28, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</span>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:500, color:"#111827", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"—"}</div>
+                <div style={{ fontSize:11, color:"#6B7280", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.description||"—"}</div>
+              </div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+              <span style={{ fontSize:10, color:"#6B7280", fontFamily:"monospace", background:"#F3F4F6", padding:"1px 6px", borderRadius:4 }}>{inv.gl_code}</span>
+              <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color, width:104, textAlign:"right" }}>{fmt(inv.amount)}</span>
+            </div>
+          </div>
+        ));
+
+    const clickableRow = (key, left, right, onClick) => (
+      <div key={key} onClick={onClick} onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+        style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, padding:"13px 18px", cursor:"pointer", borderTop:"1px solid #F3F4F6" }}>
+        {left}
+        <span style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>{right}<span style={{ color:"#9CA3AF" }}>›</span></span>
+      </div>
+    );
+
+    let title, subtitle, body;
+    if (d.type==="revenue") {
+      title = "Revenue transactions"; subtitle = `${rev.length} entr${rev.length!==1?"ies":"y"} · ${fmt(rev.reduce((s,i)=>s+i.amount,0))}`;
+      body = txnRows(rev, "#059669");
+    } else if (d.type==="expenses" && !d.cat) {
+      const cats = Object.values(exp.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0,count:0}; a[k].total+=i.amount; a[k].count++; return a;},{})).sort((x,y)=>y.total-x.total);
+      title = "Expenses by category"; subtitle = `${cats.length} categories · ${fmt(exp.reduce((s,i)=>s+i.amount,0))}`;
+      body = cats.length===0 ? <div style={{ padding:"28px 18px", fontSize:13, color:"#6B7280", textAlign:"center" }}>No expenses yet.</div> :
+        cats.map(c=>clickableRow(c.name,
+          <span style={{ fontSize:13, color:"#374151" }}>{c.name} <span style={{ fontSize:11, color:"#9CA3AF" }}>· {c.count}</span></span>,
+          <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>{fmt(c.total)}</span>,
+          ()=>setDashDrill({type:"expenses",cat:c.name})));
+    } else if (d.type==="expenses" && d.cat && !d.vendor) {
+      const inCat = exp.filter(i=>(i.gl_name||"Uncoded")===d.cat);
+      const vends = Object.values(inCat.reduce((a,i)=>{const v=i.vendor||"Unknown"; if(!a[v])a[v]={vendor:v,total:0,count:0}; a[v].total+=i.amount; a[v].count++; return a;},{})).sort((x,y)=>y.total-x.total);
+      title = `${d.cat} — by vendor`; subtitle = `${vends.length} vendors · ${fmt(inCat.reduce((s,i)=>s+i.amount,0))}`;
+      body = vends.map(v=>clickableRow(v.vendor,
+        <span style={{ fontSize:13, color:"#374151", display:"flex", alignItems:"center", gap:9 }}><span style={{ width:24, height:24, borderRadius:6, background:vendorColor(v.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#fff" }}>{initials(v.vendor)}</span>{v.vendor} <span style={{ fontSize:11, color:"#9CA3AF" }}>· {v.count}</span></span>,
+        <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>{fmt(v.total)}</span>,
+        ()=>setDashDrill({type:"expenses",cat:d.cat,vendor:v.vendor})));
+    } else if (d.type==="expenses" && d.vendor) {
+      const txns = exp.filter(i=>(i.gl_name||"Uncoded")===d.cat && (i.vendor||"Unknown")===d.vendor);
+      title = `${d.vendor} — ${d.cat}`; subtitle = `${txns.length} transactions · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
+      body = txnRows(txns, "#DC2626");
+    } else if (d.type==="net") {
+      const r = rev.reduce((s,i)=>s+i.amount,0), e = exp.reduce((s,i)=>s+i.amount,0);
+      title = "Net income"; subtitle = "Profit & loss summary";
+      body = (<div style={{ padding:"8px 0" }}>
+        {clickableRow("rev", <span style={{ fontSize:14, color:"#374151" }}>Total Revenue</span>, <span style={{ fontSize:14, fontFamily:"'DM Mono',monospace", color:"#059669" }}>{fmt(r)}</span>, ()=>setDashDrill({type:"revenue"}))}
+        {clickableRow("exp", <span style={{ fontSize:14, color:"#374151" }}>Total Expenses</span>, <span style={{ fontSize:14, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>({fmt(e)})</span>, ()=>setDashDrill({type:"expenses"}))}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px", borderTop:"2px solid #E5E7EB", marginTop:4 }}>
+          <span style={{ fontSize:16, fontWeight:700 }}>Net {r-e>=0?"Income":"Loss"}</span>
+          <span style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:r-e>=0?"#059669":"#DC2626" }}>{r-e<0?"-":""}{fmt(r-e)}</span>
+        </div>
+        <div style={{ padding:"12px 18px" }}><button onClick={goReports} style={{ padding:"8px 16px", borderRadius:9, fontSize:12, fontWeight:600, background:"#4F46E5", border:"none", color:"#fff", cursor:"pointer" }}>Open full P&amp;L report →</button></div>
+      </div>);
+    } else if (d.type==="cash") {
+      const cashTxns = invoices.filter(i => (i.source==="bank_feed" || i.payment_status==="paid" || i.payment_status==="collected") && i.status!=="voided");
+      title = "Cash & bank"; subtitle = `${(bankAccounts||[]).length} account${(bankAccounts||[]).length!==1?"s":""} · ${cashTxns.length} cash transactions`;
+      body = (<div>
+        <div style={{ padding:"12px 18px", display:"flex", gap:10, flexWrap:"wrap" }}>
+          {(bankAccounts||[]).length===0 ? <span style={{ fontSize:13, color:"#6B7280" }}>No bank accounts yet — add one in Settings.</span> :
+            (bankAccounts||[]).map((b,i)=>(
+              <div key={b.id||i} onClick={()=>setView("settings")} style={{ cursor:"pointer", border:"1px solid #E5E7EB", borderRadius:10, padding:"10px 14px", background:"#F9FAFB" }}>
+                <div style={{ fontSize:13, fontWeight:600 }}>{b.name||"Account"}</div>
+                <div style={{ fontSize:11, color:"#6B7280" }}>{b.type||"bank"} · Settings ›</div>
+              </div>
+            ))}
+        </div>
+        <div style={{ fontSize:10, letterSpacing:1.5, color:"#6B7280", padding:"6px 18px", borderTop:"1px solid #F3F4F6" }}>RECENT CASH TRANSACTIONS</div>
+        {txnRows(cashTxns.slice(0,40))}
+      </div>);
+    } else if (d.type==="burn" && !d.month) {
+      const months = Array.from({length:6},(_,k)=>{ const dd=new Date(today.getFullYear(), today.getMonth()-k, 1); const key=dd.toISOString().slice(0,7); const total=exp.filter(i=>i.date?.startsWith(key)).reduce((s,i)=>s+i.amount,0); return { key, label: dd.toLocaleDateString("en-US",{month:"long",year:"numeric"}), total }; });
+      const max = Math.max(1,...months.map(m=>m.total));
+      title = "Monthly burn"; subtitle = "Last 6 months — click a month to see its transactions";
+      body = months.map(m=>(
+        <div key={m.key} onClick={()=>setDashDrill({type:"burn",month:m.key,monthLabel:m.label})} onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+          style={{ padding:"12px 18px", cursor:"pointer", borderTop:"1px solid #F3F4F6" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+            <span style={{ fontSize:13, color:"#374151" }}>{m.label}</span>
+            <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>{fmt(m.total)} ›</span>
+          </div>
+          <div style={{ height:5, background:"#F3F4F6", borderRadius:3 }}><div style={{ height:"100%", width:`${Math.min(100,m.total/max*100)}%`, background:"linear-gradient(90deg,#DC2626,#D97706)", borderRadius:3 }} /></div>
+        </div>
+      ));
+    } else if (d.type==="burn" && d.month) {
+      const txns = exp.filter(i=>i.date?.startsWith(d.month));
+      title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${txns.length} transactions · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
+      body = txnRows(txns, "#DC2626");
+    } else if (d.type==="ap") {
+      title = "Open accounts payable"; subtitle = `${openAP.length} unpaid · ${fmt(openAP.reduce((s,i)=>s+i.amount,0))}`;
+      body = txnRows(openAP, "#DC2626");
+    } else if (d.type==="ar") {
+      title = "Open accounts receivable"; subtitle = `${openAR.length} uncollected · ${fmt(openAR.reduce((s,i)=>s+i.amount,0))}`;
+      body = txnRows(openAR, "#059669");
+    }
+
+    return (
+      <div className="sc-rise">
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16, flexWrap:"wrap" }}>
+          <button onClick={()=>setDashDrill(back)} style={{ padding:"7px 14px", borderRadius:9, fontSize:13, fontWeight:600, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", cursor:"pointer", boxShadow:"0 1px 3px rgba(0,0,0,.08)" }}>← Back</button>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", fontSize:13 }}>
+            {crumbs.map((c,i)=>(
+              <span key={i} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span onClick={()=>setDashDrill(c.to)} style={{ cursor:"pointer", color: i===crumbs.length-1?"#111827":"#6B7280", fontWeight: i===crumbs.length-1?600:400 }}>{c.label}</span>
+                {i<crumbs.length-1 && <span style={{ color:"#9CA3AF" }}>›</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
+          <div style={{ padding:"16px 18px", borderBottom:"1px solid #F3F4F6" }}>
+            <div style={{ fontSize:15, fontWeight:600 }}>{title}</div>
+            <div style={{ fontSize:12, color:"#6B7280", marginTop:2 }}>{subtitle}</div>
+          </div>
+          {body}
+        </div>
+      </div>
+    );
+  }
+
   return (
             <div>
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
@@ -129,22 +282,24 @@ export default function DashboardView() {
               {(() => {
                 const ap = invoices.filter(i => (glIsExpense(i.gl_code)||i.type==="expense") && i.status!=="voided");
                 const unpaid = ap.filter(i => i.payment_status!=="paid");
-                if (unpaid.length===0) return null;
-                const wk = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+                const openAR = getOpenAR ? getOpenAR(invoices) : invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.status!=="voided");
+                if (unpaid.length===0 && openAR.length===0) return null;
                 const today = new Date().toISOString().slice(0,10);
                 const total = unpaid.reduce((s,i)=>s+i.amount,0);
-                const dueWk = unpaid.filter(i=>i.due_date && i.due_date<=wk).reduce((s,i)=>s+i.amount,0);
                 const overdue = unpaid.filter(i=>i.due_date && i.due_date<today);
+                const arTotal = openAR.reduce((s,i)=>s+i.amount,0);
                 return (
                   <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
-                    <div onClick={()=>{ setView("ap"); setApView("unpaid"); }} style={{ flex:"1 1 280px", cursor:"pointer", background:"#FFFFFF", border:"1px solid #E5E7EB", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#4F46E5"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E5E7EB"}>
-                      <div><div style={{ fontSize:13, fontWeight:600, color:"#111827" }}>🧾 {unpaid.length} unpaid bill{unpaid.length!==1?"s":""} · ${total.toLocaleString("en-US",{maximumFractionDigits:0})} outstanding</div><div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>${dueWk.toLocaleString("en-US",{maximumFractionDigits:0})} due this week — go to Money Out to pay</div></div>
-                      <span style={{ fontSize:12, color:"#4F46E5", fontWeight:600 }}>Review & pay →</span>
-                    </div>
-                    {overdue.length>0 && (
-                      <div onClick={()=>{ setView("ap"); setApView("unpaid"); }} style={{ flex:"1 1 220px", cursor:"pointer", background:"#FEF2F2", border:"1px solid #DC262633", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#DC2626"} onMouseLeave={e=>e.currentTarget.style.borderColor="#DC262633"}>
-                        <div><div style={{ fontSize:13, fontWeight:600, color:"#DC2626" }}>⚠ {overdue.length} overdue bill{overdue.length!==1?"s":""}</div><div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>${overdue.reduce((s,i)=>s+i.amount,0).toLocaleString("en-US",{maximumFractionDigits:0})} past due</div></div>
-                        <span style={{ fontSize:12, color:"#DC2626" }}>Pay now →</span>
+                    {unpaid.length>0 && (
+                      <div onClick={()=>setDashDrill({type:"ap"})} style={{ flex:"1 1 280px", cursor:"pointer", background:"#FFFFFF", border:"1px solid #E5E7EB", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#4F46E5"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E5E7EB"}>
+                        <div><div style={{ fontSize:13, fontWeight:600, color:"#111827" }}>🧾 {unpaid.length} unpaid bill{unpaid.length!==1?"s":""} · ${total.toLocaleString("en-US",{maximumFractionDigits:0})} payable</div><div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>{overdue.length>0?`⚠ ${overdue.length} overdue · `:""}Drill into open payables</div></div>
+                        <span style={{ fontSize:12, color:"#4F46E5", fontWeight:600 }}>Open AP →</span>
+                      </div>
+                    )}
+                    {openAR.length>0 && (
+                      <div onClick={()=>setDashDrill({type:"ar"})} style={{ flex:"1 1 280px", cursor:"pointer", background:"#FFFFFF", border:"1px solid #E5E7EB", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#059669"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E5E7EB"}>
+                        <div><div style={{ fontSize:13, fontWeight:600, color:"#111827" }}>💰 {openAR.length} open receivable{openAR.length!==1?"s":""} · ${arTotal.toLocaleString("en-US",{maximumFractionDigits:0})} due in</div><div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>Drill into money owed to you</div></div>
+                        <span style={{ fontSize:12, color:"#059669", fontWeight:600 }}>Open AR →</span>
                       </div>
                     )}
                   </div>
@@ -294,7 +449,7 @@ export default function DashboardView() {
                 return (
                   <div style={{marginBottom:24}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
-                      <div onClick={()=>setBurnModalOpen(true)} title="View monthly burn breakdown"
+                      <div onClick={()=>setDashDrill({type:"burn"})} title="Drill into monthly burn"
                         onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor="#DC262633";e.currentTarget.style.transform="none";}}
                         style={{background:"#FEF2F2",border:"1px solid #DC262633",borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -311,7 +466,7 @@ export default function DashboardView() {
                         <div style={{fontSize:26,fontWeight:700,color:netBurn>0?"#DC2626":"#059669",fontFamily:"'DM Mono',monospace"}}>{netBurn>0?"-":"+"} ${Math.abs(netBurn).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
                         <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>{revenueThisMonth>0?`$${revenueThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})} revenue offset`:"No revenue this month"}</div>
                       </div>
-                      <div onClick={()=>setBurnModalOpen(true)} title="View runway & burn breakdown"
+                      <div onClick={()=>setDashDrill({type:"burn"})} title="Drill into runway & burn"
                         onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor=`${runwayColor}33`;e.currentTarget.style.transform="none";}}
                         style={{background:runway!==null&&runway<=3?"#FEF2F2":runway!==null&&runway<=6?"#FEF3C7":"#ECFDF5",border:`1px solid ${runwayColor}33`,borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -406,7 +561,7 @@ export default function DashboardView() {
                           );
                         })()}
                       </div>
-                      <div onClick={()=>setView("settings")} title="Manage bank accounts in Settings"
+                      <div onClick={()=>setDashDrill({type:"cash"})} title="Drill into cash & bank"
                         onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
                         style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:"18px 20px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -483,16 +638,16 @@ export default function DashboardView() {
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:16, marginBottom:24 }}>
                 {[
-                  { label:"Total Revenue", value:totalRevenue, color:"#059669" },
-                  { label:"Total Expenses", value:totalExpenses, color:"#DC2626" },
-                  { label:"Net Income", value:netIncome, color:netIncome>=0?"#059669":"#DC2626" },
+                  { label:"Total Revenue", value:totalRevenue, color:"#059669", drill:{type:"revenue"}, hint:"Transactions ›" },
+                  { label:"Total Expenses", value:totalExpenses, color:"#DC2626", drill:{type:"expenses"}, hint:"Breakdown ›" },
+                  { label:"Net Income", value:netIncome, color:netIncome>=0?"#059669":"#DC2626", drill:{type:"net"}, hint:"P&L ›" },
                 ].map(card => (
-                  <div key={card.label} onClick={goReports} title="Open the P&L report"
+                  <div key={card.label} onClick={()=>setDashDrill(card.drill)} title={`Drill into ${card.label}`}
                     onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
                     style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:"22px 26px", cursor:"pointer", transition:"transform .16s, border-color .2s" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                       <div style={{ fontSize:11, color:"#6B7280", letterSpacing:1 }}>{card.label.toUpperCase()}</div>
-                      <span style={{ fontSize:11, color:"#6B7280" }}>P&amp;L ›</span>
+                      <span style={{ fontSize:11, color:"#4F46E5", fontWeight:600 }}>{card.hint}</span>
                     </div>
                     <div style={{ fontSize:28, fontWeight:600, color:card.color, fontFamily:"'DM Mono', monospace" }}>
                       {netIncome<0&&card.label==="Net Income"?"-":""}${Math.abs(card.value).toLocaleString("en-US",{minimumFractionDigits:2})}
