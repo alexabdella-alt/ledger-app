@@ -71,10 +71,12 @@ export function deductionBreakdown(invoices, year = new Date().getFullYear()) {
 
   return [
     { key: "software", label: "Software & subscriptions", amount: sumCode("6500"), categorized: true, hint: "Technology & Software (6500)" },
-    { key: "proservices", label: "Professional services (legal, accounting)", amount: sumCode("5800"), categorized: true, hint: "Professional Services (5800)" },
-    { key: "marketing", label: "Marketing & advertising", amount: sumCode("5400"), categorized: true, hint: "Marketing & Advertising (5400)" },
-    { key: "rent", label: "Rent & occupancy", amount: sumCode("5200"), categorized: true, hint: "Rent & Occupancy (5200)" },
-    { key: "insurance", label: "Insurance premiums", amount: sumCode("5700"), categorized: true, hint: "Insurance (5700)" },
+    { key: "proservices", label: "Professional services (legal, accounting)", amount: sumCode("6800"), categorized: true, hint: "Professional Services (6800)" },
+    { key: "marketing", label: "Marketing & advertising", amount: sumCode("6300"), categorized: true, hint: "Marketing & Advertising (6300)" },
+    { key: "rent", label: "Rent & occupancy", amount: sumCode("6100"), categorized: true, hint: "Rent & Occupancy (6100)" },
+    { key: "utilities", label: "Utilities", amount: sumCode("6200"), categorized: true, hint: "Utilities (6200)" },
+    { key: "insurance", label: "Insurance premiums", amount: sumCode("6700"), categorized: true, hint: "Insurance (6700)" },
+    { key: "salaries", label: "Salaries & wages", amount: sumCode("6000"), categorized: true, hint: "Salaries & Wages (6000)" },
     { key: "supplies", label: "Office supplies & de minimis equipment", amount: sumCode("6600"), categorized: true, hint: "Office Supplies (6600)" },
     { key: "meals", label: "Business meals (50% deductible)", amount: meals * 0.5, raw: meals, categorized: meals > 0, hint: "50% of meal spend" },
     { key: "vehicle", label: "Vehicle / mileage", amount: vehicle, categorized: vehicle > 0, hint: "Detected from fuel/auto descriptions" },
