@@ -931,7 +931,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
   const showNotification = (msg, type="success") => {
     setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 3500);
+    // Errors are easy to miss in 3.5s and are usually action-worthy — keep them up longer.
+    setTimeout(() => setNotification(null), type==="error" ? 9000 : 3500);
   };
 
   const applyRule = (inv, ruleList) => {
@@ -1476,21 +1477,38 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
             .reduce((s,inv)=>s+Math.abs(inv.amount||0), 0);
 
           // Persist a reconciliation record (table stays — now reached via the upload flow).
+          // History is audit-critical, so retry once before giving up and surface a
+          // visible error to the user rather than swallowing the failure.
           const txnDates = withRules.map(t=>t.date).filter(Boolean).sort();
-          try {
-            const { error: recErr } = await supabase.from("reconciliations").insert({
-              company_id: currentCompany.id, account_name: "Bank statement upload",
-              period_start: txnDates[0] || new Date().toISOString().slice(0,10),
-              period_end: txnDates[txnDates.length-1] || new Date().toISOString().slice(0,10),
-              statement_balance: 0, books_balance: 0, difference: 0,
-              status: queue.length > 0 ? "needs_review" : "complete",
-              matched_transactions: autoCleared.map(m => ({ bank_txn: m.bank_txn, invoice_ids: m.invoice_ids, confidence: m.confidence })),
-              unmatched_bank: newInvoices.map(i => ({ vendor: i.vendor, amount: i.amount, date: i.date, gl_name: i.gl_name })),
-              completed_at: new Date().toISOString(), completed_by: session?.user?.email || null,
-            });
-            if (recErr) console.warn("[reconciliations] save:", recErr.message);
-          } catch(e) { console.warn("[reconciliations] save failed:", e?.message||e); }
-          logAudit("bank_reconciled", `Bank statement: matched ${matchedCount} of ${txnTotal} transactions · ${newInvoices.length} new booked · $${stillOpenTotal.toFixed(2)} open items remain`);
+          const reconRecord = {
+            company_id: currentCompany.id, account_name: "Bank statement upload",
+            period_start: txnDates[0] || new Date().toISOString().slice(0,10),
+            period_end: txnDates[txnDates.length-1] || new Date().toISOString().slice(0,10),
+            statement_balance: 0, books_balance: 0, difference: 0,
+            status: queue.length > 0 ? "needs_review" : "complete",
+            matched_transactions: autoCleared.map(m => ({ bank_txn: m.bank_txn, invoice_ids: m.invoice_ids, confidence: m.confidence })),
+            unmatched_bank: newInvoices.map(i => ({ vendor: i.vendor, amount: i.amount, date: i.date, gl_name: i.gl_name })),
+            completed_at: new Date().toISOString(), completed_by: session?.user?.email || null,
+          };
+          const saveReconRecord = async () => {
+            try {
+              const { error } = await supabase.from("reconciliations").insert(reconRecord);
+              return error ? (error.message || "insert error") : null;
+            } catch(e) { return e?.message || String(e); }
+          };
+          let recSaveErr = await saveReconRecord();
+          if (recSaveErr) {
+            console.warn("[reconciliations] save failed, retrying once:", recSaveErr);
+            await new Promise(r => setTimeout(r, 800));
+            recSaveErr = await saveReconRecord();
+          }
+          if (recSaveErr) {
+            console.error("[reconciliations] save failed after retry:", recSaveErr);
+            logAudit("reconciliation_save_failed", `Reconciliation record could not be saved after matching ${matchedCount} of ${txnTotal} transactions: ${recSaveErr}`);
+            showNotification("Your transactions were matched successfully but we couldn't save the reconciliation record — please contact support.", "error");
+          } else {
+            logAudit("bank_reconciled", `Bank statement: matched ${matchedCount} of ${txnTotal} transactions · ${newInvoices.length} new booked · $${stillOpenTotal.toFixed(2)} open items remain`);
+          }
 
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
             reconciliation: true, txnCount: txnTotal, matchedCount, newBooked: newInvoices.length,
