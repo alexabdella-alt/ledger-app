@@ -2,6 +2,7 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor } from "../../lib/format";
+import { getAuthHeaders } from "../../lib/supabase";
 
 // ── CSV helpers (Chase / Bank of America / generic 3-column) ──
 const splitRow = (l) => { const out=[]; let cur="",q=false; for (const ch of l){ if(ch==='"'){q=!q;} else if(ch===","&&!q){out.push(cur);cur="";} else cur+=ch; } out.push(cur); return out.map(s=>s.trim().replace(/^"|"$/g,"")); };
@@ -77,7 +78,7 @@ export default function ReconView() {
   const [outstanding, setOutstanding] = React.useState({});
   const [reconId, setReconId] = React.useState(null);
   const [addQuick, setAddQuick] = React.useState(null);
-  const [manualBank, setManualBank] = React.useState(null);
+  const [processing, setProcessing] = React.useState(false);
   const [autoBanner, setAutoBanner] = React.useState(null);
   const [viewRecId, setViewRecId] = React.useState(null);
   const saveTimer = React.useRef(null);
@@ -190,12 +191,40 @@ export default function ReconView() {
     setStep("done");
   };
 
-  const onCSV = (file) => {
+  const fileToB64 = (file) => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(",")[1]||""); r.onerror=rej; r.readAsDataURL(file); });
+
+  // The only way to start: upload a bank statement (PDF via AI vision, or CSV parsed locally).
+  const processFile = async (file) => {
     if (!file) return;
-    if (!/\.csv$/i.test(file.name)) { showNotification && showNotification("PDF detected — enter the ending balance manually, or upload a CSV to auto-import.", "error"); return; }
-    const r=new FileReader();
-    r.onload=e=>{ const rows=parseBankCSV(String(e.target.result||"")); if(!rows.length){ showNotification && showNotification("Couldn't read that CSV — check it has date, description, amount columns.","error"); return;} setBankTxns(rows.map(x=>({...x,_matchBook:null}))); showNotification && showNotification(`Imported ${rows.length} bank transactions ✓`); };
-    r.readAsText(file);
+    if (/\.csv$/i.test(file.name)) {
+      const r=new FileReader();
+      r.onload=e=>{ const rows=parseBankCSV(String(e.target.result||"")); if(!rows.length){ showNotification && showNotification("Couldn't read that CSV — it needs date, description and amount columns.","error"); return;} setBankTxns(rows.map(x=>({...x,_matchBook:null}))); showNotification && showNotification(`Imported ${rows.length} transactions ✓`); };
+      r.readAsText(file);
+      return;
+    }
+    if (/\.pdf$/i.test(file.name)) {
+      setProcessing(true);
+      try {
+        const base64 = await fileToB64(file);
+        const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          method:"POST", headers:getAuthHeaders(),
+          body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:4000, messages:[{ role:"user", content:[
+            { type:"document", source:{ type:"base64", media_type:"application/pdf", data:base64 } },
+            { type:"text", text:'Extract EVERY transaction from this bank statement. Respond ONLY with a JSON array, no markdown, no prose: [{"date":"YYYY-MM-DD","description":"...","amount":-12.34}]. Use NEGATIVE amounts for money out (debits/withdrawals/payments) and POSITIVE for money in (deposits/credits). Include every single row.' },
+          ] }] }),
+        });
+        if (!res.ok) { let d=""; try{ d=(await res.json())?.error?.message||""; }catch{} throw new Error(`AI service error (${res.status})${d?": "+d:""}`); }
+        const data = await res.json();
+        const text = data.content?.find(b=>b.type==="text")?.text || "[]";
+        const arr = JSON.parse(text.replace(/```json|```/g,"").trim());
+        const rows = (Array.isArray(arr)?arr:[]).map((t,i)=>({ id:"p_"+i+"_"+Math.random().toString(36).slice(2,6), date: normDate(t.date), description:(t.description||"Transaction").slice(0,140), amount: parseFloat(t.amount), _matchBook:null })).filter(r=>!isNaN(r.amount));
+        if (!rows.length) showNotification && showNotification("Couldn't read transactions from that PDF — try a CSV export instead.","error");
+        else { setBankTxns(rows); showNotification && showNotification(`Extracted ${rows.length} transactions from your statement ✓`); }
+      } catch(e){ console.error("[recon] PDF extract failed:", e); showNotification && showNotification("Couldn't read that PDF: "+(e.message||"error"),"error"); }
+      setProcessing(false);
+      return;
+    }
+    showNotification && showNotification("Please upload a PDF or CSV bank statement.","error");
   };
 
   const resume = (rec) => {
@@ -268,32 +297,35 @@ export default function ReconView() {
     <div style={{ maxWidth:560 }}>
       <button onClick={()=>setStep("landing")} style={{ marginBottom:16, background:"none", border:"none", color:"#6B7280", fontSize:13, cursor:"pointer", padding:0 }}>← Back</button>
       <h1 style={{ fontSize:24, fontWeight:600, margin:"0 0 6px" }}>Start a match</h1>
-      <div style={{ fontSize:13, color:"#6B7280", marginBottom:22 }}>Grab your bank statement — you'll need the ending balance.</div>
+      <div style={{ fontSize:13, color:"#6B7280", marginBottom:22 }}>Upload your bank statement — we'll read it and match it to your books.</div>
       <div style={{ ...card, padding:24 }}>
-        <div style={{ marginBottom:16 }}>
-          <div style={lbl}>WHICH ACCOUNT?</div>
-          <select value={accountId} onChange={e=>{ setAccountId(e.target.value); const b=(bankAccounts||[]).find(x=>String(x.id)===e.target.value); setAccountName(b?.name||"Account"); }} style={inp}>
-            {(bankAccounts||[]).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-            <option value="manual">Other / manual</option>
-          </select>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-          <div><div style={lbl}>PERIOD START</div><input type="date" value={periodStart} onChange={e=>setPeriodStart(e.target.value)} style={inp} /></div>
-          <div><div style={lbl}>PERIOD END</div><input type="date" value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)} style={inp} /></div>
-        </div>
-        <div style={{ marginBottom:16 }}>
-          <div style={lbl}>YOUR BANK'S ENDING BALANCE</div>
-          <input type="number" value={statementBalance} onChange={e=>setStatementBalance(e.target.value)} placeholder="e.g. 24500.00" style={inp} />
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:18 }}>
+          <div>
+            <div style={lbl}>WHICH ACCOUNT?</div>
+            <select value={accountId} onChange={e=>{ setAccountId(e.target.value); const b=(bankAccounts||[]).find(x=>String(x.id)===e.target.value); setAccountName(b?.name||"Account"); }} style={inp}>
+              {(bankAccounts||[]).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+              <option value="manual">Other / manual</option>
+            </select>
+          </div>
+          <div>
+            <div style={lbl}>WHICH MONTH?</div>
+            <input type="month" value={(periodStart||"").slice(0,7)} onChange={e=>{ const ym=e.target.value; if(!ym) return; const [y,m]=ym.split("-").map(Number); setPeriodStart(`${ym}-01`); setPeriodEnd(`${ym}-${String(new Date(y,m,0).getDate()).padStart(2,"0")}`); }} style={inp} />
+          </div>
         </div>
         <div style={{ marginBottom:18 }}>
-          <div style={lbl}>UPLOAD YOUR BANK STATEMENT (OPTIONAL)</div>
-          <label style={{ display:"block", border:"1.5px dashed #D1D5DB", borderRadius:10, padding:"16px", textAlign:"center", cursor:"pointer", fontSize:13, color:"#6B7280", background:"#F9FAFB" }}>
-            <input type="file" accept=".csv,.pdf" style={{ display:"none" }} onChange={e=>onCSV(e.target.files?.[0])} />
-            {bankTxns.length>0 ? `✓ ${bankTxns.length} transactions imported` : "Drop a CSV (Chase, BofA, or any date/description/amount export) — we'll import it automatically. PDF? Enter the balance manually."}
+          <div style={lbl}>UPLOAD YOUR BANK STATEMENT — PDF OR CSV</div>
+          <label style={{ display:"block", border:`1.5px dashed ${bankTxns.length>0?"#059669":"#D1D5DB"}`, borderRadius:10, padding:"22px 16px", textAlign:"center", cursor: processing?"wait":"pointer", fontSize:13, color:"#6B7280", background:bankTxns.length>0?"#ECFDF5":"#F9FAFB" }}>
+            <input type="file" accept=".csv,.pdf" disabled={processing} style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; e.target.value=""; processFile(f); }} />
+            <div style={{ fontSize:26, marginBottom:8, opacity:0.6 }}>{processing?"⟳":bankTxns.length>0?"✓":"📄"}</div>
+            {processing
+              ? <span style={{ color:"#4F46E5", fontWeight:600 }}>Reading your statement with AI…</span>
+              : bankTxns.length>0
+                ? <span style={{ color:"#059669", fontWeight:600 }}>{bankTxns.length} transactions ready — upload a different file to redo</span>
+                : <span>Drop a PDF or CSV here, or click to browse. PDFs are read with AI; CSVs from Chase, BofA, or any date/description/amount export import automatically.</span>}
           </label>
         </div>
-        <button onClick={()=>{ if(!statementBalance){ showNotification && showNotification("Enter your bank's ending balance to continue.","error"); return;} setStep("match"); setTimeout(()=>runAutoMatch(bankTxns),50); }}
-          style={{ width:"100%", padding:"13px", borderRadius:11, background:"#4F46E5", border:"none", color:"#fff", fontSize:14, fontWeight:600, cursor:"pointer" }}>Start Matching →</button>
+        <button disabled={bankTxns.length===0 || processing} onClick={()=>{ setStep("match"); setTimeout(()=>runAutoMatch(bankTxns),50); }}
+          style={{ width:"100%", padding:"13px", borderRadius:11, border:"none", fontSize:14, fontWeight:600, cursor: (bankTxns.length>0&&!processing)?"pointer":"not-allowed", background:(bankTxns.length>0&&!processing)?"#4F46E5":"#E5E7EB", color:(bankTxns.length>0&&!processing)?"#fff":"#9CA3AF" }}>{processing?"Reading statement…":"Start →"}</button>
       </div>
     </div>
   );
@@ -367,7 +399,7 @@ export default function ReconView() {
             <div style={{ fontSize:11, color:"#6B7280" }}>{matchedCount}/{bankTxns.length} matched · {fmt(unmatchedBank.reduce((s,t)=>s+t.amount,0))} remaining</div>
           </div>
           <div style={{ maxHeight:440, overflowY:"auto" }}>
-            {bankTxns.length===0 ? <div style={{ padding:24, fontSize:13, color:"#6B7280", textAlign:"center" }}>No bank transactions. Add them below or upload a CSV in setup.</div> :
+            {bankTxns.length===0 ? <div style={{ padding:24, fontSize:13, color:"#6B7280", textAlign:"center" }}>No bank transactions — go back and upload a statement.</div> :
               bankTxns.map(t=>(
                 <div key={t.id} style={{ ...rowBase, background: t._ignored?"#F9FAFB":t._matchBook?"#F5F3FF":"#FFFBEB", opacity:t._ignored?0.6:1 }}>
                   <input type="checkbox" checked={!!t._matchBook} onChange={()=>toggleMatch(t)} title="This matches my bank" />
@@ -378,19 +410,6 @@ export default function ReconView() {
                   <div style={{ fontFamily:"'DM Mono',monospace", color: t.amount>=0?"#059669":"#DC2626", flexShrink:0 }}>{fmt(t.amount)}</div>
                 </div>
               ))}
-          </div>
-          <div style={{ padding:"10px 14px", borderTop:"1px solid #F3F4F6" }}>
-            {manualBank ? (
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-                <input type="date" value={manualBank.date} onChange={e=>setManualBank(m=>({...m,date:e.target.value}))} style={{ ...inp, width:140 }} />
-                <input value={manualBank.description} onChange={e=>setManualBank(m=>({...m,description:e.target.value}))} placeholder="Description" style={{ ...inp, flex:1, minWidth:110 }} />
-                <input type="number" value={manualBank.amount} onChange={e=>setManualBank(m=>({...m,amount:e.target.value}))} placeholder="Amount (- out)" style={{ ...inp, width:120 }} />
-                <button onClick={()=>{ const a=parseFloat(manualBank.amount); if(isNaN(a))return; setBankTxns(prev=>[...prev,{ id:"m_"+Math.random().toString(36).slice(2,7), date:manualBank.date, description:manualBank.description||"Manual entry", amount:a, _matchBook:null }]); setManualBank(null); queueSave(); }} style={{ padding:"9px 14px", borderRadius:8, background:"#4F46E5", border:"none", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>Add</button>
-                <button onClick={()=>setManualBank(null)} style={{ padding:"9px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#6B7280", fontSize:12, cursor:"pointer" }}>Cancel</button>
-              </div>
-            ) : (
-              <button onClick={()=>setManualBank({ date:periodEnd, description:"", amount:"" })} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:12, fontWeight:600, cursor:"pointer", padding:0 }}>+ Add transaction manually</button>
-            )}
           </div>
         </div>
 
@@ -462,7 +481,7 @@ export default function ReconView() {
 
       {/* BOTTOM BAR */}
       <div style={{ position:"fixed", left:0, right:0, bottom:0, background:"#FFFFFF", borderTop:"1px solid #E5E7EB", boxShadow:"0 -4px 20px rgba(0,0,0,.06)", padding:"12px 28px", display:"flex", alignItems:"center", gap:24, zIndex:50, flexWrap:"wrap" }}>
-        <div><div style={{ fontSize:10, color:"#6B7280", letterSpacing:0.5 }}>BANK ENDING BALANCE</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace" }}>{fmt(stmtNum)}</div></div>
+        <div><div style={{ fontSize:10, color:"#6B7280", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:"1px solid #D1D5DB", borderRadius:8, padding:"4px 8px", color:"#111827", outline:"none" }} /></div>
         <div><div style={{ fontSize:10, color:"#6B7280", letterSpacing:0.5 }}>WHAT YOUR BOOKS SHOW</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace" }}>{fmt(booksBalance)}</div></div>
         <div><div style={{ fontSize:10, color:"#6B7280", letterSpacing:0.5 }}>DIFFERENCE</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color: Math.abs(diff)<0.005?"#059669":"#DC2626" }}>{fmt(diff)}</div></div>
         <div style={{ flex:1, minWidth:140, fontSize:11, color:"#6B7280" }}>{Math.abs(diff)<0.005?"Balanced — ready to complete.":"Difference must be $0.00 to complete."}</div>

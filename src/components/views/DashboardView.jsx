@@ -11,6 +11,9 @@ export default function DashboardView() {
   const [dashDrill, setDashDrill] = React.useState(null); // unified dashboard drill-down
   const [feedCount, setFeedCount] = React.useState(20); // activity feed page size
   const [showCommit, setShowCommit] = React.useState(false); // active commitments expander
+  const [apPayId, setApPayId] = React.useState(null); // inline "mark paid" row in the AP drill
+  const [apPayMethod, setApPayMethod] = React.useState("ach");
+  const [apPayDate, setApPayDate] = React.useState(new Date().toISOString().slice(0,10));
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
   const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "#6366F1" : "#E5E7EB"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
 
@@ -21,8 +24,9 @@ export default function DashboardView() {
     const today = new Date();
     const exp = invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided");
     const rev = invoices.filter(i => glIsRevenue(i.gl_code) && i.status!=="voided");
-    const openAP = (getOpenAP ? getOpenAP(invoices) : exp.filter(i=>i.payment_status!=="paid"));
-    const openAR = (getOpenAR ? getOpenAR(invoices) : rev.filter(i=>i.payment_status!=="collected"));
+    // Open payables: any expense (gl 5xxx/6xxx), not paid, not voided — SAME logic as the Home alert count.
+    const openAP = exp.filter(i => i.payment_status!=="paid");
+    const openAR = rev.filter(i => i.payment_status!=="collected");
 
     const crumbs = [{ label:"Dashboard", to:null }];
     if (d.type==="revenue") crumbs.push({ label:"Revenue", to:{type:"revenue"} });
@@ -157,7 +161,37 @@ export default function DashboardView() {
       </div>);
     } else if (d.type==="ap") {
       title = "Open accounts payable"; subtitle = `${openAP.length} unpaid · ${fmt(openAP.reduce((s,i)=>s+i.amount,0))}`;
-      body = txnRows(openAP, "#DC2626");
+      const methodOpts = [["ach","ACH / Bank Transfer"],["check","Check"],["wire","Wire Transfer"],["card","Credit Card"],["zelle","Zelle"],["venmo","Venmo"],["paypal","PayPal"],["other","Other"]];
+      body = openAP.length===0
+        ? <div style={{ padding:"28px 18px", fontSize:13, color:"#6B7280", textAlign:"center" }}>Nothing outstanding — you're all paid up.</div>
+        : [...openAP].sort((a,b)=>(a.due_date||a.date||"9999").localeCompare(b.due_date||b.date||"9999")).map(inv=>(
+            <div key={inv.id} style={{ borderTop:"1px solid #F3F4F6" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, padding:"11px 18px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0, cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>
+                  <span style={{ fontSize:11, color:"#6B7280", fontFamily:"'DM Mono',monospace", width:80, flexShrink:0 }}>{inv.date||"—"}</span>
+                  <span style={{ width:28, height:28, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</span>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:500, color:"#111827", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"—"}</div>
+                    <div style={{ fontSize:11, color:"#6B7280" }}>{inv.gl_code} {inv.gl_name}</div>
+                  </div>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+                  <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"#DC2626", width:96, textAlign:"right" }}>{fmt(inv.amount)}</span>
+                  {apPayId!==inv.id && <button onClick={()=>{ setApPayId(inv.id); setApPayMethod("ach"); setApPayDate(new Date().toISOString().slice(0,10)); }} style={{ padding:"6px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"#ECFDF5", border:"1px solid #05966944", color:"#059669", cursor:"pointer", whiteSpace:"nowrap" }}>Mark Paid</button>}
+                </div>
+              </div>
+              {apPayId===inv.id && (
+                <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", padding:"0 18px 12px 110px" }}>
+                  <input type="date" value={apPayDate} onChange={e=>setApPayDate(e.target.value)} style={{ background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:7, padding:"6px 9px", fontSize:12, color:"#111827", outline:"none" }} />
+                  <select value={apPayMethod} onChange={e=>setApPayMethod(e.target.value)} style={{ background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:7, padding:"6px 9px", fontSize:12, color:"#111827", outline:"none" }}>
+                    {methodOpts.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                  </select>
+                  <button onClick={()=>{ markPaid(inv.id, apPayMethod, { date: apPayDate }); setApPayId(null); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"#059669", border:"none", color:"#fff", cursor:"pointer" }}>Confirm</button>
+                  <button onClick={()=>setApPayId(null)} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", cursor:"pointer" }}>Cancel</button>
+                </div>
+              )}
+            </div>
+          ));
     } else if (d.type==="ar") {
       title = "Open accounts receivable"; subtitle = `${openAR.length} uncollected · ${fmt(openAR.reduce((s,i)=>s+i.amount,0))}`;
       body = txnRows(openAR, "#059669");
@@ -312,9 +346,10 @@ export default function DashboardView() {
 
               {/* ── AP ACTIONABLE ALERTS ── */}
               {(() => {
-                const ap = invoices.filter(i => (glIsExpense(i.gl_code)||i.type==="expense") && i.status!=="voided");
+                // Open payables: any expense (gl 5xxx/6xxx), not paid, not voided — SAME logic as the drill list.
+                const ap = invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided");
                 const unpaid = ap.filter(i => i.payment_status!=="paid");
-                const openAR = getOpenAR ? getOpenAR(invoices) : invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.status!=="voided");
+                const openAR = invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.status!=="voided");
                 if (unpaid.length===0 && openAR.length===0) return null;
                 const today = new Date().toISOString().slice(0,10);
                 const total = unpaid.reduce((s,i)=>s+i.amount,0);
