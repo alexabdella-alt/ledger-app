@@ -63,7 +63,7 @@ ${invoices.length === 0 ? "Empty." : invoices.slice(0, 80).map(inv =>
   const contactsSection = needsContacts && contacts.length > 0
     ? `Contacts (${contacts.length}):
 ${contacts.map(c =>
-  `- [${c.type.toUpperCase()}] ${c.name} | Terms: ${c.payment_terms||"—"} | GL: ${c.gl_code||"—"} ${c.gl_name||""} | Email: ${c.email||"—"} | Phone: ${c.phone||"—"} | Expected: ${c.min_expected||"—"}–${c.max_expected||"—"} | Tags: ${(c.tags||[]).join(", ")||"none"} | Notes: ${c.notes||"none"}`
+  `- [${c.type.toUpperCase()}] ${c.name} | BizType: ${c.business_type||"unknown"}${c.is_1099_exempt?" (1099-exempt)":""}${c.sent_1099_2025?" (1099 sent)":""} | Terms: ${c.payment_terms||"—"} | GL: ${c.gl_code||"—"} ${c.gl_name||""} | Email: ${c.email||"—"} | Phone: ${c.phone||"—"} | Tags: ${(c.tags||[]).join(", ")||"none"}`
 ).join("\n")}`
     : contacts.length > 0
       ? `Contacts: ${contacts.length} on file (not loaded — ask about a specific vendor or customer to query).`
@@ -135,6 +135,13 @@ NAVIGATION — be a proactive guide (the app has just 5 tabs: Home, Books, Repor
 - You can pair navigation with an answer. Only navigate when the user is trying to find or go somewhere.
 
 CFO Intelligence Guidelines:
+1099 CONTRACTORS — answer plainly, no jargon:
+- A business must send a Form 1099-NEC to any freelancer/contractor/unincorporated business it paid $600 or more during the tax year (the PREVIOUS calendar year), due by January 31st.
+- A vendor needs a 1099 if: paid $600+ in the year AND their business type is Individual/Sole Proprietor, Single-member LLC, Partnership/Multi-member LLC. They do NOT need one if they're a Corporation, S-Corp, or Nonprofit (1099-exempt), or paid under $600.
+- "Does [vendor] need a 1099?" → check their BizType from Contacts and their total paid this year from the ledger, then answer Yes/No/We-need-to-know-their-business-type, with the dollar amount.
+- "Who needs a 1099 this year?" → list vendors paid $600+ that are not 1099-exempt (and flag any with unknown business type that crossed $600 — those need classifying).
+- "How do I send a 1099?" → in plain steps: 1) confirm the vendor's business type, 2) collect their SSN or EIN (W-9), 3) get their mailing address, 4) use the Export 1099 data button (Settings → 1099s) and file through a service like Track1099 or Tax1099, or mail the form, by Jan 31. Offer to open it: {"type":"navigate","view":"settings"}.
+
 BURN RATE & CASH — these are the #1 priority for most founders and small business owners:
 - Always compute burn rate from the ledger when asked (total expenses in period)
 - Net burn = expenses minus revenue. Always distinguish gross burn vs net burn.

@@ -770,20 +770,59 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         expected_min: contact.min_expected||null, expected_max: contact.max_expected||null,
         notes: contact.notes||null, tags: contact.tags||[]
       };
-      // website / payment_url need migration 004 — include them but fall back
+      // Extra fields need migrations 004 + 007 — include them but fall back
       // (drop them) if the columns don't exist yet, so contact saving never breaks.
-      const extra = { website: contact.website||null, payment_url: contact.payment_url||null };
+      const extra = {
+        website: contact.website||null, payment_url: contact.payment_url||null,
+        business_type: contact.business_type||null, ein_ssn: contact.ein_ssn||null,
+        mailing_address: contact.mailing_address||null,
+        is_1099_exempt: contact.is_1099_exempt ?? false, sent_1099_2025: contact.sent_1099_2025 ?? false,
+        vendor_account_number: contact.vendor_account_number||null, tax_id: contact.tax_id||null,
+      };
       const run = async (payload) => {
         if (contact.db_id) return await supabase.from("contacts").update(payload).eq("id", contact.db_id).select().single();
         return await supabase.from("contacts").insert(payload).select().single();
       };
       let { data, error } = await run({ ...base, ...extra });
-      if (error && /website|payment_url|column/i.test(error.message||"")) {
-        console.warn("contacts missing website/payment_url columns; saving without them. Apply migration 004.");
+      if (error && /website|payment_url|business_type|ein_ssn|mailing_address|is_1099_exempt|sent_1099|vendor_account_number|tax_id|column/i.test(error.message||"")) {
+        console.warn("contacts missing extra columns; saving core fields only. Apply migrations 004 + 007.");
         ({ data, error } = await run(base));
       }
       if (!contact.db_id && data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
     } catch(e) { console.error("persistContact error:", e); }
+  };
+
+  // Auto-create or enrich a vendor/customer contact from an uploaded invoice's extracted details.
+  const recentContactsRef = useRef(new Set());
+  const createOrUpdateContact = (data) => {
+    if (!data || !(data.name||"").trim()) return;
+    const name = data.name.trim();
+    const norm = s => (s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+    const n = norm(name); if (!n) return;
+    const fields = {
+      email: data.email||"", phone: data.phone||"", website: data.website||"",
+      payment_terms: data.payment_terms||"", mailing_address: data.address||"",
+      vendor_account_number: data.account_number||"", tax_id: data.tax_id||"",
+      gl_code: data.gl_code||"", gl_name: data.gl_name||"",
+    };
+    const existing = (contacts||[]).find(c => { const cn=norm(c.name); return cn && (cn===n || cn.includes(n) || n.includes(cn)); });
+    if (existing) {
+      // Update empty fields only — never overwrite existing data.
+      const merged = { ...existing }; let changed = false;
+      Object.entries(fields).forEach(([k,v]) => { if (v && !merged[k]) { merged[k] = v; changed = true; } });
+      if (!changed) return;
+      setContacts(prev => prev.map(c => c.id===existing.id ? merged : c));
+      persistContact(merged);
+      logAudit("contact_updated", `Contact ${name} updated from invoice`, null, { name });
+    } else {
+      if (recentContactsRef.current.has(n)) return; // guard duplicate creation within a batch upload
+      recentContactsRef.current.add(n);
+      const created = { id: Date.now()+Math.random(), name, type: data.type||"vendor", ...fields, fromContact: true, created_at: new Date().toISOString() };
+      setContacts(prev => [created, ...prev]);
+      persistContact(created);
+      logAudit("contact_created", `Contact ${name} auto-created from invoice upload`, null, { name });
+      showNotification(`Added ${name} to your contacts`);
+    }
   };
 
   const persistContract = async (contract) => {
@@ -1105,9 +1144,10 @@ Reply with only the single word.`,
 
 Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if there is only one invoice:
 [
-  {"vendor":"Exact vendor name","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details"},
+  {"vendor":"Exact vendor name","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details","vendor_address":"full mailing address if shown, else empty","vendor_email":"email if shown, else empty","vendor_phone":"phone if shown, else empty","vendor_website":"website/domain if shown, else empty","payment_terms":"e.g. Net 30 if shown, else empty","account_number":"our account number with this vendor if shown, else empty","tax_id":"their EIN / tax ID if shown, else empty"},
   ...one object per invoice...
 ]
+For "type":"revenue" the "vendor" field is the CUSTOMER's name and the address/email/phone/etc. describe that customer. Leave any field you can't find as an empty string — never guess.
 
 To determine type — DEFAULT TO "expense" when unclear. The vast majority of uploaded documents are vendor bills this business must pay.
 - type = "expense": a vendor/supplier is billing this business. Signals: "Bill To: [your company]", "Please remit", "Amount Due", vendor is a supplier/service provider, utility, or contractor.
@@ -1198,6 +1238,15 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               status: "booked",
               booked_at: new Date().toISOString(),
               source: "universal_upload",
+              // Auto-create/update contact from the extracted details after booking
+              _contact: {
+                name: extracted.vendor?.trim() || "",
+                type: isRevenue ? "customer" : "vendor",
+                address: extracted.vendor_address || "", email: extracted.vendor_email || "",
+                phone: extracted.vendor_phone || "", website: extracted.vendor_website || "",
+                payment_terms: extracted.payment_terms || "", account_number: extracted.account_number || "",
+                tax_id: extracted.tax_id || "", gl_code: finalCode, gl_name: finalName,
+              },
             };
 
             // Duplicate invoice number check — runs before any other routing
@@ -1275,6 +1324,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             highConfidence.forEach(inv => {
               logAudit("invoice_booked", `${inv.vendor} · $${(inv.amount||0).toFixed(2)} → ${inv.gl_name} (${inv.confidence}% confidence · ${inv.date})`, null, { vendor: inv.vendor, amount: inv.amount, date: inv.date, gl_code: inv.gl_code, gl_name: inv.gl_name });
               bookToDb(inv);
+              createOrUpdateContact(inv._contact);
             });
             runAPScreen(highConfidence, [...highConfidence, ...invoices]);
             checkWatchTriggers(highConfidence, unknownDocs);
@@ -2751,7 +2801,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
   const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
 
-  const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","vendors","recurring"];
+  const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","vendors","recurring","tax1099","audit"];
   return (
     <ERPContext.Provider value={erpCtx}>
     <div style={{ fontFamily:"'DM Sans', sans-serif", minHeight:"100vh", background:"#F8F9FB", color:"#111827" }}>
@@ -2824,8 +2874,15 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             <div style={{ display:"flex", alignItems:"center", gap:14 }}>
               <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
               <button onClick={()=>setView("settings")} title="Settings" aria-label="Settings"
-                style={{ width:34, height:34, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", background: SETTINGS_VIEWS.includes(view)?"#EEF2FF":"transparent", border:`1px solid ${SETTINGS_VIEWS.includes(view)?"#4F46E5":"#E5E7EB"}`, color: SETTINGS_VIEWS.includes(view)?"#4F46E5":"#6B7280", fontSize:17, cursor:"pointer", transition:"all .15s" }}
-                onMouseEnter={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="#F3F4F6"; }}} onMouseLeave={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="transparent"; }}}>⚙</button>
+                style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px", borderRadius:9, background: SETTINGS_VIEWS.includes(view)?"#EEF2FF":"transparent", border:`1px solid ${SETTINGS_VIEWS.includes(view)?"#4F46E5":"#E5E7EB"}`, color: SETTINGS_VIEWS.includes(view)?"#4F46E5":"#6B7280", cursor:"pointer", transition:"all .15s" }}
+                onMouseEnter={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="#F3F4F6"; e.currentTarget.style.color="#4F46E5"; }}}
+                onMouseLeave={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#6B7280"; }}}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink:0 }}>
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span style={{ fontSize:13, fontWeight:500 }}>Settings</span>
+              </button>
               <span style={{ fontSize:11, color:"#9CA3AF", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session?.user?.email}</span>
               <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #D1D5DB", color:"#6B7280", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
@@ -2833,7 +2890,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {/* Nav — 5 tabs */}
           {(() => {
             const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","bank","matching","recon","send-invoice","customers","payroll","docs","detail","contracts"];
-            const REPORTS = ["reports","tax1099","audit"];
+            const REPORTS = ["reports"];
             const tabs = [
               { id:"home", label:"Home", group:["home","dashboard","add","review"] },
               { id:"books", label:"Books", group:BOOKS },
@@ -2867,12 +2924,12 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {/* Sub-nav for Books / Reports / Settings */}
           {(() => {
             const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","bank","matching","recon","send-invoice","customers","payroll","docs","detail","contracts"];
-            const REPORTS = ["reports","tax1099","audit"];
-            const SETTINGS = ["settings","coa","opening-balances","onboard","rules","vendors","recurring"];
+            const REPORTS = ["reports"];
+            const SETTINGS = ["settings","coa","opening-balances","onboard","rules","vendors","recurring","tax1099","audit"];
             let subs = null;
             if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["bank","Bank Feed"],["recon","Reconcile"],["send-invoice","Send Invoice"],["customers","Customers"],["payroll","Payroll"],["docs","Documents"]];
-            else if (REPORTS.includes(view)) subs = [["reports:pl","P&L"],["reports:balance","Balance Sheet"],["reports:cashflow","Cash Flow"],["audit","Audit Trail"],["tax1099","1099s"]];
-            else if (SETTINGS.includes(view)) subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["vendors","Contacts"],["recurring","Recurring"],["onboard","Import QBO"]];
+            // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
+            else if (SETTINGS.includes(view)) subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["vendors","Contacts"],["recurring","Recurring"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import QBO"]];
             if (!subs) return null;
             const activeSub = (id) => {
               if (id.startsWith("reports:")) return view==="reports" && (reportType||"pl")===id.split(":")[1];
