@@ -1,32 +1,32 @@
 /* =====================================================================
-   Shadow CFO — global design layer
-   Monochrome graphite surfaces + a single iris accent. Applies app-wide
-   (every inline-styled view inherits the resets, scrollbars, focus rings,
-   selection color and motion utilities below).
+   Shadow CFO — global design layer (Light theme)
+   Clean, airy, professional SaaS aesthetic (Stripe / Linear / Vercel).
    ===================================================================== */
 
 :root {
   /* surfaces */
-  --sc-bg:        #08080A;
-  --sc-surface:   #0C0C0E;
-  --sc-card:      #141416;
-  --sc-raised:    #1C1C20;
-  --sc-border:    #262629;
-  --sc-border-2:  #33333A;
+  --sc-bg:        #F8F9FB;   /* page */
+  --sc-surface:   #F3F4F6;   /* inputs / hover */
+  --sc-card:      #FFFFFF;   /* cards / panels */
+  --sc-border:    #E5E7EB;   /* default border */
+  --sc-border-2:  #D1D5DB;   /* emphasized border */
   /* text */
-  --sc-text:      #F2F2F4;
-  --sc-text-dim:  #9A9AA2;
-  --sc-text-mut:  #86868F;
-  /* single accent ramp */
-  --sc-accent:        #8B7BFF;
-  --sc-accent-deep:   #6D5EF6;
-  --sc-accent-bright: #A99CFF;
-  --sc-accent-soft:   #C7BFFF;
-  --sc-accent-glow:   rgba(139,123,255,0.35);
+  --sc-text:      #111827;   /* primary */
+  --sc-text-2:    #374151;   /* secondary */
+  --sc-text-mut:  #6B7280;   /* muted */
+  --sc-text-ph:   #9CA3AF;   /* placeholder */
+  /* brand + semantic */
+  --sc-accent:        #4F46E5;
+  --sc-accent-deep:   #4338CA;
+  --sc-accent-soft:   #EEF2FF;
+  --sc-success:       #059669;
+  --sc-warning:       #D97706;
+  --sc-error:         #DC2626;
+  --sc-shadow:        0 1px 3px rgba(0,0,0,0.08);
+  --sc-shadow-lg:     0 8px 28px rgba(17,24,39,0.10);
 }
 
 * { box-sizing: border-box; }
-
 html { -webkit-text-size-adjust: 100%; }
 
 body {
@@ -34,94 +34,46 @@ body {
   background: var(--sc-bg);
   color: var(--sc-text);
   font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
-
-/* Subtle living backdrop — a faint accent aura that drifts behind the app */
-body::before {
-  content: "";
-  position: fixed;
-  inset: -20vmax;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(40vmax 40vmax at 12% -8%, rgba(139,123,255,0.10), transparent 60%),
-    radial-gradient(38vmax 38vmax at 100% 0%, rgba(109,94,246,0.08), transparent 60%),
-    radial-gradient(50vmax 50vmax at 60% 120%, rgba(139,123,255,0.06), transparent 60%);
-  animation: scAurora 24s ease-in-out infinite alternate;
-}
-#root { position: relative; z-index: 1; }
+#root { position: relative; z-index: 1; min-height: 100vh; background: var(--sc-bg); }
 
 /* Text selection */
-::selection { background: rgba(139,123,255,0.30); color: #fff; }
+::selection { background: rgba(79,70,229,0.16); color: #111827; }
 
-/* Refined, quiet scrollbars */
-* { scrollbar-width: thin; scrollbar-color: #2A2A30 transparent; }
-*::-webkit-scrollbar { width: 10px; height: 10px; }
+/* Quiet, light scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #D1D5DB transparent; }
+*::-webkit-scrollbar { width: 11px; height: 11px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: #2A2A30;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-  border-radius: 999px;
+  background: #D1D5DB; border: 3px solid transparent; background-clip: padding-box; border-radius: 999px;
 }
-*::-webkit-scrollbar-thumb:hover { background: #3A3A44; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: #9CA3AF; background-clip: padding-box; }
 
-/* Accessible keyboard focus ring (does not affect mouse clicks) */
-:focus-visible {
-  outline: 2px solid var(--sc-accent);
-  outline-offset: 2px;
-  border-radius: 8px;
-}
+/* Keyboard focus ring */
+:focus-visible { outline: 2px solid var(--sc-accent); outline-offset: 2px; border-radius: 8px; }
 
-/* Inputs gain a soft accent ring on focus, app-wide */
+/* Inputs get a soft indigo ring on focus, app-wide */
 input:focus, textarea:focus, select:focus {
   border-color: var(--sc-accent) !important;
-  box-shadow: 0 0 0 3px rgba(139,123,255,0.14);
+  box-shadow: 0 0 0 3px rgba(79,70,229,0.14);
 }
-::placeholder { color: #5C5C64; }
+::placeholder { color: var(--sc-text-ph); }
 
-/* Buttons everywhere feel responsive without per-view edits */
 button { transition: transform .14s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease; }
 button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
 
 /* =====================  Keyframes  ===================== */
-@keyframes scAurora {
-  0%   { transform: translate3d(0,0,0) scale(1); }
-  100% { transform: translate3d(0,-2%,0) scale(1.08); }
-}
-@keyframes scRise {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes scFade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes scScaleIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
-}
-@keyframes scShimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
-}
-@keyframes scGradient {
-  0%,100% { background-position: 0% 50%; }
-  50%     { background-position: 100% 50%; }
-}
-@keyframes scGlow {
-  0%,100% { box-shadow: 0 0 0 0 rgba(139,123,255,0.0); }
-  50%     { box-shadow: 0 0 22px 1px rgba(139,123,255,0.28); }
-}
-@keyframes scFloat {
-  0%,100% { transform: translateY(0); }
-  50%     { transform: translateY(-6px); }
-}
-@keyframes scSpin { to { transform: rotate(360deg); } }
-@keyframes scEclipse {
-  0%,100% { transform: translateX(0); }
-  50%     { transform: translateX(26%); }
-}
+@keyframes scRise   { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+@keyframes scFade   { from { opacity:0; } to { opacity:1; } }
+@keyframes scScaleIn{ from { opacity:0; transform:scale(.96); } to { opacity:1; transform:scale(1); } }
+@keyframes scShimmer{ 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+@keyframes scFloat  { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }
+@keyframes scSpin   { to { transform:rotate(360deg); } }
 
 /* =====================  Utilities  ===================== */
 .sc-rise   { animation: scRise .5s cubic-bezier(.22,1,.36,1) both; }
@@ -133,35 +85,34 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
 .sc-rise-4 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .24s both; }
 .sc-float  { animation: scFloat 5s ease-in-out infinite; }
 
-/* Animated gradient wordmark */
+/* Indigo gradient wordmark on light */
 .sc-wordmark {
-  background: linear-gradient(100deg, var(--sc-text) 10%, var(--sc-accent-bright) 40%, var(--sc-accent-soft) 55%, var(--sc-text) 90%);
+  background: linear-gradient(100deg, #4338CA 0%, #4F46E5 45%, #6366F1 75%, #4F46E5 100%);
   background-size: 220% auto;
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
-  animation: scShimmer 6s linear infinite;
+  animation: scShimmer 7s linear infinite;
 }
 
-/* Card hover-lift — opt-in via className on inline-styled cards */
-.sc-card { transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, border-color .25s ease; will-change: transform; }
-.sc-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,.45); border-color: var(--sc-accent) !important; }
-
-/* Shimmer skeleton / loading sheen */
-.sc-shimmer {
-  background: linear-gradient(90deg, #16161A 25%, #20202A 37%, #16161A 63%);
-  background-size: 400% 100%;
-  animation: scShimmer 1.4s ease infinite;
+/* Cards opt into the subtle product shadow + hover lift */
+.sc-card {
+  box-shadow: var(--sc-shadow);
+  transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, border-color .25s ease;
 }
+.sc-card:hover { transform: translateY(-2px); box-shadow: var(--sc-shadow-lg); border-color: var(--sc-border-2) !important; }
 
-/* Primary action sheen */
+/* Shimmer skeleton */
+.sc-shimmer { background: linear-gradient(90deg,#F3F4F6 25%,#E5E7EB 37%,#F3F4F6 63%); background-size:400% 100%; animation: scShimmer 1.4s ease infinite; }
+
+/* Primary CTA sheen */
 .sc-cta { position: relative; overflow: hidden; }
 .sc-cta::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.18) 50%, transparent 70%);
+  content:""; position:absolute; inset:0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%);
   transform: translateX(-120%); transition: transform .6s ease;
 }
 .sc-cta:hover::after { transform: translateX(120%); }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
 }

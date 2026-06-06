@@ -43,55 +43,55 @@ export default function OpeningBalancesView() {
             return (
               <div style={{maxWidth:680}}>
                 <div style={{marginBottom:24}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"#86868F",marginBottom:8}}>SETUP</div>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#6B7280",marginBottom:8}}>SETUP</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Opening Balances</h1>
-                  <div style={{fontSize:13,color:"#86868F",marginTop:6}}>Enter your account balances as of the date you're starting your books. This sets the baseline for all reports.</div>
+                  <div style={{fontSize:13,color:"#6B7280",marginTop:6}}>Enter your account balances as of the date you're starting your books. This sets the baseline for all reports.</div>
                 </div>
 
                 {/* As-of date */}
-                <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:12,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
-                  <div style={{fontSize:13,color:"#9A9AA2",flexShrink:0}}>As of date:</div>
+                <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:12,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+                  <div style={{fontSize:13,color:"#6B7280",flexShrink:0}}>As of date:</div>
                   <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
-                    style={{background:"#0C0C0E",border:"1px solid #262629",borderRadius:8,padding:"7px 12px",color:"#F2F2F4",fontSize:13,outline:"none"}}/>
-                  <div style={{marginLeft:"auto",fontSize:12,color:isBalanced?"#10B981":"#EF4444",fontWeight:500}}>
+                    style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"7px 12px",color:"#111827",fontSize:13,outline:"none"}}/>
+                  <div style={{marginLeft:"auto",fontSize:12,color:isBalanced?"#059669":"#DC2626",fontWeight:500}}>
                     {isBalanced ? "✓ Balanced" : `Out of balance by ${fmt(Math.abs(totalAssets-totalLiab-totalEquity))}`}
                   </div>
                 </div>
 
                 {/* Balance sheet input by category */}
                 {["Assets","Liabilities","Equity"].map(cat => (
-                  <div key={cat} style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:12,overflow:"hidden",marginBottom:12}}>
-                    <div style={{padding:"12px 20px",background:"#0C0C0E",borderBottom:"1px solid #1C1C20",display:"flex",justifyContent:"space-between"}}>
-                      <div style={{fontSize:12,fontWeight:600,color:"#C7BFFF",letterSpacing:0.5}}>{cat.toUpperCase()}</div>
-                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:"#F2F2F4"}}>
+                  <div key={cat} style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:12,overflow:"hidden",marginBottom:12}}>
+                    <div style={{padding:"12px 20px",background:"#F3F4F6",borderBottom:"1px solid #E5E7EB",display:"flex",justifyContent:"space-between"}}>
+                      <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5}}>{cat.toUpperCase()}</div>
+                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:"#111827"}}>
                         {fmt(CHART_OF_ACCOUNTS.filter(a=>a.category===cat).reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0))}
                       </div>
                     </div>
                     {CHART_OF_ACCOUNTS.filter(a=>a.category===cat).map((acct,i)=>(
-                      <div key={acct.code} style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:i>0?"1px solid #1C1C20":"none"}}>
+                      <div key={acct.code} style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:i>0?"1px solid #E5E7EB":"none"}}>
                         <div style={{flex:1}}>
-                          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"#86868F",marginRight:10}}>{acct.code}</span>
+                          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"#6B7280",marginRight:10}}>{acct.code}</span>
                           <span style={{fontSize:13}}>{acct.name}</span>
                         </div>
                         <input type="number" value={balances[acct.code]||""} onChange={e=>setBalances(b=>({...b,[acct.code]:e.target.value}))}
                           placeholder="0.00" step="0.01"
-                          style={{width:140,background:"#0C0C0E",border:"1px solid #262629",borderRadius:8,padding:"7px 12px",color:"#F2F2F4",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
+                          style={{width:140,background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"7px 12px",color:"#111827",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
                       </div>
                     ))}
                   </div>
                 ))}
 
                 {/* Summary */}
-                <div style={{background:"#141416",border:"1px solid #262629",borderRadius:12,padding:"14px 20px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,textAlign:"center"}}>
-                  {[["Total Assets",totalAssets,"#10B981"],["Total Liabilities",totalLiab,"#EF4444"],["Total Equity",totalEquity,"#C7BFFF"]].map(([l,v,c])=>(
+                <div style={{background:"#FFFFFF",border:"1px solid #D1D5DB",borderRadius:12,padding:"14px 20px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,textAlign:"center"}}>
+                  {[["Total Assets",totalAssets,"#059669"],["Total Liabilities",totalLiab,"#DC2626"],["Total Equity",totalEquity,"#4F46E5"]].map(([l,v,c])=>(
                     <div key={l}>
-                      <div style={{fontSize:11,color:"#86868F",marginBottom:4}}>{l}</div>
+                      <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>{l}</div>
                       <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:c}}>{fmt(v)}</div>
                     </div>
                   ))}
                 </div>
 
-                <button onClick={post} disabled={!isBalanced} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:isBalanced?"linear-gradient(135deg,#6D5EF6,#4A3DB8)":"#1C1C20",border:"none",color:isBalanced?"#F2F2F4":"#86868F",cursor:isBalanced?"pointer":"not-allowed"}}>
+                <button onClick={post} disabled={!isBalanced} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:isBalanced?"linear-gradient(135deg,#4F46E5,#4338CA)":"#E5E7EB",border:"none",color:isBalanced?"#fff":"#6B7280",cursor:isBalanced?"pointer":"not-allowed"}}>
                   Post Opening Balances
                 </button>
               </div>

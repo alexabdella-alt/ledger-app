@@ -36,14 +36,18 @@ export default function VendorsView() {
 
             const startEdit = (v) => {
               setEditingId(v.id||v.name);
-              setEditDraft({ payment_terms:v.payment_terms||"", email:v.email||"", phone:v.phone||"", notes:v.notes||"", tags:(v.tags||[]).join(", "), min_expected:v.min_expected||"", max_expected:v.max_expected||"" });
+              setEditDraft({ payment_terms:v.payment_terms||"", email:v.email||"", phone:v.phone||"", website:v.website||"", payment_url:v.payment_url||"", notes:v.notes||"", tags:(v.tags||[]).join(", "), min_expected:v.min_expected||"", max_expected:v.max_expected||"" });
             };
             const saveEdit = (v) => {
+              const draft = { ...editDraft, tags: editDraft.tags.split(",").map(t=>t.trim()).filter(Boolean), min_expected:parseFloat(editDraft.min_expected)||null, max_expected:parseFloat(editDraft.max_expected)||null };
               if (v.fromContact) {
-                setContacts(prev => prev.map(c => c.id===v.id ? {...c, ...editDraft, tags: editDraft.tags.split(",").map(t=>t.trim()).filter(Boolean), min_expected:parseFloat(editDraft.min_expected)||null, max_expected:parseFloat(editDraft.max_expected)||null } : c));
+                const updated = { ...v, ...draft };
+                setContacts(prev => prev.map(c => c.id===v.id ? updated : c));
+                persistContact(updated);
               } else {
-                const newC = { id:Date.now()+Math.random(), name:v.name, type:"vendor", ...editDraft, tags:editDraft.tags.split(",").map(t=>t.trim()).filter(Boolean), min_expected:parseFloat(editDraft.min_expected)||null, max_expected:parseFloat(editDraft.max_expected)||null, created_at:new Date().toISOString() };
+                const newC = { id:Date.now()+Math.random(), name:v.name, type:"vendor", ...draft, created_at:new Date().toISOString() };
                 setContacts(prev => [newC, ...prev]);
+                persistContact(newC);
               }
               setEditingId(null);
             };
@@ -52,19 +56,19 @@ export default function VendorsView() {
               <div>
                 <div style={{ marginBottom:24, display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
                   <div>
-                    <div style={{ fontSize:10, letterSpacing:3, color:"#86868F", marginBottom:8 }}>VENDOR MANAGEMENT</div>
+                    <div style={{ fontSize:10, letterSpacing:3, color:"#6B7280", marginBottom:8 }}>VENDOR MANAGEMENT</div>
                     <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Vendors</h1>
-                    <div style={{ fontSize:13, color:"#86868F", marginTop:6 }}>Or just tell the AI chat — "Add Johnson Electric as a vendor, Net 30, around $2k/month"</div>
+                    <div style={{ fontSize:13, color:"#6B7280", marginTop:6 }}>Or just tell the AI chat — "Add Johnson Electric as a vendor, Net 30, around $2k/month"</div>
                   </div>
-                  <button onClick={()=>{ setChatOpen(true); }} style={{ padding:"9px 18px", borderRadius:10, fontSize:13, background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)", border:"none", color:"#F2F2F4", cursor:"pointer" }}>+ Add via Chat</button>
+                  <button onClick={()=>{ setChatOpen(true); }} style={{ padding:"9px 18px", borderRadius:10, fontSize:13, background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", cursor:"pointer" }}>+ Add via Chat</button>
                 </div>
 
                 {allVendors.length===0 ? (
-                  <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:48, textAlign:"center" }}>
+                  <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:48, textAlign:"center" }}>
                     <div style={{ fontSize:32, marginBottom:12 }}>◈</div>
                     <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No vendors yet</div>
-                    <div style={{ fontSize:13, color:"#86868F", marginBottom:20 }}>Vendors appear automatically when you upload invoices, or tell the AI chat to add one.</div>
-                    <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)", border:"none", color:"#F2F2F4", borderRadius:10, padding:"10px 24px", fontSize:13, cursor:"pointer" }}>Open AI Assistant</button>
+                    <div style={{ fontSize:13, color:"#6B7280", marginBottom:20 }}>Vendors appear automatically when you upload invoices, or tell the AI chat to add one.</div>
+                    <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", borderRadius:10, padding:"10px 24px", fontSize:13, cursor:"pointer" }}>Open AI Assistant</button>
                   </div>
                 ) : (
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -74,20 +78,20 @@ export default function VendorsView() {
                       const totalSpend = v.ledger?.total || 0;
                       const rule = rules.find(r=>r.vendor?.toLowerCase()===v.name?.toLowerCase());
                       return (
-                        <div key={v.id||v.name} style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, overflow:"hidden" }}>
+                        <div key={v.id||v.name} style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
                           {/* Header row */}
                           <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
                             <div style={{ width:44,height:44,borderRadius:12,background:vendorColor(v.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(v.name)}</div>
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                                 <span style={{ fontSize:15, fontWeight:600 }}>{v.name}</span>
-                                {v.fromContact && <span style={{ fontSize:10, background:"#18181C", color:"#C7BFFF", borderRadius:20, padding:"2px 7px" }}>Contact</span>}
-                                {rule && <span style={{ fontSize:10, background:"#18181C", color:"#C7BFFF", borderRadius:20, padding:"2px 7px" }}>⚡ {rule.gl_name}</span>}
-                                {v.fromContact && <span onClick={e=>{e.stopPropagation();setContacts(prev=>prev.map(c=>c.id===v.id?{...c,is1099:!c.is1099}:c));logAudit("1099_flagged",`${v.name} 1099 flag toggled`);}} style={{ fontSize:10, background:v.is1099?"#F59E0B22":"#1C1C20", color:v.is1099?"#F59E0B":"#86868F", borderRadius:20, padding:"2px 7px", cursor:"pointer", border:`1px solid ${v.is1099?"#F59E0B44":"#262629"}` }}>{v.is1099?"1099 ✓":"+ 1099"}</span>}
-                                {v.payment_terms && <span style={{ fontSize:10, background:"#0C0C0E", color:"#9A9AA2", borderRadius:20, padding:"2px 7px", border:"1px solid #262629" }}>{v.payment_terms}</span>}
-                                {(v.tags||[]).map(t=><span key={t} style={{ fontSize:10, background:"#1C1C20", color:"#86868F", borderRadius:20, padding:"2px 7px" }}>{t}</span>)}
+                                {v.fromContact && <span style={{ fontSize:10, background:"#F3F4F6", color:"#4F46E5", borderRadius:20, padding:"2px 7px" }}>Contact</span>}
+                                {rule && <span style={{ fontSize:10, background:"#F3F4F6", color:"#4F46E5", borderRadius:20, padding:"2px 7px" }}>⚡ {rule.gl_name}</span>}
+                                {v.fromContact && <span onClick={e=>{e.stopPropagation();setContacts(prev=>prev.map(c=>c.id===v.id?{...c,is1099:!c.is1099}:c));logAudit("1099_flagged",`${v.name} 1099 flag toggled`);}} style={{ fontSize:10, background:v.is1099?"#D9770622":"#E5E7EB", color:v.is1099?"#D97706":"#6B7280", borderRadius:20, padding:"2px 7px", cursor:"pointer", border:`1px solid ${v.is1099?"#D9770644":"#D1D5DB"}` }}>{v.is1099?"1099 ✓":"+ 1099"}</span>}
+                                {v.payment_terms && <span style={{ fontSize:10, background:"#F3F4F6", color:"#6B7280", borderRadius:20, padding:"2px 7px", border:"1px solid #D1D5DB" }}>{v.payment_terms}</span>}
+                                {(v.tags||[]).map(t=><span key={t} style={{ fontSize:10, background:"#E5E7EB", color:"#6B7280", borderRadius:20, padding:"2px 7px" }}>{t}</span>)}
                               </div>
-                              <div style={{ fontSize:12, color:"#86868F", marginTop:3 }}>
+                              <div style={{ fontSize:12, color:"#6B7280", marginTop:3 }}>
                                 {v.ledger ? `${v.ledger.count} invoice${v.ledger.count!==1?"s":""} · last ${v.ledger.lastDate}` : "No invoices yet"}
                                 {v.email && <span style={{ marginLeft:10 }}>✉ {v.email}</span>}
                                 {v.phone && <span style={{ marginLeft:10 }}>📞 {v.phone}</span>}
@@ -95,52 +99,54 @@ export default function VendorsView() {
                             </div>
                             <div style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
                               {totalSpend>0 && <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:11, color:"#86868F" }}>TOTAL SPEND</div>
-                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#EF4444" }}>{fmt(totalSpend)}</div>
+                                <div style={{ fontSize:11, color:"#6B7280" }}>TOTAL SPEND</div>
+                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#DC2626" }}>{fmt(totalSpend)}</div>
                               </div>}
                               {openAP>0 && <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:11, color:"#86868F" }}>OPEN AP</div>
-                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#F59E0B" }}>{fmt(openAP)}</div>
+                                <div style={{ fontSize:11, color:"#6B7280" }}>OPEN AP</div>
+                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#D97706" }}>{fmt(openAP)}</div>
                               </div>}
-                              <button onClick={()=>isEditing?saveEdit(v):startEdit(v)} style={{ padding:"7px 14px", borderRadius:8, fontSize:12, background:isEditing?"linear-gradient(135deg,#065F46,#047857)":"#1C1C20", border:"1px solid #262629", color:isEditing?"#6EE7B7":"#9A9AA2", cursor:"pointer" }}>
+                              <button onClick={()=>isEditing?saveEdit(v):startEdit(v)} style={{ padding:"7px 14px", borderRadius:8, fontSize:12, background:isEditing?"linear-gradient(135deg,#D1FAE5,#059669)":"#E5E7EB", border:"1px solid #D1D5DB", color:isEditing?"#059669":"#6B7280", cursor:"pointer" }}>
                                 {isEditing?"Save":"Edit"}
                               </button>
-                              {isEditing && <button onClick={()=>setEditingId(null)} style={{ padding:"7px 10px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #262629", color:"#86868F", cursor:"pointer" }}>×</button>}
+                              {isEditing && <button onClick={()=>setEditingId(null)} style={{ padding:"7px 10px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid #D1D5DB", color:"#6B7280", cursor:"pointer" }}>×</button>}
                             </div>
                           </div>
 
                           {/* Edit form */}
                           {isEditing && (
-                            <div style={{ padding:"16px 20px", borderTop:"1px solid #1C1C20", background:"#0C0C0E", display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
+                            <div style={{ padding:"16px 20px", borderTop:"1px solid #E5E7EB", background:"#F3F4F6", display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
                               {[
                                 { key:"payment_terms", label:"Payment Terms", placeholder:"Net 30" },
                                 { key:"email", label:"Email", placeholder:"billing@vendor.com" },
                                 { key:"phone", label:"Phone", placeholder:"+1 555 000 0000" },
+                                { key:"website", label:"Website", placeholder:"vendor.com" },
+                                { key:"payment_url", label:"Payment Portal URL", placeholder:"bill.com / invoicing portal link" },
                                 { key:"min_expected", label:"Min Expected ($)", placeholder:"500" },
                                 { key:"max_expected", label:"Max Expected ($)", placeholder:"2000" },
                                 { key:"tags", label:"Tags (comma-separated)", placeholder:"IT, recurring" },
                               ].map(f=>(
                                 <div key={f.key}>
-                                  <div style={{ fontSize:11, color:"#86868F", marginBottom:4 }}>{f.label}</div>
+                                  <div style={{ fontSize:11, color:"#6B7280", marginBottom:4 }}>{f.label}</div>
                                   <input value={editDraft[f.key]||""} onChange={e=>setEditDraft(d=>({...d,[f.key]:e.target.value}))} placeholder={f.placeholder}
-                                    style={{ width:"100%", boxSizing:"border-box", background:"#141416", border:"1px solid #262629", borderRadius:8, padding:"8px 10px", color:"#F2F2F4", fontSize:12, outline:"none" }} />
+                                    style={{ width:"100%", boxSizing:"border-box", background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:8, padding:"8px 10px", color:"#111827", fontSize:12, outline:"none" }} />
                                 </div>
                               ))}
                               <div style={{ gridColumn:"1/-1" }}>
-                                <div style={{ fontSize:11, color:"#86868F", marginBottom:4 }}>Notes</div>
+                                <div style={{ fontSize:11, color:"#6B7280", marginBottom:4 }}>Notes</div>
                                 <input value={editDraft.notes||""} onChange={e=>setEditDraft(d=>({...d,notes:e.target.value}))} placeholder="Any notes about this vendor..."
-                                  style={{ width:"100%", boxSizing:"border-box", background:"#141416", border:"1px solid #262629", borderRadius:8, padding:"8px 10px", color:"#F2F2F4", fontSize:12, outline:"none" }} />
+                                  style={{ width:"100%", boxSizing:"border-box", background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:8, padding:"8px 10px", color:"#111827", fontSize:12, outline:"none" }} />
                               </div>
                             </div>
                           )}
 
                           {/* Notes display */}
                           {!isEditing && v.notes && (
-                            <div style={{ padding:"10px 20px", borderTop:"1px solid #1C1C20", fontSize:12, color:"#9A9AA2" }}>📝 {v.notes}</div>
+                            <div style={{ padding:"10px 20px", borderTop:"1px solid #E5E7EB", fontSize:12, color:"#6B7280" }}>📝 {v.notes}</div>
                           )}
                           {!isEditing && (v.min_expected||v.max_expected) && (
-                            <div style={{ padding:"10px 20px", borderTop:"1px solid #1C1C20", fontSize:12, color:"#86868F" }}>
-                              Expected range: <span style={{ color:"#C7BFFF" }}>{fmt(v.min_expected||0)} – {fmt(v.max_expected||0)}/invoice</span>
+                            <div style={{ padding:"10px 20px", borderTop:"1px solid #E5E7EB", fontSize:12, color:"#6B7280" }}>
+                              Expected range: <span style={{ color:"#4F46E5" }}>{fmt(v.min_expected||0)} – {fmt(v.max_expected||0)}/invoice</span>
                             </div>
                           )}
                         </div>

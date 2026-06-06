@@ -36,76 +36,76 @@ export default function CoaView() {
               <div>
                 <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
                   <div>
-                    <div style={{fontSize:10,letterSpacing:3,color:"#86868F",marginBottom:8}}>CONFIGURATION</div>
+                    <div style={{fontSize:10,letterSpacing:3,color:"#6B7280",marginBottom:8}}>CONFIGURATION</div>
                     <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Chart of Accounts</h1>
-                    <div style={{fontSize:13,color:"#86868F",marginTop:6}}>Customize your account structure. Deactivated accounts won't appear in dropdowns but won't delete historical data.</div>
+                    <div style={{fontSize:13,color:"#6B7280",marginTop:6}}>Customize your account structure. Deactivated accounts won't appear in dropdowns but won't delete historical data.</div>
                   </div>
-                  <button onClick={()=>setShowAdd(v=>!v)} style={{padding:"9px 20px",borderRadius:10,fontSize:13,fontWeight:500,background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)",border:"none",color:"#F2F2F4",cursor:"pointer"}}>+ Add Account</button>
+                  <button onClick={()=>setShowAdd(v=>!v)} style={{padding:"9px 20px",borderRadius:10,fontSize:13,fontWeight:500,background:"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:"#fff",cursor:"pointer"}}>+ Add Account</button>
                 </div>
 
                 {showAdd && (
-                  <div style={{background:"#141416",border:"1px solid #C7BFFF33",borderRadius:12,padding:20,marginBottom:20}}>
-                    <div style={{fontSize:12,color:"#C7BFFF",fontWeight:600,marginBottom:14,letterSpacing:0.5}}>NEW ACCOUNT</div>
+                  <div style={{background:"#FFFFFF",border:"1px solid #4F46E533",borderRadius:12,padding:20,marginBottom:20}}>
+                    <div style={{fontSize:12,color:"#4F46E5",fontWeight:600,marginBottom:14,letterSpacing:0.5}}>NEW ACCOUNT</div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 2fr 1fr auto",gap:12,alignItems:"flex-end"}}>
                       <div>
-                        <div style={{fontSize:11,color:"#86868F",marginBottom:4}}>CODE</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>CODE</div>
                         <input value={addDraft.code} onChange={e=>setAddDraft(d=>({...d,code:e.target.value}))} placeholder="e.g. 5950"
-                          style={{width:"100%",boxSizing:"border-box",background:"#0C0C0E",border:"1px solid #262629",borderRadius:8,padding:"8px 10px",color:"#F2F2F4",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace"}}/>
+                          style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace"}}/>
                       </div>
                       <div>
-                        <div style={{fontSize:11,color:"#86868F",marginBottom:4}}>NAME</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>NAME</div>
                         <input value={addDraft.name} onChange={e=>setAddDraft(d=>({...d,name:e.target.value}))} placeholder="e.g. Research & Development"
-                          style={{width:"100%",boxSizing:"border-box",background:"#0C0C0E",border:"1px solid #262629",borderRadius:8,padding:"8px 10px",color:"#F2F2F4",fontSize:13,outline:"none"}}/>
+                          style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:13,outline:"none"}}/>
                       </div>
                       <div>
-                        <div style={{fontSize:11,color:"#86868F",marginBottom:4}}>CATEGORY</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>CATEGORY</div>
                         <select value={addDraft.category} onChange={e=>setAddDraft(d=>({...d,category:e.target.value}))}
-                          style={{width:"100%",background:"#0C0C0E",border:"1px solid #262629",borderRadius:8,padding:"8px 10px",color:"#F2F2F4",fontSize:13,outline:"none"}}>
+                          style={{width:"100%",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:13,outline:"none"}}>
                           {categories.map(c=><option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
-                      <button onClick={addAccount} style={{padding:"9px 20px",borderRadius:8,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)",border:"none",color:"#F2F2F4",cursor:"pointer"}}>Add</button>
+                      <button onClick={addAccount} style={{padding:"9px 20px",borderRadius:8,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:"#fff",cursor:"pointer"}}>Add</button>
                     </div>
                   </div>
                 )}
 
                 {grouped.map(({cat, accounts}) => (
                   <div key={cat} style={{marginBottom:20}}>
-                    <div style={{fontSize:11,color:"#86868F",letterSpacing:2,marginBottom:10,paddingLeft:4}}>{cat.toUpperCase()} — {accounts.length} accounts</div>
-                    <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:12,overflow:"hidden"}}>
+                    <div style={{fontSize:11,color:"#6B7280",letterSpacing:2,marginBottom:10,paddingLeft:4}}>{cat.toUpperCase()} — {accounts.length} accounts</div>
+                    <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:12,overflow:"hidden"}}>
                       <table style={{width:"100%",borderCollapse:"collapse"}}>
                         <tbody>
                           {accounts.map((acct,i) => {
                             const isEditing = editingCode===acct.code;
                             const isInactive = acct.active===false;
                             return (
-                              <tr key={acct.code} style={{borderTop:i>0?"1px solid #1C1C20":"none",background:isInactive?"#08080A":i%2===0?"transparent":"#0A0A0C",opacity:isInactive?0.5:1}}>
+                              <tr key={acct.code} style={{borderTop:i>0?"1px solid #E5E7EB":"none",background:isInactive?"#F8F9FB":i%2===0?"transparent":"#F8F9FB",opacity:isInactive?0.5:1}}>
                                 <td style={{padding:"11px 16px",width:80}}>
                                   {isEditing
                                     ? <input value={editDraft.code||acct.code} onChange={e=>setEditDraft(d=>({...d,code:e.target.value}))}
-                                        style={{width:64,background:"#0C0C0E",border:"1px solid #6D5EF6",borderRadius:6,padding:"4px 8px",color:"#F2F2F4",fontSize:12,outline:"none",fontFamily:"'DM Mono',monospace"}}/>
-                                    : <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#9A9AA2"}}>{acct.code}</span>}
+                                        style={{width:64,background:"#F3F4F6",border:"1px solid #4F46E5",borderRadius:6,padding:"4px 8px",color:"#111827",fontSize:12,outline:"none",fontFamily:"'DM Mono',monospace"}}/>
+                                    : <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#6B7280"}}>{acct.code}</span>}
                                 </td>
                                 <td style={{padding:"11px 16px",flex:1}}>
                                   {isEditing
                                     ? <input value={editDraft.name||acct.name} onChange={e=>setEditDraft(d=>({...d,name:e.target.value}))}
-                                        style={{width:"100%",background:"#0C0C0E",border:"1px solid #6D5EF6",borderRadius:6,padding:"4px 8px",color:"#F2F2F4",fontSize:13,outline:"none"}}/>
-                                    : <span style={{fontSize:13,fontWeight:500,color:isInactive?"#86868F":"#F2F2F4"}}>{acct.name}</span>}
+                                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #4F46E5",borderRadius:6,padding:"4px 8px",color:"#111827",fontSize:13,outline:"none"}}/>
+                                    : <span style={{fontSize:13,fontWeight:500,color:isInactive?"#6B7280":"#111827"}}>{acct.name}</span>}
                                 </td>
                                 <td style={{padding:"11px 16px",width:120}}>
-                                  <span style={{fontSize:11,background:"#1C1C20",color:"#9A9AA2",borderRadius:20,padding:"2px 9px"}}>{acct.category}</span>
+                                  <span style={{fontSize:11,background:"#E5E7EB",color:"#6B7280",borderRadius:20,padding:"2px 9px"}}>{acct.category}</span>
                                 </td>
                                 <td style={{padding:"11px 16px",width:160}}>
                                   <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
                                     {isEditing ? (
                                       <>
-                                        <button onClick={()=>saveEdit(acct.code)} style={{padding:"4px 12px",borderRadius:7,fontSize:11,fontWeight:600,background:"linear-gradient(135deg,#065F46,#047857)",border:"none",color:"#6EE7B7",cursor:"pointer"}}>Save</button>
-                                        <button onClick={()=>setEditingCode(null)} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid #262629",color:"#86868F",cursor:"pointer"}}>×</button>
+                                        <button onClick={()=>saveEdit(acct.code)} style={{padding:"4px 12px",borderRadius:7,fontSize:11,fontWeight:600,background:"linear-gradient(135deg,#D1FAE5,#059669)",border:"none",color:"#059669",cursor:"pointer"}}>Save</button>
+                                        <button onClick={()=>setEditingCode(null)} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid #D1D5DB",color:"#6B7280",cursor:"pointer"}}>×</button>
                                       </>
                                     ) : (
                                       <>
-                                        <button onClick={()=>{setEditingCode(acct.code);setEditDraft({code:acct.code,name:acct.name});}} style={{padding:"4px 12px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid #262629",color:"#9A9AA2",cursor:"pointer"}}>Edit</button>
-                                        <button onClick={()=>toggleActive(acct.code)} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid #262629",color:isInactive?"#10B981":"#EF4444",cursor:"pointer"}}>{isInactive?"Enable":"Disable"}</button>
+                                        <button onClick={()=>{setEditingCode(acct.code);setEditDraft({code:acct.code,name:acct.name});}} style={{padding:"4px 12px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid #D1D5DB",color:"#6B7280",cursor:"pointer"}}>Edit</button>
+                                        <button onClick={()=>toggleActive(acct.code)} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid #D1D5DB",color:isInactive?"#059669":"#DC2626",cursor:"pointer"}}>{isInactive?"Enable":"Disable"}</button>
                                       </>
                                     )}
                                   </div>

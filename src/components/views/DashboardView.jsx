@@ -9,7 +9,7 @@ export default function DashboardView() {
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
-  const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "#8B7BFF" : "#1C1C20"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
+  const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "#6366F1" : "#E5E7EB"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
   return (
             <div>
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
@@ -19,15 +19,15 @@ export default function DashboardView() {
                 onDrop={e=>{e.preventDefault();setUniversalDragOver(false);handleUniversalUpload(e.dataTransfer.files);}}
                 onClick={()=>document.getElementById("universal-upload").click()}
                 style={{
-                  border:`2px dashed ${universalDragOver?"#C7BFFF":"#262629"}`,
+                  border:`2px dashed ${universalDragOver?"#4F46E5":"#D1D5DB"}`,
                   borderRadius:16, padding:"52px 32px", textAlign:"center", cursor:"pointer",
-                  background:universalDragOver?"#18181C":"#141416", transition:"all 0.18s",
+                  background:universalDragOver?"#F3F4F6":"#FFFFFF", transition:"all 0.18s",
                   boxShadow:universalDragOver?"0 0 48px rgba(200,184,255,0.10)":"none",
                   marginBottom:20,
                 }}>
                 <input id="universal-upload" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>handleUniversalUpload(e.target.files)} />
                 <div style={{ fontSize:28, marginBottom:12, opacity: universalDragOver ? 1 : 0.4, transition:"opacity 0.18s" }}>⬆</div>
-                <div style={{ fontSize:15, fontWeight:500, color:universalDragOver?"#C7BFFF":"#9A9AA2", transition:"color 0.18s" }}>
+                <div style={{ fontSize:15, fontWeight:500, color:universalDragOver?"#4F46E5":"#6B7280", transition:"color 0.18s" }}>
                   {universalDragOver ? "Release to upload" : "Drop anything here, or click to browse"}
                 </div>
               </div>
@@ -36,31 +36,31 @@ export default function DashboardView() {
               {uploadQueue.length > 0 && (
                 <div style={{ marginBottom:24 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-                    <div style={{ fontSize:11, color:"#86868F", letterSpacing:2 }}>PROCESSING QUEUE</div>
+                    <div style={{ fontSize:11, color:"#6B7280", letterSpacing:2 }}>PROCESSING QUEUE</div>
                     {uploadQueue.every(q=>q.status==="done"||q.status==="error") && (
-                      <button onClick={()=>setUploadQueue([])} style={{ background:"none", border:"none", color:"#86868F", fontSize:12, cursor:"pointer", padding:0 }}>Clear ×</button>
+                      <button onClick={()=>setUploadQueue([])} style={{ background:"none", border:"none", color:"#6B7280", fontSize:12, cursor:"pointer", padding:0 }}>Clear ×</button>
                     )}
                   </div>
                   <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                     {uploadQueue.map(item => {
                       const typeConfig = {
-                        invoice:       { icon:"🧾", label:"Invoice",         color:"#C7BFFF" },
-                        bank_statement:{ icon:"🏦", label:"Bank Statement",  color:"#8B7BFF" },
-                        contract:      { icon:"📋", label:"Contract",        color:"#F59E0B" },
-                        unknown:       { icon:"❓", label:"Unknown",         color:"#EF4444" },
+                        invoice:       { icon:"🧾", label:"Invoice",         color:"#4F46E5" },
+                        bank_statement:{ icon:"🏦", label:"Bank Statement",  color:"#6366F1" },
+                        contract:      { icon:"📋", label:"Contract",        color:"#D97706" },
+                        unknown:       { icon:"❓", label:"Unknown",         color:"#DC2626" },
                       };
-                      const tc = typeConfig[item.type] || { icon:"📄", label:"Document", color:"#86868F" };
+                      const tc = typeConfig[item.type] || { icon:"📄", label:"Document", color:"#6B7280" };
                       const pendingReview = item.status==="done" && clarificationQueue.some(c => c.queueItemId === item.id);
                       return (
-                        <div key={item.id} style={{ background:"#141416", border:`1px solid ${item.status==="error"?"#EF444433":pendingReview?"#F59E0B66":item.status==="done"?"#10B98133":"#1C1C20"}`, borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
+                        <div key={item.id} style={{ background:"#FFFFFF", border:`1px solid ${item.status==="error"?"#DC262633":pendingReview?"#D9770666":item.status==="done"?"#05966933":"#E5E7EB"}`, borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
                           {/* File icon */}
-                          <div style={{ width:38, height:38, borderRadius:10, background:"#1C1C20", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+                          <div style={{ width:38, height:38, borderRadius:10, background:"#E5E7EB", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
                             {item.status==="done" ? tc.icon : item.status==="error" ? "⚠" : "📄"}
                           </div>
                           {/* Info */}
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontSize:13, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</div>
-                            <div style={{ fontSize:11, marginTop:3, color:item.status==="error"?"#EF4444":item.status==="done"?tc.color:"#86868F" }}>
+                            <div style={{ fontSize:11, marginTop:3, color:item.status==="error"?"#DC2626":item.status==="done"?tc.color:"#6B7280" }}>
                               {item.status==="classifying" && "⟳ Identifying document type..."}
                               {item.status==="processing" && `⟳ Processing as ${tc.label}...`}
                               {item.status==="error" && item.error}
@@ -78,17 +78,17 @@ export default function DashboardView() {
                           <div style={{ flexShrink:0 }}>
                             {(item.status==="classifying"||item.status==="processing") && (
                               <div style={{ display:"flex", gap:3 }}>
-                                {[0,1,2].map(i=><div key={i} style={{ width:5, height:5, borderRadius:"50%", background:"#86868F", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+                                {[0,1,2].map(i=><div key={i} style={{ width:5, height:5, borderRadius:"50%", background:"#6B7280", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
                               </div>
                             )}
                             {item.status==="done" && pendingReview && (
                               <span onClick={()=>{ document.getElementById("clarification-section")?.scrollIntoView({behavior:"smooth"}); }}
-                                style={{ fontSize:11, color:"#F59E0B", background:"#1A1200", border:"1px solid #F59E0B66", borderRadius:20, padding:"3px 10px", cursor:"pointer", fontWeight:600 }}>
+                                style={{ fontSize:11, color:"#D97706", background:"#FEF3C7", border:"1px solid #D9770666", borderRadius:20, padding:"3px 10px", cursor:"pointer", fontWeight:600 }}>
                                 ⚠ Needs Review
                               </span>
                             )}
-                            {item.status==="done" && !pendingReview && <span style={{ fontSize:11, color:"#10B981", background:"#0A2A1A", border:"1px solid #10B98133", borderRadius:20, padding:"3px 10px" }}>Done</span>}
-                            {item.status==="error" && <span style={{ fontSize:11, color:"#EF4444", background:"#2A0A0A", border:"1px solid #EF444433", borderRadius:20, padding:"3px 10px" }}>Error</span>}
+                            {item.status==="done" && !pendingReview && <span style={{ fontSize:11, color:"#059669", background:"#ECFDF5", border:"1px solid #05966933", borderRadius:20, padding:"3px 10px" }}>Done</span>}
+                            {item.status==="error" && <span style={{ fontSize:11, color:"#DC2626", background:"#FEF2F2", border:"1px solid #DC262633", borderRadius:20, padding:"3px 10px" }}>Error</span>}
                           </div>
                         </div>
                       );
@@ -96,30 +96,30 @@ export default function DashboardView() {
                   </div>
                   {/* Invoice clarification prompt */}
                   {clarificationQueue.length > 0 && (
-                    <div style={{ marginTop:12, background:"#1A1200", border:"1px solid #F59E0B44", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"#F59E0B" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need your input before booking — scroll down to review</div>
-                      <button onClick={()=>{ window.scrollTo({top:9999,behavior:"smooth"}); }} style={{ background:"#F59E0B22", border:"1px solid #F59E0B44", color:"#F59E0B", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Below ↓</button>
+                    <div style={{ marginTop:12, background:"#FEF3C7", border:"1px solid #D9770644", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:13, color:"#D97706" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need your input before booking — scroll down to review</div>
+                      <button onClick={()=>{ window.scrollTo({top:9999,behavior:"smooth"}); }} style={{ background:"#D9770622", border:"1px solid #D9770644", color:"#D97706", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Below ↓</button>
                     </div>
                   )}
                   {/* Bank review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="bank_statement"&&q.result?.needsReview>0) && (
-                    <div style={{ marginTop:12, background:"#1A1200", border:"1px solid #F59E0B44", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"#F59E0B" }}>⚠ Some bank transactions need your GL selection</div>
-                      <button onClick={()=>setView("bank")} style={{ background:"#F59E0B22", border:"1px solid #F59E0B44", color:"#F59E0B", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Now →</button>
+                    <div style={{ marginTop:12, background:"#FEF3C7", border:"1px solid #D9770644", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:13, color:"#D97706" }}>⚠ Some bank transactions need your GL selection</div>
+                      <button onClick={()=>setView("bank")} style={{ background:"#D9770622", border:"1px solid #D9770644", color:"#D97706", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Now →</button>
                     </div>
                   )}
                   {/* Contract review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="contract") && (
-                    <div style={{ marginTop:8, background:"#0A1A2E", border:"1px solid #8B7BFF44", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"#8B7BFF" }}>📋 Contract journal entries ready to post</div>
-                      <button onClick={()=>{ setView("contracts"); setContractView("list"); }} style={{ background:"#8B7BFF22", border:"1px solid #8B7BFF44", color:"#8B7BFF", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Contracts →</button>
+                    <div style={{ marginTop:8, background:"#EEF2FF", border:"1px solid #6366F144", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:13, color:"#6366F1" }}>📋 Contract journal entries ready to post</div>
+                      <button onClick={()=>{ setView("contracts"); setContractView("list"); }} style={{ background:"#6366F122", border:"1px solid #6366F144", color:"#6366F1", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Contracts →</button>
                     </div>
                   )}
                   {/* Unknown docs review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="unknown") && (
-                    <div style={{ marginTop:8, background:"#2A0A0A", border:"1px solid #EF444433", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"#EF4444" }}>❓ Some documents need accountant review</div>
-                      <button onClick={()=>setView("review")} style={{ background:"#EF444422", border:"1px solid #EF444433", color:"#EF4444", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Now →</button>
+                    <div style={{ marginTop:8, background:"#FEF2F2", border:"1px solid #DC262633", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:13, color:"#DC2626" }}>❓ Some documents need accountant review</div>
+                      <button onClick={()=>setView("review")} style={{ background:"#DC262622", border:"1px solid #DC262633", color:"#DC2626", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Now →</button>
                     </div>
                   )}
                 </div>
@@ -128,24 +128,23 @@ export default function DashboardView() {
               {/* ── AP ACTIONABLE ALERTS ── */}
               {(() => {
                 const ap = invoices.filter(i => (glIsExpense(i.gl_code)||i.type==="expense") && i.status!=="voided");
-                const pending = ap.filter(i => i.payment_status!=="paid" && i.approval_status!=="rejected" && i.approval_status!=="approved" && i.approval_status!=="auto_approved");
-                const approvedList = ap.filter(i => (i.approval_status==="approved"||i.approval_status==="auto_approved") && i.payment_status!=="paid");
+                const unpaid = ap.filter(i => i.payment_status!=="paid");
+                if (unpaid.length===0) return null;
                 const wk = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
-                const dueWk = approvedList.filter(i=>i.due_date && i.due_date<=wk).reduce((s,i)=>s+i.amount,0);
-                const approvedTotal = approvedList.reduce((s,i)=>s+i.amount,0);
-                if (pending.length===0 && approvedList.length===0) return null;
+                const today = new Date().toISOString().slice(0,10);
+                const total = unpaid.reduce((s,i)=>s+i.amount,0);
+                const dueWk = unpaid.filter(i=>i.due_date && i.due_date<=wk).reduce((s,i)=>s+i.amount,0);
+                const overdue = unpaid.filter(i=>i.due_date && i.due_date<today);
                 return (
                   <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
-                    {pending.length>0 && (
-                      <div onClick={()=>{ setView("ap"); setApView("inbox"); }} style={{ flex:"1 1 280px", cursor:"pointer", background:"#1A1200", border:"1px solid #F59E0B44", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#F59E0B"} onMouseLeave={e=>e.currentTarget.style.borderColor="#F59E0B44"}>
-                        <div><div style={{ fontSize:13, fontWeight:600, color:"#F59E0B" }}>⏳ {pending.length} bill{pending.length!==1?"s":""} pending approval</div><div style={{ fontSize:11, color:"#86868F", marginTop:3 }}>Review and approve in the inbox</div></div>
-                        <span style={{ fontSize:12, color:"#F59E0B" }}>Review →</span>
-                      </div>
-                    )}
-                    {approvedList.length>0 && (
-                      <div onClick={()=>{ setView("ap"); setApView("approved"); }} style={{ flex:"1 1 280px", cursor:"pointer", background:"#0A1400", border:"1px solid #10B98144", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#10B981"} onMouseLeave={e=>e.currentTarget.style.borderColor="#10B98144"}>
-                        <div><div style={{ fontSize:13, fontWeight:600, color:"#10B981" }}>✅ {approvedList.length} bill{approvedList.length!==1?"s":""} approved · ${approvedTotal.toLocaleString("en-US",{maximumFractionDigits:0})} total due</div><div style={{ fontSize:11, color:"#86868F", marginTop:3 }}>${dueWk.toLocaleString("en-US",{maximumFractionDigits:0})} due this week — ready to pay</div></div>
-                        <span style={{ fontSize:12, color:"#10B981" }}>Pay →</span>
+                    <div onClick={()=>{ setView("ap"); setApView("unpaid"); }} style={{ flex:"1 1 280px", cursor:"pointer", background:"#FFFFFF", border:"1px solid #E5E7EB", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#4F46E5"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E5E7EB"}>
+                      <div><div style={{ fontSize:13, fontWeight:600, color:"#111827" }}>🧾 {unpaid.length} unpaid bill{unpaid.length!==1?"s":""} · ${total.toLocaleString("en-US",{maximumFractionDigits:0})} outstanding</div><div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>${dueWk.toLocaleString("en-US",{maximumFractionDigits:0})} due this week — go to Money Out to pay</div></div>
+                      <span style={{ fontSize:12, color:"#4F46E5", fontWeight:600 }}>Review & pay →</span>
+                    </div>
+                    {overdue.length>0 && (
+                      <div onClick={()=>{ setView("ap"); setApView("unpaid"); }} style={{ flex:"1 1 220px", cursor:"pointer", background:"#FEF2F2", border:"1px solid #DC262633", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#DC2626"} onMouseLeave={e=>e.currentTarget.style.borderColor="#DC262633"}>
+                        <div><div style={{ fontSize:13, fontWeight:600, color:"#DC2626" }}>⚠ {overdue.length} overdue bill{overdue.length!==1?"s":""}</div><div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>${overdue.reduce((s,i)=>s+i.amount,0).toLocaleString("en-US",{maximumFractionDigits:0})} past due</div></div>
+                        <span style={{ fontSize:12, color:"#DC2626" }}>Pay now →</span>
                       </div>
                     )}
                   </div>
@@ -154,16 +153,16 @@ export default function DashboardView() {
 
               {/* ── CLARIFICATION QUEUE ── */}
               {clarificationQueue.length > 0 && (
-                <div id="clarification-section" style={{ marginBottom:24, background:"#1A1200", border:"2px solid #F59E0B", borderRadius:16, padding:20 }}>
+                <div id="clarification-section" style={{ marginBottom:24, background:"#FEF3C7", border:"2px solid #D97706", borderRadius:16, padding:20 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
                     <span style={{ fontSize:20 }}>⚠</span>
                     <div>
-                      <div style={{ fontSize:15, fontWeight:700, color:"#F59E0B" }}>{clarificationQueue.length} Invoice{clarificationQueue.length>1?"s":""} Need Your Review</div>
-                      <div style={{ fontSize:12, color:"#9A9AA2", marginTop:2 }}>These items cannot be booked until you review them. Click a category below to confirm or reject each one.</div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"#D97706" }}>{clarificationQueue.length} Invoice{clarificationQueue.length>1?"s":""} Need Your Review</div>
+                      <div style={{ fontSize:12, color:"#6B7280", marginTop:2 }}>These items cannot be booked until you review them. Click a category below to confirm or reject each one.</div>
                     </div>
                   </div>
                   {clarificationQueue.map(item => (
-                    <div key={item.id} style={{ background: item.isDuplicate ? "#1A0808" : "#1A1400", border: `1px solid ${item.isDuplicate ? "#EF444444" : "#F59E0B44"}`, borderRadius:14, padding:20, marginBottom:12 }}>
+                    <div key={item.id} style={{ background: item.isDuplicate ? "#FEF2F2" : "#FEF3C7", border: `1px solid ${item.isDuplicate ? "#DC262644" : "#D9770644"}`, borderRadius:14, padding:20, marginBottom:12 }}>
                       {item.isDuplicate ? (
                         /* ── DUPLICATE WARNING CARD ── */
                         <>
@@ -171,19 +170,19 @@ export default function DashboardView() {
                             <div>
                               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
                                 <span style={{ fontSize:16, lineHeight:1 }}>⚠</span>
-                                <div style={{ fontSize:15, fontWeight:700, color:"#EF4444" }}>Possible Duplicate Invoice</div>
+                                <div style={{ fontSize:15, fontWeight:700, color:"#DC2626" }}>Possible Duplicate Invoice</div>
                               </div>
-                              <div style={{ fontSize:13, color:"#9A9AA2", lineHeight:1.5 }}>{item.question}</div>
+                              <div style={{ fontSize:13, color:"#6B7280", lineHeight:1.5 }}>{item.question}</div>
                             </div>
-                            <div style={{ fontSize:11, color:"#EF4444", background:"#EF444422", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12, whiteSpace:"nowrap" }}>
+                            <div style={{ fontSize:11, color:"#DC2626", background:"#DC262622", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12, whiteSpace:"nowrap" }}>
                               Duplicate
                             </div>
                           </div>
-                          <div style={{ background:"#0C0C0E", borderRadius:10, padding:"10px 14px", marginBottom:14 }}>
-                            <div style={{ fontSize:11, color:"#86868F", marginBottom:6, letterSpacing:1 }}>NEW — ABOUT TO BOOK:</div>
-                            <div style={{ fontSize:13, color:"#F2F2F4" }}>
+                          <div style={{ background:"#F3F4F6", borderRadius:10, padding:"10px 14px", marginBottom:14 }}>
+                            <div style={{ fontSize:11, color:"#6B7280", marginBottom:6, letterSpacing:1 }}>NEW — ABOUT TO BOOK:</div>
+                            <div style={{ fontSize:13, color:"#111827" }}>
                               {item.invoice.vendor} · <span style={{ fontFamily:"'DM Mono',monospace" }}>${item.invoice.amount.toFixed(2)}</span> · {item.invoice.date}
-                              {item.invoice.invoice_number && <span style={{ color:"#9A9AA2" }}> · #{item.invoice.invoice_number}</span>}
+                              {item.invoice.invoice_number && <span style={{ color:"#6B7280" }}> · #{item.invoice.invoice_number}</span>}
                             </div>
                           </div>
                           <div style={{ display:"flex", gap:8 }}>
@@ -191,7 +190,7 @@ export default function DashboardView() {
                               logAudit("invoice_rejected", `Rejected (duplicate): ${item.invoice.vendor} · $${(item.invoice.amount||0).toFixed(2)} on ${item.invoice.date} — already booked`, item.invoice, null);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
                               showNotification("Duplicate rejected ✓");
-                            }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"#3B0A0A", border:"1px solid #EF444466", color:"#FCA5A5", cursor:"pointer", fontWeight:600 }}>
+                            }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"#FEF2F2", border:"1px solid #DC262666", color:"#DC2626", cursor:"pointer", fontWeight:600 }}>
                               ✕ Reject — already booked
                             </button>
                             <button onClick={() => {
@@ -201,7 +200,7 @@ export default function DashboardView() {
                               bookToDb(finalInv);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
                               showNotification(`Booked to ${item.invoice.gl_name} ✓`);
-                            }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"transparent", border:"1px solid #262629", color:"#9A9AA2", cursor:"pointer" }}>
+                            }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"transparent", border:"1px solid #D1D5DB", color:"#6B7280", cursor:"pointer" }}>
                               Book anyway (different charge)
                             </button>
                           </div>
@@ -212,9 +211,9 @@ export default function DashboardView() {
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
                             <div>
                               <div style={{ fontSize:15, fontWeight:600, marginBottom:4 }}>{item.invoice.vendor} — ${item.invoice.amount.toFixed(2)}</div>
-                              <div style={{ fontSize:13, color:"#9A9AA2" }}>{item.question}</div>
+                              <div style={{ fontSize:13, color:"#6B7280" }}>{item.question}</div>
                             </div>
-                            <div style={{ fontSize:11, color:"#F59E0B", background:"#F59E0B22", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12 }}>
+                            <div style={{ fontSize:11, color:"#D97706", background:"#D9770622", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12 }}>
                               {Math.round(item.invoice.confidence)}% confident
                             </div>
                           </div>
@@ -231,9 +230,9 @@ export default function DashboardView() {
                                 }}
                                 style={{
                                   padding:"8px 16px", borderRadius:20, fontSize:12, cursor:"pointer",
-                                  background: opt.code === item.suggestedCode ? "#372E8F" : "#1C1C20",
-                                  border: `1px solid ${opt.code === item.suggestedCode ? "#8B7BFF" : "#262629"}`,
-                                  color: opt.code === item.suggestedCode ? "#C7BFFF" : "#9A9AA2",
+                                  background: opt.code === item.suggestedCode ? "#4338CA" : "#E5E7EB",
+                                  border: `1px solid ${opt.code === item.suggestedCode ? "#6366F1" : "#D1D5DB"}`,
+                                  color: opt.code === item.suggestedCode ? "#4F46E5" : "#6B7280",
                                   fontWeight: opt.code === item.suggestedCode ? 600 : 400,
                                 }}>
                                 {opt.code === item.suggestedCode ? "★ " : ""}{opt.name}
@@ -248,14 +247,14 @@ export default function DashboardView() {
                               bookToDb(finalInv);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
                               showNotification(`Booked to ${item.invoice.gl_name} ✓`);
-                            }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#065F46", border:"1px solid #10B98144", color:"#6EE7B7", cursor:"pointer" }}>
+                            }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#D1FAE5", border:"1px solid #05966944", color:"#059669", cursor:"pointer" }}>
                               ✓ Use suggested: {item.suggestedName}
                             </button>
                             <button onClick={() => {
                               logAudit("invoice_rejected", `Rejected: ${item.invoice.vendor} · $${(item.invoice.amount||0).toFixed(2)} on ${item.invoice.date} — not relevant or not approved`, item.invoice, null);
                               setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
                               showNotification("Invoice rejected ✓");
-                            }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#2A0A0A", border:"1px solid #EF444433", color:"#FCA5A5", cursor:"pointer" }}>
+                            }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#FEF2F2", border:"1px solid #DC262633", color:"#DC2626", cursor:"pointer" }}>
                               ✕ Reject
                             </button>
                           </div>
@@ -285,7 +284,7 @@ export default function DashboardView() {
                 const cashOutflows = invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status==="paid").reduce((s,i)=>s+i.amount,0);
                 const estimatedCash = openingCash + cashInflows - cashOutflows;
                 const runway = avgBurn>0 ? Math.floor(estimatedCash/avgBurn) : null;
-                const runwayColor = runway===null?"#86868F":runway<=3?"#EF4444":runway<=6?"#F59E0B":"#10B981";
+                const runwayColor = runway===null?"#6B7280":runway<=3?"#DC2626":runway<=6?"#D97706":"#059669";
                 const burnTrend = burnLastMonth>0 ? ((burnThisMonth-burnLastMonth)/burnLastMonth*100) : 0;
                 const burnDrivers = Object.entries(invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(currentMonth)).reduce((acc,i)=>{acc[i.gl_name]=(acc[i.gl_name]||0)+i.amount;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
                 const ytdNet = invoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0) - invoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
@@ -296,58 +295,58 @@ export default function DashboardView() {
                   <div style={{marginBottom:24}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
                       <div onClick={()=>setBurnModalOpen(true)} title="View monthly burn breakdown"
-                        onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor="#EF444433";e.currentTarget.style.transform="none";}}
-                        style={{background:"#1A0A0A",border:"1px solid #EF444433",borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
+                        onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor="#DC262633";e.currentTarget.style.transform="none";}}
+                        style={{background:"#FEF2F2",border:"1px solid #DC262633",borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                          <div style={{fontSize:10,color:"#EF4444",letterSpacing:2}}>MONTHLY BURN</div>
-                          <span style={{fontSize:11,color:"#86868F"}}>›</span>
+                          <div style={{fontSize:10,color:"#DC2626",letterSpacing:2}}>MONTHLY BURN</div>
+                          <span style={{fontSize:11,color:"#6B7280"}}>›</span>
                         </div>
-                        <div style={{fontSize:26,fontWeight:700,color:"#EF4444",fontFamily:"'DM Mono',monospace"}}>${burnThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                        <div style={{fontSize:11,color:"#86868F",marginTop:6}}>
-                          {Math.abs(burnTrend)>5 ? (burnTrend>0?<span style={{color:"#EF4444"}}>↑ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>:<span style={{color:"#10B981"}}>↓ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>) : "Stable vs last month"}
+                        <div style={{fontSize:26,fontWeight:700,color:"#DC2626",fontFamily:"'DM Mono',monospace"}}>${burnThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>
+                          {Math.abs(burnTrend)>5 ? (burnTrend>0?<span style={{color:"#DC2626"}}>↑ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>:<span style={{color:"#059669"}}>↓ {Math.abs(burnTrend).toFixed(0)}% vs last mo</span>) : "Stable vs last month"}
                         </div>
                       </div>
-                      <div style={{background:"#0A0A0C",border:"1px solid #6D5EF633",borderRadius:14,padding:"20px 22px"}}>
-                        <div style={{fontSize:10,color:"#A99CFF",letterSpacing:2,marginBottom:8}}>NET BURN</div>
-                        <div style={{fontSize:26,fontWeight:700,color:netBurn>0?"#EF4444":"#10B981",fontFamily:"'DM Mono',monospace"}}>{netBurn>0?"-":"+"} ${Math.abs(netBurn).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                        <div style={{fontSize:11,color:"#86868F",marginTop:6}}>{revenueThisMonth>0?`$${revenueThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})} revenue offset`:"No revenue this month"}</div>
+                      <div style={{background:"#F8F9FB",border:"1px solid #4F46E533",borderRadius:14,padding:"20px 22px"}}>
+                        <div style={{fontSize:10,color:"#818CF8",letterSpacing:2,marginBottom:8}}>NET BURN</div>
+                        <div style={{fontSize:26,fontWeight:700,color:netBurn>0?"#DC2626":"#059669",fontFamily:"'DM Mono',monospace"}}>{netBurn>0?"-":"+"} ${Math.abs(netBurn).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>{revenueThisMonth>0?`$${revenueThisMonth.toLocaleString("en-US",{maximumFractionDigits:0})} revenue offset`:"No revenue this month"}</div>
                       </div>
                       <div onClick={()=>setBurnModalOpen(true)} title="View runway & burn breakdown"
                         onMouseEnter={cardHover(true)} onMouseLeave={e=>{e.currentTarget.style.borderColor=`${runwayColor}33`;e.currentTarget.style.transform="none";}}
-                        style={{background:runway!==null&&runway<=3?"#1A0A0A":runway!==null&&runway<=6?"#1A1200":"#0A1A0A",border:`1px solid ${runwayColor}33`,borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
+                        style={{background:runway!==null&&runway<=3?"#FEF2F2":runway!==null&&runway<=6?"#FEF3C7":"#ECFDF5",border:`1px solid ${runwayColor}33`,borderRadius:14,padding:"20px 22px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                           <div style={{fontSize:10,color:runwayColor,letterSpacing:2}}>RUNWAY</div>
-                          <span style={{fontSize:11,color:"#86868F"}}>›</span>
+                          <span style={{fontSize:11,color:"#6B7280"}}>›</span>
                         </div>
                         <div style={{fontSize:26,fontWeight:700,color:runwayColor,fontFamily:"'DM Mono',monospace"}}>{runway===null?"∞":`${runway}mo`}</div>
-                        <div style={{fontSize:11,color:"#86868F",marginTop:6}}>{runway===null?"Set cash balance for runway":runway<=3?"⚠ Critical — act now":runway<=6?"Watch closely":"Healthy"}</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>{runway===null?"Set cash balance for runway":runway<=3?"⚠ Critical — act now":runway<=6?"Watch closely":"Healthy"}</div>
                       </div>
-                      <div style={{background:"#0A1400",border:"1px solid #10B98133",borderRadius:14,padding:"20px 22px"}}>
-                        <div style={{fontSize:10,color:"#10B981",letterSpacing:2,marginBottom:8}}>EST. TAX DUE</div>
-                        <div style={{fontSize:26,fontWeight:700,color:"#10B981",fontFamily:"'DM Mono',monospace"}}>${estimatedTax.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                        <div style={{fontSize:11,color:"#86868F",marginTop:6}}>Next: {nextQtr} · ~25% of net income</div>
+                      <div style={{background:"#ECFDF5",border:"1px solid #05966933",borderRadius:14,padding:"20px 22px"}}>
+                        <div style={{fontSize:10,color:"#059669",letterSpacing:2,marginBottom:8}}>EST. TAX DUE</div>
+                        <div style={{fontSize:26,fontWeight:700,color:"#059669",fontFamily:"'DM Mono',monospace"}}>${estimatedTax.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>Next: {nextQtr} · ~25% of net income</div>
                       </div>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                      <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:"18px 20px",display:"flex",flexDirection:"column"}}>
+                      <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:"18px 20px",display:"flex",flexDirection:"column"}}>
                         {(() => {
                           const monthExp = invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(currentMonth));
                           const back = burnDrill.vendor ? ()=>setBurnDrill({cat:burnDrill.cat,vendor:null})
                                      : burnDrill.cat ? ()=>setBurnDrill({cat:null,vendor:null}) : null;
                           const crumbs = ["Expenses"]; if (burnDrill.cat) crumbs.push(burnDrill.cat); if (burnDrill.vendor) crumbs.push(burnDrill.vendor);
-                          const hov = (on)=>(e)=>{ e.currentTarget.style.background = on?"#1C1C20":"transparent"; };
+                          const hov = (on)=>(e)=>{ e.currentTarget.style.background = on?"#E5E7EB":"transparent"; };
                           return (
                             <>
                               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,minHeight:22}}>
-                                {back && <button onClick={back} title="Back" style={{background:"#1C1C20",border:"1px solid #262629",color:"#C7BFFF",borderRadius:7,padding:"3px 9px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>←</button>}
+                                {back && <button onClick={back} title="Back" style={{background:"#E5E7EB",border:"1px solid #D1D5DB",color:"#4F46E5",borderRadius:7,padding:"3px 9px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>←</button>}
                                 <div style={{fontSize:10,letterSpacing:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                   {crumbs.map((c,i)=>(
                                     <span key={i} style={{display:"flex",alignItems:"center",gap:6}}>
-                                      <span style={{color:i===crumbs.length-1?"#F2F2F4":"#86868F"}}>{String(c).toUpperCase()}</span>
-                                      {i<crumbs.length-1 && <span style={{color:"#55555C"}}>→</span>}
+                                      <span style={{color:i===crumbs.length-1?"#111827":"#6B7280"}}>{String(c).toUpperCase()}</span>
+                                      {i<crumbs.length-1 && <span style={{color:"#9CA3AF"}}>→</span>}
                                     </span>
                                   ))}
-                                  {!burnDrill.cat && <span style={{color:"#86868F"}}>· THIS MONTH</span>}
+                                  {!burnDrill.cat && <span style={{color:"#6B7280"}}>· THIS MONTH</span>}
                                 </div>
                               </div>
                               <div style={{overflowY:"auto",maxHeight:232,margin:"0 -4px",paddingRight:2}}>
@@ -355,18 +354,18 @@ export default function DashboardView() {
                                   // Level 1 — categories
                                   if (!burnDrill.cat) {
                                     const cats = Object.values(monthExp.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0}; a[k].total+=i.amount; return a;},{})).sort((x,y)=>y.total-x.total);
-                                    if (cats.length===0) return <div style={{fontSize:13,color:"#86868F"}}>No expenses this month yet</div>;
+                                    if (cats.length===0) return <div style={{fontSize:13,color:"#6B7280"}}>No expenses this month yet</div>;
                                     return cats.map(c=>(
                                       <div key={c.name} onClick={()=>setBurnDrill({cat:c.name,vendor:null})} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{marginBottom:8,cursor:"pointer",padding:"5px 4px",borderRadius:8}}>
                                         <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
-                                          <div style={{fontSize:13,color:"#F2F2F4"}}>{c.name}</div>
+                                          <div style={{fontSize:13,color:"#111827"}}>{c.name}</div>
                                           <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                            <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#EF4444"}}>${c.total.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-                                            <span style={{fontSize:11,color:"#55555C"}}>›</span>
+                                            <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#DC2626"}}>${c.total.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                                            <span style={{fontSize:11,color:"#9CA3AF"}}>›</span>
                                           </div>
                                         </div>
-                                        <div style={{height:3,background:"#1C1C20",borderRadius:2}}>
-                                          <div style={{height:"100%",width:`${Math.min(100,burnThisMonth>0?c.total/burnThisMonth*100:0)}%`,background:"linear-gradient(90deg,#EF4444,#F59E0B)",borderRadius:2}} />
+                                        <div style={{height:3,background:"#E5E7EB",borderRadius:2}}>
+                                          <div style={{height:"100%",width:`${Math.min(100,burnThisMonth>0?c.total/burnThisMonth*100:0)}%`,background:"linear-gradient(90deg,#DC2626,#D97706)",borderRadius:2}} />
                                         </div>
                                       </div>
                                     ));
@@ -374,31 +373,31 @@ export default function DashboardView() {
                                   // Level 2 — vendors within category
                                   if (!burnDrill.vendor) {
                                     const vends = Object.values(monthExp.filter(i=>(i.gl_name||"Uncoded")===burnDrill.cat).reduce((a,i)=>{const v=i.vendor||"Unknown"; if(!a[v])a[v]={vendor:v,total:0,count:0}; a[v].total+=i.amount; a[v].count++; return a;},{})).sort((x,y)=>y.total-x.total);
-                                    if (vends.length===0) return <div style={{fontSize:13,color:"#86868F"}}>No vendors.</div>;
+                                    if (vends.length===0) return <div style={{fontSize:13,color:"#6B7280"}}>No vendors.</div>;
                                     return vends.map(v=>(
                                       <div key={v.vendor} onClick={()=>setBurnDrill({cat:burnDrill.cat,vendor:v.vendor})} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 4px",cursor:"pointer",borderRadius:8}}>
-                                        <span style={{fontSize:13,color:"#D2D2D6",display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                                        <span style={{fontSize:13,color:"#374151",display:"flex",alignItems:"center",gap:8,minWidth:0}}>
                                           <span style={{width:24,height:24,borderRadius:6,background:vendorColor(v.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{initials(v.vendor)}</span>
                                           <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.vendor}</span>
-                                          <span style={{fontSize:11,color:"#55555C",flexShrink:0}}>· {v.count}</span>
+                                          <span style={{fontSize:11,color:"#9CA3AF",flexShrink:0}}>· {v.count}</span>
                                         </span>
                                         <span style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                                          <span style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#EF4444"}}>${v.total.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-                                          <span style={{fontSize:11,color:"#55555C"}}>›</span>
+                                          <span style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#DC2626"}}>${v.total.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                          <span style={{fontSize:11,color:"#9CA3AF"}}>›</span>
                                         </span>
                                       </div>
                                     ));
                                   }
                                   // Level 3 — transactions for vendor
                                   const txns = monthExp.filter(i=>(i.gl_name||"Uncoded")===burnDrill.cat && (i.vendor||"Unknown")===burnDrill.vendor).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-                                  if (txns.length===0) return <div style={{fontSize:13,color:"#86868F"}}>No transactions.</div>;
+                                  if (txns.length===0) return <div style={{fontSize:13,color:"#6B7280"}}>No transactions.</div>;
                                   return txns.map(inv=>(
                                     <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} onMouseEnter={hov(true)} onMouseLeave={hov(false)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 4px",cursor:"pointer",borderRadius:8}}>
                                       <div style={{minWidth:0}}>
-                                        <div style={{fontSize:12,color:"#F2F2F4",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{inv.description||inv.vendor}</div>
-                                        <div style={{fontSize:11,color:"#86868F"}}>{inv.date} · {inv.gl_code}</div>
+                                        <div style={{fontSize:12,color:"#111827",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{inv.description||inv.vendor}</div>
+                                        <div style={{fontSize:11,color:"#6B7280"}}>{inv.date} · {inv.gl_code}</div>
                                       </div>
-                                      <span style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#EF4444",flexShrink:0}}>${inv.amount.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                      <span style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:"#DC2626",flexShrink:0}}>${inv.amount.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
                                     </div>
                                   ));
                                 })()}
@@ -409,18 +408,18 @@ export default function DashboardView() {
                       </div>
                       <div onClick={()=>setView("settings")} title="Manage bank accounts in Settings"
                         onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
-                        style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:"18px 20px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
+                        style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:"18px 20px",cursor:"pointer",transition:"transform .16s, border-color .2s"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                          <div style={{fontSize:10,color:"#86868F",letterSpacing:2}}>CASH POSITION</div>
-                          <span style={{fontSize:11,color:"#86868F"}}>Bank accounts ›</span>
+                          <div style={{fontSize:10,color:"#6B7280",letterSpacing:2}}>CASH POSITION</div>
+                          <span style={{fontSize:11,color:"#6B7280"}}>Bank accounts ›</span>
                         </div>
-                        <div style={{fontSize:32,fontWeight:700,color:estimatedCash>=0?"#F2F2F4":"#EF4444",fontFamily:"'DM Mono',monospace",marginBottom:12}}>${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                        <div style={{fontSize:32,fontWeight:700,color:estimatedCash>=0?"#111827":"#DC2626",fontFamily:"'DM Mono',monospace",marginBottom:12}}>${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
                         <div style={{display:"flex",gap:20}}>
-                          <div><div style={{fontSize:10,color:"#86868F",marginBottom:2}}>COLLECTED</div><div style={{fontSize:13,color:"#10B981",fontFamily:"'DM Mono',monospace"}}>+${cashInflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
-                          <div><div style={{fontSize:10,color:"#86868F",marginBottom:2}}>PAID OUT</div><div style={{fontSize:13,color:"#EF4444",fontFamily:"'DM Mono',monospace"}}>-${cashOutflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
-                          <div><div style={{fontSize:10,color:"#86868F",marginBottom:2}}>AVG BURN/MO</div><div style={{fontSize:13,color:"#F59E0B",fontFamily:"'DM Mono',monospace"}}>${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
+                          <div><div style={{fontSize:10,color:"#6B7280",marginBottom:2}}>COLLECTED</div><div style={{fontSize:13,color:"#059669",fontFamily:"'DM Mono',monospace"}}>+${cashInflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
+                          <div><div style={{fontSize:10,color:"#6B7280",marginBottom:2}}>PAID OUT</div><div style={{fontSize:13,color:"#DC2626",fontFamily:"'DM Mono',monospace"}}>-${cashOutflows.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
+                          <div><div style={{fontSize:10,color:"#6B7280",marginBottom:2}}>AVG BURN/MO</div><div style={{fontSize:13,color:"#D97706",fontFamily:"'DM Mono',monospace"}}>${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}</div></div>
                         </div>
-                        {openingCash===0&&<button onClick={(e)=>{e.stopPropagation();setView("opening-balances");}} style={{marginTop:12,background:"none",border:"1px solid #262629",borderRadius:8,padding:"6px 12px",color:"#C7BFFF",fontSize:11,cursor:"pointer"}}>+ Add opening cash balance →</button>}
+                        {openingCash===0&&<button onClick={(e)=>{e.stopPropagation();setView("opening-balances");}} style={{marginTop:12,background:"none",border:"1px solid #D1D5DB",borderRadius:8,padding:"6px 12px",color:"#4F46E5",fontSize:11,cursor:"pointer"}}>+ Add opening cash balance →</button>}
                       </div>
                     </div>
 
@@ -436,43 +435,43 @@ export default function DashboardView() {
                       const maxExp = Math.max(1, ...months.map(mm=>mm.exp));
                       return (
                         <div onClick={()=>setBurnModalOpen(false)} style={{position:"fixed",inset:0,zIndex:10001,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-                          <div className="sc-scale" onClick={e=>e.stopPropagation()} style={{width:560,maxWidth:"94vw",maxHeight:"86vh",overflowY:"auto",background:"#141416",border:"1px solid #262629",borderRadius:18,padding:26,boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
+                          <div className="sc-scale" onClick={e=>e.stopPropagation()} style={{width:560,maxWidth:"94vw",maxHeight:"86vh",overflowY:"auto",background:"#FFFFFF",border:"1px solid #D1D5DB",borderRadius:18,padding:26,boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
                               <div>
-                                <div style={{fontSize:10,letterSpacing:2,color:"#86868F",marginBottom:6}}>CASH BURN</div>
+                                <div style={{fontSize:10,letterSpacing:2,color:"#6B7280",marginBottom:6}}>CASH BURN</div>
                                 <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Monthly burn &amp; runway</h2>
                               </div>
-                              <button onClick={()=>setBurnModalOpen(false)} style={{background:"none",border:"none",color:"#86868F",fontSize:24,cursor:"pointer",lineHeight:1,padding:0}}>×</button>
+                              <button onClick={()=>setBurnModalOpen(false)} style={{background:"none",border:"none",color:"#6B7280",fontSize:24,cursor:"pointer",lineHeight:1,padding:0}}>×</button>
                             </div>
                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:22}}>
-                              {[["AVG BURN/MO",`$${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}`,"#F59E0B"],["RUNWAY",runway===null?"∞":`${runway} mo`,runwayColor],["EST. CASH",`$${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}`,estimatedCash>=0?"#10B981":"#EF4444"]].map(([l,v,c])=>(
-                                <div key={l} style={{background:"#0C0C0E",border:"1px solid #1C1C20",borderRadius:12,padding:"14px 16px"}}>
-                                  <div style={{fontSize:10,color:"#86868F",letterSpacing:1,marginBottom:6}}>{l}</div>
+                              {[["AVG BURN/MO",`$${avgBurn.toLocaleString("en-US",{maximumFractionDigits:0})}`,"#D97706"],["RUNWAY",runway===null?"∞":`${runway} mo`,runwayColor],["EST. CASH",`$${estimatedCash.toLocaleString("en-US",{maximumFractionDigits:0})}`,estimatedCash>=0?"#059669":"#DC2626"]].map(([l,v,c])=>(
+                                <div key={l} style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:12,padding:"14px 16px"}}>
+                                  <div style={{fontSize:10,color:"#6B7280",letterSpacing:1,marginBottom:6}}>{l}</div>
                                   <div style={{fontSize:18,fontWeight:700,color:c,fontFamily:"'DM Mono',monospace"}}>{v}</div>
                                 </div>
                               ))}
                             </div>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                              <div style={{fontSize:10,letterSpacing:2,color:"#86868F"}}>LAST 6 MONTHS</div>
-                              <div style={{fontSize:10,color:"#86868F",display:"flex",gap:12}}><span style={{color:"#EF4444"}}>● expense</span><span style={{color:"#10B981"}}>● revenue</span><span>● net</span></div>
+                              <div style={{fontSize:10,letterSpacing:2,color:"#6B7280"}}>LAST 6 MONTHS</div>
+                              <div style={{fontSize:10,color:"#6B7280",display:"flex",gap:12}}><span style={{color:"#DC2626"}}>● expense</span><span style={{color:"#059669"}}>● revenue</span><span>● net</span></div>
                             </div>
                             {months.map(mo=>(
                               <div key={mo.key} style={{marginBottom:14}}>
                                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5,fontSize:12}}>
-                                  <span style={{color:"#D2D2D6",fontWeight:500,width:64}}>{mo.label}</span>
+                                  <span style={{color:"#374151",fontWeight:500,width:64}}>{mo.label}</span>
                                   <span style={{display:"flex",gap:16,fontFamily:"'DM Mono',monospace"}}>
-                                    <span style={{color:"#EF4444"}}>-${mo.exp.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-                                    <span style={{color:"#10B981"}}>+${mo.rev.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-                                    <span style={{color:mo.net>=0?"#10B981":"#EF4444",width:96,textAlign:"right"}}>{mo.net>=0?"+":"-"}${Math.abs(mo.net).toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                    <span style={{color:"#DC2626"}}>-${mo.exp.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                    <span style={{color:"#059669"}}>+${mo.rev.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+                                    <span style={{color:mo.net>=0?"#059669":"#DC2626",width:96,textAlign:"right"}}>{mo.net>=0?"+":"-"}${Math.abs(mo.net).toLocaleString("en-US",{maximumFractionDigits:0})}</span>
                                   </span>
                                 </div>
-                                <div style={{height:6,background:"#1C1C20",borderRadius:3,overflow:"hidden"}}>
-                                  <div style={{height:"100%",width:`${Math.min(100,mo.exp/maxExp*100)}%`,background:"linear-gradient(90deg,#EF4444,#F59E0B)",borderRadius:3}} />
+                                <div style={{height:6,background:"#E5E7EB",borderRadius:3,overflow:"hidden"}}>
+                                  <div style={{height:"100%",width:`${Math.min(100,mo.exp/maxExp*100)}%`,background:"linear-gradient(90deg,#DC2626,#D97706)",borderRadius:3}} />
                                 </div>
                               </div>
                             ))}
                             <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:18}}>
-                              <button onClick={()=>{setBurnModalOpen(false);setView("reports");}} style={{padding:"8px 16px",borderRadius:9,background:"#1C1C20",border:"1px solid #262629",color:"#C7BFFF",fontSize:12,cursor:"pointer"}}>Open full reports →</button>
+                              <button onClick={()=>{setBurnModalOpen(false);setView("reports");}} style={{padding:"8px 16px",borderRadius:9,background:"#E5E7EB",border:"1px solid #D1D5DB",color:"#4F46E5",fontSize:12,cursor:"pointer"}}>Open full reports →</button>
                             </div>
                           </div>
                         </div>
@@ -484,16 +483,16 @@ export default function DashboardView() {
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:16, marginBottom:24 }}>
                 {[
-                  { label:"Total Revenue", value:totalRevenue, color:"#10B981" },
-                  { label:"Total Expenses", value:totalExpenses, color:"#EF4444" },
-                  { label:"Net Income", value:netIncome, color:netIncome>=0?"#10B981":"#EF4444" },
+                  { label:"Total Revenue", value:totalRevenue, color:"#059669" },
+                  { label:"Total Expenses", value:totalExpenses, color:"#DC2626" },
+                  { label:"Net Income", value:netIncome, color:netIncome>=0?"#059669":"#DC2626" },
                 ].map(card => (
                   <div key={card.label} onClick={goReports} title="Open the P&L report"
                     onMouseEnter={cardHover(true)} onMouseLeave={cardHover(false)}
-                    style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:"22px 26px", cursor:"pointer", transition:"transform .16s, border-color .2s" }}>
+                    style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:"22px 26px", cursor:"pointer", transition:"transform .16s, border-color .2s" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                      <div style={{ fontSize:11, color:"#86868F", letterSpacing:1 }}>{card.label.toUpperCase()}</div>
-                      <span style={{ fontSize:11, color:"#86868F" }}>P&amp;L ›</span>
+                      <div style={{ fontSize:11, color:"#6B7280", letterSpacing:1 }}>{card.label.toUpperCase()}</div>
+                      <span style={{ fontSize:11, color:"#6B7280" }}>P&amp;L ›</span>
                     </div>
                     <div style={{ fontSize:28, fontWeight:600, color:card.color, fontFamily:"'DM Mono', monospace" }}>
                       {netIncome<0&&card.label==="Net Income"?"-":""}${Math.abs(card.value).toLocaleString("en-US",{minimumFractionDigits:2})}
@@ -502,58 +501,58 @@ export default function DashboardView() {
                 ))}
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:24 }}>
-                <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:24 }}>
-                  <div style={{ fontSize:11, color:"#86868F", marginBottom:18, letterSpacing:1 }}>GL ACCOUNT BREAKDOWN</div>
-                  {Object.keys(glBreakdown).length===0 ? <div style={{ color:"#86868F", fontSize:13 }}>No transactions yet.</div> :
+                <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:24 }}>
+                  <div style={{ fontSize:11, color:"#6B7280", marginBottom:18, letterSpacing:1 }}>GL ACCOUNT BREAKDOWN</div>
+                  {Object.keys(glBreakdown).length===0 ? <div style={{ color:"#6B7280", fontSize:13 }}>No transactions yet.</div> :
                     Object.entries(glBreakdown).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([name,amt])=>(
                       <div key={name} onClick={()=>setGlDrilldown(name)} title="View transactions in this account" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:11, padding:"4px 8px", margin:"0 -8px 7px", borderRadius:8, cursor:"pointer" }}
-                        onMouseEnter={e=>e.currentTarget.style.background="#1C1C20"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                        <div style={{ fontSize:13, color:"#D2D2D6" }}>{name}</div>
+                        onMouseEnter={e=>e.currentTarget.style.background="#E5E7EB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                        <div style={{ fontSize:13, color:"#374151" }}>{name}</div>
                         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#C7BFFF" }}>${amt.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
-                          <span style={{ fontSize:12, color:"#86868F" }}>›</span>
+                          <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#4F46E5" }}>${amt.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
+                          <span style={{ fontSize:12, color:"#6B7280" }}>›</span>
                         </div>
                       </div>
                     ))
                   }
                 </div>
-                <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:24 }}>
-                  <div style={{ fontSize:11, color:"#86868F", marginBottom:18, letterSpacing:1 }}>TOP VENDORS BY SPEND</div>
-                  {vendorSummary.length===0 ? <div style={{ color:"#86868F", fontSize:13 }}>No vendors yet.</div> :
+                <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:24 }}>
+                  <div style={{ fontSize:11, color:"#6B7280", marginBottom:18, letterSpacing:1 }}>TOP VENDORS BY SPEND</div>
+                  {vendorSummary.length===0 ? <div style={{ color:"#6B7280", fontSize:13 }}>No vendors yet.</div> :
                     vendorSummary.slice(0,5).map(v=>(
                       <div key={v.name} onClick={()=>{ setVendorFilter(v.name); setView("invoices"); }} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, cursor:"pointer" }}>
                         <div style={{ width:30, height:30, borderRadius:8, background:vendorColor(v.name), display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(v.name)}</div>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{v.name}</div>
-                          <div style={{ fontSize:11, color:"#86868F" }}>{v.count} invoice{v.count!==1?"s":""}</div>
+                          <div style={{ fontSize:11, color:"#6B7280" }}>{v.count} invoice{v.count!==1?"s":""}</div>
                         </div>
                         <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", flexShrink:0 }}>${v.total.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
                       </div>
                     ))
                   }
-                  {vendorSummary.length>0 && <button onClick={()=>setView("vendors")} style={{ background:"none", border:"none", color:"#C7BFFF", fontSize:12, cursor:"pointer", padding:0, marginTop:4 }}>View all →</button>}
+                  {vendorSummary.length>0 && <button onClick={()=>setView("vendors")} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:12, cursor:"pointer", padding:0, marginTop:4 }}>View all →</button>}
                 </div>
               </div>
-              <div style={{ background:"#141416", border:"1px solid #1C1C20", borderRadius:14, padding:24 }}>
-                <div style={{ fontSize:11, color:"#86868F", marginBottom:18, letterSpacing:1 }}>RECENT ACTIVITY</div>
+              <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, padding:24 }}>
+                <div style={{ fontSize:11, color:"#6B7280", marginBottom:18, letterSpacing:1 }}>RECENT ACTIVITY</div>
                 {invoices.length===0 ? (
-                  <div style={{ color:"#86868F", fontSize:14, textAlign:"center", padding:"20px 0" }}>No transactions yet — drop files above to get started</div>
+                  <div style={{ color:"#6B7280", fontSize:14, textAlign:"center", padding:"20px 0" }}>No transactions yet — drop files above to get started</div>
                 ) : invoices.slice(0,8).map(inv=>(
-                  <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #1C1C20", cursor:"pointer" }}>
+                  <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #E5E7EB", cursor:"pointer" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                       <div style={{ width:32, height:32, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
                       <div>
                         <div style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</div>
-                        <div style={{ fontSize:11, color:"#86868F" }}>
+                        <div style={{ fontSize:11, color:"#6B7280" }}>
                           {inv.gl_name} · {inv.project||"General"} · {inv.date}
-                          {inv.source==="universal_upload"&&<span style={{ color:"#C7BFFF", marginLeft:6 }}>⬆</span>}
-                          {inv.source==="bank_feed"&&<span style={{ color:"#8B7BFF", marginLeft:6 }}>🏦</span>}
-                          {inv.source==="contract"&&<span style={{ color:"#F59E0B", marginLeft:6 }}>📋</span>}
-                          {inv.source==="matching_engine"&&<span style={{ color:"#10B981", marginLeft:6 }}>⇋</span>}
+                          {inv.source==="universal_upload"&&<span style={{ color:"#4F46E5", marginLeft:6 }}>⬆</span>}
+                          {inv.source==="bank_feed"&&<span style={{ color:"#6366F1", marginLeft:6 }}>🏦</span>}
+                          {inv.source==="contract"&&<span style={{ color:"#D97706", marginLeft:6 }}>📋</span>}
+                          {inv.source==="matching_engine"&&<span style={{ color:"#059669", marginLeft:6 }}>⇋</span>}
                         </div>
                       </div>
                     </div>
-                    <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:inv.type==="revenue"?"#10B981":"#EF4444" }}>
+                    <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:inv.type==="revenue"?"#059669":"#DC2626" }}>
                       {inv.type==="revenue"?"+":"-"}${inv.amount.toLocaleString("en-US",{minimumFractionDigits:2})}
                     </div>
                   </div>
@@ -570,38 +569,38 @@ export default function DashboardView() {
                 return (
                   <div onClick={()=>setGlDrilldown(null)} style={{ position:"fixed", inset:0, zIndex:10001, background:"rgba(0,0,0,0.6)", display:"flex", justifyContent:"flex-end" }}>
                     <style>{`@keyframes slideinright{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
-                    <div onClick={e=>e.stopPropagation()} style={{ width:540, maxWidth:"92vw", height:"100%", background:"#141416", borderLeft:"1px solid #262629", display:"flex", flexDirection:"column", animation:"slideinright 0.25s cubic-bezier(0.22,1,0.36,1)", boxShadow:"-24px 0 80px rgba(0,0,0,0.5)" }}>
-                      <div style={{ padding:"22px 24px", borderBottom:"1px solid #1C1C20", flexShrink:0 }}>
+                    <div onClick={e=>e.stopPropagation()} style={{ width:540, maxWidth:"92vw", height:"100%", background:"#FFFFFF", borderLeft:"1px solid #D1D5DB", display:"flex", flexDirection:"column", animation:"slideinright 0.25s cubic-bezier(0.22,1,0.36,1)", boxShadow:"-24px 0 80px rgba(0,0,0,0.5)" }}>
+                      <div style={{ padding:"22px 24px", borderBottom:"1px solid #E5E7EB", flexShrink:0 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
                           <div style={{ minWidth:0 }}>
-                            <div style={{ fontSize:10, letterSpacing:2, color:"#86868F", marginBottom:6 }}>{isRev?"REVENUE ACCOUNT":"EXPENSE ACCOUNT"}</div>
+                            <div style={{ fontSize:10, letterSpacing:2, color:"#6B7280", marginBottom:6 }}>{isRev?"REVENUE ACCOUNT":"EXPENSE ACCOUNT"}</div>
                             <h2 style={{ fontSize:20, fontWeight:600, margin:0 }}>{glDrilldown}</h2>
-                            <div style={{ fontSize:13, color:"#86868F", marginTop:6 }}>{rows.length} transaction{rows.length!==1?"s":""}</div>
+                            <div style={{ fontSize:13, color:"#6B7280", marginTop:6 }}>{rows.length} transaction{rows.length!==1?"s":""}</div>
                           </div>
-                          <button onClick={()=>setGlDrilldown(null)} style={{ background:"none", border:"none", color:"#86868F", fontSize:26, cursor:"pointer", lineHeight:1, padding:0, flexShrink:0 }}>×</button>
+                          <button onClick={()=>setGlDrilldown(null)} style={{ background:"none", border:"none", color:"#6B7280", fontSize:26, cursor:"pointer", lineHeight:1, padding:0, flexShrink:0 }}>×</button>
                         </div>
-                        <div style={{ marginTop:16, padding:"12px 16px", background:"#0C0C0E", borderRadius:10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <span style={{ fontSize:12, color:"#86868F", letterSpacing:1 }}>TOTAL</span>
-                          <span style={{ fontSize:18, fontWeight:600, fontFamily:"'DM Mono', monospace", color:isRev?"#10B981":"#C7BFFF" }}>${total.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+                        <div style={{ marginTop:16, padding:"12px 16px", background:"#F3F4F6", borderRadius:10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <span style={{ fontSize:12, color:"#6B7280", letterSpacing:1 }}>TOTAL</span>
+                          <span style={{ fontSize:18, fontWeight:600, fontFamily:"'DM Mono', monospace", color:isRev?"#059669":"#4F46E5" }}>${total.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
                         </div>
                       </div>
                       <div style={{ flex:1, overflowY:"auto", padding:"8px 16px 24px" }}>
-                        {rows.length===0 ? <div style={{ color:"#86868F", fontSize:13, padding:"24px 8px" }}>No transactions in this account.</div> :
+                        {rows.length===0 ? <div style={{ color:"#6B7280", fontSize:13, padding:"24px 8px" }}>No transactions in this account.</div> :
                           rows.map(inv=>(
-                            <div key={inv.id} style={{ padding:"14px 8px", borderBottom:"1px solid #1C1C20" }}>
+                            <div key={inv.id} style={{ padding:"14px 8px", borderBottom:"1px solid #E5E7EB" }}>
                               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
                                 <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
                                   <div style={{ width:30, height:30, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
                                   <div style={{ minWidth:0 }}>
                                     <div style={{ fontSize:13, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor}</div>
-                                    <div style={{ fontSize:11, color:"#86868F" }}>{inv.date}</div>
+                                    <div style={{ fontSize:11, color:"#6B7280" }}>{inv.date}</div>
                                   </div>
                                 </div>
-                                <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", flexShrink:0, color:isRev?"#10B981":"#F2F2F4" }}>${inv.amount.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
+                                <div style={{ fontSize:13, fontFamily:"'DM Mono', monospace", flexShrink:0, color:isRev?"#059669":"#111827" }}>${inv.amount.toLocaleString("en-US",{minimumFractionDigits:2})}</div>
                               </div>
-                              {inv.description && <div style={{ fontSize:12, color:"#9A9AA2", marginTop:6, marginLeft:40, lineHeight:1.5 }}>{inv.description}</div>}
+                              {inv.description && <div style={{ fontSize:12, color:"#6B7280", marginTop:6, marginLeft:40, lineHeight:1.5 }}>{inv.description}</div>}
                               <div style={{ marginLeft:40, marginTop:6 }}>
-                                <button onClick={()=>{ setSelectedInvoice(inv); setGlDrilldown(null); setView("detail"); }} style={{ background:"none", border:"none", color:"#C7BFFF", fontSize:12, cursor:"pointer", padding:0 }}>View full entry →</button>
+                                <button onClick={()=>{ setSelectedInvoice(inv); setGlDrilldown(null); setView("detail"); }} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:12, cursor:"pointer", padding:0 }}>View full entry →</button>
                               </div>
                             </div>
                           ))

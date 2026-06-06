@@ -25,37 +25,37 @@ export default function Tax1099View() {
               <div>
                 <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
                   <div>
-                    <div style={{fontSize:10,letterSpacing:3,color:"#86868F",marginBottom:8}}>TAX</div>
+                    <div style={{fontSize:10,letterSpacing:3,color:"#6B7280",marginBottom:8}}>TAX</div>
                     <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>1099 Tracker — {year}</h1>
-                    <div style={{fontSize:13,color:"#86868F",marginTop:6}}>Track contractor payments. Flag vendors in the Vendors page as 1099-eligible. $600 threshold triggers a 1099-NEC.</div>
+                    <div style={{fontSize:13,color:"#6B7280",marginTop:6}}>Track contractor payments. Flag vendors in the Vendors page as 1099-eligible. $600 threshold triggers a 1099-NEC.</div>
                   </div>
-                  {vendorTotals.length>0 && <button onClick={export1099} style={{padding:"9px 20px",borderRadius:9,fontSize:13,background:"#1C1C20",border:"1px solid #262629",color:"#C7BFFF",cursor:"pointer"}}>Export CSV</button>}
+                  {vendorTotals.length>0 && <button onClick={export1099} style={{padding:"9px 20px",borderRadius:9,fontSize:13,background:"#E5E7EB",border:"1px solid #D1D5DB",color:"#4F46E5",cursor:"pointer"}}>Export CSV</button>}
                 </div>
                 {/* Summary cards */}
                 <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:24}}>
                   {[
-                    {l:"1099-Eligible Vendors",v:eligible.length,c:"#C7BFFF"},
-                    {l:"Need 1099-NEC (≥$600)",v:vendorTotals.filter(v=>v.needs1099).length,c:"#F59E0B"},
-                    {l:"Total Contractor Spend",v:fmt(vendorTotals.reduce((s,v)=>s+v.ytd_paid,0)),c:"#EF4444"},
+                    {l:"1099-Eligible Vendors",v:eligible.length,c:"#4F46E5"},
+                    {l:"Need 1099-NEC (≥$600)",v:vendorTotals.filter(v=>v.needs1099).length,c:"#D97706"},
+                    {l:"Total Contractor Spend",v:fmt(vendorTotals.reduce((s,v)=>s+v.ytd_paid,0)),c:"#DC2626"},
                   ].map(s=>(
-                    <div key={s.l} style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:12,padding:"16px 20px"}}>
-                      <div style={{fontSize:11,color:"#86868F",marginBottom:6}}>{s.l}</div>
+                    <div key={s.l} style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:12,padding:"16px 20px"}}>
+                      <div style={{fontSize:11,color:"#6B7280",marginBottom:6}}>{s.l}</div>
                       <div style={{fontSize:24,fontWeight:700,fontFamily:"'DM Mono',monospace",color:s.c}}>{s.v}</div>
                     </div>
                   ))}
                 </div>
                 {/* Flag non-eligible vendors prompt */}
                 {contacts.filter(c=>c.type==="vendor"&&!c.is1099).length>0 && (
-                  <div style={{background:"#141416",border:"1px solid #F59E0B33",borderRadius:12,padding:"14px 20px",marginBottom:20}}>
-                    <div style={{fontSize:13,color:"#F59E0B",marginBottom:8,fontWeight:500}}>⚠ Some vendors may need 1099 flags</div>
+                  <div style={{background:"#FFFFFF",border:"1px solid #D9770633",borderRadius:12,padding:"14px 20px",marginBottom:20}}>
+                    <div style={{fontSize:13,color:"#D97706",marginBottom:8,fontWeight:500}}>⚠ Some vendors may need 1099 flags</div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
                       {contacts.filter(c=>c.type==="vendor"&&!c.is1099).filter(c=>{
                         const paid=invoices.filter(i=>i.vendor?.toLowerCase()===c.name?.toLowerCase()&&i.type==="expense"&&i.date?.startsWith(year)).reduce((s,i)=>s+i.amount,0);
                         return paid>=600;
                       }).map(c=>(
-                        <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,background:"#1A1000",border:"1px solid #F59E0B22",borderRadius:8,padding:"6px 12px"}}>
-                          <span style={{fontSize:12,color:"#F59E0B"}}>{c.name} — {fmt(invoices.filter(i=>i.vendor?.toLowerCase()===c.name?.toLowerCase()&&i.type==="expense"&&i.date?.startsWith(year)).reduce((s,i)=>s+i.amount,0))} paid YTD</span>
-                          <button onClick={()=>{setContacts(prev=>prev.map(x=>x.id===c.id?{...x,is1099:true}:x));logAudit("1099_flagged",`${c.name} flagged as 1099-eligible`);}} style={{fontSize:11,padding:"3px 8px",borderRadius:6,background:"#F59E0B",border:"none",color:"#000",cursor:"pointer",fontWeight:600}}>Flag 1099</button>
+                        <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,background:"#FEF3C7",border:"1px solid #D9770622",borderRadius:8,padding:"6px 12px"}}>
+                          <span style={{fontSize:12,color:"#D97706"}}>{c.name} — {fmt(invoices.filter(i=>i.vendor?.toLowerCase()===c.name?.toLowerCase()&&i.type==="expense"&&i.date?.startsWith(year)).reduce((s,i)=>s+i.amount,0))} paid YTD</span>
+                          <button onClick={()=>{setContacts(prev=>prev.map(x=>x.id===c.id?{...x,is1099:true}:x));logAudit("1099_flagged",`${c.name} flagged as 1099-eligible`);}} style={{fontSize:11,padding:"3px 8px",borderRadius:6,background:"#D97706",border:"none",color:"#000",cursor:"pointer",fontWeight:600}}>Flag 1099</button>
                         </div>
                       ))}
                     </div>
@@ -63,17 +63,17 @@ export default function Tax1099View() {
                 )}
                 {/* 1099 vendor table */}
                 {vendorTotals.length===0 ? (
-                  <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:40,textAlign:"center"}}>
-                    <div style={{fontSize:13,color:"#86868F",marginBottom:12}}>No 1099-eligible vendors yet. Go to the Vendors page and toggle the 1099 flag on any contractor.</div>
-                    <button onClick={()=>setView("vendors")} style={{padding:"9px 20px",borderRadius:9,fontSize:13,background:"#1C1C20",border:"1px solid #262629",color:"#9A9AA2",cursor:"pointer"}}>Go to Vendors →</button>
+                  <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:40,textAlign:"center"}}>
+                    <div style={{fontSize:13,color:"#6B7280",marginBottom:12}}>No 1099-eligible vendors yet. Go to the Vendors page and toggle the 1099 flag on any contractor.</div>
+                    <button onClick={()=>setView("vendors")} style={{padding:"9px 20px",borderRadius:9,fontSize:13,background:"#E5E7EB",border:"1px solid #D1D5DB",color:"#6B7280",cursor:"pointer"}}>Go to Vendors →</button>
                   </div>
                 ) : (
-                  <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,overflow:"hidden"}}>
+                  <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,overflow:"hidden"}}>
                     <table style={{width:"100%",borderCollapse:"collapse"}}>
-                      <thead><tr style={{background:"#0C0C0E"}}>{["Vendor","EIN/SSN","YTD Payments","Status",""].map(h=><th key={h} style={{padding:"11px 16px",textAlign:"left",fontSize:10,color:"#86868F",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}</tr></thead>
+                      <thead><tr style={{background:"#F3F4F6"}}>{["Vendor","EIN/SSN","YTD Payments","Status",""].map(h=><th key={h} style={{padding:"11px 16px",textAlign:"left",fontSize:10,color:"#6B7280",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}</tr></thead>
                       <tbody>
                         {vendorTotals.sort((a,b)=>b.ytd_paid-a.ytd_paid).map((v,i)=>(
-                          <tr key={v.id} style={{borderTop:"1px solid #1C1C20",background:i%2===0?"transparent":"#0A0A0C"}}>
+                          <tr key={v.id} style={{borderTop:"1px solid #E5E7EB",background:i%2===0?"transparent":"#F8F9FB"}}>
                             <td style={{padding:"13px 16px"}}>
                               <div style={{display:"flex",alignItems:"center",gap:10}}>
                                 <div style={{width:32,height:32,borderRadius:8,background:vendorColor(v.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{initials(v.name)}</div>
@@ -82,16 +82,16 @@ export default function Tax1099View() {
                             </td>
                             <td style={{padding:"13px 16px"}}>
                               <input value={v.ein||""} onChange={e=>setContacts(prev=>prev.map(c=>c.id===v.id?{...c,ein:e.target.value}:c))} placeholder="XX-XXXXXXX"
-                                style={{background:"#0C0C0E",border:"1px solid #262629",borderRadius:6,padding:"5px 9px",color:"#F2F2F4",fontSize:12,width:110,outline:"none",fontFamily:"'DM Mono',monospace"}}/>
+                                style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:6,padding:"5px 9px",color:"#111827",fontSize:12,width:110,outline:"none",fontFamily:"'DM Mono',monospace"}}/>
                             </td>
-                            <td style={{padding:"13px 16px",fontFamily:"'DM Mono',monospace",fontSize:15,fontWeight:700,color:v.needs1099?"#F59E0B":"#9A9AA2"}}>{fmt(v.ytd_paid)}</td>
+                            <td style={{padding:"13px 16px",fontFamily:"'DM Mono',monospace",fontSize:15,fontWeight:700,color:v.needs1099?"#D97706":"#6B7280"}}>{fmt(v.ytd_paid)}</td>
                             <td style={{padding:"13px 16px"}}>
                               {v.needs1099
-                                ? <span style={{fontSize:12,background:"#F59E0B22",color:"#F59E0B",borderRadius:20,padding:"3px 10px",fontWeight:600}}>⚠ 1099-NEC Required</span>
-                                : <span style={{fontSize:12,background:"#1C1C20",color:"#86868F",borderRadius:20,padding:"3px 10px"}}>{fmt(600-v.ytd_paid)} below threshold</span>}
+                                ? <span style={{fontSize:12,background:"#D9770622",color:"#D97706",borderRadius:20,padding:"3px 10px",fontWeight:600}}>⚠ 1099-NEC Required</span>
+                                : <span style={{fontSize:12,background:"#E5E7EB",color:"#6B7280",borderRadius:20,padding:"3px 10px"}}>{fmt(600-v.ytd_paid)} below threshold</span>}
                             </td>
                             <td style={{padding:"13px 16px"}}>
-                              <button onClick={()=>{setContacts(prev=>prev.map(c=>c.id===v.id?{...c,is1099:false}:c));}} style={{fontSize:11,background:"transparent",border:"1px solid #262629",borderRadius:6,padding:"4px 10px",color:"#86868F",cursor:"pointer"}}>Remove flag</button>
+                              <button onClick={()=>{setContacts(prev=>prev.map(c=>c.id===v.id?{...c,is1099:false}:c));}} style={{fontSize:11,background:"transparent",border:"1px solid #D1D5DB",borderRadius:6,padding:"4px 10px",color:"#6B7280",cursor:"pointer"}}>Remove flag</button>
                             </td>
                           </tr>
                         ))}

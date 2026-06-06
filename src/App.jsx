@@ -103,8 +103,8 @@ function AppWrapper() {
 
   if (session === undefined || appLoading) {
     return (
-      <div style={{minHeight:"100vh",background:"#08080A",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',system-ui,sans-serif"}}>
-        <div style={{color:"#86868F",fontSize:14}}>Loading...</div>
+      <div style={{minHeight:"100vh",background:"#F8F9FB",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+        <div style={{color:"#6B7280",fontSize:14}}>Loading...</div>
       </div>
     );
   }
@@ -428,6 +428,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
               rejected_at: e.rejected_at || undefined,
               rejection_reason: e.rejection_reason || undefined,
               payment_method_used: e.payment_method || undefined,
+              payment_reference: e.payment_reference || undefined,
+              payment_notes: e.payment_notes || undefined,
               paid_at: e.paid_at || undefined,
               due_date: e.due_date || undefined,
               confidence: e.ai_confidence ?? 99,
@@ -746,7 +748,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const persistContact = async (contact) => {
     if (!currentCompany?.id) return;
     try {
-      const payload = {
+      const base = {
         company_id: currentCompany.id, name: contact.name,
         type: contact.type||"vendor", email: contact.email||null,
         phone: contact.phone||null, payment_terms: contact.payment_terms||null,
@@ -754,12 +756,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         expected_min: contact.min_expected||null, expected_max: contact.max_expected||null,
         notes: contact.notes||null, tags: contact.tags||[]
       };
-      if (contact.db_id) {
-        await supabase.from("contacts").update(payload).eq("id", contact.db_id);
-      } else {
-        const { data } = await supabase.from("contacts").insert(payload).select().single();
-        if (data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
+      // website / payment_url need migration 004 — include them but fall back
+      // (drop them) if the columns don't exist yet, so contact saving never breaks.
+      const extra = { website: contact.website||null, payment_url: contact.payment_url||null };
+      const run = async (payload) => {
+        if (contact.db_id) return await supabase.from("contacts").update(payload).eq("id", contact.db_id).select().single();
+        return await supabase.from("contacts").insert(payload).select().single();
+      };
+      let { data, error } = await run({ ...base, ...extra });
+      if (error && /website|payment_url|column/i.test(error.message||"")) {
+        console.warn("contacts missing website/payment_url columns; saving without them. Apply migration 004.");
+        ({ data, error } = await run(base));
       }
+      if (!contact.db_id && data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
     } catch(e) { console.error("persistContact error:", e); }
   };
 
@@ -979,7 +988,7 @@ CRITICAL RULES:
           title: "Duplicate Invoice Detected",
           label: `Invoice #${invNum} from ${form.vendor.trim()} was already booked on ${dup.date} for $${dup.amount.toFixed(2)} (${dup.gl_name}). Are you sure this is a different charge?`,
           confirmLabel: "Book Anyway",
-          confirmBg: "#1A3A1A", confirmBorder: "1px solid #10B98144", confirmColor: "#6EE7B7",
+          confirmBg: "#ECFDF5", confirmBorder: "1px solid #05966944", confirmColor: "#059669",
           onConfirm: doBook,
         });
         return;
@@ -1654,11 +1663,11 @@ Keep the same array order and index as input.`,
 
   // ── CONTRACT HANDLER ─────────────────────────────────────────────────────────
   const CONTRACT_TYPES = {
-    loan: { label:"Loan / Debt", color:"#EF4444", icon:"🏦" },
-    revenue_contract: { label:"Revenue Contract", color:"#10B981", icon:"📈" },
-    lease: { label:"Lease", color:"#F59E0B", icon:"🏢" },
-    subscription_paid: { label:"Subscription (Paid)", color:"#8B7BFF", icon:"💳" },
-    subscription_received: { label:"Subscription (Received)", color:"#8B7BFF", icon:"📦" },
+    loan: { label:"Loan / Debt", color:"#DC2626", icon:"🏦" },
+    revenue_contract: { label:"Revenue Contract", color:"#059669", icon:"📈" },
+    lease: { label:"Lease", color:"#D97706", icon:"🏢" },
+    subscription_paid: { label:"Subscription (Paid)", color:"#6366F1", icon:"💳" },
+    subscription_received: { label:"Subscription (Received)", color:"#6366F1", icon:"📦" },
     equipment_financing: { label:"Equipment Financing", color:"#EC4899", icon:"⚙️" },
     service_agreement: { label:"Service Agreement / Retainer", color:"#14B8A6", icon:"🤝" },
   };
@@ -2200,7 +2209,7 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
   };
 
   // ── AP MANAGEMENT ENGINE ──────────────────────────────────────────────────────
-  const AP_PRIORITY = { critical:"#EF4444", high:"#F59E0B", normal:"#10B981", low:"#86868F" };
+  const AP_PRIORITY = { critical:"#DC2626", high:"#D97706", normal:"#059669", low:"#6B7280" };
 
   const runAPEngine = null; // consolidated into runAPScreen below
 
@@ -2401,21 +2410,32 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     showNotification("Marked as info requested");
   };
 
-  const markPaid = (invIds, method = "ach") => {
+  const methodPretty = (m) => ({ ach:"ACH / Bank Transfer", check:"Check", wire:"Wire Transfer", card:"Credit Card", zelle:"Zelle", venmo:"Venmo", paypal:"PayPal", other:"Other" }[m] || String(m||"").toUpperCase());
+
+  const markPaid = (invIds, method = "ach", details = {}) => {
     const ids = Array.isArray(invIds) ? invIds : [invIds];
     const who = session?.user?.email || "owner";
-    const at = new Date().toISOString();
+    const reference = (details.reference || "").trim();
+    const notes = (details.notes || "").trim();
+    // Use the chosen payment date (fall back to now)
+    const at = details.date ? new Date(details.date + "T12:00:00").toISOString() : new Date().toISOString();
     const paid = invoices.filter(i => ids.includes(i.id));
     setInvoices(prev => prev.map(inv => !ids.includes(inv.id) ? inv : {
       ...inv, payment_status: "paid", payment_method_used: method, paid_at: at, matched: true,
+      payment_reference: reference || undefined, payment_notes: notes || undefined,
     }));
     paid.forEach(inv => {
-      logAudit("invoice_paid", `${who} paid ${inv.vendor} · $${(inv.amount||0).toFixed(2)} via ${String(method).toUpperCase()}`, { payment_status: inv.payment_status }, { payment_status: "paid", method, by: who });
+      const refStr = reference ? ` · ref ${reference}` : "";
+      const noteStr = notes ? ` · note: ${notes}` : "";
+      logAudit("invoice_paid", `${who} paid ${inv.vendor} · $${(inv.amount||0).toFixed(2)} via ${methodPretty(method)}${refStr}${noteStr}`, { payment_status: inv.payment_status }, { payment_status: "paid", method, reference, notes, by: who });
+      // Core payment fields (migration 003)
       persistApStatus(inv.db_entry_id, { payment_status: "paid", payment_method: method, paid_at: at });
+      // Reference + notes (migration 004) — separate call so missing columns don't block the core update
+      if (reference || notes) persistApStatus(inv.db_entry_id, { payment_reference: reference || null, payment_notes: notes || null });
     });
     setSelectedPayments(new Set());
     setCheckRunMode(false);
-    showNotification(`${ids.length} payment${ids.length!==1?"s":""} recorded as ${String(method).toUpperCase()} ✓`);
+    showNotification(`Payment recorded — ${methodPretty(method)} ✓`);
   };
 
   // ── CHAT HANDLER ────────────────────────────────────────────────────────────
@@ -2679,15 +2699,15 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     return acc;
   },{});
 
-  const inputStyle = { width:"100%", background:"#0C0C0E", border:"1px solid #262629", borderRadius:8, padding:"10px 12px", color:"#F2F2F4", fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:"'DM Sans', sans-serif" };
-  const labelStyle = { display:"block", fontSize:11, color:"#86868F", marginBottom:6, letterSpacing:1 };
+  const inputStyle = { width:"100%", background:"#F3F4F6", border:"1px solid #D1D5DB", borderRadius:8, padding:"10px 12px", color:"#111827", fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:"'DM Sans', sans-serif" };
+  const labelStyle = { display:"block", fontSize:11, color:"#6B7280", marginBottom:6, letterSpacing:1 };
 
 
   const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
 
   return (
     <ERPContext.Provider value={erpCtx}>
-    <div style={{ fontFamily:"'DM Sans', sans-serif", minHeight:"100vh", background:"#0C0C0E", color:"#F2F2F4" }}>
+    <div style={{ fontFamily:"'DM Sans', sans-serif", minHeight:"100vh", background:"#F8F9FB", color:"#111827" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet" />
       <style>{`
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
@@ -2695,11 +2715,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         @keyframes slideup{from{opacity:0;transform:translateY(20px) scale(0.95)}to{opacity:1;transform:translateY(0) scale(1)}}
         @keyframes popbubble{from{transform:scale(0.7)}to{transform:scale(1)}}
         *{box-sizing:border-box}
-        ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:#0C0C0E} ::-webkit-scrollbar-thumb{background:#262629;border-radius:2px}
+        ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:#F3F4F6} ::-webkit-scrollbar-thumb{background:#D1D5DB;border-radius:2px}
       `}</style>
 
       {notification && (
-        <div style={{ position:"fixed", top:20, right:20, zIndex:9999, background:notification.type==="error"?"#2A0A0A":"#0A2A1A", border:`1px solid ${notification.type==="error"?"#EF4444":"#10B981"}`, color:notification.type==="error"?"#FCA5A5":"#6EE7B7", padding:"12px 20px", borderRadius:10, fontSize:14, animation:"fadein 0.2s ease", boxShadow:"0 8px 32px rgba(0,0,0,0.6)" }}>
+        <div style={{ position:"fixed", top:20, right:20, zIndex:9999, background:notification.type==="error"?"#FEF2F2":"#ECFDF5", border:`1px solid ${notification.type==="error"?"#DC2626":"#059669"}`, color:notification.type==="error"?"#DC2626":"#059669", padding:"12px 20px", borderRadius:10, fontSize:14, animation:"fadein 0.2s ease", boxShadow:"0 8px 32px rgba(0,0,0,0.6)" }}>
           {notification.msg}
         </div>
       )}
@@ -2707,12 +2727,12 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:"#141416", border:"1px solid #EF444433", borderRadius:16, padding:28, maxWidth:400, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
+          <div style={{ background:"#FFFFFF", border:"1px solid #DC262633", borderRadius:16, padding:28, maxWidth:400, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
             <div style={{ fontSize:16, fontWeight:600, marginBottom:10 }}>{deleteConfirm.title || "Confirm Delete"}</div>
-            <div style={{ fontSize:13, color:"#9A9AA2", marginBottom:20, lineHeight:1.6 }}>{deleteConfirm.label}</div>
+            <div style={{ fontSize:13, color:"#6B7280", marginBottom:20, lineHeight:1.6 }}>{deleteConfirm.label}</div>
             <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
-              <button onClick={()=>setDeleteConfirm(null)} style={{ padding:"8px 20px", borderRadius:8, background:"transparent", border:"1px solid #262629", color:"#9A9AA2", fontSize:13, cursor:"pointer" }}>Cancel</button>
-              <button onClick={()=>{ deleteConfirm.onConfirm(); setDeleteConfirm(null); }} style={{ padding:"8px 20px", borderRadius:8, background: deleteConfirm.confirmBg||"#7F1D1D", border: deleteConfirm.confirmBorder||"1px solid #EF4444", color: deleteConfirm.confirmColor||"#FCA5A5", fontSize:13, cursor:"pointer", fontWeight:600 }}>{deleteConfirm.confirmLabel || "Delete"}</button>
+              <button onClick={()=>setDeleteConfirm(null)} style={{ padding:"8px 20px", borderRadius:8, background:"transparent", border:"1px solid #D1D5DB", color:"#6B7280", fontSize:13, cursor:"pointer" }}>Cancel</button>
+              <button onClick={()=>{ deleteConfirm.onConfirm(); setDeleteConfirm(null); }} style={{ padding:"8px 20px", borderRadius:8, background: deleteConfirm.confirmBg||"#FEE2E2", border: deleteConfirm.confirmBorder||"1px solid #DC2626", color: deleteConfirm.confirmColor||"#DC2626", fontSize:13, cursor:"pointer", fontWeight:600 }}>{deleteConfirm.confirmLabel || "Delete"}</button>
             </div>
           </div>
         </div>
@@ -2720,51 +2740,51 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
       {/* Persistent upload status — visible from any tab */}
       {uploadQueue.some(q => q.status==="pending"||q.status==="classifying"||q.status==="processing") && (
-        <div style={{ position:"fixed", bottom:100, left:"50%", transform:"translateX(-50%)", zIndex:999, background:"#141416", border:"1px solid #33333A", borderRadius:12, padding:"12px 20px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 8px 32px rgba(0,0,0,0.6)", minWidth:280 }}>
+        <div style={{ position:"fixed", bottom:100, left:"50%", transform:"translateX(-50%)", zIndex:999, background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:12, padding:"12px 20px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 8px 32px rgba(0,0,0,0.6)", minWidth:280 }}>
           <div style={{ display:"flex", gap:3 }}>
-            {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"#C7BFFF", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+            {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"#4F46E5", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
           </div>
           <div>
-            <div style={{ fontSize:13, color:"#F2F2F4", fontWeight:500 }}>
+            <div style={{ fontSize:13, color:"#111827", fontWeight:500 }}>
               Processing {uploadQueue.filter(q=>q.status==="pending"||q.status==="classifying"||q.status==="processing").length} file{uploadQueue.filter(q=>q.status==="pending"||q.status==="classifying"||q.status==="processing").length>1?"s":""}...
             </div>
-            <div style={{ fontSize:11, color:"#86868F", marginTop:2 }}>
+            <div style={{ fontSize:11, color:"#6B7280", marginTop:2 }}>
               {uploadQueue.find(q=>q.status==="processing"||q.status==="classifying")?.name || ""}
             </div>
           </div>
-          <button onClick={()=>setView("dashboard")} style={{ marginLeft:"auto", background:"none", border:"1px solid #33333A", borderRadius:6, padding:"4px 10px", color:"#C7BFFF", fontSize:11, cursor:"pointer", flexShrink:0 }}>View</button>
+          <button onClick={()=>setView("dashboard")} style={{ marginLeft:"auto", background:"none", border:"1px solid #D1D5DB", borderRadius:6, padding:"4px 10px", color:"#4F46E5", fontSize:11, cursor:"pointer", flexShrink:0 }}>View</button>
         </div>
       )}
 
       <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
         {/* Top Bar */}
-        <div style={{ background:"#141416", borderBottom:"1px solid #1C1C20", flexShrink:0 }}>
+        <div style={{ background:"#FFFFFF", borderBottom:"1px solid #E5E7EB", flexShrink:0 }}>
           {/* Brand + Company + User row */}
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 28px", height:54, borderBottom:"1px solid #1C1C20" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 28px", height:54, borderBottom:"1px solid #E5E7EB" }}>
             <div style={{ display:"flex", alignItems:"center", gap:24 }}>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
                   <defs>
                     <linearGradient id="scTopMark" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#A99CFF" />
-                      <stop offset="100%" stopColor="#6D5EF6" />
+                      <stop offset="0%" stopColor="#818CF8" />
+                      <stop offset="100%" stopColor="#4F46E5" />
                     </linearGradient>
                   </defs>
                   <circle cx="24" cy="24" r="13" fill="url(#scTopMark)" />
-                  <circle cx="30.5" cy="20.5" r="11" fill="#141416" />
+                  <circle cx="30.5" cy="20.5" r="11" fill="#FFFFFF" />
                 </svg>
                 <span className="sc-wordmark" style={{ fontSize:16, letterSpacing:3, fontWeight:700, fontFamily:"'Space Grotesk','Montserrat','DM Sans',sans-serif" }}>SHADOW CFO</span>
               </div>
               <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <button className="sc-cta" onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#6D5EF6,#4A3DB8)", border:"none", color:"#fff", borderRadius:8, padding:"7px 16px", fontSize:12, cursor:"pointer", fontWeight:500, letterSpacing:0.5, boxShadow:"0 4px 14px rgba(109,94,246,.28)" }}>✦ Ask Shadow CFO</button>
-              <span style={{ fontSize:11, color:"#55555C" }}>{session?.user?.email}</span>
-              <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #262629", color:"#86868F", fontSize:12, cursor:"pointer" }}>Sign out</button>
+              <button className="sc-cta" onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", borderRadius:8, padding:"7px 16px", fontSize:12, cursor:"pointer", fontWeight:500, letterSpacing:0.5, boxShadow:"0 4px 14px rgba(109,94,246,.28)" }}>✦ Ask Shadow CFO</button>
+              <span style={{ fontSize:11, color:"#9CA3AF" }}>{session?.user?.email}</span>
+              <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #D1D5DB", color:"#6B7280", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
           {/* Nav — 6 core tabs, stretch full width */}
-          <div style={{ display:"flex", width:"100%", borderBottom:"1px solid #161619" }}>
+          <div style={{ display:"flex", width:"100%", borderBottom:"1px solid #F3F4F6" }}>
             {[
               { id:"dashboard", label:"Dashboard", sub:[] },
               { id:"ledger", label:"Ledger", sub:["invoices","bank","matching","recon","docs"] },
@@ -2777,20 +2797,20 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               return (
                 <button key={tab.id}
                   onClick={()=>{ setView(tab.id); setVendorFilter("all"); }}
-                  onMouseEnter={e=>{ if(!isActive){ e.currentTarget.style.background="#161619"; e.currentTarget.style.color="#A99CFF"; }}}
-                  onMouseLeave={e=>{ if(!isActive){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#86868F"; }}}
+                  onMouseEnter={e=>{ if(!isActive){ e.currentTarget.style.background="#F3F4F6"; e.currentTarget.style.color="#818CF8"; }}}
+                  onMouseLeave={e=>{ if(!isActive){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#6B7280"; }}}
                   style={{
                     flex:1, height:44, display:"flex", alignItems:"center", justifyContent:"center", gap:6, position:"relative",
-                    background: isActive?"#1C1C20":"transparent",
+                    background: isActive?"#E5E7EB":"transparent",
                     border:"none",
-                    borderBottom: isActive?"3px solid #8B7BFF":"3px solid transparent",
-                    color: isActive?"#C7BFFF":"#86868F",
+                    borderBottom: isActive?"3px solid #6366F1":"3px solid transparent",
+                    color: isActive?"#4F46E5":"#6B7280",
                     fontSize:13, fontWeight: isActive?600:400,
                     cursor:"pointer", transition:"all 0.12s", letterSpacing:0.3,
                   }}>
                   {tab.label}
                   {tab.id==="dashboard" && clarificationQueue.length>0 && (
-                    <span style={{ background:"#F59E0B", color:"#000", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.length}</span>
+                    <span style={{ background:"#D97706", color:"#000", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.length}</span>
                   )}
                 </button>
               );
@@ -2799,7 +2819,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
           {/* Sub-nav — shown when a main tab has sub-views */}
           {["ledger","money-in","money-out","reports","settings"].includes(view) || ["invoices","bank","matching","recon","docs","ar","send-invoice","customers","ap","payroll","vendors","rules","contracts","recurring","tax1099","audit","coa","opening-balances","onboard"].includes(view) ? (
-            <div style={{ display:"flex", background:"#0C0C0E", borderBottom:"1px solid #161619", padding:"0 16px", gap:4 }}>
+            <div style={{ display:"flex", background:"#F3F4F6", borderBottom:"1px solid #F3F4F6", padding:"0 16px", gap:4 }}>
               {(view==="ledger"||["invoices","bank","matching","recon","docs"].includes(view)) && [
                 { id:"invoices", label:"All Transactions" },
                 { id:"bank", label:"Bank Feed", badge: bankTransactions.filter(t=>t.needs_review).length||null },
@@ -2808,10 +2828,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                 { id:"docs", label:"Documents", badge: docLibrary.length||null },
               ].map(s => (
                 <button key={s.id} onClick={()=>setView(s.id)}
-                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C7BFFF"; }}}
-                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#86868F"; }}}
-                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B7BFF":"2px solid transparent", color:view===s.id?"#C7BFFF":"#86868F", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
-                  {s.label}{s.badge>0&&<span style={{background:"#6D5EF6",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#4F46E5"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B7280"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #6366F1":"2px solid transparent", color:view===s.id?"#4F46E5":"#6B7280", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
+                  {s.label}{s.badge>0&&<span style={{background:"#4F46E5",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
                 </button>
               ))}
               {(view==="money-in"||["ar","send-invoice","customers"].includes(view)) && [
@@ -2820,10 +2840,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                 { id:"customers", label:"Customers", badge: contacts.filter(c=>c.type==="customer").length||null },
               ].map(s => (
                 <button key={s.id} onClick={()=>setView(s.id)}
-                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C7BFFF"; }}}
-                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#86868F"; }}}
-                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B7BFF":"2px solid transparent", color:view===s.id?"#C7BFFF":"#86868F", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
-                  {s.label}{s.badge>0&&<span style={{background:"#6D5EF6",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#4F46E5"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B7280"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #6366F1":"2px solid transparent", color:view===s.id?"#4F46E5":"#6B7280", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
+                  {s.label}{s.badge>0&&<span style={{background:"#4F46E5",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
                 </button>
               ))}
               {(view==="money-out"||["ap","payroll","vendors","rules","contracts","recurring"].includes(view)) && [
@@ -2835,10 +2855,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                 { id:"rules", label:"GL Rules", badge: rules.length||null },
               ].map(s => (
                 <button key={s.id} onClick={()=>setView(s.id)}
-                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C7BFFF"; }}}
-                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#86868F"; }}}
-                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B7BFF":"2px solid transparent", color:view===s.id?"#C7BFFF":"#86868F", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
-                  {s.label}{s.badge>0&&<span style={{background:"#6D5EF6",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#4F46E5"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B7280"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #6366F1":"2px solid transparent", color:view===s.id?"#4F46E5":"#6B7280", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"color 0.12s" }}>
+                  {s.label}{s.badge>0&&<span style={{background:"#4F46E5",borderRadius:20,padding:"1px 5px",fontSize:9,color:"#fff"}}>{s.badge}</span>}
                 </button>
               ))}
               {(view==="reports"||["tax1099","audit"].includes(view)) && [
@@ -2847,9 +2867,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                 { id:"audit", label:"Audit Trail" },
               ].map(s => (
                 <button key={s.id} onClick={()=>setView(s.id)}
-                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C7BFFF"; }}}
-                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#86868F"; }}}
-                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B7BFF":"2px solid transparent", color:view===s.id?"#C7BFFF":"#86868F", fontSize:12, cursor:"pointer", transition:"color 0.12s" }}>
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#4F46E5"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B7280"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #6366F1":"2px solid transparent", color:view===s.id?"#4F46E5":"#6B7280", fontSize:12, cursor:"pointer", transition:"color 0.12s" }}>
                   {s.label}
                 </button>
               ))}
@@ -2860,9 +2880,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                 { id:"onboard", label:"Import QBO" },
               ].map(s => (
                 <button key={s.id} onClick={()=>setView(s.id)}
-                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#C7BFFF"; }}}
-                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#86868F"; }}}
-                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #8B7BFF":"2px solid transparent", color:view===s.id?"#C7BFFF":"#86868F", fontSize:12, cursor:"pointer", transition:"color 0.12s" }}>
+                  onMouseEnter={e=>{ if(view!==s.id){ e.currentTarget.style.color="#4F46E5"; }}}
+                  onMouseLeave={e=>{ if(view!==s.id){ e.currentTarget.style.color="#6B7280"; }}}
+                  style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:view===s.id?"2px solid #6366F1":"2px solid transparent", color:view===s.id?"#4F46E5":"#6B7280", fontSize:12, cursor:"pointer", transition:"color 0.12s" }}>
                   {s.label}
                 </button>
               ))}
@@ -2874,9 +2894,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         <div ref={mainContentRef} id="main-content" style={{ flex:1, overflowY:"auto" }}>
           {/* Review banner — visible from any non-dashboard view when items need input */}
           {clarificationQueue.length > 0 && view !== "dashboard" && (
-            <div style={{ background:"#1A1200", borderBottom:"1px solid #F59E0B44", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
-              <div style={{ fontSize:13, color:"#F59E0B" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need{clarificationQueue.length===1?"s":""} review before booking</div>
-              <button onClick={()=>setView("dashboard")} style={{ background:"#F59E0B22", border:"1px solid #F59E0B44", color:"#F59E0B", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer" }}>Review →</button>
+            <div style={{ background:"#FEF3C7", borderBottom:"1px solid #D9770644", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
+              <div style={{ fontSize:13, color:"#D97706" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need{clarificationQueue.length===1?"s":""} review before booking</div>
+              <button onClick={()=>setView("dashboard")} style={{ background:"#D9770622", border:"1px solid #D9770644", color:"#D97706", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer" }}>Review →</button>
             </div>
           )}
           <div key={view} className="sc-rise" style={{ padding:"32px 40px" }}>
@@ -2968,14 +2988,14 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {/* Bubble button */}
       <button onClick={()=>{ setChatOpen(o=>!o); setHasUnread(false); }} style={{
         position:"fixed", bottom:28, right:28, width:58, height:58, borderRadius:"50%",
-        background:"linear-gradient(135deg,#6D5EF6,#9486FF)", border:"none", cursor:"pointer",
+        background:"linear-gradient(135deg,#4F46E5,#6366F1)", border:"none", cursor:"pointer",
         boxShadow:"0 8px 32px rgba(109,40,217,0.5)", display:"flex", alignItems:"center", justifyContent:"center",
         fontSize:24, zIndex:1000, animation:"popbubble 0.3s cubic-bezier(0.34,1.56,0.64,1)",
         transition:"transform 0.2s"
       }} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
         {chatOpen ? "×" : "✦"}
         {hasUnread && !chatOpen && (
-          <div style={{ position:"absolute", top:4, right:4, width:12, height:12, background:"#EF4444", borderRadius:"50%", border:"2px solid #0C0C0E" }} />
+          <div style={{ position:"absolute", top:4, right:4, width:12, height:12, background:"#DC2626", borderRadius:"50%", border:"2px solid #F3F4F6" }} />
         )}
       </button>
 
@@ -2983,17 +3003,17 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {chatOpen && (
         <div style={{
           position:"fixed", bottom:100, right:28, width:440, height:560,
-          background:"#141416", border:"1px solid #262629", borderRadius:20,
+          background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:20,
           boxShadow:"0 24px 80px rgba(0,0,0,0.7)", display:"flex", flexDirection:"column",
           zIndex:999, animation:"slideup 0.25s cubic-bezier(0.34,1.56,0.64,1)", overflow:"hidden"
         }}>
           {/* Header */}
-          <div style={{ padding:"18px 20px", borderBottom:"1px solid #1C1C20", background:"linear-gradient(135deg,#16121F,#141416)", flexShrink:0 }}>
+          <div style={{ padding:"18px 20px", borderBottom:"1px solid #E5E7EB", background:"linear-gradient(135deg,#EEF2FF,#FFFFFF)", flexShrink:0 }}>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#6D5EF6,#9486FF)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
+              <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
               <div>
                 <div style={{ fontSize:14, fontWeight:600 }}>Shadow CFO</div>
-                <div style={{ fontSize:11, color:"#10B981" }}>● Online · Your AI Controller</div>
+                <div style={{ fontSize:11, color:"#059669" }}>● Online · Your AI Controller</div>
               </div>
             </div>
           </div>
@@ -3003,27 +3023,27 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             {chatHistory.map((msg, idx)=>(
               <div key={msg.id||idx} style={{ marginBottom:14, display:"flex", justifyContent:msg.role==="user"?"flex-end":"flex-start" }}>
                 {msg.role==="assistant" && (
-                  <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,#6D5EF6,#9486FF)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0, marginRight:8, marginTop:2 }}>✦</div>
+                  <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0, marginRight:8, marginTop:2 }}>✦</div>
                 )}
                 <div style={{ maxWidth:"80%" }}>
                   <div style={{
                     padding:"10px 14px", borderRadius:msg.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",
-                    background:msg.role==="user"?"linear-gradient(135deg,#6D5EF6,#4A3DB8)":"#1C1C20",
-                    fontSize:13, lineHeight:1.6, color:"#F2F2F4", whiteSpace:"pre-wrap"
+                    background:msg.role==="user"?"linear-gradient(135deg,#4F46E5,#4338CA)":"#F3F4F6",
+                    fontSize:13, lineHeight:1.6, color:msg.role==="user"?"#fff":"#111827", whiteSpace:"pre-wrap"
                   }}>{msg.content}</div>
                   {msg.actions?.length>0 && (
-                    <div style={{ marginTop:10, background:"#0C1F14", border:"1px solid #10B98144", borderRadius:12, padding:"12px 14px" }}>
-                      <div style={{ fontSize:10, fontWeight:700, color:"#10B981", letterSpacing:1, marginBottom:8 }}>✓ ACTIONS TAKEN</div>
+                    <div style={{ marginTop:10, background:"#ECFDF5", border:"1px solid #05966944", borderRadius:12, padding:"12px 14px" }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:"#059669", letterSpacing:1, marginBottom:8 }}>✓ ACTIONS TAKEN</div>
                       {msg.actions.map((a,i)=>(
-                        <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:12, color:"#6EE7B7", marginBottom: i < msg.actions.length-1 ? 6 : 0, lineHeight:1.4 }}>
-                          <span style={{ color:"#10B981", flexShrink:0, marginTop:1 }}>⚡</span>
+                        <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:12, color:"#059669", marginBottom: i < msg.actions.length-1 ? 6 : 0, lineHeight:1.4 }}>
+                          <span style={{ color:"#059669", flexShrink:0, marginTop:1 }}>⚡</span>
                           <span>{a}</span>
                         </div>
                       ))}
                     </div>
                   )}
                   {msg.role==="assistant" && msg.content.toLowerCase().includes("profit") || msg.role==="assistant" && msg.content.toLowerCase().includes("expense") || msg.role==="assistant" && msg.content.toLowerCase().includes("revenue") ? (
-                    <button onClick={()=>{ setChatOpen(false); setView("reports"); }} style={{ marginTop:6, background:"none", border:"1px solid #262629", borderRadius:8, padding:"4px 12px", color:"#C7BFFF", fontSize:11, cursor:"pointer" }}>
+                    <button onClick={()=>{ setChatOpen(false); setView("reports"); }} style={{ marginTop:6, background:"none", border:"1px solid #D1D5DB", borderRadius:8, padding:"4px 12px", color:"#4F46E5", fontSize:11, cursor:"pointer" }}>
                       Open Reports page →
                     </button>
                   ) : null}
@@ -3032,10 +3052,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             ))}
             {chatLoading && (
               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
-                <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,#6D5EF6,#9486FF)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0 }}>✦</div>
-                <div style={{ padding:"10px 14px", background:"#1C1C20", borderRadius:"16px 16px 16px 4px" }}>
+                <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0 }}>✦</div>
+                <div style={{ padding:"10px 14px", background:"#E5E7EB", borderRadius:"16px 16px 16px 4px" }}>
                   <div style={{ display:"flex", gap:4 }}>
-                    {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"#86868F", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+                    {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"#6B7280", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
                   </div>
                 </div>
               </div>
@@ -3047,20 +3067,20 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {chatHistory.length < 3 && (
             <div style={{ padding:"0 16px 8px", display:"flex", flexWrap:"wrap", gap:6 }}>
               {["What's our burn rate?","Show me this month's P&L","Recode all Stripe entries to Payment Processing","Are there any unusual expenses?"].map(s=>(
-                <button key={s} onClick={()=>{ setChatInput(s); chatInputRef.current?.focus(); }} style={{ fontSize:11, padding:"5px 10px", borderRadius:20, background:"#1C1C20", border:"1px solid #262629", color:"#9A9AA2", cursor:"pointer", textAlign:"left" }}>{s}</button>
+                <button key={s} onClick={()=>{ setChatInput(s); chatInputRef.current?.focus(); }} style={{ fontSize:11, padding:"5px 10px", borderRadius:20, background:"#E5E7EB", border:"1px solid #D1D5DB", color:"#6B7280", cursor:"pointer", textAlign:"left" }}>{s}</button>
               ))}
             </div>
           )}
 
           {/* Input */}
-          <div style={{ padding:"12px 16px", borderTop:"1px solid #1C1C20", display:"flex", gap:8, flexShrink:0 }}>
+          <div style={{ padding:"12px 16px", borderTop:"1px solid #E5E7EB", display:"flex", gap:8, flexShrink:0 }}>
             <input ref={chatInputRef} value={chatInput} onChange={e=>setChatInput(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&handleChatSend()}
               placeholder="Ask anything about your books..."
-              style={{ flex:1, background:"#0C0C0E", border:"1px solid #262629", borderRadius:10, padding:"10px 14px", color:"#F2F2F4", fontSize:13, outline:"none", fontFamily:"'DM Sans', sans-serif" }} />
+              style={{ flex:1, background:"#F3F4F6", border:"1px solid #D1D5DB", borderRadius:10, padding:"10px 14px", color:"#111827", fontSize:13, outline:"none", fontFamily:"'DM Sans', sans-serif" }} />
             <button onClick={handleChatSend} disabled={chatLoading||!chatInput.trim()} style={{
-              width:40, height:40, borderRadius:10, background:(chatLoading||!chatInput.trim())?"#1C1C20":"linear-gradient(135deg,#6D5EF6,#9486FF)",
-              border:"none", color:"#F2F2F4", cursor:(chatLoading||!chatInput.trim())?"not-allowed":"pointer", fontSize:16, flexShrink:0
+              width:40, height:40, borderRadius:10, background:(chatLoading||!chatInput.trim())?"#E5E7EB":"linear-gradient(135deg,#4F46E5,#6366F1)",
+              border:"none", color:"#111827", cursor:(chatLoading||!chatInput.trim())?"not-allowed":"pointer", fontSize:16, flexShrink:0
             }}>↑</button>
           </div>
         </div>

@@ -14,22 +14,22 @@ export default function DocsView() {
               <div>
                 <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
                   <div>
-                    <div style={{fontSize:10,letterSpacing:3,color:"#86868F",marginBottom:8}}>DOCUMENT LIBRARY</div>
+                    <div style={{fontSize:10,letterSpacing:3,color:"#6B7280",marginBottom:8}}>DOCUMENT LIBRARY</div>
                     <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Documents</h1>
-                    <div style={{fontSize:13,color:"#86868F",marginTop:6}}>Every uploaded file — invoices, contracts, bank statements, payroll — stored and searchable. {docLibrary.length} document{docLibrary.length!==1?"s":""} stored.</div>
+                    <div style={{fontSize:13,color:"#6B7280",marginTop:6}}>Every uploaded file — invoices, contracts, bank statements, payroll — stored and searchable. {docLibrary.length} document{docLibrary.length!==1?"s":""} stored.</div>
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     {types.map(t=>(
-                      <button key={t} onClick={()=>setFilterType(t)} style={{padding:"6px 14px",borderRadius:20,fontSize:12,background:filterType===t?"#6D5EF6":"#1C1C20",border:"none",color:filterType===t?"#F2F2F4":"#9A9AA2",cursor:"pointer",textTransform:"capitalize"}}>{t}</button>
+                      <button key={t} onClick={()=>setFilterType(t)} style={{padding:"6px 14px",borderRadius:20,fontSize:12,background:filterType===t?"#4F46E5":"#E5E7EB",border:"none",color:filterType===t?"#fff":"#6B7280",cursor:"pointer",textTransform:"capitalize"}}>{t}</button>
                     ))}
                   </div>
                 </div>
                 {preview && (
                   <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setPreview(null)}>
-                    <div style={{background:"#141416",border:"1px solid #262629",borderRadius:16,padding:24,maxWidth:700,width:"90%",maxHeight:"80vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+                    <div style={{background:"#FFFFFF",border:"1px solid #D1D5DB",borderRadius:16,padding:24,maxWidth:700,width:"90%",maxHeight:"80vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                         <div style={{fontSize:15,fontWeight:600}}>{preview.name}</div>
-                        <button onClick={()=>setPreview(null)} style={{background:"transparent",border:"none",color:"#9A9AA2",fontSize:20,cursor:"pointer"}}>×</button>
+                        <button onClick={()=>setPreview(null)} style={{background:"transparent",border:"none",color:"#6B7280",fontSize:20,cursor:"pointer"}}>×</button>
                       </div>
                       {preview.base64 && preview.mediaType?.startsWith("image") && (
                         <img src={`data:${preview.mediaType};base64,${preview.base64}`} style={{width:"100%",borderRadius:8}} alt={preview.name}/>
@@ -52,60 +52,60 @@ export default function DocsView() {
                           <div>
                             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"28px 0 22px"}}>
                               <div style={{fontSize:40,opacity:0.5}}>{preview.mediaType==="application/pdf"?"📄":preview.mediaType?.startsWith("image")?"🖼":"📁"}</div>
-                              <div style={{fontSize:13,color:"#86868F",textAlign:"center",maxWidth:420,lineHeight:1.55}}>
+                              <div style={{fontSize:13,color:"#6B7280",textAlign:"center",maxWidth:420,lineHeight:1.55}}>
                                 The file itself isn't stored in the database (only its metadata). Re-upload the file to preview its contents.
                               </div>
                             </div>
-                            <div style={{background:"#0C0C0E",border:"1px solid #1C1C20",borderRadius:12,padding:"6px 16px"}}>
+                            <div style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:12,padding:"6px 16px"}}>
                               {rows.map(([k,v])=>(
-                                <div key={k} style={{display:"flex",justifyContent:"space-between",gap:16,padding:"10px 0",borderBottom:"1px solid #161619",fontSize:13}}>
-                                  <span style={{color:"#86868F"}}>{k}</span>
-                                  <span style={{color:"#F2F2F4",textAlign:"right",wordBreak:"break-word",maxWidth:"70%"}}>{v}</span>
+                                <div key={k} style={{display:"flex",justifyContent:"space-between",gap:16,padding:"10px 0",borderBottom:"1px solid #F3F4F6",fontSize:13}}>
+                                  <span style={{color:"#6B7280"}}>{k}</span>
+                                  <span style={{color:"#111827",textAlign:"right",wordBreak:"break-word",maxWidth:"70%"}}>{v}</span>
                                 </div>
                               ))}
                             </div>
                             {preview.ai_explanation && (
-                              <div style={{marginTop:14,background:"#0C0C0E",border:"1px solid #1C1C20",borderRadius:12,padding:"14px 16px"}}>
-                                <div style={{fontSize:10,letterSpacing:1,color:"#A99CFF",marginBottom:6}}>AI EXPLANATION</div>
-                                <div style={{fontSize:13,color:"#9A9AA2",lineHeight:1.6}}>{preview.ai_explanation}</div>
+                              <div style={{marginTop:14,background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:12,padding:"14px 16px"}}>
+                                <div style={{fontSize:10,letterSpacing:1,color:"#818CF8",marginBottom:6}}>AI EXPLANATION</div>
+                                <div style={{fontSize:13,color:"#6B7280",lineHeight:1.6}}>{preview.ai_explanation}</div>
                               </div>
                             )}
                             {preview.entry_summary && (
-                              <div style={{marginTop:14,background:"#0C0C0E",border:"1px solid #1C1C20",borderRadius:12,padding:"14px 16px"}}>
-                                <div style={{fontSize:10,letterSpacing:1,color:"#86868F",marginBottom:6}}>ENTRY SUMMARY</div>
-                                <div style={{fontSize:13,color:"#9A9AA2",lineHeight:1.6}}>{preview.entry_summary}</div>
+                              <div style={{marginTop:14,background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:12,padding:"14px 16px"}}>
+                                <div style={{fontSize:10,letterSpacing:1,color:"#6B7280",marginBottom:6}}>ENTRY SUMMARY</div>
+                                <div style={{fontSize:13,color:"#6B7280",lineHeight:1.6}}>{preview.entry_summary}</div>
                               </div>
                             )}
                           </div>
                         );
                       })()}
-                      {preview.base64 && <div style={{marginTop:16,fontSize:12,color:"#86868F"}}>Uploaded {preview.uploaded_at?.slice(0,10)} · Type: {preview.type} · {preview.mediaType}</div>}
+                      {preview.base64 && <div style={{marginTop:16,fontSize:12,color:"#6B7280"}}>Uploaded {preview.uploaded_at?.slice(0,10)} · Type: {preview.type} · {preview.mediaType}</div>}
                     </div>
                   </div>
                 )}
                 {filtered.length===0 ? (
-                  <div style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:14,padding:48,textAlign:"center"}}>
+                  <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:48,textAlign:"center"}}>
                     <div style={{fontSize:32,marginBottom:12}}>📁</div>
                     <div style={{fontSize:15,fontWeight:500,marginBottom:8}}>No documents yet</div>
-                    <div style={{fontSize:13,color:"#86868F"}}>Documents are stored automatically when you upload invoices, contracts, bank statements, and payroll files.</div>
+                    <div style={{fontSize:13,color:"#6B7280"}}>Documents are stored automatically when you upload invoices, contracts, bank statements, and payroll files.</div>
                   </div>
                 ) : (
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>
                     {filtered.map(doc=>(
-                      <div key={doc.id} style={{background:"#141416",border:"1px solid #1C1C20",borderRadius:12,padding:18,cursor:"pointer",transition:"border-color 0.15s"}}
-                        onMouseEnter={e=>e.currentTarget.style.borderColor="#C7BFFF"}
-                        onMouseLeave={e=>e.currentTarget.style.borderColor="#1C1C20"}
+                      <div key={doc.id} style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:12,padding:18,cursor:"pointer",transition:"border-color 0.15s"}}
+                        onMouseEnter={e=>e.currentTarget.style.borderColor="#4F46E5"}
+                        onMouseLeave={e=>e.currentTarget.style.borderColor="#E5E7EB"}
                         onClick={()=>setPreview(doc)}>
                         <div style={{fontSize:32,marginBottom:12}}>
                           {doc.type==="invoice"?"🧾":doc.type==="contract"?"📄":doc.type==="bank_statement"?"🏦":doc.type==="payroll"?"💼":"📋"}
                         </div>
                         <div style={{fontSize:13,fontWeight:500,marginBottom:4,wordBreak:"break-word"}}>{doc.name}</div>
-                        <div style={{fontSize:11,color:"#86868F",marginBottom:8}}>{doc.uploaded_at?.slice(0,10)}</div>
+                        <div style={{fontSize:11,color:"#6B7280",marginBottom:8}}>{doc.uploaded_at?.slice(0,10)}</div>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                          <span style={{fontSize:10,background:"#1C1C20",color:"#9A9AA2",borderRadius:20,padding:"2px 8px",textTransform:"capitalize"}}>{doc.type}</span>
-                          {(doc.tags||[]).map(t=><span key={t} style={{fontSize:10,background:"#18181C",color:"#C7BFFF",borderRadius:20,padding:"2px 8px"}}>{t}</span>)}
+                          <span style={{fontSize:10,background:"#E5E7EB",color:"#6B7280",borderRadius:20,padding:"2px 8px",textTransform:"capitalize"}}>{doc.type}</span>
+                          {(doc.tags||[]).map(t=><span key={t} style={{fontSize:10,background:"#F3F4F6",color:"#4F46E5",borderRadius:20,padding:"2px 8px"}}>{t}</span>)}
                         </div>
-                        <div style={{marginTop:10,fontSize:11,color:"#86868F"}}>Click to preview →</div>
+                        <div style={{marginTop:10,fontSize:11,color:"#6B7280"}}>Click to preview →</div>
                       </div>
                     ))}
                   </div>
