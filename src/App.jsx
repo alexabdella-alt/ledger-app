@@ -906,7 +906,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const extractRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 1000,
+          model: "claude-sonnet-4-6", max_tokens: 1000,
           system: `Extract invoice fields. "vendor" = exact legal name of the company issuing the invoice. Respond ONLY with valid JSON: {"vendor":"...","description":"...","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details"}`,
           messages: [{ role:"user", content:[
             { type: mediaType==="application/pdf"?"document":"image", source:{ type:"base64", media_type:mediaType, data:base64 }},
@@ -933,7 +933,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const codeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 1000,
+          model: "claude-sonnet-4-6", max_tokens: 1000,
           system: `Expert accountant. Suggest GL coding for this transaction. Respond ONLY with valid JSON: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","debit_credit":"debit or credit","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
 
 CRITICAL RULES:
@@ -1009,7 +1009,7 @@ CRITICAL RULES:
     const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
       method:"POST", headers:getAuthHeaders(),
       body: JSON.stringify({
-        model:"claude-sonnet-4-20250514", max_tokens:20,
+        model:"claude-sonnet-4-6", max_tokens:20,
         system:`Classify this document. Reply with ONLY one word:
 - invoice    → a bill, invoice, or receipt for goods/services (whether the business is paying OR being paid)
 - bank_statement → a bank or credit card statement listing multiple transactions
@@ -1090,7 +1090,7 @@ Reply with only the single word.`,
           const extractRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-20250514", max_tokens:4000,
+              model:"claude-sonnet-4-6", max_tokens:4000,
               system:`You are an expert at reading invoice documents. This document may contain ONE invoice or MULTIPLE invoices/receipts on separate pages or sections.
 
 Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if there is only one invoice:
@@ -1134,7 +1134,7 @@ Rules:
           const codeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-20250514", max_tokens:3000,
+              model:"claude-sonnet-4-6", max_tokens:3000,
               system:`Expert accountant. Assign GL codes to each invoice. Return a JSON array with one coding object per invoice, in the same order as input.
 Each object: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
 
@@ -1296,7 +1296,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             const parseRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
               method:"POST", headers:getAuthHeaders(),
               body: JSON.stringify({
-                model:"claude-sonnet-4-20250514", max_tokens:4000,
+                model:"claude-sonnet-4-6", max_tokens:4000,
                 system:`Parse this bank statement CSV/text and extract ALL transactions. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
                 messages:[{role:"user", content:`Parse:\n\n${text.slice(0,8000)}`}]
               })
@@ -1307,7 +1307,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             const parseRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
               method:"POST", headers:getAuthHeaders(),
               body: JSON.stringify({
-                model:"claude-sonnet-4-20250514", max_tokens:4000,
+                model:"claude-sonnet-4-6", max_tokens:4000,
                 system:`Extract ALL transactions from this bank statement PDF. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
                 messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},{type:"text",text:"Extract all transactions."}]}]
               })
@@ -1320,7 +1320,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           const catRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-20250514", max_tokens:6000,
+              model:"claude-sonnet-4-6", max_tokens:6000,
               system:`Categorize each bank transaction with GL coding. Respond ONLY with JSON array: [{"id":0,"date":"YYYY-MM-DD","vendor":"Clean Name","description":"original","amount":123.45,"type":"expense or revenue","gl_code":"XXXX","gl_name":"Name","confidence":85,"needs_review":false}]
 
 CRITICAL RULES:
@@ -1363,7 +1363,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           const res1 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-20250514", max_tokens:3000,
+              model:"claude-sonnet-4-6", max_tokens:3000,
               system:`You are a Big 4 CPA (ASC 842 specialist). Extract contract terms and generate ONLY the Day 1 journal entry.
 For OPERATING LEASE: Day 1: Dr ROU Asset 1800 [PV of payments at IBR] / Cr Lease Liability Current 2400 [next 12mo principal] + Cr Lease Liability LT 2450 [remainder]. NO depreciation entries.
 Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement","counterparty":"...","description":"...","total_value":0,"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","payment_amount":0,"payment_frequency":"monthly","interest_rate":0,"lease_type":"operating|finance|not_applicable","rou_asset_value":0,"lease_liability_current":0,"lease_liability_noncurrent":0,"discount_rate_used":0.05,"lease_term_months":0,"monthly_straight_line_expense":0,"accounting_treatment":"...","key_terms":[],"journal_entries":[{"date":"YYYY-MM-DD","description":"Lease commencement","memo":"ASC 842-20-30","lines":[{"account_code":"1800","account_name":"Right-of-Use Asset","debit":0,"credit":0}]}]}`,
@@ -1419,7 +1419,7 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
           const explainRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-20250514", max_tokens:1500,
+              model:"claude-sonnet-4-6", max_tokens:1500,
               system:`You are an expert CPA reviewing an unusual document. Analyze it and respond ONLY with valid JSON (no markdown):
 {
   "document_type": "Short name for what this document is (e.g. Personal Guarantee, Settlement Agreement, Line of Credit)",
@@ -1539,7 +1539,7 @@ Rules:
         const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
           method:"POST", headers:getAuthHeaders(),
           body: JSON.stringify({
-            model:"claude-sonnet-4-20250514", max_tokens:4000,
+            model:"claude-sonnet-4-6", max_tokens:4000,
             system:`You are an expert at reading bank statements. Extract ALL transactions from this bank statement. Respond ONLY with valid JSON array, no markdown:
 [{"date":"YYYY-MM-DD","description":"raw bank description","amount":123.45,"type":"debit or credit","balance":1000.00}]
 Extract every single transaction row. Use negative amounts for debits/expenses if shown that way in the statement.`,
@@ -1564,7 +1564,7 @@ Extract every single transaction row. Use negative amounts for debits/expenses i
         const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
           method:"POST", headers:getAuthHeaders(),
           body: JSON.stringify({
-            model:"claude-sonnet-4-20250514", max_tokens:4000,
+            model:"claude-sonnet-4-6", max_tokens:4000,
             system:`You are an expert at parsing bank statement exports. Parse this CSV/Excel text and extract ALL transactions. Respond ONLY with valid JSON array, no markdown:
 [{"date":"YYYY-MM-DD","description":"raw bank description","amount":123.45,"type":"debit or credit","balance":1000.00}]
 Handle any column format — the file might have columns in different orders. Parse every transaction row.`,
@@ -1585,7 +1585,7 @@ Handle any column format — the file might have columns in different orders. Pa
       const categorizeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:"claude-sonnet-4-20250514", max_tokens:6000,
+          model:"claude-sonnet-4-6", max_tokens:6000,
           system:`You are an expert accountant. For each bank transaction, extract the vendor name and suggest the best GL account coding. Use your knowledge of common merchants (e.g. "AMZN" = Amazon, "SQ *" = Square merchant, "ACH" = bank transfer, etc).
 
 Chart of Accounts:
@@ -1691,7 +1691,7 @@ Keep the same array order and index as input.`,
       const res1 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:"claude-sonnet-4-20250514", max_tokens:3000,
+          model:"claude-sonnet-4-6", max_tokens:3000,
           system:`You are a Big 4 CPA specializing in ASC 842. Extract contract terms and generate ONLY the Day 1 commencement journal entry.
 
 For OPERATING LEASE (ASC 842):
@@ -2056,7 +2056,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
       const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 4000,
+          model: "claude-sonnet-4-6", max_tokens: 4000,
           system: `You are an expert bookkeeper running a matching engine. Your job is to match bank transactions against open invoices/accruals and determine if they clear each other.
 
 For each bank transaction, check if it matches one or more open payables/receivables based on:
@@ -2292,7 +2292,7 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
       const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:"claude-sonnet-4-20250514", max_tokens:3000,
+          model:"claude-sonnet-4-6", max_tokens:3000,
           system:`You are an AP automation system. Screen each invoice and return enriched data.
 
 For each invoice return:
@@ -2672,7 +2672,16 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       if (!chatOpen) setHasUnread(true);
     } catch(e) {
       console.error("Chat error:", e);
-      setChatHistory(h => [...h, { role:"assistant", content:"Sorry, I ran into an error. Please try again.", id: Date.now()+1 }]);
+      const detail = e?.message || String(e);
+      const hint = /Failed to fetch|NetworkError/i.test(detail)
+        ? " (Couldn't reach the ai-proxy edge function — check your network or that the function is deployed.)"
+        : /401|403|token|auth/i.test(detail)
+          ? " (Authentication issue — try signing out and back in.)"
+          : /model|not_found|deprecat/i.test(detail)
+            ? " (The model may be unavailable — verify the ai-proxy model configuration.)"
+            : "";
+      setChatHistory(h => [...h, { role:"assistant", content:`⚠ I couldn't complete that request.\n\n${detail}${hint}`, id: Date.now()+1 }]);
+      showNotification("AI chat failed — see the chat panel for details.", "error");
     }
     setChatLoading(false);
   };

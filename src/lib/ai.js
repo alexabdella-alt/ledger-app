@@ -7,29 +7,37 @@ import { getAuthHeaders } from "./supabase";
 // Cheap pre-flight call (~150 tokens) that decides how much context the main
 // call actually needs. Runs on claude-haiku for speed + cost.
 async function classifyIntent(userMessage, recentHistory) {
-  const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 20,
-      system: `Classify what this accounting assistant message needs. Reply with ONLY one word:
+  // Best-effort pre-flight — never let it block the main call. On any failure
+  // we fall back to "ledger" so the main model still gets full context.
+  try {
+    const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 20,
+        system: `Classify what this accounting assistant message needs. Reply with ONLY one word:
 - ledger    → needs invoice/transaction data (reports, P&L, expense breakdowns, recode, retag, "how much", "what did we spend", "show me")
 - contacts  → only needs vendor/customer info (add/update vendor or customer, set terms, contact details)
 - rules     → only needs GL rules (add/delete/change a coding rule)
 - general   → needs nothing from the database (greetings, how-to questions, explanations)`,
-      messages: [
-        ...recentHistory.slice(-3).map(m => ({ role: m.role, content: m.content })),
-        { role: "user", content: userMessage }
-      ]
-    })
-  });
-  const d = await res.json();
-  const t = (d.content?.find(b => b.type === "text")?.text || "").trim().toLowerCase();
-  if (t.includes("ledger")) return "ledger";
-  if (t.includes("contacts")) return "contacts";
-  if (t.includes("rules")) return "rules";
-  return "general";
+        messages: [
+          ...recentHistory.slice(-3).map(m => ({ role: m.role, content: m.content })),
+          { role: "user", content: userMessage }
+        ]
+      })
+    });
+    if (!res.ok) return "ledger";
+    const d = await res.json();
+    const t = (d.content?.find(b => b.type === "text")?.text || "").trim().toLowerCase();
+    if (t.includes("ledger")) return "ledger";
+    if (t.includes("contacts")) return "contacts";
+    if (t.includes("rules")) return "rules";
+    return "general";
+  } catch (e) {
+    console.warn("classifyIntent failed, defaulting to ledger:", e.message);
+    return "ledger";
+  }
 }
 
 async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, contacts, chartOfAccounts }) {
@@ -171,15 +179,27 @@ GAAP AWARENESS — maintain proper books but explain simply:
   const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, system: systemPrompt, messages })
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, system: systemPrompt, messages })
   });
+
+  // Surface transport / proxy / model errors instead of swallowing them.
+  if (!res.ok) {
+    let detail = "";
+    try { const eb = await res.json(); detail = eb?.error?.message || eb?.error || eb?.message || JSON.stringify(eb); }
+    catch { try { detail = await res.text(); } catch {} }
+    throw new Error(`AI service error (${res.status} ${res.statusText})${detail ? `: ${detail}` : ""}`);
+  }
+
   const data = await res.json();
-  const text = data.content?.find(b => b.type === "text")?.text || "{}";
+  if (data?.error) throw new Error(`AI error: ${data.error.message || data.error}`);
+  const text = data.content?.find(b => b.type === "text")?.text;
+  if (!text) throw new Error("AI returned an empty response. Check that the ai-proxy edge function and model are configured.");
+
   const cleaned = text.replace(/```json|```/g, "").trim();
   try {
     return JSON.parse(cleaned);
   } catch(e) {
-    // If JSON parse fails, extract just the reply text and return it gracefully
+    // Valid prose but not JSON — extract the reply text and return it gracefully.
     const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
     return { reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : cleaned, actions: [] };
   }
