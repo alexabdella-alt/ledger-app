@@ -180,6 +180,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [form, setForm] = useState({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General", invoice_number:"" });
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [notification, setNotification] = useState(null);
+  const notifTimerRef = useRef(null);
   const [aiStep, setAiStep] = useState(null);
   const [vendorFilter, setVendorFilter] = useState(() => ss("cfai_vendorFilter", "all"));
 
@@ -228,10 +229,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
   // ── AUDIT TRAIL ───────────────────────────────────────────────────────────────
   const [auditLog, setAuditLog] = useState([]);
-  const logAudit = (action, detail, before=null, after=null) => {
+  const logAudit = (action, detail, before=null, after=null, performedBy="owner") => {
     setAuditLog(prev => [{
       id: Date.now()+Math.random(), ts: new Date().toISOString(),
-      action, detail, before, after, user:"owner"
+      action, detail, before, after, user: performedBy
     }, ...prev]);
     // Persist every audit entry to Supabase — fire-and-forget
     if (currentCompany?.id) {
@@ -249,10 +250,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         detail,
         before_state: before ? slim(before) : null,
         after_state:  after  ? slim(after)  : null,
+        performed_by: performedBy,
       }).then(({ error }) => { if (error) console.error("Audit persist failed:", error.message, error.details); })
         .catch(e => console.error("Audit persist error:", e));
     }
   };
+  // Convenience: log an action performed by the AI chat.
+  const logAI = (action, detail, before=null, after=null) => logAudit(action, detail, before, after, "AI Chat");
 
   // ── DOCUMENT STORAGE ─────────────────────────────────────────────────────────
   const [docLibrary, setDocLibrary] = useState([]);
@@ -533,6 +537,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         .select("*, journal_entry_lines(*, accounts(code,name))")
         .eq("company_id", cid)
         .eq("status", "posted")
+        .is("deleted_at", null)
         .order("entry_date", { ascending: false })
         .limit(500);
 
@@ -608,7 +613,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
       // Load contacts
       const { data: contactsData } = await supabase
-        .from("contacts").select("*").eq("company_id", cid).eq("active", true).order("name");
+        .from("contacts").select("*").eq("company_id", cid).eq("active", true).is("deleted_at", null).order("name");
       if (contactsData) {
         setContacts(contactsData.map(c => ({
           ...c, fromContact: true, type: c.type,
@@ -691,7 +696,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       if (auditData) {
         setAuditLog(auditData.map(a => ({
           id: a.id, ts: a.created_at, action: a.action,
-          detail: a.detail, before: a.before_state, after: a.after_state, user: "owner"
+          detail: a.detail, before: a.before_state, after: a.after_state, user: a.performed_by || "owner"
         })));
       }
 
@@ -881,42 +886,114 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   };
 
   // Remove a journal entry from Supabase so it never reloads.
-  // Hard-deletes the rows (lines first, then header) to avoid any status-enum constraints.
-  // The immutable record lives in the audit_log table, not here.
-  const deleteJournalEntry = async (invoice) => {
-    if (!currentCompany?.id) return;
-
-    const hardDelete = async (jeId) => {
-      // Delete lines first to avoid FK constraint violations on servers without CASCADE
-      await supabase.from("journal_entry_lines")
-        .delete()
-        .eq("journal_entry_id", jeId);
+  // Soft-deletes a journal entry (sets deleted_at/deleted_by) so it vanishes from
+  // every view but stays fully recoverable. Returns the DB entry ids touched so the
+  // Undo toast can restore them. The audit_log keeps the immutable record.
+  const softDeleteJournalEntry = async (invoice) => {
+    if (!currentCompany?.id) return [];
+    const uid = session?.user?.id || null;
+    const ids = [];
+    const mark = async (jeId) => {
       const { error } = await supabase.from("journal_entries")
-        .delete()
+        .update({ deleted_at: new Date().toISOString(), deleted_by: uid })
         .eq("id", jeId)
         .eq("company_id", currentCompany.id);
-      if (error) console.error("deleteJournalEntry hard-delete failed:", jeId, error.message);
+      if (error) console.error("softDeleteJournalEntry failed:", jeId, error.message);
+      else ids.push(jeId);
     };
-
     try {
       if (invoice?.db_entry_id) {
-        await hardDelete(invoice.db_entry_id);
+        await mark(invoice.db_entry_id);
       } else if (invoice?.vendor && invoice?.date) {
-        // Fallback for entries booked in current session before db_entry_id was written back.
-        // Look up by company + date + vendor prefix.
+        // Fallback for entries booked this session before db_entry_id was written back.
         const prefix = (invoice.vendor || "").split(" ")[0];
         const { data: matches } = await supabase.from("journal_entries")
           .select("id")
           .eq("company_id", currentCompany.id)
           .eq("entry_date", invoice.date)
           .eq("status", "posted")
+          .is("deleted_at", null)
           .ilike("description", `${prefix}%`);
-        if (matches?.length) {
-          for (const m of matches) await hardDelete(m.id);
-        }
+        if (matches?.length) { for (const m of matches) await mark(m.id); }
       }
-    } catch(e) { console.error("deleteJournalEntry error:", e); }
+    } catch(e) { console.error("softDeleteJournalEntry error:", e); }
+    return ids;
   };
+  // Restore soft-deleted journal entries (clears deleted_at) — used by Undo and admins.
+  const restoreJournalEntries = async (ids) => {
+    if (!currentCompany?.id || !ids?.length) return;
+    const { error } = await supabase.from("journal_entries")
+      .update({ deleted_at: null, deleted_by: null })
+      .in("id", ids)
+      .eq("company_id", currentCompany.id);
+    if (error) console.error("restoreJournalEntries failed:", error.message);
+  };
+  // Back-compat name used across call sites.
+  const deleteJournalEntry = softDeleteJournalEntry;
+
+  // Centralized invoice delete with a single 30-second Undo toast that restores the
+  // whole batch. byAI tags the audit rows as performed by the AI chat.
+  const softDeleteInvoices = async (list, byAI=false) => {
+    const items = (list || []).filter(Boolean);
+    if (!items.length) return;
+    const snaps = items.map(i => ({ ...i }));
+    snaps.forEach(s => logAudit("invoice_deleted", `Deleted: ${s.vendor} $${s.amount} on ${s.date} (${s.gl_name||""})`, s, null, byAI ? "AI Chat" : "owner"));
+    const idset = new Set(snaps.map(s => String(s.id)));
+    setInvoices(prev => prev.filter(i => !idset.has(String(i.id))));
+    let allIds = [];
+    for (const inv of items) { const ids = await softDeleteJournalEntry(inv); allIds = allIds.concat(ids); }
+    const label = items.length === 1 ? (snaps[0].vendor || "entry") : `${items.length} entries`;
+    showNotification(`Deleted ${label} — tap Undo to restore`, "success", async () => {
+      if (allIds.length) await restoreJournalEntries(allIds);
+      setInvoices(prev => { const have = new Set(prev.map(i => String(i.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
+      logAudit("invoice_restored", `Restored ${items.length} entr${items.length===1?"y":"ies"}`, null, null);
+      showNotification("Restored ✓");
+    });
+  };
+  const softDeleteInvoice = (invoice, byAI=false) => softDeleteInvoices([invoice], byAI);
+
+  // Centralized void with Undo. Void is client-session state (matching existing behavior).
+  const voidInvoiceWithUndo = (invoice, reason, byAI=false) => {
+    if (!invoice) return;
+    const snap = { ...invoice };
+    setInvoices(prev => prev.map(i => String(i.id) === String(snap.id) ? { ...i, status:"voided", voided_at:new Date().toISOString(), voided_reason: reason || "Voided" } : i));
+    logAudit("invoice_voided", `Voided ${snap.vendor} · $${snap.amount}`, snap, null, byAI ? "AI Chat" : "owner");
+    showNotification(`Voided ${snap.vendor || "entry"} — tap Undo to restore`, "success", () => {
+      setInvoices(prev => prev.map(i => String(i.id) === String(snap.id) ? { ...i, status: snap.status || "booked", voided_at: snap.voided_at || null, voided_reason: snap.voided_reason || null } : i));
+      logAudit("invoice_unvoided", `Restored (un-voided): ${snap.vendor}`, null, snap);
+      showNotification("Restored ✓");
+    });
+  };
+
+  // Soft-delete one or more contracts with a single Undo toast that restores the batch.
+  const softDeleteContracts = async (list, byAI=false) => {
+    const items = (list || []).filter(Boolean);
+    if (!items.length) return;
+    const uid = session?.user?.id || null;
+    const snaps = items.map(c => ({ ...c }));
+    snaps.forEach(s => logAudit("contract_deleted", `Deleted contract: ${s.counterparty || s.contract_type || "contract"}`, s, null, byAI ? "AI Chat" : "owner"));
+    const idset = new Set(snaps.map(s => String(s.id)));
+    setContracts(prev => prev.filter(c => !idset.has(String(c.id))));
+    if (currentCompany?.id) {
+      for (const s of snaps) {
+        if (!s.db_id) continue;
+        const { error } = await supabase.from("contracts")
+          .update({ deleted_at: new Date().toISOString(), deleted_by: uid })
+          .eq("id", s.db_id).eq("company_id", currentCompany.id);
+        if (error) console.error("softDeleteContracts failed:", error.message);
+      }
+    }
+    const label = items.length === 1 ? (snaps[0].counterparty || "contract") : `${items.length} contracts`;
+    showNotification(`Deleted ${label} — tap Undo to restore`, "success", async () => {
+      setContracts(prev => { const have = new Set(prev.map(c => String(c.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
+      if (currentCompany?.id) {
+        for (const s of snaps) { if (s.db_id) await supabase.from("contracts").update({ deleted_at: null, deleted_by: null }).eq("id", s.db_id).eq("company_id", currentCompany.id); }
+      }
+      logAudit("contract_restored", `Restored ${items.length} contract${items.length===1?"":"s"}`, null, null);
+      showNotification("Restored ✓");
+    });
+  };
+  const softDeleteContract = (contract, byAI=false) => softDeleteContracts([contract], byAI);
 
   const persistContact = async (contact) => {
     if (!currentCompany?.id) return;
@@ -1187,6 +1264,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const { data, error } = await supabase.from("contracts")
         .select("*")
         .eq("company_id", currentCompany.id)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
       if (error) { console.error("loadContractsFromDB error:", JSON.stringify(error)); return; }
       if (data && data.length > 0) {
@@ -1233,10 +1311,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     } catch(e) { console.error("loadContractsFromDB error:", e); }
   };
 
-  const showNotification = (msg, type="success") => {
-    setNotification({ msg, type });
+  const dismissNotification = () => {
+    if (notifTimerRef.current) { clearTimeout(notifTimerRef.current); notifTimerRef.current = null; }
+    setNotification(null);
+  };
+  // When `undo` is provided the toast shows an Undo button and stays for 30 seconds.
+  const showNotification = (msg, type="success", undo=null) => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    setNotification({ msg, type, undo });
     // Errors are easy to miss in 3.5s and are usually action-worthy — keep them up longer.
-    setTimeout(() => setNotification(null), type==="error" ? 9000 : 3500);
+    const ms = undo ? 30000 : (type==="error" ? 9000 : 3500);
+    notifTimerRef.current = setTimeout(() => setNotification(null), ms);
   };
 
   const applyRule = (inv, ruleList) => {
@@ -2990,7 +3075,28 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       let actionSummary = [];
       const newRules = [...rules];
 
+      // ── Bulk-delete protection ──
+      // Count how many items the requested deletes would remove. If more than 3,
+      // refuse all deletions and ask the user to remove them one at a time.
+      let pendingDeletes = 0;
+      for (const a of (result.actions || [])) {
+        if (a.type === "delete_invoice") {
+          if (a.invoice_id) pendingDeletes += 1;
+          else if (a.vendor) pendingDeletes += invoices.filter(i =>
+            i.vendor?.toLowerCase().includes(a.vendor.toLowerCase()) &&
+            (!a.amount || Math.abs(i.amount - parseFloat(a.amount)) < 1) &&
+            (!a.date || i.date === a.date)).length;
+        } else if (a.type === "delete_contract") {
+          if (a.contract_id) pendingDeletes += 1;
+          else if (a.counterparty) pendingDeletes += contracts.filter(c =>
+            c.counterparty?.toLowerCase().includes(a.counterparty.toLowerCase())).length;
+        }
+      }
+      const bulkBlocked = pendingDeletes > 3;
+      if (bulkBlocked) logAI("bulk_delete_blocked", `Refused a request to delete ${pendingDeletes} items at once`);
+
       for (const action of (result.actions || [])) {
+        const _sumBefore = actionSummary.length;
         if (action.type === "navigate" && action.view) {
           // Map any view name (old or new) to the 5-tab structure: home, books, reports, contracts, settings
           const viewAliases = {
@@ -3057,13 +3163,12 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           }
         }
         if (action.type === "delete_invoice") {
-          // Delete by ID or by vendor+amount match — always log before removing
+          if (bulkBlocked) continue; // refused above — handled in the reply
+          // Soft delete (reversible) by ID or by vendor+amount match. Logged as "AI Chat".
           if (action.invoice_id) {
             const target = invoices.find(i => String(i.id) === String(action.invoice_id));
             if (target) {
-              logAudit("invoice_deleted", `Deleted: ${target.vendor} $${target.amount} on ${target.date} (${target.gl_name})`, target, null);
-              deleteJournalEntry(target);
-              setInvoices(prev => prev.filter(i => String(i.id) !== String(action.invoice_id)));
+              softDeleteInvoice(target, true);
               actionSummary.push(`Deleted entry: ${target.vendor} $${target.amount}`);
             } else {
               actionSummary.push(`Entry ${action.invoice_id} not found`);
@@ -3075,8 +3180,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               (!action.date || i.date === action.date)
             );
             if (toDelete.length > 0) {
-              toDelete.forEach(d => { logAudit("invoice_deleted", `Deleted: ${d.vendor} $${d.amount} on ${d.date} (${d.gl_name})`, d, null); deleteJournalEntry(d); });
-              setInvoices(prev => prev.filter(i => !toDelete.find(d => d.id === i.id)));
+              softDeleteInvoices(toDelete, true);
               actionSummary.push(`Deleted ${toDelete.length} entr${toDelete.length===1?"y":"ies"} for ${action.vendor}`);
             } else {
               actionSummary.push(`No matching entries found for ${action.vendor}`);
@@ -3084,17 +3188,15 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           }
         }
         if (action.type === "void_invoice") {
-          // Void = mark as voided but keep for audit trail
+          // Void = mark as voided but keep for audit trail (reversible via Undo).
           if (action.invoice_id) {
-            setInvoices(prev => prev.map(i => String(i.id) === String(action.invoice_id) ? {...i, status:"voided", voided_at:new Date().toISOString(), voided_reason: action.reason||"Voided via AI"} : i));
-            actionSummary.push(`Voided entry: ${action.invoice_id}`);
+            const target = invoices.find(i => String(i.id) === String(action.invoice_id));
+            if (target) { voidInvoiceWithUndo(target, action.reason || "Voided via AI", true); actionSummary.push(`Voided entry: ${target.vendor}`); }
+            else { actionSummary.push(`Entry ${action.invoice_id} not found`); }
           } else if (action.vendor) {
-            setInvoices(prev => prev.map(i =>
-              i.vendor?.toLowerCase().includes(action.vendor.toLowerCase())
-              ? {...i, status:"voided", voided_at:new Date().toISOString(), voided_reason: action.reason||"Voided via AI"}
-              : i
-            ));
-            actionSummary.push(`Voided entries for ${action.vendor}`);
+            const toVoid = invoices.filter(i => i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) && i.status!=="voided");
+            toVoid.forEach(t => voidInvoiceWithUndo(t, action.reason || "Voided via AI", true));
+            actionSummary.push(`Voided ${toVoid.length} entr${toVoid.length===1?"y":"ies"} for ${action.vendor}`);
           }
         }
         if (action.type === "reverse_entry") {
@@ -3122,15 +3224,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           }
         }
         if (action.type === "delete_contract") {
+          if (bulkBlocked) continue; // refused above — handled in the reply
           if (action.contract_id || action.counterparty) {
             const toDelete = contracts.filter(c =>
               action.contract_id ? String(c.id) === String(action.contract_id)
               : c.counterparty?.toLowerCase().includes(action.counterparty?.toLowerCase())
             );
-            setContracts(prev => prev.filter(c => !toDelete.find(d => d.id === c.id)));
-            toDelete.forEach(async c => {
-              if (c.db_id) await supabase.from("contracts").delete().eq("id", c.db_id);
-            });
+            toDelete.forEach(c => softDeleteContract(c, true));
             actionSummary.push(`Contract removed: ${action.counterparty || action.contract_id}`);
           }
         }
@@ -3211,13 +3311,22 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           if (idx >= 0) newRules[idx] = rule; else newRules.push(rule);
           actionSummary.push(`Rule set for ${action.name} → ${action.gl_name}`);
         }
+        // Comprehensive AI audit trail: every action the AI takes is logged as "AI Chat".
+        // delete_invoice / void_invoice / delete_contract already log (with before/after)
+        // via their helpers; navigate isn't a data change, so both are skipped here.
+        const _added = actionSummary.slice(_sumBefore);
+        if (_added.length && !["navigate","delete_invoice","void_invoice","delete_contract"].includes(action.type)) {
+          logAI(`ai_${action.type}`, _added.join("; "));
+        }
       }
       setRules(newRules);
 
       const assistantMsg = {
         role: "assistant",
-        content: result.reply || "Done!",
-        actions: actionSummary,
+        content: bulkBlocked
+          ? "I can delete items one at a time for safety. Which specific entry would you like me to remove first?"
+          : (result.reply || "Done!"),
+        actions: bulkBlocked ? [] : actionSummary,
         id: Date.now() + 1,
         created_at: new Date().toISOString(),
       };
@@ -3270,7 +3379,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, view };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, view };
 
   const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   return (
@@ -3311,8 +3420,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       `}</style>
 
       {notification && (
-        <div style={{ position:"fixed", top:20, right:20, zIndex:9999, background:notification.type==="error"?"#FEF2F2":"#ECFDF5", border:`1px solid ${notification.type==="error"?"#D92D20":"#039855"}`, color:notification.type==="error"?"#D92D20":"#039855", padding:"12px 20px", borderRadius:10, fontSize:14, animation:"fadein 0.2s ease", boxShadow:"0 8px 32px rgba(0,0,0,0.6)" }}>
-          {notification.msg}
+        <div style={{ position:"fixed", top:20, right:20, zIndex:9999, background:notification.type==="error"?"#FEF2F2":"#ECFDF5", border:`1px solid ${notification.type==="error"?"#D92D20":"#039855"}`, color:notification.type==="error"?"#D92D20":"#039855", padding:"12px 16px 12px 20px", borderRadius:10, fontSize:14, animation:"fadein 0.2s ease", boxShadow:"0 8px 32px rgba(16,24,40,0.18)", display:"flex", alignItems:"center", gap:16, maxWidth:480 }}>
+          <span>{notification.msg}</span>
+          {notification.undo && (
+            <button onClick={()=>{ const fn=notification.undo; dismissNotification(); fn(); }}
+              style={{ flexShrink:0, background:"transparent", border:"1px solid currentColor", color:"inherit", borderRadius:7, padding:"5px 14px", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Undo</button>
+          )}
+          <button onClick={dismissNotification} aria-label="Dismiss" style={{ flexShrink:0, background:"transparent", border:"none", color:"inherit", opacity:0.6, fontSize:18, lineHeight:1, cursor:"pointer", padding:0 }}>×</button>
         </div>
       )}
 

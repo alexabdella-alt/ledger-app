@@ -136,7 +136,10 @@ export default function AuditView() {
                                     {(entry.action||"").replace(/_/g," ")}
                                   </span>
                                 </td>
-                                <td style={{padding:"11px 16px",fontSize:13,color:"#374151",lineHeight:1.5}}>{entry.detail}</td>
+                                <td style={{padding:"11px 16px",fontSize:13,color:"#374151",lineHeight:1.5}}>
+                                  {entry.detail}
+                                  {entry.user && <span style={{marginLeft:8,fontSize:10,fontWeight:600,color:entry.user==="AI Chat"?"#4F46E5":"#98A2B3",background:entry.user==="AI Chat"?"#EEF2FF":"#F2F4F7",border:`1px solid ${entry.user==="AI Chat"?"#C7D2FE":"#E4E7EC"}`,borderRadius:20,padding:"1px 8px",whiteSpace:"nowrap"}}>{entry.user==="AI Chat"?"✦ AI Chat":entry.user}</span>}
+                                </td>
                               </tr>
                             );
                           })}

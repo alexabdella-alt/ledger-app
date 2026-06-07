@@ -19,6 +19,31 @@ export default function SettingsView() {
               r.onload = e => { const b64 = e.target.result; setLogoPreview(b64); setDraft(d=>({...d, logoBase64:b64})); };
               r.readAsDataURL(file);
             };
+            // ── Export all data (CSV safety net) ──
+            const downloadCSV = (filename, rows) => {
+              const esc = v => { if (v==null) return ""; const s=String(v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+              const csv = rows.map(r => r.map(esc).join(",")).join("\n");
+              const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+              URL.revokeObjectURL(url);
+            };
+            const exportAllData = () => {
+              const stamp = new Date().toISOString().slice(0,10);
+              const co = (currentCompany?.name || "company").replace(/[^a-z0-9]+/gi, "_");
+              const txnRows = [["Date","Vendor","Description","GL Code","GL Account","Type","Amount","Status","Payment Status","Project"]];
+              (invoices||[]).forEach(i => txnRows.push([i.date, i.vendor, i.description, i.gl_code, i.gl_name, i.type, i.amount, i.status, i.payment_status, i.project]));
+              downloadCSV(`${co}_transactions_${stamp}.csv`, txnRows);
+              const contactRows = [["Name","Type","Email","Phone","Website","Payment Terms","Tax ID","Tags","Notes"]];
+              (contacts||[]).forEach(c => contactRows.push([c.name, c.type, c.email, c.phone, c.website, c.payment_terms, c.tax_id||c.ein||c.ein_ssn, (c.tags||[]).join("; "), c.notes]));
+              downloadCSV(`${co}_contacts_${stamp}.csv`, contactRows);
+              const contractRows = [["Counterparty","Type","Description","Monthly Payment","Frequency","Term (months)","Start","End","Total Value","Treatment"]];
+              (contracts||[]).forEach(c => contractRows.push([c.counterparty, c.contract_type, c.description, c.payment_amount, c.payment_frequency, c.lease_term_months, c.start_date, c.end_date, c.total_value, c.accounting_treatment]));
+              downloadCSV(`${co}_contracts_${stamp}.csv`, contractRows);
+              logAudit("data_export", `Exported all data: ${(invoices||[]).length} transactions, ${(contacts||[]).length} contacts, ${(contracts||[]).length} contracts`);
+              showNotification("Exported transactions, contacts & contracts ✓");
+            };
             const inp = (k,l,p,type="text") => (
               <div>
                 <div style={{fontSize:11,color:"#475467",marginBottom:4}}>{l}</div>
@@ -110,6 +135,22 @@ export default function SettingsView() {
                   </div>
                   <button onClick={()=>setBankAccounts(prev=>[...prev,{id:Date.now()+Math.random(),name:"",type:"checking",gl_code:getAccountByRole("cash")?.code,institution:""}])}
                     style={{fontSize:12,background:"transparent",border:"1px dashed #D0D5DD",borderRadius:8,padding:"7px 16px",color:"#475467",cursor:"pointer"}}>+ Add Bank Account</button>
+                </div>
+
+                {/* EXPORT YOUR DATA — safety net */}
+                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:20,marginBottom:24}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:6}}>YOUR DATA</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                    <div style={{fontSize:13,color:"#475467",maxWidth:440,lineHeight:1.5}}>
+                      Download a CSV of every transaction, contact, and contract. Your data is always yours — keep a copy anytime.
+                    </div>
+                    <button onClick={exportAllData}
+                      style={{flexShrink:0,height:40,padding:"0 18px",borderRadius:8,fontSize:14,fontWeight:600,background:"#FFFFFF",border:"1px solid #D0D5DD",color:"#344054",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8}}
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#4F46E5";e.currentTarget.style.color="#4F46E5";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#D0D5DD";e.currentTarget.style.color="#344054";}}>
+                      ↓ Export All Data (CSV)
+                    </button>
+                  </div>
                 </div>
 
                 <button onClick={save} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,#D1FAE5,#039855)":"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:saved?"#039855":"#101828",cursor:"pointer",transition:"all 0.3s"}}>

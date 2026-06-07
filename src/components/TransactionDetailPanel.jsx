@@ -29,7 +29,7 @@ export function txnStatusBadge(i) {
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit,
-    setInvoices, setSelectedInvoice, setView, setReturnTo, docLibrary, storeDocument, fileToBase64, showNotification,
+    setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, docLibrary, storeDocument, fileToBase64, showNotification,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
@@ -68,11 +68,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
     persistRecode && persistRecode([{ ...inv, gl_code: acct.code }], acct.code, acct.name);
     setRecodeOpen(false);
   };
-  const doVoid = (inv) => {
-    setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, status: "voided", voided_at: new Date().toISOString(), voided_reason: "Voided from detail panel" } : i));
-    logAudit && logAudit("invoice_voided", `Voided ${inv.vendor} · ${fmtM(inv.amount)}`, inv, null);
-    onClose();
-  };
+  const doVoid = (inv) => { voidInvoiceWithUndo(inv, "Voided from detail panel"); onClose(); };
 
   return createPortal((
     <>
