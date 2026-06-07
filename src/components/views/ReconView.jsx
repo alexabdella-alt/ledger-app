@@ -36,32 +36,34 @@ function parseBankCSV(text){
   return rows;
 }
 // keyword → GL suggestion (smart default for "add to books")
-function suggestGL(desc, amount){
+// Suggest a stable system_role from a bank-transaction description. The caller
+// resolves the role to the company's current account via getAccountByRole.
+function suggestRole(desc, amount){
   const d=(desc||"").toLowerCase();
-  if(amount>0) return {gl_code:"4000",gl_name:"Product Revenue"};
+  if(amount>0) return "product_revenue";
   const map=[
-    [/stripe|square|paypal|processing/, "6500","Technology & Software"],
-    [/aws|amazon web|google cloud|gcp|azure|digitalocean|heroku|vercel|netlify/, "6500","Technology & Software"],
-    [/rent|lease|wework|office/, "6100","Rent & Occupancy"],
-    [/payroll|gusto|adp|salary|wages/, "6000","Salaries & Wages"],
-    [/google ads|facebook|meta|ad spend|marketing|mailchimp|hubspot/, "6300","Marketing & Advertising"],
-    [/uber|lyft|flight|hotel|airbnb|travel/, "6400","Travel & Entertainment"],
-    [/insurance/, "6700","Insurance"],
-    [/electric|water|utility|comcast|internet|phone|verizon|at&t/, "6200","Utilities"],
-    [/legal|accounting|consult|attorney|lawyer/, "6800","Professional Services"],
-    [/staples|office depot/, "6600","Office Supplies"],
-    [/fee|bank charge/, "7100","Miscellaneous Expense"],
-    [/interest/, "8000","Interest Expense"],
+    [/stripe|square|paypal|processing/, "technology_software"],
+    [/aws|amazon web|google cloud|gcp|azure|digitalocean|heroku|vercel|netlify/, "technology_software"],
+    [/rent|lease|wework|office/, "rent_occupancy"],
+    [/payroll|gusto|adp|salary|wages/, "salaries_wages"],
+    [/google ads|facebook|meta|ad spend|marketing|mailchimp|hubspot/, "marketing_advertising"],
+    [/uber|lyft|flight|hotel|airbnb|travel/, "travel_entertainment"],
+    [/insurance/, "insurance"],
+    [/electric|water|utility|comcast|internet|phone|verizon|at&t/, "utilities"],
+    [/legal|accounting|consult|attorney|lawyer/, "professional_services"],
+    [/staples|office depot/, "office_supplies"],
+    [/fee|bank charge/, "miscellaneous_expense"],
+    [/interest/, "interest_expense"],
   ];
-  for(const [re,code,name] of map) if(re.test(d)) return {gl_code:code,gl_name:name};
-  return {gl_code:"7100",gl_name:"Miscellaneous Expense"};
+  for(const [re,role] of map) if(re.test(d)) return role;
+  return "miscellaneous_expense";
 }
 
 export default function ReconView() {
   const {
     bankAccounts, invoices, setInvoices, reconciliations,
     currentCompany, session, supabase, bookToDb, logAudit, showNotification, loadAllData,
-    CHART_OF_ACCOUNTS, setView,
+    CHART_OF_ACCOUNTS, setView, getAccountByRole,
   } = useERP();
 
   const fmt = n => (n<0?"-":"")+"$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
@@ -158,7 +160,7 @@ export default function ReconView() {
     const inv = {
       id: Date.now()+Math.random(), vendor: (t.description||"Bank transaction").slice(0,60), description: t.description||"Added during reconciliation",
       amount: Math.abs(t.amount), date: t.date, type: isRev?"revenue":"expense",
-      gl_code: gl.gl_code, gl_name: gl.gl_name, secondary_gl_code:"1000", secondary_gl_name:"Cash & Cash Equivalents",
+      gl_code: gl.gl_code, gl_name: gl.gl_name, secondary_gl_code:getAccountByRole("cash")?.code, secondary_gl_name:getAccountByRole("cash")?.name,
       debit_credit: isRev?"credit":"debit", confidence: 90, reasoning:"Added during bank reconciliation",
       status:"booked", booked_at:new Date().toISOString(), source:"reconciliation", payment_status: isRev?"collected":"paid",
       _added: { date:t.date, vendor:t.description, amount:t.amount, gl_code:gl.gl_code },
@@ -444,7 +446,8 @@ export default function ReconView() {
         <div style={{ ...card, marginTop:14, padding:"16px 20px" }}>
           <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>Things we need to sort out</div>
           {unmatchedBank.map(t=>{
-            const gl=suggestGL(t.description, t.amount);
+            const _acct=getAccountByRole(suggestRole(t.description, t.amount));
+            const gl={gl_code:_acct?.code, gl_name:_acct?.name};
             return (
               <div key={t.id} style={{ padding:"12px 0", borderTop:"1px solid #F3F4F6" }}>
                 <div style={{ fontSize:13, color:"#92400E", marginBottom:6 }}>This is in your bank but not your books — <strong>{t.description}</strong> ({fmt(t.amount)}, {t.date})</div>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS } from "./lib/constants";
+import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor } from "./lib/format";
 import { classifyIntent, runAIBrain } from "./lib/ai";
@@ -296,10 +297,56 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     logoBase64: null,
   });
 
-  // ── CHART OF ACCOUNTS (customizable) ─────────────────────────────────────────
-  const [customCOA, setCustomCOA] = useState(DEFAULT_CHART_OF_ACCOUNTS);
-  // Shadow the static const so all existing code works unchanged
-  const CHART_OF_ACCOUNTS = customCOA;
+  // ── CHART OF ACCOUNTS (customizable, loaded from Supabase via useAccounts) ───
+  const { accounts: liveAccounts, reload: reloadAccounts, getAccountByRole, getAccountByCode, getAccountById } = useAccounts(currentCompany?.id);
+  // Live company chart; falls back to the default chart before the first load.
+  const CHART_OF_ACCOUNTS = liveAccounts.length ? liveAccounts : DEFAULT_CHART_OF_ACCOUNTS;
+  const customCOA = CHART_OF_ACCOUNTS; // backwards-compat alias for existing readers
+  // Resolve a stable system_role to its CURRENT code / name (never hardcode codes).
+  const rc = (role) => getAccountByRole(role)?.code || "";
+  const rn = (role) => getAccountByRole(role)?.name || "";
+
+  // ── ACCOUNT MUTATIONS (persist to Supabase, then refresh the live chart) ─────
+  const addCustomAccount = async ({ code, name, category }) => {
+    if (!currentCompany?.id || !code || !name) return false;
+    if (CHART_OF_ACCOUNTS.find(a => a.code === code)) { showNotification("Account code already exists.", "error"); return false; }
+    const { error } = await supabase.from("accounts").insert({
+      company_id: currentCompany.id, code, name, category: category || "Expenses",
+      active: true, is_system: false, system_role: null,
+    });
+    if (error) { console.warn("[accounts] add failed:", error.message); showNotification("Couldn't add account — " + error.message, "error"); return false; }
+    logAudit("coa_added", `Account added: ${code} – ${name} (${category})`);
+    await reloadAccounts();
+    return true;
+  };
+  const persistAccountEdit = async (account, updates) => {
+    if (!account?.db_id || !currentCompany?.id) return false;
+    if (updates.code && updates.code !== account.code && CHART_OF_ACCOUNTS.find(a => a.code === updates.code)) {
+      showNotification("That account code is already in use.", "error"); return false;
+    }
+    const payload = {};
+    for (const k of ["code", "name", "category", "active"]) if (updates[k] != null) payload[k] = updates[k];
+    const { error } = await supabase.from("accounts").update(payload).eq("id", account.db_id).eq("company_id", currentCompany.id);
+    if (error) { console.warn("[accounts] edit failed:", error.message); showNotification("Couldn't save — " + error.message, "error"); return false; }
+    logAudit("coa_edited", `Account ${account.code} updated: ${updates.name || account.name}${updates.code && updates.code !== account.code ? ` (renumbered → ${updates.code})` : ""}`);
+    await reloadAccounts();
+    return true;
+  };
+  const accountHasTransactions = async (account) => {
+    if (!account?.db_id) return false;
+    const { count } = await supabase.from("journal_entry_lines").select("id", { count: "exact", head: true }).eq("account_id", account.db_id);
+    return (count || 0) > 0;
+  };
+  const deleteAccount = async (account) => {
+    if (!account?.db_id || !currentCompany?.id) return false;
+    if (account.system_role) { showNotification("System accounts can't be deleted — rename it instead.", "error"); return false; }
+    if (await accountHasTransactions(account)) { showNotification("This account has transactions and can't be deleted.", "error"); return false; }
+    const { error } = await supabase.from("accounts").delete().eq("id", account.db_id).eq("company_id", currentCompany.id);
+    if (error) { console.warn("[accounts] delete failed:", error.message); showNotification("Couldn't delete — " + error.message, "error"); return false; }
+    logAudit("coa_deleted", `Account deleted: ${account.code} – ${account.name}`);
+    await reloadAccounts();
+    return true;
+  };
 
   // ── DELETE CONFIRMATION ───────────────────────────────────────────────────────
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, label, onConfirm }
@@ -311,7 +358,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   // ── BANK ACCOUNTS ────────────────────────────────────────────────────────────
   // { id, name, type:"checking"|"savings"|"credit_card"|"loan", gl_code, last4, institution }
   const [bankAccounts, setBankAccounts] = useState([
-    { id:"default", name:"Primary Checking", type:"checking", gl_code:"1000", last4:"", institution:"" }
+    { id:"default", name:"Primary Checking", type:"checking", gl_code:rc("cash"), last4:"", institution:"" }
   ]);
 
   // ── SEND INVOICE (outgoing to customers) ─────────────────────────────────────
@@ -363,7 +410,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [openingBalBalances, setOpeningBalBalances] = useState({});
   const [sendInvoiceDraftState, setSendInvoiceDraftState] = useState(null);
   const [sendInvoiceShowPreview, setSendInvoiceShowPreview] = useState(false);
-  const [recurringNewRec, setRecurringNewRec] = useState({name:"",vendor:"",amount:"",gl_code:"6100",gl_name:"Rent & Occupancy",frequency:"monthly",next_date:new Date().toISOString().slice(0,10),project:"General"});
+  const [recurringNewRec, setRecurringNewRec] = useState({name:"",vendor:"",amount:"",gl_code:rc("rent_occupancy"),gl_name:rn("rent_occupancy"),frequency:"monthly",next_date:new Date().toISOString().slice(0,10),project:"General"});
   const [docsPreview, setDocsPreview] = useState(null);
   const [docsFilterType, setDocsFilterType] = useState("all");
   const [auditSearch, setAuditSearch] = useState("");
@@ -512,12 +559,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         });
       }
 
-      // Load chart of accounts
-      const { data: accts } = await supabase
-        .from("accounts").select("*").eq("company_id", cid).order("code");
-      if (accts) {
-        setCustomCOA(accts.map(a => ({ code: a.code, name: a.name, category: a.category, active: a.active, is_system: a.is_system, db_id: a.id })));
-      }
+      // Chart of accounts is loaded/refreshed by the useAccounts hook.
 
       // Load bank accounts
       const { data: banks } = await supabase
@@ -863,13 +905,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         explanation:`Under GAAP (ASC 360), purchases over $2,500 with a useful life greater than one year must be capitalized as fixed assets and depreciated over their useful life rather than expensed immediately. This affects both your balance sheet and your taxes.`,
         options:[
           { label: capitalize ? "Business use, and I'll use it more than a year" : "Business use, more than a year",
-            gl_code: capitalize?"1500":"6600", gl_name: capitalize?glName("1500","Fixed Assets"):glName("6600","Office Supplies & De Minimis Equipment"), depreciate: capitalize,
+            gl_code: capitalize?rc("fixed_assets"):rc("office_supplies"), gl_name: capitalize?rn("fixed_assets"):rn("office_supplies"), depreciate: capitalize,
             reasoning: capitalize
               ? `Capitalized as fixed asset per ASC 360 — user confirmed business use >1 year, amount ${fmtMoney(amt)} exceeds $2,500 threshold. Flagged for depreciation.`
               : `Expensed to de minimis equipment — business use but amount ${fmtMoney(amt)} is under the $2,500 capitalization threshold (de minimis safe harbor).` },
-          { label:"It's a subscription, or I'll use it under a year", gl_code:"6500", gl_name:glName("6500","Technology & Software"),
+          { label:"It's a subscription, or I'll use it under a year", gl_code:rc("technology_software"), gl_name:rn("technology_software"),
             reasoning:`Expensed to Technology — subscription or useful life under one year, so ASC 360 capitalization does not apply.` },
-          { label:"Mostly personal use", gl_code:"6600", gl_name:glName("6600","Office Supplies & De Minimis Equipment"), nondeductible:true,
+          { label:"Mostly personal use", gl_code:rc("office_supplies"), gl_name:rn("office_supplies"), nondeductible:true,
             reasoning:`Booked but flagged as primarily personal use — not deductible as a business expense.` },
         ] };
     }
@@ -893,11 +935,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         question:`Is this a permanent improvement, and to a space you lease or own?`,
         explanation:`Permanent improvements to a leased space are capitalized as leasehold improvements and amortized over the lease term. Improvements to property you own are capitalized and depreciated. Routine repairs are expensed right away.`,
         options:[
-          { label:"Permanent improvement to a space I LEASE", gl_code:"1600", gl_name:glName("1600","Leasehold Improvements"), depreciate:false,
+          { label:"Permanent improvement to a space I LEASE", gl_code:rc("intangible_assets"), gl_name:rn("intangible_assets"), depreciate:false,
             reasoning:`Capitalized as a leasehold improvement (1600) per GAAP — permanent improvement to leased space, amortize over the remaining lease term.` },
-          { label:"Permanent improvement to a space I OWN", gl_code:"1500", gl_name:glName("1500","Fixed Assets"), depreciate:true,
+          { label:"Permanent improvement to a space I OWN", gl_code:rc("fixed_assets"), gl_name:rn("fixed_assets"), depreciate:true,
             reasoning:`Capitalized to Fixed Assets (1500) — permanent improvement to owned property, depreciate over its useful life.` },
-          { label:"It's a repair / maintenance", gl_code:"6250", gl_name:glName("6250","Repairs & Maintenance"),
+          { label:"It's a repair / maintenance", gl_code:rc("repairs_maintenance"), gl_name:rn("repairs_maintenance"),
             reasoning:`Expensed as repairs & maintenance (6250) — routine upkeep, not a capital improvement.` },
         ] };
     }
@@ -920,14 +962,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const bookPrepaid = (inv, months, opt) => {
     const amt = Number(inv.amount) || 0;
     const expenseCode = inv.gl_code, expenseName = inv.gl_name;
-    const prepaidName = glName("1300","Prepaid Expenses");
-    const prepaidEntry = { ...inv, gl_code:"1300", gl_name:prepaidName,
-      secondary_gl_code:"2000", secondary_gl_name:glName("2000","Accounts Payable"), debit_credit:"debit",
+    const prepaidName = rn("prepaid_expenses");
+    const prepaidEntry = { ...inv, gl_code:rc("prepaid_expenses"), gl_name:prepaidName,
+      secondary_gl_code:rc("accounts_payable"), secondary_gl_name:rn("accounts_payable"), debit_credit:"debit",
       confidence:100, status:"booked", booked_at:new Date().toISOString(), source:"gaap_prepaid",
       reasoning: opt.reasoning || `Recorded as a prepaid asset, amortizing over ${months} months.`, prepaid_months: months };
     setInvoices(prev => [prepaidEntry, ...prev]);
     bookToDb(prepaidEntry);
-    if (prepaidEntry._contact) createOrUpdateContact({ ...prepaidEntry._contact, gl_code:"1300", gl_name:prepaidName });
+    if (prepaidEntry._contact) createOrUpdateContact({ ...prepaidEntry._contact, gl_code:rc("prepaid_expenses"), gl_name:prepaidName });
 
     const per = Math.round((amt / months) * 100) / 100;
     const start = inv.date ? new Date(inv.date+"T12:00:00") : new Date();
@@ -937,13 +979,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       amortInvoices.push({ id: Date.now()+Math.random()+k, vendor: inv.vendor,
         description:`${inv.description||expenseName} — amortization ${k+1}/${months}`, amount: per,
         date: dt.toISOString().slice(0,10), type:"expense", project: inv.project||"General",
-        gl_code: expenseCode, gl_name: expenseName, secondary_gl_code:"1300", secondary_gl_name:prepaidName,
+        gl_code: expenseCode, gl_name: expenseName, secondary_gl_code:rc("prepaid_expenses"), secondary_gl_name:prepaidName,
         debit_credit:"debit", confidence:100, reasoning:`Monthly amortization of prepaid ${expenseName} (${k+1} of ${months}).`,
         status:"booked", booked_at:new Date().toISOString(), source:"gaap_prepaid_amort", payment_status:"paid" });
     }
     setInvoices(prev => [...amortInvoices, ...prev]);
     amortInvoices.forEach(e => bookToDb(e));
-    logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid (1300), amortizing over ${months} months`, null, { vendor:inv.vendor, amount:amt, gl_code:"1300", months });
+    logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid (1300), amortizing over ${months} months`, null, { vendor:inv.vendor, amount:amt, gl_code:rc("prepaid_expenses"), months });
     showNotification(`Recorded as prepaid — spread over ${months} months ✓`);
   };
 
@@ -954,7 +996,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     if (opt.prepaidMonths) { bookPrepaid(inv, opt.prepaidMonths, opt); return; }
     const finalInv = { ...inv,
       gl_code: opt.gl_code || inv.gl_code, gl_name: opt.gl_name || inv.gl_name,
-      secondary_gl_code:"2000", secondary_gl_name:"Accounts Payable", debit_credit:"debit",
+      secondary_gl_code:rc("accounts_payable"), secondary_gl_name:rn("accounts_payable"), debit_credit:"debit",
       confidence:100, status:"booked", booked_at:new Date().toISOString(), source:"gaap_classification",
       reasoning: opt.reasoning || inv.reasoning,
       needs_depreciation: opt.depreciate ? true : undefined,
@@ -1046,9 +1088,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
               // Also patch Day 1 entry if it has wrong values
               if (c.journal_entries?.[0]) {
                 c.journal_entries[0].lines = [
-                  { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouAsset, credit: 0 },
-                  { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
-                  { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
+                  { account_code:rc("rou_asset"), account_name:rn("rou_asset"), debit: asc842.rouAsset, credit: 0 },
+                  { account_code:rc("lease_liability_current"), account_name:rn("lease_liability_current"), debit: 0, credit: asc842.currentPortion },
+                  { account_code:rc("lease_liability_noncurrent"), account_name:rn("lease_liability_noncurrent"), debit: 0, credit: asc842.nonCurrentPortion },
                 ];
               }
             }
@@ -1114,7 +1156,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const rule = rules.find(r => r.vendor?.toLowerCase() === extracted.vendor?.toLowerCase());
       if (rule) {
         extracted.project = rule.project || "General";
-        setAiSuggestion({ gl_code: rule.gl_code, gl_name: rule.gl_name, secondary_gl_code: "2000", secondary_gl_name: "Accounts Payable", confidence: 99, reasoning: `Applied your vendor rule: ${extracted.vendor} → ${rule.gl_name}${rule.project ? ` (Project: ${rule.project})` : ""}` });
+        setAiSuggestion({ gl_code: rule.gl_code, gl_name: rule.gl_name, secondary_gl_code: rc("accounts_payable"), secondary_gl_name: rn("accounts_payable"), confidence: 99, reasoning: `Applied your vendor rule: ${extracted.vendor} → ${rule.gl_name}${rule.project ? ` (Project: ${rule.project})` : ""}` });
         setForm(extracted);
         setIsAILoading(false); setAiStep(null);
         showNotification(`Vendor rule applied: ${rule.gl_name} ✓`);
@@ -1361,8 +1403,8 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             const rule = rules.find(r => r.vendor?.toLowerCase()===extracted.vendor?.toLowerCase());
             const isRevenue = extracted.type === "revenue";
             const confidence = rule ? 99 : (coding.confidence || 75);
-            const finalCode = rule ? rule.gl_code : (coding.gl_code || (isRevenue ? "4000" : "7100"));
-            const finalName = rule ? rule.gl_name : (coding.gl_name || (isRevenue ? "Product Revenue" : "Miscellaneous Expense"));
+            const finalCode = rule ? rule.gl_code : (coding.gl_code || (isRevenue ? rc("product_revenue") : rc("miscellaneous_expense")));
+            const finalName = rule ? rule.gl_name : (coding.gl_name || (isRevenue ? rn("product_revenue") : rn("miscellaneous_expense")));
 
             const invoice = {
               id: Date.now() + Math.random() + idx,
@@ -1397,8 +1439,8 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
 
             // Meals: auto-apply the 50% deductibility rule (no question needed) and notify.
             if (invoice.type !== "revenue" && GAAP_MEALS_RE.test(`${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase())) {
-              invoice.gl_code = "6400";
-              invoice.gl_name = glName("6400","Travel & Entertainment");
+              invoice.gl_code = rc("travel_entertainment");
+              invoice.gl_name = rn("travel_entertainment");
               invoice.meals_pct = 50;
               invoice.deductible_amount = (Number(invoice.amount)||0) * 0.5;
               invoice.reasoning = `Meals booked to Travel & Entertainment (6400) — 50% deductible under current tax law, deductible portion ${fmtMoney(invoice.deductible_amount)}. ${invoice.reasoning||""}`.trim();
@@ -1433,7 +1475,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             } else if (!rule && isRevenue) {
               const revenueAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Revenue").slice(0, 2);
               const expenseAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Expenses")
-                .filter(a => ["5000","6800","6500"].includes(a.code));
+                .filter(a => [rc("cogs"),rc("professional_services"),rc("technology_software")].includes(a.code));
               needsClarification.push({
                 id: Date.now() + Math.random(),
                 invoice,
@@ -1443,7 +1485,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
                   ...revenueAccts.map(a => ({ code: a.code, name: a.name })),
                   ...expenseAccts.map(a => ({
                     code: a.code, name: a.name,
-                    typeOverride: { type: "expense", secondary_gl_code: "2000", secondary_gl_name: "Accounts Payable" }
+                    typeOverride: { type: "expense", secondary_gl_code: rc("accounts_payable"), secondary_gl_name: rn("accounts_payable") }
                   })),
                 ],
                 suggestedCode: finalCode,
@@ -1609,7 +1651,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           const newInvoices = unmatchedTxns.map((t)=>({
             id:Date.now()+Math.random(), vendor:t.vendor, description:t.description, amount:Math.abs(t.amount),
             date:t.date, type:t.type, project:"General", gl_code:t.gl_code, gl_name:t.gl_name,
-            secondary_gl_code:"1000", secondary_gl_name:"Cash & Cash Equivalents",
+            secondary_gl_code:rc("cash"), secondary_gl_name:rn("cash"),
             debit_credit:"debit", confidence:t.confidence, reasoning:"Imported via bank statement (no open item matched)",
             status:"booked", booked_at:new Date().toISOString(), source:"bank_statement",
             payment_status:"paid", payment_method_used:"bank_transfer", matched:true, auto_matched:true,
@@ -1706,9 +1748,9 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
               const principal = Math.min(pmt - interest, liab);
               liab = Math.max(0, liab - principal);
               monthlyEntries.push({ date:ds, description:`Operating lease payment — Month ${i+1}`, memo:`ASC 842-20: Straight-line $${sl.toFixed(2)}/mo`,
-                lines:[{account_code:"6150",account_name:"Operating Lease Expense",debit:parseFloat(sl.toFixed(2)),credit:0},{account_code:"1000",account_name:"Cash",debit:0,credit:parseFloat(pmt.toFixed(2))}]});
+                lines:[{account_code:rc("operating_lease_expense"),account_name:rn("operating_lease_expense"),debit:parseFloat(sl.toFixed(2)),credit:0},{account_code:rc("cash"),account_name:rn("cash"),debit:0,credit:parseFloat(pmt.toFixed(2))}]});
               if (principal > 0.01) monthlyEntries.push({ date:ds, description:`Lease liability reduction — Month ${i+1}`, memo:`ASC 842-20: Principal $${principal.toFixed(2)}`,
-                lines:[{account_code:"2400",account_name:"Lease Liability - Current (ASC 842)",debit:parseFloat(principal.toFixed(2)),credit:0},{account_code:"1800",account_name:"Right-of-Use Asset",debit:0,credit:parseFloat(principal.toFixed(2))}]});
+                lines:[{account_code:rc("lease_liability_current"),account_name:rn("lease_liability_current"),debit:parseFloat(principal.toFixed(2)),credit:0},{account_code:rc("rou_asset"),account_name:"Right-of-Use Asset",debit:0,credit:parseFloat(principal.toFixed(2))}]});
             }
             contract.lease_term_months = calcLeaseTermMonths;
           }
@@ -1935,8 +1977,8 @@ Keep the same array order and index as input.`,
     const newInvoices = toBook.map(t => ({
       id: t.id, vendor: t.vendor, description: t.description, amount: Math.abs(t.amount),
       date: t.date, type: t.type, project: "General", gl_code: t.gl_code, gl_name: t.gl_name,
-      secondary_gl_code: "1000",
-      secondary_gl_name: "Cash & Cash Equivalents",
+      secondary_gl_code: rc("cash"),
+      secondary_gl_name: rn("cash"),
       debit_credit: t.type==="expense"?"debit":"credit", confidence: t.confidence,
       reasoning: `Imported from bank statement${t.rule_applied?" (vendor rule applied)":""}`,
       status:"booked", booked_at: new Date().toISOString(), source:"bank_feed",
@@ -2099,9 +2141,9 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
         if (asc842) {
           if (contract.journal_entries?.[0]) {
             contract.journal_entries[0].lines = [
-              { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouAsset, credit: 0 },
-              { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
-              { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
+              { account_code:rc("rou_asset"), account_name:rn("rou_asset"), debit: asc842.rouAsset, credit: 0 },
+              { account_code:rc("lease_liability_current"), account_name:rn("lease_liability_current"), debit: 0, credit: asc842.currentPortion },
+              { account_code:rc("lease_liability_noncurrent"), account_name:rn("lease_liability_noncurrent"), debit: 0, credit: asc842.nonCurrentPortion },
             ];
             contract.journal_entries[0].memo = `ASC 842-20-30: PV of ${leaseTermMonths} × $${monthlyPayment} @ ${(ibr*100).toFixed(2)}% IBR (monthly compounding). Current = principal reduction months 1-12 ($${asc842.currentPortion.toLocaleString()}), NOT gross cash.`;
           } else {
@@ -2110,9 +2152,9 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
               description: "Lease commencement — ASC 842 initial recognition",
               memo: `ASC 842-20-30: PV of ${leaseTermMonths} × $${monthlyPayment} @ ${(ibr*100).toFixed(2)}% IBR`,
               lines: [
-                { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: asc842.rouAsset, credit: 0 },
-                { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: 0, credit: asc842.currentPortion },
-                { account_code:"2450", account_name:"Lease Liability - Non-Current (ASC 842)", debit: 0, credit: asc842.nonCurrentPortion },
+                { account_code:rc("rou_asset"), account_name:rn("rou_asset"), debit: asc842.rouAsset, credit: 0 },
+                { account_code:rc("lease_liability_current"), account_name:rn("lease_liability_current"), debit: 0, credit: asc842.currentPortion },
+                { account_code:rc("lease_liability_noncurrent"), account_name:rn("lease_liability_noncurrent"), debit: 0, credit: asc842.nonCurrentPortion },
               ]
             }];
           }
@@ -2135,8 +2177,8 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
               description: `Operating lease payment — Month ${i + 1}`,
               memo: `ASC 842-20: SL expense $${monthlyPayment.toFixed(2)}. Interest component $${interest.toFixed(2)}, principal $${principal.toFixed(2)}. Liability balance after: $${Math.round(row.balance * 100) / 100}`,
               lines: [
-                { account_code:"6150", account_name:"Operating Lease Expense", debit: parseFloat(monthlyPayment.toFixed(2)), credit: 0 },
-                { account_code:"1000", account_name:"Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
+                { account_code:rc("operating_lease_expense"), account_name:rn("operating_lease_expense"), debit: parseFloat(monthlyPayment.toFixed(2)), credit: 0 },
+                { account_code:rc("cash"), account_name:rn("cash"), debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
               ]
             });
             // Entry B: Balance sheet — non-cash liability reduction and ROU amortization
@@ -2146,8 +2188,8 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
                 description: `Lease liability & ROU amortization — Month ${i + 1}`,
                 memo: `ASC 842-20: Non-cash. Principal reduction of liability = $${principal.toFixed(2)}. ROU asset decreases by same amount.`,
                 lines: [
-                  { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: principal, credit: 0 },
-                  { account_code:"1800", account_name:"Right-of-Use Asset (ASC 842)", debit: 0, credit: principal },
+                  { account_code:rc("lease_liability_current"), account_name:rn("lease_liability_current"), debit: principal, credit: 0 },
+                  { account_code:rc("rou_asset"), account_name:rn("rou_asset"), debit: 0, credit: principal },
                 ]
               });
             }
@@ -2159,9 +2201,9 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
               description: `Finance lease payment — Month ${i + 1}`,
               memo: `ASC 842-20: Interest $${interest.toFixed(2)} (liability × monthly rate), principal $${principal.toFixed(2)}`,
               lines: [
-                { account_code:"8000", account_name:"Interest Expense", debit: interest, credit: 0 },
-                { account_code:"2400", account_name:"Lease Liability - Current (ASC 842)", debit: principal, credit: 0 },
-                { account_code:"1000", account_name:"Cash", debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
+                { account_code:rc("interest_expense"), account_name:rn("interest_expense"), debit: interest, credit: 0 },
+                { account_code:rc("lease_liability_current"), account_name:rn("lease_liability_current"), debit: principal, credit: 0 },
+                { account_code:rc("cash"), account_name:rn("cash"), debit: 0, credit: parseFloat(monthlyPayment.toFixed(2)) },
               ]
             });
             monthlyEntries.push({
@@ -2169,8 +2211,8 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
               description: `ROU asset amortization — Month ${i + 1}`,
               memo: `ASC 842-20: Finance lease — straight-line amortization of ROU asset`,
               lines: [
-                { account_code:"6050", account_name:"ROU Asset Amortization", debit: rouAmort, credit: 0 },
-                { account_code:"1810", account_name:"Accumulated Amortization - ROU", debit: 0, credit: rouAmort },
+                { account_code:rc("rou_amortization"), account_name:rn("rou_amortization"), debit: rouAmort, credit: 0 },
+                { account_code:rc("accumulated_amortization_rou"), account_name:rn("accumulated_amortization_rou"), debit: 0, credit: rouAmort },
               ]
             });
           }
@@ -2188,10 +2230,10 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
           const dateStr = d.toISOString().slice(0, 10);
           if (contract.contract_type === "subscription_paid") {
             monthlyEntries.push({ date: dateStr, description: `Subscription expense — Month ${i+1}`, memo: "Monthly amortization of prepaid",
-              lines: [{ account_code:"6500", account_name:"Technology & Software", debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:"1300", account_name:"Prepaid Expenses", debit:0, credit:parseFloat(contract.payment_amount) }]});
+              lines: [{ account_code:rc("technology_software"), account_name:rn("technology_software"), debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:rc("prepaid_expenses"), account_name:rn("prepaid_expenses"), debit:0, credit:parseFloat(contract.payment_amount) }]});
           } else if (contract.contract_type === "revenue_contract") {
             monthlyEntries.push({ date: dateStr, description: `Revenue recognition — Month ${i+1}`, memo: "ASC 606: Performance obligation satisfied",
-              lines: [{ account_code:"2300", account_name:"Deferred Revenue", debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:"4100", account_name:"Service Revenue", debit:0, credit:parseFloat(contract.payment_amount) }]});
+              lines: [{ account_code:rc("deferred_revenue"), account_name:rn("deferred_revenue"), debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:rc("service_revenue"), account_name:rn("service_revenue"), debit:0, credit:parseFloat(contract.payment_amount) }]});
           }
         }
       }
@@ -2830,10 +2872,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         }
         if (action.type === "add_account") {
           if (action.code && action.name && action.category) {
-            setCustomCOA(prev => {
-              if (prev.find(a => a.code === action.code)) return prev;
-              return [...prev, { code: action.code, name: action.name, category: action.category }].sort((a,b) => a.code.localeCompare(b.code));
-            });
+            await addCustomAccount({ code: action.code, name: action.name, category: action.category });
             actionSummary.push(`Added account: ${action.code} ${action.name} (${action.category})`);
           }
         }
@@ -3049,7 +3088,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#6B7280", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view };
 
   const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   return (

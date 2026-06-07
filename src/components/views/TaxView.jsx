@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE } from "../../lib/tax";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole } = useERP();
   const fmt = n => "$" + Math.round(Math.abs(n || 0)).toLocaleString("en-US");
   const year = new Date().getFullYear();
   const lsKey = `cfai_tax_${currentCompany?.id || "x"}`;
@@ -18,7 +18,7 @@ export default function TaxView() {
 
   const est = taxEstimate(invoices, year, estPaid);
   const deadlines = getTaxDeadlines(new Date());
-  const deductions = deductionBreakdown(invoices, year);
+  const deductions = deductionBreakdown(invoices, year, getAccountByRole);
   const totalDeductible = deductions.reduce((s, d) => s + (d.amount || 0), 0);
   const need1099 = (contacts || []).filter(c => c.type === "vendor" && c.is1099 && !c.is_1099_exempt && !c.sent_1099_2025).length;
 

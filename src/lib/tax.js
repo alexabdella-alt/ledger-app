@@ -59,25 +59,29 @@ export function nextUrgentDeadline(now = new Date(), withinDays = 30) {
   return getTaxDeadlines(now).find(d => d.days <= withinDays && d.days >= 0) || null;
 }
 
-// Common deductions, with YTD totals pulled from the ledger by GL code.
-// meals are reported at the 50% deductible amount.
-export function deductionBreakdown(invoices, year = new Date().getFullYear()) {
-  const inYear = i => i.status !== "voided" && String(i.date || "").startsWith(String(year)) && (String(i.gl_code || "")[0] === "5" || String(i.gl_code || "")[0] === "6");
-  const sumCode = code => (invoices || []).filter(i => inYear(i) && String(i.gl_code || "").startsWith(code)).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+// Common deductions, with YTD totals pulled from the ledger by account role.
+// Pass getAccountByRole so totals follow the company's actual (possibly
+// renamed/renumbered) accounts. meals are reported at the 50% deductible amount.
+export function deductionBreakdown(invoices, year = new Date().getFullYear(), getAccountByRole = null) {
+  const inYear = i => i.status !== "voided" && String(i.date || "").startsWith(String(year));
+  const sumCode = code => !code ? 0 : (invoices || []).filter(i => inYear(i) && String(i.gl_code || "") === code).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const acct = role => getAccountByRole ? getAccountByRole(role) : null;
+  const sumRole = role => sumCode(acct(role)?.code);
+  const hintRole = role => { const a = acct(role); return a ? `${a.name} (${a.code})` : ""; };
   const sumMatch = re => (invoices || []).filter(i => inYear(i) && re.test(`${i.description || ""} ${i.vendor || ""}`.toLowerCase())).reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
   const meals = sumMatch(/restaurant|meal|dining|cafe|coffee|catering|lunch|dinner|grubhub|doordash|uber eats/) ;
   const vehicle = sumMatch(/\bgas\b|fuel|mileage|\bauto\b|vehicle/);
 
   return [
-    { key: "software", label: "Software & subscriptions", amount: sumCode("6500"), categorized: true, hint: "Technology & Software (6500)" },
-    { key: "proservices", label: "Professional services (legal, accounting)", amount: sumCode("6800"), categorized: true, hint: "Professional Services (6800)" },
-    { key: "marketing", label: "Marketing & advertising", amount: sumCode("6300"), categorized: true, hint: "Marketing & Advertising (6300)" },
-    { key: "rent", label: "Rent & occupancy", amount: sumCode("6100"), categorized: true, hint: "Rent & Occupancy (6100)" },
-    { key: "utilities", label: "Utilities", amount: sumCode("6200"), categorized: true, hint: "Utilities (6200)" },
-    { key: "insurance", label: "Insurance premiums", amount: sumCode("6700"), categorized: true, hint: "Insurance (6700)" },
-    { key: "salaries", label: "Salaries & wages", amount: sumCode("6000"), categorized: true, hint: "Salaries & Wages (6000)" },
-    { key: "supplies", label: "Office supplies & de minimis equipment", amount: sumCode("6600"), categorized: true, hint: "Office Supplies (6600)" },
+    { key: "software", label: "Software & subscriptions", amount: sumRole("technology_software"), categorized: true, hint: hintRole("technology_software") },
+    { key: "proservices", label: "Professional services (legal, accounting)", amount: sumRole("professional_services"), categorized: true, hint: hintRole("professional_services") },
+    { key: "marketing", label: "Marketing & advertising", amount: sumRole("marketing_advertising"), categorized: true, hint: hintRole("marketing_advertising") },
+    { key: "rent", label: "Rent & occupancy", amount: sumRole("rent_occupancy"), categorized: true, hint: hintRole("rent_occupancy") },
+    { key: "utilities", label: "Utilities", amount: sumRole("utilities"), categorized: true, hint: hintRole("utilities") },
+    { key: "insurance", label: "Insurance premiums", amount: sumRole("insurance"), categorized: true, hint: hintRole("insurance") },
+    { key: "salaries", label: "Salaries & wages", amount: sumRole("salaries_wages"), categorized: true, hint: hintRole("salaries_wages") },
+    { key: "supplies", label: "Office supplies & de minimis equipment", amount: sumRole("office_supplies"), categorized: true, hint: hintRole("office_supplies") },
     { key: "meals", label: "Business meals (50% deductible)", amount: meals * 0.5, raw: meals, categorized: meals > 0, hint: "50% of meal spend" },
     { key: "vehicle", label: "Vehicle / mileage", amount: vehicle, categorized: vehicle > 0, hint: "Detected from fuel/auto descriptions" },
     { key: "homeoffice", label: "Home office", amount: 0, categorized: false, ask: true, hint: "Tell us if you work from home" },
