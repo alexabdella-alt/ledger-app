@@ -3263,6 +3263,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
            Table-wrapping cards use overflow:clip (not hidden) so they don't become scroll
            containers that would trap the sticky headers. */
         #main-content thead th { position: sticky; top: 0; z-index: 10; background-color: inherit; }
+        /* Nav tab hover — pure CSS so React fully owns the active state. Imperative
+           DOM hover styling left residue (a hovered-then-abandoned tab kept its color
+           because React saw no style diff to reset), making inactive tabs look active. */
+        .sc-navtab:not(.active):hover{ background:#F3F4F6 !important; color:#818CF8 !important; }
+        .sc-subtab:not(.active):hover{ color:#4F46E5 !important; }
         /* Tabular figures for monospace numbers — fintech-grade alignment */
         [style*="DM Mono"]{ font-variant-numeric: tabular-nums; }
         /* Card elevation (used sparingly) */
@@ -3358,9 +3363,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                   const isActive = tab.group.includes(view);
                   return (
                     <button key={tab.id}
+                      className={isActive?"sc-navtab active":"sc-navtab"}
                       onClick={()=>{ setView(tab.id); setVendorFilter("all"); }}
-                      onMouseEnter={e=>{ if(!isActive){ e.currentTarget.style.background="#F3F4F6"; e.currentTarget.style.color="#818CF8"; }}}
-                      onMouseLeave={e=>{ if(!isActive){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#475467"; }}}
                       style={{ height:46, padding:"0 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
                         background:"transparent", border:"none",
                         borderBottom: isActive?"2px solid #4F46E5":"2px solid transparent",
@@ -3403,8 +3407,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               <div style={{ display:"flex", background:"#FFFFFF", borderBottom:"1px solid #F3F4F6", padding:"0 16px", gap:4, overflowX:"auto" }}>
                 {subs.map(([id,label])=>(
                   <button key={id} onClick={()=>go(id)}
-                    onMouseEnter={e=>{ if(!activeSub(id)) e.currentTarget.style.color="#4F46E5"; }}
-                    onMouseLeave={e=>{ if(!activeSub(id)) e.currentTarget.style.color="#475467"; }}
+                    className={activeSub(id)?"sc-subtab active":"sc-subtab"}
                     style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:activeSub(id)?"2px solid #4F46E5":"2px solid transparent", color:activeSub(id)?"#4F46E5":"#475467", fontSize:12, cursor:"pointer", whiteSpace:"nowrap", transition:"color 0.12s" }}>{label}</button>
                 ))}
               </div>

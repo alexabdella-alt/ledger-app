@@ -6,6 +6,7 @@ import { getAuthHeaders } from "../../lib/supabase";
 
 export default function VendorsView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+            const [vendorSearch, setVendorSearch] = React.useState("");
             const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const selectedContact = vendorsSelectedContact; const setSelectedContact = setVendorsSelectedContact;
             const editingId = vendorsEditingId; const setEditingId = setVendorsEditingId; const editDraft = vendorsEditDraft; const setEditDraft = setVendorsEditDraft;
@@ -128,6 +129,14 @@ export default function VendorsView() {
               })),
             ];
 
+            // Real-time search across name, email, phone, website, notes, tags (case-insensitive, partial)
+            const vq = vendorSearch.trim().toLowerCase();
+            const filteredVendors = !vq ? allVendors : allVendors.filter(v => {
+              const hay = [v.name, v.email, v.phone, v.website, v.notes, ...(v.tags||[])]
+                .filter(Boolean).join(" ").toLowerCase();
+              return hay.includes(vq);
+            });
+
             const startEdit = (v) => {
               setEditingId(v.id||v.name);
               setEditDraft({ payment_terms:v.payment_terms||"", email:v.email||"", phone:v.phone||"", website:v.website||"", payment_url:v.payment_url||"", notes:v.notes||"", tags:(v.tags||[]).join(", "), min_expected:v.min_expected||"", max_expected:v.max_expected||"" });
@@ -166,8 +175,33 @@ export default function VendorsView() {
                     <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", borderRadius:10, padding:"10px 24px", fontSize:13, cursor:"pointer" }}>Open AI Assistant</button>
                   </div>
                 ) : (
+                  <>
+                    {/* Search bar */}
+                    <div style={{ marginBottom:16 }}>
+                      <div style={{ position:"relative", maxWidth:480 }}>
+                        <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", color:"#98A2B3", pointerEvents:"none", display:"flex" }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        </span>
+                        <input value={vendorSearch} onChange={e=>setVendorSearch(e.target.value)} placeholder="Search vendors by name, email, phone, tag…"
+                          style={{ width:"100%", height:40, boxSizing:"border-box", background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:8, padding:"0 38px 0 40px", fontSize:14, color:"#101828", outline:"none" }} />
+                        {vendorSearch && (
+                          <button onClick={()=>setVendorSearch("")} aria-label="Clear search"
+                            style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", width:22, height:22, borderRadius:6, background:"#F3F4F6", border:"none", color:"#475467", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, lineHeight:1 }}>×</button>
+                        )}
+                      </div>
+                      <div style={{ fontSize:12, color:"#475467", marginTop:8 }}>Showing {filteredVendors.length} of {allVendors.length} vendor{allVendors.length!==1?"s":""}</div>
+                    </div>
+
+                    {filteredVendors.length===0 ? (
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:40, textAlign:"center" }}>
+                        <div style={{ fontSize:28, marginBottom:10 }}>🔍</div>
+                        <div style={{ fontSize:15, fontWeight:500, marginBottom:6 }}>No vendors match “{vendorSearch}”</div>
+                        <div style={{ fontSize:13, color:"#475467", marginBottom:18 }}>Try a shorter or different term — search covers name, email, phone, website, notes, and tags.</div>
+                        <button onClick={()=>setVendorSearch("")} style={{ background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#344054", borderRadius:8, height:36, padding:"0 16px", fontSize:14, fontWeight:500, cursor:"pointer" }}>Clear search</button>
+                      </div>
+                    ) : (
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                    {allVendors.map(v => {
+                    {filteredVendors.map(v => {
                       const isEditing = editingId===(v.id||v.name);
                       const vTxns = txnsForVendor(v.name);
                       const openAP = openAPfor(vTxns);
@@ -250,6 +284,8 @@ export default function VendorsView() {
                       );
                     })}
                   </div>
+                    )}
+                  </>
                 )}
               </div>
             );
