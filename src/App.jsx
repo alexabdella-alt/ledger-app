@@ -842,9 +842,23 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         is_1099_exempt: contact.is_1099_exempt ?? false, sent_1099_2025: contact.sent_1099_2025 ?? false,
         vendor_account_number: contact.vendor_account_number||null, tax_id: contact.tax_id||null,
       };
+      const normKey = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
       const run = async (payload) => {
         if (contact.db_id) return await supabase.from("contacts").update(payload).eq("id", contact.db_id).select().single();
-        return await supabase.from("contacts").insert(payload).select().single();
+        // New contact: upsert on the (company_id, name_key) unique index (migration 012)
+        // so two concurrent uploads of the same vendor can't both insert.
+        // ignoreDuplicates → ON CONFLICT DO NOTHING (never overwrites an existing row).
+        let res = await supabase.from("contacts")
+          .upsert(payload, { onConflict: "company_id,name_key", ignoreDuplicates: true })
+          .select().maybeSingle();
+        if (res.error && /name_key|on conflict|unique or exclusion/i.test(res.error.message || "")) {
+          // Migration 012 not applied — fall back to a plain insert.
+          return await supabase.from("contacts").insert(payload).select().single();
+        }
+        if (res.error || res.data) return res;
+        // Conflict (row already existed) returned no row — fetch it to recover its id.
+        return await supabase.from("contacts").select("*")
+          .eq("company_id", currentCompany.id).eq("name_key", normKey(payload.name)).maybeSingle();
       };
       let { data, error } = await run({ ...base, ...extra });
       if (error && /website|payment_url|business_type|ein_ssn|mailing_address|is_1099_exempt|sent_1099|vendor_account_number|tax_id|column/i.test(error.message||"")) {
@@ -854,8 +868,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       if (error) {
         // Surface the real reason (RLS, NOT NULL, etc.) instead of failing silently.
         console.error(`[contacts] persist FAILED for "${contact.name}" (company_id=${currentCompany.id}):`, error.message || error, error.details || "", error.hint || "");
-      } else {
-        
       }
       if (!contact.db_id && data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
     } catch(e) { console.error("persistContact error:", e); }
