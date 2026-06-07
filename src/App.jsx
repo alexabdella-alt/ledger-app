@@ -141,6 +141,8 @@ function AppWrapper() {
 
 function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany, onSignOut, supabase, persistedView, onViewChange }) {
   const [invoices, setInvoices] = useState([]);
+  const invoicesRef = useRef([]); // always-current invoices for async lookups (e.g. doc relinking)
+  useEffect(() => { invoicesRef.current = invoices; }, [invoices]);
   const [rules, setRules] = useState([]); // { vendor, gl_code, gl_name, project }
   // Contacts: { id, name, type:"vendor"|"customer", gl_code, gl_name, payment_terms, email, phone, notes, tags:[], min_expected, max_expected, created_at }
   const [contacts, setContacts] = useState([]);
@@ -294,6 +296,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     }
 
     // ── 2. Insert the metadata row (with the storage path) ──
+    // Prefer the invoice's durable db_entry_id if booking has already resolved by
+    // now (the file upload above usually outlasts the booking RPC); otherwise the
+    // in-session id is used and bookToDb's .then re-links it once it resolves.
+    let effLinkedId = linkedId;
+    if (linkedId != null) {
+      const inv = (invoicesRef.current || []).find(i => String(i.id) === String(linkedId) || String(i.db_entry_id) === String(linkedId));
+      if (inv?.db_entry_id) effLinkedId = inv.db_entry_id;
+    }
     const payload = {
       company_id: currentCompany.id,
       name,
@@ -302,7 +312,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       uploaded_by: session?.user?.id || null,
       storage_path: storagePath,
       file_size_bytes: fileSize,
-      linked_invoice_id: linkedId != null ? String(linkedId) : null,  // ties the doc to its invoice
+      linked_invoice_id: effLinkedId != null ? String(effLinkedId) : null,  // ties the doc to its invoice
     };
     try {
       const { data, error } = await supabase.from("documents").insert(payload).select("id").single();
@@ -314,7 +324,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         return doc.id;
       }
       if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
-      setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data?.id || d.id, storage_path: storagePath } : d));
+      setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data?.id || d.id, storage_path: storagePath, linked_invoice_id: effLinkedId != null ? String(effLinkedId) : d.linked_invoice_id } : d));
     } catch (e) {
       console.error("[documents] insert threw:", e);
       if (storagePath) { try { await supabase.storage.from("documents").remove([storagePath]); } catch {} }
@@ -833,8 +843,29 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     persistJournalEntry(invoice).then(jeId => {
       if (jeId) {
         setInvoices(prev => prev.map(i => i.id === invoice.id ? { ...i, db_entry_id: jeId } : i));
+        // Re-link any source document that was attached using the in-session id,
+        // so it survives a refresh (matched by the durable db_entry_id).
+        relinkDocsForInvoice(invoice.id, jeId);
       }
     });
+  };
+
+  // Move any document linked to a transient invoice id over to its durable
+  // db_entry_id, in both local state and Supabase.
+  const relinkDocsForInvoice = async (fromId, toId) => {
+    if (fromId == null || toId == null) return;
+    const from = String(fromId), to = String(toId);
+    if (from === to) return;
+    let hadLocal = false;
+    setDocLibrary(prev => prev.map(d => {
+      if (String(d.linked_invoice_id) === from) { hadLocal = true; return { ...d, linked_invoice_id: to }; }
+      return d;
+    }));
+    if (!currentCompany?.id) return;
+    try {
+      await supabase.from("documents").update({ linked_invoice_id: to })
+        .eq("company_id", currentCompany.id).eq("linked_invoice_id", from);
+    } catch (e) { if (hadLocal) console.warn("[documents] relink failed:", e?.message || e); }
   };
 
   // Remove a journal entry from Supabase so it never reloads.
