@@ -4,6 +4,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
+import ClarificationFlow from "../ClarificationFlow";
 
 export default function DashboardView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
@@ -391,144 +392,8 @@ export default function DashboardView() {
                 );
               })()}
 
-              {/* ── CLARIFICATION QUEUE ── */}
-              {clarificationQueue.length > 0 && (
-                <div id="clarification-section" style={{ marginBottom:24, background:"#FEF3C7", border:"2px solid #DC6803", borderRadius:16, padding:20 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-                    <span style={{ fontSize:20 }}>⚠</span>
-                    <div>
-                      <div style={{ fontSize:15, fontWeight:700, color:"#DC6803" }}>{clarificationQueue.length} Invoice{clarificationQueue.length>1?"s":""} Need Your Review</div>
-                      <div style={{ fontSize:12, color:"#475467", marginTop:2 }}>These items cannot be booked until you review them. Click a category below to confirm or reject each one.</div>
-                    </div>
-                  </div>
-                  {clarificationQueue.map(item => (
-                    <div key={item.id} style={{ background: item.gaap ? "#EEF2FF" : item.isDuplicate ? "#FEF2F2" : "#FEF3C7", border: `1px solid ${item.gaap ? "#4F46E544" : item.isDuplicate ? "#D92D2044" : "#DC680344"}`, borderRadius:14, padding:20, marginBottom:12 }}>
-                      {item.gaap ? (
-                        /* ── GAAP CLARIFICATION CARD ── */
-                        <>
-                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, flexWrap:"wrap" }}>
-                            <span style={{ fontSize:11, fontWeight:700, color:"#4F46E5", background:"#E0E7FF", borderRadius:20, padding:"2px 9px", letterSpacing:0.3 }}>GAAP CHECK</span>
-                            <div style={{ fontSize:15, fontWeight:600 }}>{item.invoice.vendor} — ${item.invoice.amount.toFixed(2)}</div>
-                          </div>
-                          <div style={{ fontSize:13, color:"#374151", marginBottom:10 }}>{item.question}</div>
-                          {item.explanation && <div style={{ fontSize:12, color:"#4338CA", background:"#FFFFFF", border:"1px solid #4F46E522", borderRadius:10, padding:"10px 12px", lineHeight:1.55, marginBottom:12 }}>{item.explanation}</div>}
-                          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                            {item.options.map((opt,oi)=>(
-                              <button key={oi} onClick={()=>applyGaapAnswer(item, opt)}
-                                style={{ textAlign:"left", padding:"10px 14px", borderRadius:10, fontSize:13, cursor:"pointer", background:"#FFFFFF", border:"1px solid #C7D2FE", color:"#1E1B4B", fontWeight:500 }}
-                                onMouseEnter={e=>{e.currentTarget.style.background="#F5F3FF";e.currentTarget.style.borderColor="#6366F1";}}
-                                onMouseLeave={e=>{e.currentTarget.style.background="#FFFFFF";e.currentTarget.style.borderColor="#C7D2FE";}}>
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                          <button onClick={()=>{ logAudit("invoice_rejected", `Rejected (GAAP review): ${item.invoice.vendor} · $${(item.invoice.amount||0).toFixed(2)}`, item.invoice, null); setClarificationQueue(prev=>prev.filter(c=>c.id!==item.id)); showNotification("Invoice rejected ✓"); }}
-                            style={{ marginTop:10, fontSize:12, padding:"6px 14px", borderRadius:8, background:"#FEF2F2", border:"1px solid #D92D2033", color:"#D92D20", cursor:"pointer" }}>✕ Not relevant — reject</button>
-                        </>
-                      ) : item.isDuplicate ? (
-                        /* ── DUPLICATE WARNING CARD ── */
-                        <>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
-                            <div>
-                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                                <span style={{ fontSize:16, lineHeight:1 }}>⚠</span>
-                                <div style={{ fontSize:15, fontWeight:700, color:"#D92D20" }}>Possible Duplicate Invoice</div>
-                              </div>
-                              <div style={{ fontSize:13, color:"#475467", lineHeight:1.5 }}>{item.question}</div>
-                            </div>
-                            <div style={{ fontSize:11, color:"#D92D20", background:"#D92D2022", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12, whiteSpace:"nowrap" }}>
-                              Duplicate
-                            </div>
-                          </div>
-                          <div style={{ background:"#F3F4F6", borderRadius:10, padding:"10px 14px", marginBottom:14 }}>
-                            <div style={{ fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 }}>NEW — ABOUT TO BOOK:</div>
-                            <div style={{ fontSize:13, color:"#101828" }}>
-                              {item.invoice.vendor} · <span style={{ fontFamily:"'DM Mono',monospace" }}>${item.invoice.amount.toFixed(2)}</span> · {item.invoice.date}
-                              {item.invoice.invoice_number && <span style={{ color:"#475467" }}> · #{item.invoice.invoice_number}</span>}
-                            </div>
-                          </div>
-                          <div style={{ display:"flex", gap:8 }}>
-                            <button onClick={() => {
-                              logAudit("invoice_rejected", `Rejected (duplicate): ${item.invoice.vendor} · $${(item.invoice.amount||0).toFixed(2)} on ${item.invoice.date} — already booked`, item.invoice, null);
-                              setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-                              showNotification("Duplicate rejected ✓");
-                            }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"#FEF2F2", border:"1px solid #D92D2066", color:"#D92D20", cursor:"pointer", fontWeight:600 }}>
-                              ✕ Reject — already booked
-                            </button>
-                            <button onClick={() => {
-                              const finalInv = {...item.invoice, confidence:100, status:"booked"};
-                              logAudit("invoice_booked", `${finalInv.vendor} · $${(finalInv.amount||0).toFixed(2)} → ${finalInv.gl_name} (confirmed — different charge)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-                              setInvoices(prev => [finalInv, ...prev]);
-                              bookToDb(finalInv);
-                              if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type==="revenue"?"customer":"vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-                              setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-                              showNotification(`Booked to ${item.invoice.gl_name} ✓`);
-                            }} style={{ fontSize:12, padding:"7px 16px", borderRadius:8, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", cursor:"pointer" }}>
-                              Book anyway (different charge)
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        /* ── NORMAL GL CLARIFICATION CARD ── */
-                        <>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
-                            <div>
-                              <div style={{ fontSize:15, fontWeight:600, marginBottom:4 }}>{item.invoice.vendor} — ${item.invoice.amount.toFixed(2)}</div>
-                              <div style={{ fontSize:13, color:"#475467" }}>{item.question}</div>
-                            </div>
-                            <div style={{ fontSize:11, color:"#DC6803", background:"#DC680322", borderRadius:20, padding:"3px 10px", flexShrink:0, marginLeft:12 }}>
-                              {Math.round(item.invoice.confidence)}% confident
-                            </div>
-                          </div>
-                          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:12 }}>
-                            {item.options.map(opt => (
-                              <button key={opt.code}
-                                onClick={() => {
-                                  const finalInv = {...item.invoice, gl_code: opt.code, gl_name: opt.name, confidence: 100, status:"booked", ...(opt.typeOverride || {})};
-                                  logAudit("invoice_booked", `${finalInv.vendor} · $${(finalInv.amount||0).toFixed(2)} → ${opt.name} (user confirmed)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: opt.code, gl_name: opt.name });
-                                  setInvoices(prev => [finalInv, ...prev]);
-                                  bookToDb(finalInv);
-                              if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type==="revenue"?"customer":"vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-                                  setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-                                  showNotification(`Booked to ${opt.name} ✓`);
-                                }}
-                                style={{
-                                  padding:"8px 16px", borderRadius:20, fontSize:12, cursor:"pointer",
-                                  background: opt.code === item.suggestedCode ? "#4338CA" : "#E4E7EC",
-                                  border: `1px solid ${opt.code === item.suggestedCode ? "#6366F1" : "#D0D5DD"}`,
-                                  color: opt.code === item.suggestedCode ? "#4F46E5" : "#475467",
-                                  fontWeight: opt.code === item.suggestedCode ? 600 : 400,
-                                }}>
-                                {opt.code === item.suggestedCode ? "★ " : ""}{opt.name}
-                              </button>
-                            ))}
-                          </div>
-                          <div style={{ display:"flex", gap:8 }}>
-                            <button onClick={() => {
-                              const finalInv = {...item.invoice, confidence:100, status:"booked"};
-                              logAudit("invoice_booked", `${finalInv.vendor} · $${(finalInv.amount||0).toFixed(2)} → ${finalInv.gl_name} (user confirmed)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-                              setInvoices(prev => [finalInv, ...prev]);
-                              bookToDb(finalInv);
-                              if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type==="revenue"?"customer":"vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-                              setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-                              showNotification(`Booked to ${item.invoice.gl_name} ✓`);
-                            }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#D1FAE5", border:"1px solid #03985544", color:"#039855", cursor:"pointer" }}>
-                              ✓ Use suggested: {item.suggestedName}
-                            </button>
-                            <button onClick={() => {
-                              logAudit("invoice_rejected", `Rejected: ${item.invoice.vendor} · $${(item.invoice.amount||0).toFixed(2)} on ${item.invoice.date} — not relevant or not approved`, item.invoice, null);
-                              setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-                              showNotification("Invoice rejected ✓");
-                            }} style={{ fontSize:12, padding:"6px 14px", borderRadius:8, background:"#FEF2F2", border:"1px solid #D92D2033", color:"#D92D20", cursor:"pointer" }}>
-                              ✕ Reject
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* ── CLARIFICATION QUEUE (conversational flow) ── */}
+              <ClarificationFlow />
 
               {/* ── TAX DEADLINE ALERT (impossible to miss) ── */}
               {(() => {

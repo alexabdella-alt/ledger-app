@@ -1446,10 +1446,22 @@ Reply with only the single word.`,
 
 Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if there is only one invoice:
 [
-  {"vendor":"Exact vendor name","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details","vendor_address":"full mailing address if shown, else empty","vendor_email":"email if shown, else empty","vendor_phone":"phone if shown, else empty","vendor_website":"website/domain if shown, else empty","payment_terms":"e.g. Net 30 if shown, else empty","account_number":"our account number with this vendor if shown, else empty","tax_id":"their EIN / tax ID if shown, else empty"},
+  {"vendor":"Exact vendor name","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details","vendor_address":"full mailing address if shown, else empty","vendor_email":"email if shown, else empty","vendor_phone":"phone if shown, else empty","vendor_website":"website/domain if shown, else empty","payment_terms":"e.g. Net 30 if shown, else empty","account_number":"our account number with this vendor if shown, else empty","tax_id":"their EIN / tax ID if shown, else empty","confidence_score":0.95,"questions":[]},
   ...one object per invoice...
 ]
 For "type":"revenue" the "vendor" field is the CUSTOMER's name and the address/email/phone/etc. describe that customer. Leave any field you can't find as an empty string — never guess.
+
+CONFIDENCE & CLARIFYING QUESTIONS:
+- "confidence_score": your overall confidence from 0.0 to 1.0 that this invoice is complete and correctly understood.
+- "questions": when something is missing or genuinely uncertain, add up to 3 plain-English questions a friendly bookkeeper would text the business owner. Leave it as [] when everything is clear.
+  Each question is {"field":"...","question":"short friendly question","options":["label","label",...]}. Use these fields:
+  - "business_purpose" — unclear what the purchase was for. options like ["Office/Operations","A specific project","Personal — don't book","Something else"].
+  - "amount" — the total is unreadable. Omit "options" (the app shows a number field).
+  - "date" — no date is visible. Omit "options" (the app shows a date picker).
+  - "vendor" — the vendor name is unclear. Omit "options" (the app shows a text field with your best guess prefilled).
+  - "category" — the expense category is unclear. options = 3–5 likely categories for this kind of vendor plus "Something else".
+  - "personal" — it might be a personal expense. options ["Yes, book it","No, it's personal — skip"].
+  Write every question the way you'd text a client — never use accounting jargon, GL codes, or confidence numbers.
 
 To determine type — DEFAULT TO "expense" when unclear. The vast majority of uploaded documents are vendor bills this business must pay.
 - type = "expense": a vendor/supplier is billing this business. Signals: "Bill To: [your company]", "Please remit", "Amount Due", vendor is a supplier/service provider, utility, or contractor.
@@ -1542,6 +1554,9 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               status: "booked",
               booked_at: new Date().toISOString(),
               source: "universal_upload",
+              // Plain-English clarifying questions the AI raised for the conversational flow
+              questions: Array.isArray(extracted.questions) ? extracted.questions : [],
+              confidence_score: extracted.confidence_score ?? null,
               // Auto-create/update contact from the extracted details after booking
               _contact: {
                 name: extracted.vendor?.trim() || "",
@@ -1610,9 +1625,10 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             } else if (gaapItem) {
               // Needs a GAAP clarifying question before it can be booked correctly.
               needsClarification.push({ id: Date.now() + Math.random(), queueItemId: item.id, ...gaapItem });
-            } else if (confidence >= AI_CONFIDENCE_AUTO_BOOK || rule) {
+            } else if (rule || (confidence >= AI_CONFIDENCE_AUTO_BOOK && !(invoice.questions && invoice.questions.length > 0))) {
               highConfidence.push(invoice);
             } else {
+              // Low GL confidence OR the AI raised plain-English questions — ask the user.
               // Build targeted clarification question for low GL confidence
               const topAlternatives = CHART_OF_ACCOUNTS
                 .filter(a => a.category === "Expenses")
@@ -1649,8 +1665,11 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             checkWatchTriggers(highConfidence, unknownDocs);
           }
 
-          // Queue low-confidence invoices for clarification
+          // Queue low-confidence invoices for clarification (conversational flow).
+          // Attach a document thumbnail (images) + name so the card can show it.
           if (needsClarification.length > 0) {
+            const clarThumb = (mediaType || "").startsWith("image/") ? `data:${mediaType};base64,${base64}` : null;
+            needsClarification.forEach(c => { if (!c.thumb) c.thumb = clarThumb; if (!c.docName) c.docName = item.name; if (!c.mediaType) c.mediaType = mediaType; });
             setClarificationQueue(prev => [...prev, ...needsClarification]);
           }
           if (mealsBooked > 0) showNotification(`Meals are 50% deductible — we booked ${mealsBooked===1?"it":"them"} at 50% per IRS rules.`);
