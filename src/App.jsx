@@ -259,14 +259,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       reportDocError(queueItemId, "no active company — document metadata was not saved.");
       return doc.id;
     }
+    // Map to the documents table's actual columns.
     const payload = {
       company_id: currentCompany.id,
-      file_name: name,
-      media_type: mediaType || null,
+      name: name,
+      mime_type: mediaType || null,
       document_type: type || null,
-      tags: tags || [],
-      linked_invoice_id: linkedId != null ? String(linkedId) : null,
-      uploaded_at: doc.uploaded_at,
+      uploaded_by: session?.user?.id || null,
     };
 
     supabase.from("documents").insert(payload).select("id").single()
@@ -638,22 +637,21 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       // Load documents (metadata only — base64 file content is not stored)
       const { data: docsData, error: docsErr } = await supabase
         .from("documents").select("*").eq("company_id", cid)
-        .order("uploaded_at", { ascending: false });
+        .order("created_at", { ascending: false });
       if (docsErr) console.error("[documents] loadAllData fetch error:", docsErr.message, docsErr.details || "", docsErr.hint || "");
-      
+
       if (docsData) {
+        // Map the documents table's columns back to the app's doc shape.
         setDocLibrary(docsData.map(d => ({
           id: d.id,
-          name: d.file_name,
-          mediaType: d.media_type,
+          name: d.name,                       // display name (DocsView reads doc.name)
+          mediaType: d.mime_type,
           type: d.document_type,
-          tags: d.tags || [],
-          linked_invoice_id: d.linked_invoice_id,
-          uploaded_at: d.uploaded_at,
+          uploaded_at: d.created_at,
+          tags: d.tags || [],                 // present after migration 013
           ai_explanation: d.ai_explanation,
-          entry_needed: d.entry_needed,
           entry_summary: d.entry_summary,
-          posted: d.posted,
+          linked_invoice_id: d.linked_invoice_id,
         })));
       }
 
