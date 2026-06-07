@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor } from "../../lib/format";
@@ -245,7 +246,7 @@ export default function BooksView() {
         const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"#4F46E5", icon:"📄" };
         const entries = c.journal_entries || [];
         const postedCount = c.posted_entries?.length || 0;
-        return (
+        return createPortal((
           <div onClick={()=>setSelContract(null)} style={{ position:"fixed", inset:0, zIndex:10001, background:"rgba(17,24,39,0.35)", display:"flex", justifyContent:"flex-end" }}>
             <style>{`@keyframes booksIn2{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
             <div onClick={e=>e.stopPropagation()} style={{ width:520, maxWidth:"94vw", height:"100%", background:"#FFFFFF", borderLeft:"1px solid #E4E7EC", boxShadow:"-12px 0 40px rgba(17,24,39,0.12)", display:"flex", flexDirection:"column", animation:"booksIn2 .25s cubic-bezier(.22,1,.36,1)" }}>
@@ -294,11 +295,13 @@ export default function BooksView() {
               </div>
             </div>
           </div>
-        );
+        ), document.body);
       })()}
 
       {/* ── SLIDE-IN DETAIL PANEL ── */}
-      {sel && (
+      {/* Portaled to document.body so position:fixed resolves against the viewport,
+          not the transformed .sc-rise view container (which would trap it at scroll-top). */}
+      {sel && createPortal((
         <div onClick={()=>{ setSelId(null); setRecodeOpen(false); }} style={{ position:"fixed", inset:0, zIndex:10001, background:"rgba(17,24,39,0.35)", display:"flex", justifyContent:"flex-end" }}>
           <style>{`@keyframes booksIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
           <div onClick={e=>e.stopPropagation()} style={{ width:880, maxWidth:"94vw", height:"100%", background:"#FFFFFF", borderLeft:"1px solid #E4E7EC", boxShadow:"-20px 0 60px rgba(16,24,40,0.18)", display:"flex", flexDirection:"column", animation:"booksIn .25s cubic-bezier(.22,1,.36,1)" }}>
@@ -398,7 +401,7 @@ export default function BooksView() {
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       {srcDocPreview && <DocumentPreviewModal doc={srcDocPreview} onClose={() => setSrcDocPreview(null)} />}
     </div>
