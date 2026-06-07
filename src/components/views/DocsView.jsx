@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 
 // Renders an image from Supabase Storage via a short-lived signed URL (or the
@@ -61,26 +62,28 @@ export default function DocsView() {
         </div>
       </div>
 
-      {preview && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setPreview(null)}>
-          <div style={{ background: "#FFFFFF", borderRadius: 14, width: "95vw", height: "95vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
-            {/* Header bar */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 18px", borderBottom: "1px solid #E5E7EB", flexShrink: 0 }}>
+      {preview && typeof document !== "undefined" && createPortal(
+        // Rendered into <body> so position:fixed is always relative to the viewport
+        // (not trapped by the scrolling main-content container).
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: "2.5vh 2.5vw", boxSizing: "border-box" }} onClick={() => setPreview(null)}>
+          <div style={{ background: "#FFFFFF", borderRadius: 14, width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
+            {/* Sticky dark header bar — always visible above the document */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 18px", background: "#1E1E2E", flexShrink: 0 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.name}</div>
-                <div style={{ fontSize: 11, color: "#6B7280", marginTop: 1 }}>{preview.uploaded_at?.slice(0, 10)} · {preview.type}{preview.mediaType ? ` · ${preview.mediaType}` : ""}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#F8F9FB", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.name}</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1 }}>{preview.uploaded_at?.slice(0, 10)} · {preview.type}{preview.mediaType ? ` · ${preview.mediaType}` : ""}</div>
               </div>
               {previewUrl && hasFile(preview) && (
                 <a href={previewUrl} download={preview.name} target="_blank" rel="noreferrer"
-                  style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 9, background: "#EEF2FF", border: "1px solid #4F46E533", color: "#4F46E5", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>↓ Download</a>
+                  style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 9, background: "#4F46E5", border: "1px solid #6366F1", color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>↓ Download</a>
               )}
               <button onClick={() => setPreview(null)} aria-label="Close preview" title="Close"
-                onMouseEnter={e => { e.currentTarget.style.background = "#FEE2E2"; e.currentTarget.style.color = "#DC2626"; e.currentTarget.style.borderColor = "#DC262644"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "#F3F4F6"; e.currentTarget.style.color = "#6B7280"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
-                style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#6B7280", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
+                onMouseEnter={e => { e.currentTarget.style.background = "#DC2626"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.borderColor = "#DC2626"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#F8F9FB"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
+                style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", color: "#F8F9FB", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
             </div>
 
-            {/* Content area (fills the rest of the modal) */}
+            {/* Content area fills the rest; scrolls independently */}
             <div style={{ flex: 1, minHeight: 0, position: "relative", background: "#F9FAFB" }}>
               {previewUrl && isPdf(preview.mediaType) && (
                 <iframe src={previewUrl} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#FFFFFF" }} title={preview.name} />
@@ -108,7 +111,8 @@ export default function DocsView() {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {filtered.length === 0 ? (
