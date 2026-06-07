@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 
@@ -47,7 +47,7 @@ export default function DashboardView() {
             onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, padding:"11px 18px", cursor:"pointer", borderTop:"1px solid #F3F4F6" }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
-              <span style={{ fontSize:11, color:"#475467", fontFamily:"'DM Mono',monospace", width:80, flexShrink:0 }}>{inv.date||"—"}</span>
+              <span style={{ fontSize:11, color:"#475467", width:80, flexShrink:0 }}>{fmtDate(inv.date)||"—"}</span>
               <span style={{ width:28, height:28, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</span>
               <div style={{ minWidth:0 }}>
                 <div style={{ fontSize:13, fontWeight:500, color:"#101828", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"—"}</div>
@@ -169,7 +169,7 @@ export default function DashboardView() {
             <div key={inv.id} style={{ borderTop:"1px solid #F3F4F6" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, padding:"11px 18px" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0, cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>
-                  <span style={{ fontSize:11, color:"#475467", fontFamily:"'DM Mono',monospace", width:80, flexShrink:0 }}>{inv.date||"—"}</span>
+                  <span style={{ fontSize:11, color:"#475467", width:80, flexShrink:0 }}>{fmtDate(inv.date)||"—"}</span>
                   <span style={{ width:28, height:28, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</span>
                   <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:500, color:"#101828", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"—"}</div>
@@ -658,7 +658,7 @@ export default function DashboardView() {
                 invoices.forEach(inv => items.push({ ts: inv.booked_at||inv.date||"", inv, icon: glIsRevenue(inv.gl_code)?"💰":"🧾", text:`${inv.vendor||"Entry"} — ${inv.gl_name||"Booked"}`, amount: inv.amount, rev: glIsRevenue(inv.gl_code) }));
                 (auditLog||[]).forEach(a => { if (/paid|approv|reject|recode|void|flag|info_requested/i.test(a.action||"")) items.push({ ts:a.ts||a.created_at||"", icon: /paid/i.test(a.action)?"✅":/reject|void/i.test(a.action)?"🚫":/flag|info/i.test(a.action)?"⚠":"✦", text:a.detail||a.action }); });
                 items.sort((x,y)=>String(y.ts).localeCompare(String(x.ts)));
-                const ago = ts => { if(!ts) return ""; const s=(Date.now()-new Date(ts).getTime())/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; if(s<604800)return Math.floor(s/86400)+"d ago"; return new Date(ts).toLocaleDateString(); };
+                const ago = ts => { if(!ts) return ""; const s=(Date.now()-new Date(ts).getTime())/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; if(s<604800)return Math.floor(s/86400)+"d ago"; return fmtDate(ts); };
                 const shown = items.slice(0, feedCount);
                 return (
                   <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"hidden" }}>

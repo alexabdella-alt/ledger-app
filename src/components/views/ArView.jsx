@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
@@ -131,7 +131,7 @@ What should this business owner know and do?`}]
                                     {isOverdue && !isCollected && <span style={{ fontSize:11, background:"#D92D2022", color:"#D92D20", borderRadius:20, padding:"2px 8px" }}>Overdue</span>}
                                     {inv.early_pay_discount && <span style={{ fontSize:11, background:"#03985522", color:"#039855", borderRadius:20, padding:"2px 8px" }}>Early discount offered</span>}
                                   </div>
-                                  <div style={{ fontSize:12, color:"#475467" }}>{inv.description} · {inv.gl_name} · {inv.date}
+                                  <div style={{ fontSize:12, color:"#475467" }}>{inv.description} · {inv.gl_name} · {fmtDate(inv.date)}
                                     {inv.payment_terms && <span style={{ color:"#475467", marginLeft:8 }}>{inv.payment_terms}</span>}
                                   </div>
                                 </div>
@@ -142,7 +142,7 @@ What should this business owner know and do?`}]
                                       {daysUntilDue<0?`${Math.abs(daysUntilDue)}d overdue`:daysUntilDue===0?"Due today":`Due in ${daysUntilDue}d`}
                                     </div>
                                   )}
-                                  {inv.due_date && <div style={{ fontSize:10, color:"#475467" }}>{inv.due_date}</div>}
+                                  {inv.due_date && <div style={{ fontSize:10, color:"#475467" }}>{fmtDate(inv.due_date)}</div>}
                                 </div>
                               </div>
                               {!isCollected && (
@@ -190,8 +190,8 @@ What should this business owner know and do?`}]
                                       </div>
                                     </div>
                                   </td>
-                                  <td style={{ padding:"13px 16px", fontSize:12, color:"#475467" }}>{inv.date}</td>
-                                  <td style={{ padding:"13px 16px", fontSize:12, color:"#D92D20" }}>{inv.due_date}</td>
+                                  <td style={{ padding:"13px 16px", fontSize:12, color:"#475467" }}>{fmtDate(inv.date)}</td>
+                                  <td style={{ padding:"13px 16px", fontSize:12, color:"#D92D20" }}>{fmtDate(inv.due_date)}</td>
                                   <td style={{ padding:"13px 16px" }}>
                                     <span style={{ fontSize:12, fontFamily:"'DM Mono',monospace", color:urgencyColor, fontWeight:600 }}>{daysOverdue}d</span>
                                   </td>
@@ -273,7 +273,7 @@ What should this business owner know and do?`}]
                                       <span style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</span>
                                     </div>
                                   </td>
-                                  <td style={{ padding:"11px 16px", fontSize:12, color:"#475467" }}>{inv.date||"—"}</td>
+                                  <td style={{ padding:"11px 16px", fontSize:12, color:"#475467" }}>{fmtDate(inv.date)||"—"}</td>
                                   <td style={{ padding:"11px 16px", fontSize:12, color:inv.due_date&&inv.due_date<today?"#D92D20":"#475467" }}>{inv.due_date||"—"}</td>
                                   <td style={{ padding:"11px 16px" }}><span style={{ fontSize:12, color:ageColor, fontFamily:"'DM Mono',monospace" }}>{ageDays}d</span></td>
                                   <td style={{ padding:"11px 16px", fontSize:13, fontFamily:"'DM Mono',monospace", color:"#039855", fontWeight:600 }}>{fmt(inv.amount)}</td>

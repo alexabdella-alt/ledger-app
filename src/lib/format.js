@@ -9,4 +9,21 @@ function vendorColor(name) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-export { initials, vendorColor };
+// Readable date format used across the app: "Jun 7, 2026" (Mercury/Stripe-style).
+// Accepts Date objects, ISO strings, or date-only "YYYY-MM-DD" strings. Date-only
+// strings are pinned to local noon so a timezone offset never shifts the day.
+function fmtDate(d, opts) {
+  if (d == null || d === "") return "";
+  let date;
+  if (d instanceof Date) date = d;
+  else {
+    const s = String(d).trim();
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+    else date = new Date(s);
+  }
+  if (!date || isNaN(date.getTime())) return String(d);
+  return date.toLocaleDateString("en-US", opts || { month: "short", day: "numeric", year: "numeric" });
+}
+
+export { initials, vendorColor, fmtDate };

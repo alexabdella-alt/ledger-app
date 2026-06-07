@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function ReviewView() {
@@ -72,7 +72,7 @@ export default function ReviewView() {
                               {!doc.posted && doc.entry_needed && <span style={{ fontSize:11, background:"#4F46E522", color:"#4F46E5", borderRadius:20, padding:"2px 9px" }}>Entry proposed</span>}
                               {!doc.posted && !doc.entry_needed && <span style={{ fontSize:11, background:"#E4E7EC", color:"#475467", borderRadius:20, padding:"2px 9px" }}>No entry needed</span>}
                             </div>
-                            <div style={{ fontSize:11, color:"#475467", marginBottom:12 }}>{doc.name} · Uploaded {doc.uploaded_at?.slice(0,10)}</div>
+                            <div style={{ fontSize:11, color:"#475467", marginBottom:12 }}>{doc.name} · Uploaded {doc.uploaded_at ? fmtDate(doc.uploaded_at) : ""}</div>
 
                             {/* AI explanation */}
                             <div style={{ background:"#F7F8FA", border:"1px solid #4F46E522", borderRadius:10, padding:"12px 16px", marginBottom: doc.entry_needed && !doc.posted ? 14 : 0 }}>
@@ -87,7 +87,7 @@ export default function ReviewView() {
                                 <div style={{ padding:"10px 14px", borderBottom:"1px solid #D0D5DD", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                                   <div>
                                     <div style={{ fontSize:11, color:"#4F46E5", letterSpacing:1 }}>PROPOSED JOURNAL ENTRY</div>
-                                    <div style={{ fontSize:12, color:"#475467", marginTop:2 }}>{doc.journal_entry.description} · {doc.journal_entry.date}</div>
+                                    <div style={{ fontSize:12, color:"#475467", marginTop:2 }}>{doc.journal_entry.description} · {fmtDate(doc.journal_entry.date)}</div>
                                   </div>
                                   <div style={{ fontSize:13, fontFamily:"'DM Mono',monospace", fontWeight:700, color:"#101828" }}>{fmt(totalDebits)}</div>
                                 </div>
@@ -124,7 +124,7 @@ export default function ReviewView() {
                                     <div style={{ fontSize:11, color:"#DC6803", letterSpacing:1.2, marginBottom:6 }}>🔔 WATCH TRIGGERED</div>
                                     <div style={{ fontSize:13, color:"#101828", marginBottom:6, fontWeight:500 }}>{match.trigger_description}</div>
                                     <div style={{ fontSize:12, color:"#475467", marginBottom:10 }}>
-                                      Matched: <strong style={{ color:"#101828" }}>{match.vendor}</strong> · {fmt(match.amount)} · {match.date}
+                                      Matched: <strong style={{ color:"#101828" }}>{match.vendor}</strong> · {fmt(match.amount)} · {fmtDate(match.date)}
                                     </div>
                                     {match.suggested_entry_description && (
                                       <div style={{ fontSize:12, color:"#DC6803", marginBottom:10 }}>

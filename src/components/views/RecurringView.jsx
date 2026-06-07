@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function RecurringView() {
@@ -108,7 +108,7 @@ export default function RecurringView() {
                               <td style={{padding:"12px 16px",fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:600,color:"#D92D20"}}>{"$"+(r.amount||0).toLocaleString("en-US",{minimumFractionDigits:2})}</td>
                               <td style={{padding:"12px 16px"}}><span style={{fontSize:11,background:"#E4E7EC",color:"#4F46E5",borderRadius:20,padding:"2px 9px"}}>{r.gl_code} {r.gl_name}</span></td>
                               <td style={{padding:"12px 16px",fontSize:12,color:"#475467",textTransform:"capitalize"}}>{r.frequency}</td>
-                              <td style={{padding:"12px 16px",fontSize:12,color:isDue?"#DC6803":"#475467",fontFamily:"'DM Mono',monospace"}}>{r.next_date||"—"}</td>
+                              <td style={{padding:"12px 16px",fontSize:12,color:isDue?"#DC6803":"#475467",}}>{fmtDate(r.next_date)||"—"}</td>
                               <td style={{padding:"12px 16px"}}>
                                 <div style={{display:"flex",gap:6}}>
                                   {isDue && <button onClick={()=>runRecurring(r)} style={{padding:"5px 12px",borderRadius:7,fontSize:11,fontWeight:600,background:"#DC6803",border:"none",color:"#000",cursor:"pointer"}}>Post</button>}

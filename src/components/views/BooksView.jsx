@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "../DocumentPreviewModal";
 
 export default function BooksView() {
@@ -25,6 +25,7 @@ export default function BooksView() {
   const [payMethod, setPayMethod] = React.useState("ach");
   const [payDate, setPayDate] = React.useState(new Date().toISOString().slice(0,10));
   const [recodeOpen, setRecodeOpen] = React.useState(false);
+  const [sort, setSort] = React.useState({ col: null, dir: null }); // col=null → default (Date desc)
 
   // Find the source document linked to an invoice (by linked_invoice_id matching
   // its in-session id or its durable db_entry_id).
@@ -61,13 +62,41 @@ export default function BooksView() {
     return true;
   });
   const q = search.trim().toLowerCase();
-  const rows = byFilter.filter(i => !q ||
+  const filtered = byFilter.filter(i => !q ||
     (i.vendor||"").toLowerCase().includes(q) ||
     (i.description||"").toLowerCase().includes(q) ||
     (i.gl_name||"").toLowerCase().includes(q) ||
     (i.date||"").includes(q) ||
+    fmtDate(i.date).toLowerCase().includes(q) ||
     String(i.amount||"").includes(q)
-  ).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  );
+
+  // ── Sortable columns ──────────────────────────────────────────────
+  const statusKey = i => i.status==="voided" ? "1voided" : needsReview(i) ? "2review" : i.payment_status==="paid" ? "3paid" : i.payment_status==="collected" ? "4collected" : "5booked";
+  const sortVal = {
+    "Date": i => i.date || "",
+    "Vendor": i => (i.vendor||"").toLowerCase(),
+    "Description": i => (i.description||"").toLowerCase(),
+    "GL Account": i => String(i.gl_code||""),
+    "Amount": i => Math.abs(Number(i.amount)||0),
+    "Status": i => statusKey(i),
+  };
+  const cycleSort = (col) => setSort(s =>
+    s.col!==col ? { col, dir:"asc" } : s.dir==="asc" ? { col, dir:"desc" } : { col:null, dir:null }
+  );
+  const rows = (() => {
+    const arr = [...filtered];
+    if (!sort.col || !sortVal[sort.col]) {
+      return arr.sort((a,b)=>(b.date||"").localeCompare(a.date||"")); // default: newest first
+    }
+    const acc = sortVal[sort.col];
+    arr.sort((a,b)=>{
+      const av=acc(a), bv=acc(b);
+      const c = (typeof av==="number" && typeof bv==="number") ? av-bv : String(av).localeCompare(String(bv));
+      return sort.dir==="asc" ? c : -c;
+    });
+    return arr;
+  })();
 
   const sel = invoices.find(i => i.id === selId) || null;
 
@@ -152,9 +181,21 @@ export default function BooksView() {
       <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"clip" }}>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead><tr style={{ background:"#F9FAFB" }}>
-            {["Date","Vendor","Description","GL Account","Amount","Status",""].map((h,i)=>(
-              <th key={i} style={{ padding:"10px 16px", textAlign:h==="Amount"?"right":"left", fontSize:12, color:"#98A2B3", letterSpacing:0.6, fontWeight:600, borderBottom:"1px solid #E4E7EC", whiteSpace:"nowrap" }}>{h.toUpperCase()}</th>
-            ))}
+            {["Date","Vendor","Description","GL Account","Amount","Status",""].map((h,i)=>{
+              const sortable = h!=="";
+              const active = sort.col===h;
+              const arrow = active ? (sort.dir==="asc"?"↑":"↓") : "↕";
+              return (
+                <th key={i} onClick={sortable?()=>cycleSort(h):undefined}
+                  className={sortable?"sc-th-sort":undefined}
+                  style={{ padding:"10px 16px", textAlign:h==="Amount"?"right":"left", fontSize:12, color: active?"#4F46E5":"#98A2B3", letterSpacing:0.6, fontWeight:600, borderBottom:"1px solid #E4E7EC", whiteSpace:"nowrap", cursor:sortable?"pointer":"default", userSelect:"none" }}>
+                  <span style={{ display:"inline-flex", alignItems:"center", gap:5 }}>
+                    {h.toUpperCase()}
+                    {sortable && <span className="sc-th-arrow" style={{ fontSize:11, color: active?"#4F46E5":"#CDD2DC", opacity: active?1:0, transition:"opacity 0.12s" }}>{arrow}</span>}
+                  </span>
+                </th>
+              );
+            })}
           </tr></thead>
           <tbody>
             {rows.length===0 ? (
@@ -177,7 +218,7 @@ export default function BooksView() {
                 <React.Fragment key={inv.id}>
                   <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"#EEF2FF":"#FFFFFF", borderBottom:"1px solid #EEF0F4", opacity: inv.status==="voided"?0.55:1, transition:"background 0.1s" }}
                     onMouseEnter={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#F9FAFB"; }} onMouseLeave={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#FFFFFF"; }}>
-                    <td style={{ padding:"0 16px", fontSize:12, color:"#667085", fontFamily:"'DM Mono',monospace", whiteSpace:"nowrap" }}>{inv.date||"—"}</td>
+                    <td style={{ padding:"0 16px", fontSize:13, color:"#667085", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
                     <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"#101828" }}>{inv.vendor||"—"}</span></div></td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"#475467", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"#374151", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"#98A2B3", marginRight:6 }}>{inv.gl_code}</span>{inv.gl_name}</td>
@@ -230,7 +271,7 @@ export default function BooksView() {
                 return (
                   <div key={r.id} onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 18px", borderTop:"1px solid #F3F4F6" }}>
-                    <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {r.period_start} → {r.period_end}</div><div style={{ fontSize:11, color:"#475467" }}>{fmt(r.statement_balance)}{r.completed_at?` · ${new Date(r.completed_at).toLocaleDateString()}`:""}</div></div>
+                    <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {fmtDate(r.period_start)} → {fmtDate(r.period_end)}</div><div style={{ fontSize:11, color:"#475467" }}>{fmt(r.statement_balance)}{r.completed_at?` · ${fmtDate(r.completed_at)}`:""}</div></div>
                     <span style={{ fontSize:11, fontWeight:600, color, background:color+"14", border:`1px solid ${color}33`, borderRadius:20, padding:"3px 10px" }}>{label}</span>
                   </div>
                 );
@@ -282,7 +323,7 @@ export default function BooksView() {
                   {entries.length===0 ? <div style={{ fontSize:13, color:"#475467" }}>No entries generated.</div> :
                     entries.map((e,i)=>(
                       <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:"1px solid #F3F4F6", fontSize:12 }}>
-                        <span style={{ color:"#374151" }}>{e.description||e.memo||`Entry ${i+1}`}{e.date?` · ${e.date}`:""}</span>
+                        <span style={{ color:"#374151" }}>{e.description||e.memo||`Entry ${i+1}`}{e.date?` · ${fmtDate(e.date)}`:""}</span>
                         <span style={{ fontFamily:"'DM Mono',monospace", color:"#101828" }}>{e.amount!=null?fmt(e.amount):""}{(c.posted_entries||[]).includes(i)?" ✓":""}</span>
                       </div>
                     ))
@@ -310,7 +351,7 @@ export default function BooksView() {
                 <span style={{ width:42,height:42,borderRadius:11,background:vendorColor(sel.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(sel.vendor)}</span>
                 <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:16, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{sel.vendor||"—"}</div>
-                  <div style={{ fontSize:12, color:"#475467" }}>{sel.date}</div>
+                  <div style={{ fontSize:12, color:"#475467" }}>{fmtDate(sel.date)}</div>
                 </div>
               </div>
               <button onClick={()=>{ setSelId(null); setRecodeOpen(false); }} style={{ background:"none", border:"none", color:"#475467", fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
@@ -326,7 +367,7 @@ export default function BooksView() {
                 ["Offset account", sel.secondary_gl_code ? `${sel.secondary_gl_code} ${sel.secondary_gl_name||""}` : "—"],
                 ["Type", isRevenue(sel)?"Revenue":"Expense"],
                 ["AI confidence", sel.confidence!=null ? `${sel.confidence}%` : "—"],
-                sel.payment_status==="paid" ? ["Payment", `${methodLabel(sel.payment_method_used)}${sel.paid_at?` · ${new Date(sel.paid_at).toLocaleDateString()}`:""}${sel.payment_reference?` · ${sel.payment_reference}`:""}`] : null,
+                sel.payment_status==="paid" ? ["Payment", `${methodLabel(sel.payment_method_used)}${sel.paid_at?` · ${fmtDate(sel.paid_at)}`:""}${sel.payment_reference?` · ${sel.payment_reference}`:""}`] : null,
                 (sel.payment_status==="paid"||sel.payment_status==="collected") ? ["How paid", (sel.auto_matched || sel.payment_method_used==="bank_transfer") ? `Auto-matched from bank statement${sel.matched_bank_date?` (${sel.matched_bank_date})`:""}` : "Manually marked paid"] : null,
               ].filter(Boolean).map(([k,v])=>(
                 <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:14, padding:"11px 0", borderBottom:"1px solid #F3F4F6", fontSize:13 }}>
@@ -359,7 +400,7 @@ export default function BooksView() {
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:500, wordBreak:"break-word" }}>{srcDoc.name}</div>
-                          <div style={{ fontSize:11, color:"#475467", marginTop:2 }}>{srcDoc.uploaded_at?.slice(0,10)}{srcDoc.mediaType?` · ${srcDoc.mediaType}`:""}</div>
+                          <div style={{ fontSize:11, color:"#475467", marginTop:2 }}>{srcDoc.uploaded_at ? fmtDate(srcDoc.uploaded_at) : ""}{srcDoc.mediaType?` · ${srcDoc.mediaType}`:""}</div>
                         </div>
                         <button onClick={(e)=>{ e.stopPropagation(); setSrcDocPreview(srcDoc); }} style={{ flexShrink:0, padding:"7px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:"#EEF2FF", border:"1px solid #4F46E533", color:"#4F46E5", cursor:"pointer", whiteSpace:"nowrap" }}>View Document</button>
                       </div>

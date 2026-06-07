@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function CustomersView() {
@@ -69,7 +69,7 @@ export default function CustomersView() {
                             const collected = i.payment_status==="collected"||i.payment_status==="paid";
                             return (
                               <tr key={i.id||idx} style={{ borderBottom:"1px solid #F3F4F6" }}>
-                                <td style={{ padding:"9px 16px", fontSize:12, color:"#475467", whiteSpace:"nowrap" }}>{i.date}</td>
+                                <td style={{ padding:"9px 16px", fontSize:12, color:"#475467", whiteSpace:"nowrap" }}>{fmtDate(i.date)}</td>
                                 <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
                                 <td style={{ padding:"9px 16px", fontSize:12, color:"#475467" }}>{i.gl_code} {i.gl_name}</td>
                                 <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:collected?"#039855":"#DC6803" }}>{collected?"Collected":"Open"}</span></td>
@@ -148,7 +148,7 @@ export default function CustomersView() {
                                 {(c.tags||[]).map(t=><span key={t} style={{ fontSize:10, background:"#E4E7EC", color:"#475467", borderRadius:20, padding:"2px 7px" }}>{t}</span>)}
                               </div>
                               <div style={{ fontSize:12, color:"#475467", marginTop:3 }}>
-                                {custInvoices.length>0 ? `${custInvoices.length} invoice${custInvoices.length!==1?"s":""}${lastDate?` · last ${lastDate}`:""}` : "No invoices yet"}
+                                {custInvoices.length>0 ? `${custInvoices.length} invoice${custInvoices.length!==1?"s":""}${lastDate?` · last ${fmtDate(lastDate)}`:""}` : "No invoices yet"}
                                 {c.email && <span style={{ marginLeft:10 }}>✉ {c.email}</span>}
                                 {c.phone && <span style={{ marginLeft:10 }}>📞 {c.phone}</span>}
                               </div>

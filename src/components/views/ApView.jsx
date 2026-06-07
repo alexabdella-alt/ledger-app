@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function ApView() {
@@ -104,7 +104,7 @@ export default function ApView() {
                           <div style={{ fontSize:14, fontWeight:600, color:"#101828", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"Unknown vendor"}</div>
                           <div style={{ fontSize:11, color:"#475467", display:"flex", gap:10, flexWrap:"wrap", marginTop:2, alignItems:"center" }}>
                             <span style={{ fontFamily:"'DM Mono',monospace", background:"#F3F4F6", padding:"1px 6px", borderRadius:4, color:"#374151" }}>{inv.gl_code} · {inv.gl_name}</span>
-                            <span style={{ color: overdue ? "#D92D20" : "#475467" }}>{inv.due_date ? `Due ${inv.due_date}${overdue?" · overdue":""}` : "No due date"}</span>
+                            <span style={{ color: overdue ? "#D92D20" : "#475467" }}>{inv.due_date ? `Due ${fmtDate(inv.due_date)}${overdue?" · overdue":""}` : "No due date"}</span>
                             {link && <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ color:"#4F46E5", fontWeight:600, textDecoration:"none" }}>{link.label}</a>}
                           </div>
                         </div>
@@ -154,7 +154,7 @@ export default function ApView() {
                       <td style={{ padding:"12px 18px", fontSize:12, color:"#475467", fontFamily:"'DM Mono',monospace" }}>{inv.gl_code}</td>
                       <td style={{ padding:"12px 18px" }}><span style={{ fontSize:11, fontWeight:600, color:"#4F46E5", background:"#EEF2FF", border:"1px solid #E4E7EC", borderRadius:20, padding:"2px 10px" }}>{methodLabel(inv.payment_method_used)}</span></td>
                       <td style={{ padding:"12px 18px", fontSize:12, color:"#475467" }}>{inv.payment_reference || "—"}</td>
-                      <td style={{ padding:"12px 18px", fontSize:12, color:"#475467" }}>{inv.paid_at ? new Date(inv.paid_at).toLocaleDateString() : "—"}</td>
+                      <td style={{ padding:"12px 18px", fontSize:12, color:"#475467" }}>{inv.paid_at ? fmtDate(inv.paid_at) : "—"}</td>
                       <td style={{ padding:"12px 18px", textAlign:"right", fontSize:14, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"#039855" }}>{fmt(inv.amount)}</td>
                     </tr>
                   ))}

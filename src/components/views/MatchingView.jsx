@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function MatchingView() {
@@ -63,7 +63,7 @@ export default function MatchingView() {
                                   <span style={{ fontSize:11, background:mt.color+"22", color:mt.color, borderRadius:20, padding:"2px 8px" }}>{mt.label}</span>
                                   <span style={{ fontSize:11, background:"#E4E7EC", color:match.confidence>=80?"#039855":"#DC6803", borderRadius:20, padding:"2px 8px", fontFamily:"'DM Mono',monospace" }}>{match.confidence}% match</span>
                                 </div>
-                                <div style={{ fontSize:12, color:"#475467" }}>{match.bank_txn?.date} · {match.bank_txn?.description}</div>
+                                <div style={{ fontSize:12, color:"#475467" }}>{fmtDate(match.bank_txn?.date)} · {match.bank_txn?.description}</div>
                               </div>
                               <div style={{ textAlign:"right", flexShrink:0 }}>
                                 <div style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#101828" }}>{fmt(match.amount_matched)}</div>
@@ -80,7 +80,7 @@ export default function MatchingView() {
                                     <div style={{ width:24, height:24, borderRadius:6, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#fff" }}>{initials(inv.vendor)}</div>
                                     <div>
                                       <div style={{ fontSize:12, fontWeight:500 }}>{inv.vendor}</div>
-                                      <div style={{ fontSize:11, color:"#475467" }}>{inv.description} · {inv.date}</div>
+                                      <div style={{ fontSize:11, color:"#475467" }}>{inv.description} · {fmtDate(inv.date)}</div>
                                     </div>
                                   </div>
                                   <div style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:inv.type==="revenue"?"#039855":"#D92D20" }}>{fmt(inv.amount)}</div>
@@ -147,7 +147,7 @@ export default function MatchingView() {
                                   <span style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</span>
                                 </div>
                               </td>
-                              <td style={{ padding:"12px 16px", fontSize:12, color:"#475467" }}>{inv.date}</td>
+                              <td style={{ padding:"12px 16px", fontSize:12, color:"#475467" }}>{fmtDate(inv.date)}</td>
                               <td style={{ padding:"12px 16px", fontSize:12, color:"#475467", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description}</td>
                               <td style={{ padding:"12px 16px" }}><span style={{ background:"#E4E7EC", padding:"2px 8px", borderRadius:20, fontSize:11, color:"#4F46E5" }}>{inv.gl_code} · {inv.gl_name}</span></td>
                               <td style={{ padding:"12px 16px", fontSize:13, fontFamily:"'DM Mono',monospace", color:"#D92D20" }}>{fmt(inv.balance_remaining || inv.amount)}</td>
@@ -182,7 +182,7 @@ export default function MatchingView() {
                                   <span style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</span>
                                 </div>
                               </td>
-                              <td style={{ padding:"12px 16px", fontSize:12, color:"#475467" }}>{inv.date}</td>
+                              <td style={{ padding:"12px 16px", fontSize:12, color:"#475467" }}>{fmtDate(inv.date)}</td>
                               <td style={{ padding:"12px 16px", fontSize:12, color:"#475467", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description}</td>
                               <td style={{ padding:"12px 16px", fontSize:13, fontFamily:"'DM Mono',monospace", color:"#039855" }}>{fmt(inv.balance_remaining || inv.amount)}</td>
                               <td style={{ padding:"12px 16px" }}>
@@ -210,7 +210,7 @@ export default function MatchingView() {
                             <div style={{ width:28, height:28, borderRadius:8, background:"#03985522", border:"1px solid #03985555", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13 }}>✓</div>
                             <div style={{ flex:1 }}>
                               <div style={{ fontSize:13, fontWeight:500 }}>{m.bank_txn?.vendor} matched → {m.matched_invoices?.map(i=>i.vendor).join(", ")}</div>
-                              <div style={{ fontSize:11, color:"#475467" }}>{mt.label} · {m.confidence}% confidence · {m.bank_txn?.date}</div>
+                              <div style={{ fontSize:11, color:"#475467" }}>{mt.label} · {m.confidence}% confidence · {fmtDate(m.bank_txn?.date)}</div>
                             </div>
                             <div style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"#039855" }}>{fmt(m.amount_matched)}</div>
                           </div>

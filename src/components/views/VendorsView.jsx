@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function VendorsView() {
@@ -79,7 +79,7 @@ export default function VendorsView() {
                         <tbody>
                           {vTxns.map((i,idx)=>(
                             <tr key={i.id||idx} style={{ borderBottom:"1px solid #F3F4F6" }}>
-                              <td style={{ padding:"9px 16px", fontSize:12, color:"#475467", whiteSpace:"nowrap" }}>{i.date}</td>
+                              <td style={{ padding:"9px 16px", fontSize:12, color:"#475467", whiteSpace:"nowrap" }}>{fmtDate(i.date)}</td>
                               <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
                               <td style={{ padding:"9px 16px", fontSize:12, color:"#475467" }}>{i.gl_code} {i.gl_name}</td>
                               <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:i.payment_status==="paid"?"#039855":"#DC6803" }}>{i.payment_status==="paid"?"Paid":"Open"}</span></td>
@@ -97,7 +97,7 @@ export default function VendorsView() {
                     {payHistory.length===0 ? <div style={{ padding:32, textAlign:"center", color:"#98A2B3", fontSize:13 }}>No payments recorded yet.</div> : payHistory.map((i,idx)=>(
                       <div key={i.id||idx} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 18px", borderBottom:"1px solid #F3F4F6", fontSize:13 }}>
                         <div><span style={{ fontWeight:500 }}>{fmt(i.amount)}</span> <span style={{ color:"#475467" }}>· {i.description||"payment"}</span></div>
-                        <div style={{ fontSize:12, color:"#475467" }}>{i.payment_method_used==="bank_transfer"?"Bank transfer":i.payment_method_used||"paid"}{i.paid_at?` · ${new Date(i.paid_at).toLocaleDateString()}`:i.matched_bank_date?` · ${i.matched_bank_date}`:""}</div>
+                        <div style={{ fontSize:12, color:"#475467" }}>{i.payment_method_used==="bank_transfer"?"Bank transfer":i.payment_method_used||"paid"}{i.paid_at?` · ${fmtDate(i.paid_at)}`:i.matched_bank_date?` · ${fmtDate(i.matched_bank_date)}`:""}</div>
                       </div>
                     ))}
                   </div>
@@ -223,7 +223,7 @@ export default function VendorsView() {
                                 {(v.tags||[]).map(t=><span key={t} style={{ fontSize:10, background:"#E4E7EC", color:"#475467", borderRadius:20, padding:"2px 7px" }}>{t}</span>)}
                               </div>
                               <div style={{ fontSize:12, color:"#475467", marginTop:3 }}>
-                                {vTxns.length>0 ? `${vTxns.length} transaction${vTxns.length!==1?"s":""}${lastDate?` · last ${lastDate}`:""}` : "No transactions yet"}
+                                {vTxns.length>0 ? `${vTxns.length} transaction${vTxns.length!==1?"s":""}${lastDate?` · last ${fmtDate(lastDate)}`:""}` : "No transactions yet"}
                                 {v.email && <span style={{ marginLeft:10 }}>✉ {v.email}</span>}
                                 {v.phone && <span style={{ marginLeft:10 }}>📞 {v.phone}</span>}
                               </div>

@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function ReportsView() {
@@ -187,7 +187,7 @@ export default function ReportsView() {
                                     onMouseEnter={e=>e.currentTarget.style.background="#F3F4F6"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 24px", cursor:"pointer", borderTop:"1px solid #F3F4F6" }}>
                                     <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
-                                      <span style={{ fontSize:11, color:"#475467", fontFamily:"'DM Mono', monospace", width:78, flexShrink:0 }}>{inv.date}</span>
+                                      <span style={{ fontSize:11, color:"#475467", width:78, flexShrink:0 }}>{fmtDate(inv.date)}</span>
                                       <span style={{ width:26, height:26, borderRadius:7, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</span>
                                       <div style={{ minWidth:0 }}>
                                         <div style={{ fontSize:13, color:"#101828", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor}</div>

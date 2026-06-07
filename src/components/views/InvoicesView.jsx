@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function InvoicesView() {
@@ -48,7 +48,7 @@ export default function InvoicesView() {
                               </div>
                             </div>
                           </td>
-                          <td style={{ padding:"13px 16px", fontSize:13, color:"#475467", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>{inv.date}</td>
+                          <td style={{ padding:"13px 16px", fontSize:13, color:"#475467", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>{fmtDate(inv.date)}</td>
                           <td style={{ padding:"13px 16px", fontSize:13, color:"#475467", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>{inv.description}</td>
                           <td style={{ padding:"13px 16px", fontSize:12, cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}><span style={{ background:"#E4E7EC", padding:"3px 10px", borderRadius:20, color:"#4F46E5" }}>{inv.gl_code} · {inv.gl_name}</span></td>
                           <td style={{ padding:"13px 16px", fontSize:12, color:"#475467", cursor:"pointer" }} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}>{inv.project||"General"}</td>
@@ -59,7 +59,7 @@ export default function InvoicesView() {
                             <div style={{ display:"flex", gap:4 }}>
                               {inv.status !== "voided" && (
                                 <button
-                                  onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Void entry for ${inv.vendor} · $${inv.amount} on ${inv.date}?
+                                  onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Void entry for ${inv.vendor} · $${inv.amount} on ${fmtDate(inv.date)}?
 
 Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"voided",voided_at:new Date().toISOString()}:i)); showNotification("Entry voided ✓"); }}); }}
                                   style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", fontSize:11, cursor:"pointer" }}
@@ -68,7 +68,7 @@ Voiding keeps an audit trail.`, onConfirm:()=>{ setInvoices(prev=>prev.map(i=>i.
                                 </button>
                               )}
                               <button
-                                onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Permanently delete ${inv.vendor} · $${inv.amount} on ${inv.date}? This cannot be undone.`, onConfirm:()=>{ logAudit("invoice_deleted",`Deleted: ${inv.vendor} $${inv.amount} on ${inv.date} (${inv.gl_name})`,inv,null); deleteJournalEntry(inv); setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}); }}
+                                onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Permanently delete ${inv.vendor} · $${inv.amount} on ${fmtDate(inv.date)}? This cannot be undone.`, onConfirm:()=>{ logAudit("invoice_deleted",`Deleted: ${inv.vendor} $${inv.amount} on ${fmtDate(inv.date)} (${inv.gl_name})`,inv,null); deleteJournalEntry(inv); setInvoices(prev=>prev.filter(i=>i.id!==inv.id)); showNotification("Entry deleted ✓"); }}); }}
                                 style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #D92D2033", color:"#D92D20", fontSize:11, cursor:"pointer" }}
                                 title="Delete permanently">
                                 ×

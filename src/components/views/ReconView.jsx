@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
@@ -298,7 +298,7 @@ export default function ReconView() {
               return (
                 <div key={r.id} onClick={()=>setViewRecId(r.id)} onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                   style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"13px 20px", borderTop:"1px solid #F3F4F6", cursor:"pointer" }}>
-                  <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {r.period_start} → {r.period_end}</div><div style={{ fontSize:11, color:"#475467" }}>{fmt(r.statement_balance)} · {r.completed_at?new Date(r.completed_at).toLocaleDateString():""}</div></div>
+                  <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {fmtDate(r.period_start)} → {fmtDate(r.period_end)}</div><div style={{ fontSize:11, color:"#475467" }}>{fmt(r.statement_balance)} · {r.completed_at?fmtDate(r.completed_at):""}</div></div>
                   <span style={{ fontSize:11, fontWeight:600, color: od?"#D92D20":"#039855", background:(od?"#D92D20":"#039855")+"14", border:`1px solid ${(od?"#D92D20":"#039855")}33`, borderRadius:20, padding:"3px 10px" }}>{od?"Overdue":"Complete"}</span>
                 </div>
               );
@@ -421,7 +421,7 @@ export default function ReconView() {
                   <input type="checkbox" checked={!!t._matchBook} onChange={()=>toggleMatch(t)} title="This matches my bank" />
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", color:"#101828" }}>{t.description}{t._auto && <span style={{ marginLeft:6, fontSize:10, color:"#4F46E5" }}>✦ auto {t._conf}%</span>}</div>
-                    <div style={{ fontSize:11, color:"#475467" }}>{t.date}{t._ignored?" · ignored":""}</div>
+                    <div style={{ fontSize:11, color:"#475467" }}>{fmtDate(t.date)}{t._ignored?" · ignored":""}</div>
                   </div>
                   <div style={{ fontFamily:"'DM Mono',monospace", color: t.amount>=0?"#039855":"#D92D20", flexShrink:0 }}>{fmt(t.amount)}</div>
                 </div>
@@ -444,7 +444,7 @@ export default function ReconView() {
                     <span style={{ width:24, height:24, borderRadius:7, background:vendorColor(b.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(b.vendor)}</span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", color:"#101828" }}>{b.vendor}</div>
-                      <div style={{ fontSize:11, color:"#475467" }}>{b.date} · {b.gl_code}{out?" · outstanding":""}</div>
+                      <div style={{ fontSize:11, color:"#475467" }}>{fmtDate(b.date)} · {b.gl_code}{out?" · outstanding":""}</div>
                     </div>
                     <div style={{ fontFamily:"'DM Mono',monospace", color: bookSigned(b)>=0?"#039855":"#D92D20", flexShrink:0 }}>{fmt(bookSigned(b))}</div>
                   </div>
@@ -463,7 +463,7 @@ export default function ReconView() {
             const gl={gl_code:_acct?.code, gl_name:_acct?.name};
             return (
               <div key={t.id} style={{ padding:"12px 0", borderTop:"1px solid #F3F4F6" }}>
-                <div style={{ fontSize:13, color:"#92400E", marginBottom:6 }}>This is in your bank but not your books — <strong>{t.description}</strong> ({fmt(t.amount)}, {t.date})</div>
+                <div style={{ fontSize:13, color:"#92400E", marginBottom:6 }}>This is in your bank but not your books — <strong>{t.description}</strong> ({fmt(t.amount)}, {fmtDate(t.date)})</div>
                 {addQuick===t.id ? (
                   <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", background:"#F9FAFB", padding:"10px", borderRadius:9 }}>
                     <span style={{ fontSize:12, color:"#475467" }}>Add as:</span>
@@ -486,7 +486,7 @@ export default function ReconView() {
           })}
           {unmatchedBooks.map(b=>(
             <div key={b.id} style={{ padding:"12px 0", borderTop:"1px solid #F3F4F6" }}>
-              <div style={{ fontSize:13, color:"#92400E", marginBottom:6 }}>This is in your books but hasn't cleared the bank — <strong>{b.vendor}</strong> ({fmt(b.amount)}, {b.date})</div>
+              <div style={{ fontSize:13, color:"#92400E", marginBottom:6 }}>This is in your books but hasn't cleared the bank — <strong>{b.vendor}</strong> ({fmt(b.amount)}, {fmtDate(b.date)})</div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                 <button onClick={()=>markOutstanding(b)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:12, cursor:"pointer" }}>Mark as outstanding</button>
                 <button onClick={()=>voidBook(b)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D92D2044", color:"#D92D20", fontSize:12, cursor:"pointer" }}>Entered in error (void)</button>

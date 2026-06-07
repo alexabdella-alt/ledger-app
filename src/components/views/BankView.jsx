@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function BankView() {
@@ -71,7 +71,7 @@ export default function BankView() {
                           <div style={{ display:"grid", gridTemplateColumns:"1fr 120px 160px 40px", gap:12, alignItems:"center" }}>
                             <div>
                               <div style={{ fontSize:13, fontWeight:500 }}>{t.description}</div>
-                              <div style={{ fontSize:11, color:"#475467", marginTop:2 }}>{t.date} · Detected vendor: <span style={{ color:"#4F46E5" }}>{t.vendor||"Unknown"}</span></div>
+                              <div style={{ fontSize:11, color:"#475467", marginTop:2 }}>{fmtDate(t.date)} · Detected vendor: <span style={{ color:"#4F46E5" }}>{t.vendor||"Unknown"}</span></div>
                             </div>
                             <div style={{ fontSize:14, fontFamily:"'DM Mono', monospace", color:t.type==="revenue"?"#039855":"#D92D20", textAlign:"right" }}>
                               {t.type==="revenue"?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
@@ -123,7 +123,7 @@ export default function BankView() {
                                   {t.rule_applied && <span style={{ fontSize:10, color:"#4F46E5", background:"#E4E7EC", borderRadius:10, padding:"1px 6px" }}>⚡rule</span>}
                                 </div>
                               </td>
-                              <td style={{ padding:"11px 14px", fontSize:12, color:"#475467" }}>{t.date}</td>
+                              <td style={{ padding:"11px 14px", fontSize:12, color:"#475467" }}>{fmtDate(t.date)}</td>
                               <td style={{ padding:"11px 14px", fontSize:12, color:"#475467", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.description}</td>
                               <td style={{ padding:"11px 14px" }}>
                                 <select value={t.gl_code} onChange={e=>{

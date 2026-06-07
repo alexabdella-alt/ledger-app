@@ -3268,6 +3268,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
            because React saw no style diff to reset), making inactive tabs look active. */
         .sc-navtab:not(.active):hover{ background:#F3F4F6 !important; color:#818CF8 !important; }
         .sc-subtab:not(.active):hover{ color:#4F46E5 !important; }
+        /* Sortable table headers — reveal the sort arrow on hover of inactive columns. */
+        .sc-th-sort:hover{ color:#667085 !important; }
+        .sc-th-sort:hover .sc-th-arrow{ opacity:1 !important; }
         /* Tabular figures for monospace numbers — fintech-grade alignment */
         [style*="DM Mono"]{ font-variant-numeric: tabular-nums; }
         /* Card elevation (used sparingly) */

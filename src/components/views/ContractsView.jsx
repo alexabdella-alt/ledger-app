@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function ContractsView() {
@@ -259,7 +259,7 @@ export default function ContractsView() {
                               <div style={{ flex:1 }}>
                                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:2 }}>
                                   <span style={{ fontSize:13, fontWeight:600 }}>{entry.description}</span>
-                                  <span style={{ fontSize:11, color:"#475467", fontFamily:"'DM Mono',monospace" }}>{entry.date}</span>
+                                  <span style={{ fontSize:11, color:"#475467" }}>{fmtDate(entry.date)}</span>
                                   {isFuture && <span style={{ fontSize:10, color:"#475467", background:"#E4E7EC", borderRadius:10, padding:"1px 7px" }}>Scheduled</span>}
                                   {idx===0 && selectedContract.contract_type==="lease" && <span style={{ fontSize:10, color:"#DC6803", background:"#FEF3C7", borderRadius:10, padding:"1px 7px" }}>Day 1 — Commencement</span>}
                                 </div>

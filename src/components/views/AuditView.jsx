@@ -129,7 +129,7 @@ export default function AuditView() {
                             return (
                               <tr key={entry.id} style={{borderTop:"1px solid #F3F4F6",background:i%2===0?"transparent":"#F7F8FA"}}>
                                 <td style={{padding:"11px 16px",fontSize:11,color:"#475467",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap",verticalAlign:"top"}}>
-                                  {(entry.ts||"").replace("T"," ").slice(0,19)}
+                                  {entry.ts ? new Date(entry.ts).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}) : ""}
                                 </td>
                                 <td style={{padding:"11px 16px",verticalAlign:"top",whiteSpace:"nowrap"}}>
                                   <span style={{fontSize:11,background:c+"22",color:c,borderRadius:20,padding:"3px 10px",fontWeight:600}}>

@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { fmtDate } from "../../lib/format";
 import DocumentPreviewModal from "../DocumentPreviewModal";
 
 // Renders an image from Supabase Storage via a short-lived signed URL (or the
@@ -71,7 +72,7 @@ export default function DocsView() {
                 </div>
                 <div style={{ padding: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, wordBreak: "break-word" }}>{doc.name}</div>
-                  <div style={{ fontSize: 11, color: "#475467", marginBottom: 8 }}>{doc.uploaded_at?.slice(0, 10)}</div>
+                  <div style={{ fontSize: 11, color: "#475467", marginBottom: 8 }}>{doc.uploaded_at ? fmtDate(doc.uploaded_at) : ""}</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ fontSize: 10, background: "#E4E7EC", color: "#475467", borderRadius: 20, padding: "2px 8px", textTransform: "capitalize" }}>{doc.type}</span>
                     {(doc.tags || []).map(t => <span key={t} style={{ fontSize: 10, background: "#F3F4F6", color: "#4F46E5", borderRadius: 20, padding: "2px 8px" }}>{t}</span>)}
