@@ -1,5 +1,30 @@
 import { getAuthHeaders } from "./supabase";
-import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS } from "./constants";
+import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_MODEL, AI_MODEL_FAST, AI_PROXY_URL } from "./constants";
+
+// Validate an ai-proxy Response: throw on non-2xx OR an error body, otherwise
+// return the parsed JSON. Use this anywhere a fetch to the proxy is already
+// written so failures surface instead of being parsed as empty results.
+async function okAIResponse(res) {
+  if (!res.ok) {
+    let detail = "";
+    try { const eb = await res.json(); detail = eb?.error?.message || eb?.error || eb?.message || JSON.stringify(eb); }
+    catch { try { detail = await res.text(); } catch {} }
+    throw new Error(`AI service error (${res.status} ${res.statusText})${detail ? `: ${detail}` : ""}`);
+  }
+  const data = await res.json();
+  if (data?.error) throw new Error(`AI error: ${data.error.message || data.error}`);
+  return data;
+}
+
+// Single entry point for the ai-proxy edge function (does the fetch for you).
+async function callAIProxy(payload, headers) {
+  const res = await fetch(AI_PROXY_URL, {
+    method: "POST",
+    headers: headers || getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return okAIResponse(res);
+}
 
 // ── AI BRAIN ──────────────────────────────────────────────────────────────────
 // Sends full ledger context + rules + chat history to Claude.
@@ -11,25 +36,19 @@ async function classifyIntent(userMessage, recentHistory) {
   // Best-effort pre-flight — never let it block the main call. On any failure
   // we fall back to "ledger" so the main model still gets full context.
   try {
-    const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 20,
-        system: `Classify what this accounting assistant message needs. Reply with ONLY one word:
+    const d = await callAIProxy({
+      model: AI_MODEL_FAST,
+      max_tokens: 20,
+      system: `Classify what this accounting assistant message needs. Reply with ONLY one word:
 - ledger    → needs invoice/transaction data (reports, P&L, expense breakdowns, recode, retag, "how much", "what did we spend", "show me")
 - contacts  → only needs vendor/customer info (add/update vendor or customer, set terms, contact details)
 - rules     → only needs GL rules (add/delete/change a coding rule)
 - general   → needs nothing from the database (greetings, how-to questions, explanations)`,
-        messages: [
-          ...recentHistory.slice(-3).map(m => ({ role: m.role, content: m.content })),
-          { role: "user", content: userMessage }
-        ]
-      })
+      messages: [
+        ...recentHistory.slice(-3).map(m => ({ role: m.role, content: m.content })),
+        { role: "user", content: userMessage }
+      ]
     });
-    if (!res.ok) return "ledger";
-    const d = await res.json();
     const t = (d.content?.find(b => b.type === "text")?.text || "").trim().toLowerCase();
     if (t.includes("ledger")) return "ledger";
     if (t.includes("contacts")) return "contacts";
@@ -203,22 +222,7 @@ GAAP AWARENESS — maintain proper books but explain simply:
     { role: "user", content: userMessage }
   ];
 
-  const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, system: systemPrompt, messages })
-  });
-
-  // Surface transport / proxy / model errors instead of swallowing them.
-  if (!res.ok) {
-    let detail = "";
-    try { const eb = await res.json(); detail = eb?.error?.message || eb?.error || eb?.message || JSON.stringify(eb); }
-    catch { try { detail = await res.text(); } catch {} }
-    throw new Error(`AI service error (${res.status} ${res.statusText})${detail ? `: ${detail}` : ""}`);
-  }
-
-  const data = await res.json();
-  if (data?.error) throw new Error(`AI error: ${data.error.message || data.error}`);
+  const data = await callAIProxy({ model: AI_MODEL, max_tokens: 4000, system: systemPrompt, messages });
   const text = data.content?.find(b => b.type === "text")?.text;
   if (!text) throw new Error("AI returned an empty response. Check that the ai-proxy edge function and model are configured.");
 
@@ -232,4 +236,4 @@ GAAP AWARENESS — maintain proper books but explain simply:
   }
 }
 
-export { classifyIntent, runAIBrain };
+export { classifyIntent, runAIBrain, callAIProxy, okAIResponse };

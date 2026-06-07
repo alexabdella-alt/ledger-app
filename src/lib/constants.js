@@ -64,4 +64,27 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
 
 const PROJECTS = ["General", "Marketing Campaign", "Office Renovation", "Product Launch", "Cloud Infrastructure", "R&D", "Sales Ops"];
 
-export { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS };
+// ── AI / infrastructure ──────────────────────────────────────────────────────
+const AI_MODEL = "claude-sonnet-4-6";              // main reasoning model
+const AI_MODEL_FAST = "claude-haiku-4-5-20251001"; // cheap/fast classifier
+const AI_PROXY_URL = "https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy";
+
+// ── Business logic constants (single source of truth) ────────────────────────
+const CAPITALIZE_THRESHOLD = 2500;        // ASC 360 de-minimis: capitalize at/above this
+const CAPITALIZE_CHECK_THRESHOLD = 2000;  // asset purchases at/above this trigger the GAAP question
+const MEALS_DEDUCTIBLE_RATE = 0.5;        // IRS: meals are 50% deductible
+const IRS_1099_THRESHOLD = 600;           // 1099-NEC reporting threshold
+const DEFAULT_IBR = 0.05;                 // default incremental borrowing rate for ASC 842
+const AI_CONFIDENCE_AUTO_BOOK = 85;       // >= this auto-books without review
+const AI_CONFIDENCE_REVIEW = 75;          // < this flags for review
+const AP_AUTO_APPROVE_THRESHOLD = 500;    // AP bills under this can auto-approve
+const FED_TAX_RATE = 0.25;                // simplified flat federal planning rate
+const SE_TAX_RATE = 0.153;                // self-employment tax rate
+
+export {
+  DEFAULT_CHART_OF_ACCOUNTS, PROJECTS,
+  AI_MODEL, AI_MODEL_FAST, AI_PROXY_URL,
+  CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE,
+  IRS_1099_THRESHOLD, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW,
+  AP_AUTO_APPROVE_THRESHOLD, FED_TAX_RATE, SE_TAX_RATE,
+};

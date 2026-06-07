@@ -1,8 +1,9 @@
 // Client-side tax planning helpers. All estimates use simplified federal
 // planning rates — no state tax, no credits. See disclaimer in TaxView.
 
-export const FED_RATE = 0.25;   // simplified flat federal planning rate
-export const SE_RATE = 0.153;   // self-employment (Social Security + Medicare)
+import { FED_TAX_RATE, SE_TAX_RATE } from "./constants";
+export const FED_RATE = FED_TAX_RATE;   // simplified flat federal planning rate
+export const SE_RATE = SE_TAX_RATE;     // self-employment (Social Security + Medicare)
 
 // Year-to-date P&L from the flattened invoice list.
 export function ytdNetIncome(invoices, year = new Date().getFullYear()) {

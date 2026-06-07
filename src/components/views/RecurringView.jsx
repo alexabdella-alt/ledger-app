@@ -29,8 +29,10 @@ export default function RecurringView() {
             };
             const newRec = recurringNewRec; const setNewRec = setRecurringNewRec;
             const addRecurring = () => {
-              if (!newRec.name||!newRec.amount) return;
-              const r = {...newRec, id:Date.now()+Math.random(), amount:parseFloat(newRec.amount), active:true, created_at:new Date().toISOString(), last_run:null};
+              if (!newRec.name) { showNotification("Please enter a name.","error"); return; }
+              const amt = parseFloat(newRec.amount);
+              if (isNaN(amt) || amt <= 0) { showNotification("Please enter a valid amount.","error"); return; }
+              const r = {...newRec, id:Date.now()+Math.random(), amount:amt, active:true, created_at:new Date().toISOString(), last_run:null};
               setRecurring(prev => [r, ...prev]);
               logAudit("recurring_created", `Recurring created: ${r.name} ${fmt(r.amount)} ${r.frequency}`);
               setNewRec({name:"",vendor:"",amount:"",gl_code:getAccountByRole("rent_occupancy")?.code||"",gl_name:getAccountByRole("rent_occupancy")?.name||"",frequency:"monthly",next_date:today,project:"General"});

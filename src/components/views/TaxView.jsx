@@ -3,15 +3,56 @@ import { useERP } from "../ERPContext";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE } from "../../lib/tax";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, supabase } = useERP();
   const fmt = n => "$" + Math.round(Math.abs(n || 0)).toLocaleString("en-US");
   const year = new Date().getFullYear();
   const lsKey = `cfai_tax_${currentCompany?.id || "x"}`;
 
-  const [taxState, setTaxState] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem(lsKey)) || {}; } catch { return {}; }
-  });
-  const save = next => { setTaxState(next); try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch {} };
+  // Tax compliance state lives in Supabase (tax_settings). Falls back to the
+  // legacy localStorage blob (and migrates it) or defaults until a row exists.
+  const [taxState, setTaxState] = React.useState({ estPaid: 0, filed: {}, workFromHome: false });
+  const rowExists = React.useRef(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!currentCompany?.id) return;
+      let loaded = null;
+      try {
+        const { data, error } = await supabase.from("tax_settings")
+          .select("*").eq("company_id", currentCompany.id).eq("tax_year", year).maybeSingle();
+        if (!error && data) {
+          rowExists.current = true;
+          loaded = {
+            estPaid: Number(data.estimated_payments_made) || 0,
+            workFromHome: !!data.work_from_home,
+            filed: (data.filed_deadlines && typeof data.filed_deadlines === "object" && !Array.isArray(data.filed_deadlines)) ? data.filed_deadlines : {},
+          };
+        }
+      } catch { /* table may not exist yet — fall through */ }
+      if (!loaded) {
+        try { const ls = JSON.parse(localStorage.getItem(lsKey)); if (ls) loaded = { estPaid: Number(ls.estPaid) || 0, filed: ls.filed || {}, workFromHome: !!ls.workFromHome }; } catch {}
+      }
+      if (!cancelled && loaded) setTaxState(loaded);
+    })();
+    return () => { cancelled = true; };
+  }, [currentCompany?.id, year]);
+
+  const save = async (next) => {
+    setTaxState(next);
+    try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch {} // keep a local mirror as a backup
+    try {
+      const payload = {
+        company_id: currentCompany.id, tax_year: year,
+        estimated_payments_made: Number(next.estPaid) || 0,
+        work_from_home: !!next.workFromHome,
+        filed_deadlines: next.filed || {},
+      };
+      const { error } = await supabase.from("tax_settings").upsert(payload, { onConflict: "company_id,tax_year" });
+      if (error) console.warn("[tax_settings] save:", error.message);
+      else rowExists.current = true;
+    } catch (e) { console.warn("[tax_settings] save failed:", e?.message || e); }
+  };
   const estPaid = Number(taxState.estPaid) || 0;
   const filed = taxState.filed || {};
   const workFromHome = !!taxState.workFromHome;

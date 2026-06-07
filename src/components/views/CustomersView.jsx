@@ -98,6 +98,7 @@ export default function CustomersView() {
 
             const startEdit = (c) => { setEditingId(c.id||c.name); setEditDraft({ payment_terms:c.payment_terms||"", email:c.email||"", phone:c.phone||"", notes:c.notes||"", tags:(c.tags||[]).join(", "), min_expected:c.min_expected||"", max_expected:c.max_expected||"" }); };
             const saveEdit = (c) => {
+              if (editDraft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(editDraft.email).trim())) { showNotification("Please enter a valid email address.","error"); return; }
               const updates = { ...editDraft, tags:editDraft.tags.split(",").map(t=>t.trim()).filter(Boolean), min_expected:parseFloat(editDraft.min_expected)||null, max_expected:parseFloat(editDraft.max_expected)||null };
               if (c.fromContact) {
                 setContacts(prev => prev.map(x => x.id===c.id ? {...x,...updates} : x));

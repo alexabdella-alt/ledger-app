@@ -22,7 +22,7 @@ export default function OpeningBalancesView() {
 
             const post = () => {
               const entries = CHART_OF_ACCOUNTS.filter(a=>["Assets","Liabilities","Equity"].includes(a.category))
-                .filter(a => parseFloat(balances[a.code])||0 !== 0)
+                .filter(a => (parseFloat(balances[a.code]) || 0) !== 0)
                 .map(a => ({
                   id: Date.now()+Math.random(), vendor:"Opening Balance", description:`Opening balance – ${a.name}`,
                   amount: Math.abs(parseFloat(balances[a.code])||0), date: asOfDate, type:"opening",
@@ -33,7 +33,7 @@ export default function OpeningBalancesView() {
                 }));
               setInvoices(prev => [...entries, ...prev.filter(i=>i.source!=="opening_balance")]);
               const obRecords = CHART_OF_ACCOUNTS.filter(a=>["Assets","Liabilities","Equity"].includes(a.category))
-                .filter(a=>parseFloat(balances[a.code])||0)
+                .filter(a=>(parseFloat(balances[a.code]) || 0) !== 0)
                 .map(a=>({account_code:a.code,account_name:a.name,balance:parseFloat(balances[a.code]),as_of_date:asOfDate,posted:true}));
               setOpeningBalances(obRecords);
               logAudit("opening_balances_posted",`Opening balances posted as of ${asOfDate}: Assets ${fmt(totalAssets)}, Liabilities ${fmt(totalLiab)}, Equity ${fmt(totalEquity)}`);

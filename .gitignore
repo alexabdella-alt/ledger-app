@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.backup
 .DS_Store
+
+# Local env (never commit real keys)
+.env
+.env.local

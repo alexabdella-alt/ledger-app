@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { supabase, getAuthHeaders } from "./lib/supabase";
-import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS } from "./lib/constants";
+import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_MODEL, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, AP_AUTO_APPROVE_THRESHOLD } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor } from "./lib/format";
-import { classifyIntent, runAIBrain } from "./lib/ai";
+import { classifyIntent, runAIBrain, okAIResponse } from "./lib/ai";
 import AuthScreen from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
 import CompanySwitcher from "./components/CompanySwitcher";
@@ -157,7 +157,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [clarificationQueue, setClarificationQueue] = useState([]); // [{id, invoice, question, options, queueItemId}]
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [glDrilldown, setGlDrilldown] = useState(null); // gl_name being drilled into on the dashboard
-  const [booksFilter, setBooksFilter] = useState("all"); // Books tab filter: all|revenue|expenses|unpaid|review
+  // Filter/report UI state persists across refresh via sessionStorage.
+  const ss = (k, fb) => { try { return sessionStorage.getItem(k) ?? fb; } catch { return fb; } };
+  const [booksFilter, setBooksFilter] = useState(() => ss("cfai_booksFilter", "all")); // Books tab filter: all|revenue|expenses|unpaid|review
   const [isAILoading, setIsAILoading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -165,7 +167,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [notification, setNotification] = useState(null);
   const [aiStep, setAiStep] = useState(null);
-  const [vendorFilter, setVendorFilter] = useState("all");
+  const [vendorFilter, setVendorFilter] = useState(() => ss("cfai_vendorFilter", "all"));
 
   // Universal upload state
   const [uploadQueue, setUploadQueue] = useState([]); // { id, file, name, status, type, result, error }
@@ -183,9 +185,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
   // Reports state
   const [reportType, setReportType] = useState("pl");
-  const [reportRange, setReportRange] = useState("custom");
-  const [reportDateFrom, setReportDateFrom] = useState(() => new Date().getFullYear() + "-01-01");
-  const [reportDateTo, setReportDateTo] = useState(() => new Date().toISOString().slice(0,10));
+  const [reportRange, setReportRange] = useState(() => ss("cfai_reportRange", "custom"));
+  const [reportDateFrom, setReportDateFrom] = useState(() => ss("cfai_reportDateFrom", new Date().getFullYear() + "-01-01"));
+  const [reportDateTo, setReportDateTo] = useState(() => ss("cfai_reportDateTo", new Date().toISOString().slice(0,10)));
+  // Persist filter/report UI state whenever it changes.
+  useEffect(() => { try {
+    sessionStorage.setItem("cfai_booksFilter", booksFilter);
+    sessionStorage.setItem("cfai_vendorFilter", vendorFilter);
+    sessionStorage.setItem("cfai_reportRange", reportRange);
+    sessionStorage.setItem("cfai_reportDateFrom", reportDateFrom);
+    sessionStorage.setItem("cfai_reportDateTo", reportDateTo);
+  } catch {} }, [booksFilter, vendorFilter, reportRange, reportDateFrom, reportDateTo]);
   const [basisMode, setBasisMode] = useState("accrual"); // "cash" | "accrual" | "comparison"
   const [basisNarration, setBasisNarration] = useState(null);
   const [basisNarrationLoading, setBasisNarrationLoading] = useState(false);
@@ -249,14 +259,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       linked_invoice_id: linkedId != null ? String(linkedId) : null,
       uploaded_at: doc.uploaded_at,
     };
-    console.log("[documents] storeDocument → inserting:", payload);
+    
     supabase.from("documents").insert(payload).select("id").single().then(({ data, error }) => {
       if (error) {
         console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error);
         showNotification(`Document not saved to cloud: ${error.message || "missing documents table — apply migration 002"}`, "error");
         return;
       }
-      console.log("[documents] insert OK, db id:", data?.id);
+      
       // Swap the temp client id for the DB id so it matches on next reload.
       if (data?.id) setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data.id } : d));
     });
@@ -372,7 +382,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [apAgingLoading, setApAgingLoading] = useState(false);
   const [checkRunMode, setCheckRunMode] = useState(false);
   const [selectedPayments, setSelectedPayments] = useState(new Set());
-  const [apSettings] = useState({ autoApproveThreshold: 500 });
+  const [apSettings] = useState({ autoApproveThreshold: AP_AUTO_APPROVE_THRESHOLD });
   const [cashBalance, setCashBalance] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
@@ -553,8 +563,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           city: co.city||"", state: co.state||"", zip: co.zip||"",
           country: co.country||"US", fiscalYearEnd: co.fiscal_year_end||"12-31",
           defaultCashAccount: co.default_cash_account||"1000",
-          defaultAPAccount: co.default_ap_account||"2000",
-          defaultARAccount: co.default_ar_account||"1100",
+          defaultAPAccount: co.default_ap_account||rc("accounts_payable"),
+          defaultARAccount: co.default_ar_account||rc("accounts_receivable"),
           currency: co.currency||"USD", logoBase64: null
         });
       }
@@ -616,7 +626,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         .from("documents").select("*").eq("company_id", cid)
         .order("uploaded_at", { ascending: false });
       if (docsErr) console.error("[documents] loadAllData fetch error:", docsErr.message, docsErr.details || "", docsErr.hint || "");
-      console.log(`[documents] loadAllData fetched ${docsData?.length ?? 0} document(s) for company ${cid}`, docsData);
+      
       if (docsData) {
         setDocLibrary(docsData.map(d => ({
           id: d.id,
@@ -704,21 +714,29 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
       const isDebit = invoice.debit_credit !== "credit";
       const primaryAcct    = await ensureAccount(invoice.gl_code, invoice.gl_name);
-      const secondaryAcct  = await ensureAccount(invoice.secondary_gl_code || "2000", invoice.secondary_gl_name || "Accounts Payable");
+      const secondaryAcct  = await ensureAccount(invoice.secondary_gl_code || rc("accounts_payable"), invoice.secondary_gl_name || rn("accounts_payable"));
       if (!primaryAcct) { console.error("persistJournalEntry: no primary account", invoice.gl_code); return null; }
 
-      const baseEntry = {
-        company_id: currentCompany.id,
-        entry_date: invoice.date || new Date().toISOString().slice(0,10),
-        description: `${invoice.vendor || ""} – ${invoice.description || invoice.vendor || ""}`,
-        source: invoice.source || "manual",
-        status: "posted",
-        posted_at: new Date().toISOString(),
-        created_by: session.user.id
-      };
-      // Persist the AI's coding rationale + confidence so they survive a reload.
-      // Requires the ai_reasoning / ai_confidence columns (see migration in repo).
-      const aiFields = {
+      const amt = Number(invoice.amount) || 0;
+      const memo = invoice.description;
+      // Balanced lines (no journal_entry_id — the RPC assigns it atomically).
+      const lines = [];
+      if (secondaryAcct) {
+        if (isDebit) {
+          lines.push({ account_id: primaryAcct.id,   debit: amt, credit: 0,   memo });
+          lines.push({ account_id: secondaryAcct.id, debit: 0,   credit: amt, memo });
+        } else {
+          lines.push({ account_id: primaryAcct.id,   debit: 0,   credit: amt, memo });
+          lines.push({ account_id: secondaryAcct.id, debit: amt, credit: 0,   memo });
+        }
+      } else {
+        lines.push({ account_id: primaryAcct.id, debit: isDebit ? amt : 0, credit: isDebit ? 0 : amt, memo });
+      }
+
+      const entryDate   = invoice.date || new Date().toISOString().slice(0,10);
+      const description  = `${invoice.vendor || ""} – ${invoice.description || invoice.vendor || ""}`;
+      const source       = invoice.source || "manual";
+      const meta = {
         ai_reasoning: invoice.reasoning || null,
         ai_confidence: invoice.confidence ?? null,
         approval_status: invoice.approval_status || null,
@@ -726,31 +744,33 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         payment_method: invoice.payment_method_used || invoice.payment_method || null,
         due_date: invoice.due_date || null,
       };
-      let { data: je, error: jeErr } = await supabase.from("journal_entries")
-        .insert({ ...baseEntry, ...aiFields }).select().single();
-      if (jeErr && /ai_reasoning|ai_confidence|column/i.test(jeErr.message || "")) {
-        // Columns not migrated yet — fall back so booking still works.
-        console.warn("journal_entries is missing ai_reasoning/ai_confidence; booking without them. Run the migration to persist AI reasoning.");
-        ({ data: je, error: jeErr } = await supabase.from("journal_entries")
-          .insert(baseEntry).select().single());
-      }
-      if (jeErr) { console.error("JE insert error:", jeErr); return; }
 
-      const lines = [];
-      if (secondaryAcct) {
-        // Respect the debit_credit flag
-        if (isDebit) {
-          lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: primaryAcct.id,   debit: invoice.amount, credit: 0,              memo: invoice.description });
-          lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: secondaryAcct.id, debit: 0,              credit: invoice.amount, memo: invoice.description });
-        } else {
-          lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: primaryAcct.id,   debit: 0,              credit: invoice.amount, memo: invoice.description });
-          lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: secondaryAcct.id, debit: invoice.amount, credit: 0,              memo: invoice.description });
-        }
-      } else {
-        lines.push({ journal_entry_id: je.id, company_id: currentCompany.id, account_id: primaryAcct.id, debit: isDebit ? invoice.amount : 0, credit: isDebit ? 0 : invoice.amount, memo: invoice.description });
+      // ── Atomic, balance-validated post (migration 010) ──
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("post_journal_entry", {
+        p_company_id: currentCompany.id, p_entry_date: entryDate, p_description: description,
+        p_source: source, p_created_by: session.user.id, p_lines: lines, p_meta: meta,
+      });
+      if (!rpcErr) return rpcData?.id || rpcData?.entry?.id || null;
+
+      // A real posting failure (e.g. unbalanced) must surface and stop — only
+      // fall back to the legacy inserts if the RPC simply isn't deployed yet.
+      const rpcMissing = /post_journal_entry|could not find the function|does not exist|schema cache|PGRST202|PGRST302/i.test(rpcErr.message || "");
+      if (!rpcMissing) {
+        console.error("post_journal_entry failed:", rpcErr.message);
+        showNotification("Couldn't save the entry: " + (rpcErr.message || "unknown error"), "error");
+        return null;
       }
-      await supabase.from("journal_entry_lines").insert(lines);
-      return je.id; // callers use this to store db_entry_id on the invoice
+      console.warn("post_journal_entry RPC not found — using legacy insert. Apply migration 010_post_journal_entry.sql.");
+      const baseEntry = { company_id: currentCompany.id, entry_date: entryDate, description, source, status: "posted", posted_at: new Date().toISOString(), created_by: session.user.id };
+      let { data: je, error: jeErr } = await supabase.from("journal_entries").insert({ ...baseEntry, ...meta }).select().single();
+      if (jeErr && /ai_reasoning|ai_confidence|column/i.test(jeErr.message || "")) {
+        ({ data: je, error: jeErr } = await supabase.from("journal_entries").insert(baseEntry).select().single());
+      }
+      if (jeErr) { console.error("JE insert error:", jeErr); return null; }
+      const legacyLines = lines.map(l => ({ ...l, journal_entry_id: je.id, company_id: currentCompany.id }));
+      const { error: lineErr } = await supabase.from("journal_entry_lines").insert(legacyLines);
+      if (lineErr) console.error("JE lines insert error (entry may be unbalanced):", lineErr.message);
+      return je.id;
     } catch(e) { console.error("persistJournalEntry error:", e); return null; }
   };
 
@@ -835,7 +855,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         // Surface the real reason (RLS, NOT NULL, etc.) instead of failing silently.
         console.error(`[contacts] persist FAILED for "${contact.name}" (company_id=${currentCompany.id}):`, error.message || error, error.details || "", error.hint || "");
       } else {
-        console.log(`[contacts] persisted "${contact.name}" ${contact.db_id ? "(updated)" : "(inserted)"} ✓`, data?.id ? `db_id=${data.id}` : "");
+        
       }
       if (!contact.db_id && data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
     } catch(e) { console.error("persistContact error:", e); }
@@ -844,7 +864,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   // Auto-create or enrich a vendor/customer contact from an uploaded invoice's extracted details.
   const recentContactsRef = useRef(new Set());
   const createOrUpdateContact = (data) => {
-    console.log("[contacts] createOrUpdateContact called with:", data);
+    
     if (!data || !(data.name||"").trim()) { console.warn("[contacts] skipped — no vendor name in extracted data"); return; }
     const name = data.name.trim();
     const norm = s => (s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
@@ -860,15 +880,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       // Update empty fields only — never overwrite existing data.
       const merged = { ...existing }; let changed = false;
       Object.entries(fields).forEach(([k,v]) => { if (v && !merged[k]) { merged[k] = v; changed = true; } });
-      console.log(`[contacts] match found for "${name}" → ${existing.name}; ${changed?"updating empty fields":"nothing to update"}`);
+      
       if (!changed) return;
       setContacts(prev => prev.map(c => c.id===existing.id ? merged : c));
       persistContact(merged);
       logAudit("contact_updated", `Contact ${name} updated from invoice`, null, { name });
     } else {
-      if (recentContactsRef.current.has(n)) { console.log(`[contacts] "${name}" already created this batch — skipping`); return; }
+      if (recentContactsRef.current.has(n)) {  return; }
       recentContactsRef.current.add(n);
-      console.log(`[contacts] no match for "${name}" — creating new ${data.type||"vendor"}`);
+      
       const created = { id: Date.now()+Math.random(), name, type: data.type||"vendor", ...fields, fromContact: true, created_at: new Date().toISOString() };
       setContacts(prev => [created, ...prev]);
       persistContact(created);
@@ -898,8 +918,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     const base = { gaap: true, invoice, suggestedCode: invoice.gl_code, suggestedName: invoice.gl_name };
 
     // A) Capital vs expense (ASC 360 materiality threshold)
-    if (amt >= 2000 && GAAP_ASSET_RE.test(text)) {
-      const capitalize = amt >= 2500;
+    if (amt >= CAPITALIZE_CHECK_THRESHOLD && GAAP_ASSET_RE.test(text)) {
+      const capitalize = amt >= CAPITALIZE_THRESHOLD;
       return { ...base, gaapType:"capital",
         question:`This looks like a larger purchase — how will you use it?`,
         explanation:`Under GAAP (ASC 360), purchases over $2,500 with a useful life greater than one year must be capitalized as fixed assets and depreciated over their useful life rather than expensed immediately. This affects both your balance sheet and your taxes.`,
@@ -1046,7 +1066,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           .insert(payload).select("id").single();
         if (error) console.error("persistContract INSERT error:", JSON.stringify(error));
         else if (data?.id) {
-          console.log("Contract saved, db_id=", data.id);
+          
           setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
         }
       }
@@ -1078,9 +1098,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
                 ? Math.round((new Date(c.end_date) - new Date(c.start_date)) / (1000*60*60*24*30.44))
                 : 0);
             if (term > 0) {
-              const ibr = c.discount_rate_used || 0.05;
+              const ibr = c.discount_rate_used || DEFAULT_IBR;
               const asc842 = calcASC842(c.payment_amount, term, ibr);
-              console.log(`Recalculated ${c.counterparty}: ROU=$${asc842.rouAsset}, Current=$${asc842.currentPortion}, LT=$${asc842.nonCurrentPortion}`);
+              
               c.rou_asset_value = asc842.rouAsset;
               c.lease_liability_current = asc842.currentPortion;
               c.lease_liability_noncurrent = asc842.nonCurrentPortion;
@@ -1098,7 +1118,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           return c;
         });
         setContracts(loaded);
-        console.log(`Loaded ${loaded.length} contracts from DB`);
+        
       } else {
         setContracts([]);
       }
@@ -1138,10 +1158,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const runFullAI = async (base64, mediaType) => {
     setIsAILoading(true); setAiStep("extracting"); setAiSuggestion(null);
     try {
-      const extractRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+      const extractRes = await fetch(AI_PROXY_URL, {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 1000,
+          model: AI_MODEL, max_tokens: 1000,
           system: `Extract invoice fields. "vendor" = exact legal name of the company issuing the invoice. Respond ONLY with valid JSON: {"vendor":"...","description":"...","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details"}`,
           messages: [{ role:"user", content:[
             { type: mediaType==="application/pdf"?"document":"image", source:{ type:"base64", media_type:mediaType, data:base64 }},
@@ -1149,7 +1169,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           ]}]
         })
       });
-      const extractData = await extractRes.json();
+      const extractData = await okAIResponse(extractRes);
       const extracted = JSON.parse((extractData.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
 
       // Check if a rule exists for this vendor
@@ -1165,10 +1185,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
       setForm(extracted);
       setAiStep("coding");
-      const codeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+      const codeRes = await fetch(AI_PROXY_URL, {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 1000,
+          model: AI_MODEL, max_tokens: 1000,
           system: `Expert accountant. Suggest GL coding for this transaction. Respond ONLY with valid JSON: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","debit_credit":"debit or credit","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
 
 CRITICAL RULES:
@@ -1178,7 +1198,7 @@ CRITICAL RULES:
           messages: [{ role:"user", content:`Vendor: ${extracted.vendor}\nDescription: ${extracted.description}\nAmount: $${extracted.amount}\nType: ${extracted.type}\n\nChart of Accounts:\n${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}\n\nSuggest best GL coding.` }]
         })
       });
-      const codeData = await codeRes.json();
+      const codeData = await okAIResponse(codeRes);
       const coding = JSON.parse((codeData.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
       setAiSuggestion(coding);
       showNotification("Invoice read and coded ✓");
@@ -1241,10 +1261,10 @@ CRITICAL RULES:
   const classifyFile = async (base64, mediaType, fileName) => {
     const ext = fileName.split(".").pop().toLowerCase();
     if (["csv","xlsx","xls"].includes(ext)) return "bank_statement";
-    const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+    const res = await fetch(AI_PROXY_URL, {
       method:"POST", headers:getAuthHeaders(),
       body: JSON.stringify({
-        model:"claude-sonnet-4-6", max_tokens:20,
+        model:AI_MODEL, max_tokens:20,
         system:`Classify this document. Reply with ONLY one word:
 - invoice    → a bill, invoice, or receipt for goods/services (whether the business is paying OR being paid)
 - bank_statement → a bank or credit card statement listing multiple transactions
@@ -1258,7 +1278,7 @@ Reply with only the single word.`,
         ]}]
       })
     });
-    const d = await res.json();
+    const d = await okAIResponse(res);
     const t = (d.content?.find(b=>b.type==="text")?.text||"").trim().toLowerCase();
     if (t.includes("bank")) return "bank_statement";
     if (t.includes("contract")) return "contract";
@@ -1322,10 +1342,10 @@ Reply with only the single word.`,
 
         if (docType === "invoice") {
           // Extract ALL invoices in the document (handles single and multi-invoice PDFs)
-          const extractRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          const extractRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-6", max_tokens:4000,
+              model:AI_MODEL, max_tokens:4000,
               system:`You are an expert at reading invoice documents. This document may contain ONE invoice or MULTIPLE invoices/receipts on separate pages or sections.
 
 Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if there is only one invoice:
@@ -1349,7 +1369,7 @@ Rules:
               ]}]
             })
           });
-          const extractData = await extractRes.json();
+          const extractData = await okAIResponse(extractRes);
           const rawText = (extractData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
           // Handle both array and single-object responses gracefully
           let extractedList = [];
@@ -1361,17 +1381,17 @@ Rules:
             try { extractedList = [JSON.parse(rawText)]; } catch(e2) { extractedList = []; }
           }
 
-          console.log("[contacts] extraction returned contact fields:", extractedList.map(e => ({ vendor:e.vendor, type:e.type, address:e.vendor_address, email:e.vendor_email, phone:e.vendor_phone, website:e.vendor_website, terms:e.payment_terms, acct:e.account_number, tax_id:e.tax_id })));
+          
           if (extractedList.length === 0) {
             setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:"Could not extract invoice data — try a clearer scan"} : q));
             return;
           }
 
           // Batch GL code all invoices in one call
-          const codeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          const codeRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-6", max_tokens:3000,
+              model:AI_MODEL, max_tokens:3000,
               system:`Expert accountant. Assign GL codes to each invoice. Return a JSON array with one coding object per invoice, in the same order as input.
 Each object: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
 
@@ -1385,7 +1405,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               messages:[{role:"user", content:`Code these ${extractedList.length} invoices:\n${JSON.stringify(extractedList.map((inv,i)=>({index:i, vendor:inv.vendor, description:inv.description, amount:inv.amount, type:inv.type})))}`}]
             })
           });
-          const codeData = await codeRes.json();
+          const codeData = await okAIResponse(codeRes);
           let codings = [];
           try {
             const codeRaw = (codeData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
@@ -1418,8 +1438,8 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               project: rule?.project || "General",
               gl_code: finalCode,
               gl_name: finalName,
-              secondary_gl_code: rule ? "2000" : (coding.secondary_gl_code || (isRevenue ? "1100" : "2000")),
-              secondary_gl_name: rule ? "Accounts Payable" : (coding.secondary_gl_name || (isRevenue ? "Accounts Receivable" : "Accounts Payable")),
+              secondary_gl_code: rule ? rc("accounts_payable") : (coding.secondary_gl_code || (isRevenue ? rc("accounts_receivable") : rc("accounts_payable"))),
+              secondary_gl_name: rule ? rn("accounts_payable") : (coding.secondary_gl_name || (isRevenue ? rn("accounts_receivable") : rn("accounts_payable"))),
               debit_credit: isRevenue ? "credit" : "debit",
               confidence,
               reasoning: rule ? `Vendor rule: ${finalName}` : (coding.reasoning || "Auto-coded"),
@@ -1442,7 +1462,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               invoice.gl_code = rc("travel_entertainment");
               invoice.gl_name = rn("travel_entertainment");
               invoice.meals_pct = 50;
-              invoice.deductible_amount = (Number(invoice.amount)||0) * 0.5;
+              invoice.deductible_amount = (Number(invoice.amount)||0) * MEALS_DEDUCTIBLE_RATE;
               invoice.reasoning = `Meals booked to Travel & Entertainment (6400) — 50% deductible under current tax law, deductible portion ${fmtMoney(invoice.deductible_amount)}. ${invoice.reasoning||""}`.trim();
               mealsBooked += 1;
             }
@@ -1494,7 +1514,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             } else if (gaapItem) {
               // Needs a GAAP clarifying question before it can be booked correctly.
               needsClarification.push({ id: Date.now() + Math.random(), queueItemId: item.id, ...gaapItem });
-            } else if (confidence >= 85 || rule) {
+            } else if (confidence >= AI_CONFIDENCE_AUTO_BOOK || rule) {
               highConfidence.push(invoice);
             } else {
               // Build targeted clarification question for low GL confidence
@@ -1557,34 +1577,34 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           let rawTxns = [];
           if (isSpreadsheet) {
             const text = await new Promise(res => { const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsText(file); });
-            const parseRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+            const parseRes = await fetch(AI_PROXY_URL, {
               method:"POST", headers:getAuthHeaders(),
               body: JSON.stringify({
-                model:"claude-sonnet-4-6", max_tokens:4000,
+                model:AI_MODEL, max_tokens:4000,
                 system:`Parse this bank statement CSV/text and extract ALL transactions. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
                 messages:[{role:"user", content:`Parse:\n\n${text.slice(0,8000)}`}]
               })
             });
-            const pd = await parseRes.json();
+            const pd = await okAIResponse(parseRes);
             rawTxns = JSON.parse((pd.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
           } else {
-            const parseRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+            const parseRes = await fetch(AI_PROXY_URL, {
               method:"POST", headers:getAuthHeaders(),
               body: JSON.stringify({
-                model:"claude-sonnet-4-6", max_tokens:4000,
+                model:AI_MODEL, max_tokens:4000,
                 system:`Extract ALL transactions from this bank statement PDF. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
                 messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},{type:"text",text:"Extract all transactions."}]}]
               })
             });
-            const pd = await parseRes.json();
+            const pd = await okAIResponse(parseRes);
             rawTxns = JSON.parse((pd.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
           }
 
           // Categorize transactions
-          const catRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          const catRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-6", max_tokens:6000,
+              model:AI_MODEL, max_tokens:6000,
               system:`Categorize each bank transaction with GL coding. Respond ONLY with JSON array: [{"id":0,"date":"YYYY-MM-DD","vendor":"Clean Name","description":"original","amount":123.45,"type":"expense or revenue","gl_code":"XXXX","gl_name":"Name","confidence":85,"needs_review":false}]
 
 CRITICAL RULES:
@@ -1596,7 +1616,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
               messages:[{role:"user", content:`Categorize ${rawTxns.length} transactions:\n${JSON.stringify(rawTxns.slice(0,80))}`}]
             })
           });
-          const catData = await catRes.json();
+          const catData = await okAIResponse(catRes);
           const categorized = JSON.parse((catData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
           const withRules = categorized.map((t,i) => {
             const rule = rules.find(r => r.vendor?.toLowerCase()===t.vendor?.toLowerCase());
@@ -1711,10 +1731,10 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
         } else if (docType === "contract") {
           // Full contract analysis — two calls to avoid token limits
           // Call 1: Extract terms + Day 1 entry
-          const res1 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          const res1 = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-6", max_tokens:3000,
+              model:AI_MODEL, max_tokens:3000,
               system:`You are a Big 4 CPA (ASC 842 specialist). Extract contract terms and generate ONLY the Day 1 journal entry.
 For OPERATING LEASE: Day 1: Dr ROU Asset 1800 [PV of payments at IBR] / Cr Lease Liability Current 2400 [next 12mo principal] + Cr Lease Liability LT 2450 [remainder]. NO depreciation entries.
 Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement","counterparty":"...","description":"...","total_value":0,"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","payment_amount":0,"payment_frequency":"monthly","interest_rate":0,"lease_type":"operating|finance|not_applicable","rou_asset_value":0,"lease_liability_current":0,"lease_liability_noncurrent":0,"discount_rate_used":0.05,"lease_term_months":0,"monthly_straight_line_expense":0,"accounting_treatment":"...","key_terms":[],"journal_entries":[{"date":"YYYY-MM-DD","description":"Lease commencement","memo":"ASC 842-20-30","lines":[{"account_code":"1800","account_name":"Right-of-Use Asset","debit":0,"credit":0}]}]}`,
@@ -1724,7 +1744,7 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
               ]}]
             })
           });
-          const d1 = await res1.json();
+          const d1 = await okAIResponse(res1);
           const contract = JSON.parse((d1.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
 
           // Generate all monthly entries in JS (no second API call needed)
@@ -1734,7 +1754,7 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
             calcLeaseTermMonths = Math.round((new Date(contract.end_date) - new Date(contract.start_date)) / (1000 * 60 * 60 * 24 * 30.44));
           }
           if (contract.contract_type === "lease" && calcLeaseTermMonths > 0) {
-            const ibr = contract.discount_rate_used || 0.05;
+            const ibr = contract.discount_rate_used || DEFAULT_IBR;
             const ibrM = ibr / 12;
             const pmt = parseFloat(contract.payment_amount) || 0;
             const sl = contract.monthly_straight_line_expense || pmt;
@@ -1767,10 +1787,10 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
 
         } else if (docType === "unknown") {
           // Ask Claude to explain AND propose a journal entry (or explicitly say none needed)
-          const explainRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+          const explainRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:"claude-sonnet-4-6", max_tokens:1500,
+              model:AI_MODEL, max_tokens:1500,
               system:`You are an expert CPA reviewing an unusual document. Analyze it and respond ONLY with valid JSON (no markdown):
 {
   "document_type": "Short name for what this document is (e.g. Personal Guarantee, Settlement Agreement, Line of Credit)",
@@ -1820,7 +1840,7 @@ Rules:
               ]}]
             })
           });
-          const explainData = await explainRes.json();
+          const explainData = await okAIResponse(explainRes);
           let unknownRecord;
           try {
             const parsed = JSON.parse((explainData.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
@@ -1887,10 +1907,10 @@ Rules:
         // PDF: send as base64 image/document to Claude
         const base64 = await fileToBase64(file);
         setBankStep("categorizing"); setBankProgress(40);
-        const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+        const res = await fetch(AI_PROXY_URL, {
           method:"POST", headers:getAuthHeaders(),
           body: JSON.stringify({
-            model:"claude-sonnet-4-6", max_tokens:4000,
+            model:AI_MODEL, max_tokens:4000,
             system:`You are an expert at reading bank statements. Extract ALL transactions from this bank statement. Respond ONLY with valid JSON array, no markdown:
 [{"date":"YYYY-MM-DD","description":"raw bank description","amount":123.45,"type":"debit or credit","balance":1000.00}]
 Extract every single transaction row. Use negative amounts for debits/expenses if shown that way in the statement.`,
@@ -1900,7 +1920,7 @@ Extract every single transaction row. Use negative amounts for debits/expenses i
             ]}]
           })
         });
-        const d = await res.json();
+        const d = await okAIResponse(res);
         const raw = JSON.parse((d.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
         fileContent = raw;
       } else {
@@ -1912,17 +1932,17 @@ Extract every single transaction row. Use negative amounts for debits/expenses i
         });
         setBankStep("categorizing"); setBankProgress(30);
         // Send raw text to Claude to parse + extract transactions
-        const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+        const res = await fetch(AI_PROXY_URL, {
           method:"POST", headers:getAuthHeaders(),
           body: JSON.stringify({
-            model:"claude-sonnet-4-6", max_tokens:4000,
+            model:AI_MODEL, max_tokens:4000,
             system:`You are an expert at parsing bank statement exports. Parse this CSV/Excel text and extract ALL transactions. Respond ONLY with valid JSON array, no markdown:
 [{"date":"YYYY-MM-DD","description":"raw bank description","amount":123.45,"type":"debit or credit","balance":1000.00}]
 Handle any column format — the file might have columns in different orders. Parse every transaction row.`,
             messages:[{role:"user",content:`Parse this bank statement file and extract all transactions:\n\n${fileContent.slice(0,8000)}`}]
           })
         });
-        const d = await res.json();
+        const d = await okAIResponse(res);
         fileContent = JSON.parse((d.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
       }
 
@@ -1933,10 +1953,10 @@ Handle any column format — the file might have columns in different orders. Pa
       if (rawTxns.length === 0) { showNotification("No transactions found in file.", "error"); setBankProcessing(false); return; }
 
       setBankStep("categorizing"); setBankProgress(70);
-      const categorizeRes = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+      const categorizeRes = await fetch(AI_PROXY_URL, {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:"claude-sonnet-4-6", max_tokens:6000,
+          model:AI_MODEL, max_tokens:6000,
           system:`You are an expert accountant. For each bank transaction, extract the vendor name and suggest the best GL account coding. Use your knowledge of common merchants (e.g. "AMZN" = Amazon, "SQ *" = Square merchant, "ACH" = bank transfer, etc).
 
 Chart of Accounts:
@@ -1951,7 +1971,7 @@ Keep the same array order and index as input.`,
         })
       });
 
-      const catData = await categorizeRes.json();
+      const catData = await okAIResponse(categorizeRes);
       const categorized = JSON.parse((catData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
 
       // Apply vendor rules to any matches
@@ -2039,10 +2059,10 @@ Keep the same array order and index as input.`,
       const mediaType = ext===".pdf" ? "application/pdf" : `image/${ext.slice(1)}`;
 
       // ── CALL 1: Extract contract terms + Day 1 entry only ────────────────
-      const res1 = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+      const res1 = await fetch(AI_PROXY_URL, {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:"claude-sonnet-4-6", max_tokens:3000,
+          model:AI_MODEL, max_tokens:3000,
           system:`You are a Big 4 CPA specializing in ASC 842. Extract contract terms and generate ONLY the Day 1 commencement journal entry.
 
 For OPERATING LEASE (ASC 842):
@@ -2094,7 +2114,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
         })
       });
 
-      const data1 = await res1.json();
+      const data1 = await okAIResponse(res1);
       if (!data1.content) throw new Error(`API error: ${JSON.stringify(data1)}`);
       const raw1 = (data1.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim();
       const contract = JSON.parse(raw1);
@@ -2106,20 +2126,20 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
         const end = new Date(contract.end_date);
         leaseTermMonths = Math.round((end - start) / (1000 * 60 * 60 * 24 * 30.44));
       }
-      console.log(`Contract: type=${contract.contract_type}, lease_type=${contract.lease_type}, term=${leaseTermMonths}mo, payment=$${contract.payment_amount}`);
+      
 
       // ── GENERATE MONTHLY ENTRIES IN JS (no second API call needed) ────────
       const monthlyEntries = [];
 
       if (contract.contract_type === "lease") {
-        const ibr = contract.discount_rate_used || 0.05;
+        const ibr = contract.discount_rate_used || DEFAULT_IBR;
         const monthlyPayment = parseFloat(contract.payment_amount) || 0;
         // Ensure we have term months — calculate from dates if missing
         if (!leaseTermMonths && contract.start_date && contract.end_date) {
           leaseTermMonths = Math.round((new Date(contract.end_date) - new Date(contract.start_date)) / (1000*60*60*24*30.44));
           contract.lease_term_months = leaseTermMonths;
         }
-        console.log(`Lease: payment=$${monthlyPayment}, term=${leaseTermMonths}mo, ibr=${(ibr*100).toFixed(2)}%`);
+        
 
         // ALWAYS compute with JS — never use AI arithmetic
         const asc842 = (leaseTermMonths > 0 && monthlyPayment > 0)
@@ -2127,7 +2147,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
           : null;
 
         if (asc842) {
-          console.log(`ASC842 result: Liability=$${asc842.leaseLiability}, Current=$${asc842.currentPortion}, LT=$${asc842.nonCurrentPortion}, ROU=$${asc842.rouAsset}`);
+          
           // Override everything the AI calculated
           contract.rou_asset_value = asc842.rouAsset;
           contract.lease_liability_current = asc842.currentPortion;
@@ -2217,8 +2237,6 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
             });
           }
         });
-        if (asc842) console.log(`Generated ${monthlyEntries.length} entries. Liability=$${asc842.leaseLiability}, Current=$${asc842.currentPortion}, LT=$${asc842.nonCurrentPortion}`);
-
       } else if (contract.contract_type !== "lease" && contract.start_date && contract.end_date && contract.payment_amount) {
         // For non-lease: generate simple monthly entries in JS too
         const start = new Date(contract.start_date);
@@ -2289,8 +2307,8 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
         project: "General",
         gl_code: l.account_code,
         gl_name: l.account_name,
-        secondary_gl_code: offsetLine?.account_code || "2000",
-        secondary_gl_name: offsetLine?.account_name || "Accounts Payable",
+        secondary_gl_code: offsetLine?.account_code || rc("accounts_payable"),
+        secondary_gl_name: offsetLine?.account_name || rn("accounts_payable"),
         debit_credit: isDebit ? "debit" : "credit",
         confidence: 99,
         reasoning: `Posted from contract (ASC 842/GAAP): ${contract.description}`,
@@ -2340,8 +2358,8 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
           project: "General",
           gl_code: l.account_code,
           gl_name: l.account_name,
-          secondary_gl_code: offsetLine?.account_code || "2000",
-          secondary_gl_name: offsetLine?.account_name || "Accounts Payable",
+          secondary_gl_code: offsetLine?.account_code || rc("accounts_payable"),
+          secondary_gl_name: offsetLine?.account_name || rn("accounts_payable"),
           debit_credit: isDebit ? "debit" : "credit",
           confidence: 99,
           reasoning: `Posted from contract: ${contract.description}`,
@@ -2372,13 +2390,13 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
   const getOpenAP = (invList) => invList.filter(inv =>
     inv.type === "expense" &&
     !inv.matched &&
-    (inv.source === "contract" || inv.gl_code === "2000" || inv.gl_code === "2100") // Accounts Payable / Accrued
+    (inv.source === "contract" || inv.gl_code === rc("accounts_payable") || inv.gl_code === rc("accrued_liabilities")) // Accounts Payable / Accrued
   );
 
   const getOpenAR = (invList) => invList.filter(inv =>
     inv.type === "revenue" &&
     !inv.matched &&
-    inv.gl_code === "1100" // Accounts Receivable
+    inv.gl_code === rc("accounts_receivable") // Accounts Receivable
   );
 
   const getUnpaidInvoices = (invList) => invList.filter(inv =>
@@ -2404,10 +2422,10 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
 
     setMatchProcessing(true);
     try {
-      const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+      const res = await fetch(AI_PROXY_URL, {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 4000,
+          model: AI_MODEL, max_tokens: 4000,
           system: `You are an expert bookkeeper running a matching engine. Your job is to match bank transactions against open invoices/accruals and determine if they clear each other.
 
 For each bank transaction, check if it matches one or more open payables/receivables based on:
@@ -2465,7 +2483,7 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
         })
       });
 
-      const data = await res.json();
+      const data = await okAIResponse(res);
       const result = JSON.parse((data.content?.find(b => b.type === "text")?.text || "{}").replace(/```json|```/g, "").trim());
       const matches = result.matches || [];
 
@@ -2640,10 +2658,10 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
     const existing = allInvoices.filter(i => i.id && !newInvoices.find(n => n.id === i.id));
 
     try {
-      const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+      const res = await fetch(AI_PROXY_URL, {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:"claude-sonnet-4-6", max_tokens:3000,
+          model:AI_MODEL, max_tokens:3000,
           system:`You are an AP automation system. Screen each invoice and return enriched data.
 
 For each invoice return:
@@ -2675,7 +2693,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         })
       });
 
-      const data = await res.json();
+      const data = await okAIResponse(res);
       const screened = JSON.parse((data.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
 
       // Merge AP data back into invoices

@@ -3,6 +3,8 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
+import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
+import { okAIResponse } from "../../lib/ai";
 
 // ── CSV helpers (Chase / Bank of America / generic 3-column) ──
 const splitRow = (l) => { const out=[]; let cur="",q=false; for (const ch of l){ if(ch==='"'){q=!q;} else if(ch===","&&!q){out.push(cur);cur="";} else cur+=ch; } out.push(cur); return out.map(s=>s.trim().replace(/^"|"$/g,"")); };
@@ -111,13 +113,25 @@ export default function ReconView() {
     unmatched_books: unmatchedBooks.map(b=>b.id),
     added_during_reconciliation: bankTxns.filter(t=>t._added).map(t=>t._added),
   });
+  const reconIdRef = React.useRef(null);   // synchronous mirror of reconId
+  const savingRef = React.useRef(false);   // true while an insert is in flight
   const saveNow = async (status) => {
     if (!currentCompany?.id) return;
+    const existingId = reconId || reconIdRef.current;
+    // Don't fire a second INSERT before the first one has returned an id.
+    if (!existingId && savingRef.current) return;
     const payload = serialize(status);
     try {
-      if (reconId) { await supabase.from("reconciliations").update(payload).eq("id", reconId).eq("company_id", currentCompany.id); }
-      else { const { data, error } = await supabase.from("reconciliations").insert(payload).select("id").single(); if(error) console.warn("[reconciliations] save:", error.message); if (data?.id) setReconId(data.id); }
+      if (existingId) {
+        await supabase.from("reconciliations").update(payload).eq("id", existingId).eq("company_id", currentCompany.id);
+      } else {
+        savingRef.current = true;
+        const { data, error } = await supabase.from("reconciliations").insert(payload).select("id").single();
+        if (error) console.warn("[reconciliations] save:", error.message);
+        if (data?.id) { reconIdRef.current = data.id; setReconId(data.id); }
+      }
     } catch(e){ console.warn("[reconciliations] save failed:", e.message); }
+    finally { savingRef.current = false; }
   };
   const queueSave = () => { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(()=>saveNow("in_progress"), 2000); };
 
@@ -209,15 +223,14 @@ export default function ReconView() {
       setProcessing(true);
       try {
         const base64 = await fileToB64(file);
-        const res = await fetch("https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy", {
+        const res = await fetch(AI_PROXY_URL, {
           method:"POST", headers:getAuthHeaders(),
-          body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:4000, messages:[{ role:"user", content:[
+          body: JSON.stringify({ model:AI_MODEL, max_tokens:4000, messages:[{ role:"user", content:[
             { type:"document", source:{ type:"base64", media_type:"application/pdf", data:base64 } },
             { type:"text", text:'Extract EVERY transaction from this bank statement. Respond ONLY with a JSON array, no markdown, no prose: [{"date":"YYYY-MM-DD","description":"...","amount":-12.34}]. Use NEGATIVE amounts for money out (debits/withdrawals/payments) and POSITIVE for money in (deposits/credits). Include every single row.' },
           ] }] }),
         });
-        if (!res.ok) { let d=""; try{ d=(await res.json())?.error?.message||""; }catch{} throw new Error(`AI service error (${res.status})${d?": "+d:""}`); }
-        const data = await res.json();
+        const data = await okAIResponse(res);
         const text = data.content?.find(b=>b.type==="text")?.text || "[]";
         const arr = JSON.parse(text.replace(/```json|```/g,"").trim());
         const rows = (Array.isArray(arr)?arr:[]).map((t,i)=>({ id:"p_"+i+"_"+Math.random().toString(36).slice(2,6), date: normDate(t.date), description:(t.description||"Transaction").slice(0,140), amount: parseFloat(t.amount), _matchBook:null })).filter(r=>!isNaN(r.amount));

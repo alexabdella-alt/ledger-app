@@ -15,18 +15,34 @@ export default function CoaView() {
   const categories = ["Assets", "Liabilities", "Equity", "Revenue", "Expenses"];
   const grouped = categories.map(cat => ({ cat, accounts: (CHART_OF_ACCOUNTS || []).filter(a => a.category === cat) }));
 
+  const [busy, setBusy] = React.useState(null); // id/code currently being mutated (disables its buttons)
+  const codeError = (code, selfCode) => {
+    if (!/^\d{4}$/.test(String(code || "").trim())) return "Account code must be exactly 4 digits.";
+    if (code !== selfCode && (CHART_OF_ACCOUNTS || []).some(a => a.code === code)) return "That account code is already in use.";
+    return null;
+  };
+
   const startEdit = (acct) => { setEditingId(acct.db_id || acct.code); setEditDraft({ code: acct.code, name: acct.name, category: acct.category }); };
   const saveEdit = async (acct) => {
-    const ok = await persistAccountEdit(acct, { code: editDraft.code, name: editDraft.name, category: editDraft.category });
+    const err = codeError(editDraft.code, acct.code);
+    if (err) { showNotification(err, "error"); return; }
+    if (!String(editDraft.name || "").trim()) { showNotification("Account name can't be empty.", "error"); return; }
+    setBusy(acct.db_id || acct.code);
+    const ok = await persistAccountEdit(acct, { code: editDraft.code.trim(), name: editDraft.name.trim(), category: editDraft.category });
+    setBusy(null);
     if (ok) setEditingId(null);
   };
   const addAccount = async () => {
-    if (!addDraft.code || !addDraft.name) return;
-    const ok = await addCustomAccount({ code: addDraft.code, name: addDraft.name, category: addDraft.category });
+    const err = codeError(addDraft.code, null);
+    if (err) { showNotification(err, "error"); return; }
+    if (!String(addDraft.name || "").trim()) { showNotification("Please enter an account name.", "error"); return; }
+    setBusy("add");
+    const ok = await addCustomAccount({ code: addDraft.code.trim(), name: addDraft.name.trim(), category: addDraft.category });
+    setBusy(null);
     if (ok) { setAddDraft({ code: "", name: "", category: "Expenses" }); setShowAdd(false); }
   };
-  const toggleActive = (acct) => persistAccountEdit(acct, { active: acct.active === false ? true : false });
-  const removeAccount = (acct) => deleteAccount(acct);
+  const toggleActive = async (acct) => { setBusy(acct.db_id || acct.code); await persistAccountEdit(acct, { active: acct.active === false ? true : false }); setBusy(null); };
+  const removeAccount = async (acct) => { setBusy(acct.db_id || acct.code); await deleteAccount(acct); setBusy(null); };
 
   const lockIcon = (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -66,7 +82,7 @@ export default function CoaView() {
                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <button onClick={addAccount} style={{ padding: "9px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#4F46E5,#4338CA)", border: "none", color: "#fff", cursor: "pointer" }}>Add</button>
+            <button onClick={addAccount} disabled={busy === "add"} style={{ padding: "9px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: busy === "add" ? "#A5B4FC" : "linear-gradient(135deg,#4F46E5,#4338CA)", border: "none", color: "#fff", cursor: busy === "add" ? "default" : "pointer" }}>{busy === "add" ? "Adding…" : "Add"}</button>
           </div>
         </div>
       )}
@@ -81,6 +97,7 @@ export default function CoaView() {
                   const isEditing = editingId === (acct.db_id || acct.code);
                   const isInactive = acct.active === false;
                   const isSystem = !!acct.system_role;
+                  const rowBusy = busy === (acct.db_id || acct.code);
                   return (
                     <tr key={acct.db_id || acct.code} style={{ borderTop: i > 0 ? "1px solid #E5E7EB" : "none", background: isInactive ? "#F8F9FB" : i % 2 === 0 ? "transparent" : "#F8F9FB", opacity: isInactive ? 0.5 : 1 }}>
                       <td style={{ padding: "11px 16px", width: 80 }}>
@@ -110,16 +127,16 @@ export default function CoaView() {
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                           {isEditing ? (
                             <>
-                              <button onClick={() => saveEdit(acct)} style={{ padding: "4px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: "linear-gradient(135deg,#D1FAE5,#059669)", border: "none", color: "#059669", cursor: "pointer" }}>Save</button>
-                              <button onClick={() => setEditingId(null)} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid #D1D5DB", color: "#6B7280", cursor: "pointer" }}>×</button>
+                              <button onClick={() => saveEdit(acct)} disabled={rowBusy} style={{ padding: "4px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: "linear-gradient(135deg,#D1FAE5,#059669)", border: "none", color: "#059669", cursor: rowBusy ? "default" : "pointer", opacity: rowBusy ? 0.6 : 1 }}>{rowBusy ? "Saving…" : "Save"}</button>
+                              <button onClick={() => setEditingId(null)} disabled={rowBusy} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid #D1D5DB", color: "#6B7280", cursor: "pointer" }}>×</button>
                             </>
                           ) : (
                             <>
-                              <button onClick={() => startEdit(acct)} style={{ padding: "4px 12px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid #D1D5DB", color: "#6B7280", cursor: "pointer" }}>Edit</button>
-                              <button onClick={() => toggleActive(acct)} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid #D1D5DB", color: isInactive ? "#059669" : "#6B7280", cursor: "pointer" }}>{isInactive ? "Enable" : "Disable"}</button>
+                              <button onClick={() => startEdit(acct)} disabled={rowBusy} style={{ padding: "4px 12px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid #D1D5DB", color: "#6B7280", cursor: "pointer", opacity: rowBusy ? 0.6 : 1 }}>Edit</button>
+                              <button onClick={() => toggleActive(acct)} disabled={rowBusy} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid #D1D5DB", color: isInactive ? "#059669" : "#6B7280", cursor: "pointer", opacity: rowBusy ? 0.6 : 1 }}>{isInactive ? "Enable" : "Disable"}</button>
                               {isSystem
                                 ? <span title="System account — cannot be deleted" style={{ padding: "4px 8px", color: "#D1D5DB", display: "inline-flex", alignItems: "center" }}>{lockIcon}</span>
-                                : <button onClick={() => removeAccount(acct)} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid #DC262633", color: "#DC2626", cursor: "pointer" }}>Delete</button>}
+                                : <button onClick={() => removeAccount(acct)} disabled={rowBusy} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid #DC262633", color: "#DC2626", cursor: rowBusy ? "default" : "pointer", opacity: rowBusy ? 0.6 : 1 }}>{rowBusy ? "…" : "Delete"}</button>}
                             </>
                           )}
                         </div>
