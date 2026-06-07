@@ -303,7 +303,7 @@ export default function BooksView() {
       })()}
 
       {/* Transaction detail slide-in (shared component) */}
-      <TransactionDetailPanel invoiceId={selId} onClose={()=>setSelId(null)} />
+      <TransactionDetailPanel invoiceId={selId} onClose={()=>setSelId(null)} returnContext={{ view:"books", label:"Transactions" }} />
     </div>
   );
 }

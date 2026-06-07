@@ -26,10 +26,10 @@ export function txnStatusBadge(i) {
   return <span style={pill("#039855")}>Booked</span>;
 }
 
-export default function TransactionDetailPanel({ invoiceId, onClose }) {
+export default function TransactionDetailPanel({ invoiceId, onClose, returnContext }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit,
-    setInvoices, setSelectedInvoice, setView, docLibrary, storeDocument, fileToBase64, showNotification,
+    setInvoices, setSelectedInvoice, setView, setReturnTo, docLibrary, storeDocument, fileToBase64, showNotification,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
@@ -181,7 +181,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose }) {
                 {isExpense(sel) && sel.payment_status !== "paid" && sel.status !== "voided" && (
                   <button onClick={() => setPayOpen(true)} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#039855", border: "none", color: "#fff", cursor: "pointer" }}>Mark as Paid</button>
                 )}
-                <button onClick={() => { setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#4F46E5", border: "none", color: "#fff", cursor: "pointer" }}>Full entry →</button>
+                <button onClick={() => { setReturnTo && setReturnTo(returnContext || null); setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#4F46E5", border: "none", color: "#fff", cursor: "pointer" }}>Full entry →</button>
                 {sel.status !== "voided" && <button onClick={() => doVoid(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "#FFFFFF", border: "1px solid #D92D2044", color: "#D92D20", cursor: "pointer" }}>Void</button>}
               </>
             )}
