@@ -441,6 +441,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatHistoryView, setChatHistoryView] = useState(false); // History timeline toggle
+  const [chatMemory, setChatMemory] = useState([]); // persisted history — feeds AI memory + History timeline (not the visible chat)
   const [hasUnread, setHasUnread] = useState(false);
   const chatBottomRef = useRef(null);
   const chatInputRef = useRef(null);
@@ -2887,6 +2888,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     } catch (e) { console.warn("[chat] persist threw:", e?.message || e); }
   };
 
+  // Loads the persisted conversation into chatMemory only — this silently feeds
+  // the AI's system-prompt memory and the History timeline. It is intentionally
+  // NOT shown in the visible chat, which starts fresh each session.
   const loadChatHistory = async (companyId) => {
     const cid = companyId || currentCompany?.id;
     if (!cid) return;
@@ -2900,12 +2904,16 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         actions: Array.isArray(m.actions_taken) ? m.actions_taken : [],
         created_at: m.created_at, id: m.id,
       }));
-      setChatHistory([{ role: "assistant", content: CHAT_GREETING, id: 0 }, ...msgs]);
+      setChatMemory(msgs);
     } catch (e) { console.warn("[chat] load threw:", e?.message || e); }
   };
 
-  // Reload the persisted conversation whenever the company changes.
-  useEffect(() => { if (currentCompany?.id) loadChatHistory(currentCompany.id); /* eslint-disable-next-line */ }, [currentCompany?.id]);
+  // On company change: visible chat resets to a fresh greeting; memory reloads silently.
+  useEffect(() => {
+    setChatHistory([{ role: "assistant", content: CHAT_GREETING, id: 0 }]);
+    if (currentCompany?.id) loadChatHistory(currentCompany.id);
+    /* eslint-disable-next-line */
+  }, [currentCompany?.id]);
 
   const handleChatSend = async () => {
     const msg = chatInput.trim();
@@ -2913,13 +2921,15 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     setChatInput("");
     const userMsg = { role: "user", content: msg, id: Date.now(), created_at: new Date().toISOString() };
     setChatHistory(h => [...h, userMsg]);
+    setChatMemory(m => [...m, userMsg]);   // keep memory current (not shown in visible chat)
     setChatLoading(true);
     persistChatMessage("user", msg);  // persist the user turn immediately
 
     try {
       const historyForAI = chatHistory.filter(m => m.id !== 0).map(m => ({ role: m.role, content: m.content }));
-      // Memory: last 20 persisted turns (with their actions + timestamps) for the system prompt.
-      const memory = chatHistory.filter(m => m.id !== 0).slice(-20)
+      // Memory: last 20 persisted turns (with actions + timestamps) from past + current
+      // sessions, for the system prompt. Silent — independent of the visible chat.
+      const memory = chatMemory.slice(-20)
         .map(m => ({ role: m.role, content: m.content, actions: m.actions || [], created_at: m.created_at }));
       const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts, chartOfAccounts: CHART_OF_ACCOUNTS });
 
@@ -3159,6 +3169,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         created_at: new Date().toISOString(),
       };
       setChatHistory(h => [...h, assistantMsg]);
+      setChatMemory(m => [...m, assistantMsg]);  // keep memory + timeline current
       persistChatMessage("assistant", assistantMsg.content, actionSummary);  // remember it
       if (!chatOpen) setHasUnread(true);
     } catch(e) {
@@ -3505,27 +3516,44 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {/* Messages */}
           <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 8px" }}>
             {chatHistoryView ? (() => {
-              const timeline = chatHistory.filter(m => m.role==="assistant" && (m.actions||[]).length>0).slice().reverse();
+              const timeline = chatMemory.filter(m => m.role==="assistant" && (m.actions||[]).length>0).slice().reverse();
               if (timeline.length===0) return <div style={{ padding:"30px 8px", textAlign:"center", color:"#6B7280", fontSize:12, lineHeight:1.6 }}>No actions yet. When you ask me to recode transactions, add accounts, or set rules, they'll appear here as a timeline.</div>;
+              const bucketOf = (d) => {
+                if (!d) return "Earlier";
+                const now = new Date(); const dt = new Date(d);
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const days = Math.floor((start - new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())) / 86400000);
+                if (days <= 0) return "Today";
+                if (days === 1) return "Yesterday";
+                if (days <= 7) return "Last Week";
+                return "Earlier";
+              };
+              let lastBucket = null;
               return (
                 <div>
-                  <div style={{ fontSize:10, letterSpacing:1, color:"#6B7280", fontWeight:700, marginBottom:14 }}>ACTION HISTORY</div>
-                  {timeline.map((m,i)=>(
-                    <div key={m.id||i} style={{ display:"flex", gap:10, marginBottom:14 }}>
-                      <div style={{ flexShrink:0, width:8, display:"flex", flexDirection:"column", alignItems:"center" }}>
-                        <div style={{ width:8, height:8, borderRadius:"50%", background:"#4F46E5", marginTop:3 }} />
-                        {i<timeline.length-1 && <div style={{ flex:1, width:2, background:"#E5E7EB", marginTop:2 }} />}
+                  {timeline.map((m,i)=>{
+                    const bucket = bucketOf(m.created_at);
+                    const showHeader = bucket !== lastBucket; lastBucket = bucket;
+                    return (
+                    <React.Fragment key={m.id||i}>
+                      {showHeader && <div style={{ fontSize:10, letterSpacing:1, color:"#6B7280", fontWeight:700, margin: i===0?"0 0 12px":"18px 0 12px" }}>{bucket.toUpperCase()}</div>}
+                      <div style={{ display:"flex", gap:10, marginBottom:14 }}>
+                        <div style={{ flexShrink:0, width:8, display:"flex", flexDirection:"column", alignItems:"center" }}>
+                          <div style={{ width:8, height:8, borderRadius:"50%", background:"#4F46E5", marginTop:3 }} />
+                          {i<timeline.length-1 && <div style={{ flex:1, width:2, background:"#E5E7EB", marginTop:2 }} />}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:11, color:"#6B7280", marginBottom:4 }}>{m.created_at ? new Date(m.created_at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : ""}</div>
+                          {(m.actions||[]).map((a,j)=>(
+                            <div key={j} style={{ fontSize:12, color:"#111827", lineHeight:1.5, display:"flex", gap:6, marginBottom:3 }}>
+                              <span style={{ color:"#4F46E5", flexShrink:0 }}>⚡</span><span>{a}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:11, color:"#6B7280", marginBottom:4 }}>{m.created_at ? new Date(m.created_at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : ""}</div>
-                        {(m.actions||[]).map((a,j)=>(
-                          <div key={j} style={{ fontSize:12, color:"#111827", lineHeight:1.5, display:"flex", gap:6, marginBottom:3 }}>
-                            <span style={{ color:"#4F46E5", flexShrink:0 }}>⚡</span><span>{a}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    </React.Fragment>
+                    );
+                  })}
                 </div>
               );
             })() : (<>
