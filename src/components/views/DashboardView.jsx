@@ -225,29 +225,37 @@ export default function DashboardView() {
   return (
             <div>
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
+              <style>{`
+                .sc-dropzone{ transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+                .sc-dropzone:hover{ border-color:#4F46E5 !important; background:#FAFAFF !important; box-shadow:0 0 0 4px rgba(79,70,229,0.07), 0 10px 30px rgba(79,70,229,0.10) !important; }
+                .sc-dropzone:hover .sc-dropzone-icon{ opacity:1 !important; transform:translateY(-3px); }
+                .sc-dropzone .sc-dropzone-icon{ transition: opacity .18s ease, transform .18s ease; }
+                @keyframes scDropPulse{0%,100%{box-shadow:0 0 0 4px rgba(79,70,229,0.10),0 10px 32px rgba(79,70,229,0.16)}50%{box-shadow:0 0 0 9px rgba(79,70,229,0.05),0 10px 36px rgba(79,70,229,0.24)}}
+                .sc-dropzone.dragging{ animation:scDropPulse 1.3s ease-in-out infinite; }
+              `}</style>
               <div
+                className={`sc-dropzone${universalDragOver?" dragging":""}`}
                 onDragOver={e=>{e.preventDefault();setUniversalDragOver(true);}}
                 onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setUniversalDragOver(false);}}
                 onDrop={e=>{e.preventDefault();setUniversalDragOver(false);handleUniversalUpload(e.dataTransfer.files);}}
                 onClick={()=>document.getElementById("universal-upload").click()}
                 style={{
                   border:`2px dashed ${universalDragOver?"#4F46E5":"#D0D5DD"}`,
-                  borderRadius:16, padding:"52px 32px", textAlign:"center", cursor:"pointer",
-                  background:universalDragOver?"#F3F4F6":"#FFFFFF", transition:"all 0.18s",
-                  boxShadow:universalDragOver?"0 0 48px rgba(200,184,255,0.10)":"none",
+                  borderRadius:16, padding:"64px 32px", textAlign:"center", cursor:"pointer",
+                  background:universalDragOver?"#FAFAFF":"#FFFFFF",
                   marginBottom:20,
                 }}>
                 <input id="universal-upload" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>handleUniversalUpload(e.target.files)} />
-                <div style={{ fontSize:44, marginBottom:14, opacity: universalDragOver ? 1 : 0.5, transition:"opacity 0.18s" }}>⬆</div>
-                <div style={{ fontSize:20, fontWeight:700, color:"#101828", marginBottom:6, letterSpacing:-0.3 }}>
+                <div className="sc-dropzone-icon" style={{ width:64, height:64, margin:"0 auto 18px", borderRadius:18, background:universalDragOver?"#4F46E5":"#EEF2FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:universalDragOver?"#fff":"#4F46E5", opacity: universalDragOver?1:0.92 }}>⬆</div>
+                <div style={{ fontSize:22, fontWeight:700, color:"#101828", marginBottom:8, letterSpacing:-0.4 }}>
                   {universalDragOver ? "Release to upload" : "Drop anything here"}
                 </div>
-                <div style={{ fontSize:14, color:"#475467", marginBottom:14 }}>
-                  invoices, receipts, bank statements, contracts — AI handles the rest
+                <div style={{ fontSize:14, color:"#667085", marginBottom:18, lineHeight:1.5 }}>
+                  Invoices, receipts, bank statements, contracts — your AI controller handles the rest
                 </div>
                 <div style={{ display:"inline-flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
                   {["PDF","JPG","PNG","CSV","XLSX"].map(f=>(
-                    <span key={f} style={{ fontSize:10, fontWeight:600, color:"#475467", background:"#F3F4F6", border:"1px solid #E4E7EC", borderRadius:6, padding:"3px 9px", letterSpacing:0.5 }}>{f}</span>
+                    <span key={f} style={{ fontSize:10, fontWeight:600, color:"#667085", background:"#F2F4F7", border:"1px solid #E4E7EC", borderRadius:6, padding:"3px 9px", letterSpacing:0.5 }}>{f}</span>
                   ))}
                 </div>
               </div>
@@ -528,14 +536,17 @@ export default function DashboardView() {
                 if (!dl) return null;
                 const est = taxEstimate(invoices, new Date().getFullYear());
                 const amt = dl.est && est.total > 0 ? ` — estimated amount $${Math.round(est.quarterly).toLocaleString("en-US")}` : "";
+                const urgent = dl.days<=14;
+                const bg = urgent?"#FEF3F2":"#FFFAEB";
                 return (
-                  <div onClick={()=>setView("tax")} style={{ cursor:"pointer", background: dl.days<=14?"#FEF2F2":"#FFFBEB", border:`1px solid ${dl.color}55`, borderRadius:14, padding:"16px 20px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}
-                    onMouseEnter={e=>e.currentTarget.style.borderColor=dl.color} onMouseLeave={e=>e.currentTarget.style.borderColor=dl.color+"55"}>
-                    <div>
-                      <div style={{ fontSize:14, fontWeight:700, color:dl.color }}>⚠ {dl.plain} {dl.days===0?"due today":`in ${dl.days} day${dl.days!==1?"s":""}`}{amt}</div>
-                      <div style={{ fontSize:12, color:"#475467", marginTop:3 }}>Pay or file at <a href={dl.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ color:dl.color }}>{dl.est?"irs.gov/payments":"irs.gov"} ↗</a> · click for your full tax picture</div>
+                  <div onClick={()=>setView("tax")} style={{ cursor:"pointer", background:bg, border:`1px solid ${dl.color}40`, borderLeft:`4px solid ${dl.color}`, borderRadius:12, padding:"18px 20px", marginBottom:16, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap", boxShadow:`0 1px 3px ${dl.color}14` }}
+                    onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 4px 14px ${dl.color}22`;}} onMouseLeave={e=>{e.currentTarget.style.boxShadow=`0 1px 3px ${dl.color}14`;}}>
+                    <div style={{ width:42, height:42, borderRadius:11, background:dl.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:"#fff", flexShrink:0 }}>⚠</div>
+                    <div style={{ flex:"1 1 280px", minWidth:0 }}>
+                      <div style={{ fontSize:15, fontWeight:700, color:dl.color, letterSpacing:-0.2 }}>{dl.plain} {dl.days===0?"due today":`in ${dl.days} day${dl.days!==1?"s":""}`}{amt}</div>
+                      <div style={{ fontSize:12.5, color:"#667085", marginTop:4 }}>Pay or file at <a href={dl.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ color:dl.color, fontWeight:600 }}>{dl.est?"irs.gov/payments":"irs.gov"} ↗</a> · click for your full tax picture</div>
                     </div>
-                    <span style={{ fontSize:13, color:dl.color, fontWeight:600 }}>Open Taxes →</span>
+                    <span style={{ fontSize:13, color:"#fff", fontWeight:600, background:dl.color, borderRadius:8, padding:"8px 14px", whiteSpace:"nowrap" }}>Open Taxes →</span>
                   </div>
                 );
               })()}
@@ -583,16 +594,18 @@ export default function DashboardView() {
                   { label:"NET INCOME (YTD)", value:(ytdNet<0?"-":"")+fmt0(ytdNet), color:ytdNet>=0?"#039855":"#D92D20", sub:"Revenue − expenses", drill:{type:"net"} },
                 ];
                 return (
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:14, marginBottom:24 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:16, marginBottom:24 }}>
                     {cards.map(c=>(
                       <div key={c.label} onClick={()=>setDashDrill(c.drill)} className="sc-card"
-                        style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:"20px 22px", cursor:"pointer" }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                          <div style={{ fontSize:11, color:"#475467", letterSpacing:1 }}>{c.label}</div>
-                          <span style={{ fontSize:13, color:"#4F46E5", fontWeight:600 }}>›</span>
+                        onMouseEnter={e=>{e.currentTarget.style.borderColor="#D0D5DD"; e.currentTarget.style.transform="translateY(-1px)";}}
+                        onMouseLeave={e=>{e.currentTarget.style.borderColor="#E4E7EC"; e.currentTarget.style.transform="translateY(0)";}}
+                        style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, padding:"22px 24px", cursor:"pointer", transition:"border-color 0.12s, transform 0.12s" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                          <div style={{ fontSize:12, color:"#667085", letterSpacing:0.4, fontWeight:600 }}>{c.label}</div>
+                          <span style={{ fontSize:14, color:"#98A2B3", fontWeight:600 }}>›</span>
                         </div>
-                        <div style={{ fontSize:26, fontWeight:700, color:c.color, fontFamily:"'DM Mono',monospace" }}>{c.value}</div>
-                        <div style={{ fontSize:11, color:"#475467", marginTop:6 }}>{c.sub}</div>
+                        <div style={{ fontSize:32, fontWeight:700, color:c.color, fontFamily:"'DM Mono',monospace", letterSpacing:-1, lineHeight:1.1 }}>{c.value}</div>
+                        <div style={{ fontSize:12, color:"#667085", marginTop:8 }}>{c.sub}</div>
                       </div>
                     ))}
                   </div>
@@ -648,24 +661,24 @@ export default function DashboardView() {
                 const ago = ts => { if(!ts) return ""; const s=(Date.now()-new Date(ts).getTime())/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; if(s<604800)return Math.floor(s/86400)+"d ago"; return new Date(ts).toLocaleDateString(); };
                 const shown = items.slice(0, feedCount);
                 return (
-                  <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
-                    <div style={{ padding:"16px 20px", borderBottom:"1px solid #F3F4F6", fontSize:13, fontWeight:600 }}>Activity</div>
-                    {shown.length===0 ? <div style={{ padding:"36px", textAlign:"center", color:"#475467", fontSize:13 }}>Nothing yet — drop a document above to get started.</div> :
+                  <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"hidden" }}>
+                    <div style={{ padding:"16px 24px", borderBottom:"1px solid #EEF0F4", fontSize:14, fontWeight:600, color:"#101828" }}>Activity</div>
+                    {shown.length===0 ? <div style={{ padding:"44px", textAlign:"center", color:"#667085", fontSize:13 }}>Nothing yet — drop a document above to get started.</div> :
                       shown.map((it,idx)=>(
                         <div key={idx} onClick={()=>{ if(it.inv){ setSelectedInvoice(it.inv); setView("detail"); } }}
                           onMouseEnter={e=>{ if(it.inv) e.currentTarget.style.background="#F9FAFB"; }} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-                          style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 20px", borderTop: idx?"1px solid #F3F4F6":"none", cursor: it.inv?"pointer":"default" }}>
-                          <div style={{ width:32, height:32, borderRadius:9, background:"#F3F4F6", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>{it.icon}</div>
+                          style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 24px", borderTop: idx?"1px solid #F2F4F7":"none", cursor: it.inv?"pointer":"default", transition:"background 0.1s" }}>
+                          <div style={{ width:36, height:36, borderRadius:10, background: it.amount!=null?(it.rev?"#ECFDF3":"#FEF3F2"):"#F2F4F7", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{it.icon}</div>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13, color:"#101828", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{it.text}</div>
-                            <div style={{ fontSize:11, color:"#475467" }}>{ago(it.ts)}</div>
+                            <div style={{ fontSize:13.5, fontWeight:500, color:"#101828", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{it.text}</div>
+                            <div style={{ fontSize:12, color:"#98A2B3", marginTop:2 }}>{ago(it.ts)}</div>
                           </div>
-                          {it.amount!=null && <div style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color: it.rev?"#039855":"#D92D20", flexShrink:0 }}>{it.rev?"+":"-"}${Math.abs(it.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</div>}
+                          {it.amount!=null && <div style={{ fontSize:13.5, fontWeight:600, fontFamily:"'DM Mono',monospace", color: it.rev?"#039855":"#D92D20", flexShrink:0 }}>{it.rev?"+":"−"}${Math.abs(it.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</div>}
                         </div>
                       ))
                     }
                     {items.length > feedCount && (
-                      <div style={{ padding:"12px", textAlign:"center", borderTop:"1px solid #F3F4F6" }}>
+                      <div style={{ padding:"14px", textAlign:"center", borderTop:"1px solid #EEF0F4" }}>
                         <button onClick={()=>setFeedCount(c=>c+20)} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:13, fontWeight:600, cursor:"pointer" }}>Load more</button>
                       </div>
                     )}

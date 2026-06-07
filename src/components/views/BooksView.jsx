@@ -71,13 +71,13 @@ export default function BooksView() {
   const sel = invoices.find(i => i.id === selId) || null;
 
   const statusBadge = (i) => {
-    if (i.status==="voided") return <span style={pill("#475467")}>Voided</span>;
-    if (i.payment_status==="paid") return <span style={pill("#039855")}>Paid · {methodLabel(i.payment_method_used).split(" ")[0]}</span>;
+    if (i.status==="voided") return <span style={pill("#667085")}>Voided</span>;
+    if (i.payment_status==="paid") return <span style={pill("#1570EF")}>Paid · {methodLabel(i.payment_method_used).split(" ")[0]}</span>;
     if (i.payment_status==="collected") return <span style={pill("#039855")}>Collected</span>;
     if (needsReview(i)) return <span style={pill("#DC6803")}>Needs Review</span>;
-    return <span style={pill("#4F46E5")}>Booked</span>;
+    return <span style={pill("#039855")}>Booked</span>;
   };
-  function pill(c){ return { fontSize:10, fontWeight:600, color:c, background:c+"14", border:`1px solid ${c}33`, borderRadius:20, padding:"2px 9px", whiteSpace:"nowrap" }; }
+  function pill(c){ return { display:"inline-flex", alignItems:"center", fontSize:11, fontWeight:600, color:c, background:c+"14", border:`1px solid ${c}29`, borderRadius:6, padding:"3px 9px", whiteSpace:"nowrap", lineHeight:1.2 }; }
 
   const doRecode = (inv, code) => {
     const acct = (CHART_OF_ACCOUNTS||[]).find(a => a.code === code);
@@ -148,30 +148,41 @@ export default function BooksView() {
 
       {filter!=="contracts" && (<>
       {/* Table */}
-      <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+      <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"hidden" }}>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
-          <thead><tr style={{ background:"#F3F4F6" }}>
+          <thead><tr style={{ background:"#F9FAFB" }}>
             {["Date","Vendor","Description","GL Account","Amount","Status",""].map((h,i)=>(
-              <th key={i} style={{ padding:"11px 16px", textAlign:h==="Amount"?"right":"left", fontSize:11, color:"#475467", letterSpacing:1, fontWeight:600, borderBottom:"1px solid #E4E7EC", whiteSpace:"nowrap" }}>{h.toUpperCase()}</th>
+              <th key={i} style={{ padding:"10px 16px", textAlign:h==="Amount"?"right":"left", fontSize:12, color:"#98A2B3", letterSpacing:0.6, fontWeight:600, borderBottom:"1px solid #E4E7EC", whiteSpace:"nowrap" }}>{h.toUpperCase()}</th>
             ))}
           </tr></thead>
           <tbody>
             {rows.length===0 ? (
-              <tr><td colSpan={7} style={{ padding:"44px", textAlign:"center", color:"#475467", fontSize:13 }}>No transactions match.{search||filter!=="all"?" Try clearing the search or filter.":" Upload a document on Home to get started."}</td></tr>
+              <tr><td colSpan={7} style={{ padding:0 }}>
+                <div style={{ padding:"56px 32px", textAlign:"center" }}>
+                  <div style={{ width:52, height:52, borderRadius:14, background:"#F2F4F7", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:24 }}>{search||filter!=="all"?"🔍":"📭"}</div>
+                  <div style={{ fontSize:15, fontWeight:600, color:"#101828", marginBottom:6 }}>{search||filter!=="all"?"No matching transactions":"No transactions yet"}</div>
+                  <div style={{ fontSize:13, color:"#667085", marginBottom:20, maxWidth:340, marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>{search||filter!=="all"?"Try clearing your search or switching filters to see more.":"Upload an invoice, receipt, or bank statement and it'll appear here, fully coded."}</div>
+                  {!(search||filter!=="all") && (
+                    <button onClick={()=>setView("home")}
+                      onMouseEnter={e=>e.currentTarget.style.background="#4338CA"} onMouseLeave={e=>e.currentTarget.style.background="#4F46E5"}
+                      style={{ height:36, padding:"0 18px", borderRadius:8, background:"#4F46E5", border:"none", color:"#fff", fontSize:14, fontWeight:500, cursor:"pointer", transition:"background 0.12s" }}>Upload a document →</button>
+                  )}
+                </div>
+              </td></tr>
             ) : rows.map((inv,idx)=>{
               const rev = isRevenue(inv);
               const unpaidExp = isExpense(inv) && inv.payment_status!=="paid" && inv.status!=="voided";
               return (
                 <React.Fragment key={inv.id}>
-                  <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", background: selId===inv.id?"#EEF2FF":idx%2?"#F9FAFB":"#FFFFFF", borderBottom:"1px solid #F3F4F6", opacity: inv.status==="voided"?0.55:1 }}
-                    onMouseEnter={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#EEF2FF"; }} onMouseLeave={e=>{ if(selId!==inv.id) e.currentTarget.style.background=idx%2?"#F9FAFB":"#FFFFFF"; }}>
-                    <td style={{ padding:"11px 16px", fontSize:12, color:"#475467", fontFamily:"'DM Mono',monospace", whiteSpace:"nowrap" }}>{inv.date||"—"}</td>
-                    <td style={{ padding:"11px 16px" }}><div style={{ display:"flex", alignItems:"center", gap:9 }}><span style={{ width:26,height:26,borderRadius:7,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"#101828" }}>{inv.vendor||"—"}</span></div></td>
-                    <td style={{ padding:"11px 16px", fontSize:12, color:"#475467", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
-                    <td style={{ padding:"11px 16px", fontSize:12, color:"#374151", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"#475467" }}>{inv.gl_code}</span> {inv.gl_name}</td>
-                    <td style={{ padding:"11px 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: rev?"#039855":"#D92D20", whiteSpace:"nowrap" }}>{rev?"+":"-"}{fmt(inv.amount)}</td>
-                    <td style={{ padding:"11px 16px" }}>{statusBadge(inv)}</td>
-                    <td style={{ padding:"11px 16px", textAlign:"right", whiteSpace:"nowrap" }}>
+                  <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"#EEF2FF":"#FFFFFF", borderBottom:"1px solid #EEF0F4", opacity: inv.status==="voided"?0.55:1, transition:"background 0.1s" }}
+                    onMouseEnter={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#F9FAFB"; }} onMouseLeave={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#FFFFFF"; }}>
+                    <td style={{ padding:"0 16px", fontSize:12, color:"#667085", fontFamily:"'DM Mono',monospace", whiteSpace:"nowrap" }}>{inv.date||"—"}</td>
+                    <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"#101828" }}>{inv.vendor||"—"}</span></div></td>
+                    <td style={{ padding:"0 16px", fontSize:13, color:"#475467", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
+                    <td style={{ padding:"0 16px", fontSize:13, color:"#374151", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"#98A2B3", marginRight:6 }}>{inv.gl_code}</span>{inv.gl_name}</td>
+                    <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: rev?"#039855":"#D92D20", whiteSpace:"nowrap" }}>{rev?"+":"−"}{fmt(inv.amount)}</td>
+                    <td style={{ padding:"0 16px" }}>{statusBadge(inv)}</td>
+                    <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
                       {unpaidExp && (
                         <button onClick={e=>{ e.stopPropagation(); setPayRowId(payRowId===inv.id?null:inv.id); setPayMethod("ach"); setPayDate(new Date().toISOString().slice(0,10)); }}
                           style={{ padding:"5px 11px", borderRadius:7, fontSize:11, fontWeight:600, background:"#ECFDF5", border:"1px solid #03985544", color:"#039855", cursor:"pointer" }}>Mark Paid</button>

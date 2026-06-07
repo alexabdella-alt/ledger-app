@@ -3254,6 +3254,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
         *{box-sizing:border-box}
         body, input, button, select, textarea { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+        /* Consistent form focus + interactive defaults across the app */
+        button:not(:disabled){ cursor:pointer; }
+        input:focus, select:focus, textarea:focus { border-color:#4F46E5 !important; box-shadow:0 0 0 3px rgba(79,70,229,0.10); outline:none; }
         /* Tabular figures for monospace numbers — fintech-grade alignment */
         [style*="DM Mono"]{ font-variant-numeric: tabular-nums; }
         /* Card elevation (used sparingly) */
