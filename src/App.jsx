@@ -242,12 +242,21 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
   // ── DOCUMENT STORAGE ─────────────────────────────────────────────────────────
   const [docLibrary, setDocLibrary] = useState([]);
-  const storeDocument = (name, base64, mediaType, type, linkedId=null, tags=[]) => {
+  // Records a document-save failure permanently on its upload-queue item (so the
+  // user can read it), and also flashes a notification. Falls back to just the
+  // flash when there's no queue item to attach to.
+  const reportDocError = (queueItemId, msg) => {
+    if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: msg } : q));
+    showNotification(`Document not saved to cloud: ${msg}`, "error");
+  };
+
+  const storeDocument = (name, base64, mediaType, type, linkedId=null, tags=[], queueItemId=null) => {
     const doc = { id: Date.now()+Math.random(), name, base64, mediaType, type, uploaded_at: new Date().toISOString(), linked_invoice_id: linkedId, tags };
     setDocLibrary(prev => [doc, ...prev]);
     // Persist metadata only — base64 is intentionally NOT stored (too large).
     if (!currentCompany?.id) {
       console.warn("[documents] storeDocument: no currentCompany.id — NOT persisting", { name, type });
+      reportDocError(queueItemId, "no active company — document metadata was not saved.");
       return doc.id;
     }
     const payload = {
@@ -259,17 +268,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       linked_invoice_id: linkedId != null ? String(linkedId) : null,
       uploaded_at: doc.uploaded_at,
     };
-    
-    supabase.from("documents").insert(payload).select("id").single().then(({ data, error }) => {
-      if (error) {
-        console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error);
-        showNotification(`Document not saved to cloud: ${error.message || "missing documents table — apply migration 002"}`, "error");
-        return;
-      }
-      
-      // Swap the temp client id for the DB id so it matches on next reload.
-      if (data?.id) setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data.id } : d));
-    });
+
+    supabase.from("documents").insert(payload).select("id").single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error);
+          reportDocError(queueItemId, error.message || "missing documents table — apply migration 002.");
+          return;
+        }
+        // Clear any prior error and swap the temp client id for the DB id.
+        if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
+        if (data?.id) setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data.id } : d));
+      })
+      .catch((e) => {
+        console.error("[documents] insert threw:", e);
+        reportDocError(queueItemId, e?.message || "network error saving document.");
+      });
     return doc.id;
   };
 
@@ -1573,7 +1587,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
 
           const newInvoices = [...highConfidence];
           const totalAmt = newInvoices.reduce((s,i)=>s+i.amount, 0);
-          storeDocument(item.name, base64, mediaType, "invoice", newInvoices[0]?.id||null, ["uploaded"]);
+          storeDocument(item.name, base64, mediaType, "invoice", newInvoices[0]?.id||null, ["uploaded"], item.id);
           logAudit("invoice_uploaded", `Uploaded ${item.name}: ${extractedList.length} invoice(s) extracted`);
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
             invoiceCount: highConfidence.length,
@@ -1791,7 +1805,7 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
           const saved = { ...contract, id:Date.now()+Math.random(), file_name:item.name, uploaded_at:new Date().toISOString(), posted_entries:[] };
           setContracts(prev => [saved, ...prev]);
           persistContract(saved);
-          storeDocument(item.name, base64, mediaType, "contract", saved.id, ["contract"]);
+          storeDocument(item.name, base64, mediaType, "contract", saved.id, ["contract"], item.id);
           logAudit("contract_uploaded", `Contract uploaded: ${item.name}`);
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
             counterparty:contract.counterparty, type:contract.contract_type, entries:contract.journal_entries?.length||0

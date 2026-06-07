@@ -296,6 +296,11 @@ export default function DashboardView() {
                               )}
                               {item.status==="done" && item.type==="contract" && item.result && `✓ ${tc.label} · ${item.result.counterparty} · ${item.result.entries} journal entries generated`}
                               {item.status==="done" && item.type==="unknown" && item.result && `⚠ ${item.result.document_type||"Unknown"} · ${item.result.entry_needed?"Entry proposed — needs review":"No entry needed — flagged for review"}`}
+                              {item.docError && (
+                                <div style={{ marginTop:5, fontSize:11, color:"#DC2626", background:"#FEF2F2", border:"1px solid #DC262633", borderRadius:7, padding:"6px 9px", lineHeight:1.45, whiteSpace:"normal" }}>
+                                  ⚠ Document not saved to cloud: {item.docError}
+                                </div>
+                              )}
                             </div>
                           </div>
                           {/* Status pill */}
