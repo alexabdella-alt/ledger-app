@@ -302,6 +302,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       uploaded_by: session?.user?.id || null,
       storage_path: storagePath,
       file_size_bytes: fileSize,
+      linked_invoice_id: linkedId != null ? String(linkedId) : null,  // ties the doc to its invoice
     };
     try {
       const { data, error } = await supabase.from("documents").insert(payload).select("id").single();

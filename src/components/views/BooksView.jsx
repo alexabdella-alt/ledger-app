@@ -2,6 +2,7 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor } from "../../lib/format";
+import DocumentPreviewModal, { docIcon, isImageDoc } from "../DocumentPreviewModal";
 
 export default function BooksView() {
   const {
@@ -9,9 +10,12 @@ export default function BooksView() {
     setSelectedInvoice, setView, CHART_OF_ACCOUNTS,
     booksFilter, setBooksFilter,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
-    reconciliations,
+    reconciliations, docLibrary, storeDocument, fileToBase64,
   } = useERP();
   const [showReconHistory, setShowReconHistory] = React.useState(false);
+  const [srcDocPreview, setSrcDocPreview] = React.useState(null); // source-document modal
+  const [srcUploading, setSrcUploading] = React.useState(false);
+  const srcFileRef = React.useRef(null);
 
   const [search, setSearch] = React.useState("");
   const [selId, setSelId] = React.useState(null);
@@ -20,6 +24,23 @@ export default function BooksView() {
   const [payMethod, setPayMethod] = React.useState("ach");
   const [payDate, setPayDate] = React.useState(new Date().toISOString().slice(0,10));
   const [recodeOpen, setRecodeOpen] = React.useState(false);
+
+  // Find the source document linked to an invoice (by linked_invoice_id matching
+  // its in-session id or its durable db_entry_id).
+  const findSourceDoc = (inv) => (docLibrary || []).find(d =>
+    d.linked_invoice_id && (String(d.linked_invoice_id) === String(inv?.id) || String(d.linked_invoice_id) === String(inv?.db_entry_id))
+  );
+  const handleSourceUpload = async (file, inv) => {
+    if (!file || !inv) return;
+    setSrcUploading(true);
+    try {
+      const base64 = await fileToBase64(file);
+      // Link to the durable DB entry id when available, else the in-session id.
+      await storeDocument(file.name, base64, file.type, inv.type || "invoice", inv.db_entry_id || inv.id, ["source"], null, file);
+      showNotification("Source document attached ✓");
+    } catch (e) { console.error(e); showNotification("Couldn't attach document.", "error"); }
+    setSrcUploading(false);
+  };
 
   const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
   const filter = booksFilter || "all";
@@ -303,6 +324,36 @@ export default function BooksView() {
                   <div style={{ fontSize:13, color:"#374151", lineHeight:1.6 }}>{sel.reasoning}</div>
                 </div>
               )}
+
+              {/* Source Document */}
+              {(() => {
+                const srcDoc = findSourceDoc(sel);
+                return (
+                  <div style={{ marginTop:16 }}>
+                    <div style={{ fontSize:10, letterSpacing:1, color:"#4F46E5", marginBottom:8, fontWeight:600 }}>SOURCE DOCUMENT</div>
+                    {srcDoc ? (
+                      <div onClick={()=>setSrcDocPreview(srcDoc)} style={{ display:"flex", alignItems:"center", gap:12, background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:10, padding:"12px 14px", cursor:"pointer", transition:"border-color 0.15s" }}
+                        onMouseEnter={e=>e.currentTarget.style.borderColor="#4F46E5"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E5E7EB"}>
+                        <div style={{ width:42, height:42, borderRadius:8, background:"#F3F4F6", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                          <span style={{ fontSize:22 }}>{srcDoc.mediaType==="application/pdf"?"📄":isImageDoc(srcDoc.mediaType)?"🖼":docIcon(srcDoc.type)}</span>
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:500, wordBreak:"break-word" }}>{srcDoc.name}</div>
+                          <div style={{ fontSize:11, color:"#6B7280", marginTop:2 }}>{srcDoc.uploaded_at?.slice(0,10)}{srcDoc.mediaType?` · ${srcDoc.mediaType}`:""}</div>
+                        </div>
+                        <button onClick={(e)=>{ e.stopPropagation(); setSrcDocPreview(srcDoc); }} style={{ flexShrink:0, padding:"7px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:"#EEF2FF", border:"1px solid #4F46E533", color:"#4F46E5", cursor:"pointer", whiteSpace:"nowrap" }}>View Document</button>
+                      </div>
+                    ) : (
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, background:"#F9FAFB", border:"1px dashed #D1D5DB", borderRadius:10, padding:"12px 14px" }}>
+                        <div style={{ fontSize:12, color:"#9CA3AF" }}>No source document attached.</div>
+                        <button onClick={()=>srcFileRef.current?.click()} disabled={srcUploading} style={{ flexShrink:0, padding:"7px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:srcUploading?"#E5E7EB":"#4F46E5", border:"none", color:srcUploading?"#9CA3AF":"#fff", cursor:srcUploading?"default":"pointer", whiteSpace:"nowrap" }}>{srcUploading?"Uploading…":"↑ Upload"}</button>
+                        <input ref={srcFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; e.target.value=""; handleSourceUpload(f, sel); }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Recode */}
               <div style={{ marginTop:18 }}>
                 {recodeOpen ? (
@@ -329,6 +380,8 @@ export default function BooksView() {
           </div>
         </div>
       )}
+
+      {srcDocPreview && <DocumentPreviewModal doc={srcDocPreview} onClose={() => setSrcDocPreview(null)} />}
     </div>
   );
 }
