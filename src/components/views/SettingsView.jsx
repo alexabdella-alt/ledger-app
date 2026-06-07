@@ -21,27 +21,27 @@ export default function SettingsView() {
             };
             const inp = (k,l,p,type="text") => (
               <div>
-                <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>{l}</div>
+                <div style={{fontSize:11,color:"#475467",marginBottom:4}}>{l}</div>
                 <input type={type} value={draft[k]||""} onChange={e=>setDraft(d=>({...d,[k]:e.target.value}))} placeholder={p}
-                  style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"9px 12px",color:"#111827",fontSize:13,outline:"none"}}/>
+                  style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}/>
               </div>
             );
             return (
               <div style={{maxWidth:720}}>
                 <div style={{marginBottom:28}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"#6B7280",marginBottom:8}}>CONFIGURATION</div>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#475467",marginBottom:8}}>CONFIGURATION</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Settings</h1>
                 </div>
 
                 {/* Company identity */}
-                <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:24,marginBottom:16}}>
+                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16}}>
                   <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:16}}>COMPANY</div>
                   <div style={{display:"flex",gap:16,marginBottom:16,alignItems:"flex-start"}}>
                     {/* Logo */}
                     <div style={{flexShrink:0}}>
-                      <div style={{fontSize:11,color:"#6B7280",marginBottom:6}}>LOGO</div>
+                      <div style={{fontSize:11,color:"#475467",marginBottom:6}}>LOGO</div>
                       <div onClick={()=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=e=>handleLogo(e.target.files[0]);i.click();}}
-                        style={{width:80,height:80,borderRadius:12,border:"2px dashed #D1D5DB",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",background:"#F3F4F6"}}>
+                        style={{width:80,height:80,borderRadius:12,border:"2px dashed #D0D5DD",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",background:"#F3F4F6"}}>
                         {logoPreview ? <img src={logoPreview} style={{width:"100%",height:"100%",objectFit:"contain"}} alt="logo"/> : <span style={{fontSize:24}}>🏢</span>}
                       </div>
                     </div>
@@ -59,27 +59,27 @@ export default function SettingsView() {
                 </div>
 
                 {/* Accounting settings */}
-                <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:24,marginBottom:16}}>
+                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16}}>
                   <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:16}}>ACCOUNTING</div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
                     <div>
-                      <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>FISCAL YEAR END</div>
+                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>FISCAL YEAR END</div>
                       <select value={draft.fiscalYearEnd} onChange={e=>setDraft(d=>({...d,fiscalYearEnd:e.target.value}))}
-                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"9px 12px",color:"#111827",fontSize:13,outline:"none"}}>
+                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}>
                         {[["12-31","December 31"],["03-31","March 31"],["06-30","June 30"],["09-30","September 30"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
                       </select>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>DEFAULT CASH ACCOUNT</div>
+                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>DEFAULT CASH ACCOUNT</div>
                       <select value={draft.defaultCashAccount} onChange={e=>setDraft(d=>({...d,defaultCashAccount:e.target.value}))}
-                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"9px 12px",color:"#111827",fontSize:13,outline:"none"}}>
+                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}>
                         {CHART_OF_ACCOUNTS.filter(a=>a.category==="Assets").map(a=><option key={a.code} value={a.code}>{a.code} – {a.name}</option>)}
                       </select>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>CURRENCY</div>
+                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>CURRENCY</div>
                       <select value={draft.currency||"USD"} onChange={e=>setDraft(d=>({...d,currency:e.target.value}))}
-                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"9px 12px",color:"#111827",fontSize:13,outline:"none"}}>
+                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}>
                         {["USD","EUR","GBP","CAD","AUD"].map(c=><option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
@@ -87,32 +87,32 @@ export default function SettingsView() {
                 </div>
 
                 {/* Bank accounts */}
-                <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:24,marginBottom:16}}>
+                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16}}>
                   <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:16}}>BANK ACCOUNTS</div>
                   <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
                     {bankAccounts.map(ba=>(
                       <div key={ba.id} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:10,alignItems:"center"}}>
                         <input value={ba.name} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,name:e.target.value}:b))}
-                          placeholder="Account name" style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:12,outline:"none"}}/>
+                          placeholder="Account name" style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}/>
                         <select value={ba.type} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,type:e.target.value}:b))}
-                          style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:12,outline:"none"}}>
+                          style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}>
                           {["checking","savings","credit_card","loan","other"].map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}
                         </select>
                         <select value={ba.gl_code} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,gl_code:e.target.value}:b))}
-                          style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:12,outline:"none"}}>
+                          style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}>
                           {CHART_OF_ACCOUNTS.filter(a=>["Assets","Liabilities"].includes(a.category)).map(a=><option key={a.code} value={a.code}>{a.code}</option>)}
                         </select>
                         <input value={ba.institution||""} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,institution:e.target.value}:b))}
-                          placeholder="Bank name" style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:12,outline:"none"}}/>
-                        <button onClick={()=>setBankAccounts(prev=>prev.filter(b=>b.id!==ba.id))} style={{background:"transparent",border:"1px solid #D1D5DB",borderRadius:7,padding:"7px 10px",color:"#DC2626",cursor:"pointer",fontSize:13}}>×</button>
+                          placeholder="Bank name" style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}/>
+                        <button onClick={()=>setBankAccounts(prev=>prev.filter(b=>b.id!==ba.id))} style={{background:"transparent",border:"1px solid #D0D5DD",borderRadius:7,padding:"7px 10px",color:"#D92D20",cursor:"pointer",fontSize:13}}>×</button>
                       </div>
                     ))}
                   </div>
                   <button onClick={()=>setBankAccounts(prev=>[...prev,{id:Date.now()+Math.random(),name:"",type:"checking",gl_code:getAccountByRole("cash")?.code,institution:""}])}
-                    style={{fontSize:12,background:"transparent",border:"1px dashed #D1D5DB",borderRadius:8,padding:"7px 16px",color:"#6B7280",cursor:"pointer"}}>+ Add Bank Account</button>
+                    style={{fontSize:12,background:"transparent",border:"1px dashed #D0D5DD",borderRadius:8,padding:"7px 16px",color:"#475467",cursor:"pointer"}}>+ Add Bank Account</button>
                 </div>
 
-                <button onClick={save} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,#D1FAE5,#059669)":"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:saved?"#059669":"#111827",cursor:"pointer",transition:"all 0.3s"}}>
+                <button onClick={save} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,#D1FAE5,#039855)":"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:saved?"#039855":"#101828",cursor:"pointer",transition:"all 0.3s"}}>
                   {saved ? "✓ Saved" : "Save Settings"}
                 </button>
               </div>

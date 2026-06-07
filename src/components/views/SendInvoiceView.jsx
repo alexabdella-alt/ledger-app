@@ -54,7 +54,7 @@ export default function SendInvoiceView() {
   .invoice-meta{text-align:right}
   .invoice-number{font-size:28px;font-weight:700;color:#4F46E5}
   table{width:100%;border-collapse:collapse;margin:24px 0}
-  th{background:#111827;padding:10px 12px;text-align:left;font-size:12px;letter-spacing:1px;text-transform:uppercase}
+  th{background:#101828;padding:10px 12px;text-align:left;font-size:12px;letter-spacing:1px;text-transform:uppercase}
   td{padding:10px 12px;border-bottom:1px solid #eee}
   .totals{margin-left:auto;width:280px;margin-top:16px}
   .total-row{display:flex;justify-content:space-between;padding:6px 0}
@@ -114,119 +114,119 @@ ${draft.notes?`<div class="footer">Notes: ${draft.notes}</div>`:""}
             return (
               <div>
                 <div style={{marginBottom:24}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"#6B7280",marginBottom:8}}>ACCOUNTS RECEIVABLE</div>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#475467",marginBottom:8}}>ACCOUNTS RECEIVABLE</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Send Invoice</h1>
                 </div>
 
                 <div style={{display:"grid",gridTemplateColumns:"1fr 380px",gap:20,alignItems:"flex-start"}}>
                   {/* Editor */}
                   <div>
-                    <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:24,marginBottom:16}}>
+                    <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16}}>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
                         <div>
-                          <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>INVOICE NUMBER</div>
+                          <div style={{fontSize:11,color:"#475467",marginBottom:4}}>INVOICE NUMBER</div>
                           <input value={draft.invoice_number} onChange={e=>setDraft(d=>({...d,invoice_number:e.target.value}))}
-                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 12px",color:"#4F46E5",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",fontWeight:600}}/>
+                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 12px",color:"#4F46E5",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",fontWeight:600}}/>
                         </div>
                         <div>
-                          <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>TERMS</div>
+                          <div style={{fontSize:11,color:"#475467",marginBottom:4}}>TERMS</div>
                           <select value={draft.terms} onChange={e=>setDraft(d=>({...d,terms:e.target.value}))}
-                            style={{width:"100%",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 12px",color:"#111827",fontSize:13,outline:"none"}}>
+                            style={{width:"100%",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 12px",color:"#101828",fontSize:13,outline:"none"}}>
                             {["On Receipt","Net 15","Net 30","Net 60","Net 90"].map(t=><option key={t} value={t}>{t}</option>)}
                           </select>
                         </div>
                         <div>
-                          <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>BILL TO</div>
+                          <div style={{fontSize:11,color:"#475467",marginBottom:4}}>BILL TO</div>
                           <input value={draft.customer} onChange={e=>setDraft(d=>({...d,customer:e.target.value}))} placeholder="Customer name"
                             list="customer-list"
-                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 12px",color:"#111827",fontSize:13,outline:"none"}}/>
+                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 12px",color:"#101828",fontSize:13,outline:"none"}}/>
                           <datalist id="customer-list">{contacts.filter(c=>c.type==="customer").map(c=><option key={c.id} value={c.name}/>)}</datalist>
                         </div>
                         <div>
-                          <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>EMAIL</div>
+                          <div style={{fontSize:11,color:"#475467",marginBottom:4}}>EMAIL</div>
                           <input type="email" value={draft.customer_email} onChange={e=>setDraft(d=>({...d,customer_email:e.target.value}))} placeholder="customer@email.com"
-                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 12px",color:"#111827",fontSize:13,outline:"none"}}/>
+                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 12px",color:"#101828",fontSize:13,outline:"none"}}/>
                         </div>
                         <div>
-                          <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>ISSUE DATE</div>
+                          <div style={{fontSize:11,color:"#475467",marginBottom:4}}>ISSUE DATE</div>
                           <input type="date" value={draft.issue_date} onChange={e=>setDraft(d=>({...d,issue_date:e.target.value}))}
-                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 12px",color:"#111827",fontSize:13,outline:"none"}}/>
+                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 12px",color:"#101828",fontSize:13,outline:"none"}}/>
                         </div>
                         <div>
-                          <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>DUE DATE</div>
+                          <div style={{fontSize:11,color:"#475467",marginBottom:4}}>DUE DATE</div>
                           <input type="date" value={draft.due_date} onChange={e=>setDraft(d=>({...d,due_date:e.target.value}))}
-                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 12px",color:"#111827",fontSize:13,outline:"none"}}/>
+                            style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 12px",color:"#101828",fontSize:13,outline:"none"}}/>
                         </div>
                       </div>
 
                       {/* Line items */}
                       <div style={{marginBottom:12}}>
-                        <div style={{fontSize:11,color:"#6B7280",marginBottom:8,letterSpacing:1}}>LINE ITEMS</div>
+                        <div style={{fontSize:11,color:"#475467",marginBottom:8,letterSpacing:1}}>LINE ITEMS</div>
                         {draft.line_items.map((line,i)=>(
                           <div key={line.id} style={{display:"grid",gridTemplateColumns:"3fr 80px 100px 100px 36px",gap:8,marginBottom:8,alignItems:"center"}}>
                             <input value={line.description} onChange={e=>updateLine(line.id,"description",e.target.value)} placeholder="Description of service or product"
-                              style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:12,outline:"none"}}/>
+                              style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}/>
                             <input type="number" value={line.qty} onChange={e=>updateLine(line.id,"qty",e.target.value)} placeholder="Qty"
-                              style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:12,outline:"none",textAlign:"center"}}/>
+                              style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none",textAlign:"center"}}/>
                             <input type="number" value={line.rate} onChange={e=>updateLine(line.id,"rate",e.target.value)} placeholder="Rate"
-                              style={{background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 10px",color:"#111827",fontSize:12,outline:"none",textAlign:"right"}}/>
-                            <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,textAlign:"right",color:"#111827",padding:"0 4px"}}>{fmt(line.amount)}</div>
-                            <button onClick={()=>setDraft(d=>({...d,line_items:d.line_items.filter(l=>l.id!==line.id)}))} style={{background:"transparent",border:"1px solid #D1D5DB",borderRadius:7,color:"#DC2626",cursor:"pointer",fontSize:14,padding:"6px"}}>×</button>
+                              style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none",textAlign:"right"}}/>
+                            <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,textAlign:"right",color:"#101828",padding:"0 4px"}}>{fmt(line.amount)}</div>
+                            <button onClick={()=>setDraft(d=>({...d,line_items:d.line_items.filter(l=>l.id!==line.id)}))} style={{background:"transparent",border:"1px solid #D0D5DD",borderRadius:7,color:"#D92D20",cursor:"pointer",fontSize:14,padding:"6px"}}>×</button>
                           </div>
                         ))}
-                        <button onClick={()=>setDraft(d=>({...d,line_items:[...d.line_items,emptyLine()]}))} style={{fontSize:12,background:"transparent",border:"1px dashed #D1D5DB",borderRadius:8,padding:"7px 16px",color:"#6B7280",cursor:"pointer",marginTop:4}}>+ Add Line</button>
+                        <button onClick={()=>setDraft(d=>({...d,line_items:[...d.line_items,emptyLine()]}))} style={{fontSize:12,background:"transparent",border:"1px dashed #D0D5DD",borderRadius:8,padding:"7px 16px",color:"#475467",cursor:"pointer",marginTop:4}}>+ Add Line</button>
                       </div>
 
                       {/* Notes */}
                       <div>
-                        <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>NOTES / PAYMENT INSTRUCTIONS</div>
+                        <div style={{fontSize:11,color:"#475467",marginBottom:4}}>NOTES / PAYMENT INSTRUCTIONS</div>
                         <textarea value={draft.notes} onChange={e=>setDraft(d=>({...d,notes:e.target.value}))} rows={2} placeholder="Thank you for your business. Please remit payment by due date."
-                          style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D1D5DB",borderRadius:8,padding:"8px 12px",color:"#6B7280",fontSize:12,outline:"none",resize:"vertical",fontFamily:"inherit"}}/>
+                          style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 12px",color:"#475467",fontSize:12,outline:"none",resize:"vertical",fontFamily:"inherit"}}/>
                       </div>
                     </div>
 
                     <div style={{display:"flex",gap:10}}>
                       <button onClick={saveDraft} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:"#fff",cursor:"pointer"}}>Save Draft</button>
-                      <button onClick={downloadPDF} style={{padding:"9px 22px",borderRadius:9,fontSize:13,background:"#E5E7EB",border:"1px solid #D1D5DB",color:"#4F46E5",cursor:"pointer"}}>Download / Print PDF</button>
+                      <button onClick={downloadPDF} style={{padding:"9px 22px",borderRadius:9,fontSize:13,background:"#E4E7EC",border:"1px solid #D0D5DD",color:"#4F46E5",cursor:"pointer"}}>Download / Print PDF</button>
                     </div>
                   </div>
 
                   {/* Right panel: totals + invoice list */}
                   <div>
                     {/* Total card */}
-                    <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:20,marginBottom:16}}>
-                      <div style={{fontSize:11,color:"#6B7280",marginBottom:12,letterSpacing:1}}>INVOICE TOTAL</div>
+                    <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:20,marginBottom:16}}>
+                      <div style={{fontSize:11,color:"#475467",marginBottom:12,letterSpacing:1}}>INVOICE TOTAL</div>
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#6B7280"}}><span>Subtotal</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(subtotal)}</span></div>
-                        <div style={{display:"flex",justifyContent:"space-between",fontSize:16,fontWeight:700,borderTop:"1px solid #D1D5DB",paddingTop:10,marginTop:4}}><span>Total Due</span><span style={{fontFamily:"'DM Mono',monospace",color:"#059669"}}>{fmt(total)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#475467"}}><span>Subtotal</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(subtotal)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:16,fontWeight:700,borderTop:"1px solid #D0D5DD",paddingTop:10,marginTop:4}}><span>Total Due</span><span style={{fontFamily:"'DM Mono',monospace",color:"#039855"}}>{fmt(total)}</span></div>
                       </div>
                     </div>
 
                     {/* Recent invoices */}
-                    <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,overflow:"hidden"}}>
-                      <div style={{padding:"12px 16px",borderBottom:"1px solid #E5E7EB",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,overflow:"hidden"}}>
+                      <div style={{padding:"12px 16px",borderBottom:"1px solid #E4E7EC",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                         <div style={{fontSize:12,fontWeight:600,color:"#4F46E5"}}>RECENT INVOICES</div>
-                        <button onClick={()=>setDraft({invoice_number:nextNum,customer:"",customer_email:"",issue_date:new Date().toISOString().slice(0,10),due_date:"",notes:"",terms:"Net 30",line_items:[emptyLine()],status:"draft"})} style={{fontSize:11,background:"transparent",border:"1px solid #D1D5DB",borderRadius:7,padding:"3px 10px",color:"#6B7280",cursor:"pointer"}}>+ New</button>
+                        <button onClick={()=>setDraft({invoice_number:nextNum,customer:"",customer_email:"",issue_date:new Date().toISOString().slice(0,10),due_date:"",notes:"",terms:"Net 30",line_items:[emptyLine()],status:"draft"})} style={{fontSize:11,background:"transparent",border:"1px solid #D0D5DD",borderRadius:7,padding:"3px 10px",color:"#475467",cursor:"pointer"}}>+ New</button>
                       </div>
                       {sentInvoices.length===0 ? (
-                        <div style={{padding:24,textAlign:"center",color:"#6B7280",fontSize:12}}>No invoices yet</div>
+                        <div style={{padding:24,textAlign:"center",color:"#475467",fontSize:12}}>No invoices yet</div>
                       ) : sentInvoices.slice(0,8).map(inv=>{
                         const invTotal = inv.line_items?.reduce((s,l)=>s+(l.amount||0),0)||0;
                         return (
-                          <div key={inv.id} style={{padding:"12px 16px",borderTop:"1px solid #E5E7EB",cursor:"pointer",background:"transparent"}}
+                          <div key={inv.id} style={{padding:"12px 16px",borderTop:"1px solid #E4E7EC",cursor:"pointer",background:"transparent"}}
                             onClick={()=>setDraft(inv)}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                               <div>
                                 <div style={{fontSize:12,fontWeight:600,fontFamily:"'DM Mono',monospace",color:"#4F46E5"}}>{inv.invoice_number}</div>
-                                <div style={{fontSize:11,color:"#6B7280",marginTop:2}}>{inv.customer}</div>
+                                <div style={{fontSize:11,color:"#475467",marginTop:2}}>{inv.customer}</div>
                               </div>
                               <div style={{textAlign:"right"}}>
-                                <div style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:inv.status==="paid"?"#059669":"#111827"}}>{fmt(invTotal)}</div>
-                                <span style={{fontSize:10,background:inv.status==="paid"?"#05966922":inv.status==="draft"?"#E5E7EB":"#4F46E522",color:inv.status==="paid"?"#059669":inv.status==="draft"?"#6B7280":"#4F46E5",borderRadius:20,padding:"1px 7px"}}>{inv.status}</span>
+                                <div style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:inv.status==="paid"?"#039855":"#101828"}}>{fmt(invTotal)}</div>
+                                <span style={{fontSize:10,background:inv.status==="paid"?"#03985522":inv.status==="draft"?"#E4E7EC":"#4F46E522",color:inv.status==="paid"?"#039855":inv.status==="draft"?"#475467":"#4F46E5",borderRadius:20,padding:"1px 7px"}}>{inv.status}</span>
                               </div>
                             </div>
                             {inv.status!=="paid" && (
-                              <button onClick={e=>{e.stopPropagation();markPaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid #05966933",color:"#059669",cursor:"pointer"}}>Mark Paid → Book Revenue</button>
+                              <button onClick={e=>{e.stopPropagation();markPaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid #03985533",color:"#039855",cursor:"pointer"}}>Mark Paid → Book Revenue</button>
                             )}
                           </div>
                         );

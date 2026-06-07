@@ -9,7 +9,7 @@ export default function AddView() {
   return (
             <div style={{ maxWidth:680 }}>
               <div style={{ marginBottom:28 }}>
-                <div style={{ fontSize:10, letterSpacing:3, color:"#6B7280", marginBottom:8 }}>NEW ENTRY</div>
+                <div style={{ fontSize:10, letterSpacing:3, color:"#475467", marginBottom:8 }}>NEW ENTRY</div>
                 <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Upload Invoice</h1>
               </div>
               {/* Quick nav to other upload types */}
@@ -20,7 +20,7 @@ export default function AddView() {
                     { label:"🏦 Bank Statement", onClick:()=>setView("home") },
                     { label:"📋 Contract / Agreement", onClick:()=>{ setView("contracts"); setContractView("list"); } },
                   ].map(btn=>(
-                    <button key={btn.label} onClick={btn.onClick} style={{ padding:"8px 16px", borderRadius:20, fontSize:12, background:btn.active?"#4F46E5":"transparent", border:`1px solid ${btn.active?"#4F46E5":"#D1D5DB"}`, color:btn.active?"#F3F4F6":"#6B7280", cursor:btn.onClick?"pointer":"default", fontWeight:btn.active?600:400 }}>{btn.label}</button>
+                    <button key={btn.label} onClick={btn.onClick} style={{ padding:"8px 16px", borderRadius:20, fontSize:12, background:btn.active?"#4F46E5":"transparent", border:`1px solid ${btn.active?"#4F46E5":"#D0D5DD"}`, color:btn.active?"#F3F4F6":"#475467", cursor:btn.onClick?"pointer":"default", fontWeight:btn.active?600:400 }}>{btn.label}</button>
                   ))}
                 </div>
               )}
@@ -28,50 +28,50 @@ export default function AddView() {
                 <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
                   onDrop={e=>{e.preventDefault();setDragOver(false);handleFileSelect(e.dataTransfer.files[0]);}}
                   onClick={()=>document.getElementById("invoice-upload").click()}
-                  style={{ border:`2px dashed ${dragOver?"#4F46E5":"#D1D5DB"}`, borderRadius:16, padding:"56px 32px", textAlign:"center", cursor:"pointer", background:dragOver?"#F3F4F6":"#FFFFFF", transition:"all 0.2s", marginBottom:24 }}>
+                  style={{ border:`2px dashed ${dragOver?"#4F46E5":"#D0D5DD"}`, borderRadius:16, padding:"56px 32px", textAlign:"center", cursor:"pointer", background:dragOver?"#F3F4F6":"#FFFFFF", transition:"all 0.2s", marginBottom:24 }}>
                   <div style={{ fontSize:38, marginBottom:14 }}>⬆</div>
                   <div style={{ fontSize:16, fontWeight:500, marginBottom:8 }}>Drop your invoice here</div>
-                  <div style={{ fontSize:13, color:"#6B7280" }}>PDF, JPG, PNG or WEBP · AI reads, extracts vendor & codes automatically</div>
+                  <div style={{ fontSize:13, color:"#475467" }}>PDF, JPG, PNG or WEBP · AI reads, extracts vendor & codes automatically</div>
                   <input id="invoice-upload" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display:"none" }} onChange={e=>handleFileSelect(e.target.files[0])} />
                 </div>
               )}
               {uploadedFile && (
-                <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:16, padding:28, marginBottom:20 }}>
+                <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:16, padding:28, marginBottom:20 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                      <div style={{ width:36, height:36, background:"#E5E7EB", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{uploadedFile.mediaType==="application/pdf"?"📄":"🖼"}</div>
+                      <div style={{ width:36, height:36, background:"#E4E7EC", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{uploadedFile.mediaType==="application/pdf"?"📄":"🖼"}</div>
                       <div>
                         <div style={{ fontSize:14, fontWeight:500 }}>{uploadedFile.name}</div>
-                        <div style={{ fontSize:12, color:isAILoading?"#4F46E5":"#059669" }}>
+                        <div style={{ fontSize:12, color:isAILoading?"#4F46E5":"#039855" }}>
                           {isAILoading?(aiStep==="extracting"?"⟳ Reading invoice & extracting vendor...":"⟳ Coding to GL accounts..."):"✓ Processed"}
                         </div>
                       </div>
                     </div>
                     <button onClick={()=>{setUploadedFile(null);setAiSuggestion(null);setForm({vendor:"",description:"",amount:"",date:"",type:"expense",notes:"",project:"General"});}}
-                      style={{ background:"none", border:"none", color:"#6B7280", cursor:"pointer", fontSize:20 }}>×</button>
+                      style={{ background:"none", border:"none", color:"#475467", cursor:"pointer", fontSize:20 }}>×</button>
                   </div>
                   {isAILoading && (
                     <div style={{ marginBottom:20 }}>
-                      <div style={{ height:3, background:"#E5E7EB", borderRadius:2, overflow:"hidden" }}>
+                      <div style={{ height:3, background:"#E4E7EC", borderRadius:2, overflow:"hidden" }}>
                         <div style={{ height:"100%", background:"linear-gradient(90deg,#4F46E5,#4F46E5)", borderRadius:2, width:aiStep==="coding"?"85%":"45%", transition:"width 1.2s ease", animation:"pulse 2s ease-in-out infinite" }} />
                       </div>
                     </div>
                   )}
                   {!isAILoading && (form.vendor||form.amount) && (
                     <div>
-                      <div style={{ fontSize:11, color:"#6B7280", letterSpacing:2, marginBottom:16 }}>EXTRACTED FIELDS — REVIEW & EDIT</div>
-                      <div style={{ marginBottom:16, background:"#F8F9FB", border:`1px solid ${form.vendor?"#D1D5DB":"#DC2626"}`, borderRadius:10, padding:14 }}>
-                        <label style={{ ...labelStyle, color:"#4F46E5" }}>VENDOR NAME <span style={{ color:"#DC2626" }}>*</span></label>
+                      <div style={{ fontSize:11, color:"#475467", letterSpacing:2, marginBottom:16 }}>EXTRACTED FIELDS — REVIEW & EDIT</div>
+                      <div style={{ marginBottom:16, background:"#F7F8FA", border:`1px solid ${form.vendor?"#D0D5DD":"#D92D20"}`, borderRadius:10, padding:14 }}>
+                        <label style={{ ...labelStyle, color:"#4F46E5" }}>VENDOR NAME <span style={{ color:"#D92D20" }}>*</span></label>
                         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                           {form.vendor && <div style={{ width:34, height:34, borderRadius:8, background:vendorColor(form.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(form.vendor)}</div>}
-                          <input value={form.vendor} onChange={e=>handleFormChange("vendor",e.target.value)} placeholder="Vendor name — required" style={{ ...inputStyle, border:!form.vendor?"1px solid #DC2626":"1px solid #D1D5DB", background:"#F3F4F6", fontWeight:500, fontSize:14 }} />
+                          <input value={form.vendor} onChange={e=>handleFormChange("vendor",e.target.value)} placeholder="Vendor name — required" style={{ ...inputStyle, border:!form.vendor?"1px solid #D92D20":"1px solid #D0D5DD", background:"#F3F4F6", fontWeight:500, fontSize:14 }} />
                         </div>
-                        {!form.vendor && <div style={{ fontSize:11, color:"#DC2626", marginTop:6 }}>⚠ Required for tracking & rules</div>}
+                        {!form.vendor && <div style={{ fontSize:11, color:"#D92D20", marginTop:6 }}>⚠ Required for tracking & rules</div>}
                         {form.vendor && rules.find(r=>r.vendor?.toLowerCase()===form.vendor?.toLowerCase()) && (
-                          <div style={{ fontSize:11, color:"#059669", marginTop:6 }}>⚡ Vendor rule active — GL auto-applied</div>
+                          <div style={{ fontSize:11, color:"#039855", marginTop:6 }}>⚡ Vendor rule active — GL auto-applied</div>
                         )}
                         {form.vendor && allVendorNames.includes(form.vendor) && !rules.find(r=>r.vendor?.toLowerCase()===form.vendor?.toLowerCase()) && (
-                          <div style={{ fontSize:11, color:"#059669", marginTop:6 }}>✓ Existing vendor — will group with previous invoices</div>
+                          <div style={{ fontSize:11, color:"#039855", marginTop:6 }}>✓ Existing vendor — will group with previous invoices</div>
                         )}
                       </div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
@@ -87,13 +87,13 @@ export default function AddView() {
                         <input value={form.description} onChange={e=>handleFormChange("description",e.target.value)} style={inputStyle} />
                       </div>
                       <div style={{ marginBottom:14 }}>
-                        <label style={labelStyle}>INVOICE NUMBER <span style={{ color:"#6B7280", fontWeight:400, fontSize:10 }}>(optional — used for duplicate detection)</span></label>
+                        <label style={labelStyle}>INVOICE NUMBER <span style={{ color:"#475467", fontWeight:400, fontSize:10 }}>(optional — used for duplicate detection)</span></label>
                         <input value={form.invoice_number||""} onChange={e=>handleFormChange("invoice_number",e.target.value)} placeholder="e.g. INV-2025-001" style={{
                           ...inputStyle,
-                          border: form.invoice_number && invoices.find(ex=>ex.invoice_number&&ex.invoice_number.toLowerCase()===form.invoice_number.toLowerCase()&&ex.vendor?.toLowerCase()===form.vendor?.toLowerCase()) ? "1px solid #D97706" : inputStyle.border
+                          border: form.invoice_number && invoices.find(ex=>ex.invoice_number&&ex.invoice_number.toLowerCase()===form.invoice_number.toLowerCase()&&ex.vendor?.toLowerCase()===form.vendor?.toLowerCase()) ? "1px solid #DC6803" : inputStyle.border
                         }} />
                         {form.invoice_number && invoices.find(ex=>ex.invoice_number&&ex.invoice_number.toLowerCase()===form.invoice_number.toLowerCase()&&ex.vendor?.toLowerCase()===form.vendor?.toLowerCase()) && (
-                          <div style={{ fontSize:11, color:"#D97706", marginTop:5 }}>⚠ This invoice number already exists for {form.vendor || "this vendor"} — you'll be asked to confirm before booking</div>
+                          <div style={{ fontSize:11, color:"#DC6803", marginTop:5 }}>⚠ This invoice number already exists for {form.vendor || "this vendor"} — you'll be asked to confirm before booking</div>
                         )}
                       </div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
@@ -101,7 +101,7 @@ export default function AddView() {
                           <label style={labelStyle}>TYPE</label>
                           <div style={{ display:"flex", gap:8 }}>
                             {["expense","revenue"].map(t=>(
-                              <button key={t} onClick={()=>handleFormChange("type",t)} style={{ padding:"8px 18px", borderRadius:8, fontSize:13, background:form.type===t?(t==="expense"?"#FEF2F2":"#ECFDF5"):"#F3F4F6", border:`1px solid ${form.type===t?(t==="expense"?"#DC2626":"#059669"):"#D1D5DB"}`, color:form.type===t?(t==="expense"?"#DC2626":"#059669"):"#6B7280", cursor:"pointer", textTransform:"capitalize" }}>{t}</button>
+                              <button key={t} onClick={()=>handleFormChange("type",t)} style={{ padding:"8px 18px", borderRadius:8, fontSize:13, background:form.type===t?(t==="expense"?"#FEF2F2":"#ECFDF5"):"#F3F4F6", border:`1px solid ${form.type===t?(t==="expense"?"#D92D20":"#039855"):"#D0D5DD"}`, color:form.type===t?(t==="expense"?"#D92D20":"#039855"):"#475467", cursor:"pointer", textTransform:"capitalize" }}>{t}</button>
                             ))}
                           </div>
                         </div>
@@ -117,32 +117,32 @@ export default function AddView() {
                 </div>
               )}
               {aiSuggestion && (
-                <div style={{ background:"#F8F9FB", border:"1px solid #D1D5DB", borderRadius:14, padding:24, marginBottom:20 }}>
+                <div style={{ background:"#F7F8FA", border:"1px solid #D0D5DD", borderRadius:14, padding:24, marginBottom:20 }}>
                   <div style={{ fontSize:11, color:"#4F46E5", letterSpacing:2, marginBottom:16 }}>✦ AI GL CODING</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
                     <div style={{ background:"#FFFFFF", borderRadius:10, padding:14 }}>
-                      <div style={{ fontSize:11, color:"#6B7280", marginBottom:6 }}>PRIMARY ACCOUNT</div>
+                      <div style={{ fontSize:11, color:"#475467", marginBottom:6 }}>PRIMARY ACCOUNT</div>
                       <div style={{ fontSize:15, fontWeight:600, color:"#4F46E5" }}>{aiSuggestion.gl_code}</div>
-                      <div style={{ fontSize:13, color:"#111827", marginTop:2 }}>{aiSuggestion.gl_name}</div>
-                      <div style={{ fontSize:11, color:"#6B7280", marginTop:4 }}>{aiSuggestion.debit_credit?.toUpperCase()}</div>
+                      <div style={{ fontSize:13, color:"#101828", marginTop:2 }}>{aiSuggestion.gl_name}</div>
+                      <div style={{ fontSize:11, color:"#475467", marginTop:4 }}>{aiSuggestion.debit_credit?.toUpperCase()}</div>
                     </div>
                     <div style={{ background:"#FFFFFF", borderRadius:10, padding:14 }}>
-                      <div style={{ fontSize:11, color:"#6B7280", marginBottom:6 }}>OFFSET ACCOUNT</div>
-                      <div style={{ fontSize:15, fontWeight:600, color:"#6B7280" }}>{aiSuggestion.secondary_gl_code}</div>
-                      <div style={{ fontSize:13, color:"#6B7280", marginTop:2 }}>{aiSuggestion.secondary_gl_name}</div>
+                      <div style={{ fontSize:11, color:"#475467", marginBottom:6 }}>OFFSET ACCOUNT</div>
+                      <div style={{ fontSize:15, fontWeight:600, color:"#475467" }}>{aiSuggestion.secondary_gl_code}</div>
+                      <div style={{ fontSize:13, color:"#475467", marginTop:2 }}>{aiSuggestion.secondary_gl_name}</div>
                     </div>
                   </div>
-                  <div style={{ fontSize:12, color:"#6B7280", marginBottom:14, lineHeight:1.7 }}>{aiSuggestion.reasoning}</div>
+                  <div style={{ fontSize:12, color:"#475467", marginBottom:14, lineHeight:1.7 }}>{aiSuggestion.reasoning}</div>
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                    <div style={{ height:5, flex:1, background:"#E5E7EB", borderRadius:3 }}>
-                      <div style={{ height:"100%", width:`${aiSuggestion.confidence}%`, background:aiSuggestion.confidence>=85?"#059669":"#D97706", borderRadius:3 }} />
+                    <div style={{ height:5, flex:1, background:"#E4E7EC", borderRadius:3 }}>
+                      <div style={{ height:"100%", width:`${aiSuggestion.confidence}%`, background:aiSuggestion.confidence>=85?"#039855":"#DC6803", borderRadius:3 }} />
                     </div>
-                    <div style={{ fontSize:12, color:aiSuggestion.confidence>=85?"#059669":"#D97706", fontFamily:"'DM Mono', monospace", whiteSpace:"nowrap" }}>{aiSuggestion.confidence}% confident</div>
+                    <div style={{ fontSize:12, color:aiSuggestion.confidence>=85?"#039855":"#DC6803", fontFamily:"'DM Mono', monospace", whiteSpace:"nowrap" }}>{aiSuggestion.confidence}% confident</div>
                   </div>
                 </div>
               )}
               {uploadedFile && !isAILoading && (
-                <button onClick={handleBookInvoice} disabled={!aiSuggestion||!form.vendor?.trim()} style={{ width:"100%", padding:"15px", borderRadius:12, fontSize:15, fontWeight:600, background:(aiSuggestion&&form.vendor?.trim())?"linear-gradient(135deg,#D1FAE5,#059669)":"#E5E7EB", border:"none", color:(aiSuggestion&&form.vendor?.trim())?"#059669":"#6B7280", cursor:(aiSuggestion&&form.vendor?.trim())?"pointer":"not-allowed" }}>
+                <button onClick={handleBookInvoice} disabled={!aiSuggestion||!form.vendor?.trim()} style={{ width:"100%", padding:"15px", borderRadius:12, fontSize:15, fontWeight:600, background:(aiSuggestion&&form.vendor?.trim())?"linear-gradient(135deg,#D1FAE5,#039855)":"#E4E7EC", border:"none", color:(aiSuggestion&&form.vendor?.trim())?"#039855":"#475467", cursor:(aiSuggestion&&form.vendor?.trim())?"pointer":"not-allowed" }}>
                   ✓ Book Invoice to GL
                 </button>
               )}

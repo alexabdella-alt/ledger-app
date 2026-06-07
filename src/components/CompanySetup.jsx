@@ -38,14 +38,14 @@ function CompanySetup({ session, onComplete }) {
   };
 
   const s = {
-    wrap: { minHeight:"100vh", background:"#F8F9FB", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',system-ui,sans-serif" },
-    card: { background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:20, padding:40, width:440, boxShadow:"0 24px 80px rgba(0,0,0,0.7)" },
-    h1: { fontSize:24, fontWeight:700, color:"#111827", margin:"0 0 8px", letterSpacing:-0.5 },
-    sub: { fontSize:13, color:"#6B7280", marginBottom:28 },
-    label: { fontSize:11, color:"#6B7280", marginBottom:4, letterSpacing:0.5 },
-    input: { width:"100%", boxSizing:"border-box", background:"#F3F4F6", border:"1px solid #D1D5DB", borderRadius:10, padding:"12px 14px", color:"#111827", fontSize:15, outline:"none", marginBottom:20 },
-    btn: { width:"100%", padding:"13px", borderRadius:10, fontSize:14, fontWeight:600, background:name.trim()?"linear-gradient(135deg,#4F46E5,#4338CA)":"#E5E7EB", border:"none", color:"#111827", cursor:name.trim()?"pointer":"not-allowed" },
-    error: { background:"#FEF2F2", border:"1px solid #DC262633", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#DC2626", marginBottom:12 },
+    wrap: { minHeight:"100vh", background:"#F7F8FA", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',system-ui,sans-serif" },
+    card: { background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:20, padding:40, width:440, boxShadow:"0 24px 80px rgba(0,0,0,0.7)" },
+    h1: { fontSize:24, fontWeight:700, color:"#101828", margin:"0 0 8px", letterSpacing:-0.5 },
+    sub: { fontSize:13, color:"#475467", marginBottom:28 },
+    label: { fontSize:11, color:"#475467", marginBottom:4, letterSpacing:0.5 },
+    input: { width:"100%", boxSizing:"border-box", background:"#F3F4F6", border:"1px solid #D0D5DD", borderRadius:10, padding:"12px 14px", color:"#101828", fontSize:15, outline:"none", marginBottom:20 },
+    btn: { width:"100%", padding:"13px", borderRadius:10, fontSize:14, fontWeight:600, background:name.trim()?"linear-gradient(135deg,#4F46E5,#4338CA)":"#E4E7EC", border:"none", color:"#101828", cursor:name.trim()?"pointer":"not-allowed" },
+    error: { background:"#FEF2F2", border:"1px solid #D92D2033", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#D92D20", marginBottom:12 },
   };
 
   return (

@@ -254,21 +254,21 @@ export default function ReconView() {
   };
   const startFresh = () => { setReconId(null); setBankTxns([]); setOutstanding({}); setStatementBalance(""); setStep("setup"); };
 
-  const card = { background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, boxShadow:"0 1px 3px rgba(0,0,0,.08)" };
-  const inp = { width:"100%", boxSizing:"border-box", background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:9, padding:"10px 12px", fontSize:14, color:"#111827", outline:"none" };
-  const lbl = { fontSize:11, color:"#6B7280", letterSpacing:0.5, marginBottom:6, fontWeight:500 };
+  const card = { background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, boxShadow:"0 1px 3px rgba(0,0,0,.08)" };
+  const inp = { width:"100%", boxSizing:"border-box", background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:9, padding:"10px 12px", fontSize:14, color:"#101828", outline:"none" };
+  const lbl = { fontSize:11, color:"#475467", letterSpacing:0.5, marginBottom:6, fontWeight:500 };
 
   // ════════ LANDING ════════
   if (step==="landing") {
     const viewing = viewRecId ? completed.find(r=>r.id===viewRecId) : null;
     if (viewing) return (
       <div>
-        <button onClick={()=>setViewRecId(null)} style={{ marginBottom:16, padding:"7px 14px", borderRadius:9, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", fontSize:13, cursor:"pointer" }}>← Back</button>
+        <button onClick={()=>setViewRecId(null)} style={{ marginBottom:16, padding:"7px 14px", borderRadius:9, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:13, cursor:"pointer" }}>← Back</button>
         <div style={{ ...card, padding:24, maxWidth:560 }}>
-          <div style={{ fontSize:11, color:"#059669", letterSpacing:1, marginBottom:8, fontWeight:600 }}>✓ COMPLETE</div>
+          <div style={{ fontSize:11, color:"#039855", letterSpacing:1, marginBottom:8, fontWeight:600 }}>✓ COMPLETE</div>
           <h2 style={{ margin:"0 0 14px", fontSize:20 }}>{viewing.account_name} · {viewing.period_start} → {viewing.period_end}</h2>
           {[["Your bank's ending balance",fmt(viewing.statement_balance)],["What your books showed",fmt(viewing.books_balance)],["Difference",fmt(viewing.difference||0)],["Transactions matched",(viewing.matched_transactions||[]).length],["Completed",viewing.completed_at?new Date(viewing.completed_at).toLocaleString():"—"],["By",viewing.completed_by||"—"]].map(([k,v])=>(
-            <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:"1px solid #F3F4F6", fontSize:13 }}><span style={{ color:"#6B7280" }}>{k}</span><span style={{ fontWeight:500 }}>{v}</span></div>
+            <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:"1px solid #F3F4F6", fontSize:13 }}><span style={{ color:"#475467" }}>{k}</span><span style={{ fontWeight:500 }}>{v}</span></div>
           ))}
         </div>
       </div>
@@ -276,30 +276,30 @@ export default function ReconView() {
     return (
       <div>
         <div style={{ marginBottom:20 }}>
-          <div style={{ fontSize:10, letterSpacing:3, color:"#6B7280", marginBottom:8 }}>BANK MATCHING</div>
+          <div style={{ fontSize:10, letterSpacing:3, color:"#475467", marginBottom:8 }}>BANK MATCHING</div>
           <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Match your bank statement</h1>
-          <div style={{ fontSize:13, color:"#6B7280", marginTop:6 }}>Tell us your bank's ending balance, match it to your books, and we'll lock it in. No jargon.</div>
+          <div style={{ fontSize:13, color:"#475467", marginTop:6 }}>Tell us your bank's ending balance, match it to your books, and we'll lock it in. No jargon.</div>
         </div>
         {inProgress && (
-          <div style={{ ...card, padding:"16px 20px", marginBottom:14, borderColor:"#D9770644", background:"#FFFBEB", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
+          <div style={{ ...card, padding:"16px 20px", marginBottom:14, borderColor:"#DC680344", background:"#FFFBEB", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
             <div style={{ fontSize:13, color:"#92400E" }}>You have a match in progress for <strong>{inProgress.account_name}</strong> ({inProgress.period_start} → {inProgress.period_end}).</div>
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>resume(inProgress)} style={{ padding:"8px 16px", borderRadius:9, background:"#4F46E5", border:"none", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>Resume</button>
-              <button onClick={startFresh} style={{ padding:"8px 14px", borderRadius:9, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", fontSize:13, cursor:"pointer" }}>Start fresh</button>
+              <button onClick={startFresh} style={{ padding:"8px 14px", borderRadius:9, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:13, cursor:"pointer" }}>Start fresh</button>
             </div>
           </div>
         )}
         <button onClick={startFresh} className="sc-cta" style={{ padding:"13px 22px", borderRadius:11, background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", fontSize:14, fontWeight:600, cursor:"pointer", marginBottom:24, boxShadow:"0 6px 18px rgba(109,94,246,.3)" }}>+ Start a new match</button>
         <div style={{ ...card, overflow:"hidden" }}>
           <div style={{ padding:"14px 20px", borderBottom:"1px solid #F3F4F6", fontSize:13, fontWeight:600 }}>History</div>
-          {completed.length===0 ? <div style={{ padding:"28px", textAlign:"center", color:"#6B7280", fontSize:13 }}>No completed matches yet.</div> :
+          {completed.length===0 ? <div style={{ padding:"28px", textAlign:"center", color:"#475467", fontSize:13 }}>No completed matches yet.</div> :
             completed.map(r=>{
               const od = r.completed_at && (Date.now()-new Date(r.completed_at).getTime())/86400000 > 35;
               return (
                 <div key={r.id} onClick={()=>setViewRecId(r.id)} onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                   style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"13px 20px", borderTop:"1px solid #F3F4F6", cursor:"pointer" }}>
-                  <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {r.period_start} → {r.period_end}</div><div style={{ fontSize:11, color:"#6B7280" }}>{fmt(r.statement_balance)} · {r.completed_at?new Date(r.completed_at).toLocaleDateString():""}</div></div>
-                  <span style={{ fontSize:11, fontWeight:600, color: od?"#DC2626":"#059669", background:(od?"#DC2626":"#059669")+"14", border:`1px solid ${(od?"#DC2626":"#059669")}33`, borderRadius:20, padding:"3px 10px" }}>{od?"Overdue":"Complete"}</span>
+                  <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {r.period_start} → {r.period_end}</div><div style={{ fontSize:11, color:"#475467" }}>{fmt(r.statement_balance)} · {r.completed_at?new Date(r.completed_at).toLocaleDateString():""}</div></div>
+                  <span style={{ fontSize:11, fontWeight:600, color: od?"#D92D20":"#039855", background:(od?"#D92D20":"#039855")+"14", border:`1px solid ${(od?"#D92D20":"#039855")}33`, borderRadius:20, padding:"3px 10px" }}>{od?"Overdue":"Complete"}</span>
                 </div>
               );
             })}
@@ -311,9 +311,9 @@ export default function ReconView() {
   // ════════ SETUP ════════
   if (step==="setup") return (
     <div style={{ maxWidth:560 }}>
-      <button onClick={()=>setStep("landing")} style={{ marginBottom:16, background:"none", border:"none", color:"#6B7280", fontSize:13, cursor:"pointer", padding:0 }}>← Back</button>
+      <button onClick={()=>setStep("landing")} style={{ marginBottom:16, background:"none", border:"none", color:"#475467", fontSize:13, cursor:"pointer", padding:0 }}>← Back</button>
       <h1 style={{ fontSize:24, fontWeight:600, margin:"0 0 6px" }}>Start a match</h1>
-      <div style={{ fontSize:13, color:"#6B7280", marginBottom:22 }}>Upload your bank statement — we'll read it and match it to your books.</div>
+      <div style={{ fontSize:13, color:"#475467", marginBottom:22 }}>Upload your bank statement — we'll read it and match it to your books.</div>
       <div style={{ ...card, padding:24 }}>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:18 }}>
           <div>
@@ -330,18 +330,18 @@ export default function ReconView() {
         </div>
         <div style={{ marginBottom:18 }}>
           <div style={lbl}>UPLOAD YOUR BANK STATEMENT — PDF OR CSV</div>
-          <label style={{ display:"block", border:`1.5px dashed ${bankTxns.length>0?"#059669":"#D1D5DB"}`, borderRadius:10, padding:"22px 16px", textAlign:"center", cursor: processing?"wait":"pointer", fontSize:13, color:"#6B7280", background:bankTxns.length>0?"#ECFDF5":"#F9FAFB" }}>
+          <label style={{ display:"block", border:`1.5px dashed ${bankTxns.length>0?"#039855":"#D0D5DD"}`, borderRadius:10, padding:"22px 16px", textAlign:"center", cursor: processing?"wait":"pointer", fontSize:13, color:"#475467", background:bankTxns.length>0?"#ECFDF5":"#F9FAFB" }}>
             <input type="file" accept=".csv,.pdf" disabled={processing} style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; e.target.value=""; processFile(f); }} />
             <div style={{ fontSize:26, marginBottom:8, opacity:0.6 }}>{processing?"⟳":bankTxns.length>0?"✓":"📄"}</div>
             {processing
               ? <span style={{ color:"#4F46E5", fontWeight:600 }}>Reading your statement with AI…</span>
               : bankTxns.length>0
-                ? <span style={{ color:"#059669", fontWeight:600 }}>{bankTxns.length} transactions ready — upload a different file to redo</span>
+                ? <span style={{ color:"#039855", fontWeight:600 }}>{bankTxns.length} transactions ready — upload a different file to redo</span>
                 : <span>Drop a PDF or CSV here, or click to browse. PDFs are read with AI; CSVs from Chase, BofA, or any date/description/amount export import automatically.</span>}
           </label>
         </div>
         <button disabled={bankTxns.length===0 || processing} onClick={()=>{ setStep("match"); setTimeout(()=>runAutoMatch(bankTxns),50); }}
-          style={{ width:"100%", padding:"13px", borderRadius:11, border:"none", fontSize:14, fontWeight:600, cursor: (bankTxns.length>0&&!processing)?"pointer":"not-allowed", background:(bankTxns.length>0&&!processing)?"#4F46E5":"#E5E7EB", color:(bankTxns.length>0&&!processing)?"#fff":"#9CA3AF" }}>{processing?"Reading statement…":"Start →"}</button>
+          style={{ width:"100%", padding:"13px", borderRadius:11, border:"none", fontSize:14, fontWeight:600, cursor: (bankTxns.length>0&&!processing)?"pointer":"not-allowed", background:(bankTxns.length>0&&!processing)?"#4F46E5":"#E4E7EC", color:(bankTxns.length>0&&!processing)?"#fff":"#98A2B3" }}>{processing?"Reading statement…":"Start →"}</button>
       </div>
     </div>
   );
@@ -352,14 +352,14 @@ export default function ReconView() {
     return (
       <div style={{ maxWidth:520 }}>
         <h1 style={{ fontSize:24, fontWeight:600, margin:"0 0 6px" }}>Ready to lock it in</h1>
-        <div style={{ fontSize:13, color:"#6B7280", marginBottom:20 }}>Your books match your bank. Review and complete.</div>
+        <div style={{ fontSize:13, color:"#475467", marginBottom:20 }}>Your books match your bank. Review and complete.</div>
         <div style={{ ...card, padding:24 }}>
           {[["Period matched",`${periodStart} → ${periodEnd}`],["Account",accountName],["Your bank's ending balance",fmt(stmtNum)],["Transactions matched",matchedCount],["Items added to books",addedN]].map(([k,v])=>(
-            <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"11px 0", borderBottom:"1px solid #F3F4F6", fontSize:14 }}><span style={{ color:"#6B7280" }}>{k}</span><span style={{ fontWeight:600 }}>{v}</span></div>
+            <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"11px 0", borderBottom:"1px solid #F3F4F6", fontSize:14 }}><span style={{ color:"#475467" }}>{k}</span><span style={{ fontWeight:600 }}>{v}</span></div>
           ))}
           <div style={{ display:"flex", gap:10, marginTop:20 }}>
             <button onClick={completeMatch} style={{ flex:1, padding:"13px", borderRadius:11, background:"#4F46E5", border:"none", color:"#fff", fontSize:14, fontWeight:600, cursor:"pointer" }}>Lock and Complete</button>
-            <button onClick={()=>setStep("match")} style={{ padding:"13px 18px", borderRadius:11, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", fontSize:14, cursor:"pointer" }}>Go back and review</button>
+            <button onClick={()=>setStep("match")} style={{ padding:"13px 18px", borderRadius:11, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:14, cursor:"pointer" }}>Go back and review</button>
           </div>
         </div>
       </div>
@@ -376,13 +376,13 @@ export default function ReconView() {
     };
     return (
       <div style={{ maxWidth:480, textAlign:"center", margin:"40px auto" }}>
-        <div style={{ width:72, height:72, borderRadius:"50%", background:"#ECFDF5", border:"2px solid #05966944", display:"flex", alignItems:"center", justifyContent:"center", fontSize:34, margin:"0 auto 18px" }}>✓</div>
+        <div style={{ width:72, height:72, borderRadius:"50%", background:"#ECFDF5", border:"2px solid #03985544", display:"flex", alignItems:"center", justifyContent:"center", fontSize:34, margin:"0 auto 18px" }}>✓</div>
         <h1 style={{ fontSize:24, fontWeight:700, margin:"0 0 8px" }}>Your books match your bank</h1>
-        <div style={{ fontSize:14, color:"#6B7280", marginBottom:24 }}>{accountName} · {periodStart} → {periodEnd} · {fmt(stmtNum)}</div>
+        <div style={{ fontSize:14, color:"#475467", marginBottom:24 }}>{accountName} · {periodStart} → {periodEnd} · {fmt(stmtNum)}</div>
         <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
           <button onClick={()=>{ setStep("landing"); setViewRecId(null); }} style={{ padding:"11px 20px", borderRadius:10, background:"#4F46E5", border:"none", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>Done</button>
-          <button onClick={csv} style={{ padding:"11px 20px", borderRadius:10, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", fontSize:13, cursor:"pointer" }}>Download report (CSV)</button>
-          <button onClick={()=>setView("books")} style={{ padding:"11px 20px", borderRadius:10, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", fontSize:13, cursor:"pointer" }}>Back to Books</button>
+          <button onClick={csv} style={{ padding:"11px 20px", borderRadius:10, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:13, cursor:"pointer" }}>Download report (CSV)</button>
+          <button onClick={()=>setView("books")} style={{ padding:"11px 20px", borderRadius:10, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:13, cursor:"pointer" }}>Back to Books</button>
         </div>
       </div>
     );
@@ -395,15 +395,15 @@ export default function ReconView() {
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:10 }}>
         <div>
           <h1 style={{ fontSize:22, fontWeight:600, margin:0 }}>Match your bank statement</h1>
-          <div style={{ fontSize:12, color:"#6B7280", marginTop:3 }}>{accountName} · {periodStart} → {periodEnd}</div>
+          <div style={{ fontSize:12, color:"#475467", marginTop:3 }}>{accountName} · {periodStart} → {periodEnd}</div>
         </div>
-        <button onClick={()=>{ saveNow("in_progress"); showNotification && showNotification("Progress saved ✓"); }} style={{ padding:"8px 16px", borderRadius:9, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", fontSize:13, cursor:"pointer" }}>Save Progress</button>
+        <button onClick={()=>{ saveNow("in_progress"); showNotification && showNotification("Progress saved ✓"); }} style={{ padding:"8px 16px", borderRadius:9, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:13, cursor:"pointer" }}>Save Progress</button>
       </div>
 
       {autoBanner && (
         <div style={{ ...card, padding:"12px 16px", marginBottom:14, background:"#EEF2FF", borderColor:"#4F46E544", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
           <div style={{ fontSize:13, color:"#4338CA" }}>✦ {autoBanner}</div>
-          <button onClick={()=>setAutoBanner(null)} style={{ background:"none", border:"none", color:"#6B7280", cursor:"pointer", fontSize:16 }}>×</button>
+          <button onClick={()=>setAutoBanner(null)} style={{ background:"none", border:"none", color:"#475467", cursor:"pointer", fontSize:16 }}>×</button>
         </div>
       )}
 
@@ -412,18 +412,18 @@ export default function ReconView() {
         <div style={{ ...card, overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #F3F4F6", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <div style={{ fontSize:13, fontWeight:600 }}>Your bank statement</div>
-            <div style={{ fontSize:11, color:"#6B7280" }}>{matchedCount}/{bankTxns.length} matched · {fmt(unmatchedBank.reduce((s,t)=>s+t.amount,0))} remaining</div>
+            <div style={{ fontSize:11, color:"#475467" }}>{matchedCount}/{bankTxns.length} matched · {fmt(unmatchedBank.reduce((s,t)=>s+t.amount,0))} remaining</div>
           </div>
           <div style={{ maxHeight:440, overflowY:"auto" }}>
-            {bankTxns.length===0 ? <div style={{ padding:24, fontSize:13, color:"#6B7280", textAlign:"center" }}>No bank transactions — go back and upload a statement.</div> :
+            {bankTxns.length===0 ? <div style={{ padding:24, fontSize:13, color:"#475467", textAlign:"center" }}>No bank transactions — go back and upload a statement.</div> :
               bankTxns.map(t=>(
                 <div key={t.id} style={{ ...rowBase, background: t._ignored?"#F9FAFB":t._matchBook?"#F5F3FF":"#FFFBEB", opacity:t._ignored?0.6:1 }}>
                   <input type="checkbox" checked={!!t._matchBook} onChange={()=>toggleMatch(t)} title="This matches my bank" />
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", color:"#111827" }}>{t.description}{t._auto && <span style={{ marginLeft:6, fontSize:10, color:"#4F46E5" }}>✦ auto {t._conf}%</span>}</div>
-                    <div style={{ fontSize:11, color:"#6B7280" }}>{t.date}{t._ignored?" · ignored":""}</div>
+                    <div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", color:"#101828" }}>{t.description}{t._auto && <span style={{ marginLeft:6, fontSize:10, color:"#4F46E5" }}>✦ auto {t._conf}%</span>}</div>
+                    <div style={{ fontSize:11, color:"#475467" }}>{t.date}{t._ignored?" · ignored":""}</div>
                   </div>
-                  <div style={{ fontFamily:"'DM Mono',monospace", color: t.amount>=0?"#059669":"#DC2626", flexShrink:0 }}>{fmt(t.amount)}</div>
+                  <div style={{ fontFamily:"'DM Mono',monospace", color: t.amount>=0?"#039855":"#D92D20", flexShrink:0 }}>{fmt(t.amount)}</div>
                 </div>
               ))}
           </div>
@@ -433,20 +433,20 @@ export default function ReconView() {
         <div style={{ ...card, overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #F3F4F6", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <div style={{ fontSize:13, fontWeight:600 }}>Your books</div>
-            <div style={{ fontSize:11, color:"#6B7280" }}>{booksRows.length-unmatchedBooks.length}/{booksRows.length} matched</div>
+            <div style={{ fontSize:11, color:"#475467" }}>{booksRows.length-unmatchedBooks.length}/{booksRows.length} matched</div>
           </div>
           <div style={{ maxHeight:440, overflowY:"auto" }}>
-            {booksRows.length===0 ? <div style={{ padding:24, fontSize:13, color:"#6B7280", textAlign:"center" }}>No book transactions in this period.</div> :
+            {booksRows.length===0 ? <div style={{ padding:24, fontSize:13, color:"#475467", textAlign:"center" }}>No book transactions in this period.</div> :
               booksRows.map(b=>{
                 const matched = matchedBookIds.has(b.id); const out = outstanding[b.id];
                 return (
                   <div key={b.id} style={{ ...rowBase, background: out?"#F9FAFB":matched?"#F5F3FF":"#FFFBEB", opacity:out?0.6:1 }}>
                     <span style={{ width:24, height:24, borderRadius:7, background:vendorColor(b.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(b.vendor)}</span>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", color:"#111827" }}>{b.vendor}</div>
-                      <div style={{ fontSize:11, color:"#6B7280" }}>{b.date} · {b.gl_code}{out?" · outstanding":""}</div>
+                      <div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", color:"#101828" }}>{b.vendor}</div>
+                      <div style={{ fontSize:11, color:"#475467" }}>{b.date} · {b.gl_code}{out?" · outstanding":""}</div>
                     </div>
-                    <div style={{ fontFamily:"'DM Mono',monospace", color: bookSigned(b)>=0?"#059669":"#DC2626", flexShrink:0 }}>{fmt(bookSigned(b))}</div>
+                    <div style={{ fontFamily:"'DM Mono',monospace", color: bookSigned(b)>=0?"#039855":"#D92D20", flexShrink:0 }}>{fmt(bookSigned(b))}</div>
                   </div>
                 );
               })}
@@ -466,19 +466,19 @@ export default function ReconView() {
                 <div style={{ fontSize:13, color:"#92400E", marginBottom:6 }}>This is in your bank but not your books — <strong>{t.description}</strong> ({fmt(t.amount)}, {t.date})</div>
                 {addQuick===t.id ? (
                   <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", background:"#F9FAFB", padding:"10px", borderRadius:9 }}>
-                    <span style={{ fontSize:12, color:"#6B7280" }}>Add as:</span>
+                    <span style={{ fontSize:12, color:"#475467" }}>Add as:</span>
                     <select id={`gl_${t.id}`} defaultValue={gl.gl_code} style={{ ...inp, width:260 }}>
                       {(CHART_OF_ACCOUNTS||[]).filter(a=>a.code>="4000").map(a=><option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
                     </select>
-                    <button onClick={()=>{ const code=document.getElementById(`gl_${t.id}`).value; const a=(CHART_OF_ACCOUNTS||[]).find(x=>x.code===code)||gl; addToBooks(t,{gl_code:a.code,gl_name:a.name}); }} style={{ padding:"9px 14px", borderRadius:8, background:"#059669", border:"none", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>Add to books</button>
-                    <button onClick={()=>setAddQuick(null)} style={{ padding:"9px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#6B7280", fontSize:12, cursor:"pointer" }}>Cancel</button>
+                    <button onClick={()=>{ const code=document.getElementById(`gl_${t.id}`).value; const a=(CHART_OF_ACCOUNTS||[]).find(x=>x.code===code)||gl; addToBooks(t,{gl_code:a.code,gl_name:a.name}); }} style={{ padding:"9px 14px", borderRadius:8, background:"#039855", border:"none", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>Add to books</button>
+                    <button onClick={()=>setAddQuick(null)} style={{ padding:"9px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#475467", fontSize:12, cursor:"pointer" }}>Cancel</button>
                   </div>
                 ) : (
                   <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
                     <span style={{ fontSize:12, color:"#4338CA", background:"#EEF2FF", border:"1px solid #4F46E533", borderRadius:8, padding:"5px 10px" }}>✦ Looks like {gl.gl_name}</span>
-                    <button onClick={()=>addToBooks(t,gl)} style={{ padding:"6px 12px", borderRadius:8, background:"#059669", border:"none", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>Accept &amp; add</button>
-                    <button onClick={()=>setAddQuick(t.id)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", fontSize:12, cursor:"pointer" }}>Choose account</button>
-                    <button onClick={()=>ignoreBank(t)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#6B7280", fontSize:12, cursor:"pointer" }}>Ignore this time</button>
+                    <button onClick={()=>addToBooks(t,gl)} style={{ padding:"6px 12px", borderRadius:8, background:"#039855", border:"none", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>Accept &amp; add</button>
+                    <button onClick={()=>setAddQuick(t.id)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:12, cursor:"pointer" }}>Choose account</button>
+                    <button onClick={()=>ignoreBank(t)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#475467", fontSize:12, cursor:"pointer" }}>Ignore this time</button>
                   </div>
                 )}
               </div>
@@ -488,8 +488,8 @@ export default function ReconView() {
             <div key={b.id} style={{ padding:"12px 0", borderTop:"1px solid #F3F4F6" }}>
               <div style={{ fontSize:13, color:"#92400E", marginBottom:6 }}>This is in your books but hasn't cleared the bank — <strong>{b.vendor}</strong> ({fmt(b.amount)}, {b.date})</div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                <button onClick={()=>markOutstanding(b)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D1D5DB", color:"#374151", fontSize:12, cursor:"pointer" }}>Mark as outstanding</button>
-                <button onClick={()=>voidBook(b)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #DC262644", color:"#DC2626", fontSize:12, cursor:"pointer" }}>Entered in error (void)</button>
+                <button onClick={()=>markOutstanding(b)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", fontSize:12, cursor:"pointer" }}>Mark as outstanding</button>
+                <button onClick={()=>voidBook(b)} style={{ padding:"6px 12px", borderRadius:8, background:"#FFFFFF", border:"1px solid #D92D2044", color:"#D92D20", fontSize:12, cursor:"pointer" }}>Entered in error (void)</button>
               </div>
             </div>
           ))}
@@ -497,13 +497,13 @@ export default function ReconView() {
       )}
 
       {/* BOTTOM BAR */}
-      <div style={{ position:"fixed", left:0, right:0, bottom:0, background:"#FFFFFF", borderTop:"1px solid #E5E7EB", boxShadow:"0 -4px 20px rgba(0,0,0,.06)", padding:"12px 28px", display:"flex", alignItems:"center", gap:24, zIndex:50, flexWrap:"wrap" }}>
-        <div><div style={{ fontSize:10, color:"#6B7280", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:"1px solid #D1D5DB", borderRadius:8, padding:"4px 8px", color:"#111827", outline:"none" }} /></div>
-        <div><div style={{ fontSize:10, color:"#6B7280", letterSpacing:0.5 }}>WHAT YOUR BOOKS SHOW</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace" }}>{fmt(booksBalance)}</div></div>
-        <div><div style={{ fontSize:10, color:"#6B7280", letterSpacing:0.5 }}>DIFFERENCE</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color: Math.abs(diff)<0.005?"#059669":"#DC2626" }}>{fmt(diff)}</div></div>
-        <div style={{ flex:1, minWidth:140, fontSize:11, color:"#6B7280" }}>{Math.abs(diff)<0.005?"Balanced — ready to complete.":"Difference must be $0.00 to complete."}</div>
+      <div style={{ position:"fixed", left:0, right:0, bottom:0, background:"#FFFFFF", borderTop:"1px solid #E4E7EC", boxShadow:"0 -4px 20px rgba(0,0,0,.06)", padding:"12px 28px", display:"flex", alignItems:"center", gap:24, zIndex:50, flexWrap:"wrap" }}>
+        <div><div style={{ fontSize:10, color:"#475467", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:"1px solid #D0D5DD", borderRadius:8, padding:"4px 8px", color:"#101828", outline:"none" }} /></div>
+        <div><div style={{ fontSize:10, color:"#475467", letterSpacing:0.5 }}>WHAT YOUR BOOKS SHOW</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace" }}>{fmt(booksBalance)}</div></div>
+        <div><div style={{ fontSize:10, color:"#475467", letterSpacing:0.5 }}>DIFFERENCE</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color: Math.abs(diff)<0.005?"#039855":"#D92D20" }}>{fmt(diff)}</div></div>
+        <div style={{ flex:1, minWidth:140, fontSize:11, color:"#475467" }}>{Math.abs(diff)<0.005?"Balanced — ready to complete.":"Difference must be $0.00 to complete."}</div>
         <button disabled={Math.abs(diff)>=0.005 || !statementBalance} onClick={()=>setStep("summary")}
-          style={{ padding:"11px 22px", borderRadius:10, border:"none", fontSize:14, fontWeight:600, cursor: Math.abs(diff)<0.005?"pointer":"not-allowed", background: Math.abs(diff)<0.005?"#4F46E5":"#E5E7EB", color: Math.abs(diff)<0.005?"#fff":"#9CA3AF" }}>Complete Match</button>
+          style={{ padding:"11px 22px", borderRadius:10, border:"none", fontSize:14, fontWeight:600, cursor: Math.abs(diff)<0.005?"pointer":"not-allowed", background: Math.abs(diff)<0.005?"#4F46E5":"#E4E7EC", color: Math.abs(diff)<0.005?"#fff":"#98A2B3" }}>Complete Match</button>
       </div>
     </div>
   );

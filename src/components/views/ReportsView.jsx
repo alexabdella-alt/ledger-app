@@ -108,26 +108,26 @@ export default function ReportsView() {
             return (
               <div>
                 <div style={{ marginBottom:24 }}>
-                  <div style={{ fontSize:10, letterSpacing:3, color:"#6B7280", marginBottom:8 }}>REPORTING</div>
+                  <div style={{ fontSize:10, letterSpacing:3, color:"#475467", marginBottom:8 }}>REPORTING</div>
                   <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Reports</h1>
                 </div>
 
                 {/* Controls */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
                   {[["pl","P&L"],["balance","Balance Sheet"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"]].map(([id,label])=>(
-                    <button key={id} onClick={()=>setReportType(id)} style={{ padding:"8px 16px", borderRadius:20, fontSize:13, background:reportType===id?"#4F46E5":"transparent", border:`1px solid ${reportType===id?"#4F46E5":"#D1D5DB"}`, color:reportType===id?"#F3F4F6":"#6B7280", cursor:"pointer", fontWeight:reportType===id?600:400 }}>{label}</button>
+                    <button key={id} onClick={()=>setReportType(id)} style={{ padding:"8px 16px", borderRadius:20, fontSize:13, background:reportType===id?"#4F46E5":"transparent", border:`1px solid ${reportType===id?"#4F46E5":"#D0D5DD"}`, color:reportType===id?"#F3F4F6":"#475467", cursor:"pointer", fontWeight:reportType===id?600:400 }}>{label}</button>
                   ))}
                   <div style={{ flex:1 }} />
                   {/* Date range — custom inputs always visible, preset buttons for quick selection */}
-                  <input type="date" value={reportDateFrom} onChange={e=>{ setReportDateFrom(e.target.value); setReportRange("custom"); }} style={{ background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:8, padding:"7px 10px", color:"#111827", fontSize:13, outline:"none" }} />
-                  <span style={{ color:"#6B7280", fontSize:13 }}>to</span>
-                  <input type="date" value={reportDateTo} onChange={e=>{ setReportDateTo(e.target.value); setReportRange("custom"); }} style={{ background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:8, padding:"7px 10px", color:"#111827", fontSize:13, outline:"none" }} />
-                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const now=new Date(); if(e.target.value==="thismonth"){setReportDateFrom(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-01");setReportDateTo(now.toISOString().slice(0,10));} else if(e.target.value==="ytd"){setReportDateFrom(now.getFullYear()+"-01-01");setReportDateTo(now.toISOString().slice(0,10));} else if(e.target.value==="all"){setReportDateFrom("");setReportDateTo("");} }} style={{ background:"#FFFFFF", border:"1px solid #D1D5DB", borderRadius:8, padding:"8px 12px", color:"#111827", fontSize:13, outline:"none", cursor:"pointer" }}>
+                  <input type="date" value={reportDateFrom} onChange={e=>{ setReportDateFrom(e.target.value); setReportRange("custom"); }} style={{ background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:8, padding:"7px 10px", color:"#101828", fontSize:13, outline:"none" }} />
+                  <span style={{ color:"#475467", fontSize:13 }}>to</span>
+                  <input type="date" value={reportDateTo} onChange={e=>{ setReportDateTo(e.target.value); setReportRange("custom"); }} style={{ background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:8, padding:"7px 10px", color:"#101828", fontSize:13, outline:"none" }} />
+                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const now=new Date(); if(e.target.value==="thismonth"){setReportDateFrom(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-01");setReportDateTo(now.toISOString().slice(0,10));} else if(e.target.value==="ytd"){setReportDateFrom(now.getFullYear()+"-01-01");setReportDateTo(now.toISOString().slice(0,10));} else if(e.target.value==="all"){setReportDateFrom("");setReportDateTo("");} }} style={{ background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:8, padding:"8px 12px", color:"#101828", fontSize:13, outline:"none", cursor:"pointer" }}>
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
 
-                {invoices.length===0 && <div style={{ color:"#6B7280", fontSize:14 }}>No data yet. Upload invoices or a bank statement to generate reports.</div>}
+                {invoices.length===0 && <div style={{ color:"#475467", fontSize:14 }}>No data yet. Upload invoices or a bank statement to generate reports.</div>}
 
                 {invoices.length>0 && (
                   <div>
@@ -135,7 +135,7 @@ export default function ReportsView() {
                     {reportType==="pl" && (
                       <div>
                         {plDrill ? (() => {
-                          const amtColor = plDrill.type==="rev-acct" ? "#059669" : "#DC2626";
+                          const amtColor = plDrill.type==="rev-acct" ? "#039855" : "#D92D20";
                           let crumbs, back, kind, data, total;
                           if (plDrill.type==="rev-acct") {
                             crumbs = ["Income Statement","Revenue",plDrill.name]; back = () => setPlDrill(null);
@@ -151,18 +151,18 @@ export default function ReportsView() {
                             total = data.reduce((s,i)=>s+i.amount,0); kind = "txns";
                           }
                           return (
-                            <div className="sc-rise" style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
-                              <div style={{ padding:"16px 24px", borderBottom:"1px solid #E5E7EB", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-                                <button onClick={back} style={{ background:"#E5E7EB", border:"1px solid #D1D5DB", color:"#4F46E5", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer" }}>← Back</button>
+                            <div className="sc-rise" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
+                              <div style={{ padding:"16px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                                <button onClick={back} style={{ background:"#E4E7EC", border:"1px solid #D0D5DD", color:"#4F46E5", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer" }}>← Back</button>
                                 <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                                   {crumbs.map((c,ci)=>(
                                     <span key={ci} style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                      <span style={{ color: ci===crumbs.length-1?"#111827":"#6B7280", fontWeight: ci===crumbs.length-1?600:400 }}>{c}</span>
-                                      {ci<crumbs.length-1 && <span style={{ color:"#9CA3AF" }}>→</span>}
+                                      <span style={{ color: ci===crumbs.length-1?"#101828":"#475467", fontWeight: ci===crumbs.length-1?600:400 }}>{c}</span>
+                                      {ci<crumbs.length-1 && <span style={{ color:"#98A2B3" }}>→</span>}
                                     </span>
                                   ))}
                                 </div>
-                                <span style={{ marginLeft:"auto", fontSize:11, color:"#6B7280" }}>{data.length} {kind==="vendors"?"vendor":"transaction"}{data.length!==1?"s":""}</span>
+                                <span style={{ marginLeft:"auto", fontSize:11, color:"#475467" }}>{data.length} {kind==="vendors"?"vendor":"transaction"}{data.length!==1?"s":""}</span>
                                 <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:amtColor }}>{fmt(total)}</span>
                               </div>
                               {kind==="vendors" ? (
@@ -172,30 +172,30 @@ export default function ReportsView() {
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 24px", cursor:"pointer", borderTop:"1px solid #F3F4F6" }}>
                                     <span style={{ fontSize:13, color:"#374151", display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ width:26, height:26, borderRadius:7, background:vendorColor(v.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff" }}>{initials(v.vendor)}</span>
-                                      {v.vendor}<span style={{ fontSize:11, color:"#9CA3AF" }}>· {v.count} txn{v.count!==1?"s":""}</span>
+                                      {v.vendor}<span style={{ fontSize:11, color:"#98A2B3" }}>· {v.count} txn{v.count!==1?"s":""}</span>
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#DC2626" }}>{fmt(v.total)}</span>
-                                      <span style={{ fontSize:12, color:"#9CA3AF" }}>›</span>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#D92D20" }}>{fmt(v.total)}</span>
+                                      <span style={{ fontSize:12, color:"#98A2B3" }}>›</span>
                                     </span>
                                   </div>
                                 ))
                               ) : (
-                                data.length===0 ? <div style={{ padding:24, fontSize:13, color:"#6B7280" }}>No transactions in range.</div> :
+                                data.length===0 ? <div style={{ padding:24, fontSize:13, color:"#475467" }}>No transactions in range.</div> :
                                 data.map(inv=>(
                                   <div key={inv.id} onClick={()=>{ setSelectedInvoice(inv); setView("detail"); }}
                                     onMouseEnter={e=>e.currentTarget.style.background="#F3F4F6"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 24px", cursor:"pointer", borderTop:"1px solid #F3F4F6" }}>
                                     <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
-                                      <span style={{ fontSize:11, color:"#6B7280", fontFamily:"'DM Mono', monospace", width:78, flexShrink:0 }}>{inv.date}</span>
+                                      <span style={{ fontSize:11, color:"#475467", fontFamily:"'DM Mono', monospace", width:78, flexShrink:0 }}>{inv.date}</span>
                                       <span style={{ width:26, height:26, borderRadius:7, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</span>
                                       <div style={{ minWidth:0 }}>
-                                        <div style={{ fontSize:13, color:"#111827", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor}</div>
-                                        <div style={{ fontSize:11, color:"#6B7280", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.description||"—"}</div>
+                                        <div style={{ fontSize:13, color:"#101828", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor}</div>
+                                        <div style={{ fontSize:11, color:"#475467", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.description||"—"}</div>
                                       </div>
                                     </div>
                                     <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-                                      <span style={{ fontSize:10, color:"#9CA3AF", fontFamily:"monospace", background:"#E5E7EB", padding:"1px 6px", borderRadius:4 }}>{inv.gl_code}</span>
+                                      <span style={{ fontSize:10, color:"#98A2B3", fontFamily:"monospace", background:"#E4E7EC", padding:"1px 6px", borderRadius:4 }}>{inv.gl_code}</span>
                                       <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:amtColor, width:100, textAlign:"right" }}>{fmt(inv.amount)}</span>
                                     </div>
                                   </div>
@@ -204,100 +204,100 @@ export default function ReportsView() {
                             </div>
                           );
                         })() : (
-                        <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
-                          <div style={{ padding:"18px 24px", borderBottom:"1px solid #E5E7EB", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
+                        <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
+                          <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
                             <div>
                               <div style={{ fontSize:14, fontWeight:600 }}>Profit & Loss Statement</div>
-                              <div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>{basisMode==="cash"?"Cash basis":"Accrual basis"} · {rangeLabels[reportRange]} · {plFiltered.length} transactions</div>
+                              <div style={{ fontSize:11, color:"#475467", marginTop:3 }}>{basisMode==="cash"?"Cash basis":"Accrual basis"} · {rangeLabels[reportRange]} · {plFiltered.length} transactions</div>
                             </div>
-                            <div style={{ display:"flex", background:"#F3F4F6", border:"1px solid #D1D5DB", borderRadius:8, overflow:"hidden" }}>
+                            <div style={{ display:"flex", background:"#F3F4F6", border:"1px solid #D0D5DD", borderRadius:8, overflow:"hidden" }}>
                               {[["accrual","Accrual"],["cash","Cash"]].map(([m,label])=>(
-                                <button key={m} onClick={()=>setBasisMode(m)} style={{ padding:"6px 14px", fontSize:12, border:"none", cursor:"pointer", background:basisMode===m?"#D1D5DB":"transparent", color:basisMode===m?"#111827":"#6B7280", fontWeight:basisMode===m?600:400 }}>{label}</button>
+                                <button key={m} onClick={()=>setBasisMode(m)} style={{ padding:"6px 14px", fontSize:12, border:"none", cursor:"pointer", background:basisMode===m?"#D0D5DD":"transparent", color:basisMode===m?"#101828":"#475467", fontWeight:basisMode===m?600:400 }}>{label}</button>
                               ))}
                             </div>
                           </div>
                           <div style={{ padding:"0 24px" }}>
                             {/* Revenue */}
-                            <div style={{ padding:"16px 0", borderBottom:"1px solid #E5E7EB" }}>
-                              <div style={{ fontSize:11, color:"#6B7280", letterSpacing:2, marginBottom:12 }}>REVENUE</div>
-                              {revRows.length===0 ? <div style={{ fontSize:13, color:"#6B7280" }}>No revenue recorded</div> :
+                            <div style={{ padding:"16px 0", borderBottom:"1px solid #E4E7EC" }}>
+                              <div style={{ fontSize:11, color:"#475467", letterSpacing:2, marginBottom:12 }}>REVENUE</div>
+                              {revRows.length===0 ? <div style={{ fontSize:13, color:"#475467" }}>No revenue recorded</div> :
                                 revRows.map(row=>(
                                   <div key={row.code} onClick={()=>setPlDrill({type:"rev-acct",code:row.code,name:row.name})} title="View transactions"
-                                    onMouseEnter={e=>e.currentTarget.style.background="#E5E7EB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="#E4E7EC"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"#374151", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
-                                      <span style={{ fontSize:10, color:"#9CA3AF", fontFamily:"monospace", background:"#E5E7EB", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      <span style={{ fontSize:10, color:"#98A2B3", fontFamily:"monospace", background:"#E4E7EC", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
                                       {row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#059669" }}>{fmt(row.total)}</span>
-                                      <span style={{ fontSize:12, color:"#9CA3AF" }}>›</span>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#039855" }}>{fmt(row.total)}</span>
+                                      <span style={{ fontSize:12, color:"#98A2B3" }}>›</span>
                                     </span>
                                   </div>
                                 ))
                               }
-                              <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #E5E7EB" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #E4E7EC" }}>
                                 <span style={{ fontSize:13, fontWeight:600 }}>Total Revenue</span>
-                                <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"#059669" }}>{fmt(revenue)}</span>
+                                <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"#039855" }}>{fmt(revenue)}</span>
                               </div>
                             </div>
                             {/* COGS — only shown when code 5000 has activity */}
                             {cogsRows.length > 0 && (
-                              <div style={{ padding:"16px 0", borderBottom:"1px solid #E5E7EB" }}>
-                                <div style={{ fontSize:11, color:"#6B7280", letterSpacing:2, marginBottom:12 }}>COST OF REVENUE</div>
+                              <div style={{ padding:"16px 0", borderBottom:"1px solid #E4E7EC" }}>
+                                <div style={{ fontSize:11, color:"#475467", letterSpacing:2, marginBottom:12 }}>COST OF REVENUE</div>
                                 {cogsRows.map(row=>(
                                   <div key={row.code} onClick={()=>setPlDrill({type:"exp-acct",code:row.code,name:row.name})} title="Drill into vendors"
-                                    onMouseEnter={e=>e.currentTarget.style.background="#E5E7EB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="#E4E7EC"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"#374151", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
-                                      <span style={{ fontSize:10, color:"#9CA3AF", fontFamily:"monospace", background:"#E5E7EB", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      <span style={{ fontSize:10, color:"#98A2B3", fontFamily:"monospace", background:"#E4E7EC", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
                                       {row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#DC2626" }}>({fmt(row.total)})</span>
-                                      <span style={{ fontSize:12, color:"#9CA3AF" }}>›</span>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#D92D20" }}>({fmt(row.total)})</span>
+                                      <span style={{ fontSize:12, color:"#98A2B3" }}>›</span>
                                     </span>
                                   </div>
                                 ))}
-                                <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #E5E7EB" }}>
+                                <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #E4E7EC" }}>
                                   <span style={{ fontSize:13, fontWeight:600 }}>Gross Profit</span>
-                                  <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:grossProfit>=0?"#059669":"#DC2626" }}>{grossProfit<0?"-":""}{fmt(Math.abs(grossProfit))}</span>
+                                  <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:grossProfit>=0?"#039855":"#D92D20" }}>{grossProfit<0?"-":""}{fmt(Math.abs(grossProfit))}</span>
                                 </div>
                               </div>
                             )}
                             {/* Operating Expenses */}
-                            <div style={{ padding:"16px 0", borderBottom:"1px solid #E5E7EB" }}>
-                              <div style={{ fontSize:11, color:"#6B7280", letterSpacing:2, marginBottom:12 }}>OPERATING EXPENSES</div>
-                              {opexRows.length===0 ? <div style={{ fontSize:13, color:"#6B7280" }}>No expenses recorded</div> :
+                            <div style={{ padding:"16px 0", borderBottom:"1px solid #E4E7EC" }}>
+                              <div style={{ fontSize:11, color:"#475467", letterSpacing:2, marginBottom:12 }}>OPERATING EXPENSES</div>
+                              {opexRows.length===0 ? <div style={{ fontSize:13, color:"#475467" }}>No expenses recorded</div> :
                                 opexRows.map(row=>(
                                   <div key={row.code} onClick={()=>setPlDrill({type:"exp-acct",code:row.code,name:row.name})} title="Drill into vendors"
-                                    onMouseEnter={e=>e.currentTarget.style.background="#E5E7EB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="#E4E7EC"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"#374151", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
-                                      <span style={{ fontSize:10, color:"#9CA3AF", fontFamily:"monospace", background:"#E5E7EB", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      <span style={{ fontSize:10, color:"#98A2B3", fontFamily:"monospace", background:"#E4E7EC", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
                                       {row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#DC2626" }}>({fmt(row.total)})</span>
-                                      <span style={{ fontSize:12, color:"#9CA3AF" }}>›</span>
+                                      <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"#D92D20" }}>({fmt(row.total)})</span>
+                                      <span style={{ fontSize:12, color:"#98A2B3" }}>›</span>
                                     </span>
                                   </div>
                                 ))
                               }
-                              <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #E5E7EB" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid #E4E7EC" }}>
                                 <span style={{ fontSize:13, fontWeight:600 }}>Total Operating Expenses</span>
-                                <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"#DC2626" }}>({fmt(opex)})</span>
+                                <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"#D92D20" }}>({fmt(opex)})</span>
                               </div>
                             </div>
                             {/* Operating Income subtotal */}
-                            <div style={{ padding:"12px 0", borderBottom:"1px solid #E5E7EB", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <div style={{ padding:"12px 0", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                               <span style={{ fontSize:14, fontWeight:600, color:"#374151" }}>Operating Income</span>
-                              <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:operatingIncome>=0?"#059669":"#DC2626" }}>{operatingIncome<0?"-":""}{fmt(Math.abs(operatingIncome))}</span>
+                              <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:operatingIncome>=0?"#039855":"#D92D20" }}>{operatingIncome<0?"-":""}{fmt(Math.abs(operatingIncome))}</span>
                             </div>
                             {/* Net Income */}
                             <div style={{ padding:"18px 0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                               <span style={{ fontSize:16, fontWeight:700 }}>Net {net>=0?"Income":"Loss"}</span>
-                              <span style={{ fontSize:20, fontFamily:"'DM Mono', monospace", fontWeight:700, color:net>=0?"#059669":"#DC2626" }}>{net<0?"-":""}{fmt(Math.abs(net))}</span>
+                              <span style={{ fontSize:20, fontFamily:"'DM Mono', monospace", fontWeight:700, color:net>=0?"#039855":"#D92D20" }}>{net<0?"-":""}{fmt(Math.abs(net))}</span>
                             </div>
                           </div>
                         </div>
@@ -378,41 +378,41 @@ export default function ReportsView() {
                         return (
                           <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #F3F4F6"}}>
                             <div style={{fontSize:13,color:"#374151"}}>
-                              <span style={{color:"#9CA3AF",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}
+                              <span style={{color:"#98A2B3",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}
                             </div>
-                            <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:bal<0?"#DC2626":"#111827"}}>{bsFmt(bal)}</div>
+                            <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:bal<0?"#D92D20":"#101828"}}>{bsFmt(bal)}</div>
                           </div>
                         );
                       };
                       const SubtotalRow = ({label, total}) => (
                         <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 8px 16px",marginTop:2}}>
-                          <div style={{fontSize:12,fontWeight:600,color:"#6B7280",fontStyle:"italic"}}>{label}</div>
+                          <div style={{fontSize:12,fontWeight:600,color:"#475467",fontStyle:"italic"}}>{label}</div>
                           <div style={{fontSize:13,fontWeight:600,fontFamily:"'DM Mono',monospace",color:"#4F46E5"}}>{bsFmt(total)}</div>
                         </div>
                       );
                       const SectionTitle = ({label}) => (
-                        <div style={{fontSize:11,fontWeight:700,color:"#4F46E5",letterSpacing:2,marginBottom:8,paddingBottom:6,borderBottom:"1px solid #D1D5DB",marginTop:8}}>{label}</div>
+                        <div style={{fontSize:11,fontWeight:700,color:"#4F46E5",letterSpacing:2,marginBottom:8,paddingBottom:6,borderBottom:"1px solid #D0D5DD",marginTop:8}}>{label}</div>
                       );
                       const SubLabel = ({label}) => (
-                        <div style={{fontSize:10,color:"#6B7280",letterSpacing:1,marginTop:12,marginBottom:4,paddingLeft:4}}>{label}</div>
+                        <div style={{fontSize:10,color:"#475467",letterSpacing:1,marginTop:12,marginBottom:4,paddingLeft:4}}>{label}</div>
                       );
                       const TotalRow = ({label, total, large}) => (
-                        <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:"2px solid #D1D5DB",marginTop:4,marginBottom:large?0:20}}>
+                        <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:"2px solid #D0D5DD",marginTop:4,marginBottom:large?0:20}}>
                           <div style={{fontSize:large?15:13,fontWeight:700}}>{label}</div>
                           <div style={{fontSize:large?16:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#4F46E5"}}>{bsFmt(total)}</div>
                         </div>
                       );
 
                       return (
-                        <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,overflow:"hidden"}}>
-                          <div style={{padding:"18px 24px",borderBottom:"1px solid #E5E7EB",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,overflow:"hidden"}}>
+                          <div style={{padding:"18px 24px",borderBottom:"1px solid #E4E7EC",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                             <div>
                               <div style={{fontSize:14,fontWeight:600}}>Balance Sheet</div>
-                              <div style={{fontSize:11,color:"#6B7280",marginTop:3}}>As of {new Date(asOf+"T12:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · GAAP basis</div>
+                              <div style={{fontSize:11,color:"#475467",marginTop:3}}>As of {new Date(asOf+"T12:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · GAAP basis</div>
                             </div>
                             <div style={{display:"flex",alignItems:"center",gap:10}}>
-                              {!isBalanced && <div style={{fontSize:11,color:"#D97706",background:"#FEF3C7",border:"1px solid #D9770644",borderRadius:8,padding:"4px 10px"}}>⚠ Out of balance by {bsFmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
-                              {isBalanced && <div style={{fontSize:11,color:"#059669",background:"#ECFDF5",border:"1px solid #05966933",borderRadius:8,padding:"4px 10px"}}>✓ Balanced</div>}
+                              {!isBalanced && <div style={{fontSize:11,color:"#DC6803",background:"#FEF3C7",border:"1px solid #DC680344",borderRadius:8,padding:"4px 10px"}}>⚠ Out of balance by {bsFmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
+                              {isBalanced && <div style={{fontSize:11,color:"#039855",background:"#ECFDF5",border:"1px solid #03985533",borderRadius:8,padding:"4px 10px"}}>✓ Balanced</div>}
                             </div>
                           </div>
                           <div style={{padding:"24px 28px"}}>
@@ -443,8 +443,8 @@ export default function ReportsView() {
                             {/* Paid-in capital accounts (Common Stock, APIC) — show all except Retained Earnings (3100) */}
                             {bsEquity.filter(a => a.code !== "3100" && getBal(a.code) !== 0).map(a=>(
                               <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #F3F4F6"}}>
-                                <div style={{fontSize:13,color:"#374151"}}><span style={{color:"#9CA3AF",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}</div>
-                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"#DC2626":"#111827"}}>{bsFmt(getBal(a.code))}</div>
+                                <div style={{fontSize:13,color:"#374151"}}><span style={{color:"#98A2B3",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}</div>
+                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"#D92D20":"#101828"}}>{bsFmt(getBal(a.code))}</div>
                               </div>
                             ))}
 
@@ -453,15 +453,15 @@ export default function ReportsView() {
                             {getBal("3100") !== 0 && (
                               <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 28px",borderBottom:"1px solid #F3F4F6"}}>
                                 <div style={{fontSize:13,color:"#374151"}}>Retained Earnings, beginning of period</div>
-                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal("3100")<0?"#DC2626":"#111827"}}>{bsFmt(getBal("3100"))}</div>
+                                <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal("3100")<0?"#D92D20":"#101828"}}>{bsFmt(getBal("3100"))}</div>
                               </div>
                             )}
                             <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 28px",borderBottom:"1px solid #F3F4F6"}}>
                               <div style={{fontSize:13,color:"#374151"}}>Net {ytdNet>=0?"Income":"Loss"} (current period)</div>
-                              <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:ytdNet>=0?"#059669":"#DC2626"}}>{ytdNet<0?"-":""}{bsFmt(Math.abs(ytdNet))}</div>
+                              <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:ytdNet>=0?"#039855":"#D92D20"}}>{ytdNet<0?"-":""}{bsFmt(Math.abs(ytdNet))}</div>
                             </div>
-                            <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0 7px 28px",borderBottom:"1px solid #D1D5DB",marginBottom:2}}>
-                              <div style={{fontSize:12,fontWeight:600,color:"#6B7280",fontStyle:"italic"}}>Total Retained Earnings</div>
+                            <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0 7px 28px",borderBottom:"1px solid #D0D5DD",marginBottom:2}}>
+                              <div style={{fontSize:12,fontWeight:600,color:"#475467",fontStyle:"italic"}}>Total Retained Earnings</div>
                               <div style={{fontSize:13,fontWeight:600,fontFamily:"'DM Mono',monospace",color:"#4F46E5"}}>{bsFmt(getBal("3100")+ytdNet)}</div>
                             </div>
 
@@ -474,7 +474,7 @@ export default function ReportsView() {
                             </div>
 
                             {openingBalances.length===0 && (
-                              <div style={{marginTop:16,background:"#FEF3C7",border:"1px solid #D9770644",borderRadius:8,padding:"12px 16px",fontSize:12,color:"#D97706"}}>
+                              <div style={{marginTop:16,background:"#FEF3C7",border:"1px solid #DC680344",borderRadius:8,padding:"12px 16px",fontSize:12,color:"#DC6803"}}>
                                 ⚠ No opening balances set. Go to Settings → Opening Balances to enter your starting balances for an accurate balance sheet.
                               </div>
                             )}
@@ -485,32 +485,32 @@ export default function ReportsView() {
 
                     {/* BY VENDOR */}
                     {reportType==="vendor" && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
-                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #E5E7EB", display:"flex", justifyContent:"space-between" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Expenses by Vendor</div>
-                          <div style={{ fontSize:12, color:"#6B7280" }}>{rangeLabels[reportRange]}</div>
+                          <div style={{ fontSize:12, color:"#475467" }}>{rangeLabels[reportRange]}</div>
                         </div>
                         <table style={{ width:"100%", borderCollapse:"collapse" }}>
                           <thead><tr style={{ background:"#F3F4F6" }}>
-                            {["Vendor","Invoices","Total Spend","% of Total"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#6B7280", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
+                            {["Vendor","Invoices","Total Spend","% of Total"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#475467", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
                           </tr></thead>
                           <tbody>
                             {vendorRows.map((v,i)=>(
-                              <tr key={v.name} style={{ borderTop:"1px solid #E5E7EB", background:i%2===0?"transparent":"#F8F9FB" }}>
+                              <tr key={v.name} style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA" }}>
                                 <td style={{ padding:"13px 20px" }}>
                                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                                     <div style={{ width:28, height:28, borderRadius:7, background:vendorColor(v.name), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff" }}>{initials(v.name)}</div>
                                     <span style={{ fontSize:13, fontWeight:500 }}>{v.name}</span>
                                   </div>
                                 </td>
-                                <td style={{ padding:"13px 20px", fontSize:13, color:"#6B7280" }}>{v.count}</td>
-                                <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#111827" }}>{fmt(v.total)}</td>
+                                <td style={{ padding:"13px 20px", fontSize:13, color:"#475467" }}>{v.count}</td>
+                                <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#101828" }}>{fmt(v.total)}</td>
                                 <td style={{ padding:"13px 20px" }}>
                                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                    <div style={{ height:6, width:80, background:"#E5E7EB", borderRadius:3 }}>
+                                    <div style={{ height:6, width:80, background:"#E4E7EC", borderRadius:3 }}>
                                       <div style={{ height:"100%", width:`${Math.min(100,(v.total/(expenses||1))*100)}%`, background:vendorColor(v.name), borderRadius:3 }} />
                                     </div>
-                                    <span style={{ fontSize:12, color:"#6B7280", fontFamily:"'DM Mono', monospace" }}>{expenses>0?((v.total/expenses)*100).toFixed(1):0}%</span>
+                                    <span style={{ fontSize:12, color:"#475467", fontFamily:"'DM Mono', monospace" }}>{expenses>0?((v.total/expenses)*100).toFixed(1):0}%</span>
                                   </div>
                                 </td>
                               </tr>
@@ -522,29 +522,29 @@ export default function ReportsView() {
 
                     {/* BY GL CATEGORY */}
                     {reportType==="gl" && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
-                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #E5E7EB", display:"flex", justifyContent:"space-between" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Expenses by GL Category</div>
-                          <div style={{ fontSize:12, color:"#6B7280" }}>{rangeLabels[reportRange]}</div>
+                          <div style={{ fontSize:12, color:"#475467" }}>{rangeLabels[reportRange]}</div>
                         </div>
                         <table style={{ width:"100%", borderCollapse:"collapse" }}>
                           <thead><tr style={{ background:"#F3F4F6" }}>
-                            {["GL Account","Transactions","Amount","% of Expenses"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#6B7280", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
+                            {["GL Account","Transactions","Amount","% of Expenses"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#475467", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
                           </tr></thead>
                           <tbody>
                             {glRows.map((row,i)=>(
-                              <tr key={row.code} style={{ borderTop:"1px solid #E5E7EB", background:i%2===0?"transparent":"#F8F9FB" }}>
+                              <tr key={row.code} style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA" }}>
                                 <td style={{ padding:"13px 20px" }}>
-                                  <span style={{ background:"#E5E7EB", padding:"3px 10px", borderRadius:20, fontSize:12, color:"#4F46E5" }}>{row.code} · {row.name}</span>
+                                  <span style={{ background:"#E4E7EC", padding:"3px 10px", borderRadius:20, fontSize:12, color:"#4F46E5" }}>{row.code} · {row.name}</span>
                                 </td>
-                                <td style={{ padding:"13px 20px", fontSize:13, color:"#6B7280" }}>{row.count}</td>
-                                <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#DC2626" }}>({fmt(row.total)})</td>
+                                <td style={{ padding:"13px 20px", fontSize:13, color:"#475467" }}>{row.count}</td>
+                                <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#D92D20" }}>({fmt(row.total)})</td>
                                 <td style={{ padding:"13px 20px" }}>
                                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                    <div style={{ height:6, width:80, background:"#E5E7EB", borderRadius:3 }}>
+                                    <div style={{ height:6, width:80, background:"#E4E7EC", borderRadius:3 }}>
                                       <div style={{ height:"100%", width:`${Math.min(100,(row.total/(expenses||1))*100)}%`, background:"#4F46E5", borderRadius:3 }} />
                                     </div>
-                                    <span style={{ fontSize:12, color:"#6B7280", fontFamily:"'DM Mono', monospace" }}>{expenses>0?((row.total/expenses)*100).toFixed(1):0}%</span>
+                                    <span style={{ fontSize:12, color:"#475467", fontFamily:"'DM Mono', monospace" }}>{expenses>0?((row.total/expenses)*100).toFixed(1):0}%</span>
                                   </div>
                                 </td>
                               </tr>
@@ -556,30 +556,30 @@ export default function ReportsView() {
 
                     {/* CASH FLOW */}
                     {reportType==="cashflow" && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
-                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #E5E7EB", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                           <div>
                             <div style={{ fontSize:14, fontWeight:600 }}>Cash Flow Statement</div>
-                            <div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>Cash basis — collected receipts and paid expenses only</div>
+                            <div style={{ fontSize:11, color:"#475467", marginTop:3 }}>Cash basis — collected receipts and paid expenses only</div>
                           </div>
-                          <div style={{ fontSize:12, color:"#6B7280" }}>{rangeLabels[reportRange]}</div>
+                          <div style={{ fontSize:12, color:"#475467" }}>{rangeLabels[reportRange]}</div>
                         </div>
-                        {cashRows.length===0 ? <div style={{ padding:24, color:"#6B7280", fontSize:13 }}>No cash transactions recorded yet. Mark invoices as paid/collected to see cash flow.</div> : (
+                        {cashRows.length===0 ? <div style={{ padding:24, color:"#475467", fontSize:13 }}>No cash transactions recorded yet. Mark invoices as paid/collected to see cash flow.</div> : (
                           <table style={{ width:"100%", borderCollapse:"collapse" }}>
                             <thead><tr style={{ background:"#F3F4F6" }}>
-                              {["Month","Inflow","Outflow","Net","Running"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#6B7280", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
+                              {["Month","Inflow","Outflow","Net","Running"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#475467", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
                             </tr></thead>
                             <tbody>
                               {cashRows.map((row,i)=>{
                                 const net = row.inflow - row.outflow;
                                 const running = cashRows.slice(0,i+1).reduce((s,r)=>s+(r.inflow-r.outflow),0);
                                 return (
-                                  <tr key={row.month} style={{ borderTop:"1px solid #E5E7EB", background:i%2===0?"transparent":"#F8F9FB" }}>
+                                  <tr key={row.month} style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA" }}>
                                     <td style={{ padding:"13px 20px", fontSize:13, fontWeight:500 }}>{row.month}</td>
-                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#059669" }}>{fmt(row.inflow)}</td>
-                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#DC2626" }}>({fmt(row.outflow)})</td>
-                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:net>=0?"#059669":"#DC2626" }}>{net<0?"-":""}{fmt(net)}</td>
-                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:running>=0?"#111827":"#DC2626" }}>{running<0?"-":""}{fmt(running)}</td>
+                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#039855" }}>{fmt(row.inflow)}</td>
+                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#D92D20" }}>({fmt(row.outflow)})</td>
+                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:net>=0?"#039855":"#D92D20" }}>{net<0?"-":""}{fmt(net)}</td>
+                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:running>=0?"#101828":"#D92D20" }}>{running<0?"-":""}{fmt(running)}</td>
                                   </tr>
                                 );
                               })}
@@ -591,25 +591,25 @@ export default function ReportsView() {
 
                     {/* BY PROJECT */}
                     {reportType==="project" && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E5E7EB", borderRadius:14, overflow:"hidden" }}>
-                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #E5E7EB", display:"flex", justifyContent:"space-between" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                        <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Project Cost Breakdown</div>
-                          <div style={{ fontSize:12, color:"#6B7280" }}>{rangeLabels[reportRange]}</div>
+                          <div style={{ fontSize:12, color:"#475467" }}>{rangeLabels[reportRange]}</div>
                         </div>
                         <table style={{ width:"100%", borderCollapse:"collapse" }}>
                           <thead><tr style={{ background:"#F3F4F6" }}>
-                            {["Project","Transactions","Revenue","Expenses","Net"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#6B7280", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
+                            {["Project","Transactions","Revenue","Expenses","Net"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"#475467", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
                           </tr></thead>
                           <tbody>
                             {projectRows.map((p,i)=>{
                               const pnet = p.revenue - p.expenses;
                               return (
-                                <tr key={p.name} style={{ borderTop:"1px solid #E5E7EB", background:i%2===0?"transparent":"#F8F9FB" }}>
+                                <tr key={p.name} style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA" }}>
                                   <td style={{ padding:"13px 20px", fontSize:13, fontWeight:500, color:"#4F46E5" }}>{p.name}</td>
-                                  <td style={{ padding:"13px 20px", fontSize:13, color:"#6B7280" }}>{p.count}</td>
-                                  <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#059669" }}>{fmt(p.revenue)}</td>
-                                  <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#DC2626" }}>({fmt(p.expenses)})</td>
-                                  <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:pnet>=0?"#059669":"#DC2626" }}>{pnet<0?"-":""}{fmt(pnet)}</td>
+                                  <td style={{ padding:"13px 20px", fontSize:13, color:"#475467" }}>{p.count}</td>
+                                  <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#039855" }}>{fmt(p.revenue)}</td>
+                                  <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#D92D20" }}>({fmt(p.expenses)})</td>
+                                  <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:pnet>=0?"#039855":"#D92D20" }}>{pnet<0?"-":""}{fmt(pnet)}</td>
                                 </tr>
                               );
                             })}

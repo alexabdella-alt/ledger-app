@@ -50,7 +50,7 @@ export function getTaxDeadlines(now = new Date()) {
       let date = new Date(year, def.m, def.d);
       if (date < today) { year += 1; date = new Date(year, def.m, def.d); }
       const days = Math.round((date - today) / 86400000);
-      return { ...def, key: `${def.m}-${def.d}`, date, year, days, color: days <= 14 ? "#DC2626" : days <= 30 ? "#D97706" : "#059669" };
+      return { ...def, key: `${def.m}-${def.d}`, date, year, days, color: days <= 14 ? "#D92D20" : days <= 30 ? "#DC6803" : "#039855" };
     })
     .sort((a, b) => a.date - b.date);
 }

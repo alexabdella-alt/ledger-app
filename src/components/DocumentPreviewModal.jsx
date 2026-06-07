@@ -35,17 +35,17 @@ export default function DocumentPreviewModal({ doc, onClose }) {
         {/* Sticky dark header bar — always visible above the document */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 18px", background: "#1E1E2E", flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#F8F9FB", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-            <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1 }}>{doc.uploaded_at?.slice(0, 10)} · {doc.type}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#F7F8FA", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+            <div style={{ fontSize: 11, color: "#98A2B3", marginTop: 1 }}>{doc.uploaded_at?.slice(0, 10)} · {doc.type}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>
           </div>
           {previewUrl && docHasFile(doc) && (
             <a href={previewUrl} download={doc.name} target="_blank" rel="noreferrer"
               style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 9, background: "#4F46E5", border: "1px solid #6366F1", color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>↓ Download</a>
           )}
           <button onClick={onClose} aria-label="Close preview" title="Close"
-            onMouseEnter={e => { e.currentTarget.style.background = "#DC2626"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.borderColor = "#DC2626"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#F8F9FB"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
-            style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", color: "#F8F9FB", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
+            onMouseEnter={e => { e.currentTarget.style.background = "#D92D20"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.borderColor = "#D92D20"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#F7F8FA"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
+            style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", color: "#F7F8FA", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
         </div>
 
         {/* Content area fills the rest; scrolls independently */}
@@ -64,12 +64,12 @@ export default function DocumentPreviewModal({ doc, onClose }) {
             </div>
           )}
           {previewLoading && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#6B7280", fontSize: 13 }}>Loading file…</div>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#475467", fontSize: 13 }}>Loading file…</div>
           )}
           {!docHasFile(doc) && !previewLoading && (
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 24 }}>
               <div style={{ fontSize: 52, opacity: 0.45 }}>{docIcon(doc.type)}</div>
-              <div style={{ fontSize: 13, color: "#6B7280", textAlign: "center", maxWidth: 460, lineHeight: 1.55, background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 10, padding: "14px 18px" }}>
+              <div style={{ fontSize: 13, color: "#475467", textAlign: "center", maxWidth: 460, lineHeight: 1.55, background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 10, padding: "14px 18px" }}>
                 This document was uploaded before file storage was enabled. Re-upload to enable full preview.
               </div>
             </div>
