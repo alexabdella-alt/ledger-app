@@ -1,115 +1,132 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
-import { getAuthHeaders } from "../../lib/supabase";
+
+// Renders an image from Supabase Storage via a short-lived signed URL (or the
+// in-session base64 when the file was just uploaded this session).
+function StoredImage({ supabase, path, base64, mediaType, style, alt }) {
+  const [url, setUrl] = React.useState(base64 ? `data:${mediaType};base64,${base64}` : null);
+  React.useEffect(() => {
+    if (base64) { setUrl(`data:${mediaType};base64,${base64}`); return; }
+    if (!path) { setUrl(null); return; }
+    let active = true;
+    supabase.storage.from("documents").createSignedUrl(path, 3600).then(({ data }) => {
+      if (active && data?.signedUrl) setUrl(data.signedUrl);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [path, base64, mediaType]);
+  if (!url) return <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 22 }}>🖼</div>;
+  return <img src={url} style={style} alt={alt || ""} loading="lazy" />;
+}
 
 export default function DocsView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
-            const preview = docsPreview; const setPreview = setDocsPreview;
-            const filterType = docsFilterType; const setFilterType = setDocsFilterType;
-            const types = ["all",...new Set(docLibrary.map(d=>d.type))];
-            const filtered = filterType==="all"?docLibrary:docLibrary.filter(d=>d.type===filterType);
+  const { docLibrary, docsFilterType, docsPreview, setDocsFilterType, setDocsPreview, supabase } = useERP();
+  const preview = docsPreview; const setPreview = setDocsPreview;
+  const filterType = docsFilterType; const setFilterType = setDocsFilterType;
+  const types = ["all", ...new Set(docLibrary.map(d => d.type))];
+  const filtered = filterType === "all" ? docLibrary : docLibrary.filter(d => d.type === filterType);
+
+  const isImage = m => (m || "").startsWith("image");
+  const isPdf = m => m === "application/pdf";
+  const iconFor = t => t === "invoice" ? "🧾" : t === "contract" ? "📄" : t === "bank_statement" ? "🏦" : t === "payroll" ? "💼" : "📋";
+  const hasFile = d => !!(d && (d.base64 || d.storage_path));
+
+  // Signed URL for the open preview — regenerated on every open (expires in 1h).
+  const [previewUrl, setPreviewUrl] = React.useState(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  React.useEffect(() => {
+    if (!preview) { setPreviewUrl(null); return; }
+    if (preview.base64) { setPreviewUrl(`data:${preview.mediaType};base64,${preview.base64}`); return; }
+    if (!preview.storage_path) { setPreviewUrl(null); return; } // legacy: metadata only
+    let active = true; setPreviewLoading(true); setPreviewUrl(null);
+    supabase.storage.from("documents").createSignedUrl(preview.storage_path, 3600).then(({ data }) => {
+      if (!active) return;
+      setPreviewLoading(false);
+      setPreviewUrl(data?.signedUrl || null);
+    }).catch(() => { if (active) setPreviewLoading(false); });
+    return () => { active = false; };
+  }, [preview]);
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 3, color: "#6B7280", marginBottom: 8 }}>DOCUMENT LIBRARY</div>
+          <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Documents</h1>
+          <div style={{ fontSize: 13, color: "#6B7280", marginTop: 6 }}>Every uploaded file — invoices, contracts, bank statements, payroll — stored and searchable. {docLibrary.length} document{docLibrary.length !== 1 ? "s" : ""} stored.</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {types.map(t => (
+            <button key={t} onClick={() => setFilterType(t)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, background: filterType === t ? "#4F46E5" : "#E5E7EB", border: "none", color: filterType === t ? "#fff" : "#6B7280", cursor: "pointer", textTransform: "capitalize" }}>{t}</button>
+          ))}
+        </div>
+      </div>
+
+      {preview && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setPreview(null)}>
+          <div style={{ background: "#FFFFFF", border: "1px solid #D1D5DB", borderRadius: 16, padding: 24, maxWidth: 760, width: "90%", maxHeight: "85vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, wordBreak: "break-word" }}>{preview.name}</div>
+              <button onClick={() => setPreview(null)} style={{ background: "transparent", border: "none", color: "#6B7280", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>×</button>
+            </div>
+
+            {previewUrl && isImage(preview.mediaType) && <img src={previewUrl} style={{ width: "100%", borderRadius: 8 }} alt={preview.name} />}
+            {previewUrl && isPdf(preview.mediaType) && <iframe src={previewUrl} style={{ width: "100%", height: 560, border: "none", borderRadius: 8 }} title={preview.name} />}
+            {previewUrl && !isImage(preview.mediaType) && !isPdf(preview.mediaType) && (
+              <a href={previewUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", padding: "10px 18px", borderRadius: 10, background: "#EEF2FF", border: "1px solid #4F46E533", color: "#4F46E5", fontSize: 13, fontWeight: 600 }}>Open file ↗</a>
+            )}
+            {previewLoading && <div style={{ padding: "40px 0", textAlign: "center", color: "#6B7280", fontSize: 13 }}>Loading file…</div>}
+
+            {!hasFile(preview) && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "32px 0 8px" }}>
+                <div style={{ fontSize: 40, opacity: 0.5 }}>{iconFor(preview.type)}</div>
+                <div style={{ fontSize: 13, color: "#6B7280", textAlign: "center", maxWidth: 440, lineHeight: 1.55, background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px" }}>
+                  This document was uploaded before file storage was enabled. Re-upload to enable full preview.
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 16, fontSize: 12, color: "#6B7280" }}>
+              Uploaded {preview.uploaded_at?.slice(0, 10)} · Type: {preview.type}{preview.mediaType ? ` · ${preview.mediaType}` : ""}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
+        <div style={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 14, padding: 48, textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📁</div>
+          <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>No documents yet</div>
+          <div style={{ fontSize: 13, color: "#6B7280" }}>Documents are stored automatically when you upload invoices, contracts, bank statements, and payroll files.</div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
+          {filtered.map(doc => {
+            const legacy = !hasFile(doc);
             return (
-              <div>
-                <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
-                  <div>
-                    <div style={{fontSize:10,letterSpacing:3,color:"#6B7280",marginBottom:8}}>DOCUMENT LIBRARY</div>
-                    <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Documents</h1>
-                    <div style={{fontSize:13,color:"#6B7280",marginTop:6}}>Every uploaded file — invoices, contracts, bank statements, payroll — stored and searchable. {docLibrary.length} document{docLibrary.length!==1?"s":""} stored.</div>
-                  </div>
-                  <div style={{display:"flex",gap:8}}>
-                    {types.map(t=>(
-                      <button key={t} onClick={()=>setFilterType(t)} style={{padding:"6px 14px",borderRadius:20,fontSize:12,background:filterType===t?"#4F46E5":"#E5E7EB",border:"none",color:filterType===t?"#fff":"#6B7280",cursor:"pointer",textTransform:"capitalize"}}>{t}</button>
-                    ))}
+              <div key={doc.id} style={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", cursor: "pointer", transition: "border-color 0.15s" }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = "#4F46E5"}
+                onMouseLeave={e => e.currentTarget.style.borderColor = "#E5E7EB"}
+                onClick={() => setPreview(doc)}>
+                {/* Thumbnail: image preview for images, icon otherwise */}
+                <div style={{ height: 120, background: "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", borderBottom: "1px solid #E5E7EB", overflow: "hidden" }}>
+                  {isImage(doc.mediaType) && hasFile(doc)
+                    ? <StoredImage supabase={supabase} path={doc.storage_path} base64={doc.base64} mediaType={doc.mediaType} alt={doc.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : <div style={{ fontSize: 40 }}>{isPdf(doc.mediaType) ? "📄" : iconFor(doc.type)}</div>}
+                </div>
+                <div style={{ padding: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, wordBreak: "break-word" }}>{doc.name}</div>
+                  <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>{doc.uploaded_at?.slice(0, 10)}</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 10, background: "#E5E7EB", color: "#6B7280", borderRadius: 20, padding: "2px 8px", textTransform: "capitalize" }}>{doc.type}</span>
+                    {(doc.tags || []).map(t => <span key={t} style={{ fontSize: 10, background: "#F3F4F6", color: "#4F46E5", borderRadius: 20, padding: "2px 8px" }}>{t}</span>)}
+                    {legacy && <span title="Uploaded before file storage was enabled" style={{ fontSize: 10, color: "#9CA3AF" }}>metadata only</span>}
                   </div>
                 </div>
-                {preview && (
-                  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setPreview(null)}>
-                    <div style={{background:"#FFFFFF",border:"1px solid #D1D5DB",borderRadius:16,padding:24,maxWidth:700,width:"90%",maxHeight:"80vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-                        <div style={{fontSize:15,fontWeight:600}}>{preview.name}</div>
-                        <button onClick={()=>setPreview(null)} style={{background:"transparent",border:"none",color:"#6B7280",fontSize:20,cursor:"pointer"}}>×</button>
-                      </div>
-                      {preview.base64 && preview.mediaType?.startsWith("image") && (
-                        <img src={`data:${preview.mediaType};base64,${preview.base64}`} style={{width:"100%",borderRadius:8}} alt={preview.name}/>
-                      )}
-                      {preview.base64 && preview.mediaType==="application/pdf" && (
-                        <iframe src={`data:application/pdf;base64,${preview.base64}`} style={{width:"100%",height:500,border:"none",borderRadius:8}} title={preview.name}/>
-                      )}
-                      {!preview.base64 && (() => {
-                        const rows = [
-                          ["File name", preview.name],
-                          ["Document type", preview.type],
-                          ["Media type", preview.mediaType || "—"],
-                          ["Uploaded", preview.uploaded_at ? new Date(preview.uploaded_at).toLocaleString() : "—"],
-                          ["Tags", (preview.tags||[]).length ? preview.tags.join(", ") : "—"],
-                          ["Linked entry", preview.linked_invoice_id || "—"],
-                          ["Entry needed", preview.entry_needed==null ? "—" : (preview.entry_needed ? "Yes" : "No")],
-                          ["Posted", preview.posted==null ? "—" : (preview.posted ? "Yes" : "No")],
-                        ];
-                        return (
-                          <div>
-                            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"28px 0 22px"}}>
-                              <div style={{fontSize:40,opacity:0.5}}>{preview.mediaType==="application/pdf"?"📄":preview.mediaType?.startsWith("image")?"🖼":"📁"}</div>
-                              <div style={{fontSize:13,color:"#6B7280",textAlign:"center",maxWidth:420,lineHeight:1.55}}>
-                                The file itself isn't stored in the database (only its metadata). Re-upload the file to preview its contents.
-                              </div>
-                            </div>
-                            <div style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:12,padding:"6px 16px"}}>
-                              {rows.map(([k,v])=>(
-                                <div key={k} style={{display:"flex",justifyContent:"space-between",gap:16,padding:"10px 0",borderBottom:"1px solid #F3F4F6",fontSize:13}}>
-                                  <span style={{color:"#6B7280"}}>{k}</span>
-                                  <span style={{color:"#111827",textAlign:"right",wordBreak:"break-word",maxWidth:"70%"}}>{v}</span>
-                                </div>
-                              ))}
-                            </div>
-                            {preview.ai_explanation && (
-                              <div style={{marginTop:14,background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:12,padding:"14px 16px"}}>
-                                <div style={{fontSize:10,letterSpacing:1,color:"#818CF8",marginBottom:6}}>AI EXPLANATION</div>
-                                <div style={{fontSize:13,color:"#6B7280",lineHeight:1.6}}>{preview.ai_explanation}</div>
-                              </div>
-                            )}
-                            {preview.entry_summary && (
-                              <div style={{marginTop:14,background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:12,padding:"14px 16px"}}>
-                                <div style={{fontSize:10,letterSpacing:1,color:"#6B7280",marginBottom:6}}>ENTRY SUMMARY</div>
-                                <div style={{fontSize:13,color:"#6B7280",lineHeight:1.6}}>{preview.entry_summary}</div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {preview.base64 && <div style={{marginTop:16,fontSize:12,color:"#6B7280"}}>Uploaded {preview.uploaded_at?.slice(0,10)} · Type: {preview.type} · {preview.mediaType}</div>}
-                    </div>
-                  </div>
-                )}
-                {filtered.length===0 ? (
-                  <div style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:48,textAlign:"center"}}>
-                    <div style={{fontSize:32,marginBottom:12}}>📁</div>
-                    <div style={{fontSize:15,fontWeight:500,marginBottom:8}}>No documents yet</div>
-                    <div style={{fontSize:13,color:"#6B7280"}}>Documents are stored automatically when you upload invoices, contracts, bank statements, and payroll files.</div>
-                  </div>
-                ) : (
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>
-                    {filtered.map(doc=>(
-                      <div key={doc.id} style={{background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:12,padding:18,cursor:"pointer",transition:"border-color 0.15s"}}
-                        onMouseEnter={e=>e.currentTarget.style.borderColor="#4F46E5"}
-                        onMouseLeave={e=>e.currentTarget.style.borderColor="#E5E7EB"}
-                        onClick={()=>setPreview(doc)}>
-                        <div style={{fontSize:32,marginBottom:12}}>
-                          {doc.type==="invoice"?"🧾":doc.type==="contract"?"📄":doc.type==="bank_statement"?"🏦":doc.type==="payroll"?"💼":"📋"}
-                        </div>
-                        <div style={{fontSize:13,fontWeight:500,marginBottom:4,wordBreak:"break-word"}}>{doc.name}</div>
-                        <div style={{fontSize:11,color:"#6B7280",marginBottom:8}}>{doc.uploaded_at?.slice(0,10)}</div>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                          <span style={{fontSize:10,background:"#E5E7EB",color:"#6B7280",borderRadius:20,padding:"2px 8px",textTransform:"capitalize"}}>{doc.type}</span>
-                          {(doc.tags||[]).map(t=><span key={t} style={{fontSize:10,background:"#F3F4F6",color:"#4F46E5",borderRadius:20,padding:"2px 8px"}}>{t}</span>)}
-                        </div>
-                        <div style={{marginTop:10,fontSize:11,color:"#6B7280"}}>Click to preview →</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }

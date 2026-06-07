@@ -250,39 +250,75 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     showNotification(`Document not saved to cloud: ${msg}`, "error");
   };
 
-  const storeDocument = (name, base64, mediaType, type, linkedId=null, tags=[], queueItemId=null) => {
-    const doc = { id: Date.now()+Math.random(), name, base64, mediaType, type, uploaded_at: new Date().toISOString(), linked_invoice_id: linkedId, tags };
+  // base64 → Blob fallback (when callers only have the encoded string).
+  const b64ToBlob = (b64, mime) => {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime || "application/octet-stream" });
+  };
+
+  // Uploads the real file to Supabase Storage, then writes its metadata row —
+  // atomically: if the metadata insert fails, the just-uploaded file is removed
+  // so we never orphan a blob. Any failure is pinned to the upload-queue item.
+  const storeDocument = async (name, base64, mediaType, type, linkedId=null, tags=[], queueItemId=null, file=null) => {
+    const doc = { id: Date.now()+Math.random(), name, base64, mediaType, type, uploaded_at: new Date().toISOString(), linked_invoice_id: linkedId, tags, storage_path: null };
     setDocLibrary(prev => [doc, ...prev]);
-    // Persist metadata only — base64 is intentionally NOT stored (too large).
     if (!currentCompany?.id) {
       console.warn("[documents] storeDocument: no currentCompany.id — NOT persisting", { name, type });
-      reportDocError(queueItemId, "no active company — document metadata was not saved.");
+      reportDocError(queueItemId, "no active company — document was not saved.");
       return doc.id;
     }
-    // Map to the documents table's actual columns.
+
+    // ── 1. Upload the actual file to Storage at {company_id}/{ts}_{safeName} ──
+    let storagePath = null, fileSize = null;
+    try {
+      const blob = file || (base64 ? b64ToBlob(base64, mediaType) : null);
+      if (blob) {
+        const safeName = (name || "file").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
+        const path = `${currentCompany.id}/${Date.now()}_${safeName}`;
+        const { data: up, error: upErr } = await supabase.storage.from("documents")
+          .upload(path, blob, { contentType: mediaType || undefined, upsert: false });
+        if (upErr) {
+          console.error("[documents] storage upload FAILED:", upErr.message, upErr);
+          reportDocError(queueItemId, `file upload failed — ${upErr.message || "check the 'documents' storage bucket (migration 014)"}`);
+          return doc.id;
+        }
+        storagePath = up?.path || path;
+        fileSize = blob.size ?? null;
+      }
+    } catch (e) {
+      console.error("[documents] upload threw:", e);
+      reportDocError(queueItemId, e?.message || "file upload error.");
+      return doc.id;
+    }
+
+    // ── 2. Insert the metadata row (with the storage path) ──
     const payload = {
       company_id: currentCompany.id,
-      name: name,
+      name,
       mime_type: mediaType || null,
       document_type: type || null,
       uploaded_by: session?.user?.id || null,
+      storage_path: storagePath,
+      file_size_bytes: fileSize,
     };
-
-    supabase.from("documents").insert(payload).select("id").single()
-      .then(({ data, error }) => {
-        if (error) {
-          console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error);
-          reportDocError(queueItemId, error.message || "missing documents table — apply migration 002.");
-          return;
-        }
-        // Clear any prior error and swap the temp client id for the DB id.
-        if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
-        if (data?.id) setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data.id } : d));
-      })
-      .catch((e) => {
-        console.error("[documents] insert threw:", e);
-        reportDocError(queueItemId, e?.message || "network error saving document.");
-      });
+    try {
+      const { data, error } = await supabase.from("documents").insert(payload).select("id").single();
+      if (error) {
+        console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error);
+        // ── 3. Roll back the uploaded file so it isn't orphaned ──
+        if (storagePath) { try { await supabase.storage.from("documents").remove([storagePath]); } catch {} }
+        reportDocError(queueItemId, error.message || "missing documents table — apply migration 002.");
+        return doc.id;
+      }
+      if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
+      setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data?.id || d.id, storage_path: storagePath } : d));
+    } catch (e) {
+      console.error("[documents] insert threw:", e);
+      if (storagePath) { try { await supabase.storage.from("documents").remove([storagePath]); } catch {} }
+      reportDocError(queueItemId, e?.message || "network error saving document.");
+    }
     return doc.id;
   };
 
@@ -648,6 +684,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           mediaType: d.mime_type,
           type: d.document_type,
           uploaded_at: d.created_at,
+          storage_path: d.storage_path,       // actual file in Storage (migration 014)
+          file_size_bytes: d.file_size_bytes,
           tags: d.tags || [],                 // present after migration 013
           ai_explanation: d.ai_explanation,
           entry_summary: d.entry_summary,
@@ -1585,7 +1623,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
 
           const newInvoices = [...highConfidence];
           const totalAmt = newInvoices.reduce((s,i)=>s+i.amount, 0);
-          storeDocument(item.name, base64, mediaType, "invoice", newInvoices[0]?.id||null, ["uploaded"], item.id);
+          storeDocument(item.name, base64, mediaType, "invoice", newInvoices[0]?.id||null, ["uploaded"], item.id, file);
           logAudit("invoice_uploaded", `Uploaded ${item.name}: ${extractedList.length} invoice(s) extracted`);
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
             invoiceCount: highConfidence.length,
@@ -1803,7 +1841,7 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
           const saved = { ...contract, id:Date.now()+Math.random(), file_name:item.name, uploaded_at:new Date().toISOString(), posted_entries:[] };
           setContracts(prev => [saved, ...prev]);
           persistContract(saved);
-          storeDocument(item.name, base64, mediaType, "contract", saved.id, ["contract"], item.id);
+          storeDocument(item.name, base64, mediaType, "contract", saved.id, ["contract"], item.id, file);
           logAudit("contract_uploaded", `Contract uploaded: ${item.name}`);
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
             counterparty:contract.counterparty, type:contract.contract_type, entries:contract.journal_entries?.length||0

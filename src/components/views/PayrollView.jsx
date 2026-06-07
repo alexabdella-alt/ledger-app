@@ -50,7 +50,7 @@ Journal entry rules:
                 const importRecord = { id:Date.now()+Math.random(), source:parsed.source||"Unknown", period:`${parsed.period_start} – ${parsed.period_end}`, pay_date:parsed.pay_date, total_gross:parsed.total_gross, total_net:parsed.total_net, total_employer_taxes:parsed.total_employer_taxes, journal_entries:parsed.journal_entries||[], employees:parsed.employees||[], imported_at:new Date().toISOString(), file_name:file.name, posted:false };
                 setPayrollImports(prev => [importRecord, ...prev]);
                 logAudit("payroll_parsed", `${parsed.source} payroll parsed: ${fmt(parsed.total_gross)} gross, ${(parsed.employees||[]).length} employees`);
-                storeDocument(file.name, null, "text/csv", "payroll", importRecord.id, ["payroll"]);
+                storeDocument(file.name, null, "text/csv", "payroll", importRecord.id, ["payroll"], null, file);
               } catch(e) { console.error(e); }
               setPayrollProcessing(false);
             };
