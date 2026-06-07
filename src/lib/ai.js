@@ -60,7 +60,7 @@ async function classifyIntent(userMessage, recentHistory) {
   }
 }
 
-async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, contacts, chartOfAccounts }) {
+async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts }) {
   // ── 1. Truncate history to last 10 turns (5 user + 5 assistant) ───────────────
   const truncatedHistory = chatHistory.slice(-10);
 
@@ -92,6 +92,19 @@ ${contacts.map(c =>
     ? `Vendor Rules:\n${rules.length === 0 ? "None yet." : rules.map(r => `- ${r.vendor} → GL ${r.gl_code} (${r.gl_name})${r.project ? `, Project: ${r.project}` : ""}`).join("\n")}`
     : `Vendor Rules: ${rules.length} active (not loaded for this query).`;
 
+  // Your memory of past conversations with this user (last ~20 turns, with the
+  // actions you took). Reference it naturally; answer "what did you do" from it.
+  const memorySection = (memory && memory.length)
+    ? `Recent conversation history (your memory of past exchanges with this user):\n${memory.map(m => {
+        const when = m.created_at
+          ? new Date(m.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+          : "earlier";
+        if (m.role === "user") return `[${when}] User: ${m.content}`;
+        const acts = (m.actions && m.actions.length) ? ` — Actions taken: ${m.actions.join("; ")}` : "";
+        return `[${when}] Assistant: ${m.content}${acts}`;
+      }).join("\n")}`
+    : "Recent conversation history: none yet (this is an early conversation).";
+
   // ── 4. Build system prompt ────────────────────────────────────────────────────
   const systemPrompt = `You are Shadow CFO — an AI CFO and bookkeeper in one, built for business owners who need real financial intelligence without the jargon. You think like a seasoned CFO who also handles the books. You proactively surface what matters, not just what was asked.
 
@@ -99,6 +112,10 @@ Chart of Accounts:
 ${(chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name} (${a.category})`).join("\n")}
 
 Available Projects: ${[...PROJECTS, ...projects].filter((v,i,a) => a.indexOf(v) === i).join(", ")}
+
+MEMORY: You have memory of past conversations with this user (shown below as "Recent conversation history"). Reference relevant history naturally when answering questions. If asked what was done previously, answer from the history.
+
+${memorySection}
 
 ${rulesSection}
 

@@ -433,12 +433,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [selectedPayments, setSelectedPayments] = useState(new Set());
   const [apSettings] = useState({ autoApproveThreshold: AP_AUTO_APPROVE_THRESHOLD });
   const [cashBalance, setCashBalance] = useState("");
+  const CHAT_GREETING = "Hey — I'm Shadow CFO. Just upload your documents on Home and I'll handle the bookkeeping. Ask me anything — your burn rate, P&L, unpaid bills — or tell me what to do and I'll take you there. What do you need?";
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState([
-    { role: "assistant", content: "Hey — I'm Shadow CFO. Just upload your documents on Home and I'll handle the bookkeeping. Ask me anything — your burn rate, P&L, unpaid bills — or tell me what to do and I'll take you there. What do you need?", id: 0 }
+    { role: "assistant", content: CHAT_GREETING, id: 0 }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatHistoryView, setChatHistoryView] = useState(false); // History timeline toggle
   const [hasUnread, setHasUnread] = useState(false);
   const chatBottomRef = useRef(null);
   const chatInputRef = useRef(null);
@@ -2874,17 +2876,52 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   };
 
   // ── CHAT HANDLER ────────────────────────────────────────────────────────────
+  // ── PERSISTENT CHAT HISTORY + ACTION MEMORY (migration 015) ────────────────
+  const persistChatMessage = async (role, content, actionsTaken = []) => {
+    if (!currentCompany?.id) return;
+    try {
+      const { error } = await supabase.from("chat_messages").insert({
+        company_id: currentCompany.id, role, content, actions_taken: actionsTaken || [],
+      });
+      if (error) console.warn("[chat] persist failed:", error.message);
+    } catch (e) { console.warn("[chat] persist threw:", e?.message || e); }
+  };
+
+  const loadChatHistory = async (companyId) => {
+    const cid = companyId || currentCompany?.id;
+    if (!cid) return;
+    try {
+      const { data, error } = await supabase.from("chat_messages")
+        .select("*").eq("company_id", cid)
+        .order("created_at", { ascending: false }).limit(50);
+      if (error) { console.warn("[chat] load:", error.message); return; }
+      const msgs = (data || []).slice().reverse().map(m => ({
+        role: m.role, content: m.content,
+        actions: Array.isArray(m.actions_taken) ? m.actions_taken : [],
+        created_at: m.created_at, id: m.id,
+      }));
+      setChatHistory([{ role: "assistant", content: CHAT_GREETING, id: 0 }, ...msgs]);
+    } catch (e) { console.warn("[chat] load threw:", e?.message || e); }
+  };
+
+  // Reload the persisted conversation whenever the company changes.
+  useEffect(() => { if (currentCompany?.id) loadChatHistory(currentCompany.id); /* eslint-disable-next-line */ }, [currentCompany?.id]);
+
   const handleChatSend = async () => {
     const msg = chatInput.trim();
     if (!msg || chatLoading) return;
     setChatInput("");
-    const userMsg = { role: "user", content: msg, id: Date.now() };
+    const userMsg = { role: "user", content: msg, id: Date.now(), created_at: new Date().toISOString() };
     setChatHistory(h => [...h, userMsg]);
     setChatLoading(true);
+    persistChatMessage("user", msg);  // persist the user turn immediately
 
     try {
       const historyForAI = chatHistory.filter(m => m.id !== 0).map(m => ({ role: m.role, content: m.content }));
-      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, contacts, chartOfAccounts: CHART_OF_ACCOUNTS });
+      // Memory: last 20 persisted turns (with their actions + timestamps) for the system prompt.
+      const memory = chatHistory.filter(m => m.id !== 0).slice(-20)
+        .map(m => ({ role: m.role, content: m.content, actions: m.actions || [], created_at: m.created_at }));
+      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts, chartOfAccounts: CHART_OF_ACCOUNTS });
 
       // Execute actions
       let actionSummary = [];
@@ -3118,9 +3155,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         role: "assistant",
         content: result.reply || "Done!",
         actions: actionSummary,
-        id: Date.now() + 1
+        id: Date.now() + 1,
+        created_at: new Date().toISOString(),
       };
       setChatHistory(h => [...h, assistantMsg]);
+      persistChatMessage("assistant", assistantMsg.content, actionSummary);  // remember it
       if (!chatOpen) setHasUnread(true);
     } catch(e) {
       console.error("Chat error:", e);
@@ -3448,17 +3487,48 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         }}>
           {/* Header */}
           <div style={{ padding:"18px 20px", borderBottom:"1px solid #E5E7EB", background:"linear-gradient(135deg,#EEF2FF,#FFFFFF)", flexShrink:0 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
-              <div>
-                <div style={{ fontSize:14, fontWeight:600 }}>Shadow CFO</div>
-                <div style={{ fontSize:11, color:"#059669" }}>● Online · Your AI Controller</div>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:600 }}>Shadow CFO</div>
+                  <div style={{ fontSize:11, color:"#059669" }}>● Online · Your AI Controller</div>
+                </div>
               </div>
+              <button onClick={()=>setChatHistoryView(v=>!v)} title="Action history"
+                style={{ fontSize:11, padding:"5px 11px", borderRadius:8, background:chatHistoryView?"#4F46E5":"#FFFFFF", border:`1px solid ${chatHistoryView?"#4F46E5":"#D1D5DB"}`, color:chatHistoryView?"#fff":"#6B7280", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
+                {chatHistoryView ? "← Chat" : "History"}
+              </button>
             </div>
           </div>
 
           {/* Messages */}
           <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 8px" }}>
+            {chatHistoryView ? (() => {
+              const timeline = chatHistory.filter(m => m.role==="assistant" && (m.actions||[]).length>0).slice().reverse();
+              if (timeline.length===0) return <div style={{ padding:"30px 8px", textAlign:"center", color:"#6B7280", fontSize:12, lineHeight:1.6 }}>No actions yet. When you ask me to recode transactions, add accounts, or set rules, they'll appear here as a timeline.</div>;
+              return (
+                <div>
+                  <div style={{ fontSize:10, letterSpacing:1, color:"#6B7280", fontWeight:700, marginBottom:14 }}>ACTION HISTORY</div>
+                  {timeline.map((m,i)=>(
+                    <div key={m.id||i} style={{ display:"flex", gap:10, marginBottom:14 }}>
+                      <div style={{ flexShrink:0, width:8, display:"flex", flexDirection:"column", alignItems:"center" }}>
+                        <div style={{ width:8, height:8, borderRadius:"50%", background:"#4F46E5", marginTop:3 }} />
+                        {i<timeline.length-1 && <div style={{ flex:1, width:2, background:"#E5E7EB", marginTop:2 }} />}
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:11, color:"#6B7280", marginBottom:4 }}>{m.created_at ? new Date(m.created_at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : ""}</div>
+                        {(m.actions||[]).map((a,j)=>(
+                          <div key={j} style={{ fontSize:12, color:"#111827", lineHeight:1.5, display:"flex", gap:6, marginBottom:3 }}>
+                            <span style={{ color:"#4F46E5", flexShrink:0 }}>⚡</span><span>{a}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })() : (<>
             {chatHistory.map((msg, idx)=>(
               <div key={msg.id||idx} style={{ marginBottom:14, display:"flex", justifyContent:msg.role==="user"?"flex-end":"flex-start" }}>
                 {msg.role==="assistant" && (
@@ -3500,10 +3570,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               </div>
             )}
             <div ref={chatBottomRef} />
+            </>)}
           </div>
 
           {/* Suggestions */}
-          {chatHistory.length < 3 && (
+          {!chatHistoryView && chatHistory.length < 3 && (
             <div style={{ padding:"0 16px 8px", display:"flex", flexWrap:"wrap", gap:6 }}>
               {["What's my burn rate?","Show me unpaid bills","What's my P&L this month?","Did anything need my attention?"].map(s=>(
                 <button key={s} onClick={()=>{ setChatInput(s); chatInputRef.current?.focus(); }} style={{ fontSize:11, padding:"5px 10px", borderRadius:20, background:"#E5E7EB", border:"1px solid #D1D5DB", color:"#6B7280", cursor:"pointer", textAlign:"left" }}>{s}</button>
