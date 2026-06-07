@@ -168,7 +168,7 @@ What should this business owner know and do?`}]
                         ✓ No overdue invoices — all receivables are current.
                       </div>
                     ) : (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <table style={{ width:"100%", borderCollapse:"collapse" }}>
                           <thead><tr style={{ background:"#F3F4F6" }}>
                             {["Customer","Invoice Date","Due Date","Days Overdue","Amount","Action"].map(h=>(
@@ -253,7 +253,7 @@ What should this business owner know and do?`}]
 
                     {/* Aging detail table */}
                     {arOpen.length>0 && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"14px 20px", borderBottom:"1px solid #E4E7EC", fontSize:13, fontWeight:600 }}>All Open Receivables</div>
                         <table style={{ width:"100%", borderCollapse:"collapse" }}>
                           <thead><tr style={{ background:"#F3F4F6" }}>

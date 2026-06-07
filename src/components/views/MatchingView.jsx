@@ -133,7 +133,7 @@ export default function MatchingView() {
                 {openPayables.length > 0 && (
                   <div style={{ marginBottom:24 }}>
                     <div style={{ fontSize:11, color:"#D92D20", letterSpacing:2, marginBottom:14 }}>OPEN PAYABLES — AWAITING PAYMENT</div>
-                    <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                    <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>
                         <thead><tr style={{ background:"#F3F4F6" }}>
                           {["Vendor","Date","Description","GL Account","Amount","Status"].map(h=><th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:11, color:"#475467", letterSpacing:1.2, fontWeight:500 }}>{h}</th>)}
@@ -168,7 +168,7 @@ export default function MatchingView() {
                 {openReceivables.length > 0 && (
                   <div style={{ marginBottom:24 }}>
                     <div style={{ fontSize:11, color:"#039855", letterSpacing:2, marginBottom:14 }}>OPEN RECEIVABLES — AWAITING COLLECTION</div>
-                    <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                    <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>
                         <thead><tr style={{ background:"#F3F4F6" }}>
                           {["Customer","Date","Description","Amount","Status"].map(h=><th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:11, color:"#475467", letterSpacing:1.2, fontWeight:500 }}>{h}</th>)}

@@ -3257,6 +3257,12 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         /* Consistent form focus + interactive defaults across the app */
         button:not(:disabled){ cursor:pointer; }
         input:focus, select:focus, textarea:focus { border-color:#4F46E5 !important; box-shadow:0 0 0 3px rgba(79,70,229,0.10); outline:none; }
+        /* Sticky table headers — column labels stay visible while the main area scrolls.
+           background-color:inherit pulls each header row's own color onto the cells (the
+           tr carries the bg inline; sticky th need their own paint to avoid bleed-through).
+           Table-wrapping cards use overflow:clip (not hidden) so they don't become scroll
+           containers that would trap the sticky headers. */
+        #main-content thead th { position: sticky; top: 0; z-index: 10; background-color: inherit; }
         /* Tabular figures for monospace numbers — fintech-grade alignment */
         [style*="DM Mono"]{ font-variant-numeric: tabular-nums; }
         /* Card elevation (used sparingly) */

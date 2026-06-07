@@ -27,7 +27,7 @@ export default function InvoicesView() {
                 </div>
               )}
               {filteredInvoices.length===0 ? <div style={{ color:"#475467", fontSize:14 }}>No invoices yet.</div> : (
-                <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead>
                       <tr style={{ background:"#F3F4F6" }}>

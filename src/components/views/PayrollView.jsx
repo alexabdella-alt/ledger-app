@@ -99,7 +99,7 @@ Journal entry rules:
                     <div style={{fontSize:13,color:"#475467"}}>No payroll imports yet. Upload a payroll export above.</div>
                   </div>
                 ) : payrollImports.map(imp => (
-                  <div key={imp.id} style={{background:"#FFFFFF",border:`1px solid ${imp.posted?"#03985533":"#E4E7EC"}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
+                  <div key={imp.id} style={{background:"#FFFFFF",border:`1px solid ${imp.posted?"#03985533":"#E4E7EC"}`,borderRadius:14,marginBottom:12,overflow:"clip"}}>
                     <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:16}}>
                       <div style={{flex:1}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -115,7 +115,7 @@ Journal entry rules:
                       {!imp.posted && <button onClick={()=>postPayroll(imp)} style={{padding:"9px 20px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:"#fff",cursor:"pointer"}}>Post to Ledger</button>}
                     </div>
                     {/* Journal entries preview */}
-                    <div style={{borderTop:"1px solid #E4E7EC",overflow:"hidden"}}>
+                    <div style={{borderTop:"1px solid #E4E7EC",overflow:"clip"}}>
                       <table style={{width:"100%",borderCollapse:"collapse"}}>
                         <thead><tr style={{background:"#F3F4F6"}}>
                           {["Account","Debit","Credit"].map(h=><th key={h} style={{padding:"8px 16px",textAlign:"left",fontSize:10,color:"#475467",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}

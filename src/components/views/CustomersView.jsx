@@ -59,7 +59,7 @@ export default function CustomersView() {
                     )}
                   </div>
 
-                  <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                  <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                     <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid #F3F4F6" }}>All transactions ({cTxns.length})</div>
                     {cTxns.length===0 ? <div style={{ padding:32, textAlign:"center", color:"#98A2B3", fontSize:13 }}>No transactions with this customer yet.</div> : (
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>

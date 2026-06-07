@@ -93,7 +93,7 @@ export default function BankView() {
 
                   {/* Auto-categorized table */}
                   {bankTransactions.filter(t=>!t.needs_review).length > 0 && (
-                    <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden", marginBottom:20 }}>
+                    <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip", marginBottom:20 }}>
                       <div style={{ padding:"14px 20px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         <div style={{ fontSize:12, color:"#039855" }}>✓ Auto-categorized — review & uncheck any you want to skip</div>
                         <div style={{ display:"flex", gap:8 }}>

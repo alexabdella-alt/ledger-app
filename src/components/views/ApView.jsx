@@ -144,7 +144,7 @@ export default function ApView() {
       {active==="paid" && (
         paid.length===0
           ? <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:48, textAlign:"center", color:"#475467" }}><div style={{ fontSize:30, marginBottom:10 }}>💸</div>No payments recorded yet.</div>
-          : <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+          : <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
                 <thead><tr style={{ background:"#F3F4F6" }}>{["Vendor","GL Account","Method","Reference","Date Paid","Amount"].map(h=><th key={h} style={{ padding:"12px 18px", textAlign:h==="Amount"?"right":"left", fontSize:11, color:"#475467", letterSpacing:1, fontWeight:600, borderBottom:"1px solid #E4E7EC" }}>{h.toUpperCase()}</th>)}</tr></thead>
                 <tbody>

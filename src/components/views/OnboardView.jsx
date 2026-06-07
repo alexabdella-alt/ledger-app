@@ -107,7 +107,7 @@ Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`
                       <button onClick={confirmImport} style={{padding:"9px 24px",borderRadius:9,fontWeight:600,fontSize:13,background:"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:"#fff",cursor:"pointer"}}>Import Everything →</button>
                     </div>
                     <div style={{fontSize:12,color:"#475467",marginBottom:12}}>Review how QBO accounts map to our chart of accounts. Edit any mapping before importing.</div>
-                    <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,overflow:"hidden",marginBottom:20}}>
+                    <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,overflow:"clip",marginBottom:20}}>
                       <table style={{width:"100%",borderCollapse:"collapse"}}>
                         <thead><tr style={{background:"#F3F4F6"}}>{["QBO Account","→","Our Account"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:10,color:"#475467",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}</tr></thead>
                         <tbody>

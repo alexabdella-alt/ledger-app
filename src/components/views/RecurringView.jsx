@@ -89,7 +89,7 @@ export default function RecurringView() {
                 {recurring.length===0 ? (
                   <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:40,textAlign:"center",color:"#475467",fontSize:13}}>No recurring transactions yet.</div>
                 ) : (
-                  <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,overflow:"hidden"}}>
+                  <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,overflow:"clip"}}>
                     <table style={{width:"100%",borderCollapse:"collapse"}}>
                       <thead><tr style={{background:"#F3F4F6"}}>
                         {["Name","Vendor","Amount","GL","Frequency","Next Date",""].map(h=><th key={h} style={{padding:"11px 16px",textAlign:"left",fontSize:10,color:"#475467",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}

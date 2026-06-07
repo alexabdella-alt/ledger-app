@@ -117,7 +117,7 @@ export default function BooksView() {
 
       {/* ── CONTRACTS TABLE (filter = contracts) ── */}
       {filter==="contracts" && (
-        <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+        <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead><tr style={{ background:"#F3F4F6" }}>
               {["Counterparty","Type","Monthly","Term","Status",""].map((h,i)=>(
@@ -149,7 +149,7 @@ export default function BooksView() {
 
       {filter!=="contracts" && (<>
       {/* Table */}
-      <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"hidden" }}>
+      <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"clip" }}>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead><tr style={{ background:"#F9FAFB" }}>
             {["Date","Vendor","Description","GL Account","Amount","Status",""].map((h,i)=>(

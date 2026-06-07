@@ -58,7 +58,7 @@ export default function ReviewView() {
                     const dismiss = () => setUnknownDocs(prev => prev.filter(d => d.id!==doc.id));
 
                     return (
-                      <div key={doc.id} style={{ background:"#FFFFFF", border:`1px solid ${doc.posted?"#03985533":doc.entry_needed?"#4F46E522":"#E4E7EC"}`, borderRadius:14, overflow:"hidden" }}>
+                      <div key={doc.id} style={{ background:"#FFFFFF", border:`1px solid ${doc.posted?"#03985533":doc.entry_needed?"#4F46E522":"#E4E7EC"}`, borderRadius:14, overflow:"clip" }}>
 
                         {/* Header */}
                         <div style={{ padding:"18px 20px", display:"flex", alignItems:"flex-start", gap:14 }}>
@@ -83,7 +83,7 @@ export default function ReviewView() {
 
                             {/* Proposed journal entry */}
                             {doc.entry_needed && doc.journal_entry && !doc.posted && (
-                              <div style={{ background:"#F3F4F6", border:"1px solid #D0D5DD", borderRadius:10, overflow:"hidden" }}>
+                              <div style={{ background:"#F3F4F6", border:"1px solid #D0D5DD", borderRadius:10, overflow:"clip" }}>
                                 <div style={{ padding:"10px 14px", borderBottom:"1px solid #D0D5DD", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                                   <div>
                                     <div style={{ fontSize:11, color:"#4F46E5", letterSpacing:1 }}>PROPOSED JOURNAL ENTRY</div>

@@ -485,7 +485,7 @@ export default function ReportsView() {
 
                     {/* BY VENDOR */}
                     {reportType==="vendor" && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Expenses by Vendor</div>
                           <div style={{ fontSize:12, color:"#475467" }}>{rangeLabels[reportRange]}</div>
@@ -522,7 +522,7 @@ export default function ReportsView() {
 
                     {/* BY GL CATEGORY */}
                     {reportType==="gl" && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Expenses by GL Category</div>
                           <div style={{ fontSize:12, color:"#475467" }}>{rangeLabels[reportRange]}</div>
@@ -556,7 +556,7 @@ export default function ReportsView() {
 
                     {/* CASH FLOW */}
                     {reportType==="cashflow" && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                           <div>
                             <div style={{ fontSize:14, fontWeight:600 }}>Cash Flow Statement</div>
@@ -591,7 +591,7 @@ export default function ReportsView() {
 
                     {/* BY PROJECT */}
                     {reportType==="project" && (
-                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden" }}>
+                      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Project Cost Breakdown</div>
                           <div style={{ fontSize:12, color:"#475467" }}>{rangeLabels[reportRange]}</div>

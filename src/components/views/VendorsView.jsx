@@ -70,7 +70,7 @@ export default function VendorsView() {
                   </div>
 
                   {/* Transactions */}
-                  <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"hidden", marginBottom:20 }}>
+                  <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip", marginBottom:20 }}>
                     <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid #F3F4F6" }}>All transactions ({vTxns.length})</div>
                     {vTxns.length===0 ? <div style={{ padding:32, textAlign:"center", color:"#98A2B3", fontSize:13 }}>No transactions with this vendor yet.</div> : (
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>
