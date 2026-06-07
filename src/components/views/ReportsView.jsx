@@ -3,10 +3,15 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
+import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
 
 export default function ReportsView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   const [plDrill, setPlDrill] = React.useState(null); // {type:"rev-acct"|"exp-acct"|"exp-vendor", code, name, vendor?}
+  // Drill-down for the other reports: {scope:"vendor"|"gl"|"cashflow"|"project"|"bsacct", value, label}
+  const [drill, setDrill] = React.useState(null);
+  const [drillSel, setDrillSel] = React.useState(null); // selected transaction id for the slide-in
+  React.useEffect(() => { setDrill(null); setDrillSel(null); }, [reportType]);
             // Date filter helper
             const filterByRange = (invList) => {
               if (reportRange === "all") return invList;
@@ -104,6 +109,73 @@ export default function ReportsView() {
 
             const fmt = (n) => "$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2});
             const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${reportDateFrom} → ${reportDateTo}` : "Custom Range" };
+
+            // ── Report drill-downs ──────────────────────────────────────────────
+            // The transactions behind a clicked row, honoring the active date range.
+            const drillTxns = () => {
+              if (!drill) return [];
+              const byDate = (a,b)=>(b.date||"").localeCompare(a.date||"");
+              if (drill.scope==="vendor")   return filtered.filter(i=>glPLType(i.gl_code) && (i.vendor||"Unknown")===drill.value).sort(byDate);
+              if (drill.scope==="gl")       return plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===drill.value).sort(byDate);
+              if (drill.scope==="cashflow") return filtered.filter(i=>i.date && i.date.slice(0,7)===drill.value).sort(byDate);
+              if (drill.scope==="project")  return filtered.filter(i=>glPLType(i.gl_code) && (i.project||"General")===drill.value).sort(byDate);
+              if (drill.scope==="bsacct") {
+                const asOf = reportDateTo || new Date().toISOString().slice(0,10);
+                return invoices.filter(i => i.status!=="voided" && (!i.date || i.date<=asOf) &&
+                  (i.gl_code===drill.value || (!String(i.id).includes("_") && i.secondary_gl_code===drill.value))).sort(byDate);
+              }
+              return [];
+            };
+            const renderDrill = () => {
+              const txns = drillTxns();
+              const isRev = i => glIsRevenue(i.gl_code) || i.type==="revenue";
+              const total = txns.reduce((s,i)=>s+i.amount,0);
+              const scopeLabel = { vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project", bsacct:"Balance Sheet" }[drill.scope];
+              const hideVendor = drill.scope==="vendor", hideGL = drill.scope==="gl";
+              const cols = ["Date", ...(hideVendor?[]:["Vendor"]), "Description", ...(hideGL?[]:["GL Account"]), "Amount", "Status"];
+              const crumbs = ["Reports", scopeLabel, drill.label];
+              return (
+                <div className="sc-rise" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip", marginBottom:16 }}>
+                  <div style={{ padding:"16px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                    <button onClick={()=>setDrill(null)} style={{ background:"#E4E7EC", border:"1px solid #D0D5DD", color:"#4F46E5", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer" }}>← Back</button>
+                    <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                      {crumbs.map((c,ci)=>(
+                        <span key={ci} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <span onClick={ci<crumbs.length-1?()=>setDrill(null):undefined}
+                            style={{ color: ci===crumbs.length-1?"#101828":"#4F46E5", fontWeight: ci===crumbs.length-1?600:500, cursor: ci<crumbs.length-1?"pointer":"default" }}>{c}</span>
+                          {ci<crumbs.length-1 && <span style={{ color:"#98A2B3" }}>→</span>}
+                        </span>
+                      ))}
+                    </div>
+                    <span style={{ marginLeft:"auto", fontSize:11, color:"#475467" }}>{txns.length} transaction{txns.length!==1?"s":""}</span>
+                    <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"#101828" }}>{fmt(total)}</span>
+                  </div>
+                  {txns.length===0 ? <div style={{ padding:24, fontSize:13, color:"#475467" }}>No transactions in this range.</div> : (
+                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                      <thead><tr style={{ background:"#F9FAFB" }}>
+                        {cols.map((h,ci)=><th key={ci} style={{ padding:"10px 16px", textAlign:h==="Amount"?"right":"left", fontSize:12, color:"#98A2B3", letterSpacing:0.6, fontWeight:600, borderBottom:"1px solid #E4E7EC", whiteSpace:"nowrap" }}>{h.toUpperCase()}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {txns.map((inv,idx)=>{
+                          const rev = isRev(inv);
+                          return (
+                            <tr key={inv.id} onClick={()=>setDrillSel(inv.id)} style={{ cursor:"pointer", height:52, background:"#FFFFFF", borderBottom:"1px solid #EEF0F4", opacity:inv.status==="voided"?0.55:1, transition:"background 0.1s" }}
+                              onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="#FFFFFF"}>
+                              <td style={{ padding:"0 16px", fontSize:13, color:"#667085", whiteSpace:"nowrap" }}>{fmtDate(inv.date)}</td>
+                              {!hideVendor && <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"#101828" }}>{inv.vendor||"—"}</span></div></td>}
+                              <td style={{ padding:"0 16px", fontSize:13, color:"#475467", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
+                              {!hideGL && <td style={{ padding:"0 16px", fontSize:13, color:"#374151", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"#98A2B3", marginRight:6 }}>{inv.gl_code}</span>{inv.gl_name}</td>}
+                              <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: rev?"#039855":"#D92D20", whiteSpace:"nowrap" }}>{rev?"+":"−"}{fmt(inv.amount)}</td>
+                              <td style={{ padding:"0 16px" }}>{txnStatusBadge(inv)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            };
 
             return (
               <div>
@@ -307,6 +379,7 @@ export default function ReportsView() {
 
                     {/* BALANCE SHEET */}
                     {reportType==="balance" && (() => {
+                      if (drill) return renderDrill();
                       const bsFmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 
                       // "As of" date — accumulate all transactions through reportDateTo
@@ -376,7 +449,9 @@ export default function ReportsView() {
                         const bal = getBal(a.code);
                         if (bal === 0) return null;
                         return (
-                          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #F3F4F6"}}>
+                          <div onClick={()=>setDrill({scope:"bsacct",value:a.code,label:a.name})} title="View transactions"
+                            onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                            style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #F3F4F6",cursor:"pointer"}}>
                             <div style={{fontSize:13,color:"#374151"}}>
                               <span style={{color:"#98A2B3",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}
                             </div>
@@ -442,7 +517,9 @@ export default function ReportsView() {
 
                             {/* Paid-in capital accounts (Common Stock, APIC) — show all except Retained Earnings (3100) */}
                             {bsEquity.filter(a => a.code !== "3100" && getBal(a.code) !== 0).map(a=>(
-                              <div key={a.code} style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #F3F4F6"}}>
+                              <div key={a.code} onClick={()=>setDrill({scope:"bsacct",value:a.code,label:a.name})} title="View transactions"
+                                onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid #F3F4F6",cursor:"pointer"}}>
                                 <div style={{fontSize:13,color:"#374151"}}><span style={{color:"#98A2B3",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}</div>
                                 <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"#D92D20":"#101828"}}>{bsFmt(getBal(a.code))}</div>
                               </div>
@@ -484,7 +561,8 @@ export default function ReportsView() {
                     })()}
 
                     {/* BY VENDOR */}
-                    {reportType==="vendor" && (
+                    {reportType==="vendor" && drill && renderDrill()}
+                    {reportType==="vendor" && !drill && (
                       <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Expenses by Vendor</div>
@@ -496,7 +574,9 @@ export default function ReportsView() {
                           </tr></thead>
                           <tbody>
                             {vendorRows.map((v,i)=>(
-                              <tr key={v.name} style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA" }}>
+                              <tr key={v.name} onClick={()=>setDrill({scope:"vendor",value:v.name,label:v.name})} title="View transactions"
+                                onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"#F7F8FA"}
+                                style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA", cursor:"pointer" }}>
                                 <td style={{ padding:"13px 20px" }}>
                                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                                     <div style={{ width:28, height:28, borderRadius:7, background:vendorColor(v.name), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff" }}>{initials(v.name)}</div>
@@ -521,7 +601,8 @@ export default function ReportsView() {
                     )}
 
                     {/* BY GL CATEGORY */}
-                    {reportType==="gl" && (
+                    {reportType==="gl" && drill && renderDrill()}
+                    {reportType==="gl" && !drill && (
                       <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Expenses by GL Category</div>
@@ -533,7 +614,9 @@ export default function ReportsView() {
                           </tr></thead>
                           <tbody>
                             {glRows.map((row,i)=>(
-                              <tr key={row.code} style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA" }}>
+                              <tr key={row.code} onClick={()=>setDrill({scope:"gl",value:row.code,label:row.name})} title="View transactions"
+                                onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"#F7F8FA"}
+                                style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA", cursor:"pointer" }}>
                                 <td style={{ padding:"13px 20px" }}>
                                   <span style={{ background:"#E4E7EC", padding:"3px 10px", borderRadius:20, fontSize:12, color:"#4F46E5" }}>{row.code} · {row.name}</span>
                                 </td>
@@ -555,7 +638,8 @@ export default function ReportsView() {
                     )}
 
                     {/* CASH FLOW */}
-                    {reportType==="cashflow" && (
+                    {reportType==="cashflow" && drill && renderDrill()}
+                    {reportType==="cashflow" && !drill && (
                       <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                           <div>
@@ -574,8 +658,10 @@ export default function ReportsView() {
                                 const net = row.inflow - row.outflow;
                                 const running = cashRows.slice(0,i+1).reduce((s,r)=>s+(r.inflow-r.outflow),0);
                                 return (
-                                  <tr key={row.month} style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA" }}>
-                                    <td style={{ padding:"13px 20px", fontSize:13, fontWeight:500 }}>{row.month}</td>
+                                  <tr key={row.month} onClick={()=>setDrill({scope:"cashflow",value:row.month,label:fmtDate(`${row.month}-01`,{month:"short",year:"numeric"})})} title="View transactions"
+                                    onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"#F7F8FA"}
+                                    style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA", cursor:"pointer" }}>
+                                    <td style={{ padding:"13px 20px", fontSize:13, fontWeight:500 }}>{fmtDate(`${row.month}-01`,{month:"short",year:"numeric"})}</td>
                                     <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#039855" }}>{fmt(row.inflow)}</td>
                                     <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#D92D20" }}>({fmt(row.outflow)})</td>
                                     <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:net>=0?"#039855":"#D92D20" }}>{net<0?"-":""}{fmt(net)}</td>
@@ -590,7 +676,8 @@ export default function ReportsView() {
                     )}
 
                     {/* BY PROJECT */}
-                    {reportType==="project" && (
+                    {reportType==="project" && drill && renderDrill()}
+                    {reportType==="project" && !drill && (
                       <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between" }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>Project Cost Breakdown</div>
@@ -604,7 +691,9 @@ export default function ReportsView() {
                             {projectRows.map((p,i)=>{
                               const pnet = p.revenue - p.expenses;
                               return (
-                                <tr key={p.name} style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA" }}>
+                                <tr key={p.name} onClick={()=>setDrill({scope:"project",value:p.name,label:p.name})} title="View transactions"
+                                  onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"#F7F8FA"}
+                                  style={{ borderTop:"1px solid #E4E7EC", background:i%2===0?"transparent":"#F7F8FA", cursor:"pointer" }}>
                                   <td style={{ padding:"13px 20px", fontSize:13, fontWeight:500, color:"#4F46E5" }}>{p.name}</td>
                                   <td style={{ padding:"13px 20px", fontSize:13, color:"#475467" }}>{p.count}</td>
                                   <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"#039855" }}>{fmt(p.revenue)}</td>
@@ -624,6 +713,9 @@ export default function ReportsView() {
                         ✦ Ask AI to analyze this report
                       </button>
                     </div>
+
+                    {/* Shared transaction detail slide-in for all report drill-downs */}
+                    <TransactionDetailPanel invoiceId={drillSel} onClose={()=>setDrillSel(null)} />
                   </div>
                 )}
               </div>
