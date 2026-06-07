@@ -63,30 +63,49 @@ export default function DocsView() {
 
       {preview && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setPreview(null)}>
-          <div style={{ background: "#FFFFFF", border: "1px solid #D1D5DB", borderRadius: 16, padding: 24, maxWidth: 760, width: "90%", maxHeight: "85vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, wordBreak: "break-word" }}>{preview.name}</div>
-              <button onClick={() => setPreview(null)} style={{ background: "transparent", border: "none", color: "#6B7280", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>×</button>
+          <div style={{ background: "#FFFFFF", borderRadius: 14, width: "95vw", height: "95vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
+            {/* Header bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 18px", borderBottom: "1px solid #E5E7EB", flexShrink: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.name}</div>
+                <div style={{ fontSize: 11, color: "#6B7280", marginTop: 1 }}>{preview.uploaded_at?.slice(0, 10)} · {preview.type}{preview.mediaType ? ` · ${preview.mediaType}` : ""}</div>
+              </div>
+              {previewUrl && hasFile(preview) && (
+                <a href={previewUrl} download={preview.name} target="_blank" rel="noreferrer"
+                  style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 9, background: "#EEF2FF", border: "1px solid #4F46E533", color: "#4F46E5", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>↓ Download</a>
+              )}
+              <button onClick={() => setPreview(null)} aria-label="Close preview" title="Close"
+                onMouseEnter={e => { e.currentTarget.style.background = "#FEE2E2"; e.currentTarget.style.color = "#DC2626"; e.currentTarget.style.borderColor = "#DC262644"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "#F3F4F6"; e.currentTarget.style.color = "#6B7280"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
+                style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#6B7280", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
             </div>
 
-            {previewUrl && isImage(preview.mediaType) && <img src={previewUrl} style={{ width: "100%", borderRadius: 8 }} alt={preview.name} />}
-            {previewUrl && isPdf(preview.mediaType) && <iframe src={previewUrl} style={{ width: "100%", height: 560, border: "none", borderRadius: 8 }} title={preview.name} />}
-            {previewUrl && !isImage(preview.mediaType) && !isPdf(preview.mediaType) && (
-              <a href={previewUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", padding: "10px 18px", borderRadius: 10, background: "#EEF2FF", border: "1px solid #4F46E533", color: "#4F46E5", fontSize: 13, fontWeight: 600 }}>Open file ↗</a>
-            )}
-            {previewLoading && <div style={{ padding: "40px 0", textAlign: "center", color: "#6B7280", fontSize: 13 }}>Loading file…</div>}
-
-            {!hasFile(preview) && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "32px 0 8px" }}>
-                <div style={{ fontSize: 40, opacity: 0.5 }}>{iconFor(preview.type)}</div>
-                <div style={{ fontSize: 13, color: "#6B7280", textAlign: "center", maxWidth: 440, lineHeight: 1.55, background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px" }}>
-                  This document was uploaded before file storage was enabled. Re-upload to enable full preview.
+            {/* Content area (fills the rest of the modal) */}
+            <div style={{ flex: 1, minHeight: 0, position: "relative", background: "#F9FAFB" }}>
+              {previewUrl && isPdf(preview.mediaType) && (
+                <iframe src={previewUrl} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#FFFFFF" }} title={preview.name} />
+              )}
+              {previewUrl && isImage(preview.mediaType) && (
+                <div style={{ position: "absolute", inset: 0, overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                  <img src={previewUrl} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 6 }} alt={preview.name} />
                 </div>
-              </div>
-            )}
-
-            <div style={{ marginTop: 16, fontSize: 12, color: "#6B7280" }}>
-              Uploaded {preview.uploaded_at?.slice(0, 10)} · Type: {preview.type}{preview.mediaType ? ` · ${preview.mediaType}` : ""}
+              )}
+              {previewUrl && !isImage(preview.mediaType) && !isPdf(preview.mediaType) && (
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <a href={previewUrl} target="_blank" rel="noreferrer" style={{ padding: "12px 22px", borderRadius: 10, background: "#EEF2FF", border: "1px solid #4F46E533", color: "#4F46E5", fontSize: 14, fontWeight: 600, textDecoration: "none" }}>Open file ↗</a>
+                </div>
+              )}
+              {previewLoading && (
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#6B7280", fontSize: 13 }}>Loading file…</div>
+              )}
+              {!hasFile(preview) && !previewLoading && (
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 24 }}>
+                  <div style={{ fontSize: 52, opacity: 0.45 }}>{iconFor(preview.type)}</div>
+                  <div style={{ fontSize: 13, color: "#6B7280", textAlign: "center", maxWidth: 460, lineHeight: 1.55, background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 10, padding: "14px 18px" }}>
+                    This document was uploaded before file storage was enabled. Re-upload to enable full preview.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
