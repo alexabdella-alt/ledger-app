@@ -1494,6 +1494,32 @@ Reply with only the single word.`,
     return "invoice";
   };
 
+  // ── UPLOAD LOG ───────────────────────────────────────────────────────────────
+  // One persistent row per uploaded file (migration 019), updated as it processes.
+  // Fire-and-forget so it never blocks the upload pipeline (works even pre-migration).
+  const logUploadStart = (logId, meta) => {
+    if (!currentCompany?.id || !logId) return;
+    supabase.from("upload_log").insert({
+      id: logId,
+      company_id: currentCompany.id,
+      uploaded_by: session?.user?.id || null,
+      file_name: meta.file_name,
+      file_type: meta.file_type || null,
+      file_size_bytes: meta.file_size_bytes ?? null,
+      status: "processing",
+    }).then(({ error }) => { if (error) console.error("upload_log insert failed:", error.message); })
+      .catch(e => console.error("upload_log insert error:", e));
+  };
+  const logUploadUpdate = (logId, patch) => {
+    if (!currentCompany?.id || !logId) return;
+    const done = patch.status === "done" || patch.status === "error";
+    supabase.from("upload_log")
+      .update({ ...patch, ...(done ? { completed_at: new Date().toISOString() } : {}) })
+      .eq("id", logId).eq("company_id", currentCompany.id)
+      .then(({ error }) => { if (error) console.error("upload_log update failed:", error.message); })
+      .catch(e => console.error("upload_log update error:", e));
+  };
+
   const handleUniversalUpload = (files) => {
     if (!files?.length) return;
     const allowed = [".pdf",".jpg",".jpeg",".png",".webp",".csv",".xlsx",".xls"];
@@ -1504,7 +1530,9 @@ Reply with only the single word.`,
     const queueItems = validFiles.map(f => {
       const id = Date.now() + Math.random();
       fileStoreRef.current[id] = f;
-      return { id, name: f.name, status: "pending", type: null, result: null, error: null };
+      const uploadLogId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : null;
+      if (uploadLogId) logUploadStart(uploadLogId, { file_name: f.name, file_type: f.type || f.name.split(".").pop().toLowerCase(), file_size_bytes: f.size });
+      return { id, name: f.name, status: "pending", type: null, result: null, error: null, upload_log_id: uploadLogId };
     });
     setUploadQueue(prev => [...queueItems, ...prev]);
     // useEffect below picks up "pending" items and processes them in background
@@ -1547,6 +1575,7 @@ Reply with only the single word.`,
 
         // Update status: processing + type known
         setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, type:docType, status:"processing"} : q));
+        logUploadUpdate(item.upload_log_id, { status:"processing", doc_type:docType });
 
         if (docType === "invoice") {
           // Extract ALL invoices in the document (handles single and multi-invoice PDFs)
@@ -1604,6 +1633,7 @@ Rules:
           
           if (extractedList.length === 0) {
             setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:"Could not extract invoice data — try a clearer scan"} : q));
+            logUploadUpdate(item.upload_log_id, { status:"error", error:"Could not extract invoice data — try a clearer scan" });
             return;
           }
 
@@ -1790,14 +1820,16 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           const totalAmt = newInvoices.reduce((s,i)=>s+i.amount, 0);
           storeDocument(item.name, base64, mediaType, "invoice", newInvoices[0]?.id||null, ["uploaded"], item.id, file);
           logAudit("invoice_uploaded", `Uploaded ${item.name}: ${extractedList.length} invoice(s) extracted`);
-          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
+          const invoiceResult = {
             invoiceCount: highConfidence.length,
             needsClarification: needsClarification.length,
             vendor: highConfidence.length===1 ? highConfidence[0].vendor : needsClarification.length>0 ? `${highConfidence.length} booked, ${needsClarification.length} need input` : `${highConfidence.length} invoices`,
             amount: totalAmt,
             gl_name: needsClarification.length>0 ? `${needsClarification.length} need your review below` : highConfidence.length===1 ? highConfidence[0].gl_name : "all coded",
             confidence: highConfidence.length > 0 ? Math.round(highConfidence.reduce((s,i)=>s+i.confidence,0)/highConfidence.length) : null,
-          }} : q));
+          };
+          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: invoiceResult} : q));
+          logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"invoice", result: invoiceResult });
 
         } else if (docType === "bank_statement") {
           // Parse bank statement
@@ -1950,10 +1982,12 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
             logAudit("bank_reconciled", `Bank statement: matched ${matchedCount} of ${txnTotal} transactions · ${newInvoices.length} new booked · $${stillOpenTotal.toFixed(2)} open items remain`);
           }
 
-          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
+          const bankResult = {
             reconciliation: true, txnCount: txnTotal, matchedCount, newBooked: newInvoices.length,
             needsReview: queue.length, stillOpenTotal,
-          }} : q));
+          };
+          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: bankResult} : q));
+          logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result: bankResult });
 
         } else if (docType === "contract") {
           // Full contract analysis — two calls to avoid token limits
@@ -2008,9 +2042,11 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
           persistContract(saved);
           storeDocument(item.name, base64, mediaType, "contract", saved.id, ["contract"], item.id, file);
           logAudit("contract_uploaded", `Contract uploaded: ${item.name}`);
-          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result:{
+          const contractResult = {
             counterparty:contract.counterparty, type:contract.contract_type, entries:contract.journal_entries?.length||0
-          }} : q));
+          };
+          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: contractResult} : q));
+          logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"contract", result: contractResult });
 
         } else if (docType === "unknown") {
           // Ask Claude to explain AND propose a journal entry (or explicitly say none needed)
@@ -2099,13 +2135,16 @@ Rules:
             };
           }
           setUnknownDocs(prev => [unknownRecord, ...prev]);
-          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"unknown", result:{ document_type: unknownRecord.document_type, entry_needed: unknownRecord.entry_needed, watching: unknownRecord.watch_for?.length > 0 }} : q));
+          const unknownResult = { document_type: unknownRecord.document_type, entry_needed: unknownRecord.entry_needed, watching: unknownRecord.watch_for?.length > 0 };
+          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"unknown", result: unknownResult} : q));
+          logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"unknown", result: unknownResult });
         }
 
     } catch(e) {
       console.error("Upload error:", item.name, e);
       const errMsg = e?.message || String(e) || "Processing failed";
       setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:`${errMsg} — try again`} : q));
+      logUploadUpdate(item.upload_log_id, { status:"error", error:`${errMsg} — try again` });
     } finally {
       // Clean up file ref and release lock so next pending item can run
       delete fileStoreRef.current[item.id];
