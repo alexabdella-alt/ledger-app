@@ -5,7 +5,7 @@ import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse } from "./lib/ai";
-import AuthScreen from "./components/AuthScreen";
+import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
 import CompanySwitcher from "./components/CompanySwitcher";
 import { ERPContext } from "./components/ERPContext";
@@ -45,6 +45,7 @@ function AppWrapper() {
   const [currentCompany, setCurrentCompany] = React.useState(null);
   const [showCompanySetup, setShowCompanySetup] = React.useState(false);
   const [appLoading, setAppLoading] = React.useState(true);
+  const [recovery, setRecovery] = React.useState(false); // arrived via password-reset link
   // View lives here so it survives ERP remounts on auth/company changes
   const [persistedView, setPersistedView] = usePersistedView();
 
@@ -54,7 +55,16 @@ function AppWrapper() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       // TOKEN_REFRESHED fires when tab regains focus — ignore completely
       if (_event === "TOKEN_REFRESHED") return;
-      
+
+      // Password-reset link: hold the recovery session and show the "set new password"
+      // screen instead of dropping the user into the app.
+      if (_event === "PASSWORD_RECOVERY") {
+        setSession(session);
+        setRecovery(true);
+        setAppLoading(false);
+        return;
+      }
+
       if (session) {
         setSession(session);
         // Only load companies if not already loaded (prevents remount on tab switch)
@@ -111,6 +121,10 @@ function AppWrapper() {
         <div style={{color:"#475467",fontSize:14}}>Loading...</div>
       </div>
     );
+  }
+
+  if (recovery && session) {
+    return <UpdatePasswordScreen onDone={()=>{ setRecovery(false); loadCompanies(session); }} />;
   }
 
   if (!session) return <AuthScreen onAuth={s=>setSession(s)}/>;

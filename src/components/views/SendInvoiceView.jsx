@@ -1,11 +1,11 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function SendInvoiceView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
             const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const nextNum = `INV-${String((sentInvoices.length+1)).padStart(4,"0")}`;
             const emptyLine = () => ({id:Date.now()+Math.random(),description:"",qty:1,rate:"",amount:0});
@@ -31,17 +31,72 @@ export default function SendInvoiceView() {
             const taxRate = 0; // user can add later when multi-currency/tax is built
             const total = subtotal * (1+taxRate);
 
+            const today = new Date().toISOString().slice(0,10);
+
+            // Persist (insert or update) into the sent-invoices list.
+            const persistSent = (inv) => setSentInvoices(prev => {
+              const i = prev.findIndex(x => x.id === inv.id);
+              if (i >= 0) { const u = [...prev]; u[i] = inv; return u; }
+              return [inv, ...prev];
+            });
+
+            // Add/refresh the customer in contacts so they show up in AR + future invoices.
+            const ensureCustomer = () => {
+              if (draft.customer?.trim()) createOrUpdateContact({ name: draft.customer.trim(), type: "customer", email: (draft.customer_email||"").trim() });
+            };
+
+            // Book the accounts-receivable ledger entry for an issued invoice: Dr A/R, Cr Revenue.
+            const bookAR = (inv, amount) => {
+              const rev = getAccountByRole("product_revenue");
+              const ar  = getAccountByRole("accounts_receivable");
+              const entry = {
+                id: Date.now()+Math.random(), vendor: inv.customer,
+                description: `Invoice ${inv.invoice_number} — ${inv.customer}`,
+                amount, date: inv.issue_date || today, due_date: inv.due_date || undefined,
+                type: "revenue", gl_code: rev?.code, gl_name: rev?.name,
+                secondary_gl_code: ar?.code, secondary_gl_name: ar?.name,
+                debit_credit: "credit", confidence: 100,
+                reasoning: `Accounts receivable booked when invoice ${inv.invoice_number} was issued to ${inv.customer}.`,
+                status: "booked", booked_at: new Date().toISOString(),
+                source: "sent_invoice", payment_status: "uncollected", invoice_number: inv.invoice_number,
+              };
+              setInvoices(prev => [entry, ...prev]);
+              bookToDb(entry);
+              return entry;
+            };
+
             const saveDraft = () => {
               const inv = {...draft, id: draft.id||Date.now()+Math.random(), updated_at:new Date().toISOString()};
               if (!inv.created_at) inv.created_at = new Date().toISOString();
-              setSentInvoices(prev => {
-                const exists = prev.findIndex(i=>i.id===inv.id);
-                if (exists>=0){const u=[...prev];u[exists]=inv;return u;}
-                return [inv,...prev];
-              });
-              setSentInvoiceDraft(inv);
-              logAudit("invoice_created",`Invoice ${inv.invoice_number} created for ${inv.customer} ${fmt(total)}`);
+              ensureCustomer();
+              persistSent(inv);
+              setSentInvoiceDraft(inv); setDraft(inv);
+              logAudit("invoice_created",`Invoice ${inv.invoice_number} draft saved for ${inv.customer} ${fmt(total)}`);
               showNotification(`Invoice ${inv.invoice_number} saved ✓`);
+            };
+
+            // Issue the invoice: save it, create the customer, book A/R, and open the
+            // user's email client pre-filled so they can actually send it.
+            const sendInvoice = () => {
+              if (!draft.customer?.trim()) { showNotification("Add a customer name first.", "error"); return; }
+              if (!(draft.customer_email||"").trim()) { showNotification("Add the customer's email to send.", "error"); return; }
+              if (!(subtotal > 0)) { showNotification("Add at least one line item with an amount.", "error"); return; }
+              ensureCustomer();
+              const inv = {...draft, id: draft.id||Date.now()+Math.random(), status:"sent", sent_at:new Date().toISOString()};
+              if (!inv.created_at) inv.created_at = new Date().toISOString();
+              // Book the A/R entry exactly once per invoice; keep it in sync on re-send.
+              if (inv.ledger_id) {
+                setInvoices(prev => prev.map(e => String(e.id)===String(inv.ledger_id) ? {...e, amount:subtotal, date:inv.issue_date||today, vendor:inv.customer, due_date:inv.due_date||undefined} : e));
+              } else {
+                inv.ledger_id = bookAR(inv, subtotal).id;
+              }
+              persistSent(inv); setSentInvoiceDraft(inv); setDraft(inv);
+              logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(subtotal)} · A/R booked`);
+              const lineSummary = (inv.line_items||[]).map(l => `• ${l.description||"Item"} — ${fmt(l.amount)}`).join("\n");
+              const subject = `Invoice ${inv.invoice_number} from ${companySettings.name||"Your Company"}`;
+              const body = `Hi ${inv.customer},\n\nPlease find invoice ${inv.invoice_number} for ${fmt(subtotal)}, due ${inv.due_date?fmtDate(inv.due_date):"on receipt"}.\n\n${lineSummary}\n\nTotal due: ${fmt(subtotal)}\n\nThank you,\n${companySettings.name||"Your Company"}`;
+              try { window.location.href = `mailto:${encodeURIComponent(inv.customer_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; } catch(e) { /* no mail client */ }
+              showNotification(`Invoice ${inv.invoice_number} sent — A/R booked ✓`);
             };
 
             const downloadPDF = () => {
@@ -95,21 +150,81 @@ ${draft.notes?`<div class="footer">Notes: ${draft.notes}</div>`:""}
               logAudit("invoice_printed",`Invoice ${draft.invoice_number} printed/PDF'd`);
             };
 
-            const markPaid = (inv) => {
+            const markInvoicePaid = (inv) => {
               setSentInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"paid",paid_at:new Date().toISOString()}:i));
-              // Also book as revenue
-              const entry = {
-                id:Date.now()+Math.random(), vendor:inv.customer, description:`Payment received – ${inv.invoice_number}`,
-                amount:inv.line_items.reduce((s,l)=>s+(l.amount||0),0), date:new Date().toISOString().slice(0,10),
-                type:"revenue", gl_code:getAccountByRole("product_revenue")?.code, gl_name:getAccountByRole("product_revenue")?.name,
-                secondary_gl_code:getAccountByRole("cash")?.code, secondary_gl_name:getAccountByRole("cash")?.name,
-                debit_credit:"credit", confidence:100, reasoning:`Invoice ${inv.invoice_number} paid`,
-                status:"booked", booked_at:new Date().toISOString(), source:"sent_invoice", payment_status:"collected"
-              };
-              setInvoices(prev=>[entry,...prev]);
-              logAudit("invoice_paid",`Invoice ${inv.invoice_number} marked paid – ${fmt(entry.amount)}`);
-              showNotification(`${inv.invoice_number} marked paid – revenue booked ✓`);
+              const amt = inv.line_items?.reduce((s,l)=>s+(l.amount||0),0)||0;
+              if (inv.ledger_id) {
+                // Collect the existing A/R: flip it to collected (Dr Cash, Cr A/R in the
+                // app's model) — no new entry, so revenue is never double-counted.
+                setInvoices(prev => prev.map(e => String(e.id)===String(inv.ledger_id) ? {...e, payment_status:"collected", collected_at:new Date().toISOString(), matched:true} : e));
+                logAudit("invoice_collected", `Invoice ${inv.invoice_number} collected – ${fmt(amt)}`);
+              } else {
+                // Legacy invoice issued before A/R booking existed — book revenue now.
+                const rev = getAccountByRole("product_revenue"); const cash = getAccountByRole("cash");
+                const entry = {
+                  id:Date.now()+Math.random(), vendor:inv.customer, description:`Payment received – ${inv.invoice_number}`,
+                  amount:amt, date:new Date().toISOString().slice(0,10),
+                  type:"revenue", gl_code:rev?.code, gl_name:rev?.name,
+                  secondary_gl_code:cash?.code, secondary_gl_name:cash?.name,
+                  debit_credit:"credit", confidence:100, reasoning:`Invoice ${inv.invoice_number} paid`,
+                  status:"booked", booked_at:new Date().toISOString(), source:"sent_invoice", payment_status:"collected"
+                };
+                setInvoices(prev=>[entry,...prev]); bookToDb(entry);
+                logAudit("invoice_paid",`Invoice ${inv.invoice_number} marked paid – ${fmt(amt)}`);
+              }
+              showNotification(`${inv.invoice_number} marked paid ✓`);
             };
+
+            // Professional on-screen invoice preview.
+            const PreviewCard = () => (
+              <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:"40px 44px",maxWidth:760,margin:"0 auto",boxShadow:"0 1px 3px rgba(16,24,40,0.1)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:24,flexWrap:"wrap",marginBottom:36}}>
+                  <div style={{minWidth:0}}>
+                    {companySettings.logoBase64 && <img src={companySettings.logoBase64} alt="" style={{height:44,marginBottom:10,objectFit:"contain"}}/>}
+                    <div style={{fontSize:22,fontWeight:700,color:"#101828"}}>{companySettings.name||"Your Company"}</div>
+                    {companySettings.address && <div style={{fontSize:12,color:"#667085",marginTop:4}}>{companySettings.address}</div>}
+                    {[companySettings.city,companySettings.state].filter(Boolean).length>0 && <div style={{fontSize:12,color:"#667085"}}>{[companySettings.city,companySettings.state].filter(Boolean).join(", ")}</div>}
+                    {companySettings.taxId && <div style={{fontSize:12,color:"#667085"}}>EIN: {companySettings.taxId}</div>}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:12,letterSpacing:2,color:"#98A2B3",fontWeight:600}}>INVOICE</div>
+                    <div style={{fontSize:24,fontWeight:700,color:"#4F46E5",fontFamily:"'DM Mono',monospace"}}>{draft.invoice_number}</div>
+                    <div style={{fontSize:12,color:"#475467",marginTop:10,lineHeight:1.8}}>
+                      <div>Issue date: <strong style={{color:"#101828"}}>{draft.issue_date?fmtDate(draft.issue_date):"—"}</strong></div>
+                      <div>Due date: <strong style={{color:"#101828"}}>{draft.due_date?fmtDate(draft.due_date):"On receipt"}</strong></div>
+                      <div>Terms: <strong style={{color:"#101828"}}>{draft.terms||"Net 30"}</strong></div>
+                    </div>
+                  </div>
+                </div>
+                <div style={{marginBottom:24}}>
+                  <div style={{fontSize:11,letterSpacing:1,color:"#98A2B3",fontWeight:600,marginBottom:4}}>BILL TO</div>
+                  <div style={{fontSize:15,fontWeight:600,color:"#101828"}}>{draft.customer||"—"}</div>
+                  {draft.customer_email && <div style={{fontSize:12,color:"#667085"}}>{draft.customer_email}</div>}
+                </div>
+                <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <thead><tr style={{background:"#101828"}}>
+                    {["Description","Qty","Rate","Amount"].map((h,i)=><th key={h} style={{padding:"10px 12px",textAlign:i===0?"left":"right",fontSize:11,letterSpacing:0.8,color:"#fff",textTransform:"uppercase",fontWeight:600}}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {draft.line_items.map(l=>(
+                      <tr key={l.id} style={{borderBottom:"1px solid #EEF0F4"}}>
+                        <td style={{padding:"11px 12px",fontSize:13,color:"#101828"}}>{l.description||"—"}</td>
+                        <td style={{padding:"11px 12px",fontSize:13,color:"#475467",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{l.qty}</td>
+                        <td style={{padding:"11px 12px",fontSize:13,color:"#475467",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(parseFloat(l.rate||0))}</td>
+                        <td style={{padding:"11px 12px",fontSize:13,color:"#101828",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:600}}>{fmt(l.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
+                  <div style={{width:260}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#475467",padding:"6px 0"}}><span>Subtotal</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(subtotal)}</span></div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:16,fontWeight:700,borderTop:"2px solid #101828",paddingTop:10,marginTop:4}}><span>Total due</span><span style={{fontFamily:"'DM Mono',monospace",color:"#039855"}}>{fmt(total)}</span></div>
+                  </div>
+                </div>
+                {draft.notes && <div style={{marginTop:32,paddingTop:20,borderTop:"1px solid #EEF0F4",fontSize:12,color:"#667085",lineHeight:1.6}}>{draft.notes}</div>}
+              </div>
+            );
 
             return (
               <div>
@@ -118,7 +233,18 @@ ${draft.notes?`<div class="footer">Notes: ${draft.notes}</div>`:""}
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Send Invoice</h1>
                 </div>
 
-                <div style={{display:"grid",gridTemplateColumns:"1fr 380px",gap:20,alignItems:"flex-start"}}>
+                {showPreview && (
+                  <div>
+                    <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:16,flexWrap:"wrap"}}>
+                      <button onClick={()=>setShowPreview(false)} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"#FFFFFF",border:"1px solid #D0D5DD",color:"#344054",cursor:"pointer"}}>← Edit</button>
+                      <button onClick={sendInvoice} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#059669,#039855)",border:"none",color:"#fff",cursor:"pointer"}}>Send Invoice →</button>
+                      <button onClick={downloadPDF} style={{padding:"9px 22px",borderRadius:9,fontSize:13,background:"#FFFFFF",border:"1px solid #D0D5DD",color:"#344054",cursor:"pointer"}}>Download / Print PDF</button>
+                    </div>
+                    <PreviewCard/>
+                  </div>
+                )}
+
+                <div style={{display: showPreview ? "none" : "grid",gridTemplateColumns:"1fr 380px",gap:20,alignItems:"flex-start"}}>
                   {/* Editor */}
                   <div>
                     <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16}}>
@@ -185,9 +311,11 @@ ${draft.notes?`<div class="footer">Notes: ${draft.notes}</div>`:""}
                       </div>
                     </div>
 
-                    <div style={{display:"flex",gap:10}}>
-                      <button onClick={saveDraft} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:"#fff",cursor:"pointer"}}>Save Draft</button>
-                      <button onClick={downloadPDF} style={{padding:"9px 22px",borderRadius:9,fontSize:13,background:"#E4E7EC",border:"1px solid #D0D5DD",color:"#4F46E5",cursor:"pointer"}}>Download / Print PDF</button>
+                    <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                      <button onClick={sendInvoice} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#059669,#039855)",border:"none",color:"#fff",cursor:"pointer"}}>Send Invoice →</button>
+                      <button onClick={()=>setShowPreview(true)} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"#FFFFFF",border:"1px solid #D0D5DD",color:"#344054",cursor:"pointer"}}>Preview</button>
+                      <button onClick={saveDraft} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"#EEF2FF",border:"1px solid #4F46E533",color:"#4F46E5",cursor:"pointer"}}>Save Draft</button>
+                      <button onClick={downloadPDF} style={{padding:"9px 22px",borderRadius:9,fontSize:13,background:"#FFFFFF",border:"1px solid #D0D5DD",color:"#344054",cursor:"pointer"}}>Download / Print PDF</button>
                     </div>
                   </div>
 
@@ -226,7 +354,7 @@ ${draft.notes?`<div class="footer">Notes: ${draft.notes}</div>`:""}
                               </div>
                             </div>
                             {inv.status!=="paid" && (
-                              <button onClick={e=>{e.stopPropagation();markPaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid #03985533",color:"#039855",cursor:"pointer"}}>Mark Paid → Book Revenue</button>
+                              <button onClick={e=>{e.stopPropagation();markInvoicePaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid #03985533",color:"#039855",cursor:"pointer"}}>Mark Paid → Collect A/R</button>
                             )}
                           </div>
                         );

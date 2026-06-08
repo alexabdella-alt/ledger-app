@@ -39,6 +39,12 @@ function AuthScreen({ onAuth }) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         onAuth(data.session);
+      } else if (mode === "reset") {
+        if (!email.trim()) throw new Error("Enter your email address first.");
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+        if (error) throw error;
+        // Generic wording avoids confirming whether an account exists.
+        setMessage("If an account exists for that email, a password reset link is on its way. Check your inbox (and spam).");
       } else {
         const { data, error } = await supabase.auth.signUp({
           email, password,
@@ -104,10 +110,10 @@ function AuthScreen({ onAuth }) {
         <div className="sc-scale" style={{ width:"100%", maxWidth:380 }}>
           <div style={{ marginBottom:28 }}>
             <h2 style={{ fontSize:24, fontWeight:700, margin:"0 0 6px", letterSpacing:-0.5, fontFamily:"'Space Grotesk','DM Sans',sans-serif" }}>
-              {mode === "login" ? "Welcome back" : "Get started"}
+              {mode === "login" ? "Welcome back" : mode === "signup" ? "Get started" : "Reset your password"}
             </h2>
             <div style={{ fontSize:13, color:"#475467" }}>
-              {mode === "login" ? "Sign in to your Shadow CFO workspace." : "Create your workspace in seconds."}
+              {mode === "login" ? "Sign in to your Shadow CFO workspace." : mode === "signup" ? "Create your workspace in seconds." : "Enter your email and we'll send you a secure reset link."}
             </div>
           </div>
 
@@ -122,17 +128,28 @@ function AuthScreen({ onAuth }) {
           )}
           <div style={label}>EMAIL</div>
           <input style={input} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" onKeyDown={e=>e.key==="Enter"&&handle()}/>
-          <div style={label}>PASSWORD</div>
-          <input style={input} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          {mode !== "reset" && (
+            <>
+              <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between" }}>
+                <div style={label}>PASSWORD</div>
+                {mode === "login" && (
+                  <span style={{ fontSize:12, color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{ setMode("reset"); setError(null); setMessage(null); }}>Forgot password?</span>
+                )}
+              </div>
+              <input style={input} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&handle()}/>
+            </>
+          )}
 
           <button className="sc-cta" style={{ width:"100%", padding:"13px", borderRadius:11, fontSize:14, fontWeight:600, background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", cursor:loading?"wait":"pointer", marginTop:10, letterSpacing:0.3, boxShadow:"0 8px 24px rgba(109,94,246,.32)" }} onClick={handle} disabled={loading}>
-            {loading ? "One moment…" : mode === "login" ? "Sign in →" : "Create account →"}
+            {loading ? "One moment…" : mode === "login" ? "Sign in →" : mode === "signup" ? "Create account →" : "Send reset link →"}
           </button>
 
           <div style={{ textAlign:"center", marginTop:22, fontSize:13, color:"#475467" }}>
             {mode === "login"
               ? <>New to Shadow CFO? <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("signup");setError(null);}}>Create an account</span></>
-              : <>Already have an account? <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("login");setError(null);}}>Sign in</span></>}
+              : mode === "signup"
+              ? <>Already have an account? <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("login");setError(null);}}>Sign in</span></>
+              : <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("login");setError(null);setMessage(null);}}>← Back to sign in</span>}
           </div>
         </div>
       </div>
@@ -141,4 +158,54 @@ function AuthScreen({ onAuth }) {
 }
 
 
+// Shown when the user arrives via a password-reset email (PASSWORD_RECOVERY).
+// They already hold a temporary recovery session, so we just collect a new password.
+function UpdatePasswordScreen({ onDone }) {
+  const [password, setPassword] = React.useState("");
+  const [confirm, setConfirm] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+
+  const label = { fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1, fontWeight:500 };
+  const input = { width:"100%", boxSizing:"border-box", background:"#F3F4F6", border:"1px solid #D0D5DD", borderRadius:11, padding:"12px 14px", color:"#101828", fontSize:14, outline:"none", marginBottom:14, fontFamily:"'DM Sans', sans-serif" };
+
+  const submit = async () => {
+    setError(null);
+    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (password !== confirm) { setError("Those passwords don't match."); return; }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      onDone();
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"32px", background:"#F7F8FA", fontFamily:"'DM Sans', system-ui, sans-serif", color:"#101828" }}>
+      <div className="sc-scale" style={{ width:"100%", maxWidth:380, background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:16, padding:"32px 28px", boxShadow:"0 12px 40px rgba(16,24,40,0.08)" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}>
+          <EclipseMark size={36} />
+          <div className="sc-wordmark" style={{ fontSize:16, fontWeight:700, letterSpacing:2, fontFamily:"'Space Grotesk','DM Sans',sans-serif" }}>SHADOW CFO</div>
+        </div>
+        <h2 style={{ fontSize:22, fontWeight:700, margin:"0 0 6px", letterSpacing:-0.5, fontFamily:"'Space Grotesk','DM Sans',sans-serif" }}>Set a new password</h2>
+        <div style={{ fontSize:13, color:"#475467", marginBottom:22 }}>Choose a new password for your account.</div>
+
+        {error && <div style={{ background:"#FEF2F2", border:"1px solid #D92D2033", borderRadius:10, padding:"10px 14px", fontSize:13, color:"#D92D20", marginBottom:14 }}>{error}</div>}
+
+        <div style={label}>NEW PASSWORD</div>
+        <input style={input} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&submit()}/>
+        <div style={label}>CONFIRM PASSWORD</div>
+        <input style={input} type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&submit()}/>
+
+        <button className="sc-cta" style={{ width:"100%", padding:"13px", borderRadius:11, fontSize:14, fontWeight:600, background:"linear-gradient(135deg,#4F46E5,#4338CA)", border:"none", color:"#fff", cursor:loading?"wait":"pointer", marginTop:8, letterSpacing:0.3, boxShadow:"0 8px 24px rgba(109,94,246,.32)" }} onClick={submit} disabled={loading}>
+          {loading ? "Saving…" : "Update password →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export { UpdatePasswordScreen };
 export default AuthScreen;
