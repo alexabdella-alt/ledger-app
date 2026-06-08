@@ -81,10 +81,14 @@ const AP_AUTO_APPROVE_THRESHOLD = 500;    // AP bills under this can auto-approv
 const FED_TAX_RATE = 0.25;                // simplified flat federal planning rate
 const SE_TAX_RATE = 0.153;                // self-employment tax rate
 
+// Platform administrators — only these accounts see the Settings → Security tab.
+const PLATFORM_ADMIN_EMAILS = ["alexabdella@gmail.com"];
+
 export {
   DEFAULT_CHART_OF_ACCOUNTS, PROJECTS,
   AI_MODEL, AI_MODEL_FAST, AI_PROXY_URL,
   CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE,
   IRS_1099_THRESHOLD, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW,
   AP_AUTO_APPROVE_THRESHOLD, FED_TAX_RATE, SE_TAX_RATE,
+  PLATFORM_ADMIN_EMAILS,
 };

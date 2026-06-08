@@ -56,8 +56,15 @@ export default function SecurityView() {
         const rlsRows = (data.rls || []).map(x => ({ table: x.table, exists: !!x.exists, enabled: !!x.enabled }));
         out.rls = { available: true, rows: rlsRows };
         const pols = data.policies || [];
-        const open = pols.filter(p => !p.has_company_check).map(p => ({ table: p.table, policy: p.policy, cmd: p.cmd }));
-        out.policies = { available: true, total: pols.length, open };
+        // A companies INSERT is the one intentional bootstrap exception: new users must
+        // be able to create their first company before they have any membership. The RPC
+        // flags it as `expected`; we also detect it by table+cmd so this is correct even
+        // before the updated RPC is deployed.
+        const isExpected = p => p.expected || (p.table === "companies" && String(p.cmd).toUpperCase() === "INSERT");
+        const flagged = pols.filter(p => !p.has_company_check);
+        const open = flagged.filter(p => !isExpected(p)).map(p => ({ table: p.table, policy: p.policy, cmd: p.cmd }));
+        const exceptions = flagged.filter(isExpected).map(p => ({ table: p.table, policy: p.policy, cmd: p.cmd }));
+        out.policies = { available: true, total: pols.length, open, exceptions };
       }
     } catch (e) {
       out.rls = { available: false };
@@ -244,11 +251,22 @@ export default function SecurityView() {
 
       {/* TEST 5 — Open policies */}
       <Card title="5 · No open policies" status={statusOf.policies}
-        desc="Every RLS policy on a tenant table must check company membership (is_company_member / company_id / auth.uid). A policy without that check would expose data.">
+        desc="Every RLS policy on a tenant table must check company membership (is_company_member / company_id / auth.uid). A policy without that check would expose data — except for documented bootstrap exceptions.">
         {!r ? null : !r.policies?.available ? migrationNote("018_security_check.sql") : (
-          r.policies.open.length === 0
-            ? <Row ok={true} label={`All ${r.policies.total} policies gate on company membership`} />
-            : r.policies.open.map((p, i) => <Row key={i} ok={false} label={`${p.table} · ${p.policy} (${p.cmd})`} right="OPEN" />)
+          <>
+            {r.policies.open.length === 0
+              ? <Row ok={true} label={`All ${r.policies.total} policies gate on company membership${(r.policies.exceptions || []).length ? ` · ${(r.policies.exceptions || []).length} known exception` : ""}`} />
+              : r.policies.open.map((p, i) => <Row key={i} ok={false} label={`${p.table} · ${p.policy} (${p.cmd})`} right="OPEN" />)}
+            {(r.policies.exceptions || []).map((p, i) => (
+              <div key={`exc-${i}`} style={{ display: "flex", gap: 10, padding: "8px 0", borderTop: "1px solid #F3F4F6" }}>
+                <span style={{ color: C.warn, fontWeight: 800, width: 16, flexShrink: 0 }}>!</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontFamily: "'DM Mono',monospace", color: "#374151" }}>{p.table} · {p.policy} ({p.cmd}) <span style={{ color: C.warn, fontWeight: 700 }}>— expected exception</span></div>
+                  <div style={{ fontSize: 12, color: "#667085", marginTop: 2, lineHeight: 1.5 }}>Expected — new users must be able to create their first company. Protected by the <code style={{ background: "#F2F4F7", padding: "1px 5px", borderRadius: 4 }}>create_company()</code> SECURITY DEFINER RPC.</div>
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </Card>
 
