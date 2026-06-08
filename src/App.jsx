@@ -36,7 +36,7 @@ import Tax1099View from "./components/views/Tax1099View";
 import TaxView from "./components/views/TaxView";
 import DocsView from "./components/views/DocsView";
 import AuditView from "./components/views/AuditView";
-import SecurityView from "./components/views/SecurityView";
+import AdminView from "./components/views/AdminView";
 import OnboardView from "./components/views/OnboardView";
 
 function AppWrapper() {
@@ -196,6 +196,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [notification, setNotification] = useState(null);
   const notifTimerRef = useRef(null);
+  // Platform-admin Support Mode: { company, adminCompany } when viewing a client as admin.
+  const [supportMode, setSupportMode] = useState(null);
+  const [adminFailedCount, setAdminFailedCount] = useState(0); // failed uploads (24h) for the nav red dot
   const [aiStep, setAiStep] = useState(null);
   const [vendorFilter, setVendorFilter] = useState(() => ss("cfai_vendorFilter", "all"));
 
@@ -244,10 +247,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
   // ── AUDIT TRAIL ───────────────────────────────────────────────────────────────
   const [auditLog, setAuditLog] = useState([]);
-  const logAudit = (action, detail, before=null, after=null, performedBy="owner") => {
+  const logAudit = (action, detail, before=null, after=null, performedBy=null) => {
+    // During Support Mode, attribute every action to the platform admin (unless the
+    // caller passed an explicit actor, e.g. "AI Chat").
+    const who = performedBy || (supportMode ? `Platform Admin - ${session?.user?.email || "admin"}` : "owner");
     setAuditLog(prev => [{
       id: Date.now()+Math.random(), ts: new Date().toISOString(),
-      action, detail, before, after, user: performedBy
+      action, detail, before, after, user: who
     }, ...prev]);
     // Persist every audit entry to Supabase — fire-and-forget
     if (currentCompany?.id) {
@@ -265,13 +271,40 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         detail,
         before_state: before ? slim(before) : null,
         after_state:  after  ? slim(after)  : null,
-        performed_by: performedBy,
+        performed_by: who,
       }).then(({ error }) => { if (error) console.error("Audit persist failed:", error.message, error.details); })
         .catch(e => console.error("Audit persist error:", e));
     }
   };
   // Convenience: log an action performed by the AI chat.
   const logAI = (action, detail, before=null, after=null) => logAudit(action, detail, before, after, "AI Chat");
+
+  // ── PLATFORM ADMIN: Support Mode ──
+  // Enter a client's context as admin (works because is_company_member() grants
+  // platform admins access — migration 020 Option A). Remembers the admin's own
+  // company so Exit returns cleanly.
+  const enterSupport = (company) => {
+    if (!company?.id) return;
+    setSupportMode({ company, adminCompany: currentCompany });
+    onSwitchCompany(company);
+    setView("dashboard");
+    showNotification(`Support Mode — viewing ${company.name}`);
+  };
+  const exitSupport = () => {
+    setSupportMode(prev => { if (prev?.adminCompany) onSwitchCompany(prev.adminCompany); return null; });
+    setView("admin");
+  };
+  // Red-dot badge: failed uploads across all companies in the last 24h.
+  useEffect(() => {
+    if (!PLATFORM_ADMIN_EMAILS.includes(session?.user?.email)) return;
+    let alive = true;
+    const load = () => supabase.rpc("get_admin_failed_uploads", { p_days: 1 })
+      .then(({ data }) => { if (alive) setAdminFailedCount(Array.isArray(data) ? data.length : 0); })
+      .catch(() => {});
+    load();
+    const t = setInterval(load, 120000);
+    return () => { alive = false; clearInterval(t); };
+  }, [session?.user?.email]); // eslint-disable-line
 
   // ── DOCUMENT STORAGE ─────────────────────────────────────────────────────────
   const [docLibrary, setDocLibrary] = useState([]);
@@ -3433,9 +3466,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, view };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view };
 
-  const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit","security"];
+  const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
   const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
   return (
@@ -3519,6 +3552,16 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       )}
 
       <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
+        {/* SUPPORT MODE banner — persistent while a platform admin is viewing a client */}
+        {supportMode && (
+          <div style={{ flexShrink:0, background:"linear-gradient(90deg,#EA580C,#F97316)", color:"#fff", padding:"10px 24px", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap", boxShadow:"0 2px 8px rgba(234,88,12,0.35)", zIndex:50 }}>
+            <span style={{ fontSize:16 }}>🛟</span>
+            <div style={{ flex:"1 1 320px", minWidth:0, fontSize:13, fontWeight:600 }}>
+              SUPPORT MODE — Viewing <strong>{supportMode.company?.name || currentCompany?.name}</strong> as Platform Admin. Every action is real and logged.
+            </div>
+            <button onClick={exitSupport} style={{ flexShrink:0, background:"#FFFFFF", color:"#C2410C", border:"none", borderRadius:8, padding:"7px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>Exit Support Mode →</button>
+          </div>
+        )}
         {/* Top Bar */}
         <div style={{ background:"#FFFFFF", borderBottom:"1px solid #E4E7EC", flexShrink:0 }}>
           {/* Brand + Company + User row */}
@@ -3560,23 +3603,32 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               { id:"home", label:"Home", group:["home","dashboard","add","review"] },
               { id:"books", label:"Books", group:BOOKS },
               { id:"reports", label:"Reports", group:REPORTS },
+              ...(isPlatformAdmin ? [{ id:"admin", label:"⚙ Admin", group:["admin"], admin:true }] : []),
             ];
             return (
               <div style={{ display:"flex", width:"100%", borderBottom:"1px solid #E4E7EC", padding:"0 20px", gap:4 }}>
                 {tabs.map(tab => {
                   const isActive = tab.group.includes(view);
+                  const accent = tab.admin ? "#DC6803" : "#4F46E5";
                   return (
                     <button key={tab.id}
-                      className={isActive?"sc-navtab active":"sc-navtab"}
+                      className={tab.admin ? undefined : (isActive?"sc-navtab active":"sc-navtab")}
                       onClick={()=>{ setView(tab.id); setVendorFilter("all"); }}
+                      onMouseEnter={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="#FEF0C7"; }) : undefined}
+                      onMouseLeave={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="#FFFAEB"; }) : undefined}
                       style={{ height:46, padding:"0 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-                        background:"transparent", border:"none",
-                        borderBottom: isActive?"2px solid #4F46E5":"2px solid transparent",
-                        color: isActive?"#101828":"#475467", fontSize:14, fontWeight: isActive?600:500,
+                        background: tab.admin ? (isActive?"#FEF0C7":"#FFFAEB") : "transparent",
+                        border: tab.admin ? "1px solid #FEDF89" : "none", borderBottomWidth: tab.admin?2:2,
+                        borderBottom: isActive?`2px solid ${accent}`:(tab.admin?"2px solid #FEDF89":"2px solid transparent"),
+                        borderRadius: tab.admin ? "8px 8px 0 0" : 0,
+                        color: isActive?(tab.admin?"#B54708":"#101828"):(tab.admin?"#B54708":"#475467"), fontSize:14, fontWeight: isActive?600:(tab.admin?600:500),
                         cursor:"pointer", transition:"all 0.12s" }}>
                       {tab.label}
                       {tab.id==="home" && clarificationQueue.length>0 && (
                         <span style={{ background:"#DC6803", color:"#fff", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.length}</span>
+                      )}
+                      {tab.admin && adminFailedCount>0 && (
+                        <span title={`${adminFailedCount} failed upload${adminFailedCount!==1?"s":""} in 24h`} style={{ width:8, height:8, borderRadius:"50%", background:"#D92D20", display:"inline-block", flexShrink:0 }} />
                       )}
                     </button>
                   );
@@ -3589,11 +3641,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {(() => {
             const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports"];
-            const SETTINGS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit","security"];
+            const SETTINGS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
             let subs = null;
             if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["ap","Payables"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["payroll","Payroll"],["docs","Documents"]];
             // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
-            else if (SETTINGS.includes(view)) subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"], ...(isPlatformAdmin ? [["security","Security"]] : []), ["onboard","Import QBO"]];
+            else if (SETTINGS.includes(view)) subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import QBO"]];
             if (!subs) return null;
             // Unpaid bills count for the amber badge on the Payables tab.
             const apUnpaid = invoices.filter(i => (glIsExpense(i.gl_code) || i.type==="expense") && i.status!=="voided" && i.payment_status!=="paid").length;
@@ -3716,8 +3768,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {/* ── AUDIT TRAIL ──────────────────────────────────────────────────── */}
           {view==="audit" && <AuditView />}
 
-          {/* ── SECURITY VERIFICATION (platform admins only) ─────────────────── */}
-          {view==="security" && isPlatformAdmin && <SecurityView />}
+          {/* ── PLATFORM ADMIN PANEL (platform admins only) ──────────────────── */}
+          {view==="admin" && isPlatformAdmin && <AdminView />}
 
           {/* ── QBO ONBOARDING ────────────────────────────────────────────────── */}
           {view==="onboard" && <OnboardView />}

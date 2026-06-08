@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { PLATFORM_ADMIN_EMAILS } from "../../lib/constants";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multi-tenant data-isolation verification dashboard.
@@ -35,7 +36,8 @@ const LOAD_FUNCTIONS = [
 const C = { pass: "#039855", warn: "#DC6803", fail: "#D92D20", muted: "#667085" };
 
 export default function SecurityView() {
-  const { supabase, currentCompany, companies } = useERP();
+  const { supabase, currentCompany, companies, session } = useERP();
+  const isAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
   const [running, setRunning] = React.useState(false);
   const [lastChecked, setLastChecked] = React.useState(null);
   const [r, setR] = React.useState(null); // results
@@ -89,10 +91,12 @@ export default function SecurityView() {
             if (res.error) err = res.error.message;
           }
           const allN = all.count ?? 0;
-          live.push({ table: t, all: allN, mine: sum, ok: !err && allN === sum, error: err });
+          // Platform admins have the is_company_member() bypass, so an unfiltered query
+          // legitimately returns every tenant's rows — that's not a leak from this account.
+          live.push({ table: t, all: allN, mine: sum, ok: isAdmin ? true : (!err && allN === sum), error: err });
         } catch (e) { live.push({ table: t, ok: false, error: String(e?.message || e) }); }
       }
-      out.isolation = { static: LOAD_FUNCTIONS.map(name => ({ name, ok: true })), live, companyCount: myIds.length };
+      out.isolation = { static: LOAD_FUNCTIONS.map(name => ({ name, ok: true })), live, companyCount: myIds.length, adminBypass: isAdmin };
     } catch (e) {
       out.isolation = { static: [], live: [], error: String(e?.message || e) };
     }
@@ -135,7 +139,7 @@ export default function SecurityView() {
     if (!r) return {};
     const s = {};
     s.rls = !r.rls?.available ? "warn" : r.rls.rows.every(x => x.exists && x.enabled) ? "pass" : "fail";
-    s.isolation = !r.isolation ? "warn" : (r.isolation.live || []).some(x => !x.ok) ? "fail" : "pass";
+    s.isolation = !r.isolation ? "warn" : r.isolation.adminBypass ? "warn" : (r.isolation.live || []).some(x => !x.ok) ? "fail" : "pass";
     s.audit = !r.audit ? "warn" : r.audit.ok ? "pass" : r.audit.warn ? "warn" : "fail";
     s.softDelete = !r.softDelete ? "warn" : r.softDelete.ok ? "pass" : "fail";
     s.policies = !r.policies?.available ? "warn" : r.policies.open.length === 0 ? "pass" : "fail";
@@ -215,7 +219,9 @@ export default function SecurityView() {
 
       {/* TEST 2 — Data isolation */}
       <Card title="2 · Data isolation (company_id scoping)" status={statusOf.isolation}
-        desc={`Live test: an unfiltered count must equal the total across the ${r?.isolation?.companyCount || 1} compan${(r?.isolation?.companyCount || 1) === 1 ? "y" : "ies"} you belong to. If a foreign company's rows were ever visible, the unfiltered count would be higher. Below: visible / your-companies rows. Plus the app's load functions, code-verified to filter by company_id.`}>
+        desc={r?.isolation?.adminBypass
+          ? "You're signed in as a platform admin, which has the is_company_member() bypass — so unfiltered queries intentionally see every tenant. Tenant isolation can't be verified from this account; run the check from a normal client login to confirm the boundary holds."
+          : `Live test: an unfiltered count must equal the total across the ${r?.isolation?.companyCount || 1} compan${(r?.isolation?.companyCount || 1) === 1 ? "y" : "ies"} you belong to. If a foreign company's rows were ever visible, the unfiltered count would be higher. Below: visible / your-companies rows. Plus the app's load functions, code-verified to filter by company_id.`}>
         {r?.isolation && (
           <>
             {(r.isolation.live || []).map(x => (
