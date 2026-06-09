@@ -3993,29 +3993,18 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             <div onClick={()=>setAiInfoOpen(false)} style={{ position:"absolute", inset:0, zIndex:5, background:"rgba(16,24,40,0.45)", display:"flex", alignItems:"center", justifyContent:"center", padding:18 }}>
               <div onClick={e=>e.stopPropagation()} style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:16, width:"100%", maxHeight:"100%", overflowY:"auto", boxShadow:"0 20px 60px rgba(16,24,40,0.25)" }}>
                 <div style={{ padding:"16px 18px", borderBottom:"1px solid #F3F4F6", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:"#101828" }}>What your AI CFO can &amp; can't do</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:"#101828" }}>Your AI CFO</div>
                   <button onClick={()=>setAiInfoOpen(false)} style={{ background:"none", border:"none", fontSize:20, lineHeight:1, color:"#475467", cursor:"pointer" }}>×</button>
                 </div>
                 <div style={{ padding:"14px 18px" }}>
-                  <div style={{ fontSize:11, letterSpacing:1, fontWeight:700, color:"#039855", marginBottom:8 }}>{AI_CAPABILITIES.canTitle.toUpperCase()}</div>
-                  <ul style={{ margin:"0 0 16px", padding:0, listStyle:"none" }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"#101828", marginBottom:12 }}>{AI_CAPABILITIES.canTitle}</div>
+                  <ul style={{ margin:0, padding:0, listStyle:"none" }}>
                     {AI_CAPABILITIES.can.map((t,i)=>(
-                      <li key={i} style={{ display:"flex", gap:8, fontSize:12.5, color:"#344054", lineHeight:1.5, marginBottom:7 }}>
+                      <li key={i} style={{ display:"flex", gap:8, fontSize:12.5, color:"#344054", lineHeight:1.5, marginBottom:9 }}>
                         <span style={{ color:"#039855", flexShrink:0 }}>✓</span><span>{t}</span>
                       </li>
                     ))}
                   </ul>
-                  <div style={{ fontSize:11, letterSpacing:1, fontWeight:700, color:"#D92D20", marginBottom:8 }}>{AI_CAPABILITIES.cannotTitle.toUpperCase()}</div>
-                  <ul style={{ margin:0, padding:0, listStyle:"none" }}>
-                    {AI_CAPABILITIES.cannot.map((t,i)=>(
-                      <li key={i} style={{ display:"flex", gap:8, fontSize:12.5, color:"#344054", lineHeight:1.5, marginBottom:7 }}>
-                        <span style={{ color:"#D92D20", flexShrink:0 }}>✕</span><span>{t}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div style={{ marginTop:14, fontSize:11, color:"#98A2B3", lineHeight:1.5, borderTop:"1px solid #F3F4F6", paddingTop:12 }}>
-                    The assistant is sandboxed: it can only run the actions above, only ever sees this company's books, and every action it takes is recorded in your audit trail.
-                  </div>
                 </div>
               </div>
             </div>

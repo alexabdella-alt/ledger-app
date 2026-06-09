@@ -210,9 +210,9 @@ ${contactsSection}
 
 ${ledgerSection}
 
-Respond ONLY with a JSON object (no markdown):
+Respond ONLY with a JSON object (no markdown). The "reply" field is the ONLY thing the user sees — it must be plain prose with NO JSON, NO action objects, and NO mention of the actions array inside it. Put all machine instructions in the separate "actions" array; never write {"type":...} or "actions" anywhere inside the reply text.
 {
-  "reply": "Direct, intelligent response in plain English. Always include real numbers from the ledger. No markdown, no asterisks, no headers. Write like a trusted CFO talking to their CEO.",
+  "reply": "Direct, intelligent response in plain English. Always include real numbers from the ledger. No markdown, no asterisks, no headers, no JSON. Write like a trusted CFO talking to their CEO.",
   "actions": [
     // Ledger: { "type": "recode", "invoiceIds": [id], "gl_code": "XXXX", "gl_name": "Name" }
     // Ledger: { "type": "retag_project", "invoiceIds": [id], "project": "Name" }
@@ -331,13 +331,40 @@ GAAP AWARENESS — maintain proper books but explain simply:
   if (!text) throw new Error("AI returned an empty response. Check that the ai-proxy edge function and model are configured.");
 
   const cleaned = text.replace(/```json|```/g, "").trim();
+
+  // The reply shown to the user must be PLAIN PROSE only — never any JSON. The
+  // model occasionally appends the actions array (or a stray {"type":"none"}) to
+  // the visible text, so we always scrub the reply of any leaked JSON fragments.
+  const stripLeakedJson = (s) => String(s || "")
+    .replace(/,?\s*"?actions"?\s*:\s*\[[\s\S]*?\]\s*}?\s*$/i, "")  // trailing "actions": [...] (+closing brace)
+    .replace(/,?\s*"?actions"?\s*:\s*\[[\s\S]*?\]/gi, "")          // any "actions": [...] fragment
+    .replace(/\{\s*"?type"?\s*:\s*"[a-z_]+"[\s\S]*?\}/gi, "")      // stray action objects like {"type":"none"}
+    .replace(/^\s*[}\]]\s*$/gm, "")                                  // lone dangling braces/brackets on a line
+    .trim();
+  const result = (reply, actions) => ({ reply: stripLeakedJson(reply), actions: Array.isArray(actions) ? actions : [] });
+
+  // 1. Clean JSON object (the normal case): reply + actions are already separate.
   try {
-    return JSON.parse(cleaned);
-  } catch(e) {
-    // Valid prose but not JSON — extract the reply text and return it gracefully.
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return result(parsed.reply ?? "", parsed.actions);
+  } catch { /* fall through */ }
+
+  // 2. JSON wrapped in surrounding prose — grab the outermost object and parse it.
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]);
+      if (parsed && typeof parsed === "object" && (parsed.reply != null || parsed.actions != null)) {
+        return result(parsed.reply ?? "", parsed.actions);
+      }
+    } catch { /* fall through */ }
+    // 3. Couldn't parse — pull just the reply string out by regex.
     const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
-    return { reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : cleaned, actions: [] };
+    if (replyMatch) return result(replyMatch[1].replace(/\\n/g, "\n"), []);
   }
+
+  // 4. No usable JSON at all — show the prose, scrubbed of any stray action JSON.
+  return result(cleaned, []);
 }
 
 export { classifyIntent, runAIBrain, callAIProxy, okAIResponse };

@@ -40,7 +40,7 @@ export const AI_SANDBOX_STATEMENT =
 
 // Plain-English capability document — shown to users and used as internal docs.
 export const AI_CAPABILITIES = {
-  canTitle: "What the assistant can do",
+  canTitle: "Here's what I can help you with:",
   can: [
     "Recode transactions — move one or more entries to a different GL account.",
     "Void a transaction — keep the record for the audit trail but cancel its effect.",
