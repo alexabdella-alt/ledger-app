@@ -9,7 +9,7 @@ export const SE_RATE = SE_TAX_RATE;     // self-employment (Social Security + Me
 export function ytdNetIncome(invoices, year = new Date().getFullYear()) {
   let revenue = 0, expenses = 0;
   for (const i of invoices || []) {
-    if (i.status === "voided") continue;
+    if (i.status === "voided" || i.status === "deleted" || i.deleted_at) continue;
     if (!String(i.date || "").startsWith(String(year))) continue;
     const c = String(i.gl_code || "");
     const amt = Number(i.amount) || 0;
@@ -60,33 +60,59 @@ export function nextUrgentDeadline(now = new Date(), withinDays = 30) {
   return getTaxDeadlines(now).find(d => d.days <= withinDays && d.days >= 0) || null;
 }
 
-// Common deductions, with YTD totals pulled from the ledger by account role.
-// Pass getAccountByRole so totals follow the company's actual (possibly
-// renamed/renumbered) accounts. meals are reported at the 50% deductible amount.
+// The 12 authoritative deduction categories, keyed to the company's GL accounts by
+// system_role so totals follow renamed/renumbered accounts. Each category sums the
+// CURRENT CALENDAR YEAR's posted entries for that account, excluding voided AND
+// soft-deleted entries. Travel & Entertainment (6400) is reported at 50% per the
+// meals-deductibility rule. This is the SAME GL-code/date/filter logic the AI is
+// instructed to use when asked "what can I write off?", so the tracker and the chat
+// always report identical numbers.
+//
+// Role → account (default COA): salaries_wages 6000, rent_occupancy 6100,
+// utilities 6200, marketing_advertising 6300, travel_entertainment 6400 (×50%),
+// technology_software 6500, office_supplies 6600, insurance 6700,
+// professional_services 6800, depreciation_amortization 6900,
+// miscellaneous_expense 7100, interest_expense 8000.
 export function deductionBreakdown(invoices, year = new Date().getFullYear(), getAccountByRole = null) {
-  const inYear = i => i.status !== "voided" && String(i.date || "").startsWith(String(year));
-  const sumCode = code => !code ? 0 : (invoices || []).filter(i => inYear(i) && String(i.gl_code || "") === code).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  // Identical scope to the AI / reporting: this calendar year, not voided, not soft-deleted.
+  const inScope = i =>
+    i.status !== "voided" && i.status !== "deleted" && !i.deleted_at &&
+    String(i.date || "").startsWith(String(year));
+  const sumCode = code => !code ? 0 : (invoices || [])
+    .filter(i => inScope(i) && String(i.gl_code || "") === String(code))
+    .reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const acct = role => getAccountByRole ? getAccountByRole(role) : null;
   const sumRole = role => sumCode(acct(role)?.code);
   const hintRole = role => { const a = acct(role); return a ? `${a.name} (${a.code})` : ""; };
-  const sumMatch = re => (invoices || []).filter(i => inYear(i) && re.test(`${i.description || ""} ${i.vendor || ""}`.toLowerCase())).reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
-  const meals = sumMatch(/restaurant|meal|dining|cafe|coffee|catering|lunch|dinner|grubhub|doordash|uber eats/) ;
-  const vehicle = sumMatch(/\bgas\b|fuel|mileage|\bauto\b|vehicle/);
+  const CATEGORIES = [
+    { key: "salaries",     label: "Salaries & wages",                          role: "salaries_wages" },
+    { key: "rent",         label: "Rent & occupancy",                          role: "rent_occupancy" },
+    { key: "utilities",    label: "Utilities",                                 role: "utilities" },
+    { key: "marketing",    label: "Marketing & advertising",                   role: "marketing_advertising" },
+    { key: "travel",       label: "Travel & entertainment (meals at 50%)",     role: "travel_entertainment", rate: 0.5 },
+    { key: "software",     label: "Technology & software",                     role: "technology_software" },
+    { key: "supplies",     label: "Office supplies & de minimis equipment",    role: "office_supplies" },
+    { key: "insurance",    label: "Insurance",                                 role: "insurance" },
+    { key: "proservices",  label: "Professional services (legal, accounting)", role: "professional_services" },
+    { key: "depreciation", label: "Depreciation & amortization",               role: "depreciation_amortization" },
+    { key: "misc",         label: "Other / miscellaneous",                     role: "miscellaneous_expense" },
+    { key: "interest",     label: "Interest expense",                          role: "interest_expense" },
+  ];
 
-  return [
-    { key: "software", label: "Software & subscriptions", amount: sumRole("technology_software"), categorized: true, hint: hintRole("technology_software") },
-    { key: "proservices", label: "Professional services (legal, accounting)", amount: sumRole("professional_services"), categorized: true, hint: hintRole("professional_services") },
-    { key: "marketing", label: "Marketing & advertising", amount: sumRole("marketing_advertising"), categorized: true, hint: hintRole("marketing_advertising") },
-    { key: "rent", label: "Rent & occupancy", amount: sumRole("rent_occupancy"), categorized: true, hint: hintRole("rent_occupancy") },
-    { key: "utilities", label: "Utilities", amount: sumRole("utilities"), categorized: true, hint: hintRole("utilities") },
-    { key: "insurance", label: "Insurance premiums", amount: sumRole("insurance"), categorized: true, hint: hintRole("insurance") },
-    { key: "salaries", label: "Salaries & wages", amount: sumRole("salaries_wages"), categorized: true, hint: hintRole("salaries_wages") },
-    { key: "supplies", label: "Office supplies & de minimis equipment", amount: sumRole("office_supplies"), categorized: true, hint: hintRole("office_supplies") },
-    { key: "meals", label: "Business meals (50% deductible)", amount: meals * 0.5, raw: meals, categorized: meals > 0, hint: "50% of meal spend" },
-    { key: "vehicle", label: "Vehicle / mileage", amount: vehicle, categorized: vehicle > 0, hint: "Detected from fuel/auto descriptions" },
+  const cats = CATEGORIES.map(c => {
+    const raw = sumRole(c.role);
+    const amount = c.rate ? raw * c.rate : raw;
+    return { key: c.key, label: c.label, amount, raw, categorized: raw > 0, hint: hintRole(c.role) };
+  });
+
+  // Not auto-categorized from the ledger — surfaced as prompts only (zero amount,
+  // so they never affect the deductible total).
+  const prompts = [
     { key: "homeoffice", label: "Home office", amount: 0, categorized: false, ask: true, hint: "Tell us if you work from home" },
     { key: "health", label: "Health insurance premiums", amount: 0, categorized: false, ask: true, hint: "Tag these so we can track them" },
     { key: "retirement", label: "Retirement (SEP-IRA, Solo 401k)", amount: 0, categorized: false, ask: true, hint: "Tag contributions to track them" },
   ];
+
+  return [...cats, ...prompts];
 }
