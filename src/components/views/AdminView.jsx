@@ -77,11 +77,13 @@ const Card = ({ title, right, children, accent }) => (
     {children}
   </div>
 );
-const Th = ({ children, align }) => <th style={{ padding: "9px 14px", textAlign: align || "left", fontSize: 11, color: "#98A2B3", letterSpacing: 0.5, fontWeight: 600, borderBottom: "1px solid #E4E7EC", whiteSpace: "nowrap" }}>{String(children).toUpperCase()}</th>;
-const Td = ({ children, align, mono, color }) => <td style={{ padding: "10px 14px", textAlign: align || "left", fontSize: 13, color: color || "#374151", fontFamily: mono ? "'DM Mono',monospace" : "inherit", whiteSpace: "nowrap" }}>{children}</td>;
+const Th = ({ children, align }) => <th style={{ padding: "9px 12px", textAlign: align || "left", fontSize: 11, color: "#98A2B3", letterSpacing: 0.5, fontWeight: 600, borderBottom: "1px solid #E4E7EC", whiteSpace: "nowrap" }}>{String(children).toUpperCase()}</th>;
+const Td = ({ children, align, mono, color }) => <td style={{ padding: "9px 12px", textAlign: align || "left", fontSize: 13, color: color || "#374151", fontFamily: mono ? "'DM Mono',monospace" : "inherit", whiteSpace: "nowrap" }}>{children}</td>;
 const Empty = ({ children }) => <div style={{ padding: 28, textAlign: "center", color: A.muted, fontSize: 13 }}>{children}</div>;
 const Loading = () => <div style={{ padding: 28, textAlign: "center", color: A.muted, fontSize: 13 }}>Loading…</div>;
 const btn = (bg, color, border) => ({ padding: "5px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: bg, color, border: border || "none", cursor: "pointer", whiteSpace: "nowrap" });
+// Compact button for dense action groups (Clients table).
+const btnSm = (bg, color, border) => ({ padding: "4px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: bg, color, border: border || "none", cursor: "pointer", whiteSpace: "nowrap", lineHeight: 1.3 });
 
 // ═══ SECTION 1: CLIENTS ═══
 function ClientsTab({ rpc, enterSupport, showNotification, supabase }) {
@@ -112,8 +114,8 @@ function ClientsTab({ rpc, enterSupport, showNotification, supabase }) {
             <tbody>
               {rows.length === 0 ? <tr><td colSpan={10}><Empty>No companies yet.</Empty></td></tr> : rows.map(r => (
                 <tr key={r.company_id} style={{ borderBottom: "1px solid #F2F4F7" }}>
-                  <Td color="#101828"><strong>{r.name}</strong></Td>
-                  <Td color={A.muted}>{r.owner_email || "—"}</Td>
+                  <td style={{ padding: "9px 12px", fontSize: 13, color: "#101828", fontWeight: 600, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</td>
+                  <td style={{ padding: "9px 12px", fontSize: 13, color: A.muted, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.owner_email || ""}>{r.owner_email || "—"}</td>
                   <Td color={A.muted}>{fmtDate(r.created_at)}</Td>
                   <Td color={A.muted}>{r.last_active ? fmtDate(r.last_active) : "never"}</Td>
                   <Td align="right" mono>{r.txn_count}</Td>
@@ -122,11 +124,11 @@ function ClientsTab({ rpc, enterSupport, showNotification, supabase }) {
                   <Td align="right" mono>{fmtBytes(r.storage_bytes)}</Td>
                   <Td>{statusBadge(r.status)}</Td>
                   <Td>
-                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                      <button onClick={() => enterSupport({ id: r.company_id, name: r.name })} style={btn("#EA580C", "#fff")}>Support View</button>
-                      <button onClick={() => setModal({ kind: "audit", company: r })} style={btn("#EEF2FF", "#4F46E5", "1px solid #4F46E533")}>Audit</button>
-                      <button onClick={() => setModal({ kind: "uploads", company: r })} style={btn("#EEF2FF", "#4F46E5", "1px solid #4F46E533")}>Uploads</button>
-                      <button onClick={() => resetPassword(r.owner_email)} style={btn("#FFFFFF", "#475467", "1px solid #D0D5DD")}>Reset PW</button>
+                    <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                      <button onClick={() => enterSupport({ id: r.company_id, name: r.name })} style={btnSm("#EA580C", "#fff")}>Support</button>
+                      <button onClick={() => setModal({ kind: "audit", company: r })} style={btnSm("#EEF2FF", "#4F46E5", "1px solid #4F46E533")}>Audit</button>
+                      <button onClick={() => setModal({ kind: "uploads", company: r })} style={btnSm("#EEF2FF", "#4F46E5", "1px solid #4F46E533")}>Uploads</button>
+                      <button onClick={() => resetPassword(r.owner_email)} style={btnSm("#FFFFFF", "#475467", "1px solid #D0D5DD")}>Reset PW</button>
                     </div>
                   </Td>
                 </tr>
