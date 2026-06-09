@@ -293,11 +293,18 @@ export default function DashboardView() {
                               {item.status==="classifying" && "⟳ Identifying document type..."}
                               {item.status==="processing" && `⟳ Processing as ${tc.label}...`}
                               {item.status==="error" && item.error}
-                              {item.status==="done" && item.type==="invoice" && item.result && (
-                                item.result.invoiceCount > 1
-                                  ? `✓ ${item.result.invoiceCount} invoices found · $${item.result.amount?.toLocaleString("en-US",{minimumFractionDigits:2})} total · ${item.result.confidence}% avg confidence`
-                                  : `✓ ${item.result.vendor} · $${item.result.amount?.toLocaleString("en-US",{minimumFractionDigits:2})} → ${item.result.gl_name} (${item.result.confidence}%)`
-                              )}
+                              {item.status==="done" && item.type==="invoice" && item.result && (() => {
+                                const r = item.result;
+                                const money = n => `$${(Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2})}`;
+                                // Nothing booked, only items needing review.
+                                if (!(r.invoiceCount > 0) && r.needsClarification > 0)
+                                  return `⚠ Needs your input · ${r.reviewVendor || "this entry"}${r.reviewAmount!=null ? ` · ${money(r.reviewAmount)}` : ""}${r.needsClarification > 1 ? ` (+${r.needsClarification-1} more)` : ""}`;
+                                let txt = r.invoiceCount === 1
+                                  ? `✓ Booked: ${r.vendor || "entry"} · ${money(r.amount)}${r.gl_name ? ` → ${r.gl_name}` : ""}${r.confidence!=null ? ` (${r.confidence}% confidence)` : ""}`
+                                  : `✓ ${r.invoiceCount} invoices booked · ${money(r.amount)} total${r.confidence!=null ? ` · ${r.confidence}% avg confidence` : ""}`;
+                                if (r.needsClarification > 0) txt += ` · ${r.needsClarification} need${r.needsClarification===1 ? "s" : ""} your review`;
+                                return txt;
+                              })()}
                               {item.status==="done" && item.type==="bank_statement" && item.result && (
                                 <span onClick={()=>setView("matching")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open matching detail">
                                   ✓ Matched {item.result.matchedCount||0} of {item.result.txnCount||0} transactions — ${ (item.result.stillOpenTotal||0).toLocaleString("en-US",{minimumFractionDigits:2}) } in open items still unmatched{item.result.newBooked>0?` · ${item.result.newBooked} new booked`:""}{item.result.needsReview>0?` · ${item.result.needsReview} match${item.result.needsReview!==1?"es":""} to review`:""}

@@ -6,3 +6,6 @@ dist/
 # Local env (never commit real keys)
 .env
 .env.local
+
+# Supabase CLI local state
+supabase/.temp/

@@ -905,13 +905,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   // Persist a journal entry and write the returned Supabase ID back into invoices state
   // so that deleteJournalEntry can find and mark it deleted later.
   const bookToDb = (invoice) => {
-    persistJournalEntry(invoice).then(jeId => {
+    return persistJournalEntry(invoice).then(jeId => {
       if (jeId) {
         setInvoices(prev => prev.map(i => i.id === invoice.id ? { ...i, db_entry_id: jeId } : i));
         // Re-link any source document that was attached using the in-session id,
         // so it survives a refresh (matched by the durable db_entry_id).
         relinkDocsForInvoice(invoice.id, jeId);
       }
+      return jeId;
     });
   };
 
@@ -1677,7 +1678,8 @@ Rules:
             body: JSON.stringify({
               model:AI_MODEL, max_tokens:3000,
               system:`Expert accountant. Assign GL codes to each invoice. Return a JSON array with one coding object per invoice, in the same order as input.
-Each object: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
+Each object: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"ONE specific sentence naming the vendor and what was purchased, and why this account fits","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
+ALWAYS include a concrete "reasoning" sentence — never leave it blank or generic.
 
 CRITICAL RULES:
 - Expenses (type=expense): gl_code must be 5xxx, 6xxx, 7xxx or 8xxx. secondary_gl_code = 2000 (Accounts Payable).
@@ -1726,7 +1728,12 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               secondary_gl_name: rule ? rn("accounts_payable") : (coding.secondary_gl_name || (isRevenue ? rn("accounts_receivable") : rn("accounts_payable"))),
               debit_credit: isRevenue ? "credit" : "debit",
               confidence,
-              reasoning: rule ? `Vendor rule: ${finalName}` : (coding.reasoning || "Auto-coded"),
+              // Use the AI's reasoning; if it omitted one, build a descriptive fallback
+              // from the extracted data (never a bare "Auto-coded").
+              reasoning: rule
+                ? `Applied your vendor rule for ${extracted.vendor?.trim() || "this vendor"} → ${finalName} (${finalCode}).`
+                : (coding.reasoning?.trim()
+                    || `Coded to ${finalName} (${finalCode}) — ${(extracted.description || extracted.vendor || "this purchase").toString().slice(0, 80)} from ${extracted.vendor?.trim() || "the vendor"}.`),
               status: "booked",
               booked_at: new Date().toISOString(),
               source: "universal_upload",
@@ -1829,13 +1836,16 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             }
           });
 
-          // Book high-confidence invoices immediately — log each one individually
+          // Book high-confidence invoices immediately — log each one individually.
+          // Keep each invoice's booking promise so we can link the source document to
+          // the durable db_entry_id once both the entry AND the document exist.
+          let bookPromises = [];
           if (highConfidence.length > 0) {
             setInvoices(prev => [...highConfidence, ...prev]);
-            highConfidence.forEach(inv => {
+            bookPromises = highConfidence.map(inv => {
               logAudit("invoice_booked", `${inv.vendor} · $${(inv.amount||0).toFixed(2)} → ${inv.gl_name} (${inv.confidence}% confidence · ${inv.date})`, null, { vendor: inv.vendor, amount: inv.amount, date: inv.date, gl_code: inv.gl_code, gl_name: inv.gl_name });
-              bookToDb(inv);
               createOrUpdateContact(inv._contact);
+              return bookToDb(inv);
             });
             runAPScreen(highConfidence, [...highConfidence, ...invoices]);
             checkWatchTriggers(highConfidence, unknownDocs);
@@ -1852,15 +1862,29 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
 
           const newInvoices = [...highConfidence];
           const totalAmt = newInvoices.reduce((s,i)=>s+i.amount, 0);
-          storeDocument(item.name, base64, mediaType, "invoice", newInvoices[0]?.id||null, ["uploaded"], item.id, file);
+          const primaryId = newInvoices[0]?.id ?? null;
+          // Store the document linked to the primary booked invoice, then — once the
+          // entry's durable db_entry_id has resolved — re-link the document to it so the
+          // Source Document section finds it after a refresh (it matches on db_entry_id).
+          await storeDocument(item.name, base64, mediaType, "invoice", primaryId, ["uploaded"], item.id, file);
+          if (primaryId != null && bookPromises.length) {
+            try {
+              const jeIds = await Promise.all(bookPromises);
+              if (jeIds[0]) await relinkDocsForInvoice(primaryId, jeIds[0]);
+            } catch (e) { console.warn("source-doc relink after booking failed:", e?.message || e); }
+          }
           logAudit("invoice_uploaded", `Uploaded ${item.name}: ${extractedList.length} invoice(s) extracted`);
+          const firstBooked = highConfidence[0] || null;
+          const firstReview = needsClarification[0]?.invoice || null;
           const invoiceResult = {
             invoiceCount: highConfidence.length,
             needsClarification: needsClarification.length,
-            vendor: highConfidence.length===1 ? highConfidence[0].vendor : needsClarification.length>0 ? `${highConfidence.length} booked, ${needsClarification.length} need input` : `${highConfidence.length} invoices`,
             amount: totalAmt,
-            gl_name: needsClarification.length>0 ? `${needsClarification.length} need your review below` : highConfidence.length===1 ? highConfidence[0].gl_name : "all coded",
-            confidence: highConfidence.length > 0 ? Math.round(highConfidence.reduce((s,i)=>s+i.confidence,0)/highConfidence.length) : null,
+            vendor: firstBooked?.vendor ?? null,
+            gl_name: firstBooked?.gl_name ?? null,
+            confidence: highConfidence.length > 0 ? Math.round(highConfidence.reduce((s,i)=>s+(i.confidence||0),0)/highConfidence.length) : null,
+            reviewVendor: firstReview?.vendor ?? null,
+            reviewAmount: firstReview?.amount ?? null,
           };
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: invoiceResult} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"invoice", result: invoiceResult });
@@ -3615,7 +3639,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                   return (
                     <button key={tab.id}
                       className={tab.admin ? undefined : (isActive?"sc-navtab active":"sc-navtab")}
-                      onClick={()=>{ setView(tab.id); setVendorFilter("all"); }}
+                      onClick={()=>{ if(tab.id==="books") setBooksFilter("all"); setView(tab.id); setVendorFilter("all"); }}
                       onMouseEnter={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="#FEF0C7"; }) : undefined}
                       onMouseLeave={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="#FFFAEB"; }) : undefined}
                       style={{ height:46, padding:"0 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
