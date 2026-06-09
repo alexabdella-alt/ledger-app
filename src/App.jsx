@@ -5,6 +5,8 @@ import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse } from "./lib/ai";
+import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile } from "./lib/clientProfile";
+import { isAllowedAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
 import CompanySwitcher from "./components/CompanySwitcher";
@@ -538,6 +540,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatHistoryView, setChatHistoryView] = useState(false); // History timeline toggle
+  const [aiInfoOpen, setAiInfoOpen] = useState(false); // "What can the assistant do?" capability panel
   const [hasUnread, setHasUnread] = useState(false);
   const chatBottomRef = useRef(null);
   const chatInputRef = useRef(null);
@@ -664,6 +667,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     fileStoreRef.current = {};
     uploadActiveRef.current = false;
     recentContactsRef.current = new Set();
+    // Learned AI profile — drop the previous company's; loadAllData reloads the new one.
+    if (profilePersistTimer.current) { clearTimeout(profilePersistTimer.current); profilePersistTimer.current = null; }
+    clientProfileRef.current = emptyProfile();
   };
 
   // ── SUPABASE DATA LOADING ──────────────────────────────────
@@ -878,6 +884,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
       await loadContractsFromDB();
 
+      // Load this company's learned AI profile (defensive — table may be absent).
+      clientProfileRef.current = await loadClientProfile(supabase, cid);
+
     } catch(e) { console.error("loadAllData error:", e); }
   };
 
@@ -999,6 +1008,27 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     } catch(e) { console.error("persistJournalEntry error:", e); return null; }
   };
 
+  // ── CLIENT AI PROFILE (adaptive learning) ──────────────────────────────────
+  // A per-company business profile the AI grows over time (table: client_ai_profile).
+  // Held in a ref (read into the system prompt on each chat) and persisted with a
+  // short debounce so a burst of bookings is one write. All calls are defensive.
+  const clientProfileRef = useRef(emptyProfile());
+  const profilePersistTimer = useRef(null);
+  // Fold a confirmed booking (auto-booked at high confidence OR user-confirmed via
+  // the clarification flow / manual entry) into the learned profile. Reversals and
+  // entries without a vendor+GL are ignored.
+  const recordBookingLearning = (invoice) => {
+    try {
+      if (!invoice || !invoice.vendor || !invoice.gl_code || invoice.source === "reversal") return;
+      clientProfileRef.current = learnFromBooking(clientProfileRef.current, invoice);
+      if (profilePersistTimer.current) clearTimeout(profilePersistTimer.current);
+      const cid = currentCompany?.id;
+      profilePersistTimer.current = setTimeout(() => {
+        persistClientProfile(supabase, cid, clientProfileRef.current);
+      }, 1500);
+    } catch { /* learning is best-effort — never block a booking */ }
+  };
+
   // Persist a journal entry and write the returned Supabase ID back into invoices state
   // so that deleteJournalEntry can find and mark it deleted later.
   const bookToDb = (invoice) => {
@@ -1008,6 +1038,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         // Re-link any source document that was attached using the in-session id,
         // so it survives a refresh (matched by the durable db_entry_id).
         relinkDocsForInvoice(invoice.id, jeId);
+        // Teach the client profile from every confirmed booking.
+        recordBookingLearning(invoice);
       }
       return jeId;
     });
@@ -3283,7 +3315,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       // Memory: last 20 persisted turns (with their actions + timestamps) for the system prompt.
       const memory = chatHistory.filter(m => m.id !== 0).slice(-20)
         .map(m => ({ role: m.role, content: m.content, actions: m.actions || [], created_at: m.created_at }));
-      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts, chartOfAccounts: CHART_OF_ACCOUNTS });
+      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts, chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance });
 
       // Execute actions
       let actionSummary = [];
@@ -3311,6 +3343,14 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
       for (const action of (result.actions || [])) {
         const _sumBefore = actionSummary.length;
+        // ── AI SANDBOX (hard whitelist) ──
+        // The AI may ONLY execute action types the app implements a handler for.
+        // Anything else (a hallucinated or unsafe action) is refused and logged —
+        // it never touches data. This is the UI-layer complement to RLS isolation.
+        if (action.type && action.type !== "none" && !isAllowedAIAction(action.type)) {
+          logAI("ai_action_refused", `Refused out-of-sandbox action: "${action.type}"`);
+          continue;
+        }
         if (action.type === "navigate" && action.view) {
           // Map any view name (old or new) to the 5-tab structure: home, books, reports, contracts, settings
           const viewAliases = {
@@ -3937,12 +3977,49 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                   <div style={{ fontSize:11, color:"#039855" }}>● Online · Your AI Controller</div>
                 </div>
               </div>
-              <button onClick={()=>setChatHistoryView(v=>!v)} title="Action history"
-                style={{ fontSize:11, padding:"5px 11px", borderRadius:8, background:chatHistoryView?"#4F46E5":"#FFFFFF", border:`1px solid ${chatHistoryView?"#4F46E5":"#D0D5DD"}`, color:chatHistoryView?"#fff":"#475467", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
-                {chatHistoryView ? "← Chat" : "History"}
-              </button>
+              <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                <button onClick={()=>setAiInfoOpen(true)} title="What can the assistant do?"
+                  style={{ width:26, height:26, borderRadius:8, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#475467", cursor:"pointer", fontSize:13, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>?</button>
+                <button onClick={()=>setChatHistoryView(v=>!v)} title="Action history"
+                  style={{ fontSize:11, padding:"5px 11px", borderRadius:8, background:chatHistoryView?"#4F46E5":"#FFFFFF", border:`1px solid ${chatHistoryView?"#4F46E5":"#D0D5DD"}`, color:chatHistoryView?"#fff":"#475467", cursor:"pointer", whiteSpace:"nowrap" }}>
+                  {chatHistoryView ? "← Chat" : "History"}
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* AI Capability Document — what the assistant can and cannot do (sandbox doc) */}
+          {aiInfoOpen && (
+            <div onClick={()=>setAiInfoOpen(false)} style={{ position:"absolute", inset:0, zIndex:5, background:"rgba(16,24,40,0.45)", display:"flex", alignItems:"center", justifyContent:"center", padding:18 }}>
+              <div onClick={e=>e.stopPropagation()} style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:16, width:"100%", maxHeight:"100%", overflowY:"auto", boxShadow:"0 20px 60px rgba(16,24,40,0.25)" }}>
+                <div style={{ padding:"16px 18px", borderBottom:"1px solid #F3F4F6", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:"#101828" }}>What your AI CFO can &amp; can't do</div>
+                  <button onClick={()=>setAiInfoOpen(false)} style={{ background:"none", border:"none", fontSize:20, lineHeight:1, color:"#475467", cursor:"pointer" }}>×</button>
+                </div>
+                <div style={{ padding:"14px 18px" }}>
+                  <div style={{ fontSize:11, letterSpacing:1, fontWeight:700, color:"#039855", marginBottom:8 }}>{AI_CAPABILITIES.canTitle.toUpperCase()}</div>
+                  <ul style={{ margin:"0 0 16px", padding:0, listStyle:"none" }}>
+                    {AI_CAPABILITIES.can.map((t,i)=>(
+                      <li key={i} style={{ display:"flex", gap:8, fontSize:12.5, color:"#344054", lineHeight:1.5, marginBottom:7 }}>
+                        <span style={{ color:"#039855", flexShrink:0 }}>✓</span><span>{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ fontSize:11, letterSpacing:1, fontWeight:700, color:"#D92D20", marginBottom:8 }}>{AI_CAPABILITIES.cannotTitle.toUpperCase()}</div>
+                  <ul style={{ margin:0, padding:0, listStyle:"none" }}>
+                    {AI_CAPABILITIES.cannot.map((t,i)=>(
+                      <li key={i} style={{ display:"flex", gap:8, fontSize:12.5, color:"#344054", lineHeight:1.5, marginBottom:7 }}>
+                        <span style={{ color:"#D92D20", flexShrink:0 }}>✕</span><span>{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ marginTop:14, fontSize:11, color:"#98A2B3", lineHeight:1.5, borderTop:"1px solid #F3F4F6", paddingTop:12 }}>
+                    The assistant is sandboxed: it can only run the actions above, only ever sees this company's books, and every action it takes is recorded in your audit trail.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Messages */}
           <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 8px" }}>

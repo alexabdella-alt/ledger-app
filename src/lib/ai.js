@@ -1,5 +1,56 @@
 import { getAuthHeaders } from "./supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_MODEL, AI_MODEL_FAST, AI_PROXY_URL } from "./constants";
+import { formatProfileForPrompt } from "./clientProfile";
+import { AI_SANDBOX_STATEMENT } from "./aiCapabilities";
+
+// Build a compact live financial snapshot from the full ledger so the AI always
+// answers with REAL numbers (burn, runway, top categories MoM, overdue AR, net).
+// Excludes voided / soft-deleted entries. cashBalance comes from the app.
+function buildFinancials(invoices, cashBalance) {
+  const now = new Date();
+  const ym = d => String(d || "").slice(0, 7);
+  const today = now.toISOString().slice(0, 10);
+  const thisMonth = now.toISOString().slice(0, 7);
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
+  const year = String(now.getFullYear());
+  const money = n => "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
+
+  let revYTD = 0, expYTD = 0, overdueTotal = 0, overdueCount = 0;
+  const catThis = {}, catLast = {}, monthExp = {};
+  for (const i of invoices || []) {
+    if (i.status === "voided" || i.status === "deleted" || i.deleted_at) continue;
+    const c = String(i.gl_code || ""); const amt = Number(i.amount) || 0; const m = ym(i.date);
+    const isRev = c[0] === "4";
+    const isExp = c[0] === "5" || c[0] === "6" || c[0] === "7" || c[0] === "8";
+    if (String(i.date || "").startsWith(year)) { if (isRev) revYTD += amt; else if (isExp) expYTD += amt; }
+    if (isExp) {
+      monthExp[m] = (monthExp[m] || 0) + amt;
+      if (m === thisMonth) catThis[i.gl_name || c] = (catThis[i.gl_name || c] || 0) + amt;
+      if (m === lastMonth) catLast[i.gl_name || c] = (catLast[i.gl_name || c] || 0) + amt;
+    }
+    if (isRev && i.due_date && String(i.due_date) < today && i.payment_status !== "paid" && i.payment_status !== "collected") {
+      overdueTotal += amt; overdueCount += 1;
+    }
+  }
+  // Burn = average monthly expense over the last 3 completed-ish months we have data for.
+  const recentMonths = Object.keys(monthExp).sort().slice(-3);
+  const burn = recentMonths.length ? recentMonths.reduce((s, m) => s + monthExp[m], 0) / recentMonths.length : 0;
+  const cash = Number(cashBalance) || 0;
+  const runway = burn > 0 ? cash / burn : null;
+  const topThis = Object.entries(catThis).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .map(([cat, amt]) => `${cat} ${money(amt)}${catLast[cat] != null ? ` (last month ${money(catLast[cat])})` : " (new this month)"}`);
+
+  const lines = [
+    `FINANCIAL SNAPSHOT (live from the books — use these exact figures, do not invent numbers):`,
+    `Cash on hand: ${cash > 0 ? money(cash) : "not set by the owner yet"}`,
+    `Net income YTD (${year}): ${money(revYTD - expYTD)} (revenue ${money(revYTD)} − expenses ${money(expYTD)})`,
+    `Monthly burn (avg of last ${recentMonths.length || 0} mo of expenses): ${burn > 0 ? money(burn) : "n/a"}`,
+    `Runway: ${runway != null ? `${runway.toFixed(1)} months at current burn` : (cash > 0 ? "effectively unlimited (no recent burn)" : "unknown — cash balance not set")}`,
+    `Top expense categories THIS month vs last: ${topThis.length ? topThis.join("; ") : "no expenses booked this month yet"}`,
+    `Overdue receivables: ${overdueCount > 0 ? `${money(overdueTotal)} across ${overdueCount} invoice(s) past due` : "none past due"}`,
+  ];
+  return { runway, burn, cash, text: lines.join("\n") };
+}
 
 // Validate an ai-proxy Response: throw on non-2xx OR an error body, otherwise
 // return the parsed JSON. Use this anywhere a fetch to the proxy is already
@@ -60,7 +111,7 @@ async function classifyIntent(userMessage, recentHistory) {
   }
 }
 
-async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts }) {
+async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance }) {
   // ── 1. Truncate history to last 10 turns (5 user + 5 assistant) ───────────────
   const truncatedHistory = chatHistory.slice(-10);
 
@@ -109,7 +160,36 @@ ${contacts.map(c =>
   const _now = new Date();
   const currentYear = _now.getFullYear();
   const todayStr = _now.toISOString().slice(0, 10);
-  const systemPrompt = `You are Shadow CFO — an AI CFO and bookkeeper in one, built for business owners who need real financial intelligence without the jargon. You think like a seasoned CFO who also handles the books. You proactively surface what matters, not just what was asked.
+  const financials = buildFinancials(invoices, cashBalance);
+  const profileBlock = formatProfileForPrompt(clientProfile);
+  const systemPrompt = `You are Shadow CFO — a world-class CFO and bookkeeper rolled into one, working for a busy business owner. You don't just answer questions; you watch their money like the CFO of a company you personally care about. You know this business deeply and you tell the owner the truth, in plain English, with real numbers.
+
+WHO YOU ARE & HOW YOU TALK:
+- Talk like a trusted CFO who knows the business cold — direct, confident, warm, zero jargon. If you must use an accounting term, explain it in the same breath.
+- Be specific. Never say "revenue increased" when you can say "revenue increased $4,200 (23%) driven by two new invoices from Acme Corp." Always attach the number, the percentage, and the driver.
+- Be honest, even when it's uncomfortable. If the books look concerning, say so plainly: "Your burn rate gives you about 4 months of runway. That's a problem — here's what I'd do."
+- NEVER invent numbers. If you don't have the data, say "I don't have that yet" and tell them how to get it. Only use figures from the snapshot and ledger below.
+- Lead with the single most important thing. Keep it tight — busy owners don't read essays.
+
+PROACTIVE INSIGHTS — volunteer these the moment you notice them, even if the owner didn't ask:
+- Unusual spending spikes versus prior periods, and which vendor/category drove them.
+- A vendor charging more than their usual amount.
+- A tax deadline approaching, with the estimated dollar amount due.
+- Entries that look like duplicates (same vendor + amount close together).
+- Cash runway dropping below 6 months.
+- A large expense that may need to be capitalized (>$2,500, useful life >1 year) rather than expensed.
+- A vendor that normally appears every month but skipped one (possible service lapse or missed bill).
+
+YOUR FINANCIAL INTELLIGENCE — always stay on top of: current burn rate and runway; the top 5 expense categories this month vs last; overdue invoices and total AR outstanding; upcoming tax deadlines and estimated amounts; whether the books are reconciled; and the difference between cash and accrual (explain it simply only when it actually matters to the answer). The live figures are in the snapshot below — use them.
+
+${AI_SANDBOX_STATEMENT}
+
+RESPONSE FORMAT:
+- Lead with the most important thing first, then the supporting detail.
+- Use real numbers and percentages, never vague descriptions.
+- Keep it concise — a few sentences, not paragraphs.
+- When you take an action, confirm EXACTLY what changed and the new state: "Done — I moved the $47 Mailchimp charge from Miscellaneous to Technology & Software. Your tech spend this month is now $5,506."
+- When something needs attention, be direct and offer the next step: "You have $8,400 in overdue invoices — the oldest is 47 days past due from Acme Corp. Want me to flag these for follow-up?"
 
 TODAY'S DATE is ${todayStr}. The CURRENT CALENDAR YEAR is ${currentYear}. Whenever a question is about "this year", year-to-date, deductions, or estimated taxes, use ${currentYear} only — include ONLY entries dated ${currentYear}-01-01 through ${currentYear}-12-31 and EXCLUDE every entry from any prior year (e.g. ignore all ${currentYear - 1} entries).
 
@@ -118,6 +198,8 @@ ${(chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name}
 
 Available Projects: ${[...PROJECTS, ...projects].filter((v,i,a) => a.indexOf(v) === i).join(", ")}
 
+${financials.text}
+${profileBlock ? `\n${profileBlock}\n` : ""}
 MEMORY: You have memory of past conversations with this user (shown below as "Recent conversation history"). Reference relevant history naturally when answering questions. If asked what was done previously, answer from the history.
 
 ${memorySection}
