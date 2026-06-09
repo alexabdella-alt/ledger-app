@@ -1503,7 +1503,8 @@ CRITICAL RULES:
     const ext = fileName.split(".").pop().toLowerCase();
     if (["csv","xlsx","xls"].includes(ext)) return "bank_statement";
     const res = await fetch(AI_PROXY_URL, {
-      method:"POST", headers:getAuthHeaders(),
+      // x-rate-kind:upload — counts this file once against the 20-uploads/hour limit
+      method:"POST", headers:{ ...getAuthHeaders(), "x-rate-kind":"upload" },
       body: JSON.stringify({
         model:AI_MODEL, max_tokens:20,
         system:`Classify this document. Reply with ONLY one word:
@@ -1870,7 +1871,8 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           if (isSpreadsheet) {
             const text = await new Promise(res => { const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsText(file); });
             const parseRes = await fetch(AI_PROXY_URL, {
-              method:"POST", headers:getAuthHeaders(),
+              // x-rate-kind:upload — spreadsheets skip classifyFile, so count the file here
+              method:"POST", headers:{ ...getAuthHeaders(), "x-rate-kind":"upload" },
               body: JSON.stringify({
                 model:AI_MODEL, max_tokens:4000,
                 system:`Parse this bank statement CSV/text and extract ALL transactions. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
