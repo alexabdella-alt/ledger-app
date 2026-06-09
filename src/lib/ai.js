@@ -229,6 +229,10 @@ Respond ONLY with a JSON object (no markdown). The "reply" field is the ONLY thi
     // Contact: { "type": "set_contact_rule", "name": "Name", "gl_code": "XXXX", "gl_name": "Name", "project": "optional" }
     // Recurring: { "type": "add_recurring", "name": "e.g. Office Rent", "vendor": "...", "amount": 4500, "gl_code": "6100", "gl_name": "Rent & Occupancy", "frequency": "monthly|weekly|quarterly|annual", "next_date": "YYYY-MM-DD" }
     // Recurring: { "type": "pause_recurring", "name": "..." }
+    // Chart (renders inline in the chat): { "type": "render_chart", "chart_type": "bar|pie|line", "title": "Spending by Category — June 2026", "data": [{"label":"Technology","value":5459},{"label":"Rent","value":742}], "report_view": "category|vendor|pl|cashflow" }
+    //   bar = compare categories/vendors; line = a trend over time (monthly burn, revenue); pie = spending distribution. Values are plain numbers (no $). The chart adds a "View full report" button via report_view.
+    // CSV (renders a download button inline): { "type": "export_csv", "filename": "spending-by-category-june-2026.csv", "headers": ["Category","Amount","% of Total"], "rows": [["Technology & Software","$5,459","66.7%"]] }
+    // Summary (renders a metric card inline): { "type": "render_summary", "title": "Q2 2026 Financial Summary", "metrics": [{"label":"Total Revenue","value":"$0","trend":"flat"},{"label":"Net Income","value":"-$8,165","trend":"down"}], "notes": "Biggest driver is Technology at 66.7% of spend." } — trend is up|down|flat|stable
     // Navigate: { "type": "navigate", "view": "books", "filter": "unpaid" } — opens a page for the user.
     //   The app has 3 tabs (Home, Books, Reports) plus a Settings gear. Use these view names:
     //   "home"      → upload documents, key numbers (cash, burn, runway, net income), active commitments, activity feed
@@ -241,6 +245,14 @@ Respond ONLY with a JSON object (no markdown). The "reply" field is the ONLY thi
     // { "type": "none" }
   ]
 }
+
+VISUAL OUTPUT — default to a chart or summary when the question is analytical; don't answer in text when a picture is clearer. Always still write a one or two sentence reply alongside it. Build the data yourself from the ledger (current-year, exclude voided/deleted). Use:
+- "show me my spending" / "where is my money going" → render_chart (bar, by category) and also navigate to reports.
+- "what does my burn look like over time" / "revenue trend" → render_chart (line, monthly values oldest→newest).
+- "what's my biggest expense" / "spending breakdown" → render_chart (pie, distribution).
+- "give me a summary of this month/quarter" → render_summary with the key metrics (revenue, expenses, net, burn) and a one-line note on the biggest driver.
+- "export my transactions/spending to CSV" → export_csv with real headers and rows.
+You may combine a short text reply with one chart/summary/csv. Keep chart data to the few values that matter (top 6–8).
 
 NAVIGATION — be a proactive guide (the app has just 5 tabs: Home, Books, Reports, Contracts, Settings):
 - When the user asks where something is or how to get somewhere, ALWAYS include a navigate action AND briefly say what they'll see there.

@@ -30,14 +30,17 @@ function deriveSession(item) {
   }
 
   if (item.isDuplicate) {
+    const ex = item.existingInvoice || {};
+    const exAmt = Number(ex.amount);
     return {
       kind: "duplicate",
       questions: [{
         field: "duplicate", type: "buttons",
-        prompt: `This looks like a possible duplicate — invoice ${item.invoice?.invoice_number ? `#${item.invoice.invoice_number} ` : ""}from ${inv.vendor} was already booked${item.existingInvoice?.date ? ` on ${fmtDate(item.existingInvoice.date)}` : ""}. Is this the same charge?`,
+        prompt: `This looks like it might be a duplicate. I found a similar entry${ex.date ? ` from ${fmtDate(ex.date)}` : ""} for ${inv.vendor}${Number.isFinite(exAmt) ? ` — ${money(exAmt)}` : ""}. Is this a new charge or the same one?`,
         options: [
-          { label: "Yes — skip it, already booked", value: "skip" },
-          { label: "No, this is a different charge — book it", value: "book" },
+          { label: "New charge — book it", value: "book" },
+          { label: "Same invoice — skip it", value: "skip" },
+          { label: "Not sure — let me check", value: "unsure" },
         ],
       }],
     };
@@ -161,9 +164,18 @@ function ClarificationCard({ item }) {
 
   const bookDuplicate = (value) => {
     if (value === "skip") {
-      logAudit("invoice_rejected", `Rejected (duplicate): ${inv.vendor} · ${money(inv.amount)} on ${inv.date} — already booked`, inv, null);
+      // Same invoice — don't book it. Log to the audit trail as duplicate_skipped.
+      logAudit("duplicate_skipped", `Skipped duplicate: ${inv.vendor} · ${money(inv.amount)}${inv.date ? ` on ${inv.date}` : ""} — same as an existing entry`, inv, null);
       finishWithSuccess("Skipped — duplicate", "muted");
+    } else if (value === "unsure") {
+      // Not sure — book it but flag for review so it surfaces in the review queue.
+      const finalInv = { ...inv, confidence: 100, status: "booked", approval_status: "flagged", duplicate_flag: true, duplicate_reason: "Possible duplicate — user wasn't sure" };
+      logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (flagged: possible duplicate — needs review)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+      setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
+      if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+      finishWithSuccess("Booked — flagged as possible duplicate");
     } else {
+      // New charge — book it normally.
       const finalInv = { ...inv, confidence: 100, status: "booked" };
       logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — different charge)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
       setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);

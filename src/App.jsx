@@ -5,8 +5,10 @@ import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse } from "./lib/ai";
-import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile } from "./lib/clientProfile";
+import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
 import { isAllowedAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
+import { findDuplicate, detectRecurringPatterns } from "./lib/insights";
+import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
 import CompanySwitcher from "./components/CompanySwitcher";
@@ -670,6 +672,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     // Learned AI profile — drop the previous company's; loadAllData reloads the new one.
     if (profilePersistTimer.current) { clearTimeout(profilePersistTimer.current); profilePersistTimer.current = null; }
     clientProfileRef.current = emptyProfile();
+    // Recurring-suggestion detection
+    if (recurringScanTimer.current) { clearTimeout(recurringScanTimer.current); recurringScanTimer.current = null; }
+    setRecurringSuggestions([]);
+    dismissedRecurringRef.current = new Set();
   };
 
   // ── SUPABASE DATA LOADING ──────────────────────────────────
@@ -1029,6 +1035,52 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     } catch { /* learning is best-effort — never block a booking */ }
   };
 
+  // ── RECURRING EXPENSE DETECTION ─────────────────────────────────────────────
+  // After bookings settle, look for vendors that look like undeclared monthly
+  // recurring charges and surface them as Home-page suggestions. Lightweight:
+  // runs on the already-loaded invoices, debounced 3s after the last booking.
+  const [recurringSuggestions, setRecurringSuggestions] = useState([]);
+  const recurringRef = useRef([]);
+  useEffect(() => { recurringRef.current = recurring; }, [recurring]);
+  const dismissedRecurringRef = useRef(new Set());  // vendorKeys the user said no to
+  const recurringScanTimer = useRef(null);
+  const runRecurringScan = () => {
+    try {
+      const found = detectRecurringPatterns(invoicesRef.current, recurringRef.current)
+        .filter(s => !dismissedRecurringRef.current.has(s.vendorKey));
+      setRecurringSuggestions(found);
+    } catch { /* best-effort */ }
+  };
+  const scheduleRecurringScan = () => {
+    if (recurringScanTimer.current) clearTimeout(recurringScanTimer.current);
+    recurringScanTimer.current = setTimeout(runRecurringScan, 3000);
+  };
+  // "Yes, set it up" → create the recurring entry + feed the pattern back into the profile.
+  const acceptRecurringSuggestion = (s) => {
+    if (!s) return;
+    const newRec = {
+      id: Date.now() + Math.random(), name: s.vendor, vendor: s.vendor,
+      amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name,
+      frequency: "monthly", next_date: new Date().toISOString().slice(0, 10),
+      project: "General", active: true, created_at: new Date().toISOString(), last_run: null,
+    };
+    setRecurring(prev => [newRec, ...prev]);
+    logAudit("recurring_created", `Recurring set up from detected pattern: ${s.vendor} ~$${s.avgAmount}/mo → ${s.gl_name || s.gl_code}`, null, { vendor: s.vendor, amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name, frequency: "monthly" });
+    try {
+      clientProfileRef.current = addCustomRule(clientProfileRef.current, `Recurring pattern detected: ${s.vendor} ~$${Math.round(s.avgAmount)}/mo → ${s.gl_name || s.gl_code}`);
+      persistClientProfile(supabase, currentCompany?.id, clientProfileRef.current);
+    } catch {}
+    dismissedRecurringRef.current.add(s.vendorKey);
+    setRecurringSuggestions(prev => prev.filter(x => x.vendorKey !== s.vendorKey));
+    showNotification(`Recurring set up: ${s.vendor} ~$${Math.round(s.avgAmount)}/mo ✓`);
+  };
+  // "No thanks" → never suggest this vendor again. "Remind me later" → just hide for now.
+  const dismissRecurringSuggestion = (s, remindLater = false) => {
+    if (!s) return;
+    if (!remindLater) dismissedRecurringRef.current.add(s.vendorKey);
+    setRecurringSuggestions(prev => prev.filter(x => x.vendorKey !== s.vendorKey));
+  };
+
   // Persist a journal entry and write the returned Supabase ID back into invoices state
   // so that deleteJournalEntry can find and mark it deleted later.
   const bookToDb = (invoice) => {
@@ -1040,6 +1092,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         relinkDocsForInvoice(invoice.id, jeId);
         // Teach the client profile from every confirmed booking.
         recordBookingLearning(invoice);
+        // Look for new recurring-charge patterns (debounced).
+        scheduleRecurringScan();
       }
       return jeId;
     });
@@ -1892,14 +1946,17 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             // GAAP review — capital vs expense, prepaid, leasehold, vehicle.
             const gaapItem = buildGaapClarification(invoice);
 
-            // Duplicate invoice number check — runs before any other routing
-            const dupExisting = invoice.invoice_number
+            // Duplicate check — runs before any other routing. First an exact
+            // invoice-number match, then a smart fuzzy match (same vendor + amount
+            // within 1% + within 7 days, or exact amount + same vendor any date).
+            const dupByNumber = invoice.invoice_number
               ? invoices.find(ex =>
                   ex.invoice_number &&
                   ex.invoice_number.toLowerCase() === invoice.invoice_number.toLowerCase() &&
                   ex.vendor?.toLowerCase() === invoice.vendor?.toLowerCase()
                 )
               : null;
+            const dupExisting = dupByNumber || findDuplicate(invoice, invoices);
 
             if (dupExisting) {
               needsClarification.push({
@@ -3319,6 +3376,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
       // Execute actions
       let actionSummary = [];
+      let richOutputs = [];   // inline chat outputs: charts, CSV buttons, summary cards
       const newRules = [...rules];
 
       // ── Bulk-delete protection ──
@@ -3515,6 +3573,32 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           setRecurring(prev => prev.map(r => r.name?.toLowerCase()===action.name?.toLowerCase() ? {...r, active:false} : r));
           actionSummary.push(`Recurring paused: ${action.name}`);
         }
+        // ── Inline display outputs (render in the chat; never mutate data) ──
+        if (action.type === "render_chart") {
+          const ct = ["bar","pie","line"].includes(action.chart_type) ? action.chart_type : "bar";
+          const data = (Array.isArray(action.data) ? action.data : [])
+            .filter(d => d && d.label != null && d.value != null)
+            .map(d => ({ label: String(d.label), value: Number(d.value) || 0 }));
+          if (data.length) {
+            richOutputs.push({ kind:"chart", chart_type: ct, title: action.title || "", data, report_view: action.report_view || null });
+            logAI("ai_render_chart", `Rendered ${ct} chart in chat: ${action.title || ct}`);
+          }
+        }
+        if (action.type === "export_csv") {
+          const headers = Array.isArray(action.headers) ? action.headers : [];
+          const rows = Array.isArray(action.rows) ? action.rows : [];
+          if (rows.length) {
+            richOutputs.push({ kind:"csv", filename: action.filename || "export.csv", headers, rows });
+            logAI("ai_export_csv", `Prepared CSV in chat: ${action.filename || "export.csv"} (${rows.length} rows)`);
+          }
+        }
+        if (action.type === "render_summary") {
+          const metrics = (Array.isArray(action.metrics) ? action.metrics : []).slice(0, 8);
+          if (metrics.length) {
+            richOutputs.push({ kind:"summary", title: action.title || "", metrics, notes: action.notes || "" });
+            logAI("ai_render_summary", `Rendered summary in chat: ${action.title || "summary"}`);
+          }
+        }
         if (action.type === "add_contact") {
           const newContact = {
             id: Date.now() + Math.random(),
@@ -3581,6 +3665,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           ? "I can delete items one at a time for safety. Which specific entry would you like me to remove first?"
           : (result.reply || "Done!"),
         actions: bulkBlocked ? [] : actionSummary,
+        rich: bulkBlocked ? [] : richOutputs,
         id: Date.now() + 1,
         created_at: new Date().toISOString(),
       };
@@ -3633,7 +3718,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view };
 
   const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
@@ -4076,11 +4161,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                       ))}
                     </div>
                   )}
-                  {msg.role==="assistant" && msg.content.toLowerCase().includes("profit") || msg.role==="assistant" && msg.content.toLowerCase().includes("expense") || msg.role==="assistant" && msg.content.toLowerCase().includes("revenue") ? (
-                    <button onClick={()=>{ setChatOpen(false); setView("reports"); }} style={{ marginTop:6, background:"none", border:"1px solid #D0D5DD", borderRadius:8, padding:"4px 12px", color:"#4F46E5", fontSize:11, cursor:"pointer" }}>
-                      Open Reports page →
-                    </button>
-                  ) : null}
+                  {msg.role==="assistant" && msg.rich?.length>0 && (
+                    <ChatRichOutput rich={msg.rich} onNavigate={(rv)=>{
+                      setChatOpen(false);
+                      if (rv==="vendor") { setView("books"); setBooksFilter && setBooksFilter("expenses"); }
+                      else { setView("reports"); }
+                    }} />
+                  )}
                 </div>
               </div>
             ))}

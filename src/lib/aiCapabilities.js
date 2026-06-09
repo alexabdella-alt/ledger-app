@@ -25,6 +25,10 @@ export const AI_ALLOWED_ACTIONS = [
   "add_contact",
   "update_contact",
   "set_contact_rule",
+  // Display-only outputs (render in the chat, never mutate data):
+  "render_chart",
+  "export_csv",
+  "render_summary",
 ];
 
 export const AI_ALLOWED_ACTIONS_SET = new Set(AI_ALLOWED_ACTIONS);
@@ -36,7 +40,7 @@ export const AI_BULK_LIMIT = 3;
 
 // Dropped verbatim into the system prompt.
 export const AI_SANDBOX_STATEMENT =
-`YOU ARE SANDBOXED. You can ONLY execute actions from this exact list: recode, retag_project, add_account, add_rule, delete_rule, delete_invoice (soft-delete, recoverable), void_invoice, reverse_entry, delete_contract, add_recurring, pause_recurring, add_contact, update_contact, set_contact_rule, navigate, none. Any other action you suggest will be REFUSED and logged. You cannot modify the app's code or settings, you cannot access any other company's data, you cannot send emails or any external communication, you cannot process payments or move money, you cannot change database structure or security rules, you cannot delete or void more than ${AI_BULK_LIMIT} items in one request, and you cannot modify a reconciled/locked period without the user explicitly unlocking it first. If a user asks for something outside these limits, say plainly that you can't do it and explain what you can do instead.`;
+`YOU ARE SANDBOXED. You can ONLY execute actions from this exact list: recode, retag_project, add_account, add_rule, delete_rule, delete_invoice (soft-delete, recoverable), void_invoice, reverse_entry, delete_contract, add_recurring, pause_recurring, add_contact, update_contact, set_contact_rule, render_chart, export_csv, render_summary, navigate, none. Any other action you suggest will be REFUSED and logged. You cannot modify the app's code or settings, you cannot access any other company's data, you cannot send emails or any external communication, you cannot process payments or move money, you cannot change database structure or security rules, you cannot delete or void more than ${AI_BULK_LIMIT} items in one request, and you cannot modify a reconciled/locked period without the user explicitly unlocking it first. If a user asks for something outside these limits, say plainly that you can't do it and explain what you can do instead.`;
 
 // Plain-English capability document — shown to users and used as internal docs.
 export const AI_CAPABILITIES = {
@@ -52,6 +56,9 @@ export const AI_CAPABILITIES = {
     "Set up or pause recurring transactions (rent, subscriptions, etc.).",
     "Navigate you to any page — Books, Reports, Tax Center, reconciliation, and more.",
     "Answer any question about your books with real numbers — burn, runway, P&L, AR, taxes.",
+    "Draw charts right in the chat — spending by category, vendor comparisons, burn over time.",
+    "Build you a CSV export and a quick summary card without leaving the conversation.",
+    "Spot recurring charges and offer to set them up so they're always expected and auto-coded.",
     "Proactively flag issues — duplicates, spending spikes, low runway, upcoming tax deadlines.",
   ],
   cannotTitle: "What the assistant cannot do",
