@@ -279,7 +279,7 @@ export default function DashboardView() {
                         unknown:       { icon:"❓", label:"Unknown",         color:"#D92D20" },
                       };
                       const tc = typeConfig[item.type] || { icon:"📄", label:"Document", color:"#475467" };
-                      const pendingReview = item.status==="done" && clarificationQueue.some(c => c.queueItemId === item.id);
+                      const pendingReview = item.status==="done" && clarificationQueue.some(c => c.queueItemId === item.id && !c.resolved);
                       return (
                         <div key={item.id} style={{ background:"#FFFFFF", border:`1px solid ${item.status==="error"?"#D92D2033":pendingReview?"#DC680366":item.status==="done"?"#03985533":"#E4E7EC"}`, borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
                           {/* File icon */}
@@ -296,13 +296,18 @@ export default function DashboardView() {
                               {item.status==="done" && item.type==="invoice" && item.result && (() => {
                                 const r = item.result;
                                 const money = n => `$${(Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2})}`;
-                                // Nothing booked, only items needing review.
-                                if (!(r.invoiceCount > 0) && r.needsClarification > 0)
+                                // Nothing booked at upload time, only items needing review.
+                                if (!(r.invoiceCount > 0) && r.needsClarification > 0) {
+                                  // Once the clarification has been answered & booked, flip to ✓ Booked.
+                                  if (!pendingReview)
+                                    return `✓ Booked${r.reviewVendor ? `: ${r.reviewVendor}` : ""}${r.reviewAmount!=null ? ` · ${money(r.reviewAmount)}` : ""}`;
                                   return `⚠ Needs your input · ${r.reviewVendor || "this entry"}${r.reviewAmount!=null ? ` · ${money(r.reviewAmount)}` : ""}${r.needsClarification > 1 ? ` (+${r.needsClarification-1} more)` : ""}`;
+                                }
                                 let txt = r.invoiceCount === 1
                                   ? `✓ Booked: ${r.vendor || "entry"} · ${money(r.amount)}${r.gl_name ? ` → ${r.gl_name}` : ""}${r.confidence!=null ? ` (${r.confidence}% confidence)` : ""}`
                                   : `✓ ${r.invoiceCount} invoices booked · ${money(r.amount)} total${r.confidence!=null ? ` · ${r.confidence}% avg confidence` : ""}`;
-                                if (r.needsClarification > 0) txt += ` · ${r.needsClarification} need${r.needsClarification===1 ? "s" : ""} your review`;
+                                // Only show the outstanding-review suffix while items are still pending.
+                                if (r.needsClarification > 0 && pendingReview) txt += ` · ${r.needsClarification} need${r.needsClarification===1 ? "s" : ""} your review`;
                                 return txt;
                               })()}
                               {item.status==="done" && item.type==="bank_statement" && item.result && (
@@ -340,9 +345,9 @@ export default function DashboardView() {
                     })}
                   </div>
                   {/* Invoice clarification prompt */}
-                  {clarificationQueue.length > 0 && (
+                  {clarificationQueue.filter(c=>!c.resolved).length > 0 && (
                     <div style={{ marginTop:12, background:"#FEF3C7", border:"1px solid #DC680344", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"#DC6803" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need your input before booking — scroll down to review</div>
+                      <div style={{ fontSize:13, color:"#DC6803" }}>⚠ {clarificationQueue.filter(c=>!c.resolved).length} invoice{clarificationQueue.filter(c=>!c.resolved).length!==1?"s":""} need your input before booking — scroll down to review</div>
                       <button onClick={()=>{ window.scrollTo({top:9999,behavior:"smooth"}); }} style={{ background:"#DC680322", border:"1px solid #DC680344", color:"#DC6803", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Below ↓</button>
                     </div>
                   )}

@@ -1884,7 +1884,11 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
 
           const newInvoices = [...highConfidence];
           const totalAmt = newInvoices.reduce((s,i)=>s+i.amount, 0);
-          const primaryId = newInvoices[0]?.id ?? null;
+          // Link the source document to the first booked invoice; if NOTHING was
+          // booked (everything needs clarification), link it to the first clarification
+          // invoice's in-session id instead. When that entry is later booked from the
+          // clarification flow, bookToDb() re-links the doc to its durable db_entry_id.
+          const primaryId = newInvoices[0]?.id ?? needsClarification[0]?.invoice?.id ?? null;
           // Store the document linked to the primary booked invoice, then — once the
           // entry's durable db_entry_id has resolved — re-link the document to it so the
           // Source Document section finds it after a refresh (it matches on db_entry_id).
@@ -3672,8 +3676,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                         color: isActive?(tab.admin?"#B54708":"#101828"):(tab.admin?"#B54708":"#475467"), fontSize:14, fontWeight: isActive?600:(tab.admin?600:500),
                         cursor:"pointer", transition:"all 0.12s" }}>
                       {tab.label}
-                      {tab.id==="home" && clarificationQueue.length>0 && (
-                        <span style={{ background:"#DC6803", color:"#fff", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.length}</span>
+                      {tab.id==="home" && clarificationQueue.filter(c=>!c.resolved).length>0 && (
+                        <span style={{ background:"#DC6803", color:"#fff", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.filter(c=>!c.resolved).length}</span>
                       )}
                       {tab.admin && adminFailedCount>0 && (
                         <span title={`${adminFailedCount} failed upload${adminFailedCount!==1?"s":""} in 24h`} style={{ width:8, height:8, borderRadius:"50%", background:"#D92D20", display:"inline-block", flexShrink:0 }} />
@@ -3727,9 +3731,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         {/* Main Content */}
         <div ref={mainContentRef} id="main-content" style={{ flex:1, overflowY:"auto" }}>
           {/* Review banner — visible from any non-dashboard view when items need input */}
-          {clarificationQueue.length > 0 && view !== "home" && view !== "dashboard" && (
+          {clarificationQueue.filter(c=>!c.resolved).length > 0 && view !== "home" && view !== "dashboard" && (
             <div style={{ background:"#FEF3C7", borderBottom:"1px solid #DC680344", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
-              <div style={{ fontSize:13, color:"#DC6803" }}>⚠ {clarificationQueue.length} invoice{clarificationQueue.length!==1?"s":""} need{clarificationQueue.length===1?"s":""} review before booking</div>
+              <div style={{ fontSize:13, color:"#DC6803" }}>⚠ {clarificationQueue.filter(c=>!c.resolved).length} invoice{clarificationQueue.filter(c=>!c.resolved).length!==1?"s":""} need{clarificationQueue.filter(c=>!c.resolved).length===1?"s":""} review before booking</div>
               <button onClick={()=>setView("home")} style={{ background:"#DC680322", border:"1px solid #DC680344", color:"#DC6803", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer" }}>Review →</button>
             </div>
           )}

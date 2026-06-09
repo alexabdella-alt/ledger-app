@@ -106,9 +106,19 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
 
   const close = () => { setRecodeOpen(false); setPayOpen(false); onClose(); };
 
-  const findSourceDoc = (inv) => (docLibrary || []).find(d =>
-    d.linked_invoice_id && (String(d.linked_invoice_id) === String(inv?.id) || String(d.linked_invoice_id) === String(inv?.db_entry_id))
-  );
+  const findSourceDoc = (inv) => {
+    const match = (docLibrary || []).find(d =>
+      d.linked_invoice_id && (String(d.linked_invoice_id) === String(inv?.id) || String(d.linked_invoice_id) === String(inv?.db_entry_id))
+    );
+    // Diagnostic: surfaces the linked_invoice_id values present vs. what we're matching
+    // against, making any id mismatch obvious in the console.
+    if (!match) {
+      console.log("[SourceDoc] no match for invoice", { id: inv?.id, db_entry_id: inv?.db_entry_id },
+        "· docLibrary linked_invoice_ids:", (docLibrary || []).map(d => d.linked_invoice_id),
+        `· docLibrary size: ${(docLibrary || []).length}`);
+    }
+    return match;
+  };
   const handleSourceUpload = async (file, inv) => {
     if (!file || !inv) return;
     setSrcUploading(true);

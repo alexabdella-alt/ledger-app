@@ -103,8 +103,12 @@ function ClarificationCard({ item }) {
 
   const removeFromQueue = () => setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
   // Book immediately, then show a brief "✓ Booked" state before the card drops out.
+  // Flag the item resolved right away so the badge, the review banner, and the upload
+  // queue's "Needs your input" status all update instantly (the card itself lingers a
+  // moment to show the success state, then is removed entirely).
   const finishWithSuccess = (text, tone = "success") => {
     setDone({ text, tone });
+    setClarificationQueue(prev => prev.map(c => c.id === item.id ? { ...c, resolved: true } : c));
     removeTimer.current = setTimeout(() => removeFromQueue(), 1900);
   };
   const total = questions.length;
@@ -433,13 +437,16 @@ function ClarificationCard({ item }) {
 export default function ClarificationFlow() {
   const { clarificationQueue } = useERP();
   if (!clarificationQueue || clarificationQueue.length === 0) return null;
+  // Count only items still awaiting an answer (resolved ones linger briefly to show
+  // their "✓ Booked" success state before they're removed from the queue entirely).
+  const pending = clarificationQueue.filter(c => !c.resolved).length;
   return (
     <div id="clarification-section" style={{ marginBottom: 24 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <span style={{ width: 30, height: 30, borderRadius: 9, background: "linear-gradient(135deg,#6366F1,#4338CA)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: "#fff", flexShrink: 0 }}>✦</span>
         <div>
           <div style={{ fontSize: 16, fontWeight: 600, color: "#101828" }}>A few quick questions</div>
-          <div style={{ fontSize: 13, color: "#475467", marginTop: 1 }}>{clarificationQueue.length} {clarificationQueue.length === 1 ? "item needs" : "items need"} a quick answer before I book {clarificationQueue.length === 1 ? "it" : "them"}.</div>
+          <div style={{ fontSize: 13, color: "#475467", marginTop: 1 }}>{pending > 0 ? `${pending} ${pending === 1 ? "item needs" : "items need"} a quick answer before I book ${pending === 1 ? "it" : "them"}.` : "All caught up ✓"}</div>
         </div>
       </div>
       {clarificationQueue.map(item => <ClarificationCard key={item.id} item={item} />)}
