@@ -52,6 +52,65 @@ function buildFinancials(invoices, cashBalance) {
   return { runway, burn, cash, text: lines.join("\n") };
 }
 
+// Walk from `start` (an opening `open` char) and return the index of its matching
+// close, respecting nesting. Returns -1 if unbalanced. Used so we can strip whole
+// action objects/arrays (including nested data arrays) from leaked reply text.
+function matchBracket(s, start, open, close) {
+  let depth = 0;
+  for (let i = start; i < s.length; i++) {
+    if (s[i] === open) depth++;
+    else if (s[i] === close) { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// Scrub any leaked JSON out of the user-visible reply. Unlike a regex, this is
+// brace-balanced so it removes a COMPLETE action object — e.g.
+// {"type":"render_chart", ... ,"data":[{...},{...}],"report_view":"category"} —
+// rather than stopping at the first nested "}".
+function scrubLeakedActionJson(input) {
+  let s = String(input || "");
+
+  // 1. Remove every balanced { "type":"<action>" ... } object (with nesting).
+  const typeRe = /\{\s*"?type"?\s*:\s*"[a-zA-Z_]+"/;
+  for (let guard = 0; guard < 100; guard++) {
+    const m = s.match(typeRe);
+    if (!m) break;
+    const end = matchBracket(s, m.index, "{", "}");
+    s = end === -1 ? s.slice(0, m.index) : s.slice(0, m.index) + s.slice(end + 1);
+  }
+
+  // 2. Remove a leaked "actions": [ ... ] array (bracket-balanced).
+  const am = s.match(/,?\s*"?actions"?\s*:\s*\[/i);
+  if (am) {
+    const br = s.indexOf("[", am.index);
+    const end = br === -1 ? -1 : matchBracket(s, br, "[", "]");
+    s = end === -1 ? s.slice(0, am.index) : s.slice(0, am.index) + s.slice(end + 1);
+  }
+
+  // 3. Tidy up stray structural leftovers without touching real prose.
+  return s
+    .replace(/^\s*[,}\]]+/, "")        // leading stray commas/closers
+    .replace(/[,{[\s]+$/g, "")          // trailing stray commas/openers/space
+    .replace(/^\s*[}\]]\s*$/gm, "")     // lone braces/brackets on a line
+    .trim();
+}
+
+// Find and JSON.parse every balanced {"type":"..."} object in arbitrary text, so
+// we can still recover (and render) actions even when the wrapper JSON is malformed.
+function extractActionObjects(text) {
+  const out = [];
+  const typeRe = /\{\s*"?type"?\s*:\s*"[a-zA-Z_]+"/g;
+  let m;
+  while ((m = typeRe.exec(text)) !== null) {
+    const end = matchBracket(text, m.index, "{", "}");
+    if (end === -1) break;
+    try { out.push(JSON.parse(text.slice(m.index, end + 1))); } catch { /* skip */ }
+    typeRe.lastIndex = end + 1;
+  }
+  return out;
+}
+
 // Validate an ai-proxy Response: throw on non-2xx OR an error body, otherwise
 // return the parsed JSON. Use this anywhere a fetch to the proxy is already
 // written so failures surface instead of being parsed as empty results.
@@ -246,7 +305,7 @@ Respond ONLY with a JSON object (no markdown). The "reply" field is the ONLY thi
   ]
 }
 
-VISUAL OUTPUT — default to a chart or summary when the question is analytical; don't answer in text when a picture is clearer. Always still write a one or two sentence reply alongside it. Build the data yourself from the ledger (current-year, exclude voided/deleted). Use:
+VISUAL OUTPUT — default to a chart or summary when the question is analytical; don't answer in text when a picture is clearer. CRITICAL: the chart/CSV/summary — including the entire "data", "rows", and "metrics" arrays — MUST go in the actions array, NEVER in the reply text. The reply is plain prose only: write one short sentence like "Here's your spending breakdown:" and the chart renders below it automatically. Never write {"type":...}, "data":[...], "report_view", or any JSON inside the reply. Build the data yourself from the ledger (current-year, exclude voided/deleted). Use:
 - "show me my spending" / "where is my money going" → render_chart (bar, by category) and also navigate to reports.
 - "what does my burn look like over time" / "revenue trend" → render_chart (line, monthly values oldest→newest).
 - "what's my biggest expense" / "spending breakdown" → render_chart (pie, distribution).
@@ -344,16 +403,10 @@ GAAP AWARENESS — maintain proper books but explain simply:
 
   const cleaned = text.replace(/```json|```/g, "").trim();
 
-  // The reply shown to the user must be PLAIN PROSE only — never any JSON. The
-  // model occasionally appends the actions array (or a stray {"type":"none"}) to
-  // the visible text, so we always scrub the reply of any leaked JSON fragments.
-  const stripLeakedJson = (s) => String(s || "")
-    .replace(/,?\s*"?actions"?\s*:\s*\[[\s\S]*?\]\s*}?\s*$/i, "")  // trailing "actions": [...] (+closing brace)
-    .replace(/,?\s*"?actions"?\s*:\s*\[[\s\S]*?\]/gi, "")          // any "actions": [...] fragment
-    .replace(/\{\s*"?type"?\s*:\s*"[a-z_]+"[\s\S]*?\}/gi, "")      // stray action objects like {"type":"none"}
-    .replace(/^\s*[}\]]\s*$/gm, "")                                  // lone dangling braces/brackets on a line
-    .trim();
-  const result = (reply, actions) => ({ reply: stripLeakedJson(reply), actions: Array.isArray(actions) ? actions : [] });
+  // The reply shown to the user must be PLAIN PROSE only — never any JSON. We always
+  // scrub the reply (brace-balanced, so whole action objects incl. nested chart data
+  // are removed) and keep actions strictly in the separate array.
+  const result = (reply, actions) => ({ reply: scrubLeakedActionJson(reply), actions: Array.isArray(actions) ? actions : [] });
 
   // 1. Clean JSON object (the normal case): reply + actions are already separate.
   try {
@@ -367,16 +420,17 @@ GAAP AWARENESS — maintain proper books but explain simply:
     try {
       const parsed = JSON.parse(objMatch[0]);
       if (parsed && typeof parsed === "object" && (parsed.reply != null || parsed.actions != null)) {
-        return result(parsed.reply ?? "", parsed.actions);
+        return result(parsed.reply ?? cleaned.replace(objMatch[0], ""), parsed.actions);
       }
     } catch { /* fall through */ }
-    // 3. Couldn't parse — pull just the reply string out by regex.
-    const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
-    if (replyMatch) return result(replyMatch[1].replace(/\\n/g, "\n"), []);
   }
 
-  // 4. No usable JSON at all — show the prose, scrubbed of any stray action JSON.
-  return result(cleaned, []);
+  // 3. Malformed JSON: recover the reply string by regex AND recover any action
+  //    objects individually (so charts/CSVs still render even when the wrapper JSON
+  //    is broken). The scrubber then strips the leaked JSON from the displayed text.
+  const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
+  const replyText = replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : cleaned;
+  return result(replyText, extractActionObjects(cleaned));
 }
 
 export { classifyIntent, runAIBrain, callAIProxy, okAIResponse };
