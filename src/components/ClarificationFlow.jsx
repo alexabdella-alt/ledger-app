@@ -95,10 +95,18 @@ function ClarificationCard({ item }) {
   // ── Free-text ("describe it in your own words") state ──
   const [freeText, setFreeText] = React.useState("");
   const [interpreting, setInterpreting] = React.useState(false);   // AI thinking
-  const [interpretation, setInterpretation] = React.useState(null); // { gl_code, gl_name, reasoning, is_new }
   const [freeError, setFreeError] = React.useState(null);
+  // ── Post-booking success state (the booking itself is the confirmation) ──
+  const [done, setDone] = React.useState(null);                    // { text, tone } | null
+  const removeTimer = React.useRef(null);
+  React.useEffect(() => () => { if (removeTimer.current) clearTimeout(removeTimer.current); }, []);
 
   const removeFromQueue = () => setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
+  // Book immediately, then show a brief "✓ Booked" state before the card drops out.
+  const finishWithSuccess = (text, tone = "success") => {
+    setDone({ text, tone });
+    removeTimer.current = setTimeout(() => removeFromQueue(), 1900);
+  };
   const total = questions.length;
   const atSummary = step >= total;
 
@@ -113,42 +121,55 @@ function ClarificationCard({ item }) {
     return a === opt.value;
   };
 
-  // ── Booking on confirm ──
+  // ── Booking ──
+  // GAAP keeps a brief one-line summary (financial-statement impact) → confirm.
+  // Everything else books on the spot; the success state is the confirmation.
   const finalize = () => {
     if (kind === "gaap") { applyGaapAnswer(item, answers.gaap); return; }
-
-    if (kind === "duplicate") {
-      if (answers.duplicate === "skip") {
-        logAudit("invoice_rejected", `Rejected (duplicate): ${inv.vendor} · ${money(inv.amount)} on ${inv.date} — already booked`, inv, null);
-        removeFromQueue(); showNotification("Duplicate skipped ✓");
-      } else {
-        const finalInv = { ...inv, confidence: 100, status: "booked" };
-        logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — different charge)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-        setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
-        if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-        removeFromQueue(); showNotification(`Booked to ${finalInv.gl_name} ✓`);
-      }
-      return;
-    }
-
-    // gl: personal/skip detection from plain-English answers
-    const bp = answers.business_purpose, pers = answers.personal;
-    const skipPersonal =
-      (bp && /personal/i.test(bp) && /don'?t|do not|not|skip/i.test(bp)) ||
-      (pers && /^no/i.test(pers));
-    if (skipPersonal) {
-      logAudit("invoice_rejected", `Skipped (personal): ${inv.vendor} · ${money(inv.amount)} — user marked not a business expense`, inv, null);
-      removeFromQueue(); showNotification("Skipped — marked personal ✓");
-      return;
-    }
-
-    const chosen = answers.category;
-    if (!chosen) return;
-    doBookGl(chosen);
   };
 
-  // Book a GL-categorized entry. Shared by the pill-selected path (finalize) and
-  // the free-text → AI interpretation path (confirmInterpretation).
+  // A pill answer was clicked. Decide whether to book now or advance a step.
+  const onPill = (field, value) => {
+    if (done) return; // already booking
+    if (kind === "gaap") { answerAndAdvance(field, value); return; }       // → summary
+    if (kind === "duplicate") { setAnswer(field, value); bookDuplicate(value); return; }
+    // gl kind
+    if (field === "category") { setAnswer(field, value); doBookGl(value); return; }
+    if (field === "business_purpose" || field === "personal") {
+      setAnswer(field, value);
+      if (isPersonalSkip(field, value)) { rejectPersonal(); return; }
+      setStep(s => s + 1); return;
+    }
+    answerAndAdvance(field, value);
+  };
+
+  const isPersonalSkip = (field, value) => {
+    const v = String(value || "");
+    if (field === "business_purpose") return /personal/i.test(v) && /don'?t|do not|not|skip/i.test(v);
+    if (field === "personal") return /^\s*no/i.test(v);
+    return false;
+  };
+
+  const rejectPersonal = () => {
+    logAudit("invoice_rejected", `Skipped (personal): ${inv.vendor} · ${money(inv.amount)} — user marked not a business expense`, inv, null);
+    finishWithSuccess("Skipped — marked personal", "muted");
+  };
+
+  const bookDuplicate = (value) => {
+    if (value === "skip") {
+      logAudit("invoice_rejected", `Rejected (duplicate): ${inv.vendor} · ${money(inv.amount)} on ${inv.date} — already booked`, inv, null);
+      finishWithSuccess("Skipped — duplicate", "muted");
+    } else {
+      const finalInv = { ...inv, confidence: 100, status: "booked" };
+      logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — different charge)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+      setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
+      if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+      finishWithSuccess(`Booked to ${finalInv.gl_name}`);
+    }
+  };
+
+  // Book a GL-categorized entry. Shared by the pill-selected path and the
+  // free-text → AI interpretation path.
   const doBookGl = (chosen, { reasoning, audit = "user confirmed" } = {}) => {
     const bp = answers.business_purpose;
     const amt = (answers.amount != null && answers.amount !== "") ? (parseFloat(answers.amount) || inv.amount) : inv.amount;
@@ -167,7 +188,7 @@ function ClarificationCard({ item }) {
     logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${chosen.name} (${audit})`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: chosen.code, gl_name: chosen.name });
     setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
     if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-    removeFromQueue(); showNotification(`Booked to ${chosen.name} ✓`);
+    finishWithSuccess(`Booked to ${chosen.name}`);
   };
 
   // ── Free-text booking ("describe it in your own words") ──
@@ -181,11 +202,11 @@ function ClarificationCard({ item }) {
     return "6999";
   };
 
-  // Send the user's free-text description to the AI and ask it to map the charge
-  // to a GL account (or propose a new one). Sets `interpretation` on success.
+  // Send the user's free-text description to the AI, map it to a GL account
+  // (creating a new one if nothing fits), then book immediately — no confirm step.
   const interpretFreeText = async () => {
     const text = freeText.trim();
-    if (!text || interpreting) return;
+    if (!text || interpreting || done) return;
     setFreeError(null); setInterpreting(true);
     try {
       const coa = (CHART_OF_ACCOUNTS || [])
@@ -206,30 +227,10 @@ function ClarificationCard({ item }) {
       const m = raw.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(m ? m[0] : raw);
       if (!parsed.gl_name) throw new Error("no account");
-      const code = String(parsed.gl_code || "").trim();
-      const known = (CHART_OF_ACCOUNTS || []).some(a => String(a.code) === code);
-      setInterpretation({
-        gl_code: code,
-        gl_name: String(parsed.gl_name).trim(),
-        reasoning: parsed.reasoning || "",
-        is_new: !!parsed.is_new || !known,
-      });
-    } catch (e) {
-      setFreeError("I couldn't read that — try rephrasing, or pick an option above.");
-    }
-    setInterpreting(false);
-  };
-
-  // User confirmed the AI's interpretation → create the account if new, then book.
-  const confirmInterpretation = async () => {
-    const interp = interpretation;
-    if (!interp || interpreting) return;
-    setFreeError(null); setInterpreting(true);
-    try {
-      let code = interp.gl_code;
-      let name = interp.gl_name;
-      const existing = (CHART_OF_ACCOUNTS || []).find(a => String(a.code) === String(code));
-      if (interp.is_new || !existing) {
+      let code = String(parsed.gl_code || "").trim();
+      let name = String(parsed.gl_name).trim();
+      const existing = (CHART_OF_ACCOUNTS || []).find(a => String(a.code) === code);
+      if (!!parsed.is_new || !existing) {
         code = pickNewExpenseCode(code);
         const ok = await addCustomAccount({ code, name, category: "Expenses" });
         if (ok === false) throw new Error("account create failed");
@@ -237,12 +238,12 @@ function ClarificationCard({ item }) {
         name = existing.name; // canonical name
       }
       doBookGl({ code, name }, {
-        reasoning: interp.reasoning || `Booked from description: "${freeText.trim()}"`,
+        reasoning: parsed.reasoning || `Booked from description: "${text}"`,
         audit: "user described",
       });
-      // doBookGl removes the card from the queue; no further state updates needed.
+      // doBookGl switches the card to its success state; no further updates needed.
     } catch (e) {
-      setFreeError("Couldn't book that — please try again or pick an option above.");
+      setFreeError("I couldn't read that — try rephrasing, or pick an option above.");
       setInterpreting(false);
     }
   };
@@ -283,6 +284,17 @@ function ClarificationCard({ item }) {
     const glyph = (item.mediaType || "").includes("pdf") ? "📄" : inv.type === "revenue" ? "🧾" : "🧾";
     return <div style={{ fontSize: 26 }}>{glyph}</div>;
   };
+
+  // ── Booked / done (compact success) state ──
+  if (done) {
+    const ok = done.tone === "success";
+    return (
+      <div style={{ background: "#FFFFFF", border: `1px solid ${ok ? "#A6F4C5" : "#E4E7EC"}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }} className="sc-card">
+        <span style={{ width: 22, height: 22, borderRadius: "50%", background: ok ? "#039855" : "#98A2B3", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>✓</span>
+        <span style={{ fontSize: 14, fontWeight: 500, color: "#101828" }}>{done.text}</span>
+      </div>
+    );
+  }
 
   // ── Skipped (compact) state ──
   if (skipped) {
@@ -329,7 +341,7 @@ function ClarificationCard({ item }) {
                 {q.options.map((opt, oi) => {
                   const sel = isSelected(q.field, opt);
                   return (
-                    <button key={oi} onClick={() => answerAndAdvance(q.field, opt.value)} style={pill(sel)}
+                    <button key={oi} onClick={() => onPill(q.field, opt.value)} style={pill(sel)}
                       onMouseEnter={e => { if (!sel) { e.currentTarget.style.background = "#F5F3FF"; e.currentTarget.style.borderColor = "#A5B4FC"; } }}
                       onMouseLeave={e => { if (!sel) { e.currentTarget.style.background = "#FFFFFF"; e.currentTarget.style.borderColor = "#D0D5DD"; } }}>
                       {opt.label}
@@ -339,45 +351,24 @@ function ClarificationCard({ item }) {
               </div>
             )}
 
-            {/* Free-text: describe it in your own words → AI maps to a GL account */}
+            {/* Free-text: describe it in your own words → AI maps to a GL account
+                and books immediately (no confirmation step). */}
             {q.type === "buttons" && kind === "gl" && q.field === "category" && (
               <div style={{ marginTop: 14 }}>
-                {interpretation ? (
-                  /* AI interpreted the description — confirm before booking */
-                  <div style={{ background: "#F5F3FF", border: "1px solid #C7D2FE", borderRadius: 12, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 14.5, color: "#101828", lineHeight: 1.5 }}>
-                      Got it — I'll book this as <strong>{interpretation.gl_name}</strong>
-                      {interpretation.is_new && <span style={{ fontSize: 12, fontWeight: 600, color: "#4338CA", background: "#E0E7FF", borderRadius: 6, padding: "1px 7px", marginLeft: 6 }}>new account</span>}. Does that look right?
-                    </div>
-                    {interpretation.reasoning && (
-                      <div style={{ fontSize: 12.5, color: "#475467", marginTop: 5, lineHeight: 1.5 }}>{interpretation.reasoning}</div>
-                    )}
-                    <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-                      <button onClick={confirmInterpretation} disabled={interpreting}
-                        style={{ height: 38, padding: "0 18px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "#fff", background: interpreting ? "#A7F3D0" : "#039855", border: "none", cursor: interpreting ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7 }}>
-                        {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "#fff", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
-                        {interpreting ? "Booking…" : "Confirm & Book"}
-                      </button>
-                      <button onClick={() => { setInterpretation(null); setFreeError(null); }} disabled={interpreting}
-                        style={{ fontSize: 13, fontWeight: 500, color: "#4F46E5", background: "none", border: "none", cursor: interpreting ? "default" : "pointer", padding: 0 }}>Edit</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <input
-                      type="text" value={freeText}
-                      onChange={e => setFreeText(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); interpretFreeText(); } }}
-                      disabled={interpreting}
-                      placeholder="Or describe it in your own words..."
-                      style={{ flex: "1 1 260px", minWidth: 0, height: 42, boxSizing: "border-box", background: interpreting ? "#F9FAFB" : "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "#101828", outline: "none" }} />
-                    <button onClick={interpretFreeText} disabled={interpreting || !freeText.trim()}
-                      style={{ height: 42, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#fff", background: (interpreting || !freeText.trim()) ? "#C7D2FE" : "#4F46E5", border: "none", cursor: (interpreting || !freeText.trim()) ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-                      {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "#fff", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
-                      {interpreting ? "Thinking…" : "Use this →"}
-                    </button>
-                  </div>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    type="text" value={freeText}
+                    onChange={e => setFreeText(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); interpretFreeText(); } }}
+                    disabled={interpreting}
+                    placeholder="Or describe it in your own words..."
+                    style={{ flex: "1 1 260px", minWidth: 0, height: 42, boxSizing: "border-box", background: interpreting ? "#F9FAFB" : "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "#101828", outline: "none" }} />
+                  <button onClick={interpretFreeText} disabled={interpreting || !freeText.trim()}
+                    style={{ height: 42, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#fff", background: (interpreting || !freeText.trim()) ? "#C7D2FE" : "#4F46E5", border: "none", cursor: (interpreting || !freeText.trim()) ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                    {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "#fff", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
+                    {interpreting ? "Booking…" : "Use this →"}
+                  </button>
+                </div>
                 {freeError && <div style={{ fontSize: 12.5, color: "#D92D20", marginTop: 8 }}>{freeError}</div>}
               </div>
             )}
@@ -422,15 +413,13 @@ function ClarificationCard({ item }) {
             </div>
           </>
         ) : (
-          /* ── Summary ── */
+          /* ── Summary (GAAP only — brief, since it has financial-statement impact) ── */
           <>
             <div style={{ fontSize: 16, fontWeight: 500, color: "#101828", margin: "12px 0 14px", lineHeight: 1.5, display: "flex", gap: 8, alignItems: "flex-start" }}>
               <span style={{ color: "#039855", flexShrink: 0 }}>✓</span><span>{summaryText()}</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              <button onClick={finalize} style={{ height: 40, padding: "0 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "#fff", background: kind === "duplicate" && answers.duplicate === "skip" ? "#475467" : "#039855", border: "none", cursor: "pointer" }}>
-                {kind === "duplicate" && answers.duplicate === "skip" ? "Confirm & Skip" : "Confirm & Book"}
-              </button>
+              <button onClick={finalize} style={{ height: 40, padding: "0 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "#fff", background: "#039855", border: "none", cursor: "pointer" }}>Confirm & Book</button>
               <button onClick={() => setStep(0)} style={{ fontSize: 13, fontWeight: 500, color: "#4F46E5", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Edit</button>
               <button onClick={() => setSkipped(true)} style={{ fontSize: 13, color: "#98A2B3", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Skip for now</button>
             </div>

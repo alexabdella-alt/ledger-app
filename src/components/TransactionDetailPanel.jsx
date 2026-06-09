@@ -26,6 +26,65 @@ export function txnStatusBadge(i) {
   return <span style={pill("#039855")}>Booked</span>;
 }
 
+// Inline source-document preview. Resolves a viewable URL — a data: URL for files
+// uploaded in the current session (base64), or a short-lived signed Storage URL for
+// documents loaded from Supabase (storage_path) — and renders the PDF/image inline.
+function SourceDocPreview({ doc, onExpand }) {
+  const { supabase } = useERP();
+  const [url, setUrl] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!doc) { setUrl(null); return; }
+    if (doc.base64) { setUrl(`data:${doc.mediaType};base64,${doc.base64}`); return; } // current session
+    if (!doc.storage_path) { setUrl(null); return; }                                    // legacy: metadata only
+    let active = true; setLoading(true); setUrl(null);
+    supabase.storage.from("documents").createSignedUrl(doc.storage_path, 3600).then(({ data }) => {
+      if (!active) return; setLoading(false); setUrl(data?.signedUrl || null);
+    }).catch(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [doc, supabase]);
+
+  const isPdf = doc.mediaType === "application/pdf";
+  const isImg = isImageDoc(doc.mediaType);
+  const canPreview = url && (isPdf || isImg);
+
+  return (
+    <div style={{ border: "1px solid #E4E7EC", borderRadius: 10, overflow: "hidden", background: "#FFFFFF" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid #F3F4F6" }}>
+        <span style={{ fontSize: 18, flexShrink: 0 }}>{isPdf ? "📄" : isImg ? "🖼" : docIcon(doc.type)}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+          <div style={{ fontSize: 11, color: "#475467", marginTop: 1 }}>{doc.uploaded_at ? fmtDate(doc.uploaded_at) : ""}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>
+        </div>
+        <button onClick={onExpand} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "#EEF2FF", border: "1px solid #4F46E533", color: "#4F46E5", cursor: "pointer", whiteSpace: "nowrap" }}>View full ↗</button>
+      </div>
+      <div style={{ position: "relative", height: 360, background: "#F9FAFB" }}>
+        {loading && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#475467", fontSize: 13 }}>Loading document…</div>
+        )}
+        {!loading && canPreview && isPdf && (
+          <iframe src={url} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#FFFFFF" }} title={doc.name} />
+        )}
+        {!loading && canPreview && isImg && (
+          <div style={{ position: "absolute", inset: 0, overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+            <img src={url} alt={doc.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 6 }} />
+          </div>
+        )}
+        {!loading && !canPreview && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 16, textAlign: "center" }}>
+            <div style={{ fontSize: 40, opacity: 0.4 }}>{docIcon(doc.type)}</div>
+            <div style={{ fontSize: 12, color: "#475467", maxWidth: 320, lineHeight: 1.5 }}>
+              {url ? "Inline preview isn't available for this file type." : "This document was uploaded before file storage was enabled. Re-upload to enable preview."}
+            </div>
+            {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", textDecoration: "none" }}>Open file ↗</a>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit,
@@ -121,17 +180,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                     <div style={{ marginTop: 16 }}>
                       <div style={{ fontSize: 10, letterSpacing: 1, color: "#4F46E5", marginBottom: 8, fontWeight: 600 }}>SOURCE DOCUMENT</div>
                       {srcDoc ? (
-                        <div onClick={() => setSrcDocPreview(srcDoc)} style={{ display: "flex", alignItems: "center", gap: 12, background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 10, padding: "12px 14px", cursor: "pointer", transition: "border-color 0.15s" }}
-                          onMouseEnter={e => e.currentTarget.style.borderColor = "#4F46E5"} onMouseLeave={e => e.currentTarget.style.borderColor = "#E4E7EC"}>
-                          <div style={{ width: 42, height: 42, borderRadius: 8, background: "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <span style={{ fontSize: 22 }}>{srcDoc.mediaType === "application/pdf" ? "📄" : isImageDoc(srcDoc.mediaType) ? "🖼" : docIcon(srcDoc.type)}</span>
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 500, wordBreak: "break-word" }}>{srcDoc.name}</div>
-                            <div style={{ fontSize: 11, color: "#475467", marginTop: 2 }}>{srcDoc.uploaded_at ? fmtDate(srcDoc.uploaded_at) : ""}{srcDoc.mediaType ? ` · ${srcDoc.mediaType}` : ""}</div>
-                          </div>
-                          <button onClick={(e) => { e.stopPropagation(); setSrcDocPreview(srcDoc); }} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "#EEF2FF", border: "1px solid #4F46E533", color: "#4F46E5", cursor: "pointer", whiteSpace: "nowrap" }}>View Document</button>
-                        </div>
+                        <SourceDocPreview doc={srcDoc} onExpand={() => setSrcDocPreview(srcDoc)} />
                       ) : (
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "#F9FAFB", border: "1px dashed #D0D5DD", borderRadius: 10, padding: "12px 14px" }}>
                           <div style={{ fontSize: 12, color: "#98A2B3" }}>No source document attached.</div>
