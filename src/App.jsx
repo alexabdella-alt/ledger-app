@@ -592,9 +592,84 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     }
   }, [view]); // eslint-disable-line
 
+  // ── COMPANY STATE RESET ────────────────────────────────────
+  // Wipe every piece of company-scoped state back to its initial value so nothing
+  // from the previous company can bleed into the next one (a UI-layer complement to
+  // the database's RLS isolation). Called whenever the active company changes, which
+  // covers BOTH the company switcher AND Support Mode entry/exit — they all route
+  // through onSwitchCompany → currentCompany.id changes → the effect below.
+  // Deliberately NOT reset: auth state (session/companies/currentCompany), the
+  // persisted `view`, Support Mode, and the platform-admin nav indicator.
+  const resetCompanyState = () => {
+    // Loaded data sets (loadAllData refetches these for the new company)
+    setInvoices([]); invoicesRef.current = [];
+    setRules([]); setContacts([]); setCustomProjects([]);
+    setContracts([]); setRecurring([]); setAuditLog([]); setDocLibrary([]);
+    setBankTransactions([]); setUnknownDocs([]); setUploadQueue([]);
+    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]);
+    setReconSessions([]); setReconciliations([]); setOpeningBalances([]);
+    setSentInvoices([]); setClarificationQueue([]);
+    setBankAccounts([{ id:"default", name:"Primary Checking", type:"checking", gl_code:rc("cash"), last4:"", institution:"" }]);
+    setCompanySettings({ name:"", taxId:"", address:"", city:"", state:"", zip:"", country:"US", fiscalYearEnd:"12-31", defaultCashAccount:"1000", defaultAPAccount:"2000", defaultARAccount:"1100", currency:"USD", logoBase64:null });
+
+    // Selections, drill-downs, previews
+    setSelectedInvoice(null); setReturnTo(null); setGlDrilldown(null);
+    setAiSuggestion(null); setAiStep(null);
+    setSelectedContract(null); setContractView("list");
+    setActiveRecon(null); setReconStatementBalance(""); setReconAccount(null);
+    setSelectedPayments(new Set()); setDeleteConfirm(null); setDocsPreview(null);
+    setVendorsSelectedContact(null);
+
+    // Filters / per-tab view selections
+    setBooksFilter("all"); setVendorFilter("all");
+    setApView("inbox"); setArView("inbox");
+    setDocsFilterType("all"); setAuditSearch(""); setAuditActionFilter("all");
+    setBasisMode("accrual"); setReportType("pl");
+    setCheckRunMode(false); setChatHistoryView(false);
+
+    // In-progress wizards / processing flags / drag states
+    setIsAILoading(false); setUploadedFile(null); setUploadProcessing(false);
+    setDragOver(false); setUniversalDragOver(false);
+    setBankProcessing(false); setBankStep(null); setBankProgress(0); setBankFileName(""); setBankDragOver(false);
+    setContractProcessing(false); setContractDragOver(false);
+    setMatchProcessing(false);
+    setPayrollProcessing(false); setPayrollDragOver(false);
+    setQboStep("upload"); setQboData(null); setQboMapping({}); setQboPreview([]); setQboProcessing(false); setQboDragOver(false);
+
+    // Cached AI narrations (regenerated per company)
+    setBasisNarration(null); setBasisNarrationLoading(false);
+    setApAgingNarration(null); setApAgingLoading(false);
+    setArAgingNarration(null); setArAgingLoading(false);
+
+    // Drafts
+    setForm({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General", invoice_number:"" });
+    setVendorsEditingId(null); setVendorsEditDraft({});
+    setCustomersEditingId(null); setCustomersEditDraft({});
+    setSettingsDraft(null); setSettingsSaved(false); setSettingsLogoPreview(null);
+    setCoaEditingCode(null); setCoaEditDraft({}); setCoaAddDraft({ code:"", name:"", category:"Expenses" }); setCoaShowAdd(false);
+    setOpeningBalAsOfDate(new Date().toISOString().slice(0,10)); setOpeningBalBalances({});
+    setSendInvoiceDraftState(null); setSendInvoiceShowPreview(false); setSentInvoiceDraft(null);
+    setRecurringNewRec({ name:"", vendor:"", amount:"", gl_code:rc("rent_occupancy"), gl_name:rn("rent_occupancy"), frequency:"monthly", next_date:new Date().toISOString().slice(0,10), project:"General" });
+    setCashBalance("");
+
+    // Notifications / toasts
+    if (notifTimerRef.current) { clearTimeout(notifTimerRef.current); notifTimerRef.current = null; }
+    setNotification(null);
+
+    // Chat — reset to the greeting; AI memory reloads fresh from DB (effect below)
+    setChatOpen(false); setChatInput(""); setChatLoading(false); setHasUnread(false);
+    setChatHistory([{ role:"assistant", content: CHAT_GREETING, id: 0 }]);
+
+    // Upload / session refs
+    fileStoreRef.current = {};
+    uploadActiveRef.current = false;
+    recentContactsRef.current = new Set();
+  };
+
   // ── SUPABASE DATA LOADING ──────────────────────────────────
   useEffect(() => {
     if (!currentCompany?.id) return;
+    resetCompanyState();   // clear the previous company's state before loading the new one
     loadAllData();
   }, [currentCompany?.id]);
 
