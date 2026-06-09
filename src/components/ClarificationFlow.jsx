@@ -1,6 +1,8 @@
 import React from "react";
 import { useERP } from "./ERPContext";
 import { fmtDate } from "../lib/format";
+import { callAIProxy } from "../lib/ai";
+import { AI_MODEL } from "../lib/constants";
 
 const money = n => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
 
@@ -76,6 +78,7 @@ function ClarificationCard({ item }) {
   const {
     setClarificationQueue, setInvoices, bookToDb, createOrUpdateContact,
     logAudit, showNotification, applyGaapAnswer,
+    CHART_OF_ACCOUNTS, addCustomAccount,
   } = useERP();
   const inv = item.invoice || {};
   const session = React.useMemo(() => deriveSession(item), [item]);
@@ -88,6 +91,12 @@ function ClarificationCard({ item }) {
     questions.forEach(q => { if (q.default !== undefined) init[q.field] = q.default; });
     return init;
   });
+
+  // ── Free-text ("describe it in your own words") state ──
+  const [freeText, setFreeText] = React.useState("");
+  const [interpreting, setInterpreting] = React.useState(false);   // AI thinking
+  const [interpretation, setInterpretation] = React.useState(null); // { gl_code, gl_name, reasoning, is_new }
+  const [freeError, setFreeError] = React.useState(null);
 
   const removeFromQueue = () => setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
   const total = questions.length;
@@ -135,6 +144,13 @@ function ClarificationCard({ item }) {
 
     const chosen = answers.category;
     if (!chosen) return;
+    doBookGl(chosen);
+  };
+
+  // Book a GL-categorized entry. Shared by the pill-selected path (finalize) and
+  // the free-text → AI interpretation path (confirmInterpretation).
+  const doBookGl = (chosen, { reasoning, audit = "user confirmed" } = {}) => {
+    const bp = answers.business_purpose;
     const amt = (answers.amount != null && answers.amount !== "") ? (parseFloat(answers.amount) || inv.amount) : inv.amount;
     const finalInv = {
       ...inv,
@@ -144,13 +160,91 @@ function ClarificationCard({ item }) {
       gl_code: chosen.code, gl_name: chosen.name,
       confidence: 100, status: "booked", booked_at: new Date().toISOString(),
       ...(chosen.typeOverride || {}),
+      ...(reasoning ? { reasoning } : {}),
     };
     if (bp && /project/i.test(bp)) finalInv.notes = (finalInv.notes ? finalInv.notes + " · " : "") + "Project expense";
     if (answers.vendor) finalInv._contact = { ...(inv._contact || {}), name: answers.vendor };
-    logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${chosen.name} (user confirmed)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: chosen.code, gl_name: chosen.name });
+    logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${chosen.name} (${audit})`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: chosen.code, gl_name: chosen.name });
     setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
     if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
     removeFromQueue(); showNotification(`Booked to ${chosen.name} ✓`);
+  };
+
+  // ── Free-text booking ("describe it in your own words") ──
+  // Pick a free GL code for a brand-new expense account the user described.
+  const pickNewExpenseCode = (suggested) => {
+    const used = new Set((CHART_OF_ACCOUNTS || []).map(a => String(a.code)));
+    const s = String(suggested || "").trim();
+    if (/^[67]\d{3}$/.test(s) && !used.has(s)) return s;
+    for (let n = 6510; n <= 6999; n++) if (!used.has(String(n))) return String(n);
+    for (let n = 7110; n <= 7999; n++) if (!used.has(String(n))) return String(n);
+    return "6999";
+  };
+
+  // Send the user's free-text description to the AI and ask it to map the charge
+  // to a GL account (or propose a new one). Sets `interpretation` on success.
+  const interpretFreeText = async () => {
+    const text = freeText.trim();
+    if (!text || interpreting) return;
+    setFreeError(null); setInterpreting(true);
+    try {
+      const coa = (CHART_OF_ACCOUNTS || [])
+        .filter(a => a.category === "Expenses" || a.category === "Revenue")
+        .map(a => `${a.code} - ${a.name}`).join("\n");
+      const vendor = answers.vendor || inv.vendor || "an unknown vendor";
+      const amt = (answers.amount != null && answers.amount !== "") ? (parseFloat(answers.amount) || inv.amount) : inv.amount;
+      const data = await callAIProxy({
+        model: AI_MODEL,
+        max_tokens: 300,
+        system: 'You are an expert bookkeeper. Choose the single best GL account for a transaction based on the user\'s description. Reply with ONLY a JSON object, no prose: {"gl_code":"XXXX","gl_name":"Account name","reasoning":"one short sentence","is_new":false}. Strongly prefer an existing account. If NONE of the existing accounts is a reasonable fit, set "is_new":true, propose a concise new expense account name in gl_name, and leave gl_code as "".',
+        messages: [{
+          role: "user",
+          content: `The user uploaded an invoice from ${vendor} for ${money(amt)}. They described it as: "${text}". Based on this, what GL account should this be booked to from this chart of accounts:\n${coa}\n\nReturn JSON: { gl_code, gl_name, reasoning }`,
+        }],
+      });
+      const raw = (data?.content?.find(b => b.type === "text")?.text || "").replace(/```json|```/g, "").trim();
+      const m = raw.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(m ? m[0] : raw);
+      if (!parsed.gl_name) throw new Error("no account");
+      const code = String(parsed.gl_code || "").trim();
+      const known = (CHART_OF_ACCOUNTS || []).some(a => String(a.code) === code);
+      setInterpretation({
+        gl_code: code,
+        gl_name: String(parsed.gl_name).trim(),
+        reasoning: parsed.reasoning || "",
+        is_new: !!parsed.is_new || !known,
+      });
+    } catch (e) {
+      setFreeError("I couldn't read that — try rephrasing, or pick an option above.");
+    }
+    setInterpreting(false);
+  };
+
+  // User confirmed the AI's interpretation → create the account if new, then book.
+  const confirmInterpretation = async () => {
+    const interp = interpretation;
+    if (!interp || interpreting) return;
+    setFreeError(null); setInterpreting(true);
+    try {
+      let code = interp.gl_code;
+      let name = interp.gl_name;
+      const existing = (CHART_OF_ACCOUNTS || []).find(a => String(a.code) === String(code));
+      if (interp.is_new || !existing) {
+        code = pickNewExpenseCode(code);
+        const ok = await addCustomAccount({ code, name, category: "Expenses" });
+        if (ok === false) throw new Error("account create failed");
+      } else {
+        name = existing.name; // canonical name
+      }
+      doBookGl({ code, name }, {
+        reasoning: interp.reasoning || `Booked from description: "${freeText.trim()}"`,
+        audit: "user described",
+      });
+      // doBookGl removes the card from the queue; no further state updates needed.
+    } catch (e) {
+      setFreeError("Couldn't book that — please try again or pick an option above.");
+      setInterpreting(false);
+    }
   };
 
   // ── Text helpers ──
@@ -242,6 +336,49 @@ function ClarificationCard({ item }) {
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Free-text: describe it in your own words → AI maps to a GL account */}
+            {q.type === "buttons" && kind === "gl" && q.field === "category" && (
+              <div style={{ marginTop: 14 }}>
+                {interpretation ? (
+                  /* AI interpreted the description — confirm before booking */
+                  <div style={{ background: "#F5F3FF", border: "1px solid #C7D2FE", borderRadius: 12, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 14.5, color: "#101828", lineHeight: 1.5 }}>
+                      Got it — I'll book this as <strong>{interpretation.gl_name}</strong>
+                      {interpretation.is_new && <span style={{ fontSize: 12, fontWeight: 600, color: "#4338CA", background: "#E0E7FF", borderRadius: 6, padding: "1px 7px", marginLeft: 6 }}>new account</span>}. Does that look right?
+                    </div>
+                    {interpretation.reasoning && (
+                      <div style={{ fontSize: 12.5, color: "#475467", marginTop: 5, lineHeight: 1.5 }}>{interpretation.reasoning}</div>
+                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
+                      <button onClick={confirmInterpretation} disabled={interpreting}
+                        style={{ height: 38, padding: "0 18px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "#fff", background: interpreting ? "#A7F3D0" : "#039855", border: "none", cursor: interpreting ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7 }}>
+                        {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "#fff", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
+                        {interpreting ? "Booking…" : "Confirm & Book"}
+                      </button>
+                      <button onClick={() => { setInterpretation(null); setFreeError(null); }} disabled={interpreting}
+                        style={{ fontSize: 13, fontWeight: 500, color: "#4F46E5", background: "none", border: "none", cursor: interpreting ? "default" : "pointer", padding: 0 }}>Edit</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="text" value={freeText}
+                      onChange={e => setFreeText(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); interpretFreeText(); } }}
+                      disabled={interpreting}
+                      placeholder="Or describe it in your own words..."
+                      style={{ flex: "1 1 260px", minWidth: 0, height: 42, boxSizing: "border-box", background: interpreting ? "#F9FAFB" : "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "#101828", outline: "none" }} />
+                    <button onClick={interpretFreeText} disabled={interpreting || !freeText.trim()}
+                      style={{ height: 42, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#fff", background: (interpreting || !freeText.trim()) ? "#C7D2FE" : "#4F46E5", border: "none", cursor: (interpreting || !freeText.trim()) ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                      {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "#fff", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
+                      {interpreting ? "Thinking…" : "Use this →"}
+                    </button>
+                  </div>
+                )}
+                {freeError && <div style={{ fontSize: 12.5, color: "#D92D20", marginTop: 8 }}>{freeError}</div>}
               </div>
             )}
 
