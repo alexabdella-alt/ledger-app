@@ -39,6 +39,28 @@ import AuditView from "./components/views/AuditView";
 import AdminView from "./components/views/AdminView";
 import OnboardView from "./components/views/OnboardView";
 
+// journal_entries.source has a CHECK constraint. The client uses richer internal
+// source markers (e.g. "bank_feed", "contract", "gaap_classification") for app
+// logic, so we normalize to the DB's allowed set only at the persistence boundary.
+const VALID_JE_SOURCES = ["manual", "bank_import", "universal_upload", "recurring", "opening_balance", "ar_invoice", "payroll", "api"];
+const JE_SOURCE_MAP = {
+  // document uploads (+ everything derived from an uploaded doc)
+  universal_upload: "universal_upload", needs_review: "universal_upload", watch_trigger: "universal_upload",
+  gaap_prepaid: "universal_upload", gaap_prepaid_amort: "universal_upload", gaap_classification: "universal_upload",
+  contract: "universal_upload",                 // closest match per spec
+  // bank-derived
+  bank_statement: "bank_import", bank_feed: "bank_import", matching_engine: "bank_import",
+  reconciliation: "bank_import", qbo_import: "bank_import",
+  // already-valid / direct mappings
+  recurring: "recurring", opening_balance: "opening_balance", payroll: "payroll",
+  sent_invoice: "ar_invoice",
+  reversal: "manual", manual: "manual",
+};
+const normalizeSource = (s) => {
+  const v = String(s || "manual");
+  return JE_SOURCE_MAP[v] || (VALID_JE_SOURCES.includes(v) ? v : "manual");
+};
+
 function AppWrapper() {
   const [session, setSession] = React.useState(undefined);
   const [companies, setCompanies] = React.useState([]);
@@ -863,7 +885,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
       const entryDate   = invoice.date || new Date().toISOString().slice(0,10);
       const description  = `${invoice.vendor || ""} – ${invoice.description || invoice.vendor || ""}`;
-      const source       = invoice.source || "manual";
+      const source       = normalizeSource(invoice.source);  // satisfy journal_entries_source_check
       const meta = {
         ai_reasoning: invoice.reasoning || null,
         ai_confidence: invoice.confidence ?? null,
