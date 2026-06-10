@@ -100,8 +100,12 @@ export default function SendInvoiceView() {
             };
 
             const downloadPDF = () => {
+              // HTML-escape every user-controlled field before it goes into the print
+              // window markup, so a vendor/customer/line-item value containing markup
+              // (e.g. "<script>") can't execute (stored XSS hardening).
+              const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
               // Build a clean HTML invoice and open print dialog
-              const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${draft.invoice_number}</title>
+              const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(draft.invoice_number)}</title>
 <style>
   body{font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;color:#111;font-size:14px}
   .header{display:flex;justify-content:space-between;margin-bottom:40px}
@@ -118,30 +122,30 @@ export default function SendInvoiceView() {
 </style></head><body>
 <div class="header">
   <div>
-    <div class="company">${companySettings.name||"Your Company"}</div>
-    <div style="margin-top:4px;color:#666">${companySettings.address||""} ${companySettings.city||""} ${companySettings.state||""}</div>
-    <div style="color:#666">${companySettings.taxId?"EIN: "+companySettings.taxId:""}</div>
+    <div class="company">${esc(companySettings.name||"Your Company")}</div>
+    <div style="margin-top:4px;color:#666">${esc(companySettings.address||"")} ${esc(companySettings.city||"")} ${esc(companySettings.state||"")}</div>
+    <div style="color:#666">${companySettings.taxId?"EIN: "+esc(companySettings.taxId):""}</div>
   </div>
   <div class="invoice-meta">
-    <div class="invoice-number">${draft.invoice_number}</div>
-    <div style="margin-top:8px"><strong>Bill To:</strong> ${draft.customer}</div>
-    <div style="color:#666">${draft.customer_email||""}</div>
-    <div style="margin-top:8px">Issue Date: ${draft.issue_date}</div>
-    <div>Due Date: ${draft.due_date||"On Receipt"}</div>
-    <div>Terms: ${draft.terms||"Net 30"}</div>
+    <div class="invoice-number">${esc(draft.invoice_number)}</div>
+    <div style="margin-top:8px"><strong>Bill To:</strong> ${esc(draft.customer)}</div>
+    <div style="color:#666">${esc(draft.customer_email||"")}</div>
+    <div style="margin-top:8px">Issue Date: ${esc(draft.issue_date)}</div>
+    <div>Due Date: ${esc(draft.due_date||"On Receipt")}</div>
+    <div>Terms: ${esc(draft.terms||"Net 30")}</div>
   </div>
 </div>
 <table>
   <thead><tr><th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
   <tbody>
-    ${draft.line_items.map(l=>`<tr><td>${l.description||""}</td><td style="text-align:right">${l.qty}</td><td style="text-align:right">$${parseFloat(l.rate||0).toFixed(2)}</td><td style="text-align:right">$${(l.amount||0).toFixed(2)}</td></tr>`).join("")}
+    ${draft.line_items.map(l=>`<tr><td>${esc(l.description||"")}</td><td style="text-align:right">${parseFloat(l.qty||0)}</td><td style="text-align:right">$${parseFloat(l.rate||0).toFixed(2)}</td><td style="text-align:right">$${(Number(l.amount)||0).toFixed(2)}</td></tr>`).join("")}
   </tbody>
 </table>
 <div class="totals">
   <div class="total-row"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
   <div class="total-row grand-total"><span>Total Due</span><span>$${total.toFixed(2)}</span></div>
 </div>
-${draft.notes?`<div class="footer">Notes: ${draft.notes}</div>`:""}
+${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
 </body></html>`;
               const w = window.open("","_blank");
               w.document.write(html);
