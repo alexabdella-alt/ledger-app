@@ -306,7 +306,7 @@ Respond ONLY with a JSON object (no markdown). The "reply" field is the ONLY thi
 }
 
 VISUAL OUTPUT — default to a chart or summary when the question is analytical; don't answer in text when a picture is clearer. CRITICAL: the chart/CSV/summary — including the entire "data", "rows", and "metrics" arrays — MUST go in the actions array, NEVER in the reply text. The reply is plain prose only: write one short sentence like "Here's your spending breakdown:" and the chart renders below it automatically. Never write {"type":...}, "data":[...], "report_view", or any JSON inside the reply. Build the data yourself from the ledger (current-year, exclude voided/deleted). Use:
-- "show me my spending" / "where is my money going" → render_chart (bar, by category) and also navigate to reports.
+- "show me my spending" / "where is my money going" → render_chart (bar, by category). Set report_view so the chart shows a "View full report" button, but do NOT also emit a navigate action — let the user choose to click through; never auto-navigate when rendering a chart.
 - "what does my burn look like over time" / "revenue trend" → render_chart (line, monthly values oldest→newest).
 - "what's my biggest expense" / "spending breakdown" → render_chart (pie, distribution).
 - "give me a summary of this month/quarter" → render_summary with the key metrics (revenue, expenses, net, burn) and a one-line note on the biggest driver.

@@ -23,40 +23,35 @@ function capSlices(data, max = 6) {
 
 const truncLabel = (s, max) => { const t = String(s); return t.length > max ? t.slice(0, max - 1) + "…" : t; };
 
-// Vertical bar chart. With >4 categories the x-axis labels rotate 45° (and the
-// chart grows to ~280px) so long account names don't bunch/overlap; labels are
-// truncated to 15 chars with an ellipsis. Drawn in SVG for precise label control.
+// Horizontal bar chart — the standard, most readable layout for named category /
+// vendor comparisons in a narrow panel: bars run left→right, full category names
+// sit on the left (no rotation), and the dollar value sits at the end of each bar.
+// Height scales with the number of categories (≈40px/bar, minimum 200px).
 function BarChart({ data }) {
   const rows = [...data].sort((a, b) => b.value - a.value).slice(0, 8);
-  const [hover, setHover] = React.useState(-1);
   const max = Math.max(1, ...rows.map(d => d.value));
-  const rotate = rows.length > 4;
-  const W = 360, H = rotate ? 280 : 240;
-  const padX = 16, padTop = 20, padBot = rotate ? 92 : 30;
-  const plotH = H - padTop - padBot;
-  const n = rows.length || 1;
-  const slot = (W - padX * 2) / n;
-  const barW = Math.min(44, slot * 0.6);
+  const [hover, setHover] = React.useState(-1);
+  const height = Math.max(200, rows.length * 40);
   return (
-    <div style={{ padding: "2px" }}>
-      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block", overflow: "visible" }}>
-        {rows.map((d, i) => {
-          const x = padX + slot * i + slot / 2;
-          const bh = Math.max(2, (d.value / max) * plotH);
-          const y = padTop + (plotH - bh);
-          const ly = H - padBot + 13;
-          const lbl = truncLabel(d.label, 15);
-          return (
-            <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)}>
-              <rect x={x - barW / 2} y={y} width={barW} height={bh} rx={4} fill={hover === i ? "#4338CA" : "#4F46E5"} style={{ transition: "fill .12s" }} />
-              <text x={x} y={y - 5} textAnchor="middle" fontSize="9" fontWeight="600" fill="#101828" fontFamily="'DM Mono',monospace">{money(d.value)}</text>
-              {rotate
-                ? <text x={x} y={ly} fontSize="9" fill="#475467" textAnchor="end" transform={`rotate(-45, ${x}, ${ly})`}>{lbl}</text>
-                : <text x={x} y={ly} fontSize="9.5" fill="#475467" textAnchor="middle">{lbl}</text>}
-            </g>
-          );
-        })}
-      </svg>
+    <div style={{ display: "flex", flexDirection: "column", height, padding: "2px 0" }}>
+      {rows.map((d, i) => {
+        const pct = Math.max(2, (d.value / max) * 100);
+        const inside = pct > 62; // long bar → tuck the value inside, right-aligned in white
+        return (
+          <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)}
+            style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", gap: 8 }}>
+            <div title={d.label} style={{ width: 118, flexShrink: 0, fontSize: 11, color: "#475467", textAlign: "right", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{d.label}</div>
+            <div style={{ flex: 1, minWidth: 0, position: "relative", height: 20, background: "#F2F4F7", borderRadius: 5 }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: hover === i ? "#4338CA" : "#4F46E5", borderRadius: 5, transition: "background .12s" }} />
+              <span style={{
+                position: "absolute", top: 0, height: 20, display: "flex", alignItems: "center",
+                fontSize: 10.5, fontWeight: 600, fontFamily: "'DM Mono',monospace", whiteSpace: "nowrap", pointerEvents: "none",
+                ...(inside ? { right: 8, color: "#FFFFFF" } : { left: `calc(${pct}% + 6px)`, color: "#101828" }),
+              }}>{money(d.value)}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

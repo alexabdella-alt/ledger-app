@@ -3419,6 +3419,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       const bulkBlocked = pendingDeletes > 3;
       if (bulkBlocked) logAI("bulk_delete_blocked", `Refused a request to delete ${pendingDeletes} items at once`);
 
+      // When the AI renders a chart, the user should stay exactly where they are —
+      // the chart's own "View full report →" button is the only way they navigate.
+      // So suppress any auto-navigation in the same response.
+      const renderedChart = (result.actions || []).some(a => a && a.type === "render_chart");
+
       for (const action of (result.actions || [])) {
         const _sumBefore = actionSummary.length;
         // ── AI SANDBOX (hard whitelist) ──
@@ -3427,6 +3432,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         // it never touches data. This is the UI-layer complement to RLS isolation.
         if (action.type && action.type !== "none" && !isAllowedAIAction(action.type)) {
           logAI("ai_action_refused", `Refused out-of-sandbox action: "${action.type}"`);
+          continue;
+        }
+        if (action.type === "navigate" && action.view && renderedChart) {
+          // A chart is being rendered — don't auto-navigate; let the user click through.
           continue;
         }
         if (action.type === "navigate" && action.view) {
