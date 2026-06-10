@@ -166,7 +166,7 @@ function SummaryCard({ title, metrics, notes }) {
 
 function Frame({ children }) {
   return (
-    <div style={{ marginTop: 10, background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 12, padding: "12px 14px" }}>
+    <div style={{ marginTop: 8, background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 12, padding: "12px 14px" }}>
       {children}
     </div>
   );
@@ -200,7 +200,7 @@ export default function ChatRichOutput({ rich, onNavigate }) {
         if (item.kind === "csv") {
           return (
             <button key={idx} onClick={() => downloadCSV(item.filename, item.headers, item.rows)}
-              style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8, background: "#EEF2FF", border: "1px solid #4F46E533", borderRadius: 10, padding: "9px 14px", color: "#4F46E5", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, background: "#EEF2FF", border: "1px solid #4F46E533", borderRadius: 10, padding: "9px 14px", color: "#4F46E5", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
               ⬇ Download {item.filename}
             </button>
           );

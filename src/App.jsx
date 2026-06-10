@@ -4174,11 +4174,21 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                   <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0, marginRight:8, marginTop:2 }}>✦</div>
                 )}
                 <div style={{ maxWidth:"80%" }}>
-                  <div style={{
-                    padding:"10px 14px", borderRadius:msg.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",
-                    background:msg.role==="user"?"linear-gradient(135deg,#4F46E5,#4338CA)":"#F3F4F6",
-                    fontSize:13, lineHeight:1.6, color:msg.role==="user"?"#fff":"#101828", whiteSpace:"pre-wrap"
-                  }}>{msg.content}</div>
+                  {(() => {
+                    // Normalize the reply: trim, and collapse runs of blank lines so
+                    // pre-wrap can't render a big empty gap. Skip the bubble entirely
+                    // when there's no text (e.g. a chart-only reply) so no empty bubble
+                    // sits above the chart.
+                    const text = String(msg.content || "").replace(/\n{3,}/g, "\n\n").trim();
+                    if (!text) return null;
+                    return (
+                      <div style={{
+                        padding:"10px 14px", borderRadius:msg.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",
+                        background:msg.role==="user"?"linear-gradient(135deg,#4F46E5,#4338CA)":"#F3F4F6",
+                        fontSize:13, lineHeight:1.6, color:msg.role==="user"?"#fff":"#101828", whiteSpace:"pre-wrap"
+                      }}>{text}</div>
+                    );
+                  })()}
                   {msg.actions?.length>0 && (
                     <div style={{ marginTop:10, background:"#ECFDF5", border:"1px solid #03985544", borderRadius:12, padding:"12px 14px" }}>
                       <div style={{ fontSize:10, fontWeight:700, color:"#039855", letterSpacing:1, marginBottom:8 }}>✓ ACTIONS TAKEN</div>
