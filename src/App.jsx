@@ -545,6 +545,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [aiInfoOpen, setAiInfoOpen] = useState(false); // "What can the assistant do?" capability panel
   const [hasUnread, setHasUnread] = useState(false);
   const chatBottomRef = useRef(null);
+  const chatScrollRef = useRef(null);  // the scrollable chat messages container
   const chatInputRef = useRef(null);
   const mainContentRef = useRef(null);
   // Keeps File objects alive across view changes (File objects can't live in React state reliably)
@@ -579,9 +580,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [auditSearch, setAuditSearch] = useState("");
   const [auditActionFilter, setAuditActionFilter] = useState("all");
 
+  // Jump the chat to the bottom (most recent message). On open we snap instantly
+  // (after layout settles, so charts/summaries are measured); on a new message we
+  // do the same so the latest turn is always visible.
+  const scrollChatToBottom = () => {
+    const el = chatScrollRef.current;
+    if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+  };
   useEffect(() => {
-    if (chatOpen) { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); setHasUnread(false); }
-  }, [chatHistory, chatOpen]);
+    if (chatOpen) { setHasUnread(false); scrollChatToBottom(); }
+  }, [chatOpen]);
+  useEffect(() => {
+    if (chatOpen) scrollChatToBottom();
+  }, [chatHistory, chatLoading, chatHistoryView]);
 
   // useLayoutEffect fires synchronously after DOM mutations but BEFORE the browser paints.
   // This guarantees the scroll position is reset before the user ever sees the new view,
@@ -3328,11 +3339,18 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
   // ── CHAT HANDLER ────────────────────────────────────────────────────────────
   // ── PERSISTENT CHAT HISTORY + ACTION MEMORY (migration 015) ────────────────
-  const persistChatMessage = async (role, content, actionsTaken = []) => {
+  const persistChatMessage = async (role, content, actionsTaken = [], rich = []) => {
     if (!currentCompany?.id) return;
     try {
+      // Backward-compatible storage in the actions_taken jsonb column: keep storing
+      // a plain string array when there's no rich output (old format), but switch to
+      // an object { actions, rich } when there are charts/summaries/CSVs to persist so
+      // they re-render exactly as generated when the history reloads.
+      const actionsPayload = (Array.isArray(rich) && rich.length)
+        ? { actions: actionsTaken || [], rich }
+        : (actionsTaken || []);
       const { error } = await supabase.from("chat_messages").insert({
-        company_id: currentCompany.id, role, content, actions_taken: actionsTaken || [],
+        company_id: currentCompany.id, role, content, actions_taken: actionsPayload,
       });
       if (error) console.warn("[chat] persist failed:", error.message);
     } catch (e) { console.warn("[chat] persist threw:", e?.message || e); }
@@ -3346,11 +3364,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         .select("*").eq("company_id", cid)
         .order("created_at", { ascending: false }).limit(50);
       if (error) { console.warn("[chat] load:", error.message); return; }
-      const msgs = (data || []).slice().reverse().map(m => ({
-        role: m.role, content: m.content,
-        actions: Array.isArray(m.actions_taken) ? m.actions_taken : [],
-        created_at: m.created_at, id: m.id,
-      }));
+      const msgs = (data || []).slice().reverse().map(m => {
+        // actions_taken is either the legacy string array, or { actions, rich }.
+        const at = m.actions_taken;
+        const actions = Array.isArray(at) ? at : (Array.isArray(at?.actions) ? at.actions : []);
+        const rich = (at && !Array.isArray(at) && Array.isArray(at.rich)) ? at.rich : [];
+        return { role: m.role, content: m.content, actions, rich, created_at: m.created_at, id: m.id };
+      });
       setChatHistory([{ role: "assistant", content: CHAT_GREETING, id: 0 }, ...msgs]);
     } catch (e) { console.warn("[chat] load threw:", e?.message || e); }
   };
@@ -3670,7 +3690,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         created_at: new Date().toISOString(),
       };
       setChatHistory(h => [...h, assistantMsg]);
-      persistChatMessage("assistant", assistantMsg.content, actionSummary);  // remember it
+      persistChatMessage("assistant", assistantMsg.content, assistantMsg.actions, assistantMsg.rich);  // remember it (incl. charts)
       if (!chatOpen) setHasUnread(true);
     } catch(e) {
       console.error("Chat error:", e);
@@ -4096,7 +4116,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           )}
 
           {/* Messages */}
-          <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 8px" }}>
+          <div ref={chatScrollRef} style={{ flex:1, overflowY:"auto", padding:"16px 16px 8px" }}>
             {chatHistoryView ? (() => {
               const timeline = chatHistory.filter(m => m.role==="assistant" && (m.actions||[]).length>0).slice().reverse();
               if (timeline.length===0) return <div style={{ padding:"30px 8px", textAlign:"center", color:"#475467", fontSize:12, lineHeight:1.6 }}>No actions yet. When you ask me to recode transactions, add accounts, or set rules, they'll appear here as a timeline.</div>;

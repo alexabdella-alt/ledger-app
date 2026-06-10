@@ -21,60 +21,86 @@ function capSlices(data, max = 6) {
   return [...head, { label: "Other", value: other }];
 }
 
+const truncLabel = (s, max) => { const t = String(s); return t.length > max ? t.slice(0, max - 1) + "…" : t; };
+
+// Vertical bar chart. With >4 categories the x-axis labels rotate 45° (and the
+// chart grows to ~280px) so long account names don't bunch/overlap; labels are
+// truncated to 15 chars with an ellipsis. Drawn in SVG for precise label control.
 function BarChart({ data }) {
   const rows = [...data].sort((a, b) => b.value - a.value).slice(0, 8);
-  const max = Math.max(1, ...rows.map(d => d.value));
   const [hover, setHover] = React.useState(-1);
+  const max = Math.max(1, ...rows.map(d => d.value));
+  const rotate = rows.length > 4;
+  const W = 360, H = rotate ? 280 : 240;
+  const padX = 16, padTop = 20, padBot = rotate ? 92 : 30;
+  const plotH = H - padTop - padBot;
+  const n = rows.length || 1;
+  const slot = (W - padX * 2) / n;
+  const barW = Math.min(44, slot * 0.6);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 9, padding: "4px 2px" }}>
-      {rows.map((d, i) => (
-        <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 96, fontSize: 11, color: "#475467", textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }} title={d.label}>{d.label}</div>
-          <div style={{ flex: 1, height: 18, background: "#F2F4F7", borderRadius: 5, overflow: "hidden" }}>
-            <div style={{ width: `${Math.max(2, (d.value / max) * 100)}%`, height: "100%", background: hover === i ? "#4338CA" : "#4F46E5", borderRadius: 5, transition: "background .12s" }} />
-          </div>
-          <div style={{ width: 64, fontSize: 11, fontWeight: 600, color: "#101828", fontFamily: "'DM Mono',monospace", textAlign: "right", flexShrink: 0 }}>{money(d.value)}</div>
-        </div>
-      ))}
+    <div style={{ padding: "2px" }}>
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block", overflow: "visible" }}>
+        {rows.map((d, i) => {
+          const x = padX + slot * i + slot / 2;
+          const bh = Math.max(2, (d.value / max) * plotH);
+          const y = padTop + (plotH - bh);
+          const ly = H - padBot + 13;
+          const lbl = truncLabel(d.label, 15);
+          return (
+            <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)}>
+              <rect x={x - barW / 2} y={y} width={barW} height={bh} rx={4} fill={hover === i ? "#4338CA" : "#4F46E5"} style={{ transition: "fill .12s" }} />
+              <text x={x} y={y - 5} textAnchor="middle" fontSize="9" fontWeight="600" fill="#101828" fontFamily="'DM Mono',monospace">{money(d.value)}</text>
+              {rotate
+                ? <text x={x} y={ly} fontSize="9" fill="#475467" textAnchor="end" transform={`rotate(-45, ${x}, ${ly})`}>{lbl}</text>
+                : <text x={x} y={ly} fontSize="9.5" fill="#475467" textAnchor="middle">{lbl}</text>}
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
 
+// Pie/donut with external labels and leader lines (labels truncated to 12 chars),
+// so names sit outside the slices instead of crowding a side legend.
 function PieChart({ data }) {
   const slices = capSlices(data, 6).filter(d => d.value > 0);
   const total = slices.reduce((s, d) => s + d.value, 0) || 1;
   const [hover, setHover] = React.useState(-1);
-  const cx = 70, cy = 70, r = 60;
-  const polar = (deg) => { const a = (deg - 90) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
+  const W = 320, H = 190, cx = 160, cy = 95, r = 58;
+  const polar = (deg, rad) => { const a = (deg - 90) * Math.PI / 180; return [cx + rad * Math.cos(a), cy + rad * Math.sin(a)]; };
   let acc = 0;
-  const paths = slices.map((d, i) => {
-    const start = (acc / total) * 360;
-    acc += d.value;
-    const end = (acc / total) * 360;
-    const [x1, y1] = polar(start), [x2, y2] = polar(end);
+  const items = slices.map((d, i) => {
+    const start = (acc / total) * 360; acc += d.value; const end = (acc / total) * 360;
+    const mid = (start + end) / 2;
+    const [x1, y1] = polar(start, r), [x2, y2] = polar(end, r);
     const large = end - start > 180 ? 1 : 0;
-    const color = d.label === "Other" ? OTHER_COLOR : SLICE_COLORS[i % SLICE_COLORS.length];
-    return { d: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`, color, pct: (d.value / total) * 100 };
+    const [ex, ey] = polar(mid, r);          // slice edge
+    const [lx, ly] = polar(mid, r + 12);     // elbow
+    const right = Math.cos((mid - 90) * Math.PI / 180) >= 0;
+    const anchorX = right ? lx + 6 : lx - 6;
+    return {
+      path: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`,
+      color: d.label === "Other" ? OTHER_COLOR : SLICE_COLORS[i % SLICE_COLORS.length],
+      ex, ey, lx, ly, right, anchorX, label: d.label, value: d.value, pct: (d.value / total) * 100,
+    };
   });
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "4px 2px" }}>
-      <svg width="140" height="140" viewBox="0 0 140 140" style={{ flexShrink: 0 }}>
-        {paths.map((p, i) => (
-          <path key={i} d={p.d} fill={p.color} stroke="#FFFFFF" strokeWidth="1.5"
-            opacity={hover === -1 || hover === i ? 1 : 0.45}
+    <div style={{ padding: "2px" }}>
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block", overflow: "visible" }}>
+        {items.map((it, i) => (
+          <path key={i} d={it.path} fill={it.color} stroke="#FFFFFF" strokeWidth="1.5"
+            opacity={hover === -1 || hover === i ? 1 : 0.4}
             onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "default" }} />
         ))}
-      </svg>
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
-        {slices.map((d, i) => (
-          <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, opacity: hover === -1 || hover === i ? 1 : 0.5 }}>
-            <span style={{ width: 9, height: 9, borderRadius: 2, background: d.label === "Other" ? OTHER_COLOR : SLICE_COLORS[i % SLICE_COLORS.length], flexShrink: 0 }} />
-            <span style={{ color: "#475467", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={d.label}>{d.label}</span>
-            <span style={{ color: "#101828", fontWeight: 600, fontFamily: "'DM Mono',monospace", flexShrink: 0 }}>{money(d.value)}</span>
-            <span style={{ color: "#98A2B3", width: 34, textAlign: "right", flexShrink: 0 }}>{Math.round((d.value / total) * 100)}%</span>
-          </div>
+        {items.map((it, i) => (
+          <g key={"l" + i} opacity={hover === -1 || hover === i ? 1 : 0.35}>
+            <polyline points={`${it.ex},${it.ey} ${it.lx},${it.ly} ${it.anchorX},${it.ly}`} fill="none" stroke="#D0D5DD" strokeWidth="1" />
+            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly - 1} fontSize="9" fill="#475467" textAnchor={it.right ? "start" : "end"}>{truncLabel(it.label, 12)}</text>
+            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly + 9} fontSize="8.5" fontWeight="600" fill="#101828" textAnchor={it.right ? "start" : "end"} fontFamily="'DM Mono',monospace">{money(it.value)} · {Math.round(it.pct)}%</text>
+          </g>
         ))}
-      </div>
+      </svg>
     </div>
   );
 }
