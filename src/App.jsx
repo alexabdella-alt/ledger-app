@@ -4,7 +4,8 @@ import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_MODEL, AI_PROXY_URL, CAPITALIZE
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor } from "./lib/format";
-import { classifyIntent, runAIBrain, okAIResponse } from "./lib/ai";
+import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
+import { buildMonthlyReport, priorPeriod, formatPeriod } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
 import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
@@ -1245,6 +1246,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   };
   const openNotification = (n) => {
     markNotifRead(n.id);
+    if (n.type === "monthly_report") setReportType("monthly"); // land on the archive tab
     if (n.link_view) setView(n.link_view);
     setNotifOpen(false);
   };
@@ -1274,6 +1276,73 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       const topAnom = runAnomalyDetection(invoicesRef.current, recurringRef.current).find(a => a.severity === "high" && !dismissed.has(a.id));
       if (topAnom) createNotification({ type: "anomaly", title: topAnom.title, description: topAnom.description, link_view: "home" });
     } catch (e) { console.warn("[notifications] generate failed:", e?.message || e); }
+  };
+
+  // ── AUTOMATIC MONTHLY REPORTS (Item 11) ──────────────────────────────────────
+  // AI-written 3-5 sentence executive summary; falls back to the templated one
+  // baked into the payload by buildMonthlyReport if the proxy call fails.
+  const generateExecSummary = async (period, payload) => {
+    try {
+      const pl = payload.pl;
+      const prompt = `Write a 3-5 sentence executive summary of this small business's ${formatPeriod(period)} financials, addressed to the owner. Plain English, specific numbers, warm but direct CFO tone. No markdown, no bullet points, no headings — just sentences.
+
+Revenue: $${pl.revenue.current} (prior month $${pl.revenue.prior})
+Total expenses: $${pl.expenses_total.current} (prior $${pl.expenses_total.prior})
+Net income: $${pl.net_income.current} (prior $${pl.net_income.prior})
+Cash on hand: $${payload.cash.cash_on_hand}; monthly burn: $${payload.cash.burn_rate}; runway: ${payload.cash.runway_months ?? "n/a"} months
+Receivables: $${payload.receivables.total} ($${payload.receivables.overdue} overdue); Payables: $${payload.payables.total} ($${payload.payables.overdue} overdue)
+Top vendors: ${payload.top_vendors.map(v => `${v.vendor} $${v.total}`).join(", ") || "none"}
+Health score: ${payload.health.score}/100 (${payload.health.tier})
+${payload.anomalies.length ? "Flags: " + payload.anomalies.map(a => a.title).join("; ") : "No anomalies flagged."}
+
+Reply with ONLY the summary text.`;
+      const data = await callAIProxy({
+        model: AI_MODEL, max_tokens: 400,
+        system: "You are a CFO writing a brief, plain-English monthly summary for a small-business owner. No markdown.",
+        messages: [{ role: "user", content: prompt }],
+      });
+      const text = data?.content?.find(b => b.type === "text")?.text?.trim();
+      return text || null;
+    } catch (e) { console.warn("[monthly_report] AI summary failed, using template:", e?.message || e); return null; }
+  };
+
+  // After data loads: generate the just-ended month's report if one doesn't exist
+  // yet and there's been activity. The unique (company_id, period) DB constraint
+  // makes double-generation impossible — a conflict is swallowed silently.
+  const maybeGenerateMonthlyReport = async () => {
+    const cid = currentCompany?.id;
+    if (!cid) return;
+    try {
+      const now = new Date();
+      const thisPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const target = priorPeriod(thisPeriod);                       // the most recently completed month
+      const { data: existing } = await supabase.from("monthly_reports").select("id").eq("company_id", cid).eq("period", target).limit(1);
+      if (Array.isArray(existing) && existing.length) return;       // already generated
+
+      const live = (invoicesRef.current || []).filter(i => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at);
+      const cutoff = `${target}-31`;
+      if (!live.some(i => String(i.date || "") <= cutoff)) return;   // no posted activity in/before the month → skip (new company)
+
+      const payload = buildMonthlyReport(target, {
+        invoices: live, cashBalance, reconciliations: reconciliationsRef.current,
+        anomalies, onboardingComplete: companySettings.onboardingComplete,
+      });
+      const aiSummary = await generateExecSummary(target, payload);
+      if (aiSummary) payload.summary = aiSummary;
+
+      const { error } = await supabase.from("monthly_reports").insert({ company_id: cid, period: target, data: payload });
+      if (error) {
+        if (!/duplicate|unique|conflict|23505/i.test(error.message || "")) console.warn("[monthly_report] insert:", error.message);
+        return;                                                      // conflict = generated elsewhere; nothing to do
+      }
+      logAudit("monthly_report_generated", `Monthly financial summary generated for ${formatPeriod(target)}`, null, { period: target, net_income: payload.pl.net_income.current });
+      createNotification({
+        type: "monthly_report",
+        title: `Your ${formatPeriod(target)} financial summary is ready`,
+        description: "Your monthly P&L, cash position, KPIs, and an executive summary — ready to review.",
+        link_view: "reports",
+      });
+    } catch (e) { console.warn("[monthly_report] generate failed:", e?.message || e); }
   };
 
   // ── ONBOARDING (Item 54) ────────────────────────────────────────────────────
@@ -1320,7 +1389,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     if (!cid || notifGenRef.current === cid) return;
     notifGenRef.current = cid;
     const t = setTimeout(() => generateNotifications(), 800);
-    return () => clearTimeout(t);
+    // Generate the just-ended month's report a beat later, once invoices/cash refs are synced.
+    const t2 = setTimeout(() => maybeGenerateMonthlyReport(), 1600);
+    return () => { clearTimeout(t); clearTimeout(t2); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCompany?.id]);
 
@@ -4383,6 +4454,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           reconciliation:      { icon:"🏦", color:"#DC6803" },
           needs_review:        { icon:"📄", color:"#CA8504" },
           report_ready:        { icon:"📊", color:"#039855" },
+          monthly_report:      { icon:"🗓️", color:"#4F46E5" },
           ai_action:           { icon:"✦",  color:"#4F46E5" },
           recurring_suggestion:{ icon:"↻",  color:"#4F46E5" },
         };

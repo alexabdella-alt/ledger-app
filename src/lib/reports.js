@@ -185,3 +185,105 @@ export function financialHealthScore({ invoices = [], cashBalance = 0, reconcili
 
   return { score, grade, color, tier, items, summary };
 }
+
+// ── MONTHLY REPORT (Item 11) ────────────────────────────────────────────────
+// Build the full immutable payload for one month's financial summary. Pure and
+// fully testable — the AI executive summary is layered on top by the app (this
+// returns a templated `summary` as the guaranteed fallback). Period is "YYYY-MM".
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+export function priorPeriod(period) {
+  const [y, m] = String(period).split("-").map(Number);
+  const d = new Date(y, m - 2, 1);                 // m is 1-based → prior month
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+export function formatPeriod(period) {
+  const [y, m] = String(period).split("-").map(Number);
+  return (MONTHS[m - 1] || "?") + " " + y;
+}
+const endOfMonth = (period) => {
+  const [y, m] = String(period).split("-").map(Number);
+  return new Date(y, m, 0, 23, 59, 59);            // day 0 of next month = last day of this one
+};
+const pctChange = (c, p) => (p === 0 ? null : r1(((c - p) / Math.abs(p)) * 100)); // null = no prior basis
+const momLine = (c, p) => ({ current: r2(c), prior: r2(p), change: r2(c - p), changePct: pctChange(c, p) });
+
+export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false } = {}) {
+  const live = (invoices || []).filter(isLiveEntry);
+  const prior = priorPeriod(period);
+  const monthEnd = endOfMonth(period);
+  const inPeriod = m => live.filter(i => ymOf(i.date) === m);
+  const cur = inPeriod(period), prv = inPeriod(prior);
+
+  const sum = (set, pred) => set.filter(pred).reduce((s, i) => s + num(i.amount), 0);
+  const catTotals = (set) => {
+    const m = {};
+    set.filter(isExp).forEach(i => { const k = i.gl_name || i.gl_code || "Uncategorized"; m[k] = (m[k] || 0) + num(i.amount); });
+    return m;
+  };
+  const curCats = catTotals(cur), prvCats = catTotals(prv);
+  const revCur = sum(cur, isRev), revPrv = sum(prv, isRev);
+  const expCur = Object.values(curCats).reduce((s, v) => s + v, 0);
+  const expPrv = Object.values(prvCats).reduce((s, v) => s + v, 0);
+  const netCur = revCur - expCur, netPrv = revPrv - expPrv;
+
+  const expenseLines = [...new Set([...Object.keys(curCats), ...Object.keys(prvCats)])]
+    .map(cat => ({ category: cat, ...momLine(curCats[cat] || 0, prvCats[cat] || 0) }))
+    .sort((a, b) => b.current - a.current);
+
+  // Cash position + trailing-3-month burn rate (months up to and including this one).
+  const monthExp = {};
+  for (const i of live) if (isExp(i)) { const m = ymOf(i.date); if (m && m <= period) monthExp[m] = (monthExp[m] || 0) + num(i.amount); }
+  const recent = Object.keys(monthExp).sort().slice(-3);
+  const burn = recent.length ? recent.reduce((s, m) => s + monthExp[m], 0) / recent.length : 0;
+  const cash = num(cashBalance);
+  const runway = burn > 0 ? r1(cash / burn) : null;
+
+  const ar = agingReport(live, "ar", monthEnd), ap = agingReport(live, "ap", monthEnd);
+  const overdueOf = rep => r2(rep.buckets.filter(b => b.key !== "current").reduce((s, b) => s + b.total, 0));
+
+  const kpis = computeKPIs(live, { cashBalance: cash, now: monthEnd })
+    .map(k => ({ key: k.key, label: k.label, display: k.display, status: k.status, trend: k.trend, explanation: k.explanation }));
+  const h = financialHealthScore({ invoices: live, cashBalance: cash, reconciliations, anomalies, onboardingComplete, now: monthEnd });
+
+  // Top 5 vendors by spend this month.
+  const vmap = {};
+  cur.filter(isExp).forEach(i => { const k = i.vendor || "Unknown"; vmap[k] = (vmap[k] || 0) + num(i.amount); });
+  const topVendors = Object.entries(vmap).map(([vendor, total]) => ({ vendor, total: r2(total) })).sort((a, b) => b.total - a.total).slice(0, 5);
+
+  // Anomalies active during the month — those referencing this month's txns; else high-severity.
+  const monthIds = new Set(cur.map(i => String(i.id)));
+  let monthAnoms = (anomalies || []).filter(a => (a.invoice_ids || []).some(id => monthIds.has(String(id))));
+  if (!monthAnoms.length) monthAnoms = (anomalies || []).filter(a => a.severity === "high");
+  const anomList = monthAnoms.slice(0, 8).map(a => ({ type: a.type, severity: a.severity, title: a.title, description: a.description }));
+
+  const arOverdue = overdueOf(ar), apOverdue = overdueOf(ap);
+  const payload = {
+    period, prior_period: prior, label: formatPeriod(period), generated_at: new Date().toISOString(),
+    pl: { revenue: momLine(revCur, revPrv), expenses_total: momLine(expCur, expPrv), net_income: momLine(netCur, netPrv), expense_lines: expenseLines },
+    cash: { cash_on_hand: r2(cash), burn_rate: r2(burn), runway_months: runway },
+    receivables: { total: ar.total, overdue: arOverdue, count: ar.count },
+    payables: { total: ap.total, overdue: apOverdue, count: ap.count },
+    kpis,
+    health: { score: h.score, grade: h.grade, tier: h.tier, summary: h.summary },
+    top_vendors: topVendors,
+    anomalies: anomList,
+    transaction_count: cur.length,
+    summary: templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, arTotal: ar.total, arOverdue, runway, health: h, txns: cur.length }),
+  };
+  return payload;
+}
+
+// Plain-English fallback executive summary (used when the AI call is unavailable).
+function templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, arTotal, arOverdue, runway, health, txns }) {
+  const M = formatPeriod(period);
+  if (txns === 0) return `No transactions were recorded in ${M}. Once activity comes in, this summary will cover your revenue, expenses, cash position, and key metrics for the month.`;
+  const s = [];
+  s.push(`In ${M} you brought in ${fmtMoney(revCur)} of revenue against ${fmtMoney(expCur)} of expenses, for ${netCur >= 0 ? "a net income of " + fmtMoney(netCur) : "a net loss of " + fmtMoney(-netCur)}.`);
+  if (netPrv !== 0) s.push(`That's ${netCur >= netPrv ? "up" : "down"} from ${fmtMoney(netPrv)} the prior month.`);
+  if (topVendors[0]) s.push(`Your largest expense was ${topVendors[0].vendor} at ${fmtMoney(topVendors[0].total)}.`);
+  if (arTotal > 0) s.push(`You have ${fmtMoney(arTotal)} in receivables outstanding${arOverdue > 0 ? `, ${fmtMoney(arOverdue)} of it overdue` : ""}.`);
+  if (runway != null && runway < 6) s.push(`At the current burn rate your runway is about ${runway} months — worth keeping an eye on cash.`);
+  s.push(`Overall financial health: ${health.tier} (grade ${health.grade}).`);
+  return s.join(" ");
+}
