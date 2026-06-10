@@ -88,7 +88,7 @@ function SourceDocPreview({ doc, onExpand }) {
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit,
-    setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, docLibrary, storeDocument, fileToBase64, showNotification,
+    setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
@@ -204,6 +204,8 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               </div>
             </div>
 
+            {/* Recode is a data change — hidden for member-role users (Item 20). */}
+            {!isMember && (
             <div style={{ marginTop: 18 }}>
               {recodeOpen ? (
                 <div>
@@ -217,6 +219,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                 <button onClick={() => setRecodeOpen(true)} style={{ fontSize: 12, color: "#4F46E5", background: "#EEF2FF", border: "1px solid #4F46E533", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 600 }}>Recode GL account</button>
               )}
             </div>
+            )}
           </div>
 
           {/* Actions footer */}
@@ -237,7 +240,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   <button onClick={() => setPayOpen(true)} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#039855", border: "none", color: "#fff", cursor: "pointer" }}>Mark as Paid</button>
                 )}
                 <button onClick={() => { setReturnTo && setReturnTo(returnContext || null); setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#4F46E5", border: "none", color: "#fff", cursor: "pointer" }}>Full entry →</button>
-                {sel.status !== "voided" && <button onClick={() => doVoid(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "#FFFFFF", border: "1px solid #D92D2044", color: "#D92D20", cursor: "pointer" }}>Void</button>}
+                {sel.status !== "voided" && !isMember && <button onClick={() => doVoid(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "#FFFFFF", border: "1px solid #D92D2044", color: "#D92D20", cursor: "pointer" }}>Void</button>}
               </>
             )}
           </div>

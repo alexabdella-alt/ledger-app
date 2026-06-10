@@ -6,7 +6,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./
 import { initials, vendorColor } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse } from "./lib/ai";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
-import { isAllowedAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
+import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { flattenJournalEntries } from "./lib/ledger";
@@ -34,6 +34,7 @@ import MatchingView from "./components/views/MatchingView";
 import ContractsView from "./components/views/ContractsView";
 import DetailView from "./components/views/DetailView";
 import SettingsView from "./components/views/SettingsView";
+import TeamView from "./components/views/TeamView";
 import CoaView from "./components/views/CoaView";
 import OpeningBalancesView from "./components/views/OpeningBalancesView";
 import SendInvoiceView from "./components/views/SendInvoiceView";
@@ -78,6 +79,18 @@ function AppWrapper() {
   const [recovery, setRecovery] = React.useState(false); // arrived via password-reset link
   // View lives here so it survives ERP remounts on auth/company changes
   const [persistedView, setPersistedView] = usePersistedView();
+  // ── Team invite acceptance (Item 20): ?invite=TOKEN in the URL ──
+  // Persisted so it survives an email-confirmation round-trip (where the user
+  // returns without the URL param).
+  const [inviteToken, setInviteToken] = React.useState(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get("invite") || localStorage.getItem("cfai_pending_invite");
+      if (t) localStorage.setItem("cfai_pending_invite", t);
+      return t;
+    } catch { return null; }
+  });
+  const [inviteInfo, setInviteInfo] = React.useState(null); // { companyName, role, expired, status } | { invalid } | { error }
+  const inviteAcceptedRef = React.useRef(false);
 
   useEffect(() => {
     // Single source of truth: onAuthStateChange handles everything
@@ -131,6 +144,44 @@ function AppWrapper() {
     else clearSentryUser();
   }, [session?.user?.id, currentCompany?.id]);
 
+  // Look up the invite (company name + validity) for the pre-login banner.
+  useEffect(() => {
+    if (!inviteToken) return;
+    supabase.rpc("invite_details", { p_token: inviteToken }).then(({ data }) => {
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) { setInviteInfo({ invalid: true }); try { localStorage.removeItem("cfai_pending_invite"); } catch {} }
+      else setInviteInfo({ companyName: row.company_name, role: row.role, status: row.status, expired: row.expired });
+    }).catch(() => setInviteInfo({ invalid: true }));
+  }, [inviteToken]);
+
+  // Once authenticated, accept the invite, switch into the company, and welcome them.
+  useEffect(() => {
+    if (!inviteToken || !session?.user || inviteAcceptedRef.current) return;
+    inviteAcceptedRef.current = true;
+    (async () => {
+      try {
+        const { data: companyId, error } = await supabase.rpc("accept_invite", { p_token: inviteToken });
+        if (error) throw error;
+        // Reload memberships and switch to the joined company.
+        const { data } = await supabase.from("company_users")
+          .select("company_id, role, companies(*)").eq("user_id", session.user.id).not("accepted_at", "is", null);
+        const cos = (data || []).map(r => ({ ...r.companies, role: r.role }));
+        setCompanies(cos);
+        const joined = cos.find(c => c.id === companyId) || cos[0] || null;
+        if (joined) { setCurrentCompany(joined); setShowCompanySetup(false); }
+        try { localStorage.setItem("cfai_invite_welcome", joined?.name || "your new team"); } catch {}
+        setAppLoading(false);
+      } catch (e) {
+        try { localStorage.setItem("cfai_invite_error", e?.message || "This invite link is invalid or has expired."); } catch {}
+        setInviteInfo(prev => ({ ...(prev || {}), error: e?.message || "This invite link is invalid or has expired." }));
+      } finally {
+        try { localStorage.removeItem("cfai_pending_invite"); } catch {}
+        try { const u = new URL(window.location.href); u.searchParams.delete("invite"); window.history.replaceState({}, "", u.toString()); } catch {}
+        setInviteToken(null);
+      }
+    })();
+  }, [session?.user?.id, inviteToken]);
+
   const loadCompanies = async (sess) => {
     setAppLoading(true);
     try {
@@ -164,7 +215,7 @@ function AppWrapper() {
     return <UpdatePasswordScreen onDone={()=>{ setRecovery(false); loadCompanies(session); }} />;
   }
 
-  if (!session) return <AuthScreen onAuth={s=>setSession(s)}/>;
+  if (!session) return <AuthScreen onAuth={s=>setSession(s)} invite={inviteToken ? inviteInfo : null}/>;
 
   if (showCompanySetup) {
     return <CompanySetup session={session} onComplete={company=>{
@@ -210,6 +261,13 @@ function SentryFallback() {
 }
 
 function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany, onSignOut, supabase, persistedView, onViewChange }) {
+  // ── Team roles (Item 20). owner < admin < member. Default to "owner" when a role
+  // isn't present (single-user / legacy) so existing accounts keep full access.
+  const userRole = currentCompany?.role || "owner";
+  const isOwner = userRole === "owner";
+  const isAdmin = userRole === "owner" || userRole === "admin";
+  const isMember = userRole === "member";
+
   const [invoices, setInvoices] = useState([]);
   const invoicesRef = useRef([]); // always-current invoices for async lookups (e.g. doc relinking)
   useEffect(() => { invoicesRef.current = invoices; }, [invoices]);
@@ -731,6 +789,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     resetCompanyState();   // clear the previous company's state before loading the new one
     loadAllData();
   }, [currentCompany?.id]);
+
+  // Surface the team-invite welcome / error toast set by AppWrapper after accept.
+  useEffect(() => {
+    try {
+      const w = localStorage.getItem("cfai_invite_welcome");
+      if (w) { localStorage.removeItem("cfai_invite_welcome"); showNotification(`Welcome to ${w}! You've joined the team. ✓`); }
+      const e = localStorage.getItem("cfai_invite_error");
+      if (e) { localStorage.removeItem("cfai_invite_error"); showNotification(e, "error"); }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadAllData = async () => {
     const cid = currentCompany.id;
@@ -3623,7 +3692,17 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         logAI("ai_action_clarification_needed", `Refused ambiguous ${ambiguous.type} — ${ambiguous.matches.length} entries matched "${ambiguous.vendor || "the description"}"; asked the user to confirm which one`);
       }
 
+      // ── Role guard (Item 20) ──
+      // Members can ask questions and pull reports, but the AI must refuse any
+      // data-changing action (delete/void/recode/settings) for them.
+      const memberBlocked = isMember && (result.actions || []).some(a => a && a.type !== "none" && isMutatingAIAction(a.type));
+      if (memberBlocked) {
+        logAI("role_blocked_action", `Refused a data-changing AI action for member-role user (${result.actions.filter(a=>isMutatingAIAction(a.type)).map(a=>a.type).join(", ")})`);
+      }
+
       for (const action of (result.actions || [])) {
+        // Member tried to change data — don't touch anything; the reply explains.
+        if (memberBlocked && isMutatingAIAction(action.type)) continue;
         // Ambiguous modify request — don't touch anything; the reply asks which one.
         if (clarifyNeeded) continue;
         const _sumBefore = actionSummary.length;
@@ -3900,13 +3979,15 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
       const assistantMsg = {
         role: "assistant",
-        content: clarifyNeeded
-          ? clarifyText()
-          : bulkBlocked
-            ? "I can delete items one at a time for safety. Which specific entry would you like me to remove first?"
-            : (result.reply || "Done!"),
-        actions: (clarifyNeeded || bulkBlocked) ? [] : actionSummary,
-        rich: (clarifyNeeded || bulkBlocked) ? [] : richOutputs,
+        content: memberBlocked
+          ? "You're on a member seat, so I can't make changes like deleting, voiding, or recoding — those are reserved for admins and the owner. I can still answer questions, pull reports, and help you find things. Want me to do that instead?"
+          : clarifyNeeded
+            ? clarifyText()
+            : bulkBlocked
+              ? "I can delete items one at a time for safety. Which specific entry would you like me to remove first?"
+              : (result.reply || "Done!"),
+        actions: (memberBlocked || clarifyNeeded || bulkBlocked) ? [] : actionSummary,
+        rich: (memberBlocked || clarifyNeeded || bulkBlocked) ? [] : richOutputs,
         id: Date.now() + 1,
         created_at: new Date().toISOString(),
       };
@@ -3959,9 +4040,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, cashFromBanks, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, cashFromBanks, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember };
 
-  const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
+  const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
   const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
   return (
@@ -4148,11 +4229,15 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {(() => {
             const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports"];
-            const SETTINGS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
+            const SETTINGS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
             let subs = null;
             if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["ap","Payables"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["payroll","Payroll"],["docs","Documents"]];
             // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
-            else if (SETTINGS.includes(view)) subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import QBO"]];
+            else if (SETTINGS.includes(view)) {
+              subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import QBO"]];
+              if (isOwner) subs.splice(1, 0, ["team","Team"]);            // owner-only Team tab
+              if (isMember) subs = subs.filter(([id]) => ["tax","tax1099","audit"].includes(id)); // members: read-only settings only
+            }
             if (!subs) return null;
             // Unpaid bills count for the amber badge on the Payables tab.
             const apUnpaid = invoices.filter(i => (glIsExpense(i.gl_code) || i.type==="expense") && i.status!=="voided" && i.payment_status!=="paid").length;
@@ -4248,6 +4333,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
           {/* ── LEGAL (Terms & Privacy) ───────────────────────────────────────── */}
           {view==="legal" && <LegalView initialTab={legalTab} onBack={()=>setView("settings")} />}
+
+          {/* ── TEAM (owner-only) ─────────────────────────────────────────────── */}
+          {view==="team" && (isOwner ? <TeamView /> : <SettingsView />)}
 
           {/* ── CHART OF ACCOUNTS ─────────────────────────────────────────────── */}
           {view==="coa" && <CoaView />}

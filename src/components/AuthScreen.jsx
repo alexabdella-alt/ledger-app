@@ -24,8 +24,9 @@ function EclipseMark({ size = 40 }) {
   );
 }
 
-function AuthScreen({ onAuth }) {
-  const [mode, setMode] = React.useState("login");
+function AuthScreen({ onAuth, invite }) {
+  const inviteValid = invite && !invite.invalid && !invite.error && invite.status === "pending" && !invite.expired;
+  const [mode, setMode] = React.useState(inviteValid ? "signup" : "login");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
@@ -113,6 +114,17 @@ function AuthScreen({ onAuth }) {
       {/* ── Right: auth card ── */}
       <div style={{ flex:"1 1 380px", display:"flex", alignItems:"center", justifyContent:"center", padding:"48px 32px", background:"#FFFFFF", borderLeft:"1px solid #E4E7EC", boxShadow:"-1px 0 0 #E4E7EC" }}>
         <div className="sc-scale" style={{ width:"100%", maxWidth:380 }}>
+          {invite && (
+            inviteValid ? (
+              <div style={{ background:"#EEF2FF", border:"1px solid #C7D2FE", borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:13, color:"#3730A3", lineHeight:1.5 }}>
+                ✦ You've been invited to join <strong>{invite.companyName || "a team"}</strong> as {invite.role === "admin" ? "an admin" : "a member"} — sign up or log in to accept.
+              </div>
+            ) : (
+              <div style={{ background:"#FEF2F2", border:"1px solid #D92D2033", borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:13, color:"#D92D20", lineHeight:1.5 }}>
+                This invite link is invalid or has expired. Ask whoever invited you to send a fresh one.
+              </div>
+            )
+          )}
           <div style={{ marginBottom:28 }}>
             <h2 style={{ fontSize:24, fontWeight:700, margin:"0 0 6px", letterSpacing:-0.5, fontFamily:"'Space Grotesk','DM Sans',sans-serif" }}>
               {mode === "login" ? "Welcome back" : mode === "signup" ? "Get started" : "Reset your password"}

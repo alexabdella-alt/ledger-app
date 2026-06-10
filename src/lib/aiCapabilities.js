@@ -33,6 +33,11 @@ export const AI_ALLOWED_ACTIONS = [
 
 export const AI_ALLOWED_ACTIONS_SET = new Set(AI_ALLOWED_ACTIONS);
 
+// Read-only actions that don't change any data — everything else mutates. Used to
+// refuse destructive/config actions for "member"-role users.
+const AI_READONLY_ACTIONS = new Set(["none", "navigate", "render_chart", "export_csv", "render_summary"]);
+export const isMutatingAIAction = (type) => !AI_READONLY_ACTIONS.has(String(type || ""));
+
 export const isAllowedAIAction = (type) => AI_ALLOWED_ACTIONS_SET.has(String(type || ""));
 
 // Max items a single AI request may delete/void at once (bulk-delete protection).
