@@ -49,6 +49,9 @@ async function searchTransactions(input, ctx) {
     return true;
   });
   const total = rows.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  // Most recent first, so the AI always lists the latest matches first when
+  // disambiguating ("which Adobe charge — Jun 9, May 8, or Apr 7?").
+  rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   rows = rows.slice(0, Math.min(input.limit || 50, 200)).map(i => ({
     id: i.id, date: i.date, vendor: i.vendor, amount: i.amount, gl_code: i.gl_code, gl_name: i.gl_name,
     type: i.type, payment_status: i.payment_status, due_date: i.due_date, description: i.description,

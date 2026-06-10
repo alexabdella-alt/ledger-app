@@ -48,10 +48,13 @@ describe("executeAITool", () => {
     expect(out.vendors[0].count).toBe(2);
   });
 
-  it("search_transactions: filters by vendor and excludes voided", async () => {
+  it("search_transactions: filters by vendor, excludes voided, sorts date desc", async () => {
     const out = await executeAITool("search_transactions", { vendor: "Adobe" }, ctx);
     expect(out.count).toBe(2);
     expect(out.total_amount).toBe(105.98);
+    // Most recent first (so the AI lists latest matches first when disambiguating).
+    expect(out.transactions[0].date >= out.transactions[1].date).toBe(true);
+    expect(out.transactions[0].date).toBe(`${Y}-03-01`);
     const out2 = await executeAITool("search_transactions", { vendor: "Voided" }, ctx);
     expect(out2.count).toBe(0); // voided entries never returned
   });

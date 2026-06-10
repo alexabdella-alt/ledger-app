@@ -3566,7 +3566,38 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       // So suppress any auto-navigation in the same response.
       const renderedChart = (result.actions || []).some(a => a && a.type === "render_chart");
 
+      // ── Precise-targeting guard (Item 98) ──
+      // A recode / delete / void action that resolves to MORE THAN ONE entry without
+      // the user explicitly confirming "all/both/etc." is ambiguous — refuse it and
+      // ask which one. Never act on an ambiguous reference.
+      const userConfirmedMultiple = /\b(all|both|every|each|them all|all of them|everything|yes[, ]+all)\b/i.test(msg || "");
+      const shortDate = (d) => { const x = new Date(String(d) + "T12:00:00"); return isNaN(x) ? String(d) : x.toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
+      const matchInvoicesFor = (a) => {
+        if (a.invoice_id) return invoices.filter(i => String(i.id) === String(a.invoice_id));
+        if (a.invoiceIds?.length) return invoices.filter(i => a.invoiceIds.includes(i.id));
+        if (a.vendor) return invoices.filter(i =>
+          i.vendor?.toLowerCase().includes(a.vendor.toLowerCase()) &&
+          (a.amount == null || Math.abs((i.amount || 0) - parseFloat(a.amount)) < 1) &&
+          (!a.date || i.date === a.date) &&
+          i.status !== "voided");
+        return [];
+      };
+      let ambiguous = null;
+      if (!userConfirmedMultiple) {
+        for (const a of (result.actions || [])) {
+          if (!["recode", "delete_invoice", "void_invoice"].includes(a.type)) continue;
+          const matches = matchInvoicesFor(a);
+          if (matches.length > 1) { ambiguous = { type: a.type, vendor: a.vendor, matches }; break; }
+        }
+      }
+      const clarifyNeeded = !!ambiguous;
+      if (clarifyNeeded) {
+        logAI("ai_action_clarification_needed", `Refused ambiguous ${ambiguous.type} — ${ambiguous.matches.length} entries matched "${ambiguous.vendor || "the description"}"; asked the user to confirm which one`);
+      }
+
       for (const action of (result.actions || [])) {
+        // Ambiguous modify request — don't touch anything; the reply asks which one.
+        if (clarifyNeeded) continue;
         const _sumBefore = actionSummary.length;
         // ── AI SANDBOX (hard whitelist) ──
         // The AI may ONLY execute action types the app implements a handler for.
@@ -3830,13 +3861,24 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       }
       setRules(newRules);
 
+      // Build the clarification reply when a modify target was ambiguous (Item 98).
+      const clarifyText = () => {
+        const verb = ambiguous.type === "recode" ? "recode" : ambiguous.type === "void_invoice" ? "void" : "delete";
+        const shown = ambiguous.matches.slice(0, 6);
+        const list = shown.map(i => `${shortDate(i.date)} ${fmtMoney(i.amount)}${i.gl_name ? ` (${i.gl_name})` : ""}`).join(", ");
+        const more = ambiguous.matches.length > shown.length ? `, and ${ambiguous.matches.length - shown.length} more` : "";
+        return `I found ${ambiguous.matches.length} matching ${ambiguous.vendor ? ambiguous.vendor + " " : ""}charges — which one did you want me to ${verb}? ${list}${more}. Tell me which one (or say "all") and I'll take care of it.`;
+      };
+
       const assistantMsg = {
         role: "assistant",
-        content: bulkBlocked
-          ? "I can delete items one at a time for safety. Which specific entry would you like me to remove first?"
-          : (result.reply || "Done!"),
-        actions: bulkBlocked ? [] : actionSummary,
-        rich: bulkBlocked ? [] : richOutputs,
+        content: clarifyNeeded
+          ? clarifyText()
+          : bulkBlocked
+            ? "I can delete items one at a time for safety. Which specific entry would you like me to remove first?"
+            : (result.reply || "Done!"),
+        actions: (clarifyNeeded || bulkBlocked) ? [] : actionSummary,
+        rich: (clarifyNeeded || bulkBlocked) ? [] : richOutputs,
         id: Date.now() + 1,
         created_at: new Date().toISOString(),
       };
