@@ -2,21 +2,19 @@
 // planning rates — no state tax, no credits. See disclaimer in TaxView.
 
 import { FED_TAX_RATE, SE_TAX_RATE } from "./constants";
+import { computeRevenue, computeExpenses, computeNetIncome } from "./reports";
 export const FED_RATE = FED_TAX_RATE;   // simplified flat federal planning rate
 export const SE_RATE = SE_TAX_RATE;     // self-employment (Social Security + Medicare)
 
-// Year-to-date P&L from the flattened invoice list.
+// Year-to-date P&L — flows through the canonical layer so taxable net income equals
+// the P&L / dashboard / AI net income for the same year (all 5xxx–8xxx expenses).
 export function ytdNetIncome(invoices, year = new Date().getFullYear()) {
-  let revenue = 0, expenses = 0;
-  for (const i of invoices || []) {
-    if (i.status === "voided" || i.status === "deleted" || i.deleted_at) continue;
-    if (!String(i.date || "").startsWith(String(year))) continue;
-    const c = String(i.gl_code || "");
-    const amt = Number(i.amount) || 0;
-    if (c[0] === "4") revenue += amt;
-    else if (c[0] === "5" || c[0] === "6") expenses += amt;
-  }
-  return { revenue, expenses, net: revenue - expenses };
+  const range = { from: `${year}-01-01`, to: `${year}-12-31` };
+  return {
+    revenue: computeRevenue(invoices, range),
+    expenses: computeExpenses(invoices, range),
+    net: computeNetIncome(invoices, range),
+  };
 }
 
 // Estimated federal + SE tax for the year. estPaid = estimated payments already made.

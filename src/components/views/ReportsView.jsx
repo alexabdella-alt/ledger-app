@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { agingReport, trialBalance, computeKPIs } from "../../lib/reports";
+import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
 import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
 import MonthlyReportsPanel from "./MonthlyReportsPanel";
@@ -44,8 +44,10 @@ export default function ReportsView() {
               }
               return true; // accrual: all posted entries
             });
-            const revenue  = plFiltered.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
-            const expenses = plFiltered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+            // Accrual headline flows through the canonical layer (identical to the
+            // dashboard, monthly report, and AI). Cash basis stays a P&L-only view.
+            const revenue  = basisMode==="cash" ? plFiltered.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0) : computeRevenue(filtered);
+            const expenses = basisMode==="cash" ? plFiltered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0) : computeExpenses(filtered);
             const net = revenue - expenses;
 
             // Group revenue by GL
@@ -74,14 +76,8 @@ export default function ReportsView() {
             const byGL = allExpGL;
             const glRows = Object.values(byGL).sort((a,b) => a.code?.localeCompare(b.code));
 
-            // Group by vendor — only P&L accounts (income statement items)
-            const byVendor = {};
-            filtered.filter(i=>glPLType(i.gl_code)).forEach(inv => {
-              const v = inv.vendor||"Unknown";
-              if (!byVendor[v]) byVendor[v] = { name:v, total:0, count:0 };
-              byVendor[v].total += inv.amount; byVendor[v].count++;
-            });
-            const vendorRows = Object.values(byVendor).sort((a,b)=>b.total-a.total);
+            // Group by vendor — canonical (P&L accounts only); equals the AI's get_vendor_summary.
+            const vendorRows = computeVendorTotals(filtered).map(v => ({ name: v.vendor, total: v.total, count: v.count }));
 
             // Cash flow by month — ACTUAL cash only (collected receivables + paid expenses)
             const byMonth = {};

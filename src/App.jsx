@@ -5,7 +5,7 @@ import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
-import { buildMonthlyReport, priorPeriod, formatPeriod } from "./lib/reports";
+import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, computeNetIncome, liveEntries } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
 import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
@@ -4096,12 +4096,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
   const allVendorNames = vendorSummary.map(v => v.name);
   const filteredInvoices = useMemo(() => invoices.filter(inv => vendorFilter==="all" || inv.vendor===vendorFilter), [invoices, vendorFilter]);
-  // Use GL code to classify — never trust the stored "type" field for reporting
-  const totalExpenses = invoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
-  const totalRevenue  = invoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
-  const netIncome = totalRevenue - totalExpenses;
-  // GL breakdown — only income statement accounts
-  const glBreakdown = invoices.reduce((acc,inv)=>{
+  // Canonical layer (reports.js) — all-time, live (voided/deleted excluded). The
+  // single source for these figures everywhere they appear.
+  const totalExpenses = computeExpenses(invoices);
+  const totalRevenue  = computeRevenue(invoices);
+  const netIncome = computeNetIncome(invoices);
+  // GL breakdown — only income statement accounts, live entries only.
+  const glBreakdown = liveEntries(invoices).reduce((acc,inv)=>{
     if (!glPLType(inv.gl_code)) return acc; // skip balance sheet accounts
     acc[inv.gl_name||"Uncoded"]=(acc[inv.gl_name||"Uncoded"]||0)+inv.amount;
     return acc;

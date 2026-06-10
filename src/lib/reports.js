@@ -22,6 +22,101 @@ const arUnpaid = i => isRev(i) && i.payment_status !== "paid" && i.payment_statu
 const apUnpaid = i => isExp(i) && i.payment_status !== "paid";
 const daysOverdue = (dueDate, now) => dueDate ? Math.floor((now - new Date(String(dueDate) + "T12:00:00")) / 86400000) : 0;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL CALCULATION LAYER (full reconciliation audit)
+// EVERY surface — dashboard, P&L, balance sheet, vendor/category reports, the
+// monthly report, KPIs, the health score, anomaly inputs, notifications, the AI
+// financial snapshot, and the AI tools — flows through these and ONLY these.
+// A figure shown in two places is computed by the same function here, so it is
+// identical to the penny. Rules:
+//   • isLiveEntry is the ONE liveness predicate (not voided, not soft-deleted).
+//   • Classification is by GL code via glIsRevenue/glIsExpense (never name/type).
+//   • Dates are inclusive YYYY-MM-DD string ranges; pass {from,to} (null = open).
+//   • Every public total is rounded once, at the boundary, via r2.
+//   • Accrual basis (all posted entries) is canonical; cash basis is a P&L-only view.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Inclusive date-range test over YYYY-MM-DD strings (lexicographic == chronological).
+const inDateRange = (date, from, to) => { const d = String(date || ""); if (from && d < from) return false; if (to && d > to) return false; return true; };
+
+// The live entries for a period: not voided/deleted, within [from,to]. The single
+// gate every figure below passes through.
+export function liveEntries(invoices, { from = null, to = null } = {}) {
+  return (invoices || []).filter(i => isLiveEntry(i) && inDateRange(i.date, from, to));
+}
+
+export function computeRevenue(invoices, range = {}) {
+  return r2(liveEntries(invoices, range).filter(i => isRev(i)).reduce((s, i) => s + num(i.amount), 0));
+}
+export function computeExpenses(invoices, range = {}) {
+  return r2(liveEntries(invoices, range).filter(i => isExp(i)).reduce((s, i) => s + num(i.amount), 0));
+}
+export function computeNetIncome(invoices, range = {}) {
+  return r2(computeRevenue(invoices, range) - computeExpenses(invoices, range));
+}
+
+// Expense totals by GL category for a period, sorted high→low. The SUM of these
+// totals === computeExpenses(...) exactly (same gate, same rounding boundary).
+export function computeCategoryTotals(invoices, range = {}) {
+  const map = {};
+  for (const i of liveEntries(invoices, range)) {
+    if (!isExp(i)) continue;
+    const k = String(i.gl_code || "");
+    const c = map[k] || (map[k] = { gl_code: k, category: i.gl_name || k, total: 0, count: 0 });
+    c.total += num(i.amount); c.count++;
+  }
+  return Object.values(map).map(c => ({ ...c, total: r2(c.total) })).sort((a, b) => b.total - a.total || String(a.gl_code).localeCompare(String(b.gl_code)));
+}
+
+// Per-vendor totals over P&L accounts only (income-statement scope) — the figure
+// the vendor REPORT shows and the AI's get_vendor_summary must equal.
+export function computeVendorTotals(invoices, range = {}) {
+  const map = {};
+  for (const i of liveEntries(invoices, range)) {
+    if (!isRev(i) && !isExp(i)) continue;                 // P&L accounts only
+    const name = i.vendor || "Unknown";
+    const v = map[name] || (map[name] = { vendor: name, total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name });
+    v.total += num(i.amount); v.count++;
+    if (String(i.date || "") > v.last_date) { v.last_date = String(i.date || ""); v.gl_code = i.gl_code; v.gl_name = i.gl_name; }
+  }
+  return Object.values(map).map(v => ({ ...v, total: r2(v.total) })).sort((a, b) => b.total - a.total);
+}
+
+// Cash on hand. Prefers the explicit dashboard cashBalance (already the sum of
+// bank-account current balances); falls back to summing bankAccounts.
+export function computeCashPosition({ cashBalance = null, bankAccounts = null } = {}) {
+  if (cashBalance != null && cashBalance !== "") return r2(num(cashBalance));
+  if (Array.isArray(bankAccounts)) return r2(bankAccounts.reduce((s, a) => s + num(a.current_balance), 0));
+  return 0;
+}
+
+// Trailing-N-month average expense burn (default 3), counting only months up to
+// `asOf` (inclusive). Same window everywhere → burn/runway never drift.
+export function computeBurnRate(invoices, { asOf = null, months = 3 } = {}) {
+  const monthExp = {};
+  for (const i of liveEntries(invoices, { to: asOf })) {
+    if (!isExp(i)) continue;
+    const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + num(i.amount);
+  }
+  const recent = Object.keys(monthExp).sort().slice(-months);
+  return r2(recent.length ? recent.reduce((s, m) => s + monthExp[m], 0) / recent.length : 0);
+}
+export function computeRunway(cash, burn) { const b = num(burn); return b > 0 ? r1(num(cash) / b) : null; }
+
+// AR / AP totals. `total` = all open (accrual); `overdue` = past the due date.
+// `now` anchors the overdue test. Reconciles with agingReport (same predicates).
+function arApTotals(invoices, predicate, now) {
+  let total = 0, overdue = 0, count = 0, overdueCount = 0;
+  for (const i of (invoices || [])) {
+    if (!isLiveEntry(i) || !predicate(i)) continue;
+    const amt = num(i.amount); total += amt; count++;
+    if (i.due_date && daysOverdue(i.due_date, now) > 0) { overdue += amt; overdueCount++; }
+  }
+  return { total: r2(total), overdue: r2(overdue), count, overdueCount };
+}
+export function computeAR(invoices, { now = new Date() } = {}) { return arApTotals(invoices, arUnpaid, now); }
+export function computeAP(invoices, { now = new Date() } = {}) { return arApTotals(invoices, apUnpaid, now); }
+
 // ── AR / AP AGING (Items 24, 83) ────────────────────────────────────────────
 export function agingReport(invoices, side = "ar", now = new Date()) {
   const open = (invoices || []).filter(i => isLiveEntry(i) && (side === "ar" ? arUnpaid(i) : apUnpaid(i)));
@@ -212,43 +307,36 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   const live = (invoices || []).filter(isLiveEntry);
   const prior = priorPeriod(period);
   const monthEnd = endOfMonth(period);
-  const inPeriod = m => live.filter(i => ymOf(i.date) === m);
-  const cur = inPeriod(period), prv = inPeriod(prior);
+  // Period bounds as YYYY-MM-DD so we share the canonical {from,to} primitives.
+  const curRange = { from: `${period}-01`, to: `${period}-31` };
+  const prvRange = { from: `${prior}-01`, to: `${prior}-31` };
 
-  const sum = (set, pred) => set.filter(pred).reduce((s, i) => s + num(i.amount), 0);
-  const catTotals = (set) => {
-    const m = {};
-    set.filter(isExp).forEach(i => { const k = i.gl_name || i.gl_code || "Uncategorized"; m[k] = (m[k] || 0) + num(i.amount); });
-    return m;
-  };
-  const curCats = catTotals(cur), prvCats = catTotals(prv);
-  const revCur = sum(cur, isRev), revPrv = sum(prv, isRev);
-  const expCur = Object.values(curCats).reduce((s, v) => s + v, 0);
-  const expPrv = Object.values(prvCats).reduce((s, v) => s + v, 0);
-  const netCur = revCur - expCur, netPrv = revPrv - expPrv;
+  // P&L straight from the canonical layer → identical to the dashboard, the live
+  // P&L report, and the AI's get_financial_summary for the same month.
+  const revCur = computeRevenue(live, curRange), revPrv = computeRevenue(live, prvRange);
+  const expCur = computeExpenses(live, curRange), expPrv = computeExpenses(live, prvRange);
+  const netCur = computeNetIncome(live, curRange), netPrv = computeNetIncome(live, prvRange);
 
-  const expenseLines = [...new Set([...Object.keys(curCats), ...Object.keys(prvCats)])]
-    .map(cat => ({ category: cat, ...momLine(curCats[cat] || 0, prvCats[cat] || 0) }))
+  const curCats = computeCategoryTotals(live, curRange);
+  const prvCatMap = Object.fromEntries(computeCategoryTotals(live, prvRange).map(c => [c.category, c.total]));
+  const expenseLines = curCats.map(c => ({ category: c.category, ...momLine(c.total, prvCatMap[c.category] || 0) }))
+    .concat(Object.entries(prvCatMap).filter(([cat]) => !curCats.some(c => c.category === cat)).map(([cat, prv]) => ({ category: cat, ...momLine(0, prv) })))
     .sort((a, b) => b.current - a.current);
 
-  // Cash position + trailing-3-month burn rate (months up to and including this one).
-  const monthExp = {};
-  for (const i of live) if (isExp(i)) { const m = ymOf(i.date); if (m && m <= period) monthExp[m] = (monthExp[m] || 0) + num(i.amount); }
-  const recent = Object.keys(monthExp).sort().slice(-3);
-  const burn = recent.length ? recent.reduce((s, m) => s + monthExp[m], 0) / recent.length : 0;
-  const cash = num(cashBalance);
-  const runway = burn > 0 ? r1(cash / burn) : null;
+  const cash = computeCashPosition({ cashBalance });
+  const burn = computeBurnRate(live, { asOf: curRange.to });
+  const runway = computeRunway(cash, burn);
 
-  const ar = agingReport(live, "ar", monthEnd), ap = agingReport(live, "ap", monthEnd);
-  const overdueOf = rep => r2(rep.buckets.filter(b => b.key !== "current").reduce((s, b) => s + b.total, 0));
+  const arT = computeAR(live, { now: monthEnd }), apT = computeAP(live, { now: monthEnd });
 
   const kpis = computeKPIs(live, { cashBalance: cash, now: monthEnd })
     .map(k => ({ key: k.key, label: k.label, display: k.display, status: k.status, trend: k.trend, explanation: k.explanation }));
   const h = financialHealthScore({ invoices: live, cashBalance: cash, reconciliations, anomalies, onboardingComplete, now: monthEnd });
 
-  // Top 5 vendors by spend this month.
+  // Top 5 vendors by expense spend this month (canonical live gate + GL classification).
+  const cur = liveEntries(live, curRange);
   const vmap = {};
-  cur.filter(isExp).forEach(i => { const k = i.vendor || "Unknown"; vmap[k] = (vmap[k] || 0) + num(i.amount); });
+  for (const i of cur) { if (!isExp(i)) continue; const k = i.vendor || "Unknown"; vmap[k] = (vmap[k] || 0) + num(i.amount); }
   const topVendors = Object.entries(vmap).map(([vendor, total]) => ({ vendor, total: r2(total) })).sort((a, b) => b.total - a.total).slice(0, 5);
 
   // Anomalies active during the month — those referencing this month's txns; else high-severity.
@@ -257,19 +345,18 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   if (!monthAnoms.length) monthAnoms = (anomalies || []).filter(a => a.severity === "high");
   const anomList = monthAnoms.slice(0, 8).map(a => ({ type: a.type, severity: a.severity, title: a.title, description: a.description }));
 
-  const arOverdue = overdueOf(ar), apOverdue = overdueOf(ap);
   const payload = {
     period, prior_period: prior, label: formatPeriod(period), generated_at: new Date().toISOString(),
     pl: { revenue: momLine(revCur, revPrv), expenses_total: momLine(expCur, expPrv), net_income: momLine(netCur, netPrv), expense_lines: expenseLines },
     cash: { cash_on_hand: r2(cash), burn_rate: r2(burn), runway_months: runway },
-    receivables: { total: ar.total, overdue: arOverdue, count: ar.count },
-    payables: { total: ap.total, overdue: apOverdue, count: ap.count },
+    receivables: { total: arT.total, overdue: arT.overdue, count: arT.count },
+    payables: { total: apT.total, overdue: apT.overdue, count: apT.count },
     kpis,
     health: { score: h.score, grade: h.grade, tier: h.tier, summary: h.summary },
     top_vendors: topVendors,
     anomalies: anomList,
     transaction_count: cur.length,
-    summary: templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, arTotal: ar.total, arOverdue, runway, health: h, txns: cur.length }),
+    summary: templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, arTotal: arT.total, arOverdue: arT.overdue, runway, health: h, txns: cur.length }),
   };
   return payload;
 }

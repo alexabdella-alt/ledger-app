@@ -14,8 +14,12 @@
 
 import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
+import {
+  isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
+  computeVendorTotals, computeCashPosition, computeBurnRate, computeRunway, computeAR, computeAP,
+} from "./reports.js";
 
-const isLive = i => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at;
+const isLive = isLiveEntry;                                  // the ONE shared liveness predicate
 const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s[0] === "6" || s[0] === "7" || s[0] === "8"; };
 const isRevenueCode = c => String(c || "")[0] === "4";
 const normV = s => String(s || "").toLowerCase().trim();
@@ -59,62 +63,38 @@ async function searchTransactions(input, ctx) {
   return { count: rows.length, total_amount: r2(total), transactions: rows };
 }
 
+// All three flow through the canonical layer in reports.js — so the AI's numbers
+// equal the dashboard, the reports, and the monthly report to the penny.
 async function getCategoryTotals(input, ctx) {
   const { from, to } = periodRange(input.period || "all_time", input.date_from, input.date_to);
-  const led = (await ctx.getLedger()).filter(i => isLive(i) && isExpenseCode(i.gl_code) && inRange(i.date, from, to));
-  const map = {};
-  for (const i of led) {
-    const k = String(i.gl_code || "");
-    const cur = map[k] || { category: i.gl_name || k, gl_code: k, total: 0, count: 0 };
-    cur.total += Number(i.amount) || 0; cur.count++; map[k] = cur;
-  }
-  const categories = Object.values(map).map(c => ({ ...c, total: r2(c.total) })).sort((a, b) => b.total - a.total);
+  const categories = computeCategoryTotals(await ctx.getLedger(), { from, to });
   return { period: input.period || "all_time", categories };
 }
 
 async function getVendorSummary(input, ctx) {
   const { from, to } = periodRange(input.period || "all_time", input.date_from, input.date_to);
-  const led = (await ctx.getLedger()).filter(i => isLive(i) && inRange(i.date, from, to) && (input.vendor ? normV(i.vendor).includes(normV(input.vendor)) : true));
-  const map = {};
-  for (const i of led) {
-    const k = normV(i.vendor); if (!k) continue;
-    const cur = map[k] || { vendor: i.vendor, total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name };
-    cur.total += Number(i.amount) || 0; cur.count++;
-    if (String(i.date) > cur.last_date) { cur.last_date = String(i.date); cur.gl_code = i.gl_code; cur.gl_name = i.gl_name; }
-    map[k] = cur;
-  }
-  const vendors = Object.values(map).map(v => ({ ...v, total: r2(v.total) })).sort((a, b) => b.total - a.total).slice(0, 50);
-  return { vendors };
+  let vendors = computeVendorTotals(await ctx.getLedger(), { from, to });
+  if (input.vendor) { const q = normV(input.vendor); vendors = vendors.filter(v => normV(v.vendor).includes(q)); }
+  return { vendors: vendors.slice(0, 50) };
 }
 
 async function getFinancialSummary(input, ctx) {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const { from, to } = periodRange(input.period || "this_year", input.date_from, input.date_to);
-  const all = (await ctx.getLedger()).filter(isLive);
-  let rev = 0, exp = 0, overdueAR = 0, unpaidAP = 0;
-  const catMap = {}, monthExp = {};
-  for (const i of all) {
-    const amt = Number(i.amount) || 0;
-    if (isExpenseCode(i.gl_code)) { const m = String(i.date || "").slice(0, 7); monthExp[m] = (monthExp[m] || 0) + amt; }
-    if (unpaid(i) && i.due_date && String(i.due_date) < today) {
-      if (isRevenueCode(i.gl_code)) overdueAR += amt;
-      else if (isExpenseCode(i.gl_code)) unpaidAP += amt;
-    }
-    if (inRange(i.date, from, to)) {
-      if (isRevenueCode(i.gl_code)) rev += amt;
-      else if (isExpenseCode(i.gl_code)) { exp += amt; const k = i.gl_name || i.gl_code; catMap[k] = (catMap[k] || 0) + amt; }
-    }
-  }
-  const recentMonths = Object.keys(monthExp).sort().slice(-3);
-  const burn = recentMonths.length ? recentMonths.reduce((s, m) => s + monthExp[m], 0) / recentMonths.length : 0;
-  const cash = Number(ctx.cashBalance) || 0;
-  const top_expense_categories = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([category, total]) => ({ category, total: r2(total) }));
+  const led = await ctx.getLedger();
+  const cash = computeCashPosition({ cashBalance: ctx.cashBalance });
+  const burn = computeBurnRate(led, { asOf: today });
+  const ar = computeAR(led, { now }), ap = computeAP(led, { now });
   return {
     period: input.period || "this_year",
-    total_revenue: r2(rev), total_expenses: r2(exp), net_income: r2(rev - exp),
-    burn_rate: r2(burn), runway_months: burn > 0 ? Math.round((cash / burn) * 10) / 10 : null,
-    cash_balance: cash, top_expense_categories, overdue_ar_total: r2(overdueAR), unpaid_ap_total: r2(unpaidAP),
+    total_revenue: computeRevenue(led, { from, to }),
+    total_expenses: computeExpenses(led, { from, to }),
+    net_income: computeNetIncome(led, { from, to }),
+    burn_rate: burn, runway_months: computeRunway(cash, burn),
+    cash_balance: cash,
+    top_expense_categories: computeCategoryTotals(led, { from, to }).slice(0, 5).map(c => ({ category: c.category, total: c.total })),
+    overdue_ar_total: ar.overdue, unpaid_ap_total: ap.overdue,
   };
 }
 

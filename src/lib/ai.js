@@ -4,52 +4,45 @@ import { formatProfileForPrompt } from "./clientProfile";
 import { AI_SANDBOX_STATEMENT } from "./aiCapabilities";
 import { fetchLedger } from "./ledger";
 import { AI_TOOLS, executeAITool } from "./aiTools";
+import {
+  computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
+  computeCashPosition, computeBurnRate, computeRunway, computeAR,
+} from "./reports";
 
 // Build a compact live financial snapshot from the full ledger so the AI always
 // answers with REAL numbers (burn, runway, top categories MoM, overdue AR, net).
-// Excludes voided / soft-deleted entries. cashBalance comes from the app.
+// Every figure flows through the canonical layer (reports.js) so the snapshot the
+// AI sees is identical to the dashboard and the reports. cashBalance from the app.
 function buildFinancials(invoices, cashBalance) {
   const now = new Date();
-  const ym = d => String(d || "").slice(0, 7);
   const today = now.toISOString().slice(0, 10);
   const thisMonth = now.toISOString().slice(0, 7);
   const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
   const year = String(now.getFullYear());
   const money = n => "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
+  const monthRange = ym => ({ from: `${ym}-01`, to: `${ym}-31` });
 
-  let revYTD = 0, expYTD = 0, overdueTotal = 0, overdueCount = 0;
-  const catThis = {}, catLast = {}, monthExp = {};
-  for (const i of invoices || []) {
-    if (i.status === "voided" || i.status === "deleted" || i.deleted_at) continue;
-    const c = String(i.gl_code || ""); const amt = Number(i.amount) || 0; const m = ym(i.date);
-    const isRev = c[0] === "4";
-    const isExp = c[0] === "5" || c[0] === "6" || c[0] === "7" || c[0] === "8";
-    if (String(i.date || "").startsWith(year)) { if (isRev) revYTD += amt; else if (isExp) expYTD += amt; }
-    if (isExp) {
-      monthExp[m] = (monthExp[m] || 0) + amt;
-      if (m === thisMonth) catThis[i.gl_name || c] = (catThis[i.gl_name || c] || 0) + amt;
-      if (m === lastMonth) catLast[i.gl_name || c] = (catLast[i.gl_name || c] || 0) + amt;
-    }
-    if (isRev && i.due_date && String(i.due_date) < today && i.payment_status !== "paid" && i.payment_status !== "collected") {
-      overdueTotal += amt; overdueCount += 1;
-    }
-  }
-  // Burn = average monthly expense over the last 3 completed-ish months we have data for.
-  const recentMonths = Object.keys(monthExp).sort().slice(-3);
-  const burn = recentMonths.length ? recentMonths.reduce((s, m) => s + monthExp[m], 0) / recentMonths.length : 0;
-  const cash = Number(cashBalance) || 0;
-  const runway = burn > 0 ? cash / burn : null;
-  const topThis = Object.entries(catThis).sort((a, b) => b[1] - a[1]).slice(0, 5)
-    .map(([cat, amt]) => `${cat} ${money(amt)}${catLast[cat] != null ? ` (last month ${money(catLast[cat])})` : " (new this month)"}`);
+  const yearRange = { from: `${year}-01-01`, to: `${year}-12-31` };
+  const revYTD = computeRevenue(invoices, yearRange);
+  const expYTD = computeExpenses(invoices, yearRange);
+  const netYTD = computeNetIncome(invoices, yearRange);
+  const cash = computeCashPosition({ cashBalance });
+  const burn = computeBurnRate(invoices, { asOf: today });
+  const runway = computeRunway(cash, burn);
+  const ar = computeAR(invoices, { now });
+
+  const catLast = Object.fromEntries(computeCategoryTotals(invoices, monthRange(lastMonth)).map(c => [c.category, c.total]));
+  const topThis = computeCategoryTotals(invoices, monthRange(thisMonth)).slice(0, 5)
+    .map(c => `${c.category} ${money(c.total)}${catLast[c.category] != null ? ` (last month ${money(catLast[c.category])})` : " (new this month)"}`);
 
   const lines = [
     `FINANCIAL SNAPSHOT (live from the books — use these exact figures, do not invent numbers):`,
     `Cash on hand: ${cash > 0 ? money(cash) : "not set by the owner yet"}`,
-    `Net income YTD (${year}): ${money(revYTD - expYTD)} (revenue ${money(revYTD)} − expenses ${money(expYTD)})`,
-    `Monthly burn (avg of last ${recentMonths.length || 0} mo of expenses): ${burn > 0 ? money(burn) : "n/a"}`,
+    `Net income YTD (${year}): ${money(netYTD)} (revenue ${money(revYTD)} − expenses ${money(expYTD)})`,
+    `Monthly burn (trailing 3-mo avg of expenses): ${burn > 0 ? money(burn) : "n/a"}`,
     `Runway: ${runway != null ? `${runway.toFixed(1)} months at current burn` : (cash > 0 ? "effectively unlimited (no recent burn)" : "unknown — cash balance not set")}`,
     `Top expense categories THIS month vs last: ${topThis.length ? topThis.join("; ") : "no expenses booked this month yet"}`,
-    `Overdue receivables: ${overdueCount > 0 ? `${money(overdueTotal)} across ${overdueCount} invoice(s) past due` : "none past due"}`,
+    `Overdue receivables: ${ar.overdueCount > 0 ? `${money(ar.overdue)} across ${ar.overdueCount} invoice(s) past due` : "none past due"}`,
   ];
   return { runway, burn, cash, text: lines.join("\n") };
 }

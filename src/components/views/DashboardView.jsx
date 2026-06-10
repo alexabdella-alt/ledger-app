@@ -5,7 +5,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
-import { financialHealthScore } from "../../lib/reports";
+import { financialHealthScore, computeNetIncome, computeBurnRate, computeRunway, computeCashPosition, computeAR, computeAP } from "../../lib/reports";
 import ClarificationFlow from "../ClarificationFlow";
 
 export default function DashboardView() {
@@ -523,9 +523,10 @@ export default function DashboardView() {
                 const openAR = invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.status!=="voided");
                 if (unpaid.length===0 && openAR.length===0) return null;
                 const today = new Date().toISOString().slice(0,10);
-                const total = unpaid.reduce((s,i)=>s+i.amount,0);
+                // Dollar figures from the canonical layer so they match the reports + AI exactly.
+                const total = computeAP(invoices).total;
                 const overdue = unpaid.filter(i=>i.due_date && i.due_date<today);
-                const arTotal = openAR.reduce((s,i)=>s+i.amount,0);
+                const arTotal = computeAR(invoices).total;
                 return (
                   <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
                     {unpaid.length>0 && (
@@ -592,23 +593,22 @@ export default function DashboardView() {
               {(() => {
                 const tdy = new Date();
                 const cm = tdy.toISOString().slice(0,7);
-                const burnThisMonth = invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(cm)&&i.status!=="voided").reduce((s,i)=>s+i.amount,0);
-                const mk = k => new Date(tdy.getFullYear(),tdy.getMonth()-k,1).toISOString().slice(0,7);
-                const burns=[0,1,2].map(k=>invoices.filter(i=>glIsExpense(i.gl_code)&&i.date?.startsWith(mk(k))).reduce((s,i)=>s+i.amount,0)).filter(b=>b>0);
-                const avgBurn = burns.length? burns.reduce((s,b)=>s+b,0)/burns.length : burnThisMonth;
-                const openingCash = openingBalances.filter(b=>b.account_code==="1000"||b.account_code==="1010").reduce((s,b)=>s+(parseFloat(b.balance)||0),0);
-                const cashIn = invoices.filter(i=>glIsRevenue(i.gl_code)&&(i.payment_status==="collected"||i.payment_status==="paid")).reduce((s,i)=>s+i.amount,0);
-                const cashOut = invoices.filter(i=>glIsExpense(i.gl_code)&&i.payment_status==="paid").reduce((s,i)=>s+i.amount,0);
-                const estimatedCash = openingCash + cashIn - cashOut;
-                const runway = avgBurn>0 ? Math.floor(estimatedCash/avgBurn) : null;
+                const today = tdy.toISOString().slice(0,10);
+                const year = String(tdy.getFullYear());
+                // Canonical figures (reports.js) — identical to P&L, monthly report, and the AI.
+                const burnThisMonth = computeBurnRate(invoices, { asOf: `${cm}-31`, months: 1 });
+                const avgBurn = computeBurnRate(invoices, { asOf: today });          // trailing 3-mo
+                const cash = computeCashPosition({ cashBalance, bankAccounts });      // bank-sum, same as every other surface
+                const runwayExact = computeRunway(cash, avgBurn);
+                const runway = runwayExact === null ? null : Math.floor(runwayExact);
                 const runwayColor = runway===null?"#475467":runway<6?"#D92D20":runway<=12?"#DC6803":"#039855";
-                const ytdNet = invoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0) - invoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+                const ytdNet = computeNetIncome(invoices, { from: `${year}-01-01`, to: `${year}-12-31` });
                 const fmt0 = n => "$"+Math.round(Math.abs(n)).toLocaleString("en-US");
                 const cards = [
-                  { label:"CASH BALANCE", value:(estimatedCash<0?"-":"")+fmt0(estimatedCash), color:estimatedCash>=0?"#101828":"#D92D20", sub:"Cash on hand", drill:{type:"cash"} },
+                  { label:"CASH BALANCE", value:(cash<0?"-":"")+fmt0(cash), color:cash>=0?"#101828":"#D92D20", sub:"Cash on hand", drill:{type:"cash"} },
                   { label:"MONTHLY BURN", value:fmt0(burnThisMonth), color:"#D92D20", sub:"Expenses this month", drill:{type:"burn"} },
                   { label:"RUNWAY", value: runway===null?"∞":`${runway} mo`, color:runwayColor, sub: runway===null?"Add cash to calculate":runway<6?"Less than 6 months":runway<=12?"6–12 months":"Healthy", drill:{type:"runway"} },
-                  { label:"NET INCOME (YTD)", value:(ytdNet<0?"-":"")+fmt0(ytdNet), color:ytdNet>=0?"#039855":"#D92D20", sub:"Revenue − expenses", drill:{type:"net"} },
+                  { label:"NET INCOME (YTD)", value:(ytdNet<0?"-":"")+fmt0(ytdNet), color:ytdNet>=0?"#039855":"#D92D20", sub:`Revenue − expenses · ${year}`, drill:{type:"net"} },
                 ];
                 return (
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:16, marginBottom:24 }}>
