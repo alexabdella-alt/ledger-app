@@ -46,12 +46,12 @@ import TaxView from "./components/views/TaxView";
 import DocsView from "./components/views/DocsView";
 import AuditView from "./components/views/AuditView";
 import AdminView from "./components/views/AdminView";
-import OnboardView from "./components/views/OnboardView";
+import QBOImportView from "./components/views/QBOImportView";
 
 // journal_entries.source has a CHECK constraint. The client uses richer internal
 // source markers (e.g. "bank_feed", "contract", "gaap_classification") for app
 // logic, so we normalize to the DB's allowed set only at the persistence boundary.
-const VALID_JE_SOURCES = ["manual", "bank_import", "universal_upload", "recurring", "opening_balance", "ar_invoice", "payroll", "api"];
+const VALID_JE_SOURCES = ["manual", "bank_import", "universal_upload", "recurring", "opening_balance", "ar_invoice", "payroll", "api", "qbo_import"];
 const JE_SOURCE_MAP = {
   // document uploads (+ everything derived from an uploaded doc)
   universal_upload: "universal_upload", needs_review: "universal_upload", watch_trigger: "universal_upload",
@@ -59,7 +59,7 @@ const JE_SOURCE_MAP = {
   contract: "universal_upload",                 // closest match per spec
   // bank-derived
   bank_statement: "bank_import", bank_feed: "bank_import", matching_engine: "bank_import",
-  reconciliation: "bank_import", qbo_import: "bank_import",
+  reconciliation: "bank_import", qbo_import: "qbo_import",   // QuickBooks import keeps its own source (migration 028)
   // already-valid / direct mappings
   recurring: "recurring", opening_balance: "opening_balance", payroll: "payroll",
   sent_invoice: "ar_invoice",
@@ -4234,7 +4234,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["ap","Payables"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["payroll","Payroll"],["docs","Documents"]];
             // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
             else if (SETTINGS.includes(view)) {
-              subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import QBO"]];
+              subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import from QuickBooks"]];
               if (isOwner) subs.splice(1, 0, ["team","Team"]);            // owner-only Team tab
               if (isMember) subs = subs.filter(([id]) => ["tax","tax1099","audit"].includes(id)); // members: read-only settings only
             }
@@ -4370,7 +4370,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {view==="admin" && isPlatformAdmin && <AdminView />}
 
           {/* ── QBO ONBOARDING ────────────────────────────────────────────────── */}
-          {view==="onboard" && <OnboardView />}
+          {view==="onboard" && <QBOImportView />}
           </div>
         </div>
       </div>
