@@ -18,7 +18,16 @@ export default function DashboardView() {
 
   // ── Onboarding step completion (Item 54) ──
   const obHasBiz = !!(companySettings.name && companySettings.businessType);
-  const obHasBank = (bankAccounts||[]).some(b => b.id && b.id !== "default");
+  // A bank account only counts once the user has added a REAL one — not the
+  // "Primary Checking" placeholder seeded at company setup (which has a real DB id
+  // but no institution/last4). A renamed account, or one with institution/last4
+  // filled in, counts as real.
+  const obIsPlaceholderBank = (b) => {
+    const nm = (b.name || "").trim().toLowerCase();
+    const noDetails = !(b.institution || "").trim() && !(b.last4 || "").trim();
+    return nm === "primary checking" && noDetails;
+  };
+  const obHasBank = (bankAccounts||[]).some(b => b.id && b.id !== "default" && (b.name || "").trim() && !obIsPlaceholderBank(b));
   // Durable across reloads: opening balances post journal entries (source "opening_balance").
   const obHasOpening = (openingBalances||[]).length > 0 || (invoices||[]).some(i => i.source === "opening_balance");
   const obHasUpload = !!onboardingUploadDone;

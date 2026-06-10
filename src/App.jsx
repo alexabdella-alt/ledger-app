@@ -4078,12 +4078,18 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                     </button>
                   );
                 })}
-                {/* Notification bell (Item 55) — to the right of the tabs */}
+                {/* Notification bell (Item 55) — clean lucide-style icon, matched to
+                    the Settings gear (muted #6B7280 → #4F46E5 on hover). */}
                 <button onClick={()=>setNotifOpen(o=>!o)} title="Notifications" aria-label="Notifications"
-                  style={{ marginLeft:"auto", position:"relative", height:46, width:46, display:"flex", alignItems:"center", justifyContent:"center", background:"none", border:"none", cursor:"pointer", fontSize:18 }}>
-                  <span style={{ filter: unreadNotifs>0 ? "none" : "grayscale(0.3)", opacity: unreadNotifs>0 ? 1 : 0.7 }}>🔔</span>
+                  style={{ marginLeft:"auto", alignSelf:"center", position:"relative", width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", background: notifOpen?"#EEF2FF":"transparent", border:"none", borderRadius:9, cursor:"pointer", color: notifOpen?"#4F46E5":"#6B7280", transition:"all .15s" }}
+                  onMouseEnter={e=>{ if(!notifOpen){ e.currentTarget.style.background="#F3F4F6"; e.currentTarget.style.color="#4F46E5"; }}}
+                  onMouseLeave={e=>{ if(!notifOpen){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#6B7280"; }}}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink:0 }}>
+                    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                  </svg>
                   {unreadNotifs>0 && (
-                    <span style={{ position:"absolute", top:8, right:6, minWidth:16, height:16, padding:"0 4px", borderRadius:9, background:"#D92D20", color:"#fff", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1 }}>{unreadNotifs>9?"9+":unreadNotifs}</span>
+                    <span style={{ position:"absolute", top:2, right:2, width:16, height:16, borderRadius:"50%", background:"#D92D20", color:"#fff", fontSize:10, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, border:"2px solid #FFFFFF" }}>{unreadNotifs>9?"9":unreadNotifs}</span>
                   )}
                 </button>
               </div>
