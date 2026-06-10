@@ -15,6 +15,13 @@ export default function DashboardView() {
   const [anomExpanded, setAnomExpanded] = React.useState(false); // anomaly card expand/collapse
   const [bizType, setBizType] = React.useState(""); // business-type modal draft
   const [bizFye, setBizFye] = React.useState("12-31");
+  const [accountantNotice, setAccountantNotice] = React.useState(false); // "coming soon" inline message
+
+  // Navigate to a Settings view, then scroll to a specific section once it renders.
+  const goToSection = (view, anchorId) => {
+    setView(view);
+    setTimeout(() => document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
+  };
 
   // ── Onboarding step completion (Item 54) ──
   const obHasBiz = !!(companySettings.name && companySettings.businessType);
@@ -258,11 +265,11 @@ export default function DashboardView() {
               {!companySettings.onboardingComplete && (() => {
                 const steps = [
                   { key:"biz",     done: obHasBiz,     label:"Tell us about your business", hint:"Business type & fiscal year", go:()=>setBusinessModalOpen(true) },
-                  { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Bank & Balances", go:()=>setView("opening-balances") },
-                  { key:"opening", done: obHasOpening, label:"Set your opening balances",   hint:"Settings → Bank & Balances", go:()=>setView("opening-balances") },
+                  { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Bank Accounts",   go:()=>goToSection("settings","bank-accounts-section") },
+                  { key:"opening", done: obHasOpening, label:"Set your opening balances",   hint:"Settings → Opening Balances", go:()=>goToSection("opening-balances","opening-balances-section") },
                   { key:"upload",  done: obHasUpload,  label:"Upload your first document",  hint:"Drag a doc onto the zone below", go:()=>document.getElementById("universal-upload")?.scrollIntoView({behavior:"smooth"}) },
                 ];
-                const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Optional", go:dismissAccountantStep, optional:true };
+                const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Optional", go:()=>{ setAccountantNotice(true); dismissAccountantStep(); }, optional:true };
                 const required = steps.filter(s=>s.done).length;
                 if (obAllDone) {
                   // The effect above persists onboarding_complete after a short delay.
@@ -288,7 +295,12 @@ export default function DashboardView() {
                     <div style={{ fontSize:17, fontWeight:700, color:"#101828" }}>Welcome to Shadow CFO — let's get your books set up</div>
                     <div style={{ fontSize:13, color:"#475467", marginTop:3, marginBottom:6 }}>{required} of {steps.length} done. Knock these out and you're ready to roll.</div>
                     {steps.map(renderStep)}
-                    {!accountantDismissed && renderStep(optional)}
+                    {accountantNotice ? (
+                      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid #F3F4F6" }}>
+                        <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, background:"#EEF2FF", color:"#4F46E5" }}>✦</span>
+                        <div style={{ fontSize:12.5, color:"#475467", lineHeight:1.4 }}>Team invites are coming soon — we'll notify you when this feature is available.</div>
+                      </div>
+                    ) : (!accountantDismissed && renderStep(optional))}
                   </div>
                 );
               })()}

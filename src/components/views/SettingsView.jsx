@@ -112,7 +112,7 @@ export default function SettingsView() {
                 </div>
 
                 {/* Bank accounts */}
-                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16}}>
+                <div id="bank-accounts-section" style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16,scrollMarginTop:16}}>
                   <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:16}}>BANK ACCOUNTS</div>
                   <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
                     {bankAccounts.map(ba=>(
