@@ -2,6 +2,8 @@ import { getAuthHeaders } from "./supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_MODEL, AI_MODEL_FAST, AI_PROXY_URL } from "./constants";
 import { formatProfileForPrompt } from "./clientProfile";
 import { AI_SANDBOX_STATEMENT } from "./aiCapabilities";
+import { fetchLedger } from "./ledger";
+import { AI_TOOLS, executeAITool } from "./aiTools";
 
 // Build a compact live financial snapshot from the full ledger so the AI always
 // answers with REAL numbers (burn, runway, top categories MoM, overdue AR, net).
@@ -111,6 +113,35 @@ function extractActionObjects(text) {
   return out;
 }
 
+// Parse the AI's final text into { reply, actions }. The reply is scrubbed of any
+// leaked action JSON; actions are recovered even from malformed wrapper JSON.
+function parseAIReply(text) {
+  const cleaned = String(text || "").replace(/```json|```/g, "").trim();
+  const result = (reply, actions) => ({ reply: scrubLeakedActionJson(reply), actions: Array.isArray(actions) ? actions : [] });
+
+  // 1. Clean JSON object (the normal case): reply + actions are already separate.
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return result(parsed.reply ?? "", parsed.actions);
+  } catch { /* fall through */ }
+
+  // 2. JSON wrapped in surrounding prose — grab the outermost object and parse it.
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]);
+      if (parsed && typeof parsed === "object" && (parsed.reply != null || parsed.actions != null)) {
+        return result(parsed.reply ?? cleaned.replace(objMatch[0], ""), parsed.actions);
+      }
+    } catch { /* fall through */ }
+  }
+
+  // 3. Malformed JSON: recover the reply string + any action objects individually.
+  const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
+  const replyText = replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : cleaned;
+  return result(replyText, extractActionObjects(cleaned));
+}
+
 // Validate an ai-proxy Response: throw on non-2xx OR an error body, otherwise
 // return the parsed JSON. Use this anywhere a fetch to the proxy is already
 // written so failures surface instead of being parsed as empty results.
@@ -170,7 +201,7 @@ async function classifyIntent(userMessage, recentHistory) {
   }
 }
 
-async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, anomalies, businessType }) {
+async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, anomalies, businessType, supabase, companyId, getAccountByRole, recurring, onToolCall }) {
   // ── 1. Truncate history to last 10 turns (5 user + 5 assistant) ───────────────
   const truncatedHistory = chatHistory.slice(-10);
 
@@ -182,7 +213,9 @@ async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory,
   const needsContacts = intent === "ledger" || intent === "contacts";
   const needsRules    = intent === "ledger" || intent === "rules" || intent === "contacts";
 
-  const ledgerSection = needsLedger
+  // The ledger snapshot is ONLY used by the legacy fallback (when tool-calling is
+  // unavailable). In tool mode the AI queries the database directly via tools.
+  const legacyLedgerSection = needsLedger
     ? `Current Ledger (${invoices.length} entries — showing most recent 80):
 ${invoices.length === 0 ? "Empty." : invoices.slice(0, 80).map(inv =>
   `ID:${inv.id} | ${inv.vendor} | $${inv.amount} | ${inv.date} | GL:${inv.gl_code} ${inv.gl_name} | Project:${inv.project||"General"} | Status:${inv.payment_status||"unpaid"}`
@@ -219,19 +252,36 @@ ${contacts.map(c =>
   const _now = new Date();
   const currentYear = _now.getFullYear();
   const todayStr = _now.toISOString().slice(0, 10);
-  const financials = buildFinancials(invoices, cashBalance);
   const profileBlock = formatProfileForPrompt(clientProfile);
   const anomalyList = Array.isArray(anomalies) ? anomalies : [];
   const anomalyBlock = anomalyList.length
     ? `DETECTED ANOMALIES (${anomalyList.length}) — unusual activity flagged automatically. Proactively raise the HIGH-severity ones when relevant; if the user asks "anything unusual?"/"any anomalies?" give the full rundown:\n${anomalyList.slice(0, 12).map(a => `- [${String(a.severity).toUpperCase()}] ${a.title}: ${a.description}`).join("\n")}`
     : "DETECTED ANOMALIES: none right now — the books look normal.";
-  const systemPrompt = `You are Shadow CFO — a world-class CFO and bookkeeper rolled into one, working for a busy business owner. You don't just answer questions; you watch their money like the CFO of a company you personally care about. You know this business deeply and you tell the owner the truth, in plain English, with real numbers.
+
+  const toolMode = !!(supabase && companyId);
+
+  // Build the system prompt. In tool mode the ledger/financial SNAPSHOTS are
+  // omitted and the AI is told to query the database via tools; the legacy
+  // (no-tools) fallback keeps the snapshots so it can still answer.
+  const buildPrompt = (useTools) => {
+    const financialsText = useTools ? "" : buildFinancials(invoices, cashBalance).text;
+    const ledgerSection = useTools ? "" : legacyLedgerSection;
+    const dataRule = useTools
+      ? `NEVER invent numbers. You have tools to query this company's live database — ALWAYS call the relevant tool(s) to get exact, complete, current figures BEFORE answering any financial question. Never guess, estimate, or answer from memory or a sample.`
+      : `NEVER invent numbers. If you don't have the data, say "I don't have that yet" and tell them how to get it. Only use figures from the snapshot and ledger below.`;
+    const fiSource = useTools
+      ? `Get these by calling the database tools before you answer — never guess.`
+      : `The live figures are in the snapshot below — use them.`;
+    const toolsInstruction = useTools
+      ? `DATABASE TOOLS — you can query this company's live database directly. Tools available: search_transactions, get_category_totals, get_vendor_summary, get_financial_summary, get_overdue_invoices, get_anomalies, get_tax_summary, get_recurring_transactions. ALWAYS call the relevant tool(s) to get exact, complete, current data BEFORE answering any financial question — never guess or estimate from memory or a sample. The tools return COMPLETE data regardless of how many transactions exist. Call as many as you need, then give your final answer in the JSON format described below.\n\n`
+      : ``;
+    return `You are Shadow CFO — a world-class CFO and bookkeeper rolled into one, working for a busy business owner. You don't just answer questions; you watch their money like the CFO of a company you personally care about. You know this business deeply and you tell the owner the truth, in plain English, with real numbers.
 
 WHO YOU ARE & HOW YOU TALK:
 - Talk like a trusted CFO who knows the business cold — direct, confident, warm, zero jargon. If you must use an accounting term, explain it in the same breath.
 - Be specific. Never say "revenue increased" when you can say "revenue increased $4,200 (23%) driven by two new invoices from Acme Corp." Always attach the number, the percentage, and the driver.
 - Be honest, even when it's uncomfortable. If the books look concerning, say so plainly: "Your burn rate gives you about 4 months of runway. That's a problem — here's what I'd do."
-- NEVER invent numbers. If you don't have the data, say "I don't have that yet" and tell them how to get it. Only use figures from the snapshot and ledger below.
+- ${dataRule}
 - Lead with the single most important thing. Keep it tight — busy owners don't read essays.
 
 PROACTIVE INSIGHTS — volunteer these the moment you notice them, even if the owner didn't ask:
@@ -243,9 +293,9 @@ PROACTIVE INSIGHTS — volunteer these the moment you notice them, even if the o
 - A large expense that may need to be capitalized (>$2,500, useful life >1 year) rather than expensed.
 - A vendor that normally appears every month but skipped one (possible service lapse or missed bill).
 
-YOUR FINANCIAL INTELLIGENCE — always stay on top of: current burn rate and runway; the top 5 expense categories this month vs last; overdue invoices and total AR outstanding; upcoming tax deadlines and estimated amounts; whether the books are reconciled; and the difference between cash and accrual (explain it simply only when it actually matters to the answer). The live figures are in the snapshot below — use them.
+YOUR FINANCIAL INTELLIGENCE — always stay on top of: current burn rate and runway; the top 5 expense categories this month vs last; overdue invoices and total AR outstanding; upcoming tax deadlines and estimated amounts; whether the books are reconciled; and the difference between cash and accrual (explain it simply only when it actually matters to the answer). ${fiSource}
 
-${AI_SANDBOX_STATEMENT}
+${toolsInstruction}${AI_SANDBOX_STATEMENT}
 
 RESPONSE FORMAT:
 - Lead with the most important thing first, then the supporting detail.
@@ -262,9 +312,7 @@ ${(chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name}
 Available Projects: ${[...PROJECTS, ...projects].filter((v,i,a) => a.indexOf(v) === i).join(", ")}
 ${businessType ? `\nBUSINESS TYPE: ${businessType}. Tailor your guidance to this kind of business (e.g. SaaS → MRR/runway; Consulting → AR/collections; Restaurant/Retail → COGS/margins).` : ""}
 
-${financials.text}
-
-${anomalyBlock}
+${financialsText ? financialsText + "\n\n" : ""}${anomalyBlock}
 ${profileBlock ? `\n${profileBlock}\n` : ""}
 MEMORY: You have memory of past conversations with this user (shown below as "Recent conversation history"). Reference relevant history naturally when answering questions. If asked what was done previously, answer from the history.
 
@@ -397,47 +445,60 @@ GAAP AWARENESS — maintain proper books but explain simply:
 
 - Always be warm, direct, and confident — you're their CFO, not a compliance officer
 - NEVER use markdown — no asterisks, no bold, no dashes for bullets. Plain sentences only.`;
+  };
 
   // ── 5. Call the main model ────────────────────────────────────────────────────
-  const messages = [
+  const baseMessages = [
     ...truncatedHistory.map(m => ({ role: m.role, content: m.content })),
     { role: "user", content: userMessage }
   ];
 
-  const data = await callAIProxy({ model: AI_MODEL, max_tokens: 4000, system: systemPrompt, messages });
-  const text = data.content?.find(b => b.type === "text")?.text;
-  if (!text) throw new Error("AI returned an empty response. Check that the ai-proxy edge function and model are configured.");
-
-  const cleaned = text.replace(/```json|```/g, "").trim();
-
-  // The reply shown to the user must be PLAIN PROSE only — never any JSON. We always
-  // scrub the reply (brace-balanced, so whole action objects incl. nested chart data
-  // are removed) and keep actions strictly in the separate array.
-  const result = (reply, actions) => ({ reply: scrubLeakedActionJson(reply), actions: Array.isArray(actions) ? actions : [] });
-
-  // 1. Clean JSON object (the normal case): reply + actions are already separate.
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return result(parsed.reply ?? "", parsed.actions);
-  } catch { /* fall through */ }
-
-  // 2. JSON wrapped in surrounding prose — grab the outermost object and parse it.
-  const objMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (objMatch) {
+  // ── 5a. Tool-calling path (industry standard): the AI queries the DB directly ──
+  if (toolMode) {
     try {
-      const parsed = JSON.parse(objMatch[0]);
-      if (parsed && typeof parsed === "object" && (parsed.reply != null || parsed.actions != null)) {
-        return result(parsed.reply ?? cleaned.replace(objMatch[0], ""), parsed.actions);
+      let _ledger = null;
+      const ctx = {
+        supabase, companyId, chartOfAccounts, getAccountByRole, cashBalance, anomalies, recurring,
+        getLedger: async () => { if (!_ledger) _ledger = await fetchLedger(supabase, companyId, chartOfAccounts); return _ledger; },
+      };
+      const systemPrompt = buildPrompt(true);
+      const messages = baseMessages.map(m => ({ ...m }));
+      let lastText = "";
+      // Loop: call → if tool_use, execute tools and feed results back → repeat → final text.
+      for (let turn = 0; turn < 6; turn++) {
+        const data = await callAIProxy({ model: AI_MODEL, max_tokens: 4000, system: systemPrompt, messages, tools: AI_TOOLS });
+        const blocks = Array.isArray(data.content) ? data.content : [];
+        const tb = [...blocks].reverse().find(b => b.type === "text");
+        if (tb?.text) lastText = tb.text;
+        const toolUses = blocks.filter(b => b.type === "tool_use");
+        if (data.stop_reason === "tool_use" && toolUses.length) {
+          messages.push({ role: "assistant", content: blocks });
+          const toolResults = [];
+          for (const tu of toolUses) {
+            let out;
+            try { if (onToolCall) onToolCall(tu.name, tu.input || {}); out = await executeAITool(tu.name, tu.input || {}, ctx); }
+            catch (e) { out = { error: String(e?.message || e) }; }
+            toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out).slice(0, 50000) });
+          }
+          messages.push({ role: "user", content: toolResults });
+          continue;
+        }
+        if (!lastText) throw new Error("Empty tool-loop response");
+        return parseAIReply(lastText);
       }
-    } catch { /* fall through */ }
+      return parseAIReply(lastText || "");
+    } catch (e) {
+      // Backwards-compatible fallback: if anything in the tool path fails, fall back
+      // to the legacy single call with the ledger snapshot baked into the prompt.
+      console.warn("[ai] tool path failed, falling back to ledger snapshot:", e?.message || e);
+    }
   }
 
-  // 3. Malformed JSON: recover the reply string by regex AND recover any action
-  //    objects individually (so charts/CSVs still render even when the wrapper JSON
-  //    is broken). The scrubber then strips the leaked JSON from the displayed text.
-  const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
-  const replyText = replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : cleaned;
-  return result(replyText, extractActionObjects(cleaned));
+  // ── 5b. Legacy single-call path (no tools; ledger + financial snapshot in prompt) ──
+  const data = await callAIProxy({ model: AI_MODEL, max_tokens: 4000, system: buildPrompt(false), messages: baseMessages });
+  const text = data.content?.find(b => b.type === "text")?.text;
+  if (!text) throw new Error("AI returned an empty response. Check that the ai-proxy edge function and model are configured.");
+  return parseAIReply(text);
 }
 
 export { classifyIntent, runAIBrain, callAIProxy, okAIResponse };

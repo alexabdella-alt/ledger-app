@@ -9,6 +9,7 @@ import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile
 import { isAllowedAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
+import { flattenJournalEntries } from "./lib/ledger";
 import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
@@ -717,72 +718,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         .limit(500);
 
       if (entries) {
-        const mapped = [];
-        entries.forEach(e => {
-          const lines = e.journal_entry_lines || [];
-          const vendor = e.description?.split(" – ")[0] || e.description;
-          // Find the primary P&L line for display (first debit or revenue line)
-          const primaryDebit = lines.find(l => l.debit > 0);
-          const primaryCredit = lines.find(l => l.credit > 0);
-
-          if (lines.length <= 2) {
-            // Simple two-line entry — map as single invoice row (backward compat)
-            const debitLine = primaryDebit;
-            const creditLine = primaryCredit;
-            mapped.push({
-              id: e.id, vendor, description: e.description,
-              amount: debitLine?.debit || creditLine?.credit || 0,
-              date: e.entry_date,
-              type: debitLine?.accounts?.code?.startsWith("4") ? "revenue" : "expense",
-              gl_code: debitLine?.accounts?.code || creditLine?.accounts?.code,
-              gl_name: debitLine?.accounts?.name || creditLine?.accounts?.name,
-              secondary_gl_code: creditLine?.accounts?.code,
-              secondary_gl_name: creditLine?.accounts?.name,
-              debit_credit: debitLine ? "debit" : "credit",
-              status: "booked", booked_at: e.created_at, source: e.source,
-              payment_status: e.payment_status || "unpaid",
-              approval_status: e.approval_status || undefined,
-              approved_at: e.approved_at || undefined,
-              approved_by: e.approved_by || undefined,
-              rejected_at: e.rejected_at || undefined,
-              rejection_reason: e.rejection_reason || undefined,
-              payment_method_used: e.payment_method || undefined,
-              payment_reference: e.payment_reference || undefined,
-              payment_notes: e.payment_notes || undefined,
-              paid_at: e.paid_at || undefined,
-              due_date: e.due_date || undefined,
-              confidence: e.ai_confidence ?? 99,
-              reasoning: e.ai_reasoning || "Loaded from database",
-              db_entry_id: e.id
-            });
-          } else {
-            // Multi-line entry (e.g. lease commencement, payroll) — expand each line
-            lines.forEach((l, li) => {
-              const isDebit = l.debit > 0;
-              const amount = isDebit ? l.debit : l.credit;
-              if (amount === 0) return;
-              const code = l.accounts?.code;
-              const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === code);
-              mapped.push({
-                id: `${e.id}_${li}`, vendor, description: e.description,
-                amount,
-                date: e.entry_date,
-                type: acctDef?.category === "Revenue" ? "revenue" : "expense",
-                gl_code: code,
-                gl_name: l.accounts?.name,
-                secondary_gl_code: isDebit ? primaryCredit?.accounts?.code : primaryDebit?.accounts?.code,
-                secondary_gl_name: isDebit ? primaryCredit?.accounts?.name : primaryDebit?.accounts?.name,
-                debit_credit: isDebit ? "debit" : "credit",
-                status: "booked", booked_at: e.created_at, source: e.source,
-                payment_status: "unpaid",
-                confidence: e.ai_confidence ?? 99,
-                reasoning: e.ai_reasoning || "Loaded from database",
-                db_entry_id: e.id,
-                balance_sheet_account: ["Assets","Liabilities","Equity"].includes(acctDef?.category),
-              });
-            });
-          }
-        });
+        // Flatten via the shared single-source-of-truth mapper (src/lib/ledger.js),
+        // the same one the AI tool layer uses, so the two can never diverge.
+        const mapped = flattenJournalEntries(entries, CHART_OF_ACCOUNTS);
         setInvoices(mapped);
       }
 
@@ -3556,7 +3494,14 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       // Memory: last 20 persisted turns (with their actions + timestamps) for the system prompt.
       const memory = chatHistory.filter(m => m.id !== 0).slice(-20)
         .map(m => ({ role: m.role, content: m.content, actions: m.actions || [], created_at: m.created_at }));
-      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts, chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance, anomalies, businessType: companySettings.businessType });
+      const result = await runAIBrain({
+        userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts,
+        chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance, anomalies,
+        businessType: companySettings.businessType,
+        // Function-calling: give the AI direct, RLS-scoped database access via tools.
+        supabase, companyId: currentCompany?.id, getAccountByRole, recurring,
+        onToolCall: (name, params) => { try { logAI("ai_tool_call", `AI called tool: ${name} with params: ${JSON.stringify(params)}`); } catch {} },
+      });
 
       // Execute actions
       let actionSummary = [];

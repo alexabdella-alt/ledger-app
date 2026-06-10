@@ -48,7 +48,10 @@ serve(async (req) => {
       }
     }
 
-    // 3. Forward the (unchanged) Anthropic Messages payload.
+    // 3. Forward the (unchanged) Anthropic Messages payload. This is a transparent
+    //    pass-through, so it already supports function calling: a `tools` array in
+    //    the request body is forwarded to Anthropic, and any `tool_use` content
+    //    blocks (and the `stop_reason`) come straight back to the client unmodified.
     const body = await req.text();
     const upstream = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
