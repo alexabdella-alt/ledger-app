@@ -170,7 +170,7 @@ async function classifyIntent(userMessage, recentHistory) {
   }
 }
 
-async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance }) {
+async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, anomalies, businessType }) {
   // ── 1. Truncate history to last 10 turns (5 user + 5 assistant) ───────────────
   const truncatedHistory = chatHistory.slice(-10);
 
@@ -221,6 +221,10 @@ ${contacts.map(c =>
   const todayStr = _now.toISOString().slice(0, 10);
   const financials = buildFinancials(invoices, cashBalance);
   const profileBlock = formatProfileForPrompt(clientProfile);
+  const anomalyList = Array.isArray(anomalies) ? anomalies : [];
+  const anomalyBlock = anomalyList.length
+    ? `DETECTED ANOMALIES (${anomalyList.length}) — unusual activity flagged automatically. Proactively raise the HIGH-severity ones when relevant; if the user asks "anything unusual?"/"any anomalies?" give the full rundown:\n${anomalyList.slice(0, 12).map(a => `- [${String(a.severity).toUpperCase()}] ${a.title}: ${a.description}`).join("\n")}`
+    : "DETECTED ANOMALIES: none right now — the books look normal.";
   const systemPrompt = `You are Shadow CFO — a world-class CFO and bookkeeper rolled into one, working for a busy business owner. You don't just answer questions; you watch their money like the CFO of a company you personally care about. You know this business deeply and you tell the owner the truth, in plain English, with real numbers.
 
 WHO YOU ARE & HOW YOU TALK:
@@ -256,8 +260,11 @@ Chart of Accounts:
 ${(chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name} (${a.category})`).join("\n")}
 
 Available Projects: ${[...PROJECTS, ...projects].filter((v,i,a) => a.indexOf(v) === i).join(", ")}
+${businessType ? `\nBUSINESS TYPE: ${businessType}. Tailor your guidance to this kind of business (e.g. SaaS → MRR/runway; Consulting → AR/collections; Restaurant/Retail → COGS/margins).` : ""}
 
 ${financials.text}
+
+${anomalyBlock}
 ${profileBlock ? `\n${profileBlock}\n` : ""}
 MEMORY: You have memory of past conversations with this user (shown below as "Recent conversation history"). Reference relevant history naturally when answering questions. If asked what was done previously, answer from the history.
 

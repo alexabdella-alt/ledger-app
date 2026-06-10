@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findDuplicate, detectRecurringPatterns, normVendor, toCSV } from "../src/lib/insights.js";
+import { findDuplicate, detectRecurringPatterns, normVendor, toCSV, runAnomalyDetection } from "../src/lib/insights.js";
 
 // ── Item 10: duplicate detection ───────────────────────────────────────────
 describe("findDuplicate", () => {
@@ -73,6 +73,55 @@ describe("detectRecurringPatterns", () => {
   it("ignores amounts that vary by more than 10%", () => {
     const varying = [mk("Spiky", 100, "2026-04-01"), mk("Spiky", 200, "2026-05-01"), mk("Spiky", 100, "2026-06-01")];
     expect(detectRecurringPatterns(varying, [], now)).toHaveLength(0);
+  });
+});
+
+// ── Item 32: anomaly detection ─────────────────────────────────────────────
+describe("runAnomalyDetection", () => {
+  const now = new Date("2026-06-15");
+  const mk = (id, vendor, amount, date, gl_code = "6500", extra = {}) => ({ id, vendor, amount, date, gl_code, gl_name: "Technology & Software", status: "posted", ...extra });
+
+  it("flags a vendor spike (latest ≥ 2× the average)", () => {
+    const out = runAnomalyDetection([
+      mk(1, "AWS", 297, "2026-04-10"),
+      mk(2, "AWS", 305, "2026-05-10"),
+      mk(3, "AWS", 892, "2026-06-10"), // ~3× baseline
+    ], [], now);
+    const a = out.find(x => x.type === "vendor_spike");
+    expect(a).toBeTruthy();
+    expect(a.severity).toBe("high");
+    expect(a.invoice_ids).toContain(3);
+  });
+
+  it("flags a large single transaction not capitalized, but not one on an asset account", () => {
+    const out = runAnomalyDetection([
+      mk(1, "Dell", 4200, "2026-06-01"),                 // large expense → flagged
+      mk(2, "Dell", 9000, "2026-06-02", "1500"),         // asset (capitalized) → not flagged
+    ], [], now);
+    const large = out.filter(x => x.type === "large_transaction");
+    expect(large).toHaveLength(1);
+    expect(large[0].invoice_ids).toContain(1);
+  });
+
+  it("flags round-number amounts as low severity", () => {
+    const out = runAnomalyDetection([mk(1, "Estimate Co", 2000, "2026-06-01")], [], now);
+    const r = out.find(x => x.type === "round_number");
+    expect(r?.severity).toBe("low");
+  });
+
+  it("returns nothing for normal, varied activity", () => {
+    const out = runAnomalyDetection([
+      mk(1, "Cafe", 12.4, "2026-06-01"),
+      mk(2, "Office Depot", 47.9, "2026-06-03"),
+    ], [], now);
+    expect(out).toHaveLength(0);
+  });
+
+  it("orders results by severity (high first)", () => {
+    const out = runAnomalyDetection([
+      mk(1, "AWS", 100, "2026-04-10"), mk(2, "AWS", 100, "2026-05-10"), mk(3, "AWS", 3000, "2026-06-10"),
+    ], [], now);
+    if (out.length > 1) expect(out[0].severity).toBe("high");
   });
 });
 

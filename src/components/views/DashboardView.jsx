@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
@@ -7,10 +8,29 @@ import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import ClarificationFlow from "../ClarificationFlow";
 
 export default function DashboardView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   const [dashDrill, setDashDrill] = React.useState(null); // unified dashboard drill-down
+  const [anomExpanded, setAnomExpanded] = React.useState(false); // anomaly card expand/collapse
+  const [bizType, setBizType] = React.useState(""); // business-type modal draft
+  const [bizFye, setBizFye] = React.useState("12-31");
+
+  // ── Onboarding step completion (Item 54) ──
+  const obHasBiz = !!(companySettings.name && companySettings.businessType);
+  const obHasBank = (bankAccounts||[]).some(b => b.id && b.id !== "default");
+  // Durable across reloads: opening balances post journal entries (source "opening_balance").
+  const obHasOpening = (openingBalances||[]).length > 0 || (invoices||[]).some(i => i.source === "opening_balance");
+  const obHasUpload = !!onboardingUploadDone;
+  const obAllDone = obHasBiz && obHasBank && obHasOpening && obHasUpload;
+  // When everything's done, show the success card briefly, then persist completion.
+  React.useEffect(() => {
+    if (!companySettings.onboardingComplete && obAllDone && completeOnboarding) {
+      const t = setTimeout(() => completeOnboarding(), 2500);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obAllDone, companySettings.onboardingComplete]);
   const [feedCount, setFeedCount] = React.useState(20); // activity feed page size
   const [showCommit, setShowCommit] = React.useState(false); // active commitments expander
   const [apPayId, setApPayId] = React.useState(null); // inline "mark paid" row in the AP drill
@@ -225,6 +245,75 @@ export default function DashboardView() {
 
   return (
             <div>
+              {/* ── ONBOARDING CHECKLIST (Item 54) ── */}
+              {!companySettings.onboardingComplete && (() => {
+                const steps = [
+                  { key:"biz",     done: obHasBiz,     label:"Tell us about your business", hint:"Business type & fiscal year", go:()=>setBusinessModalOpen(true) },
+                  { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Bank & Balances", go:()=>setView("opening-balances") },
+                  { key:"opening", done: obHasOpening, label:"Set your opening balances",   hint:"Settings → Bank & Balances", go:()=>setView("opening-balances") },
+                  { key:"upload",  done: obHasUpload,  label:"Upload your first document",  hint:"Drag a doc onto the zone below", go:()=>document.getElementById("universal-upload")?.scrollIntoView({behavior:"smooth"}) },
+                ];
+                const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Optional", go:dismissAccountantStep, optional:true };
+                const required = steps.filter(s=>s.done).length;
+                if (obAllDone) {
+                  // The effect above persists onboarding_complete after a short delay.
+                  return (
+                    <div style={{ background:"#ECFDF5", border:"1px solid #A6F4C5", borderRadius:14, padding:"18px 20px", marginBottom:20, display:"flex", alignItems:"center", gap:12 }}>
+                      <span style={{ width:30, height:30, borderRadius:"50%", background:"#039855", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>✓</span>
+                      <div style={{ fontSize:14, fontWeight:600, color:"#101828" }}>You're all set! Your books are ready.</div>
+                    </div>
+                  );
+                }
+                const renderStep = (s) => (
+                  <div key={s.key} onClick={()=>{ if(!s.done) s.go && s.go(); }} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid #F3F4F6", cursor:s.done?"default":"pointer" }}>
+                    <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, background:s.done?"#039855":"#FFFFFF", color:s.done?"#fff":"#98A2B3", border:s.done?"none":"2px solid #D0D5DD" }}>{s.done?"✓":""}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13.5, fontWeight:500, color:s.done?"#98A2B3":"#101828", textDecoration:s.done?"line-through":"none" }}>{s.label}{s.optional?" (optional)":""}</div>
+                      <div style={{ fontSize:11.5, color:"#98A2B3", marginTop:1 }}>{s.hint}</div>
+                    </div>
+                    {!s.done && <span style={{ fontSize:13, color:"#4F46E5", fontWeight:600 }}>{s.optional?"Dismiss":"Set up →"}</span>}
+                  </div>
+                );
+                return (
+                  <div style={{ background:"#FFFFFF", border:"1px solid #C7D2FE", borderRadius:16, padding:"20px 22px", marginBottom:20 }}>
+                    <div style={{ fontSize:17, fontWeight:700, color:"#101828" }}>Welcome to Shadow CFO — let's get your books set up</div>
+                    <div style={{ fontSize:13, color:"#475467", marginTop:3, marginBottom:6 }}>{required} of {steps.length} done. Knock these out and you're ready to roll.</div>
+                    {steps.map(renderStep)}
+                    {!accountantDismissed && renderStep(optional)}
+                  </div>
+                );
+              })()}
+
+              {/* ── BUSINESS-TYPE MODAL (Item 54.5) — portaled to body to escape the
+                   .sc-rise transform's containing-block trap ── */}
+              {businessModalOpen && createPortal((
+                <div onClick={()=>setBusinessModalOpen(false)} style={{ position:"fixed", inset:0, zIndex:1002, background:"rgba(16,24,40,0.45)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+                  <div onClick={e=>e.stopPropagation()} style={{ background:"#FFFFFF", borderRadius:16, width:420, maxWidth:"100%", boxShadow:"0 20px 60px rgba(16,24,40,0.25)", overflow:"hidden" }}>
+                    <div style={{ padding:"18px 22px", borderBottom:"1px solid #F3F4F6", fontSize:16, fontWeight:700, color:"#101828" }}>Tell us about your business</div>
+                    <div style={{ padding:"20px 22px" }}>
+                      <label style={{ fontSize:12, fontWeight:600, color:"#475467", display:"block", marginBottom:6 }}>Business type</label>
+                      <select value={bizType||companySettings.businessType||""} onChange={e=>setBizType(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #D0D5DD", fontSize:14, color:"#101828", background:"#fff", marginBottom:16 }}>
+                        <option value="">Select…</option>
+                        {["SaaS/Software","Consulting/Services","Restaurant/Food","Retail","Construction","Healthcare","Real Estate","Other"].map(t=><option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <label style={{ fontSize:12, fontWeight:600, color:"#475467", display:"block", marginBottom:6 }}>Fiscal year end</label>
+                      <select value={bizFye||companySettings.fiscalYearEnd||"12-31"} onChange={e=>setBizFye(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #D0D5DD", fontSize:14, color:"#101828", background:"#fff" }}>
+                        <option value="12-31">December 31</option>
+                        <option value="03-31">March 31</option>
+                        <option value="06-30">June 30</option>
+                        <option value="09-30">September 30</option>
+                      </select>
+                    </div>
+                    <div style={{ padding:"0 22px 20px", display:"flex", gap:10, justifyContent:"flex-end" }}>
+                      <button onClick={()=>setBusinessModalOpen(false)} style={{ padding:"9px 16px", borderRadius:9, fontSize:13, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#475467", cursor:"pointer" }}>Cancel</button>
+                      <button onClick={()=>saveBusinessProfile({ businessType: bizType||companySettings.businessType||"Other", fiscalYearEnd: bizFye||companySettings.fiscalYearEnd||"12-31" })}
+                        disabled={!(bizType||companySettings.businessType)}
+                        style={{ padding:"9px 18px", borderRadius:9, fontSize:13, fontWeight:600, color:"#fff", background:(bizType||companySettings.businessType)?"#4F46E5":"#C7D2FE", border:"none", cursor:(bizType||companySettings.businessType)?"pointer":"default" }}>Save</button>
+                    </div>
+                  </div>
+                </div>
+              ), document.body)}
+
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
               <style>{`
                 .sc-dropzone{ transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
@@ -513,6 +602,43 @@ export default function DashboardView() {
                         <div style={{ fontSize:12, color:"#667085", marginTop:8 }}>{c.sub}</div>
                       </div>
                     ))}
+                  </div>
+                );
+              })()}
+
+              {/* ── ANOMALY DETECTION (Item 32) — below the metric cards ── */}
+              {Array.isArray(anomalies) && anomalies.length > 0 && (() => {
+                const SEV = { high:{ c:"#D92D20", bg:"#FEF3F2", b:"#FDA29B" }, medium:{ c:"#DC6803", bg:"#FFFAEB", b:"#FEDF89" }, low:{ c:"#2E90FA", bg:"#EFF8FF", b:"#B2DDFF" } };
+                const openTxn = (a) => { const inv=(invoices||[]).find(i=>String(i.id)===String((a.invoice_ids||[])[0])); if(inv){ setReturnTo && setReturnTo({view:"home"}); setSelectedInvoice(inv); setView("detail"); } else { setView("books"); } };
+                return (
+                  <div style={{ background:"#FFFAEB", border:"1px solid #FEDF89", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
+                    <div onClick={()=>setAnomExpanded(v=>!v)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+                      <div style={{ fontSize:13.5, fontWeight:600, color:"#B54708" }}>⚠ {anomalies.length} unusual {anomalies.length===1?"pattern":"patterns"} detected</div>
+                      <span style={{ fontSize:12, color:"#B54708", fontWeight:600 }}>{anomExpanded?"Hide ▲":"Review ▼"}</span>
+                    </div>
+                    {anomExpanded && (
+                      <div style={{ borderTop:"1px solid #FEDF89", background:"#FFFFFF" }}>
+                        {anomalies.map(a => {
+                          const sev = SEV[a.severity] || SEV.low;
+                          return (
+                            <div key={a.id} style={{ display:"flex", gap:12, padding:"13px 18px", borderBottom:"1px solid #F3F4F6" }}>
+                              <div style={{ width:4, borderRadius:3, background:sev.c, flexShrink:0 }} />
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                                  <span style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, color:sev.c, background:sev.bg, border:`1px solid ${sev.b}`, borderRadius:6, padding:"1px 7px", textTransform:"uppercase" }}>{a.severity}</span>
+                                  <span style={{ fontSize:13, fontWeight:600, color:"#101828" }}>{a.title}</span>
+                                </div>
+                                <div style={{ fontSize:12, color:"#475467", marginTop:4, lineHeight:1.5 }}>{a.description}</div>
+                                <div style={{ display:"flex", gap:14, marginTop:7 }}>
+                                  {(a.invoice_ids||[]).length>0 && <button onClick={()=>openTxn(a)} style={{ fontSize:12, fontWeight:600, color:"#4F46E5", background:"none", border:"none", cursor:"pointer", padding:0 }}>View transaction →</button>}
+                                  <button onClick={()=>dismissAnomaly(a.id)} style={{ fontSize:12, color:"#98A2B3", background:"none", border:"none", cursor:"pointer", padding:0 }}>Dismiss</button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })()}

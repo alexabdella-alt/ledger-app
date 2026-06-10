@@ -116,3 +116,141 @@ export function downloadCSV(filename, headers, rows) {
     return false;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Anomaly detection — proactively surface unusual financial activity. Pure: runs
+// against the loaded invoices array (no DB). Returns anomalies with DETERMINISTIC
+// ids so a dismissed one (stored in localStorage) doesn't keep reappearing.
+//   { id, type, severity: "high"|"medium"|"low", title, description, invoice_ids, detected_at }
+// ─────────────────────────────────────────────────────────────────────────────
+export function runAnomalyDetection(invoices, recurring = [], now = new Date()) {
+  const money = n => "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
+  const daysAgo = d => (now - new Date(d)) / 86400000;
+  const within = (d, days) => { const x = daysAgo(d); return x >= 0 && x <= days; };
+  const out = [];
+  const push = a => out.push({ detected_at: now.toISOString(), invoice_ids: [], ...a });
+
+  const expenses = (invoices || []).filter(i => isLive(i) && i.date && isExpenseCode(i.gl_code) && (Number(i.amount) > 0));
+
+  // Group recent expenses by normalized vendor (used by spike / rapid / missing).
+  const byVendor = {};
+  for (const i of expenses.filter(x => within(x.date, 95))) {
+    const k = normVendor(i.vendor);
+    if (k) (byVendor[k] = byVendor[k] || []).push(i);
+  }
+  const sortByDate = list => [...list].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // 1. Vendor spike — latest charge ≥ 2× the vendor's recent average.
+  for (const [k, list] of Object.entries(byVendor)) {
+    if (list.length < 2) continue;
+    const s = sortByDate(list);
+    const latest = s[s.length - 1];
+    const others = s.slice(0, -1);
+    const baseline = others.reduce((t, i) => t + (Number(i.amount) || 0), 0) / others.length;
+    const amt = Number(latest.amount) || 0;
+    if (baseline > 0 && amt >= 2 * baseline && within(latest.date, 40)) {
+      const x = (amt / baseline).toFixed(1);
+      push({ id: `vendor_spike:${k}:${latest.id}`, type: "vendor_spike", severity: "high",
+        title: `${latest.vendor} charged ${money(amt)} — ${x}× usual`,
+        description: `${latest.vendor} normally runs about ${money(baseline)}; this charge is ${x}× that. Worth a look.`,
+        invoice_ids: [latest.id] });
+    }
+  }
+
+  // 2. Duplicate payment — reuse findDuplicate (same vendor + amount within 7 days).
+  const seen = new Set();
+  for (const i of expenses) {
+    const dup = findDuplicate(i, expenses.filter(x => String(x.id) !== String(i.id)));
+    if (!dup) continue;
+    const key = [String(i.id), String(dup.id)].sort().join("-");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    push({ id: `dup:${key}`, type: "duplicate_payment", severity: "high",
+      title: `Possible duplicate payment to ${i.vendor}`,
+      description: `Two charges to ${i.vendor} for ${money(i.amount)} within a week — could be a double payment.`,
+      invoice_ids: [i.id, dup.id] });
+  }
+
+  // 3. Unusual category — this month ≥ 50% above the prior-months average.
+  const catMonth = {};
+  for (const i of expenses.filter(x => within(x.date, 130))) {
+    const cat = i.gl_name || String(i.gl_code || "");
+    const m = String(i.date).slice(0, 7);
+    catMonth[cat] = catMonth[cat] || {};
+    catMonth[cat][m] = (catMonth[cat][m] || 0) + (Number(i.amount) || 0);
+  }
+  const thisMonth = now.toISOString().slice(0, 7);
+  for (const [cat, months] of Object.entries(catMonth)) {
+    const cur = months[thisMonth] || 0;
+    const priors = Object.entries(months).filter(([m]) => m < thisMonth).map(([, v]) => v);
+    if (cur <= 0 || priors.length < 1) continue;
+    const avg = priors.reduce((t, v) => t + v, 0) / priors.length;
+    if (avg > 0 && cur >= 1.5 * avg) {
+      push({ id: `category_spike:${cat}:${thisMonth}`, type: "category_spike", severity: "medium",
+        title: `${cat} is running high this month`,
+        description: `${cat} is ${money(cur)} this month vs a ${money(avg)} monthly average — about ${Math.round((cur / avg - 1) * 100)}% higher.`,
+        invoice_ids: [] });
+    }
+  }
+
+  // 4. Missing recurring — a roughly-monthly vendor that's gone quiet 35+ days.
+  for (const [k, list] of Object.entries(byVendor)) {
+    if (list.length < 2) continue;
+    const s = sortByDate(list);
+    const gaps = [];
+    for (let j = 1; j < s.length; j++) gaps.push((new Date(s[j].date) - new Date(s[j - 1].date)) / 86400000);
+    const monthly = gaps.length && gaps.every(g => g >= 25 && g <= 40);
+    const last = s[s.length - 1];
+    const age = daysAgo(last.date);
+    if (monthly && age >= 35) {
+      push({ id: `missing_recurring:${k}`, type: "missing_recurring", severity: "medium",
+        title: `${last.vendor} hasn't charged you in ${Math.round(age)} days`,
+        description: `${last.vendor} usually bills about monthly, but the last charge was ${Math.round(age)} days ago — a missed bill or a cancelled service?`,
+        invoice_ids: [last.id] });
+    }
+  }
+
+  // 5. Large single transaction (> $2,500, not capitalized).
+  const isCapitalized = i => String(i.gl_code || "")[0] === "1" || i.needs_depreciation || i.capitalized;
+  for (const i of expenses.filter(x => within(x.date, 95))) {
+    const amt = Number(i.amount) || 0;
+    if (amt > 2500 && !isCapitalized(i)) {
+      push({ id: `large_txn:${i.id}`, type: "large_transaction", severity: "medium",
+        title: `Large charge: ${money(amt)} to ${i.vendor}`,
+        description: `${money(amt)} to ${i.vendor} on ${String(i.date)}. If it's equipment or software lasting over a year, it may need to be capitalized rather than expensed.`,
+        invoice_ids: [i.id] });
+    }
+  }
+
+  // 6. Round number — exact multiple of $1,000 (possible estimate, not an actual).
+  for (const i of expenses.filter(x => within(x.date, 95))) {
+    const amt = Number(i.amount) || 0;
+    if (amt >= 1000 && amt % 1000 === 0) {
+      push({ id: `round:${i.id}`, type: "round_number", severity: "low",
+        title: `Round amount: ${money(amt)} to ${i.vendor}`,
+        description: `${money(amt)} is an exact round number — sometimes that means an estimate was booked instead of the actual amount.`,
+        invoice_ids: [i.id] });
+    }
+  }
+
+  // 7. Rapid sequential — 3+ charges from the same vendor within 48 hours.
+  for (const [k, list] of Object.entries(byVendor)) {
+    if (list.length < 3) continue;
+    const s = sortByDate(list);
+    for (let a = 0; a < s.length; a++) {
+      const windowItems = s.filter(x => { const h = (new Date(x.date) - new Date(s[a].date)) / 3600000; return h >= 0 && h <= 48; });
+      if (windowItems.length >= 3) {
+        const tot = windowItems.reduce((t, x) => t + (Number(x.amount) || 0), 0);
+        push({ id: `rapid:${k}:${s[a].id}`, type: "rapid_sequential", severity: "medium",
+          title: `${windowItems.length} charges from ${s[a].vendor} in 48 hours`,
+          description: `${windowItems.length} separate charges from ${s[a].vendor} within two days, totaling ${money(tot)}.`,
+          invoice_ids: windowItems.map(x => x.id) });
+        break;
+      }
+    }
+  }
+
+  const rank = { high: 0, medium: 1, low: 2 };
+  out.sort((a, b) => rank[a.severity] - rank[b.severity]);
+  return out.slice(0, 25);
+}

@@ -7,7 +7,8 @@ import { initials, vendorColor } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse } from "./lib/ai";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
 import { isAllowedAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
-import { findDuplicate, detectRecurringPatterns } from "./lib/insights";
+import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
+import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
@@ -455,6 +456,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     defaultARAccount: "1100",
     currency: "USD",
     logoBase64: null,
+    businessType: "",          // SaaS | Consulting | Restaurant | ... (migration 025)
+    onboardingComplete: false, // hides the Home onboarding checklist when true
   });
 
   // ── CHART OF ACCOUNTS (customizable, loaded from Supabase via useAccounts) ───
@@ -687,6 +690,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     if (recurringScanTimer.current) { clearTimeout(recurringScanTimer.current); recurringScanTimer.current = null; }
     setRecurringSuggestions([]);
     dismissedRecurringRef.current = new Set();
+    // Anomalies, notifications, onboarding UI
+    setAnomalies([]);
+    setNotifications([]); setNotifOpen(false);
+    setOnboardingUploadDone(false); setBusinessModalOpen(false);
   };
 
   // ── SUPABASE DATA LOADING ──────────────────────────────────
@@ -812,7 +819,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           defaultCashAccount: co.default_cash_account||"1000",
           defaultAPAccount: co.default_ap_account||rc("accounts_payable"),
           defaultARAccount: co.default_ar_account||rc("accounts_receivable"),
-          currency: co.currency||"USD", logoBase64: null
+          currency: co.currency||"USD", logoBase64: null,
+          businessType: co.business_type||"",
+          onboardingComplete: !!co.onboarding_complete,
         });
       }
 
@@ -903,6 +912,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
       // Load this company's learned AI profile (defensive — table may be absent).
       clientProfileRef.current = await loadClientProfile(supabase, cid);
+
+      // Onboarding: has at least one upload ever completed? (upload_log, migration 019)
+      try {
+        const { data: ul } = await supabase.from("upload_log")
+          .select("id").eq("company_id", cid).eq("status", "done").limit(1);
+        setOnboardingUploadDone(Array.isArray(ul) && ul.length > 0);
+      } catch { /* table may be absent */ }
+
+      // Load persisted notifications (defensive). Anomaly scanning + notification
+      // generation are driven by effects below (so they read fresh state, not stale refs).
+      await loadNotifications(cid);
 
     } catch(e) { console.error("loadAllData error:", e); }
   };
@@ -1064,7 +1084,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   };
   const scheduleRecurringScan = () => {
     if (recurringScanTimer.current) clearTimeout(recurringScanTimer.current);
-    recurringScanTimer.current = setTimeout(runRecurringScan, 3000);
+    recurringScanTimer.current = setTimeout(() => { runRecurringScan(); runAnomalyScan(); }, 3000);
   };
   // "Yes, set it up" → create the recurring entry + feed the pattern back into the profile.
   const acceptRecurringSuggestion = (s) => {
@@ -1091,6 +1111,150 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     if (!remindLater) dismissedRecurringRef.current.add(s.vendorKey);
     setRecurringSuggestions(prev => prev.filter(x => x.vendorKey !== s.vendorKey));
   };
+
+  // ── ANOMALY DETECTION (Item 32) ─────────────────────────────────────────────
+  // Runs on the loaded invoices after load + after every booking. Dismissed ids
+  // persist in localStorage (per company) so they don't keep reappearing.
+  const [anomalies, setAnomalies] = useState([]);
+  const dismissedAnomKey = () => `cfai_dismissed_anomalies_${currentCompany?.id || "x"}`;
+  const getDismissedAnoms = () => { try { return new Set(JSON.parse(localStorage.getItem(dismissedAnomKey()) || "[]")); } catch { return new Set(); } };
+  const runAnomalyScan = () => {
+    try {
+      const dismissed = getDismissedAnoms();
+      const found = runAnomalyDetection(invoicesRef.current, recurringRef.current).filter(a => !dismissed.has(a.id));
+      setAnomalies(found);
+    } catch (e) { console.warn("[anomaly] scan failed:", e?.message || e); }
+  };
+  const dismissAnomaly = (id) => {
+    try {
+      const d = getDismissedAnoms(); d.add(id);
+      localStorage.setItem(dismissedAnomKey(), JSON.stringify([...d]));
+    } catch {}
+    setAnomalies(prev => prev.filter(a => a.id !== id));
+  };
+
+  // ── NOTIFICATIONS (Item 55) ─────────────────────────────────────────────────
+  const [notifications, setNotifications] = useState([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const unreadNotifs = notifications.filter(n => !n.read).length;
+  const loadNotifications = async (companyId) => {
+    const cid = companyId || currentCompany?.id;
+    if (!cid) return;
+    try {
+      const { data } = await supabase.from("notifications")
+        .select("*").eq("company_id", cid).eq("dismissed", false)
+        .order("created_at", { ascending: false }).limit(50);
+      if (Array.isArray(data)) setNotifications(data);
+    } catch { /* table may be absent */ }
+  };
+  // Insert a notification unless a same-type one already exists in the last 24h.
+  const createNotification = async ({ type, title, description = null, link_view = null }) => {
+    const cid = currentCompany?.id;
+    if (!cid || !type || !title) return;
+    try {
+      const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const { data: recent } = await supabase.from("notifications")
+        .select("id").eq("company_id", cid).eq("type", type).gte("created_at", since).limit(1);
+      if (Array.isArray(recent) && recent.length) return; // dedup within 24h
+      const { data, error } = await supabase.from("notifications")
+        .insert({ company_id: cid, type, title, description, link_view }).select("*").single();
+      if (!error && data) setNotifications(prev => [data, ...prev]);
+    } catch { /* best-effort */ }
+  };
+  const markNotifRead = async (id) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    try { await supabase.from("notifications").update({ read: true }).eq("id", id); } catch {}
+  };
+  const markAllNotifsRead = async () => {
+    const cid = currentCompany?.id;
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try { await supabase.from("notifications").update({ read: true }).eq("company_id", cid).eq("read", false); } catch {}
+  };
+  const clearAllNotifs = async () => {
+    const cid = currentCompany?.id;
+    setNotifications([]);
+    try { await supabase.from("notifications").update({ dismissed: true }).eq("company_id", cid).eq("dismissed", false); } catch {}
+  };
+  const openNotification = (n) => {
+    markNotifRead(n.id);
+    if (n.link_view) setView(n.link_view);
+    setNotifOpen(false);
+  };
+  // Check all triggers and create notifications (deduped) — run after data loads.
+  const generateNotifications = () => {
+    try {
+      // Tax deadline within 30 days, with the estimated amount.
+      const nextDue = getTaxDeadlines(new Date()).find(d => d.days >= 0 && d.days <= 30);
+      if (nextDue) {
+        const est = taxEstimate(invoicesRef.current, new Date().getFullYear());
+        const amt = nextDue.est && est.quarterly > 0 ? ` — est. $${Math.round(est.quarterly).toLocaleString("en-US")}` : "";
+        createNotification({ type: "tax_deadline", title: `${nextDue.label} due in ${nextDue.days} day${nextDue.days === 1 ? "" : "s"}${amt}`, description: nextDue.plain, link_view: "tax" });
+      }
+      // Reconciliation overdue (> 35 days since the last, or never).
+      const lastRecon = (reconciliationsRef.current || []).map(r => r.created_at || r.statement_date).filter(Boolean).sort().pop();
+      const reconAge = lastRecon ? (Date.now() - new Date(lastRecon)) / 86400000 : Infinity;
+      if (reconAge > 35) {
+        createNotification({ type: "reconciliation", title: lastRecon ? `Books not matched to your bank in ${Math.round(reconAge)} days` : "Your books haven't been matched to your bank yet", description: "Run a quick bank match to make sure everything is accounted for.", link_view: "recon" });
+      }
+      // Items waiting for review.
+      const pendingClar = (clarificationQueueRef.current || []).filter(c => !c.resolved).length;
+      if (pendingClar > 0) {
+        createNotification({ type: "needs_review", title: `${pendingClar} item${pendingClar === 1 ? "" : "s"} need your input`, description: "Some uploaded documents are waiting for a quick answer before they're booked.", link_view: "home" });
+      }
+      // High-severity anomalies.
+      const dismissed = getDismissedAnoms();
+      const topAnom = runAnomalyDetection(invoicesRef.current, recurringRef.current).find(a => a.severity === "high" && !dismissed.has(a.id));
+      if (topAnom) createNotification({ type: "anomaly", title: topAnom.title, description: topAnom.description, link_view: "home" });
+    } catch (e) { console.warn("[notifications] generate failed:", e?.message || e); }
+  };
+
+  // ── ONBOARDING (Item 54) ────────────────────────────────────────────────────
+  const [onboardingUploadDone, setOnboardingUploadDone] = useState(false);
+  const [businessModalOpen, setBusinessModalOpen] = useState(false);
+  const [accountantDismissed, setAccountantDismissed] = useState(() => { try { return localStorage.getItem("cfai_onboard_accountant_dismissed") === "1"; } catch { return false; } });
+  // Persist the business-type + fiscal-year answers to the company record.
+  const saveBusinessProfile = async ({ businessType, fiscalYearEnd }) => {
+    const cid = currentCompany?.id;
+    setCompanySettings(prev => ({ ...prev, businessType, fiscalYearEnd }));
+    setBusinessModalOpen(false);
+    if (!cid) return;
+    try { await supabase.from("companies").update({ business_type: businessType, fiscal_year_end: fiscalYearEnd }).eq("id", cid); } catch (e) { console.warn("[onboarding] save profile:", e?.message || e); }
+  };
+  const dismissAccountantStep = () => { try { localStorage.setItem("cfai_onboard_accountant_dismissed", "1"); } catch {} setAccountantDismissed(true); };
+  // Mark onboarding finished once the required steps are done (persist the flag).
+  const completeOnboarding = async () => {
+    const cid = currentCompany?.id;
+    setCompanySettings(prev => ({ ...prev, onboardingComplete: true }));
+    if (!cid) return;
+    try { await supabase.from("companies").update({ onboarding_complete: true }).eq("id", cid); } catch (e) { console.warn("[onboarding] complete:", e?.message || e); }
+  };
+
+  // Refs kept current for the scans (avoid stale closures). Declared AFTER the
+  // invoicesRef sync (top of the component) so the effects below see fresh data.
+  const reconciliationsRef = useRef([]);
+  const clarificationQueueRef = useRef([]);
+  useEffect(() => { reconciliationsRef.current = reconciliations; }, [reconciliations]);
+  useEffect(() => { clarificationQueueRef.current = clarificationQueue; }, [clarificationQueue]);
+
+  // Re-run anomaly detection whenever the ledger or recurring rules change (covers
+  // initial load and every booking). Declared after the ref-sync effects above so
+  // it reads fresh data; runAnomalyScan filters out localStorage-dismissed ids.
+  useEffect(() => {
+    if (currentCompany?.id) runAnomalyScan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices, recurring, currentCompany?.id]);
+
+  // Generate notifications once per company (after a delay so synced refs/state are
+  // current). createNotification de-dups within 24h, so re-runs are harmless.
+  const notifGenRef = useRef(null);
+  useEffect(() => {
+    const cid = currentCompany?.id;
+    if (!cid || notifGenRef.current === cid) return;
+    notifGenRef.current = cid;
+    const t = setTimeout(() => generateNotifications(), 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCompany?.id]);
 
   // Persist a journal entry and write the returned Supabase ID back into invoices state
   // so that deleteJournalEntry can find and mark it deleted later.
@@ -3392,7 +3556,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       // Memory: last 20 persisted turns (with their actions + timestamps) for the system prompt.
       const memory = chatHistory.filter(m => m.id !== 0).slice(-20)
         .map(m => ({ role: m.role, content: m.content, actions: m.actions || [], created_at: m.created_at }));
-      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts, chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance });
+      const result = await runAIBrain({ userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts, chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance, anomalies, businessType: companySettings.businessType });
 
       // Execute actions
       let actionSummary = [];
@@ -3747,7 +3911,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view };
 
   const SETTINGS_VIEWS = ["settings","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
@@ -3914,6 +4078,14 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                     </button>
                   );
                 })}
+                {/* Notification bell (Item 55) — to the right of the tabs */}
+                <button onClick={()=>setNotifOpen(o=>!o)} title="Notifications" aria-label="Notifications"
+                  style={{ marginLeft:"auto", position:"relative", height:46, width:46, display:"flex", alignItems:"center", justifyContent:"center", background:"none", border:"none", cursor:"pointer", fontSize:18 }}>
+                  <span style={{ filter: unreadNotifs>0 ? "none" : "grayscale(0.3)", opacity: unreadNotifs>0 ? 1 : 0.7 }}>🔔</span>
+                  {unreadNotifs>0 && (
+                    <span style={{ position:"absolute", top:8, right:6, minWidth:16, height:16, padding:"0 4px", borderRadius:9, background:"#D92D20", color:"#fff", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1 }}>{unreadNotifs>9?"9+":unreadNotifs}</span>
+                  )}
+                </button>
               </div>
             );
           })()}
@@ -4057,6 +4229,60 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           </div>
         </div>
       </div>
+
+      {/* ── NOTIFICATION CENTER (Item 55) ──────────────────────────────────── */}
+      {notifOpen && (() => {
+        const META = {
+          tax_deadline:        { icon:"📅", color:"#D92D20" },
+          anomaly:             { icon:"⚠",  color:"#DC6803" },
+          reconciliation:      { icon:"🏦", color:"#DC6803" },
+          needs_review:        { icon:"📄", color:"#CA8504" },
+          report_ready:        { icon:"📊", color:"#039855" },
+          ai_action:           { icon:"✦",  color:"#4F46E5" },
+          recurring_suggestion:{ icon:"↻",  color:"#4F46E5" },
+        };
+        const ago = (ts) => { if(!ts) return ""; const s=(Date.now()-new Date(ts))/1000; if(s<60) return "just now"; if(s<3600) return `${Math.floor(s/60)}m ago`; if(s<86400) return `${Math.floor(s/3600)}h ago`; return `${Math.floor(s/86400)}d ago`; };
+        return (
+          <div onClick={()=>setNotifOpen(false)} style={{ position:"fixed", inset:0, zIndex:1001, background:"rgba(17,24,39,0.25)", display:"flex", justifyContent:"flex-end" }}>
+            <style>{`@keyframes notifIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
+            <div onClick={e=>e.stopPropagation()} style={{ width:400, maxWidth:"94vw", height:"100%", background:"#FFFFFF", borderLeft:"1px solid #E4E7EC", boxShadow:"-20px 0 60px rgba(16,24,40,0.18)", display:"flex", flexDirection:"column", animation:"notifIn .22s cubic-bezier(.22,1,.36,1)" }}>
+              <div style={{ padding:"18px 20px", borderBottom:"1px solid #F3F4F6", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                <div style={{ fontSize:16, fontWeight:700, color:"#101828" }}>Notifications</div>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  {unreadNotifs>0 && <button onClick={markAllNotifsRead} style={{ fontSize:12, color:"#4F46E5", background:"none", border:"none", cursor:"pointer", fontWeight:600 }}>Mark all read</button>}
+                  <button onClick={()=>setNotifOpen(false)} style={{ background:"none", border:"none", color:"#475467", fontSize:22, lineHeight:1, cursor:"pointer" }}>×</button>
+                </div>
+              </div>
+              <div style={{ flex:1, overflowY:"auto" }}>
+                {notifications.length===0 ? (
+                  <div style={{ padding:"48px 24px", textAlign:"center", color:"#98A2B3", fontSize:13, lineHeight:1.6 }}>
+                    <div style={{ fontSize:32, marginBottom:10 }}>🔔</div>You're all caught up. New alerts about taxes, anomalies, and reviews will show up here.
+                  </div>
+                ) : notifications.map(n => {
+                  const m = META[n.type] || { icon:"•", color:"#475467" };
+                  return (
+                    <div key={n.id} onClick={()=>openNotification(n)} style={{ display:"flex", gap:12, padding:"14px 18px", borderBottom:"1px solid #F3F4F6", cursor:"pointer", background:n.read?"#FFFFFF":"#F8F9FF", transition:"background .12s" }}
+                      onMouseEnter={e=>e.currentTarget.style.background="#F2F4F7"} onMouseLeave={e=>e.currentTarget.style.background=n.read?"#FFFFFF":"#F8F9FF"}>
+                      <div style={{ width:34, height:34, borderRadius:9, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, background:m.color+"18", color:m.color }}>{m.icon}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:600, color:"#101828", lineHeight:1.4 }}>{n.title}</div>
+                        {n.description && <div style={{ fontSize:12, color:"#475467", marginTop:2, lineHeight:1.45 }}>{n.description}</div>}
+                        <div style={{ fontSize:11, color:"#98A2B3", marginTop:4 }}>{ago(n.created_at)}</div>
+                      </div>
+                      {!n.read && <span style={{ width:8, height:8, borderRadius:"50%", background:"#4F46E5", flexShrink:0, marginTop:6 }} />}
+                    </div>
+                  );
+                })}
+              </div>
+              {notifications.length>0 && (
+                <div style={{ padding:"12px 18px", borderTop:"1px solid #F3F4F6", flexShrink:0 }}>
+                  <button onClick={clearAllNotifs} style={{ width:"100%", padding:"9px", borderRadius:9, fontSize:13, fontWeight:600, color:"#475467", background:"#F2F4F7", border:"1px solid #E4E7EC", cursor:"pointer" }}>Clear all</button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── FLOATING AI CHAT ───────────────────────────────────────────────── */}
       {/* Bubble button */}
