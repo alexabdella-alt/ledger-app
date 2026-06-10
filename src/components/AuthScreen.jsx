@@ -1,5 +1,6 @@
 import React from "react";
 import { supabase } from "../lib/supabase";
+import LegalView from "./LegalView";
 
 // Shadow CFO eclipse mark — a luminous disc partly occluded by shadow.
 function EclipseMark({ size = 40 }) {
@@ -31,6 +32,10 @@ function AuthScreen({ onAuth }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [message, setMessage] = React.useState(null);
+  const [legal, setLegal] = React.useState(null); // "terms" | "privacy" | null
+
+  // Legal pages reachable before login.
+  if (legal) return <LegalView initialTab={legal} onBack={()=>setLegal(null)} />;
 
   const handle = async () => {
     setLoading(true); setError(null); setMessage(null);
@@ -150,6 +155,13 @@ function AuthScreen({ onAuth }) {
               : mode === "signup"
               ? <>Already have an account? <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("login");setError(null);}}>Sign in</span></>
               : <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("login");setError(null);setMessage(null);}}>← Back to sign in</span>}
+          </div>
+
+          {/* Legal footer (Item 18) */}
+          <div style={{ textAlign:"center", marginTop:26, fontSize:12, color:"#98A2B3" }}>
+            <span style={{ cursor:"pointer" }} onClick={()=>setLegal("terms")}>Terms of Service</span>
+            <span style={{ margin:"0 8px", color:"#D0D5DD" }}>·</span>
+            <span style={{ cursor:"pointer" }} onClick={()=>setLegal("privacy")}>Privacy Policy</span>
           </div>
         </div>
       </div>
