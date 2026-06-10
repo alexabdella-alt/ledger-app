@@ -202,6 +202,12 @@ export default function ReconView() {
         if (error) console.warn("[reconciliations] cleared update failed (apply migration 006?):", error.message);
       }
     } catch(e){ console.warn("[reconciliations] complete failed:", e.message); }
+    // Auto-update the reconciled bank account's current balance to the statement
+    // ending balance (migration 026). loadAllData() below re-derives dashboard cash.
+    if (accountId && accountId !== "manual") {
+      try { await supabase.from("bank_accounts").update({ current_balance: stmtNum }).eq("id", accountId).eq("company_id", currentCompany.id); }
+      catch(e){ console.warn("[bank_accounts] balance update failed (apply migration 026?):", e?.message||e); }
+    }
     logAudit && logAudit("reconciliation_completed", `Bank reconciliation completed for ${accountName} ${periodStart}→${periodEnd} — balance ${fmt(stmtNum)}`, null, { account:accountName, period:`${periodStart}→${periodEnd}`, balance:stmtNum });
     showNotification && showNotification("Your books match your bank ✓");
     loadAllData && loadAllData();
