@@ -10,6 +10,7 @@ import { isAllowedAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { flattenJournalEntries } from "./lib/ledger";
+import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
@@ -122,6 +123,13 @@ function AppWrapper() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Tie Sentry errors to the signed-in user + active company (ids/email only);
+  // clears automatically on logout (session becomes null).
+  useEffect(() => {
+    if (session?.user) setSentryUser(session.user, currentCompany);
+    else clearSentryUser();
+  }, [session?.user?.id, currentCompany?.id]);
+
   const loadCompanies = async (sess) => {
     setAppLoading(true);
     try {
@@ -168,17 +176,35 @@ function AppWrapper() {
   if (!currentCompany) return null;
 
   return (
-    <ERP
-      session={session}
-      currentCompany={currentCompany}
-      companies={companies}
-      onSwitchCompany={setCurrentCompany}
-      onNewCompany={()=>setShowCompanySetup(true)}
-      onSignOut={handleSignOut}
-      supabase={supabase}
-      persistedView={persistedView}
-      onViewChange={setPersistedView}
-    />
+    <Sentry.ErrorBoundary fallback={<SentryFallback />}>
+      <ERP
+        session={session}
+        currentCompany={currentCompany}
+        companies={companies}
+        onSwitchCompany={setCurrentCompany}
+        onNewCompany={()=>setShowCompanySetup(true)}
+        onSignOut={handleSignOut}
+        supabase={supabase}
+        persistedView={persistedView}
+        onViewChange={setPersistedView}
+      />
+    </Sentry.ErrorBoundary>
+  );
+}
+
+// Clean fallback shown when a render error reaches the Sentry boundary (the error
+// is already reported to Sentry by the boundary).
+function SentryFallback() {
+  return (
+    <div style={{ minHeight:"100vh", background:"#F7F8FA", display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'DM Sans', system-ui, sans-serif" }}>
+      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:16, boxShadow:"0 8px 28px rgba(17,24,39,0.10)", padding:32, maxWidth:480, width:"100%", textAlign:"center" }}>
+        <div style={{ fontSize:34, marginBottom:10 }}>⚠️</div>
+        <h1 style={{ fontSize:20, fontWeight:700, margin:"0 0 8px", color:"#101828" }}>Something went wrong</h1>
+        <p style={{ fontSize:14, color:"#475467", lineHeight:1.6, margin:"0 0 20px" }}>Our team has been notified. Refreshing usually fixes it.</p>
+        <button onClick={()=>window.location.reload()}
+          style={{ padding:"11px 22px", borderRadius:10, background:"#4F46E5", border:"none", color:"#fff", fontSize:14, fontWeight:600, cursor:"pointer" }}>Refresh</button>
+      </div>
+    </div>
   );
 }
 
