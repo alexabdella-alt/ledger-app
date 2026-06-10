@@ -3,14 +3,17 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
+import { agingReport, trialBalance, computeKPIs } from "../../lib/reports";
+import { downloadCSV } from "../../lib/insights";
 import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
 
 export default function ReportsView() {
-  const { setReturnTo, AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { getAccountByRole, reconciliations, anomalies, setReturnTo, AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   const [plDrill, setPlDrill] = React.useState(null); // {type:"rev-acct"|"exp-acct"|"exp-vendor", code, name, vendor?}
   // Drill-down for the other reports: {scope:"vendor"|"gl"|"cashflow"|"project"|"bsacct", value, label}
   const [drill, setDrill] = React.useState(null);
   const [drillSel, setDrillSel] = React.useState(null); // selected transaction id for the slide-in
+  const [tbAdjusted, setTbAdjusted] = React.useState(true); // trial balance: adjusted (exclude voided) vs unadjusted
   React.useEffect(() => { setDrill(null); setDrillSel(null); }, [reportType]);
             // Date filter helper
             const filterByRange = (invList) => {
@@ -110,7 +113,7 @@ export default function ReportsView() {
             const fmt = (n) => "$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2});
             const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${reportDateFrom} → ${reportDateTo}` : "Custom Range" };
             // Friendly report name for the transaction detail back button.
-            const reportName = { pl:"Income Statement", balance:"Balance Sheet", vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project" }[reportType] || "Reports";
+            const reportName = { pl:"Income Statement", balance:"Balance Sheet", trial:"Trial Balance", araging:"AR Aging", apaging:"AP Aging", kpis:"KPIs", vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project" }[reportType] || "Reports";
             const reportReturn = { view:"reports", label:reportName, reportType };
 
             // ── Report drill-downs ──────────────────────────────────────────────
@@ -189,7 +192,7 @@ export default function ReportsView() {
 
                 {/* Controls */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
-                  {[["pl","P&L"],["balance","Balance Sheet"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"]].map(([id,label])=>(
+                  {[["pl","P&L"],["balance","Balance Sheet"],["trial","Trial Balance"],["araging","AR Aging"],["apaging","AP Aging"],["kpis","KPIs"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"]].map(([id,label])=>(
                     <button key={id} onClick={()=>setReportType(id)} style={{ padding:"8px 16px", borderRadius:20, fontSize:13, background:reportType===id?"#4F46E5":"transparent", border:`1px solid ${reportType===id?"#4F46E5":"#D0D5DD"}`, color:reportType===id?"#F3F4F6":"#475467", cursor:"pointer", fontWeight:reportType===id?600:400 }}>{label}</button>
                   ))}
                   <div style={{ flex:1 }} />
@@ -709,6 +712,141 @@ export default function ReportsView() {
                         </table>
                       </div>
                     )}
+
+                    {/* ── AR / AP AGING (Items 24, 83) ── */}
+                    {(reportType==="araging" || reportType==="apaging") && (() => {
+                      const side = reportType==="araging" ? "ar" : "ap";
+                      const rep = agingReport(invoices, side);
+                      const today = new Date().toISOString().slice(0,10);
+                      const sevColor = d => d>90?"#D92D20":d>60?"#DC6803":d>30?"#CA8504":d>0?"#475467":"#039855";
+                      const csvBtn = { background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:9, padding:"8px 14px", fontSize:12, color:"#475467", cursor:"pointer", fontWeight:600 };
+                      const exportCsv = () => { const rows=[]; rep.buckets.forEach(b=>b.rows.forEach(r=>rows.push([b.label,r.party,r.date||"",r.due_date||"",r.days_overdue,r.amount]))); downloadCSV(`${side}-aging-${today}.csv`, ["Bucket", side==="ar"?"Customer":"Vendor","Invoice Date","Due Date","Days Overdue","Amount"], rows); };
+                      return (
+                        <div className="sc-rise">
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:16, flexWrap:"wrap", gap:12 }}>
+                            <div>
+                              <div style={{ fontSize:11, color:"#475467", letterSpacing:1, marginBottom:4 }}>{side==="ar"?"TOTAL OUTSTANDING RECEIVABLE":"TOTAL OUTSTANDING PAYABLE"}</div>
+                              <div style={{ fontSize:30, fontWeight:700, fontFamily:"'DM Mono',monospace", color: side==="ar"?"#039855":"#D92D20" }}>{fmt(rep.total)}</div>
+                              <div style={{ fontSize:12, color:"#475467", marginTop:2 }}>{rep.count} open {side==="ar"?"invoice":"bill"}{rep.count!==1?"s":""}</div>
+                            </div>
+                            <button onClick={exportCsv} style={csvBtn}>↓ Export CSV</button>
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, marginBottom:18 }}>
+                            {rep.buckets.map(b=>(
+                              <div key={b.key} style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:10, padding:"12px 14px" }}>
+                                <div style={{ fontSize:11, color:"#475467" }}>{b.label}</div>
+                                <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:b.key==="90+"&&b.total>0?"#D92D20":"#101828" }}>{fmt(b.total)}</div>
+                                <div style={{ fontSize:10, color:"#98A2B3" }}>{b.count} item{b.count!==1?"s":""}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {rep.total===0 ? <div style={{ padding:24, fontSize:14, color:"#475467" }}>Nothing outstanding — you're all caught up.</div> :
+                            rep.buckets.filter(b=>b.rows.length).map(b=>(
+                              <div key={b.key} style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"clip", marginBottom:14 }}>
+                                <div style={{ padding:"12px 18px", background:"#F9FAFB", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between", fontSize:13, fontWeight:600 }}>
+                                  <span>{b.label}</span><span style={{ fontFamily:"'DM Mono',monospace" }}>{fmt(b.total)}</span>
+                                </div>
+                                <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                                  <tbody>
+                                    {b.rows.map(r=>(
+                                      <tr key={r.id} style={{ borderBottom:"1px solid #EEF0F4", height:50 }}>
+                                        <td onClick={()=>setDrillSel(r.id)} style={{ padding:"0 18px", cursor:"pointer", fontSize:13, fontWeight:500 }}>
+                                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                            <span style={{ width:28,height:28,borderRadius:8,background:vendorColor(r.party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(r.party)}</span>
+                                            {r.party}
+                                          </div>
+                                        </td>
+                                        <td style={{ padding:"0 12px", fontSize:12, color:"#667085", whiteSpace:"nowrap" }}>{r.date?fmtDate(r.date):"—"}</td>
+                                        <td style={{ padding:"0 12px", fontSize:12, color:"#667085", whiteSpace:"nowrap" }}>Due {r.due_date?fmtDate(r.due_date):"—"}</td>
+                                        <td style={{ padding:"0 12px", fontSize:12, fontWeight:600, color:sevColor(r.days_overdue), whiteSpace:"nowrap" }}>{r.days_overdue>0?`${r.days_overdue}d overdue`:"Not yet due"}</td>
+                                        <td style={{ padding:"0 12px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace" }}>{fmt(r.amount)}</td>
+                                        <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
+                                          {side==="ar" && r.days_overdue>0 && (
+                                            <a href={`mailto:${r.email||""}?subject=${encodeURIComponent(`Payment reminder from ${companySettings.name||"us"}`)}&body=${encodeURIComponent(`Hi ${r.party},\n\nA friendly reminder that ${fmt(r.amount)} is now ${r.days_overdue} days past due. Could you let us know when we can expect payment?\n\nThank you,\n${companySettings.name||""}`)}`}
+                                              style={{ fontSize:12, color:"#4F46E5", textDecoration:"none", fontWeight:600 }}>Send reminder →</a>
+                                          )}
+                                          {side==="ap" && (
+                                            <button onClick={()=>{ markPaid && markPaid(r.id, "ach", { date: today }); }} style={{ fontSize:12, color:"#039855", background:"#ECFDF5", border:"1px solid #03985533", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontWeight:600 }}>Mark Paid</button>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ))}
+                        </div>
+                      );
+                    })()}
+
+                    {/* ── TRIAL BALANCE (Item 100) ── */}
+                    {reportType==="trial" && (() => {
+                      const tb = trialBalance(invoices, { includeVoided: !tbAdjusted });
+                      const csvBtn = { background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:9, padding:"8px 14px", fontSize:12, color:"#475467", cursor:"pointer", fontWeight:600 };
+                      const exportCsv = () => downloadCSV(`trial-balance-${new Date().toISOString().slice(0,10)}.csv`, ["Code","Account","Debit","Credit"], [...tb.accounts.map(a=>[a.code,a.name,a.debit||"",a.credit||""]), ["","TOTAL",tb.totalDebit,tb.totalCredit]]);
+                      return (
+                        <div className="sc-rise">
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, gap:12, flexWrap:"wrap" }}>
+                            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                              {[["Adjusted",true],["Unadjusted",false]].map(([lbl,adj])=>(
+                                <button key={lbl} onClick={()=>setTbAdjusted(adj)} style={{ padding:"6px 14px", borderRadius:8, fontSize:12, border:`1px solid ${tbAdjusted===adj?"#4F46E5":"#D0D5DD"}`, background:tbAdjusted===adj?"#EEF2FF":"transparent", color:tbAdjusted===adj?"#4F46E5":"#475467", cursor:"pointer", fontWeight:tbAdjusted===adj?600:400 }}>{lbl}</button>
+                              ))}
+                              <span style={{ fontSize:11, color:"#98A2B3" }}>{tbAdjusted?"Excludes voided / soft-deleted":"All posted entries (incl. voided)"}</span>
+                            </div>
+                            <button onClick={exportCsv} style={csvBtn}>↓ Export CSV</button>
+                          </div>
+                          <div style={{ background: tb.balanced?"#ECFDF5":"#FEF3F2", border:`1px solid ${tb.balanced?"#A6F4C5":"#FDA29B"}`, borderRadius:10, padding:"12px 16px", marginBottom:14, fontSize:13, fontWeight:600, color: tb.balanced?"#039855":"#D92D20" }}>
+                            {tb.balanced ? "✓ Books are in balance" : `⚠ Books are out of balance by ${fmt(tb.difference)}`}
+                          </div>
+                          <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"clip" }}>
+                            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                              <thead><tr style={{ background:"#F9FAFB" }}>
+                                {["Code","Account","Debit","Credit"].map((h,ci)=><th key={ci} style={{ padding:"10px 16px", textAlign:ci>=2?"right":"left", fontSize:12, color:"#98A2B3", fontWeight:600, borderBottom:"1px solid #E4E7EC" }}>{h.toUpperCase()}</th>)}
+                              </tr></thead>
+                              <tbody>
+                                {tb.accounts.map(a=>(
+                                  <tr key={a.code} style={{ borderBottom:"1px solid #EEF0F4", height:44 }}>
+                                    <td style={{ padding:"0 16px", fontFamily:"'DM Mono',monospace", fontSize:12, color:"#98A2B3" }}>{a.code}</td>
+                                    <td style={{ padding:"0 16px", fontSize:13 }}>{a.name}</td>
+                                    <td style={{ padding:"0 16px", textAlign:"right", fontFamily:"'DM Mono',monospace", fontSize:13 }}>{a.debit?fmt(a.debit):""}</td>
+                                    <td style={{ padding:"0 16px", textAlign:"right", fontFamily:"'DM Mono',monospace", fontSize:13 }}>{a.credit?fmt(a.credit):""}</td>
+                                  </tr>
+                                ))}
+                                <tr style={{ background:"#F9FAFB", fontWeight:700 }}>
+                                  <td/><td style={{ padding:"12px 16px", fontSize:13 }}>TOTAL</td>
+                                  <td style={{ padding:"12px 16px", textAlign:"right", fontFamily:"'DM Mono',monospace", fontSize:13, color: tb.balanced?"#101828":"#D92D20" }}>{fmt(tb.totalDebit)}</td>
+                                  <td style={{ padding:"12px 16px", textAlign:"right", fontFamily:"'DM Mono',monospace", fontSize:13, color: tb.balanced?"#101828":"#D92D20" }}>{fmt(tb.totalCredit)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* ── KPIs (Item 33) ── */}
+                    {reportType==="kpis" && (() => {
+                      const kpis = computeKPIs(invoices, { cashBalance });
+                      const SC = { good:{c:"#039855",bg:"#ECFDF5",b:"#A6F4C5",lbl:"Healthy"}, warn:{c:"#DC6803",bg:"#FFFAEB",b:"#FEDF89",lbl:"Watch"}, bad:{c:"#D92D20",bg:"#FEF3F2",b:"#FDA29B",lbl:"Action needed"}, na:{c:"#98A2B3",bg:"#F9FAFB",b:"#E4E7EC",lbl:"—"} };
+                      const trendIcon = { up:"↑", down:"↓", flat:"→" };
+                      return (
+                        <div className="sc-rise" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(290px,1fr))", gap:14 }}>
+                          {kpis.map(k=>{ const s=SC[k.status]||SC.na; return (
+                            <div key={k.key} style={{ background:"#FFFFFF", border:`1px solid ${s.b}`, borderRadius:12, padding:"18px 20px" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:8 }}>
+                                <div style={{ fontSize:13, fontWeight:600, color:"#475467" }}>{k.label}</div>
+                                <span style={{ fontSize:10, fontWeight:700, color:s.c, background:s.bg, border:`1px solid ${s.b}`, borderRadius:6, padding:"2px 8px", whiteSpace:"nowrap" }}>{s.lbl}</span>
+                              </div>
+                              <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
+                                <div style={{ fontSize:24, fontWeight:700, fontFamily:"'DM Mono',monospace", color:s.c }}>{k.display}</div>
+                                {k.trend && <span style={{ fontSize:12, color: k.trend==="flat"?"#98A2B3":"#475467", fontWeight:600 }}>{trendIcon[k.trend]} vs last mo</span>}
+                              </div>
+                              <div style={{ fontSize:12, color:"#475467", lineHeight:1.5, marginTop:8 }}>{k.explanation}</div>
+                            </div>
+                          ); })}
+                        </div>
+                      );
+                    })()}
 
                     {/* Ask AI button */}
                     <div style={{ marginTop:16, display:"flex", justifyContent:"flex-end" }}>

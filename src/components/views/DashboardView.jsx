@@ -5,6 +5,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
+import { financialHealthScore } from "../../lib/reports";
 import ClarificationFlow from "../ClarificationFlow";
 
 export default function DashboardView() {
@@ -16,6 +17,7 @@ export default function DashboardView() {
   const [bizType, setBizType] = React.useState(""); // business-type modal draft
   const [bizFye, setBizFye] = React.useState("12-31");
   const [accountantNotice, setAccountantNotice] = React.useState(false); // "coming soon" inline message
+  const [healthOpen, setHealthOpen] = React.useState(false); // financial health breakdown modal
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
   const goToSection = (view, anchorId) => {
@@ -623,6 +625,48 @@ export default function DashboardView() {
                         <div style={{ fontSize:12, color:"#667085", marginTop:8 }}>{c.sub}</div>
                       </div>
                     ))}
+                  </div>
+                );
+              })()}
+
+              {/* ── FINANCIAL HEALTH SCORE (Item 63) — below the metric cards ── */}
+              {invoices.length > 0 && (() => {
+                const h = financialHealthScore({ invoices, cashBalance, reconciliations, anomalies, onboardingComplete: companySettings.onboardingComplete });
+                const ring = `conic-gradient(${h.color} ${h.score * 3.6}deg, #EEF0F4 0deg)`;
+                return (
+                  <div style={{ marginBottom:24 }}>
+                    <div onClick={()=>setHealthOpen(o=>!o)} className="sc-card"
+                      onMouseEnter={e=>e.currentTarget.style.borderColor="#D0D5DD"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E4E7EC"}
+                      style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:"18px 22px", cursor:"pointer", display:"flex", alignItems:"center", gap:18, transition:"border-color .12s" }}>
+                      <div style={{ width:64, height:64, borderRadius:"50%", background:ring, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <div style={{ width:50, height:50, borderRadius:"50%", background:"#FFFFFF", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+                          <span style={{ fontSize:18, fontWeight:800, color:h.color, fontFamily:"'DM Mono',monospace", lineHeight:1 }}>{h.score}</span>
+                          <span style={{ fontSize:9, color:"#98A2B3", fontWeight:700 }}>/ 100</span>
+                        </div>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                          <span style={{ fontSize:15, fontWeight:700, color:"#101828" }}>Financial Health</span>
+                          <span style={{ fontSize:11, fontWeight:700, color:h.color, background:h.color+"16", border:`1px solid ${h.color}33`, borderRadius:6, padding:"2px 9px" }}>Grade {h.grade} · {h.tier}</span>
+                        </div>
+                        <div style={{ fontSize:12.5, color:"#475467", marginTop:4, lineHeight:1.5 }}>{h.summary}</div>
+                      </div>
+                      <span style={{ fontSize:12, color:"#4F46E5", fontWeight:600, flexShrink:0 }}>{healthOpen?"Hide ▲":"Breakdown ▼"}</span>
+                    </div>
+                    {healthOpen && (
+                      <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:"6px 22px 14px", marginTop:8 }}>
+                        {h.items.map((it,i)=>(
+                          <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:i>0?"1px solid #F3F4F6":"none" }}>
+                            <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, background:it.met?"#039855":"#FEF3F2", color:it.met?"#fff":"#D92D20", border:it.met?"none":"1px solid #FDA29B" }}>{it.met?"✓":"!"}</span>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:13, fontWeight:500, color:"#101828" }}>{it.label}</div>
+                              <div style={{ fontSize:11.5, color:"#98A2B3", marginTop:1 }}>{it.detail}</div>
+                            </div>
+                            <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:it.met?"#039855":"#98A2B3", flexShrink:0 }}>{it.met?"+":""}{it.points}<span style={{ color:"#98A2B3", fontWeight:400 }}>/{it.max}</span></span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
