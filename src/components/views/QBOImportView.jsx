@@ -10,7 +10,7 @@ const money = n => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFract
 export default function QBOImportView() {
   const {
     currentCompany, session, supabase, CHART_OF_ACCOUNTS, getAccountByRole, getAccountByCode,
-    invoices, isAdmin, logAudit, showNotification, setView, loadAllData,
+    invoices, isAdmin, logAudit, showNotification, setView, loadAllData, flagBookingVisibilityFailure,
   } = useERP();
 
   const [step, setStep] = React.useState("instructions"); // instructions|upload|columns|accounts|importing|summary
@@ -163,6 +163,21 @@ export default function QBOImportView() {
     // Finalize the batch record + audit.
     try { if (batchId) await supabase.from("qbo_imports").update({ imported_count: imported, skipped_count: skipped, failed_count: failedN, total_amount: Math.round(total * 100) / 100 }).eq("id", batchId).eq("company_id", cid); } catch {}
     logAudit && logAudit("qbo_import", `QuickBooks import: ${imported} entries booked, ${skipped} duplicates skipped, ${money(total)} total (batch ${batchId})`, null, { batch_id: batchId, imported, skipped, failed: failedN, total });
+
+    // Post-booking visibility invariant (count level): entries inserted must equal
+    // entries visible from this batch under the same filters loadAllData uses.
+    if (batchId && imported > 0) {
+      try {
+        const { count } = await supabase.from("journal_entries")
+          .select("id", { count: "exact", head: true })
+          .eq("company_id", cid).eq("import_batch_id", batchId)
+          .eq("status", "posted").is("deleted_at", null);
+        if (count != null && count !== imported) {
+          flagBookingVisibilityFailure({ batch_id: batchId, expected: imported, actual: count, source: "qbo_import" });
+        }
+      } catch (e) { console.warn("[qbo] visibility verify failed — not alarming:", e?.message || e); }
+    }
+
     setResult({ imported, skipped, failed: failedN, total, accounts: Object.keys(acctMap).length, batchId });
     setStep("summary");
     loadRecent();

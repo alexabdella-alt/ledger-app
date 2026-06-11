@@ -10,7 +10,7 @@ import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile
 import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
-import { flattenJournalEntries } from "./lib/ledger";
+import { flattenJournalEntries, fetchLedger } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
@@ -361,6 +361,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
   // ── AUDIT TRAIL ───────────────────────────────────────────────────────────────
   const [auditLog, setAuditLog] = useState([]);
+  // Non-dismissable banner shown if a booked entry isn't visible in the ledger (set by
+  // flagBookingVisibilityFailure). Cleared only by a page refresh or a company switch.
+  const [visibilityAlert, setVisibilityAlert] = useState(false);
   const logAudit = (action, detail, before=null, after=null, performedBy=null) => {
     // During Support Mode, attribute every action to the platform admin (unless the
     // caller passed an explicit actor, e.g. "AI Chat").
@@ -710,6 +713,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const resetCompanyState = () => {
     // Loaded data sets (loadAllData refetches these for the new company)
     setInvoices([]); invoicesRef.current = [];
+    setVisibilityAlert(false); pendingVerifyRef.current.clear();
     setRules([]); setContacts([]); setCustomProjects([]);
     setContracts([]); setRecurring([]); setAuditLog([]); setDocLibrary([]);
     setBankTransactions([]); setUnknownDocs([]); setUploadQueue([]);
@@ -1395,6 +1399,61 @@ Reply with ONLY the summary text.`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCompany?.id]);
 
+  // ── POST-BOOKING VISIBILITY INVARIANT ───────────────────────────────────────
+  // A booked entry that doesn't show up in the ledger must NEVER fail silently.
+  // After every bookToDb (and the QBO import batch), we re-fetch the flattened
+  // ledger and confirm the new entry id(s) are actually present/visible. Any miss
+  // → Sentry error (ids/source/status only, no financials) + audit_log row +
+  // a non-dismissable amber banner.
+  const pendingVerifyRef = useRef(new Map());   // db_entry_id(str) → { source, status }
+  const verifyTimerRef = useRef(null);
+  const flagBookingVisibilityFailure = (info = {}) => {
+    // Sentry — ids/source/status/counts ONLY (beforeSend scrubbing forbids financials).
+    try {
+      Sentry.captureMessage("booking_visibility_failure", {
+        level: "error",
+        tags: { kind: "booking_visibility_failure", booking_source: info.source || "unknown" },
+        extra: {
+          entry_id: info.entry_id || null,
+          booking_source: info.source || null,
+          entry_status: info.status || null,
+          import_batch: info.batch_id || null,
+          expected_count: info.expected ?? null,
+          actual_count: info.actual ?? null,
+        },
+      });
+    } catch { /* Sentry is a no-op without a DSN */ }
+    const detail = info.batch_id
+      ? `QuickBooks import batch ${info.batch_id}: only ${info.actual} of ${info.expected} inserted entries are visible (source qbo_import).`
+      : `Entry ${info.entry_id} was saved but is not visible in the ledger (source ${info.source || "?"}, status ${info.status || "?"}).`;
+    logAudit("booking_visibility_failure", detail, null, {
+      entry_id: info.entry_id || null, source: info.source || null, status: info.status || null,
+      batch_id: info.batch_id || null, expected: info.expected ?? null, actual: info.actual ?? null,
+    });
+    setVisibilityAlert(true);
+  };
+
+  // Debounced batch verifier — one re-fetch covers a burst of bookings.
+  const runVisibilityCheck = async () => {
+    const cid = currentCompany?.id;
+    const expected = new Map(pendingVerifyRef.current);
+    pendingVerifyRef.current.clear();
+    if (!cid || expected.size === 0) return;
+    let rows;
+    try { rows = await fetchLedger(supabase, cid, CHART_OF_ACCOUNTS); }
+    catch (e) { console.warn("[visibility] verify fetch failed — not alarming:", e?.message || e); return; } // can't verify ≠ failure
+    const visible = new Set((rows || []).map(r => String(r.db_entry_id)));
+    for (const [id, meta] of expected) {
+      if (!visible.has(String(id))) flagBookingVisibilityFailure({ entry_id: id, ...meta });
+    }
+  };
+  const queueVisibilityCheck = (jeId, invoice) => {
+    if (!jeId) return;
+    pendingVerifyRef.current.set(String(jeId), { source: invoice?.source || null, status: invoice?.status || null });
+    if (verifyTimerRef.current) clearTimeout(verifyTimerRef.current);
+    verifyTimerRef.current = setTimeout(() => runVisibilityCheck(), 1500); // let the burst + state settle
+  };
+
   // Persist a journal entry and write the returned Supabase ID back into invoices state
   // so that deleteJournalEntry can find and mark it deleted later.
   const bookToDb = (invoice) => {
@@ -1408,6 +1467,8 @@ Reply with ONLY the summary text.`;
         recordBookingLearning(invoice);
         // Look for new recurring-charge patterns (debounced).
         scheduleRecurringScan();
+        // Post-booking visibility invariant — verify it actually shows in the ledger.
+        queueVisibilityCheck(jeId, invoice);
       }
       return jeId;
     });
@@ -4115,7 +4176,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, cashFromBanks, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, cashFromBanks, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
@@ -4201,6 +4262,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       )}
 
       <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
+        {/* BOOKING VISIBILITY FAILURE — non-dismissable; a saved entry isn't displaying. */}
+        {visibilityAlert && (
+          <div role="alert" style={{ flexShrink:0, background:"#FFFAEB", borderBottom:"1px solid #FEDF89", color:"#B54708", padding:"11px 24px", display:"flex", alignItems:"center", gap:12, fontSize:13, fontWeight:600, zIndex:51 }}>
+            <span style={{ fontSize:16 }}>⚠</span>
+            <span>A transaction was saved but isn't displaying correctly. Refresh the page — if it's still missing, contact support.</span>
+          </div>
+        )}
         {/* SUPPORT MODE banner — persistent while a platform admin is viewing a client */}
         {supportMode && (
           <div style={{ flexShrink:0, background:"linear-gradient(90deg,#EA580C,#F97316)", color:"#fff", padding:"10px 24px", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap", boxShadow:"0 2px 8px rgba(234,88,12,0.35)", zIndex:50 }}>

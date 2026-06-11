@@ -26,12 +26,18 @@ export default function AdminView() {
   const { supabase, session, enterSupport, showNotification, logAudit } = useERP();
   const [tab, setTab] = React.useState("clients");
 
-  const rpc = async (name, args) => {
+  const rpc = async (name, args, { silent } = {}) => {
     try {
       const { data, error } = await supabase.rpc(name, args);
-      if (error) { console.error(name, error.message); showNotification(`${name}: ${error.message}`, "error"); return null; }
+      if (error) {
+        // A not-yet-deployed function (migration pending) degrades quietly.
+        const missing = /does not exist|PGRST202|schema cache|could not find/i.test(error.message || "");
+        if (!missing) console.error(name, error.message);
+        if (!missing && !silent) showNotification(`${name}: ${error.message}`, "error");
+        return null;
+      }
       return data;
-    } catch (e) { console.error(name, e); showNotification(`${name} failed`, "error"); return null; }
+    } catch (e) { console.error(name, e); if (!silent) showNotification(`${name} failed`, "error"); return null; }
   };
 
   const TABS = [["clients", "Clients"], ["problems", "Problems"], ["stats", "Stats"], ["recovery", "Data Recovery"], ["system", "System"]];
@@ -205,6 +211,7 @@ function ProblemsTab({ rpc, enterSupport }) {
   const [stuck, setStuck] = React.useState(null);
   const [dupes, setDupes] = React.useState(null);
   const [errors, setErrors] = React.useState(null);
+  const [vis, setVis] = React.useState(null);   // booking_visibility_failure events (30d, all companies)
 
   React.useEffect(() => { rpc("get_admin_failed_uploads", { p_days: days }).then(d => setFailed(d || [])); }, [days]); // eslint-disable-line
   React.useEffect(() => {
@@ -212,12 +219,37 @@ function ProblemsTab({ rpc, enterSupport }) {
     rpc("get_admin_stuck_uploads").then(d => setStuck(d || []));
     rpc("get_admin_duplicate_entries").then(d => setDupes(d || []));
     rpc("get_admin_recent_errors", { p_limit: 50 }).then(d => setErrors(d || []));
+    rpc("get_admin_visibility_failures", { p_days: 30 }, { silent: true }).then(d => setVis(d || []));
   }, []); // eslint-disable-line
 
   const openSupport = (cid, name) => enterSupport({ id: cid, name });
+  const visCompanies = vis ? new Set(vis.map(v => v.company_id)).size : 0;
 
   return (
     <>
+      {/* Booking-visibility failures — a saved entry that didn't show up in the ledger. */}
+      <Card accent={vis && vis.length ? A.red : A.green} title="Booking visibility failures (30d)">
+        {vis === null ? <Loading /> : vis.length === 0 ? <Empty>No booking-visibility failures in the last 30 days 🎉</Empty> : (
+          <>
+            <div style={{ padding: "12px 18px", display: "flex", alignItems: "baseline", gap: 10, borderBottom: "1px solid #F2F4F7" }}>
+              <span style={{ fontSize: 30, fontWeight: 700, color: A.red, fontFamily: "'DM Mono',monospace" }}>{vis.length}</span>
+              <span style={{ fontSize: 13, color: "#475467" }}>event{vis.length !== 1 ? "s" : ""} across {visCompanies} compan{visCompanies !== 1 ? "ies" : "y"} — investigate immediately</span>
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr style={{ background: "#F9FAFB" }}><Th>When</Th><Th>Company</Th><Th>Detail</Th><Th></Th></tr></thead>
+              <tbody>{vis.slice(0, 50).map((v, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid #F2F4F7" }}>
+                  <Td color={A.muted} mono>{dt(v.created_at)}</Td>
+                  <Td color="#101828">{v.company_name || "—"}</Td>
+                  <td style={{ padding: "10px 14px", fontSize: 12, color: "#374151" }}>{v.detail}</td>
+                  <Td>{v.company_id && <button onClick={() => openSupport(v.company_id, v.company_name)} style={btn("#EA580C", "#fff")}>Open in Support</button>}</Td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </>
+        )}
+      </Card>
+
       <Card accent={A.red} title={`Failed uploads`} right={
         <div style={{ display: "flex", gap: 4 }}>
           {[[1, "24h"], [7, "7d"], [30, "30d"]].map(([d, l]) => (
