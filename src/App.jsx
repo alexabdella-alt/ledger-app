@@ -2215,7 +2215,10 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               description: extracted.description || "",
               amount: parseFloat(extracted.amount) || 0,
               date: extracted.date || new Date().toISOString().slice(0,10),
-              type: extracted.type || "expense",
+              // Classify `type` from the GL code (same basis as flattenJournalEntries +
+              // the canonical layer) so the in-session row is never mis-slotted by an odd
+              // AI `type` and always shows in the transactions tab the moment it's booked.
+              type: glIsRevenue(finalCode) ? "revenue" : glIsExpense(finalCode) ? "expense" : (extracted.type || "expense"),
               notes: extracted.notes || "",
               invoice_number: extracted.invoice_number || "",
               project: rule?.project || "General",
