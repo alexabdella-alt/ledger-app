@@ -16,8 +16,11 @@ export const isLiveEntry = i => i && i.status !== "voided" && i.status !== "dele
 const isCOGS = c => String(c || "")[0] === "5";
 const isOpEx = c => { const s = String(c || "")[0]; return s === "6" || s === "7" || s === "8"; };
 const ymOf = d => String(d || "").slice(0, 7);
-const isRev = i => glIsRevenue(i.gl_code) || i.type === "revenue";
-const isExp = i => glIsExpense(i.gl_code) || i.type === "expense";
+// Classify by GL code when present (authoritative — flatten types every non-revenue
+// line of a MULTI-LINE entry as "expense", incl. its AP/cash legs, so trusting `type`
+// would miscount balance-sheet legs). Fall back to `type` only when no code is set.
+const isRev = i => i.gl_code ? glIsRevenue(i.gl_code) : i.type === "revenue";
+const isExp = i => i.gl_code ? glIsExpense(i.gl_code) : i.type === "expense";
 const arUnpaid = i => isRev(i) && i.payment_status !== "paid" && i.payment_status !== "collected";
 const apUnpaid = i => isExp(i) && i.payment_status !== "paid";
 const daysOverdue = (dueDate, now) => dueDate ? Math.floor((now - new Date(String(dueDate) + "T12:00:00")) / 86400000) : 0;

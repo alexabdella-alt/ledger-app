@@ -3678,30 +3678,77 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
   const methodPretty = (m) => ({ ach:"ACH / Bank Transfer", check:"Check", wire:"Wire Transfer", card:"Credit Card", zelle:"Zelle", venmo:"Venmo", paypal:"PayPal", other:"Other" }[m] || String(m||"").toUpperCase());
 
-  const markPaid = (invIds, method = "ach", details = {}) => {
-    const ids = Array.isArray(invIds) ? invIds : [invIds];
+  // ── CANONICAL PAYMENT STATE WRITER ──────────────────────────────────────────
+  // The ONE function that marks a bill paid (AP) or an invoice collected (AR).
+  // Every button and AI action funnels through it. It: (1) optimistically updates
+  // in-session state, (2) writes the canonical fields to journal_entries, (3) RE-
+  // READS the row to confirm the write persisted, and (4) on failure reverts the
+  // optimistic change, toasts an error, and logs to Sentry + audit_log — so the UI
+  // can never show a paid state the database doesn't have. side: "ap" | "ar".
+  const markBillPaid = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap" } = {}) => {
+    const inv = (invoicesRef.current || []).find(i => String(i.id) === String(entryId) || String(i.db_entry_id) === String(entryId));
+    if (!inv) return false;
+    const dbId = inv.db_entry_id;
     const who = session?.user?.email || "owner";
-    const reference = (details.reference || "").trim();
-    const notes = (details.notes || "").trim();
-    // Use the chosen payment date (fall back to now)
-    const at = details.date ? new Date(details.date + "T12:00:00").toISOString() : new Date().toISOString();
-    const paid = invoices.filter(i => ids.includes(i.id));
-    setInvoices(prev => prev.map(inv => !ids.includes(inv.id) ? inv : {
-      ...inv, payment_status: "paid", payment_method_used: method, paid_at: at, matched: true,
-      payment_reference: reference || undefined, payment_notes: notes || undefined,
-    }));
-    paid.forEach(inv => {
-      const refStr = reference ? ` · ref ${reference}` : "";
-      const noteStr = notes ? ` · note: ${notes}` : "";
-      logAudit("invoice_paid", `${who} paid ${inv.vendor} · $${(inv.amount||0).toFixed(2)} via ${methodPretty(method)}${refStr}${noteStr}`, { payment_status: inv.payment_status }, { payment_status: "paid", method, reference, notes, by: who });
-      // Core payment fields (migration 003)
-      persistApStatus(inv.db_entry_id, { payment_status: "paid", payment_method: method, paid_at: at });
-      // Reference + notes (migration 004) — separate call so missing columns don't block the core update
-      if (reference || notes) persistApStatus(inv.db_entry_id, { payment_reference: reference || null, payment_notes: notes || null });
-    });
+    const at = paidDate ? new Date(paidDate + "T12:00:00").toISOString() : new Date().toISOString();
+    const newStatus = side === "ar" ? "collected" : "paid";
+    const ref = (reference || "").trim(), note = (notes || "").trim();
+    // Snapshot to revert to if the write doesn't persist.
+    const snap = { payment_status: inv.payment_status, paid_at: inv.paid_at, collected_at: inv.collected_at,
+      payment_method_used: inv.payment_method_used, matched: inv.matched,
+      payment_reference: inv.payment_reference, payment_notes: inv.payment_notes };
+    const apply = (patch) => setInvoices(prev => prev.map(i => String(i.id) !== String(inv.id) ? i : { ...i, ...patch }));
+
+    apply({ payment_status: newStatus, payment_method_used: method, paid_at: at, matched: true,
+      ...(side === "ar" ? { collected_at: at } : {}),
+      payment_reference: ref || undefined, payment_notes: note || undefined });
+
+    const fail = (reasonForLog) => {
+      apply(snap);                                    // revert the optimistic change
+      showNotification("Couldn't save the payment — please try again", "error");
+      try { Sentry.captureMessage("payment_persist_failure", { level: "error",
+        tags: { kind: "payment_persist_failure", side },
+        extra: { entry_id: dbId ? String(dbId) : null, new_status: newStatus, reason: reasonForLog } }); } catch {}
+      logAudit("payment_persist_failure", `Couldn't persist ${newStatus} for ${inv.vendor || "entry"} (entry ${dbId || "—"}): ${reasonForLog}`, null,
+        { entry_id: dbId ? String(dbId) : null, side, new_status: newStatus });
+      return false;
+    };
+
+    if (!dbId) return fail("entry not yet persisted (no db id)");
+
+    // Write canonical fields. Reference/notes go separately so a missing migration-004
+    // column can't block the core payment_status write.
+    await persistApStatus(dbId, { payment_status: newStatus, payment_method: method, paid_at: at });
+    if (ref || note) await persistApStatus(dbId, { payment_reference: ref || null, payment_notes: note || null });
+
+    // Verify the write persisted (re-read the row).
+    let confirmed = false;
+    try {
+      const { data, error } = await supabase.from("journal_entries")
+        .select("payment_status").eq("id", dbId).eq("company_id", currentCompany.id).single();
+      confirmed = !error && data && data.payment_status === newStatus;
+    } catch { confirmed = false; }
+    if (!confirmed) return fail("re-read did not confirm the new status");
+
+    const refStr = ref ? ` · ref ${ref}` : "", noteStr = note ? ` · note: ${note}` : "";
+    logAudit(side === "ar" ? "invoice_collected" : "invoice_paid",
+      `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · $${(inv.amount || 0).toFixed(2)} via ${methodPretty(method)}${refStr}${noteStr}`,
+      { payment_status: snap.payment_status }, { payment_status: newStatus, method, reference: ref, notes: note, by: who });
+    return true;
+  };
+
+  // Public AP helper — keeps the existing (bulk) signature, but every id now flows
+  // through the verified canonical writer above.
+  const markPaid = async (invIds, method = "ach", details = {}) => {
+    const ids = Array.isArray(invIds) ? invIds : [invIds];
+    let okCount = 0;
+    for (const id of ids) {
+      const ok = await markBillPaid(id, { paidDate: details.date, method, reference: details.reference, notes: details.notes, side: "ap" });
+      if (ok) okCount++;
+    }
     setSelectedPayments(new Set());
     setCheckRunMode(false);
-    showNotification(`Payment recorded — ${methodPretty(method)} ✓`);
+    if (okCount > 0) showNotification(`Payment recorded — ${methodPretty(method)} ✓`); // failures already toasted by markBillPaid
   };
 
   // ── CHAT HANDLER ────────────────────────────────────────────────────────────
@@ -4176,7 +4223,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, cashFromBanks, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, cashFromBanks, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.

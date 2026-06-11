@@ -63,7 +63,13 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
           secondary_gl_name: isDebit ? primaryCredit?.accounts?.name : primaryDebit?.accounts?.name,
           debit_credit: isDebit ? "debit" : "credit",
           status: "booked", booked_at: e.created_at, source: e.source,
-          payment_status: "unpaid",
+          // Read the canonical payment state back (was hardcoded "unpaid" — which
+          // silently discarded a saved "paid"/"collected" on every refresh for
+          // multi-line bills). Payment state lives on the entry, shared by all lines.
+          payment_status: e.payment_status || "unpaid",
+          paid_at: e.paid_at || undefined,
+          payment_method_used: e.payment_method || undefined,
+          due_date: e.due_date || undefined,
           confidence: e.ai_confidence ?? 99,
           reasoning: e.ai_reasoning || "Loaded from database",
           db_entry_id: e.id,
