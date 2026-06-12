@@ -5,6 +5,21 @@
 // two can never diverge.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Resolve a flattened invoice row to its PARENT journal_entries.id — the row a
+// payment/status UPDATE must target. Multi-line rows have a synthetic id
+// `${parentId}_${lineIndex}`; the parent uuid is carried on db_entry_id, with a
+// belt-and-suspenders fallback of stripping the line suffix. One bill = one entry
+// = one payment_status, so any line of a multi-line entry resolves to the same id.
+export function resolveEntryDbId(invoice) {
+  if (!invoice) return null;
+  if (invoice.db_entry_id != null && invoice.db_entry_id !== "") return String(invoice.db_entry_id);
+  const id = String(invoice.id ?? "");
+  if (!id) return null;
+  // A uuid contains hyphens but no underscores; our synthetic suffix is `_<n>`.
+  const us = id.lastIndexOf("_");
+  return us > 0 ? id.slice(0, us) : id;
+}
+
 export function flattenJournalEntries(entries, chartOfAccounts = []) {
   const mapped = [];
   (entries || []).forEach(e => {

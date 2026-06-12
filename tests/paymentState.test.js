@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
-import { flattenJournalEntries } from "../src/lib/ledger.js";
+import { flattenJournalEntries, resolveEntryDbId } from "../src/lib/ledger.js";
 import { computeAP, computeAR, agingReport } from "../src/lib/reports.js";
 import { executeAITool } from "../src/lib/aiTools.js";
 
@@ -104,6 +104,40 @@ describe("paid state survives a flatten round-trip (the revert-on-refresh fix)",
     const rows = flattenJournalEntries([entry]);
     rows.filter(r => r.gl_code?.startsWith("6")).forEach(r => expect(r.payment_status).toBe("unpaid"));
     expect(computeAP(rows).total).toBe(1000);
+  });
+});
+
+describe("mark-as-paid id resolution targets the PARENT entry row", () => {
+  const lines = (...ls) => ls.map(([debit, credit, code, name]) => ({ debit, credit, accounts: { code, name } }));
+  const multiEntry = (over = {}) => ({
+    id: "PARENT-UUID", entry_date: `${YEAR}-03-01`, status: "posted", deleted_at: null, source: "universal_upload",
+    journal_entry_lines: lines([600, 0, "6100", "Rent"], [400, 0, "6200", "Utilities"], [0, 1000, "2000", "Accounts Payable"]),
+    ...over,
+  });
+
+  it("a multi-line line-row resolves to the parent journal_entries.id (the UPDATE target)", () => {
+    const rows = flattenJournalEntries([multiEntry()]);
+    // Each line has a synthetic id PARENT-UUID_<n> but carries db_entry_id = parent.
+    expect(rows.length).toBeGreaterThan(1);
+    rows.forEach(r => {
+      expect(r.id).toMatch(/^PARENT-UUID_\d+$/);
+      expect(r.db_entry_id).toBe("PARENT-UUID");
+      expect(resolveEntryDbId(r)).toBe("PARENT-UUID");           // what markBillPaid writes WHERE id =
+    });
+  });
+
+  it("falls back to stripping the synthetic suffix when db_entry_id is absent (legacy rows)", () => {
+    expect(resolveEntryDbId({ id: "abc-def-123_2" })).toBe("abc-def-123");   // uuid has hyphens, suffix is _n
+    expect(resolveEntryDbId({ id: "abc-def-123" })).toBe("abc-def-123");     // simple entry → itself
+    expect(resolveEntryDbId({ id: "x_1", db_entry_id: "x" })).toBe("x");     // db_entry_id wins
+    expect(resolveEntryDbId(null)).toBeNull();
+  });
+
+  it("marking ANY line of a multi-line bill paid persists to the one parent → all lines read back paid", () => {
+    // Simulate the UPDATE landing on the parent row: payment_status set on the entry.
+    const rows = flattenJournalEntries([multiEntry({ payment_status: "paid", paid_at: `${YEAR}-03-05T12:00:00Z`, payment_method: "ach" })]);
+    rows.filter(r => r.gl_code?.startsWith("6")).forEach(r => expect(r.payment_status).toBe("paid"));
+    expect(computeAP(rows).total).toBe(0);   // one entry = one paid state = out of AP
   });
 });
 

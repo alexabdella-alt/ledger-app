@@ -10,7 +10,7 @@ import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile
 import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
-import { flattenJournalEntries, fetchLedger } from "./lib/ledger";
+import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
@@ -3624,13 +3624,19 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     }
   };
 
-  // Persist AP workflow status onto the source journal_entries row.
-  // Resilient: warns (instead of throwing) if the columns aren't migrated yet.
+  // Persist AP workflow status onto the source journal_entries row. Returns
+  // { ok, matched, error } so callers can VERIFY the write landed: `.select("id")`
+  // makes PostgREST return the actually-updated rows, so a 0-row update (RLS
+  // UPDATE policy not matching, or wrong id) is detectable — it otherwise returns
+  // 204 with no error and looks like success. Resilient: warns, never throws.
   const persistApStatus = async (dbEntryId, fields) => {
-    if (!dbEntryId || !currentCompany?.id) return;
-    const { error } = await supabase.from("journal_entries")
-      .update(fields).eq("id", dbEntryId).eq("company_id", currentCompany.id);
-    if (error) console.warn("[AP] status persist failed (apply migration 003_ap_workflow.sql?):", error.message);
+    if (!dbEntryId || !currentCompany?.id) return { ok: false, matched: 0, error: "missing db id or company" };
+    const { data, error } = await supabase.from("journal_entries")
+      .update(fields).eq("id", dbEntryId).eq("company_id", currentCompany.id)
+      .select("id");
+    if (error) { console.warn("[AP] status persist failed (apply migration 003_ap_workflow.sql?):", error.message); return { ok: false, matched: 0, error: error.message }; }
+    const matched = Array.isArray(data) ? data.length : 0;
+    return { ok: matched > 0, matched, error: null };
   };
 
   const approveInvoice = (invId) => {
@@ -3687,8 +3693,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   // can never show a paid state the database doesn't have. side: "ap" | "ar".
   const markBillPaid = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap" } = {}) => {
     const inv = (invoicesRef.current || []).find(i => String(i.id) === String(entryId) || String(i.db_entry_id) === String(entryId));
-    if (!inv) return false;
-    const dbId = inv.db_entry_id;
+    if (!inv) { console.warn("[markBillPaid] no invoice for entryId", String(entryId)); return false; }
+    // Always target the PARENT journal_entries.id (multi-line rows carry a synthetic
+    // `${parentId}_${line}` id; one bill = one entry = one payment_status).
+    const dbId = resolveEntryDbId(inv);
     const who = session?.user?.email || "owner";
     const at = paidDate ? new Date(paidDate + "T12:00:00").toISOString() : new Date().toISOString();
     const newStatus = side === "ar" ? "collected" : "paid";
@@ -3717,11 +3725,23 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     if (!dbId) return fail("entry not yet persisted (no db id)");
 
     // Write canonical fields. Reference/notes go separately so a missing migration-004
-    // column can't block the core payment_status write.
-    await persistApStatus(dbId, { payment_status: newStatus, payment_method: method, paid_at: at });
+    // column can't block the core payment_status write. The core write reports how
+    // many rows it matched — a 0-row update (RLS UPDATE policy not matching, or a bad
+    // id) is the authoritative failure signal, not just the re-read.
+    const res = await persistApStatus(dbId, { payment_status: newStatus, payment_method: method, paid_at: at });
     if (ref || note) await persistApStatus(dbId, { payment_reference: ref || null, payment_notes: note || null });
 
-    // Verify the write persisted (re-read the row).
+    if (!res.ok) {
+      // Loud, specific diagnostic so the actual cause (0 rows = RLS/id · error = column)
+      // is visible at the failing click.
+      console.error("[markBillPaid] UPDATE did not land", {
+        entryId: String(entryId), invoiceId: String(inv.id), db_entry_id: inv.db_entry_id ?? null,
+        resolvedDbId: String(dbId), matchedRows: res.matched, supabaseError: res.error, companyId: currentCompany?.id,
+      });
+      return fail(res.error ? `update error: ${res.error}` : `update matched ${res.matched} rows (RLS update policy or id mismatch)`);
+    }
+
+    // Defense-in-depth: re-read and confirm the persisted value too.
     let confirmed = false;
     try {
       const { data, error } = await supabase.from("journal_entries")
