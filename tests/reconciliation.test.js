@@ -4,6 +4,7 @@ import {
   computeCategoryTotals, computeVendorTotals, computeAR, computeAP,
   computeBurnRate, computeRunway, computeCashPosition,
   agingReport, trialBalance, buildMonthlyReport,
+  openPayables, paidPayables,
 } from "../src/lib/reports.js";
 import { glIsRevenue, glIsExpense } from "../src/lib/gl.js";
 import { executeAITool } from "../src/lib/aiTools.js";
@@ -166,6 +167,60 @@ describe("AR / AP reconcile across aging, dashboard total, and AI overdue", () =
     expect(aging.total).toBe(ap.total);
     expect(ap.total).toBe(200);
     expect(ai.total).toBe(ap.overdue);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// THE AP RECONCILIATION LOCK.
+// The Payables page once filtered its bill LIST inline ((glIsExpense||type) +
+// status!=="voided"), which drifted from canonical computeAP (let soft-deleted
+// and balance-sheet-leg rows leak into the list but not the total). This locks
+// all four AP surfaces to one number over a fixture with null + partial payment
+// status, an unapproved bill, voided, soft-deleted, paid, and a liability leg.
+// ════════════════════════════════════════════════════════════════════════════
+describe("AP total reconciliation lock — list === aging === computeAP === AI overdue", () => {
+  const now = new Date();
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  // Factory that PRESERVES an explicit null payment_status (the shared `e`
+  // coerces null → "paid"). Every bill is past-due so overdue total === open total.
+  const ap = (o) => ({
+    id: o.id, vendor: o.vendor, amount: o.amount, date: `${YEAR}-02-01`,
+    gl_code: o.gl_code, gl_name: o.gl_code,
+    type: o.type || (glIsExpense(o.gl_code) ? "expense" : glIsRevenue(o.gl_code) ? "revenue" : "other"),
+    payment_status: "payment_status" in o ? o.payment_status : "unpaid",
+    due_date: o.due_date || PAST_DUE, source: "manual", status: o.status || "booked",
+    deleted_at: o.deleted_at || null, approval_status: o.approval_status || null,
+  });
+  const APFIX = [
+    ap({ id: "ap_null",    vendor: "NullCo",    amount: 100, gl_code: "6500", payment_status: null }),                 // null → open
+    ap({ id: "ap_partial", vendor: "PartialCo", amount: 200, gl_code: "6100", payment_status: "partial" }),            // partial → open
+    ap({ id: "ap_unappr",  vendor: "UnapprCo",  amount: 300, gl_code: "6000", approval_status: "pending_approval" }),  // unapproved → still counts
+    ap({ id: "ap_paid",    vendor: "PaidCo",    amount: 400, gl_code: "6200", payment_status: "paid" }),               // excluded (paid)
+    ap({ id: "ap_void",    vendor: "VoidCo",    amount: 500, gl_code: "6500", status: "voided" }),                     // excluded (voided)
+    ap({ id: "ap_del",     vendor: "DelCo",     amount: 600, gl_code: "6500", deleted_at: "2025-01-01T00:00:00Z" }),   // excluded (soft-deleted)
+    ap({ id: "ap_bsleg",   vendor: "ApLeg",     amount: 700, gl_code: "2000", type: "expense" }),                      // liability leg w/ type expense → excluded
+  ];
+  const EXPECTED = 600;                                  // 100 + 200 + 300
+  const apCtx = { getLedger: async () => APFIX, cashBalance: "0", anomalies: [], recurring: [], getAccountByRole: () => null };
+
+  it("computeAP === AP aging === Payables list sum === AI get_overdue(ap) === $600", async () => {
+    const apT  = computeAP(APFIX, { now });
+    const aging = agingReport(APFIX, "ap", now);
+    const listSum = r2(openPayables(APFIX).reduce((s, i) => s + i.amount, 0)); // the Payables page total
+    const ai = await executeAITool("get_overdue_invoices", { type: "ap" }, apCtx);
+    expect(apT.total).toBe(EXPECTED);
+    expect(aging.total).toBe(apT.total);
+    expect(listSum).toBe(apT.total);
+    expect(ai.total).toBe(apT.total);
+    expect(apT.overdue).toBe(apT.total);                 // all past-due → overdue === open
+  });
+
+  it("the unpaid list is exactly the live, expense-coded, unpaid bills (null/partial/unapproved in; voided/deleted/paid/leg out)", () => {
+    expect(openPayables(APFIX).map(i => i.id).sort()).toEqual(["ap_null", "ap_partial", "ap_unappr"]);
+  });
+
+  it("paidPayables is exactly the live paid expense rows", () => {
+    expect(paidPayables(APFIX).map(i => i.id)).toEqual(["ap_paid"]);
   });
 });
 

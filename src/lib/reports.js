@@ -120,6 +120,23 @@ function arApTotals(invoices, predicate, now) {
 export function computeAR(invoices, { now = new Date() } = {}) { return arApTotals(invoices, arUnpaid, now); }
 export function computeAP(invoices, { now = new Date() } = {}) { return arApTotals(invoices, apUnpaid, now); }
 
+// Open / paid PAYABLE LISTS — the exact rows behind computeAP. The Payables page
+// renders these so its listed bills reconcile to the penny with its own headline
+// total, the AP aging report, and the AI. (Previously ApView filtered inline with
+// `glIsExpense(gl_code) || type==="expense"` + `status!=="voided"`, which let
+// soft-deleted and balance-sheet-leg rows leak into the list but not the total.)
+// openPayables uses the SAME predicate as computeAP; sum(openPayables.amount) === computeAP.total.
+export function openPayables(invoices) {
+  return (invoices || []).filter(i => isLiveEntry(i) && apUnpaid(i));
+}
+export function paidPayables(invoices) {
+  return (invoices || []).filter(i => isLiveEntry(i) && isExp(i) && i.payment_status === "paid");
+}
+// Symmetric AR lists (used to keep the receivables surface on the same footing).
+export function openReceivables(invoices) {
+  return (invoices || []).filter(i => isLiveEntry(i) && arUnpaid(i));
+}
+
 // ── AR / AP AGING (Items 24, 83) ────────────────────────────────────────────
 export function agingReport(invoices, side = "ar", now = new Date()) {
   const open = (invoices || []).filter(i => isLiveEntry(i) && (side === "ar" ? arUnpaid(i) : apUnpaid(i)));
