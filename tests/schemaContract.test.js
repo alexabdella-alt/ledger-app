@@ -1,0 +1,151 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { buildApprovalUpdate, buildAccountInsert } from "../src/lib/writeShapes.js";
+
+// ════════════════════════════════════════════════════════════════════════════
+// SCHEMA-CONTRACT / WRITE+READ-BACK LOCK.
+// These would have caught two silent production failures:
+//   1. approval writes put an EMAIL into journal_entries.approved_by (a UUID
+//      column) → Postgres rejects → 0 rows → approval state never persisted.
+//   2. account auto-creation wrote a non-existent `account_type` column and
+//      omitted the NOT-NULL `category`.
+// A tiny in-memory DB enforces the AUTHORITATIVE live schema (column existence,
+// uuid typing, NOT-NULL on insert) exactly the way PostgREST/Postgres would, so
+// the corrected builders write+read-back cleanly and the OLD shapes are rejected.
+// ════════════════════════════════════════════════════════════════════════════
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Subset of the live schema (from the information_schema dump) relevant to the fix.
+const SCHEMA = {
+  journal_entries: {
+    id:               { type: "uuid", notNull: true, hasDefault: true },
+    company_id:       { type: "uuid", notNull: true },
+    approval_status:  { type: "text" },
+    approved_at:      { type: "timestamptz" },
+    approved_by:      { type: "uuid" },                 // ← uuid, NOT text/email
+    rejected_at:      { type: "timestamptz" },
+    rejection_reason: { type: "text" },
+    payment_status:   { type: "text" },
+  },
+  accounts: {
+    id:          { type: "uuid",    notNull: true, hasDefault: true },
+    company_id:  { type: "uuid",    notNull: true },
+    code:        { type: "text",    notNull: true },
+    name:        { type: "text",    notNull: true },
+    category:    { type: "text",    notNull: true },     // ← NOT NULL, no default
+    active:      { type: "boolean", notNull: true, hasDefault: true },
+    is_system:   { type: "boolean", notNull: true, hasDefault: true },
+    system_role: { type: "text" },
+    // NB: there is intentionally NO `account_type` column.
+  },
+};
+
+// Minimal PostgREST/Postgres-faithful fake: rejects unknown columns, non-uuid
+// values in uuid columns, and missing NOT-NULL columns on insert.
+function makeDb(seed = {}) {
+  const store = Object.fromEntries(Object.keys(SCHEMA).map(t => [t, new Map()]));
+  for (const [t, rows] of Object.entries(seed)) for (const r of rows) store[t].set(r.id, { ...r });
+
+  const validate = (table, payload, { isInsert }) => {
+    const cols = SCHEMA[table];
+    for (const [k, v] of Object.entries(payload)) {
+      if (!cols[k]) return `column "${k}" of relation "${table}" does not exist`;
+      if (cols[k].type === "uuid" && v != null && !UUID_RE.test(String(v)))
+        return `invalid input syntax for type uuid: "${v}"`;
+    }
+    if (isInsert) {
+      for (const [k, meta] of Object.entries(cols)) {
+        if (meta.notNull && !meta.hasDefault && payload[k] == null)
+          return `null value in column "${k}" violates not-null constraint`;
+      }
+    }
+    return null;
+  };
+
+  return {
+    insert(table, payload) {
+      const msg = validate(table, payload, { isInsert: true });
+      if (msg) return { data: [], error: { message: msg }, matched: 0 };
+      const id = payload.id || randomUUID();
+      const row = { id, ...payload };
+      store[table].set(id, row);
+      return { data: [{ ...row }], error: null, matched: 1 };
+    },
+    update(table, id, patch) {
+      const msg = validate(table, patch, { isInsert: false });
+      if (msg) return { data: [], error: { message: msg }, matched: 0 };
+      const row = store[table].get(id);
+      if (!row) return { data: [], error: null, matched: 0 };
+      Object.assign(row, patch);
+      return { data: [{ ...row }], error: null, matched: 1 };
+    },
+    get: (table, id) => { const r = store[table].get(id); return r ? { ...r } : null; },
+  };
+}
+
+describe("approval status — write + read-back persists approved_by as a uuid", () => {
+  const CO = randomUUID(), JE = randomUUID(), UID = randomUUID();
+  let db;
+  beforeEach(() => { db = makeDb({ journal_entries: [{ id: JE, company_id: CO, approval_status: null, approved_by: null }] }); });
+
+  it("approve persists approval_status + approved_by (the uuid actually lands)", () => {
+    const res = db.update("journal_entries", JE, buildApprovalUpdate({ decision: "approved", at: new Date().toISOString(), actorUserId: UID }));
+    expect(res.error).toBeNull();
+    expect(res.matched).toBe(1);
+    const row = db.get("journal_entries", JE);
+    expect(row.approval_status).toBe("approved");
+    expect(row.approved_by).toBe(UID);
+  });
+
+  it("reject records the rejecter in approved_by (no rejected_by column) + persists", () => {
+    const patch = buildApprovalUpdate({ decision: "rejected", at: new Date().toISOString(), actorUserId: UID, reason: "duplicate" });
+    expect(patch).not.toHaveProperty("rejected_by");
+    const res = db.update("journal_entries", JE, patch);
+    expect(res.error).toBeNull();
+    const row = db.get("journal_entries", JE);
+    expect(row.approval_status).toBe("rejected");
+    expect(row.approved_by).toBe(UID);
+    expect(row.rejection_reason).toBe("duplicate");
+    expect(row.payment_status).toBe("rejected");
+  });
+
+  it("REGRESSION GUARD: writing an email to approved_by is rejected and persists nothing (the original bug)", () => {
+    const res = db.update("journal_entries", JE, { approval_status: "approved", approved_by: "alex@example.com" });
+    expect(res.error).toBeTruthy();
+    expect(res.error.message).toMatch(/uuid/);
+    expect(res.matched).toBe(0);
+    expect(db.get("journal_entries", JE).approval_status).toBeNull();   // nothing landed
+  });
+});
+
+describe("account auto-creation — write + read-back persists category, never account_type", () => {
+  const CO = randomUUID();
+  let db;
+  beforeEach(() => { db = makeDb(); });
+
+  it("the builder always includes the NOT-NULL category", () => {
+    expect(buildAccountInsert({ companyId: CO, code: "6500", name: "Tech" }).category).toBe("Expenses");
+  });
+
+  it("insert succeeds and the account reads back with category and no account_type", () => {
+    const ins = db.insert("accounts", buildAccountInsert({ companyId: CO, code: "6500", name: "Technology", category: "Expenses" }));
+    expect(ins.error).toBeNull();
+    const row = db.get("accounts", ins.data[0].id);
+    expect(row.category).toBe("Expenses");
+    expect(row).not.toHaveProperty("account_type");
+  });
+
+  it("REGRESSION GUARD: the old payload (account_type + missing category) is rejected (the original bug)", () => {
+    const ins = db.insert("accounts", { company_id: CO, code: "6500", name: "Technology", account_type: "expense" });
+    expect(ins.error).toBeTruthy();
+    expect(ins.error.message).toMatch(/account_type/);
+    expect(ins.matched).toBe(0);
+  });
+
+  it("REGRESSION GUARD: an accounts insert missing category violates NOT NULL", () => {
+    const ins = db.insert("accounts", { company_id: CO, code: "6500", name: "Technology", active: true, is_system: false });
+    expect(ins.error).toBeTruthy();
+    expect(ins.error.message).toMatch(/category/);
+  });
+});

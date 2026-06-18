@@ -10,6 +10,7 @@ import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile
 import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
+import { buildApprovalUpdate, buildAccountInsert } from "./lib/writeShapes";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
@@ -983,11 +984,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
         .select("id").eq("company_id", currentCompany.id).eq("code", newGlCode).single();
       if (!acctRow) {
         const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === newGlCode);
-        const { data: created } = await supabase.from("accounts").insert({
-          company_id: currentCompany.id, code: newGlCode,
-          name: newGlName || acctDef?.name || newGlCode,
-          account_type: acctDef?.category?.toLowerCase() || "expense",
-        }).select("id").single();
+        const { data: created } = await supabase.from("accounts").insert(
+          buildAccountInsert({ companyId: currentCompany.id, code: newGlCode, name: newGlName || acctDef?.name || newGlCode, category: acctDef?.category })
+        ).select("id").single();
         acctRow = created;
       }
       if (!acctRow?.id) return;
@@ -1019,11 +1018,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           .select("id").eq("company_id", currentCompany.id).eq("code", code).single();
         if (data) return data;
         const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === code);
-        const { data: created } = await supabase.from("accounts").insert({
-          company_id: currentCompany.id, code,
-          name: name || acctDef?.name || code,
-          account_type: acctDef?.category?.toLowerCase() || "expense",
-        }).select("id").single();
+        const { data: created } = await supabase.from("accounts").insert(
+          buildAccountInsert({ companyId: currentCompany.id, code, name: name || acctDef?.name || code, category: acctDef?.category })
+        ).select("id").single();
         return created;
       };
 
@@ -2587,7 +2584,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
             status: queue.length > 0 ? "needs_review" : "complete",
             matched_transactions: autoCleared.map(m => ({ bank_txn: m.bank_txn, invoice_ids: m.invoice_ids, confidence: m.confidence })),
             unmatched_bank: newInvoices.map(i => ({ vendor: i.vendor, amount: i.amount, date: i.date, gl_name: i.gl_name })),
-            completed_at: new Date().toISOString(), completed_by: session?.user?.email || null,
+            completed_at: new Date().toISOString(), completed_by: session?.user?.id || null,  // uuid column, not email
           };
           const saveReconRecord = async () => {
             try {
@@ -3641,29 +3638,31 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
   const approveInvoice = (invId) => {
     const inv = invoices.find(i => i.id === invId);
-    const who = session?.user?.email || "owner";
+    const who = session?.user?.email || "owner";       // human-readable, for the audit log only
+    const uid = session?.user?.id || null;             // uuid → journal_entries.approved_by (a uuid column)
     const at = new Date().toISOString();
     setInvoices(prev => prev.map(i => i.id !== invId ? i : {
-      ...i, approval_status: "approved", approval_reason: "Manually approved", approved_at: at, approved_by: who,
+      ...i, approval_status: "approved", approval_reason: "Manually approved", approved_at: at, approved_by: uid,
     }));
     if (inv) {
       logAudit("invoice_approved", `${who} approved ${inv.vendor} · $${(inv.amount||0).toFixed(2)} (${inv.gl_name})`, { approval_status: inv.approval_status }, { approval_status: "approved", approved_by: who });
-      persistApStatus(inv.db_entry_id, { approval_status: "approved", approved_at: at, approved_by: who });
+      persistApStatus(inv.db_entry_id, buildApprovalUpdate({ decision: "approved", at, actorUserId: uid }));
     }
     showNotification("Invoice approved ✓");
   };
 
   const rejectInvoice = (invId, reason) => {
     const inv = invoices.find(i => i.id === invId);
-    const who = session?.user?.email || "owner";
+    const who = session?.user?.email || "owner";       // human-readable, for the audit log only
+    const uid = session?.user?.id || null;             // uuid → journal_entries.approved_by (no rejected_by column)
     const at = new Date().toISOString();
     const why = (reason && String(reason).trim()) || "No reason given";
     setInvoices(prev => prev.map(i => i.id !== invId ? i : {
-      ...i, approval_status: "rejected", approval_reason: why, rejection_reason: why, rejected_at: at, approved_by: who, payment_status: "rejected",
+      ...i, approval_status: "rejected", approval_reason: why, rejection_reason: why, rejected_at: at, approved_by: uid, payment_status: "rejected",
     }));
     if (inv) {
       logAudit("invoice_rejected", `${who} rejected ${inv.vendor} · $${(inv.amount||0).toFixed(2)} — reason: ${why}`, { approval_status: inv.approval_status }, { approval_status: "rejected", reason: why, by: who });
-      persistApStatus(inv.db_entry_id, { approval_status: "rejected", rejected_at: at, rejection_reason: why, approved_by: who, payment_status: "rejected" });
+      persistApStatus(inv.db_entry_id, buildApprovalUpdate({ decision: "rejected", at, actorUserId: uid, reason: why }));
     }
     showNotification("Invoice rejected", "error");
   };
@@ -3677,7 +3676,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     }));
     if (inv) {
       logAudit("invoice_info_requested", `${who} requested info on ${inv.vendor} · $${(inv.amount||0).toFixed(2)} — ${msg}`, null, { vendor: inv.vendor, amount: inv.amount });
-      persistApStatus(inv.db_entry_id, { approval_status: "info_requested" });
+      persistApStatus(inv.db_entry_id, buildApprovalUpdate({ decision: "info_requested" }));
     }
     showNotification("Marked as info requested");
   };

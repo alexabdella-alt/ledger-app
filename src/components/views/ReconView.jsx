@@ -188,11 +188,11 @@ export default function ReconView() {
   };
 
   const completeMatch = async () => {
-    const at=new Date().toISOString(); const who=session?.user?.email||"owner";
+    const at=new Date().toISOString(); const uid=session?.user?.id||null;  // reconciliations.completed_by is a uuid column
     const ids = bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook);
     setInvoices(prev=>prev.map(i=>ids.includes(i.id)?{...i,cleared:true,cleared_at:at}:i));
     try {
-      const payload = { ...serialize("complete"), completed_at:at, completed_by:who };
+      const payload = { ...serialize("complete"), completed_at:at, completed_by:uid };
       let rid=reconId;
       if (rid) await supabase.from("reconciliations").update(payload).eq("id",rid).eq("company_id",currentCompany.id);
       else { const { data } = await supabase.from("reconciliations").insert(payload).select("id").single(); rid=data?.id; setReconId(rid); }
