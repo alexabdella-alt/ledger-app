@@ -39,6 +39,30 @@ const SCHEMA = {
     system_role: { type: "text" },
     // NB: there is intentionally NO `account_type` column.
   },
+  // reconciliations as it exists AFTER migration 035 (denormalized shape the app
+  // writes; the normalized 005 columns are now nullable dead schema).
+  reconciliations: {
+    id:                          { type: "uuid",        notNull: true, hasDefault: true },
+    company_id:                  { type: "uuid",        notNull: true },
+    bank_account_id:             { type: "uuid" },          // nullable after 035 (dead)
+    statement_date:              { type: "date" },          // nullable after 035 (dead)
+    statement_ending_balance:    { type: "numeric" },       // nullable after 035 (dead)
+    status:                      { type: "text",        notNull: true, hasDefault: true },
+    completed_by:                { type: "uuid" },          // ← uuid, never an email
+    completed_at:                { type: "timestamptz" },
+    created_at:                  { type: "timestamptz", notNull: true, hasDefault: true },
+    account_id:                  { type: "uuid" },          // app's column (≠ bank_account_id)
+    account_name:                { type: "text" },
+    period_start:                { type: "date" },
+    period_end:                  { type: "date" },
+    statement_balance:           { type: "numeric" },
+    books_balance:               { type: "numeric" },
+    difference:                  { type: "numeric" },
+    matched_transactions:        { type: "jsonb", hasDefault: true },
+    unmatched_bank:              { type: "jsonb", hasDefault: true },
+    unmatched_books:             { type: "jsonb", hasDefault: true },
+    added_during_reconciliation: { type: "jsonb", hasDefault: true },
+  },
 };
 
 // Minimal PostgREST/Postgres-faithful fake: rejects unknown columns, non-uuid
@@ -147,5 +171,47 @@ describe("account auto-creation — write + read-back persists category, never a
     const ins = db.insert("accounts", { company_id: CO, code: "6500", name: "Technology", active: true, is_system: false });
     expect(ins.error).toBeTruthy();
     expect(ins.error.message).toMatch(/category/);
+  });
+});
+
+describe("reconciliations — denormalized record write + read-back, completed_by stays uuid", () => {
+  const CO = randomUUID(), UID = randomUUID();
+  let db;
+  beforeEach(() => { db = makeDb(); });
+
+  // Mirrors ReconView.serialize() — the denormalized shape the app writes.
+  const reconPayload = (over = {}) => ({
+    company_id: CO, account_id: randomUUID(), account_name: "Checking ••1234",
+    period_start: "2026-05-01", period_end: "2026-05-31",
+    statement_balance: 5000, books_balance: 4800, difference: 200,
+    status: "complete",
+    matched_transactions: [{ bank: { id: "t1" }, bookId: "b1", conf: 0.9 }],
+    unmatched_bank: [{ id: "t2", amount: 50 }], unmatched_books: ["b3"],
+    added_during_reconciliation: [],
+    completed_at: new Date().toISOString(), completed_by: UID,
+    ...over,
+  });
+
+  it("inserts the full denormalized record and reads it back (incl. completed_by uuid)", () => {
+    const ins = db.insert("reconciliations", reconPayload());
+    expect(ins.error).toBeNull();
+    const row = db.get("reconciliations", ins.data[0].id);
+    expect(row.account_name).toBe("Checking ••1234");
+    expect(row.statement_balance).toBe(5000);
+    expect(row.matched_transactions).toHaveLength(1);
+    expect(row.completed_by).toBe(UID);
+  });
+
+  it("succeeds WITHOUT the normalized NOT-NULL columns (relaxed by migration 035)", () => {
+    const p = reconPayload();
+    expect(p).not.toHaveProperty("bank_account_id");   // app never writes the normalized cols
+    expect(db.insert("reconciliations", p).error).toBeNull();
+  });
+
+  it("REGRESSION GUARD: writing an email to completed_by is rejected and persists nothing", () => {
+    const ins = db.insert("reconciliations", reconPayload({ completed_by: "alex@example.com" }));
+    expect(ins.error).toBeTruthy();
+    expect(ins.error.message).toMatch(/uuid/);
+    expect(ins.matched).toBe(0);
   });
 });

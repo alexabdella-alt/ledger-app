@@ -91,6 +91,31 @@ export default function ReconView() {
   const inProgress = (reconciliations||[]).find(r => r.status==="in_progress");
   const completed = (reconciliations||[]).filter(r => r.status==="complete");
 
+  // completed_by is a uuid (matches every other actor column). Resolve it to a
+  // display name for the "By" field: the current user is known from the session;
+  // other members are looked up from public.users (best-effort — falls back to
+  // "—" if RLS blocks the read). Keeps writing the uuid; only the read resolves.
+  const [memberNames, setMemberNames] = React.useState({});
+  React.useEffect(() => {
+    const ids = [...new Set((reconciliations||[]).map(r=>r.completed_by).filter(Boolean))]
+      .filter(id => id !== session?.user?.id && !(id in memberNames));
+    if (!ids.length) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.from("users").select("id, full_name, email").in("id", ids);
+        if (!cancelled && Array.isArray(data))
+          setMemberNames(prev => ({ ...prev, ...Object.fromEntries(data.map(u => [u.id, u.full_name || u.email || u.id])) }));
+      } catch { /* users table / RLS may block — graceful fallback below */ }
+    })();
+    return () => { cancelled = true; };
+  }, [reconciliations, session]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const nameForUser = (uid) => {
+    if (!uid) return "—";
+    if (uid === session?.user?.id) return session?.user?.email || "You";
+    return memberNames[uid] || "—";
+  };
+
   const booksRows = invoices.filter(i => i.status!=="voided" && i.date && i.date>=periodStart && i.date<=periodEnd && (glIsRevenue(i.gl_code)||glIsExpense(i.gl_code)||i.type==="expense"||i.type==="revenue"));
   const bookSigned = i => (glIsRevenue(i.gl_code)||i.type==="revenue") ? Math.abs(i.amount) : -Math.abs(i.amount);
   const matchedBookIds = new Set(bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook));
@@ -273,7 +298,7 @@ export default function ReconView() {
         <div style={{ ...card, padding:24, maxWidth:560 }}>
           <div style={{ fontSize:11, color:"#039855", letterSpacing:1, marginBottom:8, fontWeight:600 }}>✓ COMPLETE</div>
           <h2 style={{ margin:"0 0 14px", fontSize:20 }}>{viewing.account_name} · {viewing.period_start} → {viewing.period_end}</h2>
-          {[["Your bank's ending balance",fmt(viewing.statement_balance)],["What your books showed",fmt(viewing.books_balance)],["Difference",fmt(viewing.difference||0)],["Transactions matched",(viewing.matched_transactions||[]).length],["Completed",viewing.completed_at?new Date(viewing.completed_at).toLocaleString():"—"],["By",viewing.completed_by||"—"]].map(([k,v])=>(
+          {[["Your bank's ending balance",fmt(viewing.statement_balance)],["What your books showed",fmt(viewing.books_balance)],["Difference",fmt(viewing.difference||0)],["Transactions matched",(viewing.matched_transactions||[]).length],["Completed",viewing.completed_at?new Date(viewing.completed_at).toLocaleString():"—"],["By",nameForUser(viewing.completed_by)]].map(([k,v])=>(
             <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:"1px solid #F3F4F6", fontSize:13 }}><span style={{ color:"#475467" }}>{k}</span><span style={{ fontWeight:500 }}>{v}</span></div>
           ))}
         </div>

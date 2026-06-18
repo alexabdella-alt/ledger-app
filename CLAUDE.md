@@ -60,7 +60,7 @@ All business tables carry a `company_id uuid` and are tenant-isolated by RLS (§
 | `subscriptions` | App subscription/plan per company. |
 | `audit_log` | Immutable activity log. `action`, `detail`, `before`/`after` jsonb, `performed_by`. Written by `logAudit`/`logAI`. |
 | `documents` | Uploaded files. `name`, `mime_type`, `document_type`, `storage_path` (Storage bucket `documents`), `file_size_bytes`, `linked_invoice_id`, `tags`. |
-| `reconciliations` | Bank-match sessions. |
+| `reconciliations` | Bank-match sessions. The app reads/writes a **denormalized** record (`account_id`, `statement_balance`, `books_balance`, `difference`, jsonb `matched_transactions`/`unmatched_*`); the normalized `005` columns (`bank_account_id`, `statement_date`, `statement_ending_balance`) and the `reconciliation_items` table are **intentionally unused dead schema** — see §11. |
 | `tax_settings` | Per `(company_id, tax_year)`: estimated payments, filed deadlines, work-from-home flag. |
 | `chat_messages` | Persistent AI chat. `role`, `content`, `actions_taken` jsonb (string array OR `{actions, rich}` for inline charts). |
 | `upload_log` | One row per uploaded file; processing status + result. |
@@ -175,3 +175,13 @@ Data safety: soft delete + undo, bulk-delete protection, audit log for all AI ac
 AI: conversational clarification flow with free-text booking, adaptive `client_ai_profile`, world-class CFO prompt with live financial snapshot + proactive insights, action sandbox + capability doc, inline charts/CSV/summaries, smart duplicate detection, recurring-expense suggestions.
 
 Security/quality: OWASP Top-10 audit (this pass) — `accounts` RLS (`023`), invoice-print XSS hardening; expanded docs; Vitest suite (`tests/`).
+
+---
+
+## 11. Known dead schema & future considerations
+
+A full `information_schema` audit against the live database (the schema-drift pass) surfaced schema the app does not use. Do **not** "clean these up" reactively — each is documented and intentional:
+
+- **Normalized reconciliations model is dead schema.** `reconciliations` was created (`005`) in a normalized shape (`bank_account_id`, `statement_date`, `statement_ending_balance`) with a child `reconciliation_items` table. The app never adopted it — ReconView and the bank-upload flow read/write a **denormalized** record instead (`account_id`, `statement_balance`, `books_balance`, `difference`, and jsonb arrays of matched/unmatched transactions). Migration `035` added those denormalized columns and relaxed the three unused NOT-NULLs so the insert succeeds. The normalized columns and `reconciliation_items` remain but are unused. **Future consideration (not now):** migrate reconciliation records to the proper normalized relational model (`reconciliations` header + `reconciliation_items` lines, FK to `journal_entry_lines`) for audit-grade record-keeping. This is a deliberate, separate project — the denormalized shape is the working source of truth today.
+- **`ap_invoices` is an orphaned table** — a fully-structured parallel AP-invoice model that zero app code references (payables are booked to `journal_entries`). Left in place; drop only after confirming it's empty and unreferenced by Edge Functions.
+- **Schema source-of-truth caveat:** the migration files **cannot rebuild the database from empty** — ~21 core tables predate `001` and have no `create table` DDL in the repo (`001` assumes they already exist). A `pg_dump --schema-only` baseline (`000_baseline_schema.sql`) is needed before the repo is a reproducible source of truth. Absence of a migration file does **not** imply a column/table is missing live (e.g. `notifications` was created by an un-committed `024`); verify against `information_schema`, never infer from the repo alone.
