@@ -25,6 +25,8 @@ CREATE OR REPLACE FUNCTION public.is_company_member(cid uuid) RETURNS boolean
       or exists (select 1 from public.company_users cu
                  where cu.company_id = cid and cu.user_id = auth.uid() and cu.accepted_at is not null);
 $$;
+revoke all on function public.is_company_member(uuid) from public;
+grant execute on function public.is_company_member(uuid) to authenticated;
 
 
 -- ── post_journal_entry ──
@@ -101,6 +103,8 @@ exception
     raise;
 end;
 $$;
+revoke all on function public.post_journal_entry(uuid, date, text, text, uuid, jsonb, jsonb) from public;
+grant execute on function public.post_journal_entry(uuid, date, text, text, uuid, jsonb, jsonb) to authenticated;
 
 
 -- ── seed_company_accounts ──
@@ -175,6 +179,8 @@ begin
     set system_role = coalesce(public.accounts.system_role, excluded.system_role);
 end;
 $$;
+revoke all on function public.seed_company_accounts(uuid) from public;
+grant execute on function public.seed_company_accounts(uuid) to authenticated;
 
 
 -- ── security_check ──
@@ -207,6 +213,8 @@ begin
   from pg_policies p where p.schemaname='public' and p.tablename = any(critical);
   return jsonb_build_object('rls',v_rls,'policies',v_policies,'generated_at',now());
 end; $$;
+revoke all on function public.security_check() from public;
+grant execute on function public.security_check() to authenticated;
 
 
 -- ── list_company_members ──
@@ -222,5 +230,7 @@ CREATE OR REPLACE FUNCTION public.list_company_members(p_company uuid) RETURNS T
   where cu.company_id = p_company
     and public.is_company_admin(p_company);
 $$;
+revoke all on function public.list_company_members(uuid) from public;
+grant execute on function public.list_company_members(uuid) to authenticated;
 
 commit;
