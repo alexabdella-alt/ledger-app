@@ -37,7 +37,8 @@ export default function ArView() {
             // persisted → reverted on every refresh). side:"ar" sets payment_status="collected".
             const markCollected = async (id) => {
               const ok = await markBillPaid(id, { side: "ar" });
-              if (ok) showNotification("Marked as collected ✓");
+              // Reload so the posted GL collection entry (Dr Cash / Cr AR) appears.
+              if (ok) { try { await loadAllData(); } catch {} showNotification("Marked as collected ✓"); }
             };
 
             const handleArAging = async () => {

@@ -11,6 +11,7 @@ import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/ai
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert } from "./lib/writeShapes";
+import { buildPaymentEntry } from "./lib/payments";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
@@ -1521,6 +1522,18 @@ Reply with ONLY the summary text.`;
         if (matches?.length) { for (const m of matches) await mark(m.id); }
       }
     } catch(e) { console.error("softDeleteJournalEntry error:", e); }
+    // Step 1 integrity: reverse any GL payment entry linked to a deleted/voided bill,
+    // so a paid bill's Dr AP/Cr Cash movement never outlives the bill. Linked payment
+    // JEs are added to `ids` (via mark) so Undo restores them together with the bill.
+    try {
+      for (const billId of [...ids]) {
+        const { data: pays } = await supabase.from("journal_entries").select("id")
+          .eq("company_id", currentCompany.id)
+          .eq("import_metadata->>payment_for", String(billId))
+          .is("deleted_at", null).eq("status", "posted");
+        for (const p of (pays || [])) await mark(p.id);
+      }
+    } catch (e) { console.warn("reverse linked payments on delete failed:", e?.message || e); }
     return ids;
   };
   // Restore soft-deleted journal entries (clears deleted_at) — used by Undo and admins.
@@ -3710,8 +3723,19 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       ...(side === "ar" ? { collected_at: at } : {}),
       payment_reference: ref || undefined, payment_notes: note || undefined });
 
-    const fail = (reasonForLog) => {
+    let postedPaymentId = null;                       // GL payment JE posted this call (for compensation)
+    const fail = async (reasonForLog) => {
       apply(snap);                                    // revert the optimistic change
+      // Compensation: if the GL payment entry was already posted, reverse it so we
+      // never leave a GL movement without the paid flag (atomic-by-compensation).
+      if (postedPaymentId) {
+        try {
+          await supabase.from("journal_entries")
+            .update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
+            .eq("id", postedPaymentId).eq("company_id", currentCompany.id);
+        } catch (e) { console.warn("[markBillPaid] compensation reverse failed:", e?.message || e); }
+        postedPaymentId = null;
+      }
       showNotification("Couldn't save the payment — please try again", "error");
       try { Sentry.captureMessage("payment_persist_failure", { level: "error",
         tags: { kind: "payment_persist_failure", side },
@@ -3721,7 +3745,44 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       return false;
     };
 
-    if (!dbId) return fail("entry not yet persisted (no db id)");
+    if (!dbId) return await fail("entry not yet persisted (no db id)");
+
+    // ── GL PAYMENT MOVEMENT (Step 1 integrity) ──────────────────────────────────
+    // Post the balanced payment entry (AP: Dr AP/Accrued · Cr Cash · AR: Dr Cash · Cr
+    // AR) BEFORE flipping the flag, only on the unpaid→paid transition and only when
+    // the bill was booked to a liability/receivable. A bill booked direct-to-cash was
+    // already settled at booking, so it stays flag-only (never double-credit Cash).
+    // Posting first means a GL failure bails before the flag is written, so the flag
+    // and the GL movement are always consistent.
+    const isTransition = snap.payment_status !== newStatus;
+    if (isTransition) {
+      const payEntry = buildPaymentEntry(inv, side, {
+        apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"),
+        arCode: rc("accounts_receivable"), cashCode: rc("cash"), cashName: rn("cash"),
+        date: paidDate || at.slice(0, 10), billDbId: dbId,
+      });
+      if (payEntry) {
+        // Idempotency: don't double-post if a live payment JE already links to this bill.
+        let already = false;
+        try {
+          const { data } = await supabase.from("journal_entries").select("id")
+            .eq("company_id", currentCompany.id)
+            .eq("import_metadata->>payment_for", String(dbId))
+            .is("deleted_at", null).eq("status", "posted").limit(1);
+          already = Array.isArray(data) && data.length > 0;
+        } catch { /* probe failed — rely on the transition guard above */ }
+        if (!already) {
+          postedPaymentId = await persistJournalEntry(payEntry);
+          if (!postedPaymentId) return await fail("payment GL entry post failed");
+          // Link the payment JE to its bill (import_metadata.payment_for) for reversal.
+          try {
+            await supabase.from("journal_entries")
+              .update({ import_metadata: { kind: payEntry._paymentKind, payment_for: String(dbId) } })
+              .eq("id", postedPaymentId).eq("company_id", currentCompany.id);
+          } catch (e) { console.warn("[markBillPaid] payment link write failed:", e?.message || e); }
+        }
+      }
+    }
 
     // Write canonical fields. Reference/notes go separately so a missing migration-004
     // column can't block the core payment_status write. The core write reports how
@@ -3737,7 +3798,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         entryId: String(entryId), invoiceId: String(inv.id), db_entry_id: inv.db_entry_id ?? null,
         resolvedDbId: String(dbId), matchedRows: res.matched, supabaseError: res.error, companyId: currentCompany?.id,
       });
-      return fail(res.error ? `update error: ${res.error}` : `update matched ${res.matched} rows (RLS update policy or id mismatch)`);
+      return await fail(res.error ? `update error: ${res.error}` : `update matched ${res.matched} rows (RLS update policy or id mismatch)`);
     }
 
     // Defense-in-depth: re-read and confirm the persisted value too.
@@ -3747,12 +3808,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         .select("payment_status").eq("id", dbId).eq("company_id", currentCompany.id).single();
       confirmed = !error && data && data.payment_status === newStatus;
     } catch { confirmed = false; }
-    if (!confirmed) return fail("re-read did not confirm the new status");
+    if (!confirmed) return await fail("re-read did not confirm the new status");
 
     const refStr = ref ? ` · ref ${ref}` : "", noteStr = note ? ` · note: ${note}` : "";
+    const glStr = postedPaymentId ? ` · GL ${side === "ar" ? "Dr Cash/Cr AR" : "Dr AP/Cr Cash"} posted` : "";
     logAudit(side === "ar" ? "invoice_collected" : "invoice_paid",
-      `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · $${(inv.amount || 0).toFixed(2)} via ${methodPretty(method)}${refStr}${noteStr}`,
-      { payment_status: snap.payment_status }, { payment_status: newStatus, method, reference: ref, notes: note, by: who });
+      `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · $${(inv.amount || 0).toFixed(2)} via ${methodPretty(method)}${refStr}${noteStr}${glStr}`,
+      { payment_status: snap.payment_status }, { payment_status: newStatus, method, reference: ref, notes: note, by: who, payment_entry_id: postedPaymentId ? String(postedPaymentId) : null });
     return true;
   };
 
@@ -3767,7 +3829,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     }
     setSelectedPayments(new Set());
     setCheckRunMode(false);
-    if (okCount > 0) showNotification(`Payment recorded — ${methodPretty(method)} ✓`); // failures already toasted by markBillPaid
+    // Reload so the posted GL payment entries (Dr AP / Cr Cash) appear and the AP
+    // balance reflects them. One refresh covers the whole batch.
+    if (okCount > 0) { try { await loadAllData(); } catch {} showNotification(`Payment recorded — ${methodPretty(method)} ✓`); } // failures already toasted by markBillPaid
   };
 
   // ── CHAT HANDLER ────────────────────────────────────────────────────────────
