@@ -12,6 +12,7 @@ import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./l
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert } from "./lib/writeShapes";
 import { buildPaymentEntry } from "./lib/payments";
+import { buildReversalLines } from "./lib/journalEntries";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
@@ -1570,14 +1571,63 @@ Reply with ONLY the summary text.`;
   const softDeleteInvoice = (invoice, byAI=false) => softDeleteInvoices([invoice], byAI);
 
   // Centralized void with Undo. Void is client-session state (matching existing behavior).
-  const voidInvoiceWithUndo = (invoice, reason, byAI=false) => {
+  // GAAP reversal (#14): post a balanced OFFSETTING entry that mirrors every line of
+  // the original, through the canonical post_journal_entry RPC. The original entry is
+  // KEPT (audit trail) and stays live; the reversal cancels its GL effect (net zero) —
+  // we do NOT also set status="voided" (that would double-remove). Linked to the
+  // original via import_metadata.reverses and idempotent (one live reversal per entry).
+  const reverseJournalEntry = async (invoice, reason, byAI = false) => {
+    if (!invoice || !currentCompany?.id || !session?.user?.id) return null;
+    const origId = resolveEntryDbId(invoice) || invoice.db_entry_id || null;
+    if (!origId) { showNotification("Can't reverse — entry isn't saved yet", "error"); return null; }
+    try {
+      const { data: existing } = await supabase.from("journal_entries").select("id")
+        .eq("company_id", currentCompany.id).eq("import_metadata->>reverses", String(origId))
+        .is("deleted_at", null).eq("status", "posted").limit(1);
+      if (Array.isArray(existing) && existing.length) { showNotification("Already reversed", "error"); return existing[0].id; }
+    } catch { /* probe failed — proceed (post is still idempotent enough for the UI) */ }
+
+    const { data: orig, error: loadErr } = await supabase.from("journal_entries")
+      .select("entry_date, description, journal_entry_lines(account_id, debit, credit, memo)")
+      .eq("id", origId).eq("company_id", currentCompany.id).single();
+    if (loadErr || !orig) { showNotification("Couldn't load the entry to reverse", "error"); return null; }
+    const lines = buildReversalLines(orig.journal_entry_lines);
+    if (!lines.length) { showNotification("Nothing to reverse on that entry", "error"); return null; }
+
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("post_journal_entry", {
+      p_company_id: currentCompany.id, p_entry_date: new Date().toISOString().slice(0, 10),
+      p_description: `REVERSAL: ${orig.description || invoice.vendor || "entry"}${reason ? ` — ${reason}` : ""}`,
+      p_source: "manual", p_created_by: session.user.id, p_lines: lines, p_meta: {},
+    });
+    if (rpcErr) { console.error("[reverse] post failed:", rpcErr.message); showNotification("Couldn't post the reversal — " + rpcErr.message, "error"); return null; }
+    const revId = rpcData?.id || rpcData?.entry?.id || null;
+    if (revId) {
+      try {
+        await supabase.from("journal_entries").update({ import_metadata: { kind: "reversal", reverses: String(origId) } })
+          .eq("id", revId).eq("company_id", currentCompany.id);
+      } catch (e) { console.warn("[reverse] link write failed:", e?.message || e); }
+    }
+    logAudit("entry_reversed", `Reversed ${invoice.vendor || orig.description || "entry"} · $${(invoice.amount || 0).toFixed(2)}${reason ? ` — ${reason}` : ""}`,
+      null, { reverses: String(origId), reversal_id: revId ? String(revId) : null }, byAI ? "AI Chat" : "owner");
+    return revId;
+  };
+
+  // "Void" now posts a persisted reversing entry (was local-only, never durable).
+  // Undo soft-deletes the reversal so the original stands alone again.
+  const voidInvoiceWithUndo = async (invoice, reason, byAI=false) => {
     if (!invoice) return;
     const snap = { ...invoice };
-    setInvoices(prev => prev.map(i => String(i.id) === String(snap.id) ? { ...i, status:"voided", voided_at:new Date().toISOString(), voided_reason: reason || "Voided" } : i));
-    logAudit("invoice_voided", `Voided ${snap.vendor} · $${snap.amount}`, snap, null, byAI ? "AI Chat" : "owner");
-    showNotification(`Voided ${snap.vendor || "entry"} — tap Undo to restore`, "success", () => {
-      setInvoices(prev => prev.map(i => String(i.id) === String(snap.id) ? { ...i, status: snap.status || "booked", voided_at: snap.voided_at || null, voided_reason: snap.voided_reason || null } : i));
-      logAudit("invoice_unvoided", `Restored (un-voided): ${snap.vendor}`, null, snap);
+    const revId = await reverseJournalEntry(invoice, reason || "Voided", byAI);
+    if (!revId) return;                                // failure already toasted
+    try { await loadAllData(); } catch {}              // original + reversal both visible, net zero
+    showNotification(`Reversed ${snap.vendor || "entry"} — tap Undo to restore`, "success", async () => {
+      try {
+        await supabase.from("journal_entries")
+          .update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
+          .eq("id", revId).eq("company_id", currentCompany.id);
+        await loadAllData();
+      } catch (e) { console.warn("[reverse] undo failed:", e?.message || e); }
+      logAudit("entry_reversal_undone", `Undid reversal of ${snap.vendor || "entry"}`, null, { reversal_id: String(revId) });
       showNotification("Restored ✓");
     });
   };
@@ -4086,27 +4136,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           }
         }
         if (action.type === "reverse_entry") {
-          // Create reversing journal entry (opposite debits/credits)
+          // Post a true reversing entry through the shared, tested path (mirrors every
+          // line of the original). Replaces the old inline swap+flip, which double-
+          // negated and re-booked an identical entry instead of reversing it.
           const toReverse = invoices.find(i => String(i.id) === String(action.invoice_id));
           if (toReverse) {
-            const reversed = {
-              ...toReverse,
-              id: Date.now() + Math.random(),
-              amount: toReverse.amount,
-              description: `REVERSAL: ${toReverse.description || toReverse.vendor}`,
-              debit_credit: toReverse.debit_credit === "debit" ? "credit" : "debit",
-              gl_code: toReverse.secondary_gl_code,
-              gl_name: toReverse.secondary_gl_name,
-              secondary_gl_code: toReverse.gl_code,
-              secondary_gl_name: toReverse.gl_name,
-              status: "booked",
-              booked_at: new Date().toISOString(),
-              source: "reversal",
-              date: action.date || new Date().toISOString().slice(0,10),
-            };
-            setInvoices(prev => [reversed, ...prev]);
-            bookToDb(reversed);
-            actionSummary.push(`Reversing entry created for ${toReverse.vendor} $${toReverse.amount}`);
+            const revId = await reverseJournalEntry(toReverse, action.reason || "Reversed via AI", true);
+            if (revId) { await loadAllData().catch(() => {}); actionSummary.push(`Reversing entry created for ${toReverse.vendor} $${toReverse.amount}`); }
           }
         }
         if (action.type === "delete_contract") {

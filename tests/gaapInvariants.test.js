@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildPaymentEntry, paymentEntryLines } from "../src/lib/payments.js";
+import { reverseEntryLines } from "../src/lib/journalEntries.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // GAAP INVARIANT GUARDRAIL — the standing CI spec for every economic event.
@@ -106,11 +107,16 @@ describe("(c) balance-sheet-only movements leave net income unchanged", () => {
   it("collecting an invoice → net income 0", () => expect(netIncome(byName("5 ·"))).toBe(0));
   it("opening balances → net income 0", () => expect(netIncome(byName("6 ·"))).toBe(0));
   it("bank opening position → net income 0", () => expect(netIncome(byName("7 ·"))).toBe(0));
-  it("a booking and its reversal together → net income 0", () => {
+  it("a booking and its reversal (real builder) together → net income 0", () => {
     const booking = byName("1 ·");
-    const reversal = booking.map(l => ({ code: l.code, debit: l.credit, credit: l.debit })); // mirror Dr/Cr
-    expect(netIncome(booking)).toBe(-100);          // the booking alone hits P&L
+    const reversal = reverseEntryLines(booking);     // the live reversal builder
+    expect(netIncome(booking)).toBe(-100);           // the booking alone hits P&L
     expect(netIncome([...booking, ...reversal])).toBe(0);   // together they cancel
+    expect(equationResidual([...booking, ...reversal])).toBe(0);
+    // nets to zero on every account
+    const net = {};
+    [...booking, ...reversal].forEach(l => { net[l.code] = (net[l.code] || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0); });
+    expect(Object.values(net).every(v => r2(v) === 0)).toBe(true);
   });
 });
 
