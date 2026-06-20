@@ -119,12 +119,13 @@ export function computeVendorTotals(invoices, range = {}) {
   return Object.values(map).map(v => ({ ...v, total: r2(v.total) })).sort((a, b) => b.total - a.total);
 }
 
-// Cash on hand. Prefers the explicit dashboard cashBalance (already the sum of
-// bank-account current balances); falls back to summing bankAccounts.
-export function computeCashPosition({ cashBalance = null, bankAccounts = null } = {}) {
-  if (cashBalance != null && cashBalance !== "") return r2(num(cashBalance));
-  if (Array.isArray(bankAccounts)) return r2(bankAccounts.reduce((s, a) => s + num(a.current_balance), 0));
-  return 0;
+// Cash on hand = the GL balance of the cash / cash-equivalent accounts, summed.
+// THE canonical cash figure — derives from the ledger via glAccountBalance, exactly
+// like the Balance Sheet cash line, so every cash surface agrees by construction.
+// NB: this is NOT the bank statement balance. The bank balance is the external figure
+// GL cash is RECONCILED against; a difference between them is a reconciliation item.
+export function glCashOnHand(invoices, cashCodes, { asOf = null } = {}) {
+  return r2((cashCodes || []).reduce((s, code) => s + glAccountBalance(code, invoices, { asOf }), 0));
 }
 
 // Trailing-N-month average expense burn (default 3), counting only months up to
@@ -407,7 +408,7 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
     .concat(Object.entries(prvCatMap).filter(([cat]) => !curCats.some(c => c.category === cat)).map(([cat, prv]) => ({ category: cat, ...momLine(0, prv) })))
     .sort((a, b) => b.current - a.current);
 
-  const cash = computeCashPosition({ cashBalance });
+  const cash = r2(num(cashBalance));   // GL cash, passed in by the caller (glCashOnHand)
   const burn = computeBurnRate(live, { asOf: curRange.to });
   const runway = computeRunway(cash, burn);
 

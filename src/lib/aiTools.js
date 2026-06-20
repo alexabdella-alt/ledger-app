@@ -16,7 +16,7 @@ import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import {
   isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
-  computeVendorTotals, computeCashPosition, computeBurnRate, computeRunway, computeAR, computeAP,
+  computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP,
 } from "./reports.js";
 
 const isLive = isLiveEntry;                                  // the ONE shared liveness predicate
@@ -83,7 +83,7 @@ async function getFinancialSummary(input, ctx) {
   const today = now.toISOString().slice(0, 10);
   const { from, to } = periodRange(input.period || "this_year", input.date_from, input.date_to);
   const led = await ctx.getLedger();
-  const cash = computeCashPosition({ cashBalance: ctx.cashBalance });
+  const cash = Number(ctx.cashBalance) || 0;   // GL cash on hand, provided by the app
   const burn = computeBurnRate(led, { asOf: today });
   const ar = computeAR(led, { now }), ap = computeAP(led, { now });
   return {

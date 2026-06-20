@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   isLiveEntry, liveEntries, computeRevenue, computeExpenses, computeNetIncome,
   computeCategoryTotals, computeVendorTotals, computeAR, computeAP,
-  computeBurnRate, computeRunway, computeCashPosition,
+  computeBurnRate, computeRunway,
   agingReport, trialBalance, buildMonthlyReport,
-  openPayables, paidPayables, glAccountBalance,
+  openPayables, paidPayables, glAccountBalance, glCashOnHand,
 } from "../src/lib/reports.js";
 import { glIsRevenue, glIsExpense } from "../src/lib/gl.js";
 import { executeAITool } from "../src/lib/aiTools.js";
@@ -285,13 +285,22 @@ describe("vendor totals reconcile between the report and the AI", () => {
   });
 });
 
-describe("cash, burn, runway share one definition", () => {
-  it("cash position prefers the explicit balance", () => {
-    expect(computeCashPosition({ cashBalance: CASH })).toBe(12345.67);
+describe("cash on hand derives from the GL — one source for every cash surface", () => {
+  it("glCashOnHand === the Balance Sheet cash line (sum of glAccountBalance over cash accounts)", () => {
+    // Every cash surface (dashboard card, runway, health, KPIs, monthly, AI) calls
+    // glCashOnHand(invoices, cashCodes) — so they are identical by construction, and
+    // equal to what the Balance Sheet cash line shows (glAccountBalance per cash account).
+    expect(glCashOnHand(FIX, ["1000"])).toBe(glAccountBalance("1000", FIX));
+    expect(glCashOnHand(FIX, ["1000", "1010"]))
+      .toBe(Math.round((glAccountBalance("1000", FIX) + glAccountBalance("1010", FIX)) * 100) / 100);
   });
-  it("runway === cash ÷ trailing burn, consistently", () => {
+  it("respects an as-of date (cash as of a point in time)", () => {
+    expect(glCashOnHand(FIX, ["1000"], { asOf: `${YEAR}-12-31` }))
+      .toBe(glAccountBalance("1000", FIX, { asOf: `${YEAR}-12-31` }));
+  });
+  it("runway === GL cash ÷ trailing burn, consistently", () => {
     const burn = computeBurnRate(FIX, { asOf: `${YEAR}-12-31` });
-    const cash = computeCashPosition({ cashBalance: CASH });
+    const cash = glCashOnHand(FIX, ["1000"]);
     expect(computeRunway(cash, burn)).toBe(Math.round((cash / burn) * 10) / 10);
   });
 });

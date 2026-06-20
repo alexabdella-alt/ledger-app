@@ -6,7 +6,7 @@ import { fetchLedger } from "./ledger";
 import { AI_TOOLS, executeAITool } from "./aiTools";
 import {
   computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
-  computeCashPosition, computeBurnRate, computeRunway, computeAR,
+  computeBurnRate, computeRunway, computeAR,
 } from "./reports";
 
 // Build a compact live financial snapshot from the full ledger so the AI always
@@ -26,7 +26,7 @@ function buildFinancials(invoices, cashBalance) {
   const revYTD = computeRevenue(invoices, yearRange);
   const expYTD = computeExpenses(invoices, yearRange);
   const netYTD = computeNetIncome(invoices, yearRange);
-  const cash = computeCashPosition({ cashBalance });
+  const cash = Number(cashBalance) || 0;   // GL cash on hand, passed in from the app
   const burn = computeBurnRate(invoices, { asOf: today });
   const runway = computeRunway(cash, burn);
   const ar = computeAR(invoices, { now });
