@@ -13,7 +13,7 @@ import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert } from "./lib/writeShapes";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch } from "./lib/bankMatch";
-import { buildReversalLines } from "./lib/journalEntries";
+import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
@@ -1114,6 +1114,50 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       if (lineErr) console.error("JE lines insert error (entry may be unbalanced):", lineErr.message);
       return je.id;
     } catch(e) { console.error("persistJournalEntry error:", e); return null; }
+  };
+
+  // Post ONE balanced journal entry with N lines (the canonical multi-line write
+  // path). Takes a buildJournalEntry() result; resolves each line's code → account
+  // id and writes a SINGLE journal_entries row via post_journal_entry. This replaces
+  // the per-line expansion (which posted each line as its own 2-line JE and so
+  // double-counted multi-line entries — revenue/expense landing on both a primary
+  // and an offset leg). Refuses unbalanced entries before hitting the DB.
+  const persistMultiLineEntry = async (entry) => {
+    if (!currentCompany?.id || !session?.user?.id) return null;
+    if (!entry || !entry.balanced) { console.error("persistMultiLineEntry: refusing unbalanced/empty entry", entry); showNotification("Entry doesn't balance — not posted.", "error"); return null; }
+    if (cutoffDate && entry.source !== "opening_balance" && isBeforeCutoff(entry.date, cutoffDate)) {
+      showNotification(PRE_CUTOFF_MESSAGE, "error");
+      logAudit("pre_cutoff_booking_blocked", `Blocked multi-line entry dated ${entry.date} before cutoff ${cutoffDate}`, null, { date: entry.date, cutoff: cutoffDate });
+      return null;
+    }
+    try {
+      const ensureAccount = async (code, name) => {
+        if (!code) return null;
+        let { data } = await supabase.from("accounts")
+          .select("id").eq("company_id", currentCompany.id).eq("code", code).single();
+        if (data) return data;
+        const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === code);
+        const { data: created } = await supabase.from("accounts").insert(
+          buildAccountInsert({ companyId: currentCompany.id, code, name: name || acctDef?.name || code, category: acctDef?.category })
+        ).select("id").single();
+        return created;
+      };
+      const resolved = [];
+      for (const l of entry.lines) {
+        const acct = await ensureAccount(l.code, l.name);
+        if (!acct) { console.error("persistMultiLineEntry: no account for code", l.code); showNotification(`Couldn't resolve account ${l.code}`, "error"); return null; }
+        resolved.push({ account_id: acct.id, debit: l.debit, credit: l.credit, memo: l.memo || entry.description });
+      }
+      const entryDate = entry.date || new Date().toISOString().slice(0,10);
+      const description = entry.description || "";
+      const source = normalizeSource(entry.source);
+      const { data, error } = await supabase.rpc("post_journal_entry", {
+        p_company_id: currentCompany.id, p_entry_date: entryDate, p_description: description,
+        p_source: source, p_created_by: session.user.id, p_lines: resolved, p_meta: entry.meta || {},
+      });
+      if (error) { console.error("post_journal_entry (multi-line) failed:", error.message); showNotification("Couldn't save the entry: " + (error.message || "unknown error"), "error"); return null; }
+      return data?.id || data?.entry?.id || null;
+    } catch(e) { console.error("persistMultiLineEntry error:", e); return null; }
   };
 
   // ── OPENING BALANCES (clean-cutoff conversion, #6/#7) ───────────────────────
@@ -3393,109 +3437,62 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
     setContractProcessing(false);
   };
 
-  const postContractEntry = (contract, entryIdx) => {
-    const entry = contract.journal_entries[entryIdx];
+  // Build the canonical ONE-entry-N-lines payload for a contract journal entry.
+  // Every line (ROU asset, lease liabilities, deferred revenue, prepaid, revenue,
+  // expense) goes into a SINGLE balanced entry — NOT one 2-line JE per line, which
+  // double-counted (revenue/expense landing on both a primary and an offset leg).
+  const buildContractEntry = (contract, entry) => buildJournalEntry({
+    lines: (entry.lines || []).map(l => ({
+      code: l.account_code, name: l.account_name,
+      debit: Number(l.debit) || 0, credit: Number(l.credit) || 0,
+    })),
+    date: entry.date,
+    description: `${contract.counterparty || ""} – ${entry.description}${entry.memo ? ` (${entry.memo})` : ""}`,
+    source: "contract",
+    meta: { ai_reasoning: `Posted from contract (GAAP/ASC 842): ${contract.description || ""}`, contract_id: contract.id },
+  });
+
+  const postContractEntry = async (contract, entryIdx) => {
+    const entry = contract.journal_entries?.[entryIdx];
     if (!entry) return;
-
-    // Post EVERY line as a proper ledger record — both debit and credit sides
-    // This ensures balance sheet accounts (ROU Asset, Lease Liability) are captured
-    const newInvoices = entry.lines.map((l, li) => {
-      const isDebit = l.debit > 0;
-      const amount = isDebit ? l.debit : l.credit;
-      const acct = CHART_OF_ACCOUNTS.find(a => a.code === l.account_code);
-      const category = acct?.category || "Expenses";
-
-      // Find the offsetting line for this entry line
-      const offsetLine = isDebit
-        ? entry.lines.find(x => x.credit > 0)
-        : entry.lines.find(x => x.debit > 0);
-
-      return {
-        id: Date.now() + Math.random() + li,
-        vendor: contract.counterparty,
-        description: `${entry.description}${entry.memo ? ` — ${entry.memo}` : ""}`,
-        amount,
-        date: entry.date,
-        type: ["Revenue"].includes(category) ? "revenue" : "expense",
-        project: "General",
-        gl_code: l.account_code,
-        gl_name: l.account_name,
-        secondary_gl_code: offsetLine?.account_code || rc("accounts_payable"),
-        secondary_gl_name: offsetLine?.account_name || rn("accounts_payable"),
-        debit_credit: isDebit ? "debit" : "credit",
-        confidence: 99,
-        reasoning: `Posted from contract (ASC 842/GAAP): ${contract.description}`,
-        status: "booked",
-        booked_at: new Date().toISOString(),
-        source: "contract",
-        contract_id: contract.id,
-        balance_sheet_account: ["Assets","Liabilities","Equity"].includes(category),
-      };
-    });
-
-    setInvoices(prev => [...newInvoices, ...prev]);
-    newInvoices.forEach(inv => bookToDb(inv));
+    const je = buildContractEntry(contract, entry);
+    if (!je.balanced) { showNotification("Contract entry doesn't balance — not posted.", "error"); return; }
+    const jeId = await persistMultiLineEntry(je);
+    if (!jeId) return;   // failure already surfaced by persistMultiLineEntry
 
     const updatedContract = {...contract, posted_entries: [...(contract.posted_entries||[]), entryIdx]};
     setContracts(prev => prev.map(c => c.id===contract.id ? updatedContract : c));
-    setSelectedContract(prev => ({...prev, posted_entries: [...(prev.posted_entries||[]), entryIdx]}));
+    setSelectedContract(prev => prev ? ({...prev, posted_entries: [...(prev.posted_entries||[]), entryIdx]}) : prev);
     persistContract(updatedContract);
+    // Reflect the single posted multi-line entry (no per-line expansion / double count).
+    try { await loadAllData(); } catch {}
     showNotification(`Journal entry posted to ledger ✓`);
   };
 
-  const postAllContractEntries = (contract) => {
+  const postAllContractEntries = async (contract) => {
     const unpostedIndexes = (contract.journal_entries || [])
       .map((_, i) => i)
       .filter(i => !(contract.posted_entries || []).includes(i));
-
     if (unpostedIndexes.length === 0) return;
 
-    // Collect all new invoices from all entries at once
-    const allNewInvoices = [];
-    unpostedIndexes.forEach(idx => {
+    const posted = [];
+    for (const idx of unpostedIndexes) {
       const entry = contract.journal_entries[idx];
-      if (!entry) return;
-      entry.lines.forEach((l, li) => {
-        const isDebit = l.debit > 0;
-        const amount = isDebit ? l.debit : l.credit;
-        const acct = CHART_OF_ACCOUNTS.find(a => a.code === l.account_code);
-        const category = acct?.category || "Expenses";
-        const offsetLine = isDebit ? entry.lines.find(x => x.credit > 0) : entry.lines.find(x => x.debit > 0);
-        allNewInvoices.push({
-          id: Date.now() + Math.random() + idx * 100 + li,
-          vendor: contract.counterparty,
-          description: `${entry.description}${entry.memo ? ` — ${entry.memo}` : ""}`,
-          amount,
-          date: entry.date,
-          type: ["Revenue"].includes(category) ? "revenue" : "expense",
-          project: "General",
-          gl_code: l.account_code,
-          gl_name: l.account_name,
-          secondary_gl_code: offsetLine?.account_code || rc("accounts_payable"),
-          secondary_gl_name: offsetLine?.account_name || rn("accounts_payable"),
-          debit_credit: isDebit ? "debit" : "credit",
-          confidence: 99,
-          reasoning: `Posted from contract: ${contract.description}`,
-          status: "booked",
-          booked_at: new Date().toISOString(),
-          source: "contract",
-          contract_id: contract.id,
-          balance_sheet_account: ["Assets","Liabilities","Equity"].includes(category),
-        });
-      });
-    });
+      if (!entry) continue;
+      const je = buildContractEntry(contract, entry);
+      if (!je.balanced) { showNotification(`Entry ${idx + 1} doesn't balance — skipped.`, "error"); continue; }
+      const jeId = await persistMultiLineEntry(je);
+      if (jeId) posted.push(idx);
+    }
+    if (posted.length === 0) return;
 
-    // Single state update for all invoices
-    setInvoices(prev => [...allNewInvoices, ...prev]);
-    allNewInvoices.forEach(inv => bookToDb(inv));
-
-    // Single contract state update
-    const allPosted = [...(contract.posted_entries || []), ...unpostedIndexes];
+    const allPosted = [...(contract.posted_entries || []), ...posted];
     const updatedContract = {...contract, posted_entries: allPosted};
     setContracts(prev => prev.map(c => c.id === contract.id ? updatedContract : c));
-    setSelectedContract(updatedContract);
+    setSelectedContract(prev => prev ? updatedContract : prev);
     persistContract(updatedContract);
-    showNotification(`✓ Posted all ${unpostedIndexes.length} entries to ledger`);
+    try { await loadAllData(); } catch {}
+    showNotification(`✓ Posted ${posted.length} entr${posted.length === 1 ? "y" : "ies"} to ledger`);
   };
 
   // ── MATCHING ENGINE ───────────────────────────────────────────────────────────

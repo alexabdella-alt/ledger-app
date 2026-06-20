@@ -5,6 +5,10 @@
 // two can never diverge.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { glIsRevenue, glIsExpense } from "./gl";
+
+const isPLCode = c => c && (glIsRevenue(c) || glIsExpense(c));
+
 // Resolve a flattened invoice row to its PARENT journal_entries.id — the row a
 // payment/status UPDATE must target. Multi-line rows have a synthetic id
 // `${parentId}_${lineIndex}`; the parent uuid is carried on db_entry_id, with a
@@ -30,19 +34,30 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
     const primaryCredit = lines.find(l => l.credit > 0);
 
     if (lines.length <= 2) {
-      // Simple two-line entry — one invoice row (backward compat)
-      const debitLine = primaryDebit;
-      const creditLine = primaryCredit;
+      // Simple two-line entry — one invoice row (backward compat).
+      // PRIMARY = the P&L (revenue/expense) line when the entry has one, so that
+      // revenue/expense ALWAYS lands on `gl_code` where computeRevenue/Expenses read
+      // it — never stranded on the offset leg. Without this, a Dr A/R / Cr Revenue
+      // (or Dr Deferred Rev / Cr Revenue recognition) entry flattened with the asset/
+      // liability debit as primary, so computeRevenue (primary-leg only) missed the
+      // revenue while glAccountBalance (both legs) counted it → the two diverged.
+      // For balance-sheet-only entries (a payment Dr A/P / Cr Cash, no P&L line) the
+      // first debit stays primary, exactly as before.
+      const plLine = lines.find(l => (l.debit > 0 || l.credit > 0) && isPLCode(l.accounts?.code));
+      const primaryLine = plLine || primaryDebit || primaryCredit;
+      const offsetLine = lines.find(l => l !== primaryLine && (l.debit > 0 || l.credit > 0)) || null;
+      const primaryIsDebit = (primaryLine?.debit || 0) > 0;
+      const primaryCode = primaryLine?.accounts?.code;
       mapped.push({
         id: e.id, vendor, description: e.description,
-        amount: debitLine?.debit || creditLine?.credit || 0,
+        amount: (primaryIsDebit ? primaryLine?.debit : primaryLine?.credit) || 0,
         date: e.entry_date,
-        type: debitLine?.accounts?.code?.startsWith("4") ? "revenue" : "expense",
-        gl_code: debitLine?.accounts?.code || creditLine?.accounts?.code,
-        gl_name: debitLine?.accounts?.name || creditLine?.accounts?.name,
-        secondary_gl_code: creditLine?.accounts?.code,
-        secondary_gl_name: creditLine?.accounts?.name,
-        debit_credit: debitLine ? "debit" : "credit",
+        type: glIsRevenue(primaryCode) ? "revenue" : "expense",
+        gl_code: primaryCode || offsetLine?.accounts?.code,
+        gl_name: primaryLine?.accounts?.name || offsetLine?.accounts?.name,
+        secondary_gl_code: offsetLine?.accounts?.code,
+        secondary_gl_name: offsetLine?.accounts?.name,
+        debit_credit: primaryIsDebit ? "debit" : "credit",
         status: "booked", booked_at: e.created_at, source: e.source,
         payment_status: e.payment_status || "unpaid",
         approval_status: e.approval_status || undefined,
