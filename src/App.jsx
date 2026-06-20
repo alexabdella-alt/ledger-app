@@ -2075,30 +2075,72 @@ Reply with ONLY the summary text.`;
     const jeId = await bookToDb(finalInv);
     if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
     logAudit("invoice_booked", `${finalInv.vendor} · ${fmtMoney(finalInv.amount)} → ${finalInv.gl_name} (GAAP ${item.gaapType})`, null, { vendor:finalInv.vendor, amount:finalInv.amount, gl_code:finalInv.gl_code, gl_name:finalInv.gl_name, reasoning: finalInv.reasoning });
-    if (opt.depreciate && jeId) {
-      const ok = await createFixedAssetWithSchedule({
+    if (opt.depreciate) {
+      // A capitalized asset with no depreciation schedule must be impossible. If the
+      // booking didn't post, or the asset/schedule write fails, COMPENSATE (reverse the
+      // capitalization JE) so we never leave a Dr Fixed Asset / Cr AP with no schedule —
+      // same discipline as the payment-posting compensation. Never report success.
+      if (!jeId) {
+        showNotification("Couldn't book the capitalization — nothing was posted. Please try again.", "error");
+        return;
+      }
+      const res = await createFixedAssetWithSchedule({
         invoice: finalInv, sourceJournalEntryId: jeId,
         usefulLifeMonths: opt.usefulLifeMonths || suggestUsefulLifeMonths(`${finalInv.description||""} ${finalInv.vendor||""}`),
         salvageValue: Number(opt.salvageValue) || 0,
         inServiceDate: opt.inServiceDate || finalInv.date,
       });
-      showNotification(ok ? `Capitalized & depreciation scheduled ✓` : `Booked to ${finalInv.gl_name} ✓`);
+      if (!res.ok) { await compensateCapitalization(jeId, finalInv, res.error); return; }
+      showNotification(`Capitalized & depreciation scheduled ✓`);
     } else {
       showNotification(`Booked to ${finalInv.gl_name} ✓`);
     }
   };
 
+  // Reverse a just-posted capitalization JE when the asset/schedule couldn't be
+  // created, so the books never hold a capitalized asset with no depreciation set up.
+  // Best-effort with loud telemetry if the reversal itself fails (mirrors markBillPaid).
+  const compensateCapitalization = async (jeId, finalInv, reason) => {
+    try {
+      await supabase.from("journal_entries")
+        .update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
+        .eq("id", jeId).eq("company_id", currentCompany.id);
+    } catch (e) { console.error("[compensateCapitalization] reverse failed:", e?.message || e); }
+    setInvoices(prev => prev.filter(i => i.id !== finalInv.id && String(i.db_entry_id) !== String(jeId)));
+    logAudit("fixed_asset_setup_failed",
+      `Capitalization rolled back — couldn't create the asset/schedule for ${finalInv.vendor || ""} ${fmtMoney(finalInv.amount)}: ${reason || "unknown"}`,
+      null, { je_id: String(jeId), reason: reason || null });
+    try { Sentry.captureMessage("fixed_asset_setup_failure", { level: "error",
+      tags: { kind: "fixed_asset_setup_failure" }, extra: { je_id: String(jeId), reason: reason || null } }); } catch {}
+    showNotification(`Couldn't set up depreciation — the capitalization was rolled back so your books stay consistent.${reason ? ` (${reason})` : ""} Please try again.`, "error");
+  };
+
   // Create the fixed_assets master + generate its straight-line depreciation_schedule
-  // (pending rows). Posting happens later via runDepreciationThrough. Returns the
-  // asset id, or null on failure (the booking itself already succeeded).
+  // (pending rows). ATOMIC: builds the schedule first (so we never create an asset we
+  // can't schedule), and if the schedule insert fails it deletes the asset row it just
+  // created. Returns { ok, assetId?, error? } — NEVER throws a false success; the caller
+  // compensates the capitalization JE when ok is false. Posting happens later via
+  // runDepreciationThrough. Also the reusable path for back-filling an existing JE
+  // (pass sourceJournalEntryId; this posts NO capitalization entry of its own).
   const createFixedAssetWithSchedule = async ({ invoice, sourceJournalEntryId, usefulLifeMonths, salvageValue = 0, inServiceDate }) => {
-    if (!currentCompany?.id) return null;
+    if (!currentCompany?.id) return { ok: false, error: "no active company" };
     const cost = Number(invoice.amount) || 0;
     const depExpCode = rc("depreciation_amortization") || "6900";
     const accumCode = rc("accumulated_depreciation") || "1510";
     const inService = inServiceDate || invoice.date || new Date().toISOString().slice(0,10);
     const lifeMonths = Math.max(1, Math.round(Number(usefulLifeMonths) || 60));
     const salvage = Math.max(0, Number(salvageValue) || 0);
+
+    // Build the schedule FIRST (pure). A non-empty schedule is a precondition for the
+    // asset — an asset we can't schedule must never be created.
+    const sched = buildDepreciationSchedule({
+      cost, salvage, lifeMonths, inServiceDate: inService,
+      depExpCode, accumDepCode: accumCode,
+      assetLabel: invoice.vendor || invoice.description || "asset", assetId: "pending",
+    });
+    if (!sched.entries.length) return { ok: false, error: "empty depreciation schedule (check cost / useful life)" };
+
+    let assetId = null;
     try {
       const { data: asset, error } = await supabase.from("fixed_assets").insert({
         company_id: currentCompany.id,
@@ -2110,26 +2152,30 @@ Reply with ONLY the summary text.`;
         source_journal_entry_id: sourceJournalEntryId || null, status: "active",
         created_by: session?.user?.id || null,
       }).select("id").single();
-      if (error || !asset) { console.error("fixed_assets insert:", error?.message); showNotification("Couldn't create the fixed-asset record", "error"); return null; }
+      if (error || !asset) { console.error("fixed_assets insert:", error?.message); return { ok: false, error: error?.message || "fixed_assets insert failed (is migration 041 applied?)" }; }
+      assetId = asset.id;
 
-      const sched = buildDepreciationSchedule({
-        cost, salvage, lifeMonths, inServiceDate: inService,
-        depExpCode, accumDepCode: accumCode,
-        assetLabel: invoice.vendor || invoice.description || "asset", assetId: asset.id,
-      });
-      if (sched.entries.length) {
-        const rows = sched.entries.map((je, i) => ({
-          company_id: currentCompany.id, asset_id: asset.id,
-          period_index: i + 1, period_date: je.date, amount: je.lines[0].debit, status: "pending",
-        }));
-        const { error: schedErr } = await supabase.from("depreciation_schedule").insert(rows);
-        if (schedErr) console.error("depreciation_schedule insert:", schedErr.message);
+      const rows = sched.entries.map((je, i) => ({
+        company_id: currentCompany.id, asset_id: assetId,
+        period_index: i + 1, period_date: je.date, amount: je.lines[0].debit, status: "pending",
+      }));
+      const { error: schedErr } = await supabase.from("depreciation_schedule").insert(rows);
+      if (schedErr) {
+        // Compensate inside the function: remove the asset row so we never leave an
+        // asset with no schedule.
+        console.error("depreciation_schedule insert:", schedErr.message);
+        try { await supabase.from("fixed_assets").delete().eq("id", assetId).eq("company_id", currentCompany.id); } catch (e) { console.error("[createFixedAssetWithSchedule] asset cleanup failed:", e?.message || e); }
+        return { ok: false, error: schedErr.message || "depreciation_schedule insert failed" };
       }
       logAudit("fixed_asset_created",
         `Capitalized ${invoice.vendor || ""} ${fmtMoney(cost)} — ${lifeMonths}mo straight-line${salvage ? `, salvage ${fmtMoney(salvage)}` : ""}`,
-        null, { asset_id: asset.id, cost, life_months: lifeMonths, salvage, in_service: inService });
-      return asset.id;
-    } catch (e) { console.error("createFixedAssetWithSchedule error:", e); return null; }
+        null, { asset_id: assetId, cost, life_months: lifeMonths, salvage, in_service: inService });
+      return { ok: true, assetId };
+    } catch (e) {
+      console.error("createFixedAssetWithSchedule error:", e);
+      if (assetId) { try { await supabase.from("fixed_assets").delete().eq("id", assetId).eq("company_id", currentCompany.id); } catch {} }
+      return { ok: false, error: e?.message || String(e) };
+    }
   };
 
   // "Run depreciation through DATE": post every PENDING schedule row due on/before the
