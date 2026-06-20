@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildPaymentEntry, paymentEntryLines } from "../src/lib/payments.js";
 import { reverseEntryLines } from "../src/lib/journalEntries.js";
 import { buildOpeningBalanceEntry } from "../src/lib/openingBalances.js";
+import { buildDepreciationEntry } from "../src/lib/depreciation.js";
 import { fiscalYearStart, fiscalYearSplit, computeNetIncome } from "../src/lib/reports.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -71,7 +72,7 @@ const EVENTS = [
   { name: "5 · collect an invoice (real builder)",   lines: collectARLines, movesNI: false },
   { name: "6 · opening balances (real builder, plug to OBE)", lines: buildOpeningBalanceEntry({ [C.cash]: 5000, [C.rou]: 3000, [C.ap]: 2000 }, { cutoffDate: "2026-01-01", obeCode: C.obe }).lines, movesNI: false },
   { name: "7 · bank/cash opening position (real builder)",    lines: buildOpeningBalanceEntry({ [C.cash]: 5000 }, { cutoffDate: "2026-01-01", obeCode: C.obe }).lines, movesNI: false },
-  { name: "8 · depreciation",                        lines: [{ code: C.depExp, debit: 200, credit: 0 }, { code: C.accumDep, debit: 0, credit: 200 }], movesNI: true },
+  { name: "8 · depreciation (real builder)",         lines: buildDepreciationEntry({ amount: 200, depExpCode: C.depExp, accumDepCode: C.accumDep }).lines, movesNI: true },
   { name: "9 · prepaid — capitalize",                lines: [{ code: C.prepaid, debit: 1200, credit: 0 }, { code: C.ap, debit: 0, credit: 1200 }], movesNI: false },
   { name: "9b · prepaid — monthly amortization",     lines: [{ code: C.expense, debit: 100, credit: 0 }, { code: C.prepaid, debit: 0, credit: 100 }], movesNI: true },
   { name: "10 · accrued liability recognition",      lines: [{ code: C.wages, debit: 800, credit: 0 }, { code: C.accrued, debit: 0, credit: 800 }], movesNI: true },

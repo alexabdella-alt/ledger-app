@@ -99,6 +99,18 @@ function ClarificationCard({ item }) {
   const [freeText, setFreeText] = React.useState("");
   const [interpreting, setInterpreting] = React.useState(false);   // AI thinking
   const [freeError, setFreeError] = React.useState(null);
+  // ── Depreciation capture (GAAP capitalize option) — life (yrs) + salvage + in-service ──
+  const depOpt = answers.gaap && answers.gaap.depreciate ? answers.gaap : null;
+  const [depLifeYears, setDepLifeYears] = React.useState("");
+  const [depSalvage, setDepSalvage] = React.useState("0");
+  const [depInService, setDepInService] = React.useState("");
+  React.useEffect(() => {
+    if (depOpt) {
+      setDepLifeYears(String(Math.max(1, Math.round((depOpt.usefulLifeMonths || 60) / 12))));   // AI-suggested default, overridable
+      setDepInService(inv.date || new Date().toISOString().slice(0, 10));
+      setDepSalvage("0");
+    }
+  }, [depOpt]);
   // ── Post-booking success state (the booking itself is the confirmation) ──
   const [done, setDone] = React.useState(null);                    // { text, tone } | null
   const removeTimer = React.useRef(null);
@@ -132,7 +144,16 @@ function ClarificationCard({ item }) {
   // GAAP keeps a brief one-line summary (financial-statement impact) → confirm.
   // Everything else books on the spot; the success state is the confirmation.
   const finalize = () => {
-    if (kind === "gaap") { applyGaapAnswer(item, answers.gaap); return; }
+    if (kind === "gaap") {
+      const sel = answers.gaap;
+      if (sel && sel.depreciate) {
+        const months = Math.max(1, Math.round((parseFloat(depLifeYears) || 5) * 12));
+        applyGaapAnswer(item, { ...sel, usefulLifeMonths: months, salvageValue: parseFloat(depSalvage) || 0, inServiceDate: depInService || inv.date });
+      } else {
+        applyGaapAnswer(item, sel);
+      }
+      return;
+    }
   };
 
   // A pill answer was clicked. Decide whether to book now or advance a step.
@@ -434,6 +455,29 @@ function ClarificationCard({ item }) {
             <div style={{ fontSize: 16, fontWeight: 500, color: "#101828", margin: "12px 0 14px", lineHeight: 1.5, display: "flex", gap: 8, alignItems: "flex-start" }}>
               <span style={{ color: "#039855", flexShrink: 0 }}>✓</span><span>{summaryText()}</span>
             </div>
+            {depOpt && (
+              <div style={{ background: "#F9FAFB", border: "1px solid #EAECF0", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+                <div style={{ fontSize: 11, letterSpacing: 1, fontWeight: 600, color: "#475467", marginBottom: 10 }}>DEPRECIATION SCHEDULE · STRAIGHT-LINE</div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <label style={{ fontSize: 13, color: "#344054", display: "flex", flexDirection: "column", gap: 4 }}>
+                    Useful life (years)
+                    <input type="number" min="1" step="1" value={depLifeYears} onChange={e => setDepLifeYears(e.target.value)}
+                      style={{ width: 110, height: 36, borderRadius: 8, border: "1px solid #D0D5DD", padding: "0 10px", fontSize: 14 }} />
+                  </label>
+                  <label style={{ fontSize: 13, color: "#344054", display: "flex", flexDirection: "column", gap: 4 }}>
+                    Salvage value ($)
+                    <input type="number" min="0" step="0.01" value={depSalvage} onChange={e => setDepSalvage(e.target.value)}
+                      style={{ width: 130, height: 36, borderRadius: 8, border: "1px solid #D0D5DD", padding: "0 10px", fontSize: 14 }} />
+                  </label>
+                  <label style={{ fontSize: 13, color: "#344054", display: "flex", flexDirection: "column", gap: 4 }}>
+                    In-service date
+                    <input type="date" value={depInService} onChange={e => setDepInService(e.target.value)}
+                      style={{ height: 36, borderRadius: 8, border: "1px solid #D0D5DD", padding: "0 10px", fontSize: 14 }} />
+                  </label>
+                </div>
+                <div style={{ fontSize: 12, color: "#667085", marginTop: 8 }}>Life prefilled from the asset type — adjust if needed. Salvage defaults to $0.</div>
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
               <button onClick={finalize} style={{ height: 40, padding: "0 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "#fff", background: "#039855", border: "none", cursor: "pointer" }}>Confirm & Book</button>
               <button onClick={() => setStep(0)} style={{ fontSize: 13, fontWeight: 500, color: "#4F46E5", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Edit</button>
