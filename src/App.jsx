@@ -12,6 +12,7 @@ import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./l
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert } from "./lib/writeShapes";
 import { buildPaymentEntry } from "./lib/payments";
+import { planBankImport, isArMatch } from "./lib/bankMatch";
 import { buildReversalLines } from "./lib/journalEntries";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
@@ -2712,14 +2713,24 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           });
           const catData = await okAIResponse(catRes);
           const categorized = JSON.parse((catData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
+          // ONE stable, truthy id per parsed line, used for BOTH matching and booking
+          // (bankTxns below reuses it verbatim). NEVER the categorizer's id:0 — that's
+          // falsy, so a `t.id || …` fallback would silently regenerate a divergent id
+          // and the "skip matched rows" filter would miss the matched line and
+          // double-book it. Index-based + run-stamped so it can't collide.
+          const runStamp = Date.now();
           const withRules = categorized.map((t,i) => {
             const rule = rules.find(r => r.vendor?.toLowerCase()===t.vendor?.toLowerCase());
-            return rule ? {...t, gl_code:rule.gl_code, gl_name:rule.gl_name, confidence:99, needs_review:false, rule_applied:true} : {...t, id:Date.now()+i};
+            const id = `bank_${runStamp}_${i}`;
+            return rule
+              ? {...t, id, gl_code:rule.gl_code, gl_name:rule.gl_name, confidence:99, needs_review:false, rule_applied:true}
+              : {...t, id};
           });
           // ── RECONCILIATION: match the statement against open payables/receivables ──
-          // Normalize each parsed line into a matching-engine transaction (signed amount).
-          const bankTxns = withRules.map((t,i) => ({
-            id: t.id || (Date.now()+i+Math.random()),
+          // Normalize each parsed line into a matching-engine transaction (signed
+          // amount). Reuse the SAME stable id — never regenerate.
+          const bankTxns = withRules.map((t) => ({
+            id: t.id,
             date: t.date, description: t.description, vendor: t.vendor,
             amount: t.type === "revenue" ? Math.abs(t.amount) : -Math.abs(t.amount),
             type: t.type, gl_code: t.gl_code, gl_name: t.gl_name, confidence: t.confidence,
@@ -2727,34 +2738,42 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
 
           const { autoCleared, queue } = await runMatchingEngine(bankTxns, invoices);
 
-          // Auto-apply high-confidence matches: mark the open item paid/collected straight
-          // from the bank statement (date + method), and persist it.
-          const handledBankIds = new Set();
+          // Decide — purely & testably — which matched lines clear an open item vs
+          // which are genuinely new bookings, off ONE stable id per line. A matched
+          // line's only GL movement is its clearing entry; it is NEVER also booked
+          // standalone (the bug this replaces). See src/lib/bankMatch.js.
+          const plan = planBankImport({
+            parsedTxns: withRules,
+            autoCleared, queue,
+            openItems: invoicesRef.current || invoices,
+            codes: {
+              apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"),
+              arCode: rc("accounts_receivable"), cashCode: rc("cash"), cashName: rn("cash"),
+            },
+          });
+
+          // Post each clearing through the canonical poster (AP: Dr A/P / Cr Cash ·
+          // AR: Dr Cash / Cr A/R) AND persist the paid/collected flag. This IS the
+          // matched line's booking — there is no separate standalone entry for it.
           const clearedInvIds = new Set();
-          // Route auto-matched clears through the canonical poster so each posts its GL
-          // movement (AR: Dr Cash / Cr A/R · AP: Dr A/P / Cr Cash) AND persists the flag.
-          // Was a flag-only flip (persistApStatus) that never hit the GL. Matched bank txns
-          // are recorded in handledBankIds so they're NOT also booked separately (no double count).
-          for (const m of autoCleared) {
-            handledBankIds.add(m.bank_txn_id);
-            const isAR = (m.match_type||"").includes("ar");
-            for (const id of m.invoice_ids) {
-              clearedInvIds.add(id);
-              await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: m.bank_txn?.date || null });
-            }
+          for (const c of plan.clears) {
+            const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null });
+            if (ok) clearedInvIds.add(c.invoiceId);
           }
 
-          // Lower-confidence matches → review queue (opened from the inline summary).
-          if (queue.length > 0) {
-            queue.forEach(m => handledBankIds.add(m.bank_txn_id));
-            setMatchQueue(prev => [...queue, ...prev]);
+          // Lower-confidence matches AND any that couldn't post a clearing entry →
+          // manual review queue (never silently flag-flipped, never double-booked).
+          if (plan.review.length > 0) setMatchQueue(prev => [...plan.review, ...prev]);
+          if (plan.skipped.length > 0) {
+            logAudit("bank_match_unclearable", `${plan.skipped.length} auto-match(es) couldn't post a clearing entry (offset not A/P or A/R) — moved to review`);
+            showNotification(`${plan.skipped.length} auto-match(es) couldn't post a clearing entry — moved to review`, "error");
           }
 
           // Bank lines that matched nothing are genuinely new transactions — book them all
           // (paid via bank transfer, since they already cleared the bank). There is no
           // separate bank feed anymore, so low-confidence GL codes are booked with their
           // best guess rather than parked.
-          const unmatchedTxns = withRules.filter(t => !handledBankIds.has(t.id));
+          const unmatchedTxns = plan.standalone;
           const newInvoices = unmatchedTxns.map((t)=>({
             id:Date.now()+Math.random(), vendor:t.vendor, description:t.description, amount:Math.abs(t.amount),
             date:t.date, type:t.type, project:"General", gl_code:t.gl_code, gl_name:t.gl_name,
@@ -2785,7 +2804,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
             period_start: txnDates[0] || new Date().toISOString().slice(0,10),
             period_end: txnDates[txnDates.length-1] || new Date().toISOString().slice(0,10),
             statement_balance: 0, books_balance: 0, difference: 0,
-            status: queue.length > 0 ? "needs_review" : "complete",
+            status: plan.review.length > 0 ? "needs_review" : "complete",
             matched_transactions: autoCleared.map(m => ({ bank_txn: m.bank_txn, invoice_ids: m.invoice_ids, confidence: m.confidence })),
             unmatched_bank: newInvoices.map(i => ({ vendor: i.vendor, amount: i.amount, date: i.date, gl_name: i.gl_name })),
             completed_at: new Date().toISOString(), completed_by: session?.user?.id || null,  // uuid column, not email
@@ -2812,7 +2831,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
 
           const bankResult = {
             reconciliation: true, txnCount: txnTotal, matchedCount, newBooked: newInvoices.length,
-            needsReview: queue.length, stillOpenTotal,
+            needsReview: plan.review.length, stillOpenTotal,
           };
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: bankResult} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result: bankResult });
@@ -3623,7 +3642,9 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
   // Apply a confirmed match — posts clearing journal entry and marks invoices as matched
   const applyMatch = async (matchRecord) => {
     const { invoice_ids, match_type, amount_remaining, bank_txn } = matchRecord;
-    const isAR = (match_type || "").includes("ar");
+    // Precise side check — "ap_clear".includes("ar") is true (the "ar" in "cle-ar"),
+    // which would mis-post an AP clear as an AR collection. See isArMatch.
+    const isAR = isArMatch(match_type);
     const isPaid = !amount_remaining || amount_remaining < 0.01;
 
     if (isPaid) {
