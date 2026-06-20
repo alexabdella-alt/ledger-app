@@ -62,11 +62,11 @@ ins_je as (
 insert into public.journal_entry_lines (journal_entry_id, company_id, account_id, debit, credit, memo)
 select ins.id, c.company_id, c.liab_acct, c.amt, 0, 'AP payment backfill (Dr AP)'
 from ins_je ins
-join cands c on c.bill_id = ins.bill_id and c.company_id = ins.company_id
+join cands c on c.bill_id::text = ins.bill_id and c.company_id = ins.company_id
 union all
 select ins.id, c.company_id, (select id from cash k where k.company_id = c.company_id), 0, c.amt, 'AP payment backfill (Cr Cash)'
 from ins_je ins
-join cands c on c.bill_id = ins.bill_id and c.company_id = ins.company_id;
+join cands c on c.bill_id::text = ins.bill_id and c.company_id = ins.company_id;
 
 commit;
 
