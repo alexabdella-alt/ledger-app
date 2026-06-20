@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, OBE_CODE,
+  bookingBlockedReason, PRE_CUTOFF_MESSAGE,
 } from "../src/lib/openingBalances.js";
 
 const sumD = ls => ls.reduce((s, l) => s + (l.debit || 0), 0);
@@ -62,6 +63,13 @@ describe("cutoff enforcement predicates", () => {
     expect(isBeforeCutoff("2026-01-01", "2026-01-01")).toBe(false);   // on the cutoff is OK
     expect(isBeforeCutoff("2026-02-01", "2026-01-01")).toBe(false);
     expect(isBeforeCutoff("2026-02-01", null)).toBe(false);           // no cutoff → no enforcement
+  });
+
+  it("bookingBlockedReason returns the redirect message for a pre-cutoff date, null otherwise", () => {
+    expect(bookingBlockedReason("2024-12-31", "2025-01-01")).toBe(PRE_CUTOFF_MESSAGE);
+    expect(bookingBlockedReason("2025-01-01", "2025-01-01")).toBeNull();   // on the cutoff is OK
+    expect(bookingBlockedReason("2025-06-01", "2025-01-01")).toBeNull();   // after cutoff
+    expect(bookingBlockedReason("2024-12-31", null)).toBeNull();           // no cutoff → allowed
   });
 
   it("preCutoffActivity finds live non-opening transactions before the cutoff (the footgun)", () => {

@@ -79,3 +79,10 @@ export const hasPreCutoffActivity = (entries, cutoffDate) => preCutoffActivity(e
 // The standard redirect message for a rejected pre-cutoff booking.
 export const PRE_CUTOFF_MESSAGE =
   "This is dated before your cutoff — record it by adjusting your opening balances, not as a new transaction.";
+
+// Pure booking gate: the reason a date can't be booked (the redirect message), or
+// null if it's allowed. Used by the booking handlers' pre-flight check so a
+// pre-cutoff entry is rejected BEFORE any optimistic add / success toast.
+export function bookingBlockedReason(date, cutoffDate) {
+  return isBeforeCutoff(date, cutoffDate) ? PRE_CUTOFF_MESSAGE : null;
+}
