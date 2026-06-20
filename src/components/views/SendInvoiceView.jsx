@@ -15,6 +15,9 @@ export default function SendInvoiceView() {
               issue_date: new Date().toISOString().slice(0,10),
               due_date: "", notes:"", terms:"Net 30",
               line_items:[emptyLine()],
+              // Pre-fill the per-invoice sales-tax rate from the saved company default
+              // (migration 042); still editable/overridable per invoice below.
+              tax_rate: companySettings?.salesTaxRate ? String(companySettings.salesTaxRate) : "",
               status:"draft"
             };
             const setDraft = setSendInvoiceDraftState;

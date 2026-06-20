@@ -9,9 +9,15 @@ export default function SettingsView() {
             const draft = settingsDraft || companySettings; const setDraft = setSettingsDraft;
             const saved = settingsSaved; const setSaved = setSettingsSaved;
             const logoPreview = settingsLogoPreview ?? companySettings.logoBase64; const setLogoPreview = setSettingsLogoPreview;
-            const save = () => {
+            const save = async () => {
               setCompanySettings(draft);
               persistBankAccounts && persistBankAccounts(); // save bank accounts incl. balances
+              // Persist the saved default sales-tax rate to the company (migration 042),
+              // so it survives refresh and pre-fills Send Invoice.
+              if (currentCompany?.id) {
+                try { await supabase.from("companies").update({ sales_tax_rate: Number(draft.salesTaxRate) || 0 }).eq("id", currentCompany.id); }
+                catch (e) { console.warn("[settings] save sales_tax_rate:", e?.message || e); }
+              }
               logAudit("settings_saved", `Company settings updated: ${draft.name}`);
               setSaved(true); setTimeout(()=>setSaved(false), 2000);
             };
@@ -108,6 +114,15 @@ export default function SettingsView() {
                         style={{width:"100%",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}>
                         {["USD","EUR","GBP","CAD","AUD"].map(c=><option key={c} value={c}>{c}</option>)}
                       </select>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>DEFAULT SALES TAX RATE</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <input type="number" min="0" step="0.01" value={draft.salesTaxRate ?? 0} onChange={e=>setDraft(d=>({...d,salesTaxRate:e.target.value}))}
+                          style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}/>
+                        <span style={{fontSize:13,color:"#475467"}}>%</span>
+                      </div>
+                      <div style={{fontSize:11,color:"#98A2B3",marginTop:4}}>Pre-fills new invoices · overridable per invoice</div>
                     </div>
                   </div>
                 </div>

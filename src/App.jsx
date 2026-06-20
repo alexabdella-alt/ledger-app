@@ -554,6 +554,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     currency: "USD",
     logoBase64: null,
     businessType: "",          // SaaS | Consulting | Restaurant | ... (migration 025)
+    salesTaxRate: 0,           // default blended sales-tax % (migration 042); pre-fills Send Invoice
     onboardingComplete: false, // hides the Home onboarding checklist when true
   });
 
@@ -729,7 +730,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     setReconSessions([]); setReconciliations([]); setOpeningBalances([]);
     setSentInvoices([]); setClarificationQueue([]);
     setBankAccounts([{ id:"default", name:"Primary Checking", type:"checking", gl_code:rc("cash"), last4:"", institution:"" }]);
-    setCompanySettings({ name:"", taxId:"", address:"", city:"", state:"", zip:"", country:"US", fiscalYearEnd:"12-31", defaultCashAccount:"1000", defaultAPAccount:"2000", defaultARAccount:"1100", currency:"USD", logoBase64:null });
+    setCompanySettings({ name:"", taxId:"", address:"", city:"", state:"", zip:"", country:"US", fiscalYearEnd:"12-31", defaultCashAccount:"1000", defaultAPAccount:"2000", defaultARAccount:"1100", currency:"USD", logoBase64:null, salesTaxRate:0 });
 
     // Selections, drill-downs, previews
     setSelectedInvoice(null); setReturnTo(null); setGlDrilldown(null);
@@ -869,6 +870,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
           defaultARAccount: co.default_ar_account||rc("accounts_receivable"),
           currency: co.currency||"USD", logoBase64: null,
           businessType: co.business_type||"",
+          salesTaxRate: Number(co.sales_tax_rate) || 0,
           onboardingComplete: !!co.onboarding_complete,
         });
         setCutoffDate(co.cutoff_date || null);
