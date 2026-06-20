@@ -15,6 +15,7 @@ import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch } from "./lib/bankMatch";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun } from "./lib/depreciation";
+import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
@@ -1955,9 +1956,28 @@ Reply with ONLY the summary text.`;
   const GAAP_LEASEHOLD_RE = /renovation|build[\s-]?out|leasehold|improvement|installation|flooring|remodel|contractor|construction|electrical work|plumbing/i;
   const GAAP_VEHICLE_RE = /\b(gas|fuel|mileage|auto|gasoline)\b/i;
   const GAAP_MEALS_RE = /\b(restaurant|meal|meals|dining|cafe|café|coffee|catering|lunch|dinner|bar|grill)\b|grubhub|doordash|uber eats|seamless/i;
+  // Revenue received before the service is delivered → deferred revenue (#11). Conservative
+  // signals only, so normal sales don't get asked.
+  const GAAP_DEFERRED_REV_RE = /\b(deposit|retainer|advance|prepaid|prepayment|up[\s-]?front|paid in advance)\b/i;
 
   const buildGaapClarification = (invoice) => {
-    if (invoice.type === "revenue") return null;
+    // Revenue-side GAAP review (#11): a receipt that's an advance/deposit is deferred
+    // revenue (a liability), not earned revenue. Ask only on clear advance signals.
+    if (invoice.type === "revenue") {
+      const rtext = `${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase();
+      if (GAAP_DEFERRED_REV_RE.test(rtext)) {
+        return { gaap: true, invoice, gaapType: "deferred_revenue",
+          question: `Is this payment for work you've already delivered, or paid in advance?`,
+          explanation: `Money received before you deliver the goods or service is a liability (Deferred Revenue) under GAAP — not revenue yet. You recognize it as revenue when it's earned.`,
+          options: [
+            { label: "Already delivered — recognize as revenue now", bookAsIs: true,
+              reasoning: `Recognized as revenue now — the performance obligation was already satisfied.` },
+            { label: "Paid in advance — defer it", deferredRevenueReceipt: true,
+              reasoning: `Recorded as Deferred Revenue (2300): cash received before the service is delivered; recognize as revenue when earned.` },
+          ] };
+      }
+      return null;
+    }
     const amt = Number(invoice.amount) || 0;
     const text = `${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase();
     const base = { gaap: true, invoice, suggestedCode: invoice.gl_code, suggestedName: invoice.gl_name };
@@ -2056,10 +2076,42 @@ Reply with ONLY the summary text.`;
   };
 
   // Applies the user's answer to a GAAP clarification card and books the entry.
+  // #11 deferred-revenue receipt: cash received in advance → Dr Cash / Cr Deferred
+  // Revenue (a liability), via the canonical multi-line path. Recognition to revenue
+  // happens later when the obligation is satisfied.
+  const bookDeferredRevenueReceipt = async (inv, opt = {}) => {
+    const amount = Number(inv.amount) || 0;
+    const je = buildDeferredRevenueReceiptEntry({
+      amount, cashCode: rc("cash"), deferredRevCode: rc("deferred_revenue"),
+      date: inv.date, vendor: inv.vendor,
+      description: `Advance payment – ${inv.vendor || "customer"}`,
+    });
+    if (!je || !je.balanced) { showNotification("Couldn't book the advance payment.", "error"); return; }
+    const jeId = await persistMultiLineEntry(je);   // also enforces the cutoff guard
+    if (!jeId) return;                               // failure already surfaced
+    if (inv._contact) createOrUpdateContact({ ...inv._contact, type: "customer" });
+    logAudit("deferred_revenue_received", `Advance payment from ${inv.vendor || "customer"} ${fmtMoney(amount)} → Deferred Revenue (2300)`, null, { vendor: inv.vendor, amount });
+    try { await loadAllData(); } catch {}
+    showNotification("Booked as deferred revenue (advance payment) ✓");
+  };
+
   const applyGaapAnswer = async (item, opt) => {
     const inv = item.invoice;
     setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
     if (opt.prepaidMonths) { bookPrepaid(inv, opt.prepaidMonths, opt); return; }
+    if (opt.deferredRevenueReceipt) { await bookDeferredRevenueReceipt(inv, opt); return; }
+    if (opt.bookAsIs) {
+      // Revenue earned now — book the receipt in its normal shape (Dr Cash/AR / Cr Revenue),
+      // preserving the invoice's own coding rather than the expense-shaped path below.
+      const ri = { ...inv, confidence: 100, status: "booked", booked_at: new Date().toISOString(),
+        source: "gaap_classification", reasoning: opt.reasoning || inv.reasoning };
+      setInvoices(prev => [ri, ...prev]);
+      bookToDb(ri);
+      if (ri._contact) createOrUpdateContact({ ...ri._contact, type: "customer", gl_code: ri.gl_code, gl_name: ri.gl_name });
+      logAudit("invoice_booked", `${ri.vendor} · ${fmtMoney(ri.amount)} → ${ri.gl_name} (revenue recognized now)`, null, { vendor: ri.vendor, amount: ri.amount, gl_code: ri.gl_code });
+      showNotification(`Booked to ${ri.gl_name} ✓`);
+      return;
+    }
     // Capitalize → book Dr Fixed Asset / Cr AP, then create the real fixed_assets
     // record + straight-line depreciation schedule (replaces the dead
     // `needs_depreciation` flag, which never produced any depreciation entry).
