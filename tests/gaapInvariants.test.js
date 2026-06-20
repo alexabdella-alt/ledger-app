@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildPaymentEntry, paymentEntryLines } from "../src/lib/payments.js";
 import { reverseEntryLines } from "../src/lib/journalEntries.js";
 import { buildOpeningBalanceEntry } from "../src/lib/openingBalances.js";
+import { fiscalYearStart, fiscalYearSplit, computeNetIncome } from "../src/lib/reports.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // GAAP INVARIANT GUARDRAIL — the standing CI spec for every economic event.
@@ -118,6 +119,42 @@ describe("(c) balance-sheet-only movements leave net income unchanged", () => {
     const net = {};
     [...booking, ...reversal].forEach(l => { net[l.code] = (net[l.code] || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0); });
     expect(Object.values(net).every(v => r2(v) === 0)).toBe(true);
+  });
+});
+
+// ── Fiscal-year Retained-Earnings split (derived soft close, Issue 2) ────────
+describe("fiscal-year RE split — prior years roll into beginning RE, don't leak into current", () => {
+  // Helper to build a flattened P&L entry (live, posted).
+  const e = (id, date, code, amount) => ({ id, date, gl_code: code, amount, type: isRevenue(code) ? "revenue" : "expense", status: "booked" });
+  // Two fiscal years (FYE 12-31), cutoff 2025-01-01, asOf mid-2026.
+  //   Prior FY 2025: rev 1000 − exp 600 = +400 (closed → beginning RE)
+  //   Current FY 2026 (through asOf): rev 500 − exp 800 = −300 (current period)
+  const FIX2Y = [
+    e("p1", "2025-03-01", "4000", 1000), e("p2", "2025-05-01", "6500", 600),
+    e("c1", "2026-02-01", "4000", 500),  e("c2", "2026-04-01", "6500", 800),
+  ];
+  const split = fiscalYearSplit(FIX2Y, { asOf: "2026-06-30", fiscalYearEnd: "12-31", cutoffDate: "2025-01-01" });
+
+  it("fiscalYearStart respects the fiscal-year end (and a mid-year FYE)", () => {
+    expect(fiscalYearStart("2026-06-30", "12-31")).toBe("2026-01-01");
+    expect(fiscalYearStart("2026-03-15", "06-30")).toBe("2025-07-01");
+    expect(fiscalYearStart("2026-08-15", "06-30")).toBe("2026-07-01");
+  });
+  it("prior fiscal years' net rolls into beginning RE", () => { expect(split.priorNet).toBe(400); });
+  it("current-period net is THIS fiscal year only (the 2024/prior loss does not leak in)", () => { expect(split.currentNet).toBe(-300); });
+  it("priorClosed + current === all-time net (no double-count, no leak)", () => {
+    expect(split.priorNet + split.currentNet).toBe(100);
+    expect(split.priorNet + split.currentNet).toBe(computeNetIncome(FIX2Y, { to: "2026-06-30" }));
+  });
+  it("the year-boundary case: a prior-year-dated loss shows in beginning RE, not current period", () => {
+    // A single 2024 loss with asOf in 2026 → all of it is prior, none current (the reported bug).
+    const s = fiscalYearSplit([e("x", "2024-09-01", "6500", 217.74)], { asOf: "2026-06-17", fiscalYearEnd: "12-31", cutoffDate: null });
+    expect(s.priorNet).toBe(-217.74);
+    expect(s.currentNet).toBe(0);
+  });
+  it("the cutoff floors the fiscal-year start", () => {
+    const s = fiscalYearSplit(FIX2Y, { asOf: "2026-06-30", fiscalYearEnd: "12-31", cutoffDate: "2026-03-01" });
+    expect(s.fyStart).toBe("2026-03-01");
   });
 });
 

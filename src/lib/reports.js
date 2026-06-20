@@ -58,6 +58,40 @@ export function computeNetIncome(invoices, range = {}) {
   return r2(computeRevenue(invoices, range) - computeExpenses(invoices, range));
 }
 
+// ── FISCAL-YEAR RETAINED-EARNINGS SPLIT (derived soft close, Option A) ────────
+// The start (YYYY-MM-DD) of the fiscal year containing `asOf`, given a fiscal year
+// END of "MM-DD" (default 12-31). e.g. FYE 12-31 → Jan 1; FYE 06-30, asOf in Mar →
+// prior Jul 1. Used to separate prior-years' (closed) earnings from current-period
+// net income on an interim balance sheet without posting closing entries.
+export function fiscalYearStart(asOf, fiscalYearEnd = "12-31") {
+  const D = new Date(String(asOf) + "T00:00:00");
+  if (isNaN(D)) return null;
+  const parts = String(fiscalYearEnd || "12-31").split("-").map(Number);
+  const m = parts[0] || 12, d = parts[1] || 31;
+  let fyEnd = new Date(D.getFullYear(), m - 1, d);
+  if (D > fyEnd) fyEnd = new Date(D.getFullYear() + 1, m - 1, d);   // FY ends next calendar year
+  const start = new Date(fyEnd);                                     // start = day after the previous FYE
+  start.setFullYear(start.getFullYear() - 1);
+  start.setDate(start.getDate() + 1);
+  return start.toISOString().slice(0, 10);
+}
+
+// Split all-time net income (through `asOf`) into the prior fiscal years' closed net
+// (→ rolls into beginning Retained Earnings) and the current fiscal year's net
+// (→ "Net Income (current period)"). FY start is floored at the cutoff date (no
+// activity exists before it). Invariant: priorNet + currentNet === all-time net.
+export function fiscalYearSplit(invoices, { asOf, fiscalYearEnd = "12-31", cutoffDate = null } = {}) {
+  const fyStartRaw = fiscalYearStart(asOf, fiscalYearEnd);
+  const fyStart = (cutoffDate && fyStartRaw && String(cutoffDate) > fyStartRaw) ? String(cutoffDate) : fyStartRaw;
+  let priorNet = 0, currentNet = 0;
+  for (const i of liveEntries(invoices, { to: asOf })) {
+    const signed = isRev(i) ? num(i.amount) : isExp(i) ? -num(i.amount) : 0;
+    if (signed === 0) continue;
+    if (fyStart && String(i.date || "") < fyStart) priorNet += signed; else currentNet += signed;
+  }
+  return { fyStart, priorNet: r2(priorNet), currentNet: r2(currentNet) };
+}
+
 // Expense totals by GL category for a period, sorted high→low. The SUM of these
 // totals === computeExpenses(...) exactly (same gate, same rounding boundary).
 export function computeCategoryTotals(invoices, range = {}) {
