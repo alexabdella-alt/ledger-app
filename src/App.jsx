@@ -2731,25 +2731,18 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           // from the bank statement (date + method), and persist it.
           const handledBankIds = new Set();
           const clearedInvIds = new Set();
-          autoCleared.forEach(m => {
+          // Route auto-matched clears through the canonical poster so each posts its GL
+          // movement (AR: Dr Cash / Cr A/R · AP: Dr A/P / Cr Cash) AND persists the flag.
+          // Was a flag-only flip (persistApStatus) that never hit the GL. Matched bank txns
+          // are recorded in handledBankIds so they're NOT also booked separately (no double count).
+          for (const m of autoCleared) {
             handledBankIds.add(m.bank_txn_id);
-            const bdate = m.bank_txn?.date;
             const isAR = (m.match_type||"").includes("ar");
-            const paidAtISO = bdate ? new Date(bdate+"T12:00:00").toISOString() : new Date().toISOString();
-            setInvoices(prev => prev.map(inv => !m.invoice_ids.includes(inv.id) ? inv : {
-              ...inv, payment_status: isAR ? "collected" : "paid", matched: true, auto_matched: true,
-              paid_at: paidAtISO, payment_method_used: "bank_transfer",
-              matched_bank_date: bdate, matched_bank_txn: m.bank_txn?.description,
-            }));
-            m.invoice_ids.forEach(id => {
+            for (const id of m.invoice_ids) {
               clearedInvIds.add(id);
-              const inv = invoices.find(i => i.id === id);
-              if (inv) {
-                logAudit("invoice_auto_paid", `${inv.vendor} · $${(inv.amount||0).toFixed(2)} auto-matched & marked ${isAR?"collected":"paid"} from bank statement (${bdate||"n/a"})`, { payment_status: inv.payment_status }, { payment_status: isAR?"collected":"paid", auto_matched: true, bank_date: bdate });
-                persistApStatus(inv.db_entry_id, { payment_status: isAR ? "collected" : "paid", payment_method: "bank_transfer", paid_at: paidAtISO });
-              }
-            });
-          });
+              await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: m.bank_txn?.date || null });
+            }
+          }
 
           // Lower-confidence matches → review queue (opened from the inline summary).
           if (queue.length > 0) {
@@ -3628,53 +3621,32 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
   };
 
   // Apply a confirmed match — posts clearing journal entry and marks invoices as matched
-  const applyMatch = (matchRecord) => {
-    const { clearing_entry, invoice_ids, match_type, amount_matched, amount_remaining, bank_txn } = matchRecord;
+  const applyMatch = async (matchRecord) => {
+    const { invoice_ids, match_type, amount_remaining, bank_txn } = matchRecord;
+    const isAR = (match_type || "").includes("ar");
+    const isPaid = !amount_remaining || amount_remaining < 0.01;
 
-    // Post the clearing journal entry to the ledger
-    if (clearing_entry) {
-      const clearingInvoice = {
-        id: Date.now() + Math.random(),
-        vendor: bank_txn?.vendor || matchRecord.matched_invoices?.[0]?.vendor || "Clearing Entry",
-        description: clearing_entry.description,
-        amount: clearing_entry.amount,
-        date: bank_txn?.date || new Date().toISOString().slice(0, 10),
-        type: match_type === "ar_clear" || match_type === "partial_ar" ? "revenue" : "expense",
-        project: "General",
-        gl_code: clearing_entry.debit_account_code,
-        gl_name: clearing_entry.debit_account_name,
-        secondary_gl_code: clearing_entry.credit_account_code,
-        secondary_gl_name: clearing_entry.credit_account_name,
-        debit_credit: "debit",
-        confidence: matchRecord.confidence,
-        reasoning: `Clearing entry: ${matchRecord.reasoning}`,
-        status: "booked",
-        booked_at: new Date().toISOString(),
-        source: "matching_engine",
-        matched: true,
-      };
-      setInvoices(prev => [clearingInvoice, ...prev]);
+    if (isPaid) {
+      // Full match → canonical collection/payment posting (AR: Dr Cash / Cr A/R ·
+      // AP: Dr A/P / Cr Cash) AND persist the flag. Replaces the old local-only
+      // clearing entry (setInvoices, never bookToDb) + local flag flip.
+      for (const id of (invoice_ids || [])) {
+        await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: bank_txn?.date || null });
+      }
+      try { await loadAllData(); } catch {}
+    } else {
+      // Partial match — flag only for now (partial GL clearing is a separate feature).
+      setInvoices(prev => prev.map(inv => !invoice_ids.includes(inv.id) ? inv : {
+        ...inv, payment_status: "partial", balance_remaining: amount_remaining || 0,
+        matched_at: new Date().toISOString(), matched_bank_txn: bank_txn?.description,
+      }));
     }
-
-    // Mark matched invoices as paid/collected (or partial)
-    setInvoices(prev => prev.map(inv => {
-      if (!invoice_ids.includes(inv.id)) return inv;
-      const isPaid = !amount_remaining || amount_remaining < 0.01;
-      return {
-        ...inv,
-        matched: isPaid,
-        payment_status: isPaid ? (match_type.includes("ar") ? "collected" : "paid") : "partial",
-        balance_remaining: amount_remaining || 0,
-        matched_at: new Date().toISOString(),
-        matched_bank_txn: bank_txn?.description,
-      };
-    }));
 
     // Move from queue to history
     const confirmed = { ...matchRecord, status: "confirmed", confirmed_at: new Date().toISOString() };
     setMatchQueue(prev => prev.filter(m => m.id !== matchRecord.id));
     setMatchHistory(prev => [confirmed, ...prev]);
-    showNotification(`Match confirmed — clearing entry posted ✓`);
+    showNotification(isPaid ? `Match confirmed — payment posted ✓` : `Partial match recorded`);
   };
 
   const dismissMatch = (matchId) => {

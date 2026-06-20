@@ -524,7 +524,7 @@ export default function DashboardView() {
                 // source as the Balance Sheet + Payables), so all three reconcile.
                 const total = glAccountBalance(getAccountByRole("accounts_payable")?.code, invoices);
                 const overdue = unpaid.filter(i=>i.due_date && i.due_date<today);
-                const arTotal = computeAR(invoices).total;
+                const arTotal = glAccountBalance(getAccountByRole("accounts_receivable")?.code, invoices);   // GL-derived, same source as AP/Balance Sheet
                 return (
                   <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
                     {unpaid.length>0 && (

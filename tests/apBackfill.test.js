@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planApBackfill } from "../src/lib/apBackfill.js";
+import { planApBackfill, planArBackfill } from "../src/lib/apBackfill.js";
 import { glAccountBalance } from "../src/lib/reports.js";
 
 const AP = "2000", CASH = "1000", EXP = "6500", CUTOFF = "2025-01-01";
@@ -89,5 +89,63 @@ describe("planApBackfill — reduces GL AP to ap_before − total, and is idempo
     const rerun = planApBackfill([...dbEntries, ...posted], { cashCode: CASH, cutoffDate: CUTOFF });
     expect(rerun.entries).toEqual([]);                          // idempotent
     expect(rerun.total).toBe(0);
+  });
+});
+
+const AR = "1100";
+// A collected invoice booked to A/R (Dr A/R / Cr Revenue), pre-collection-posting.
+const inv = (id, date, amount, over = {}) => ({
+  id, status: "posted", deleted_at: null, source: "sent_invoice", payment_status: "collected",
+  entry_date: date, paid_at: `${date}T12:00:00Z`, import_metadata: null,
+  ar_debit: amount, ar_account_code: AR, ...over,
+});
+const toFlatAr = (e, i) => ({
+  id: `arbf${i}`, date: e.date, amount: e.amount, debit_credit: "debit",
+  gl_code: e.lines[0].code, secondary_gl_code: e.lines[1].code, status: "booked",
+});
+
+describe("planArBackfill — collected invoices that never posted Dr Cash / Cr A/R", () => {
+  const entries = [
+    inv("i1", "2025-03-01", 500),                                              // candidate
+    inv("i2", "2025-04-01", 250),                                              // candidate
+    inv("i4", "2025-06-01", 400),                                             // already-collected (link below) → skip
+    { id: "col4", status: "posted", source: "manual", payment_status: null, entry_date: "2025-06-02",
+      import_metadata: { kind: "ar_collection", payment_for: "i4" }, ar_debit: 0, ar_account_code: AR },
+    inv("cash1", "2025-07-01", 90, { ar_debit: 0 }),                          // cash sale (no A/R) → skip
+    inv("pre", "2024-12-01", 800),                                           // pre-cutoff → skip
+    inv("ob", "2025-02-01", 1000, { source: "opening_balance" }),            // opening → skip
+    inv("open", "2025-08-01", 75, { payment_status: "uncollected" }),        // not collected → skip
+  ];
+  const plan = planArBackfill(entries, { cashCode: CASH, cutoffDate: CUTOFF });
+
+  it("picks only the genuine pre-posting collected A/R invoices (i1, i2)", () => {
+    expect(plan.entries.map(e => e.invoiceId).sort()).toEqual(["i1", "i2"]);
+    expect(plan.invoiceCount).toBe(2);
+    expect(plan.total).toBe(750);
+  });
+  it("each entry is a balanced Dr Cash / Cr A/R, linked back to the invoice", () => {
+    for (const e of plan.entries) {
+      expect(e.lines).toEqual([{ code: CASH, debit: e.amount, credit: 0 }, { code: AR, debit: 0, credit: e.amount }]);
+      expect(e.meta).toEqual({ kind: "ar_collection", payment_for: e.invoiceId, backfill: true });
+    }
+  });
+  it("reduces GL A/R to ar_before − total; Cash increases by the same", () => {
+    const ledger = [
+      { id: "i1", date: "2025-03-01", amount: 500, debit_credit: "debit", gl_code: AR, secondary_gl_code: "4000", status: "booked" },
+      { id: "i2", date: "2025-04-01", amount: 250, debit_credit: "debit", gl_code: AR, secondary_gl_code: "4000", status: "booked" },
+    ];
+    const arBefore = glAccountBalance(AR, ledger);        // 750 (debit-normal asset)
+    expect(arBefore).toBe(750);
+    const withBackfill = [...ledger, ...plan.entries.map(toFlatAr)];
+    expect(glAccountBalance(AR, withBackfill)).toBe(arBefore - plan.total);   // 0
+    expect(glAccountBalance(CASH, withBackfill)).toBe(plan.total);            // Cash +750
+  });
+  it("clean data → no-op (nothing to backfill), and re-running posts nothing", () => {
+    expect(planArBackfill([], { cashCode: CASH, cutoffDate: CUTOFF }).entries).toEqual([]);
+    const posted = plan.entries.map((e, i) => ({
+      id: `arbf${i}`, status: "posted", deleted_at: null, source: "manual", payment_status: null,
+      entry_date: e.date, paid_at: null, import_metadata: e.meta, ar_debit: -e.amount, ar_account_code: AR,
+    }));
+    expect(planArBackfill([...entries, ...posted], { cashCode: CASH, cutoffDate: CUTOFF }).entries).toEqual([]);
   });
 });

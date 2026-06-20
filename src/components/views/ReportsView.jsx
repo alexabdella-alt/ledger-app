@@ -692,6 +692,10 @@ export default function ReportsView() {
                     {(reportType==="araging" || reportType==="apaging") && (() => {
                       const side = reportType==="araging" ? "ar" : "ap";
                       const rep = agingReport(invoices, side);
+                      // Headline total derives from the GL (single source — matches the Balance
+                      // Sheet, Dashboard, and Payables/Receivables). The age buckets remain a
+                      // due-date view; in clean books they sum to this total.
+                      const agingTotal = glAccountBalance(getAccountByRole(side==="ar"?"accounts_receivable":"accounts_payable")?.code, invoices);
                       const today = new Date().toISOString().slice(0,10);
                       const sevColor = d => d>90?"#D92D20":d>60?"#DC6803":d>30?"#CA8504":d>0?"#475467":"#039855";
                       const csvBtn = { background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:9, padding:"8px 14px", fontSize:12, color:"#475467", cursor:"pointer", fontWeight:600 };
@@ -701,7 +705,7 @@ export default function ReportsView() {
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:16, flexWrap:"wrap", gap:12 }}>
                             <div>
                               <div style={{ fontSize:11, color:"#475467", letterSpacing:1, marginBottom:4 }}>{side==="ar"?"TOTAL OUTSTANDING RECEIVABLE":"TOTAL OUTSTANDING PAYABLE"}</div>
-                              <div style={{ fontSize:30, fontWeight:700, fontFamily:"'DM Mono',monospace", color: side==="ar"?"#039855":"#D92D20" }}>{fmt(rep.total)}</div>
+                              <div style={{ fontSize:30, fontWeight:700, fontFamily:"'DM Mono',monospace", color: side==="ar"?"#039855":"#D92D20" }}>{fmt(agingTotal)}</div>
                               <div style={{ fontSize:12, color:"#475467", marginTop:2 }}>{rep.count} open {side==="ar"?"invoice":"bill"}{rep.count!==1?"s":""}</div>
                             </div>
                             <button onClick={exportCsv} style={csvBtn}>↓ Export CSV</button>
@@ -715,7 +719,7 @@ export default function ReportsView() {
                               </div>
                             ))}
                           </div>
-                          {rep.total===0 ? <div style={{ padding:24, fontSize:14, color:"#475467" }}>Nothing outstanding — you're all caught up.</div> :
+                          {agingTotal===0 && rep.total===0 ? <div style={{ padding:24, fontSize:14, color:"#475467" }}>Nothing outstanding — you're all caught up.</div> :
                             rep.buckets.filter(b=>b.rows.length).map(b=>(
                               <div key={b.key} style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, overflow:"clip", marginBottom:14 }}>
                                 <div style={{ padding:"12px 18px", background:"#F9FAFB", borderBottom:"1px solid #E4E7EC", display:"flex", justifyContent:"space-between", fontSize:13, fontWeight:600 }}>

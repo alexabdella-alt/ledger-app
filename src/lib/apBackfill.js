@@ -60,3 +60,44 @@ export function planApBackfill(entries, { cashCode = "1000", cutoffDate = null }
   }
   return { entries: out, total: r2(out.reduce((s, e) => s + e.amount, 0)), billCount: out.length };
 }
+
+// AR Step 3 — symmetric backfill for invoices marked COLLECTED before the AR
+// collection-posting existed (never posted Dr Cash / Cr A/R), so GL A/R is overstated.
+// `entries` are DB-shaped, with ar_debit = net (debit − credit) on the invoice's A/R
+// line(s) and ar_account_code = the A/R account it debited (e.g. "1100"). Each →
+// Dr Cash / Cr A/R for the net A/R amount, dated paid_at → entry_date floored at cutoff,
+// linked import_metadata {kind:'ar_collection', payment_for:<invoice id>, backfill:true}.
+export function planArBackfill(entries, { cashCode = "1000", cutoffDate = null } = {}) {
+  const live = (entries || []).filter(e => e && e.status === "posted" && !e.deleted_at);
+  const alreadyCollected = new Set(
+    live.filter(e => e.import_metadata && e.import_metadata.payment_for)
+        .map(e => String(e.import_metadata.payment_for))
+  );
+
+  const out = [];
+  for (const e of live) {
+    if (e.payment_status !== "collected") continue;
+    if (e.source === "opening_balance") continue;
+    const kind = e.import_metadata && e.import_metadata.kind;
+    if (kind === "ap_payment" || kind === "ar_collection" || kind === "reversal") continue;
+    const amount = r2(e.ar_debit);
+    if (!(amount > 0)) continue;                                          // booked to A/R, net debit remains
+    if (cutoffDate && String(e.entry_date || "") < String(cutoffDate)) continue;  // pre-cutoff → opening balances
+    if (alreadyCollected.has(String(e.id))) continue;                    // idempotent: skip already-collected
+
+    const raw = e.paid_at ? String(e.paid_at).slice(0, 10) : String(e.entry_date || "");
+    const date = (cutoffDate && raw < String(cutoffDate)) ? String(cutoffDate) : raw;
+    const arCode = e.ar_account_code || "1100";
+    out.push({
+      invoiceId: String(e.id),
+      date,
+      amount,
+      lines: [
+        { code: cashCode, debit: amount, credit: 0 },   // Dr Cash
+        { code: arCode, debit: 0, credit: amount },       // Cr Accounts Receivable
+      ],
+      meta: { kind: "ar_collection", payment_for: String(e.id), backfill: true },
+    });
+  }
+  return { entries: out, total: r2(out.reduce((s, e) => s + e.amount, 0)), invoiceCount: out.length };
+}

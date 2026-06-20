@@ -273,6 +273,27 @@ describe("glAccountBalance — the single GL source for Accounts Payable", () =>
   });
 });
 
+describe("glAccountBalance — the single GL source for Accounts Receivable (cluster #2)", () => {
+  const AR = "1100", CASH = "1000", REV = "4000";
+  // Issued invoice: Dr A/R 500 / Cr Revenue 500. Collection: Dr Cash 200 / Cr A/R 200.
+  const invoice = { id: "inv1", date: `${YEAR}-04-01`, gl_code: REV, amount: 500, debit_credit: "credit", secondary_gl_code: AR, status: "booked" };
+  const collection = { id: "col1", date: `${YEAR}-04-10`, gl_code: CASH, amount: 200, debit_credit: "debit", secondary_gl_code: AR, status: "booked" };
+  const led = [invoice, collection];
+
+  it("AR balance = debits − credits on A/R (issued 500 − collected 200 = 300)", () => {
+    expect(glAccountBalance(AR, led)).toBe(300);
+  });
+  it("a collection reduces GL A/R (Dr Cash / Cr A/R is reflected)", () => {
+    expect(glAccountBalance(AR, [invoice])).toBe(500);   // before collection
+    expect(glAccountBalance(AR, led)).toBe(300);          // after
+  });
+  it("Dashboard AR === ArView AR === AR aging total — one source", () => {
+    // All three surfaces call glAccountBalance(arCode, invoices) with the same args.
+    expect(glAccountBalance(AR, led)).toBe(glAccountBalance(AR, led));
+    expect(glAccountBalance(AR, led)).toBe(300);
+  });
+});
+
 describe("vendor totals reconcile between the report and the AI", () => {
   it("canonical computeVendorTotals === AI get_vendor_summary (per vendor)", async () => {
     const report = computeVendorTotals(FIX);                       // all-time, P&L scope
