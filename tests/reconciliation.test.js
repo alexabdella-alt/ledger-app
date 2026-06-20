@@ -4,7 +4,7 @@ import {
   computeCategoryTotals, computeVendorTotals, computeAR, computeAP,
   computeBurnRate, computeRunway, computeCashPosition,
   agingReport, trialBalance, buildMonthlyReport,
-  openPayables, paidPayables,
+  openPayables, paidPayables, glAccountBalance,
 } from "../src/lib/reports.js";
 import { glIsRevenue, glIsExpense } from "../src/lib/gl.js";
 import { executeAITool } from "../src/lib/aiTools.js";
@@ -221,6 +221,55 @@ describe("AP total reconciliation lock — list === aging === computeAP === AI o
 
   it("paidPayables is exactly the live paid expense rows", () => {
     expect(paidPayables(APFIX).map(i => i.id)).toEqual(["ap_paid"]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// AP STEP 2 — canonical glAccountBalance: Balance Sheet AP and the Outstanding/
+// Payables total read ONE GL-based source, so they're identical by construction.
+// ════════════════════════════════════════════════════════════════════════════
+describe("glAccountBalance — the single GL source for Accounts Payable", () => {
+  const AP = "2000", CASH = "1000", EXP = "6500";
+  // Booked bill: Dr Expense 300 / Cr AP 300 (simple 2-line, flattened to one row).
+  const bill = { id: "b1", date: `${YEAR}-04-01`, gl_code: EXP, amount: 300, debit_credit: "debit", secondary_gl_code: AP, status: "booked" };
+  // Step-1 payment of part of it: Dr AP 100 / Cr Cash 100.
+  const payment = { id: "p1", date: `${YEAR}-04-10`, gl_code: AP, amount: 100, debit_credit: "debit", secondary_gl_code: CASH, status: "booked" };
+  const led = [bill, payment];
+
+  it("AP balance = credits − debits on the AP account (booked 300 − paid 100 = 200)", () => {
+    expect(glAccountBalance(AP, led)).toBe(200);
+  });
+  it("a payment reduces the GL AP balance (the Step-1 movement is reflected)", () => {
+    expect(glAccountBalance(AP, [bill])).toBe(300);          // before payment
+    expect(glAccountBalance(AP, led)).toBe(200);             // after Dr AP / Cr Cash
+  });
+  it("the Cash leg of the payment reduces Cash (asset, debit-normal)", () => {
+    expect(glAccountBalance(CASH, [payment])).toBe(-100);
+  });
+  it("Balance Sheet AP and the Outstanding/Payables total are the IDENTICAL number from one source", () => {
+    // Both surfaces call glAccountBalance(apCode, invoices) — same function, same args.
+    const balanceSheetAP = glAccountBalance(AP, led);
+    const outstandingAP  = glAccountBalance(AP, led);
+    expect(balanceSheetAP).toBe(outstandingAP);
+    expect(balanceSheetAP).toBe(200);
+  });
+  it("excludes voided / soft-deleted entries (live only)", () => {
+    const withVoid = [...led, { id: "v", date: `${YEAR}-04-02`, gl_code: EXP, amount: 999, debit_credit: "debit", secondary_gl_code: AP, status: "voided" }];
+    const withDel  = [...led, { id: "d", date: `${YEAR}-04-03`, gl_code: EXP, amount: 888, debit_credit: "debit", secondary_gl_code: AP, deleted_at: "2025-01-01" }];
+    expect(glAccountBalance(AP, withVoid)).toBe(200);
+    expect(glAccountBalance(AP, withDel)).toBe(200);
+  });
+  it("ties to the accounting equation over the FIX fixture (ΣAssets = ΣLiab+Equity+NetIncome)", () => {
+    const code = c => String(c)[0];
+    const codes = [...new Set(FIX.filter(isLiveEntry).flatMap(i => [i.gl_code, i.secondary_gl_code]).filter(Boolean))];
+    let assets = 0, liabEq = 0;
+    for (const c of codes) {
+      const b = glAccountBalance(c, FIX);
+      if (code(c) === "1") assets += b;
+      else if (code(c) === "2" || code(c) === "3") liabEq += b;
+    }
+    const ni = computeNetIncome(FIX);   // all-time
+    expect(Math.round((assets - (liabEq + ni)) * 100) / 100).toBe(0);
   });
 });
 

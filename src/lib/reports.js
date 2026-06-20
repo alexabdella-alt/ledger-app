@@ -154,6 +154,36 @@ function arApTotals(invoices, predicate, now) {
 export function computeAR(invoices, { now = new Date() } = {}) { return arApTotals(invoices, arUnpaid, now); }
 export function computeAP(invoices, { now = new Date() } = {}) { return arApTotals(invoices, apUnpaid, now); }
 
+// ── CANONICAL GL ACCOUNT BALANCE (single source of truth for any account) ────
+// Normal-balance sign by code first digit: assets(1) & expenses(5–8) are
+// debit-normal (+ on debit); liabilities(2), equity(3), revenue(4) credit-normal.
+const isDebitNormalCode = c => { const d = String(c || "")[0]; return d === "1" || d === "5" || d === "6" || d === "7" || d === "8"; };
+
+// The true GL balance of an account = the sum of its journal-entry-line movements,
+// signed to the account's normal balance. Walks the flattened ledger: each row's
+// primary leg (gl_code) plus, for simple (non-expanded) entries, its offset leg
+// (secondary_gl_code); multi-line entries (id contains "_") are already one row per
+// line, so only their primary leg is taken (no double count). This is THE number for
+// "what the ledger says is in this account" — e.g. Accounts Payable owed. `asOf`
+// bounds by date (inclusive). Reconciles with the balance sheet (same walk).
+export function glAccountBalance(code, invoices, { asOf = null } = {}) {
+  if (!code) return 0;
+  const debitNormal = isDebitNormalCode(code);
+  const signed = (isDebit, amt) => debitNormal ? (isDebit ? amt : -amt) : (isDebit ? -amt : amt);
+  let bal = 0;
+  for (const i of (invoices || [])) {
+    if (!isLiveEntry(i)) continue;
+    if (asOf && String(i.date || "") > asOf) continue;
+    const amt = num(i.amount);
+    if (amt === 0) continue;
+    const primaryIsDebit = isRev(i) ? false : i.debit_credit !== "credit";
+    if (i.gl_code === code) bal += signed(primaryIsDebit, amt);
+    // Offset leg only for simple 2-line entries (multi-line rows are pre-expanded).
+    if (!String(i.id).includes("_") && i.secondary_gl_code === code) bal += signed(!primaryIsDebit, amt);
+  }
+  return r2(bal);
+}
+
 // Open / paid PAYABLE LISTS — the exact rows behind computeAP. The Payables page
 // renders these so its listed bills reconcile to the penny with its own headline
 // total, the AP aging report, and the AI. (Previously ApView filtered inline with

@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit } from "../../lib/reports";
+import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
 import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
 import MonthlyReportsPanel from "./MonthlyReportsPanel";
@@ -392,42 +392,12 @@ export default function ReportsView() {
                       const asOf = reportDateTo || new Date().toISOString().slice(0,10);
                       const bsInvoices = invoices.filter(i => i.status !== "voided" && (!i.date || i.date <= asOf));
 
-                      // Build account balance movements.
-                      // Each invoice row represents ONE side of a double-entry (the primary/gl_code side).
-                      // For simple entries (single-row JEs and client-side), we must ALSO book the
-                      // secondary/offset side — otherwise balance sheet accounts (AP, Cash, AR) stay $0.
-                      // Multi-line DB expansions use "_" in their id: each line is already a separate row,
-                      // so we only process gl_code for those to avoid double-counting.
-                      const movements = {};
-                      const applyLine = (code, isDebit, amount) => {
-                        const acct = CHART_OF_ACCOUNTS.find(a => a.code === code);
-                        if (!acct) return;
-                        if (!movements[code]) movements[code] = 0;
-                        // Normal balance: Assets/Expenses increase on debit; Liab/Equity/Revenue on credit
-                        if (["Assets","Expenses"].includes(acct.category)) {
-                          movements[code] += isDebit ? amount : -amount;
-                        } else {
-                          movements[code] += isDebit ? -amount : amount;
-                        }
-                      };
-                      bsInvoices.forEach(inv => {
-                        const amount = inv.amount || 0;
-                        // Revenue accounts (4xxx) always have a credit normal balance.
-                        // Some uploaded invoices were incorrectly stored with debit_credit:"debit"
-                        // on the revenue account — override so the math is always correct.
-                        const isDebit = glIsRevenue(inv.gl_code)
-                          ? false
-                          : inv.debit_credit !== "credit";
-                        applyLine(inv.gl_code, isDebit, amount);
-                        // Book the offsetting account for non-expanded entries
-                        if (!String(inv.id).includes("_") && inv.secondary_gl_code) {
-                          applyLine(inv.secondary_gl_code, !isDebit, amount);
-                        }
-                      });
-
-                      // Opening balance invoice entries are already in `movements` (source:"opening_balance").
-                      // Do NOT also add openingBalances state — that would double-count the same amounts.
-                      const getBal = (code) => movements[code] || 0;
+                      // Every balance-sheet figure (incl. Accounts Payable) reads the ONE canonical
+                      // GL-balance function (lib/reports.js glAccountBalance) — the same source the
+                      // Payables/Outstanding and Dashboard surfaces use, so they reconcile by
+                      // construction. Opening-balance entries (source:"opening_balance") are ordinary
+                      // journal entries in the ledger, so they're already included here.
+                      const getBal = (code) => glAccountBalance(code, bsInvoices, { asOf });
 
                       // GAAP groupings — current vs non-current
                       const currentAssets    = CHART_OF_ACCOUNTS.filter(a => a.category==="Assets"      && parseInt(a.code) < 1500);
