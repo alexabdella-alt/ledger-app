@@ -76,5 +76,6 @@ export const AI_CAPABILITIES = {
     "Delete or void more than 3 items in a single request (a safety guardrail).",
     "Modify a reconciled or locked period unless you explicitly unlock it first.",
     "Make up numbers — if it doesn't have the data, it will tell you.",
+    "Construct or post journal entries of its own — its GAAP knowledge is for explanation and for proposing one of the approved actions, never for writing entries directly to the ledger.",
   ],
 };
