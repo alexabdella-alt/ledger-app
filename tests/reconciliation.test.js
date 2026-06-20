@@ -294,6 +294,37 @@ describe("glAccountBalance — the single GL source for Accounts Receivable (clu
   });
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// CLUSTER #4 LOCK — the parallel ledger derivations (computeRevenue/Expenses/
+// NetIncome, trialBalance) must equal the canonical glAccountBalance derivation.
+// We don't rewrite them (they already re-derive from the ledger); this locks the
+// equivalence so any future drift between the two derivation paths fails CI.
+// ════════════════════════════════════════════════════════════════════════════
+describe("parallel derivations reconcile with glAccountBalance (cluster #4 lock)", () => {
+  const isRevC = c => String(c)[0] === "4";
+  const isExpC = c => ["5", "6", "7", "8"].includes(String(c)[0]);
+  const codes = [...new Set(FIX.filter(isLiveEntry).flatMap(i => [i.gl_code, i.secondary_gl_code]).filter(Boolean))];
+  const sumGl = pred => Math.round(codes.filter(pred).reduce((s, c) => s + glAccountBalance(c, FIX), 0) * 100) / 100;
+
+  it("computeRevenue === Σ glAccountBalance over revenue (4xxx) accounts", () => {
+    expect(computeRevenue(FIX)).toBe(sumGl(isRevC));
+  });
+  it("computeExpenses === Σ glAccountBalance over expense (5–8xxx) accounts", () => {
+    expect(computeExpenses(FIX)).toBe(sumGl(isExpC));
+  });
+  it("computeNetIncome === revenue − expenses from the GL derivation", () => {
+    expect(computeNetIncome(FIX)).toBe(Math.round((sumGl(isRevC) - sumGl(isExpC)) * 100) / 100);
+  });
+  it("trialBalance per account === glAccountBalance(code), signed to normal balance", () => {
+    const tb = trialBalance(FIX);
+    for (const a of tb.accounts) {
+      const debitNormal = ["1", "5", "6", "7", "8"].includes(String(a.code)[0]);
+      const tbNet = debitNormal ? (a.debit - a.credit) : (a.credit - a.debit);
+      expect(Math.round(tbNet * 100) / 100).toBe(glAccountBalance(a.code, FIX));
+    }
+  });
+});
+
 describe("vendor totals reconcile between the report and the AI", () => {
   it("canonical computeVendorTotals === AI get_vendor_summary (per vendor)", async () => {
     const report = computeVendorTotals(FIX);                       // all-time, P&L scope
