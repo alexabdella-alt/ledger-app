@@ -80,6 +80,8 @@ begin
     set system_role = coalesce(public.accounts.system_role, excluded.system_role);
 end;
 $$;
+revoke all on function public.seed_company_accounts(uuid) from public;
+grant execute on function public.seed_company_accounts(uuid) to authenticated;
 
 
 -- (2) Backfill existing companies that don't have 3400 yet.
