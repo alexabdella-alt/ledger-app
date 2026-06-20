@@ -36,7 +36,11 @@ export function paymentNeedsGLMovement(bill, side, { apCode, accruedCode, arCode
 export function buildPaymentEntry(bill, side, opts = {}) {
   const { apCode, accruedCode, arCode, cashCode, cashName, date, billDbId } = opts;
   if (!paymentNeedsGLMovement(bill, side, { apCode, accruedCode, arCode })) return null;
-  const amount = num(bill.amount);
+  // Collect/pay the FULL balance owed. For a taxed AR invoice that's the incl-tax A/R
+  // (ar_amount), not the ex-tax revenue (amount) — so collecting clears A/R to zero and
+  // never strands the tax. The sales-tax liability (2350) was recorded at invoice time
+  // and is untouched here (it stays payable until remitted to the state).
+  const amount = num(side === "ar" && bill && bill.ar_amount != null ? bill.ar_amount : bill && bill.amount);
   if (amount <= 0) return null;
   if (!cashCode) return null;        // can't post a cash movement without a cash account
 

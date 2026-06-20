@@ -75,18 +75,33 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         db_entry_id: e.id
       });
     } else {
-      // Multi-line entry (lease commencement, payroll, …) — expand each line
+      // Multi-line entry (lease commencement, payroll, taxed AR invoice, …) — expand
+      // each line. For a taxed AR invoice (Dr A/R / Cr Revenue / Cr Sales Tax) the
+      // revenue row's `amount` is ex-tax (correct for P&L), but the RECEIVABLE owed is
+      // the full A/R debit (incl. tax). Carry that as `ar_amount` on the single revenue
+      // row so AR aging/collection/total reflect the full amount while revenue stays
+      // ex-tax. Only when there's exactly one revenue credit line (the issued-invoice
+      // shape), so multi-revenue-line entries don't over-count.
+      const arDef = (chartOfAccounts || []).find(a => a.system_role === "accounts_receivable");
+      const arCode = arDef?.code;
+      const arDebit = arCode ? lines.filter(l => l.accounts?.code === arCode).reduce((s, l) => s + (l.debit || 0), 0) : 0;
+      const revCreditCount = lines.filter(l => l.credit > 0 && String(l.accounts?.code || "")[0] === "4").length;
+      const arInvoiceShape = arDebit > 0 && revCreditCount === 1;
       lines.forEach((l, li) => {
         const isDebit = l.debit > 0;
         const amount = isDebit ? l.debit : l.credit;
         if (amount === 0) return;
         const code = l.accounts?.code;
         const acctDef = (chartOfAccounts || []).find(a => a.code === code);
+        const isRevenueRow = acctDef?.category === "Revenue";
         mapped.push({
           id: `${e.id}_${li}`, vendor, description: e.description,
           amount,
+          // Full receivable owed (incl. tax) for the revenue row of a taxed AR invoice;
+          // AR aging/collection/total read this, P&L still reads `amount` (ex-tax).
+          ...(isRevenueRow && arInvoiceShape ? { ar_amount: Math.round(arDebit * 100) / 100 } : {}),
           date: e.entry_date,
-          type: acctDef?.category === "Revenue" ? "revenue" : "expense",
+          type: isRevenueRow ? "revenue" : "expense",
           gl_code: code,
           gl_name: l.accounts?.name,
           secondary_gl_code: isDebit ? primaryCredit?.accounts?.code : primaryDebit?.accounts?.code,

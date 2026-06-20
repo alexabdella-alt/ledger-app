@@ -23,6 +23,10 @@ const isRev = i => i.gl_code ? glIsRevenue(i.gl_code) : i.type === "revenue";
 const isExp = i => i.gl_code ? glIsExpense(i.gl_code) : i.type === "expense";
 const arUnpaid = i => isRev(i) && i.payment_status !== "paid" && i.payment_status !== "collected";
 const apUnpaid = i => isExp(i) && i.payment_status !== "paid";
+// The amount OWED on a row: for a taxed AR invoice the receivable is the full incl-tax
+// A/R balance (carried as `ar_amount`), not the ex-tax revenue (`amount`). AP/untaxed
+// rows have no ar_amount → fall back to amount. Keeps AR aging/total tied to GL A/R.
+export const owedAmount = i => num(i && i.ar_amount != null ? i.ar_amount : i && i.amount);
 const daysOverdue = (dueDate, now) => dueDate ? Math.floor((now - new Date(String(dueDate) + "T12:00:00")) / 86400000) : 0;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -147,7 +151,7 @@ function arApTotals(invoices, predicate, now) {
   let total = 0, overdue = 0, count = 0, overdueCount = 0;
   for (const i of (invoices || [])) {
     if (!isLiveEntry(i) || !predicate(i)) continue;
-    const amt = num(i.amount); total += amt; count++;
+    const amt = owedAmount(i); total += amt; count++;   // incl-tax for AR; amount for AP/untaxed
     if (i.due_date && daysOverdue(i.due_date, now) > 0) { overdue += amt; overdueCount++; }
   }
   return { total: r2(total), overdue: r2(overdue), count, overdueCount };
@@ -220,7 +224,7 @@ export function agingReport(invoices, side = "ar", now = new Date()) {
     const def = defs.find(x => x.test(d)) || defs[0];
     const row = {
       id: i.id, party: i.vendor || (side === "ar" ? "Customer" : "Vendor"),
-      date: i.date, due_date: i.due_date || null, amount: r2(i.amount),
+      date: i.date, due_date: i.due_date || null, amount: r2(owedAmount(i)),
       days_overdue: Math.max(0, d), gl_name: i.gl_name, email: i._contact?.email || i.customer_email || null,
     };
     bmap[def.key].rows.push(row); bmap[def.key].total += row.amount; bmap[def.key].count++;

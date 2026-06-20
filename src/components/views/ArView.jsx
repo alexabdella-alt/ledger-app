@@ -10,6 +10,9 @@ import { computeAR, isLiveEntry, glAccountBalance } from "../../lib/reports";
 export default function ArView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, getAccountByRole, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, markBillPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
             const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
+            // Amount OWED on a receivable: incl-tax A/R (ar_amount) for taxed invoices,
+            // else the ex-tax amount. Ties the lists to GL A/R.
+            const arAmt = i => (i && i.ar_amount != null) ? i.ar_amount : (i ? i.amount : 0);
             const today = new Date().toISOString().slice(0,10);
             // arAgingNarration moved to top-level state
             // arAgingLoading moved to top-level state
@@ -30,11 +33,11 @@ export default function ArView() {
             arOpen.forEach(inv => {
               const days = Math.floor((new Date(today)-new Date(inv.date||today))/86400000);
               const b = days<=30?"current":days<=60?"d60":days<=90?"d90":"d90plus";
-              aging[b].count++; aging[b].total+=inv.amount; aging[b].items.push(inv);
+              aging[b].count++; aging[b].total+=arAmt(inv); aging[b].items.push(inv);
             });
 
             // Collections queue — overdue sorted by amount desc
-            const collectionsQueue = [...arOverdue].sort((a,b)=>b.amount-a.amount);
+            const collectionsQueue = [...arOverdue].sort((a,b)=>arAmt(b)-arAmt(a));
 
             // Route through the canonical verified writer (was local-only → never
             // persisted → reverted on every refresh). side:"ar" sets payment_status="collected".
@@ -84,9 +87,9 @@ What should this business owner know and do?`}]
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
                   {[
                     { label:"Total Outstanding", value:fmt(totalAR),         sub:`${arOpen.length} open invoices`,          color:"#039855" },
-                    { label:"Overdue",            value:arOverdue.length,     sub:fmt(arOverdue.reduce((s,i)=>s+i.amount,0))+" past due", color:"#D92D20" },
+                    { label:"Overdue",            value:arOverdue.length,     sub:fmt(arOverdue.reduce((s,i)=>s+arAmt(i),0))+" past due", color:"#D92D20" },
                     { label:"Current (0–30d)",    value:fmt(aging.current.total), sub:`${aging.current.count} invoices`,     color:"#4F46E5" },
-                    { label:"Collected (Total)",  value:fmt(arAll.filter(i=>i.payment_status==="collected"||i.payment_status==="paid").reduce((s,i)=>s+i.amount,0)), sub:`${arAll.filter(i=>i.payment_status==="collected"||i.payment_status==="paid").length} invoices`, color:"#475467" },
+                    { label:"Collected (Total)",  value:fmt(arAll.filter(i=>i.payment_status==="collected"||i.payment_status==="paid").reduce((s,i)=>s+arAmt(i),0)), sub:`${arAll.filter(i=>i.payment_status==="collected"||i.payment_status==="paid").length} invoices`, color:"#475467" },
                   ].map(c=>(
                     <div key={c.label} style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, padding:"16px 18px" }}>
                       <div style={{ fontSize:11, color:"#475467", letterSpacing:1, marginBottom:8 }}>{c.label.toUpperCase()}</div>
@@ -143,7 +146,7 @@ What should this business owner know and do?`}]
                                   </div>
                                 </div>
                                 <div style={{ textAlign:"right", flexShrink:0 }}>
-                                  <div style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#039855" }}>{fmt(inv.amount)}</div>
+                                  <div style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#039855" }}>{fmt(arAmt(inv))}</div>
                                   {daysUntilDue!==null && !isCollected && (
                                     <div style={{ fontSize:11, marginTop:3, color:daysUntilDue<0?"#D92D20":daysUntilDue<=7?"#DC6803":"#475467" }}>
                                       {daysUntilDue<0?`${Math.abs(daysUntilDue)}d overdue`:daysUntilDue===0?"Due today":`Due in ${daysUntilDue}d`}
@@ -202,7 +205,7 @@ What should this business owner know and do?`}]
                                   <td style={{ padding:"13px 16px" }}>
                                     <span style={{ fontSize:12, fontFamily:"'DM Mono',monospace", color:urgencyColor, fontWeight:600 }}>{daysOverdue}d</span>
                                   </td>
-                                  <td style={{ padding:"13px 16px", fontSize:14, fontFamily:"'DM Mono',monospace", color:"#039855", fontWeight:600 }}>{fmt(inv.amount)}</td>
+                                  <td style={{ padding:"13px 16px", fontSize:14, fontFamily:"'DM Mono',monospace", color:"#039855", fontWeight:600 }}>{fmt(arAmt(inv))}</td>
                                   <td style={{ padding:"13px 16px" }}>
                                     <button onClick={()=>markCollected(inv.id)} style={{ padding:"5px 14px", borderRadius:8, fontSize:11, fontWeight:600, background:"#D1FAE522", border:"1px solid #03985544", color:"#039855", cursor:"pointer" }}>✓ Collected</button>
                                   </td>
@@ -213,7 +216,7 @@ What should this business owner know and do?`}]
                           <tfoot>
                             <tr style={{ borderTop:"2px solid #D0D5DD", background:"#F3F4F6" }}>
                               <td colSpan={4} style={{ padding:"12px 16px", fontSize:13, fontWeight:600 }}>Total Overdue</td>
-                              <td style={{ padding:"12px 16px", fontSize:15, fontFamily:"'DM Mono',monospace", fontWeight:700, color:"#D92D20" }}>{fmt(collectionsQueue.reduce((s,i)=>s+i.amount,0))}</td>
+                              <td style={{ padding:"12px 16px", fontSize:15, fontFamily:"'DM Mono',monospace", fontWeight:700, color:"#D92D20" }}>{fmt(collectionsQueue.reduce((s,i)=>s+arAmt(i),0))}</td>
                               <td />
                             </tr>
                           </tfoot>
@@ -283,7 +286,7 @@ What should this business owner know and do?`}]
                                   <td style={{ padding:"11px 16px", fontSize:12, color:"#475467" }}>{fmtDate(inv.date)||"—"}</td>
                                   <td style={{ padding:"11px 16px", fontSize:12, color:inv.due_date&&inv.due_date<today?"#D92D20":"#475467" }}>{inv.due_date||"—"}</td>
                                   <td style={{ padding:"11px 16px" }}><span style={{ fontSize:12, color:ageColor, fontFamily:"'DM Mono',monospace" }}>{ageDays}d</span></td>
-                                  <td style={{ padding:"11px 16px", fontSize:13, fontFamily:"'DM Mono',monospace", color:"#039855", fontWeight:600 }}>{fmt(inv.amount)}</td>
+                                  <td style={{ padding:"11px 16px", fontSize:13, fontFamily:"'DM Mono',monospace", color:"#039855", fontWeight:600 }}>{fmt(arAmt(inv))}</td>
                                   <td style={{ padding:"11px 16px" }}>
                                     <span style={{ fontSize:11, background:inv.due_date&&inv.due_date<today?"#D92D2022":"#03985522", color:inv.due_date&&inv.due_date<today?"#D92D20":"#039855", borderRadius:20, padding:"2px 9px" }}>
                                       {inv.due_date&&inv.due_date<today?"Overdue":"Current"}
