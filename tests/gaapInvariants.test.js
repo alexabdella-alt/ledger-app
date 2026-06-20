@@ -3,7 +3,7 @@ import { buildPaymentEntry, paymentEntryLines } from "../src/lib/payments.js";
 import { reverseEntryLines } from "../src/lib/journalEntries.js";
 import { buildOpeningBalanceEntry } from "../src/lib/openingBalances.js";
 import { buildDepreciationEntry } from "../src/lib/depreciation.js";
-import { buildDeferredRevenueReceiptEntry } from "../src/lib/revenueEntries.js";
+import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "../src/lib/revenueEntries.js";
 import { fiscalYearStart, fiscalYearSplit, computeNetIncome } from "../src/lib/reports.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -81,7 +81,7 @@ const EVENTS = [
   { name: "11b · deferred revenue — recognition",    lines: [{ code: C.deferredRev, debit: 100, credit: 0 }, { code: C.subRev, debit: 0, credit: 100 }], movesNI: true },
   { name: "12 · lease commencement (ASC 842)",       lines: [{ code: C.rou, debit: 10000, credit: 0 }, { code: C.leaseCurr, debit: 0, credit: 4000 }, { code: C.leaseLT, debit: 0, credit: 6000 }], movesNI: false },
   { name: "13 · payroll (net to cash, taxes payable)", lines: [{ code: C.wages, debit: 1000, credit: 0 }, { code: C.payrollTax, debit: 76.5, credit: 0 }, { code: C.cash, debit: 0, credit: 800 }, { code: C.accrued, debit: 0, credit: 276.5 }], movesNI: true },
-  { name: "16 · sales tax collected (cash sale)",    lines: [{ code: C.cash, debit: 107, credit: 0 }, { code: C.revenue, debit: 0, credit: 100 }, { code: C.salesTax, debit: 0, credit: 7 }], movesNI: true },
+  { name: "16 · sales tax on AR invoice (real builder)", lines: buildArInvoiceEntry({ subtotal: 100, taxRate: 0.07, arCode: C.ar, revenueCode: C.revenue, salesTaxCode: C.salesTax }).lines, movesNI: true },
 ];
 
 describe("(a) every economic event's entry balances (debits = credits)", () => {

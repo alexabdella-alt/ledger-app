@@ -3,9 +3,10 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
+import { buildArInvoiceEntry } from "../../lib/revenueEntries";
 
 export default function SendInvoiceView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, assertBookable, markBillPaid, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, assertBookable, markBillPaid, persistMultiLineEntry, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
             const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
             const nextNum = `INV-${String((sentInvoices.length+1)).padStart(4,"0")}`;
             const emptyLine = () => ({id:Date.now()+Math.random(),description:"",qty:1,rate:"",amount:0});
@@ -28,8 +29,13 @@ export default function SendInvoiceView() {
               })}));
             };
             const subtotal = draft.line_items.reduce((s,l)=>s+(l.amount||0),0);
-            const taxRate = 0; // user can add later when multi-currency/tax is built
-            const total = subtotal * (1+taxRate);
+            // Per-invoice editable blended sales-tax rate (Step 1: starts at 0/blank;
+            // Step 2 will pre-fill from a saved company default). Sales tax is a
+            // liability (Cr 2350), never revenue.
+            const taxRatePct = parseFloat(draft.tax_rate) || 0;
+            const taxRate = taxRatePct / 100;
+            const taxAmount = Math.round(subtotal * taxRate * 100) / 100;
+            const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
             const today = new Date().toISOString().slice(0,10);
 
@@ -45,26 +51,27 @@ export default function SendInvoiceView() {
               if (draft.customer?.trim()) createOrUpdateContact({ name: draft.customer.trim(), type: "customer", email: (draft.customer_email||"").trim() });
             };
 
-            // Book the accounts-receivable ledger entry for an issued invoice: Dr A/R, Cr Revenue.
-            const bookAR = (inv, amount) => {
+            // Book the issued invoice through the canonical multi-line path:
+            //   Dr A/R / Cr Revenue [ / Cr Sales Tax Payable ].  Returns the posted
+            //   journal-entry id (used as ledger_id), or null on failure/pre-cutoff.
+            const bookAR = async (inv) => {
               const rev = getAccountByRole("product_revenue");
               const ar  = getAccountByRole("accounts_receivable");
+              const tax = getAccountByRole("sales_tax_payable");
               const issueDate = inv.issue_date || today;
-              if (!assertBookable(issueDate)) return null;   // pre-cutoff → reject before optimistic add
-              const entry = {
-                id: Date.now()+Math.random(), vendor: inv.customer,
-                description: `Invoice ${inv.invoice_number} — ${inv.customer}`,
-                amount, date: issueDate, due_date: inv.due_date || undefined,
-                type: "revenue", gl_code: rev?.code, gl_name: rev?.name,
-                secondary_gl_code: ar?.code, secondary_gl_name: ar?.name,
-                debit_credit: "credit", confidence: 100,
-                reasoning: `Accounts receivable booked when invoice ${inv.invoice_number} was issued to ${inv.customer}.`,
-                status: "booked", booked_at: new Date().toISOString(),
-                source: "sent_invoice", payment_status: "uncollected", invoice_number: inv.invoice_number,
-              };
-              setInvoices(prev => [entry, ...prev]);
-              bookToDb(entry);
-              return entry;
+              if (!assertBookable(issueDate)) return null;   // pre-cutoff → reject before posting
+              const je = buildArInvoiceEntry({
+                subtotal, taxRate,
+                arCode: ar?.code, revenueCode: rev?.code, salesTaxCode: tax?.code || "2350",
+                date: issueDate, customer: inv.customer, invoiceNumber: inv.invoice_number,
+                dueDate: inv.due_date || null,
+                description: `${inv.customer} – Invoice ${inv.invoice_number}`,
+              });
+              if (!je || !je.balanced) { showNotification("Couldn't build the invoice entry.", "error"); return null; }
+              const jeId = await persistMultiLineEntry(je);
+              if (!jeId) return null;   // failure already surfaced (e.g. pre-cutoff)
+              try { await loadAllData(); } catch {}   // surface the posted A/R (+ tax) entry
+              return jeId;
             };
 
             const saveDraft = () => {
@@ -79,20 +86,20 @@ export default function SendInvoiceView() {
 
             // Issue the invoice: save it, create the customer, book A/R, and open the
             // user's email client pre-filled so they can actually send it.
-            const sendInvoice = () => {
+            const sendInvoice = async () => {
               if (!draft.customer?.trim()) { showNotification("Add a customer name first.", "error"); return; }
               if (!(draft.customer_email||"").trim()) { showNotification("Add the customer's email to send.", "error"); return; }
               if (!(subtotal > 0)) { showNotification("Add at least one line item with an amount.", "error"); return; }
               ensureCustomer();
-              const inv = {...draft, id: draft.id||Date.now()+Math.random(), status:"sent", sent_at:new Date().toISOString()};
+              const inv = {...draft, id: draft.id||Date.now()+Math.random(), status:"sent", sent_at:new Date().toISOString(), tax_rate: draft.tax_rate || "", tax_amount: taxAmount};
               if (!inv.created_at) inv.created_at = new Date().toISOString();
               // Book the A/R entry exactly once per invoice; keep it in sync on re-send.
               if (inv.ledger_id) {
                 setInvoices(prev => prev.map(e => String(e.id)===String(inv.ledger_id) ? {...e, amount:subtotal, date:inv.issue_date||today, vendor:inv.customer, due_date:inv.due_date||undefined} : e));
               } else {
-                const ar = bookAR(inv, subtotal);
-                if (!ar) return;   // pre-cutoff issue date → blocked + toasted; don't send/persist
-                inv.ledger_id = ar.id;
+                const jeId = await bookAR(inv);
+                if (!jeId) return;   // pre-cutoff issue date → blocked + toasted; don't send/persist
+                inv.ledger_id = jeId;
               }
               persistSent(inv); setSentInvoiceDraft(inv); setDraft(inv);
               logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(subtotal)} · A/R booked`);
@@ -147,6 +154,7 @@ export default function SendInvoiceView() {
 </table>
 <div class="totals">
   <div class="total-row"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
+  ${taxAmount>0?`<div class="total-row"><span>Sales tax (${taxRatePct}%)</span><span>$${taxAmount.toFixed(2)}</span></div>`:""}
   <div class="total-row grand-total"><span>Total Due</span><span>$${total.toFixed(2)}</span></div>
 </div>
 ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
@@ -228,6 +236,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                 <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
                   <div style={{width:260}}>
                     <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#475467",padding:"6px 0"}}><span>Subtotal</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(subtotal)}</span></div>
+                    {taxAmount>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#475467",padding:"6px 0"}}><span>Sales tax ({taxRatePct}%)</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(taxAmount)}</span></div>}
                     <div style={{display:"flex",justifyContent:"space-between",fontSize:16,fontWeight:700,borderTop:"2px solid #101828",paddingTop:10,marginTop:4}}><span>Total due</span><span style={{fontFamily:"'DM Mono',monospace",color:"#039855"}}>{fmt(total)}</span></div>
                   </div>
                 </div>
@@ -335,6 +344,12 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                       <div style={{fontSize:11,color:"#475467",marginBottom:12,letterSpacing:1}}>INVOICE TOTAL</div>
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#475467"}}><span>Subtotal</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(subtotal)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:13,color:"#475467"}}>
+                          <span style={{display:"flex",alignItems:"center",gap:6}}>Sales tax
+                            <input type="number" min="0" step="0.01" value={draft.tax_rate??""} onChange={e=>setDraft(d=>({...d,tax_rate:e.target.value}))} placeholder="0" style={{width:62,height:30,borderRadius:7,border:"1px solid #D0D5DD",padding:"0 8px",fontSize:13,textAlign:"right"}} />%
+                          </span>
+                          <span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(taxAmount)}</span>
+                        </div>
                         <div style={{display:"flex",justifyContent:"space-between",fontSize:16,fontWeight:700,borderTop:"1px solid #D0D5DD",paddingTop:10,marginTop:4}}><span>Total Due</span><span style={{fontFamily:"'DM Mono',monospace",color:"#039855"}}>{fmt(total)}</span></div>
                       </div>
                     </div>
