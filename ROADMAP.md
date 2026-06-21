@@ -120,6 +120,26 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 | O19 | Drop orphaned `ap_invoices` table (zero references) after confirming empty/unused | not started | P3 | CLAUDE.md §11 |
 | O35 | **COA normalization (Tier-2)** — companies were seeded by different COA versions over time (e.g. `5101`/`6400` Payroll Tax Expense, `2101` Payroll Taxes Payable with NULL roles); migration `009` set roles by v2 code only, so v1-era accounts have NULL roles / vestigial codes. Audit every company for missing/NULL/variant roles and reconcile **all** roles (not just payroll). Set roles (safe); renumber codes only with a JE-line re-point plan (unsafe otherwise). Driven by a live per-company audit. | not started | **P2** | surfaced by payroll (C57/mig `044`, which fixed payroll roles only); affects any role-resolved feature for legacy companies |
 | O37 | **Smart file-routing / misroute protection** — upload screens must detect file type (payroll register vs bank statement vs invoice) and route to the correct parser, or warn before processing. A payroll CSV dropped on the bank importer silently booked 9 wrong bank-expense entries. Real footgun for any user. | open bug | **P1** | per-importer type sniff + a confirm-before-process guard on mismatch |
+| O52 | Setup-flow buttons audit — onboarding/setup buttons behave inconsistently (accountant button vanished; "setup bank" routed to balances). Verify every onboarding/setup button's action + routing | open bug | P2 | |
+| O53 | Duplicate-alert routing — clicking a "possible duplicate" alert routes to Home instead of the transaction | open bug | P3 | should deep-link to the entry |
+| O54 | Support-mode bugs — (a) the last-uploaded file from the platform-admin's own instance appears inside a client instance under Support Mode; (b) exiting Support Mode can get stuck on the wrong company instead of returning to the admin's own account | open bug | P2 | multi-tenant/support correctness; follow-up to C47 |
+
+### AI quality & data trust
+
+| id | item | status | pri | deps/notes |
+|----|------|--------|-----|-----------|
+| O42 | **Invoice-disappearance safeguard** — standing guarantee that anything an uploaded doc creates can never silently vanish (broader than C5's post-booking invariant; ongoing assurance, raised repeatedly). Core trust concern | not started | **P1** | extends C5/C51; wants a continuous check, not a one-shot invariant |
+| O44 | Ambiguous-document handling — when an uploaded doc is unclear/ambiguous, route to review and ask rather than guessing wrong | not started | P2 | pairs with O37 + the clarification flow (C34) |
+| O49 | **AI-accuracy verification layer** — a dedicated way to catch AI mistakes: bulletproof reconciliations + completeness checks confirming the AI coded things correctly and nothing is missing (broader than `gaapInvariants`; about catching AI categorization/extraction errors). Core to "books you can trust" | not started | **P1** | complements C7 (GAAP invariants) and the single-source clusters |
+| O51 | Scoped deletion via chatbot — "delete the Adobe transaction" must NOT delete ALL Adobe-associated records; scope deletes precisely (single targeted entry, confirm before bulk) | not started | P2 | safety; extends the AI action sandbox (C37) bulk-delete cap |
+
+### Bulk operations & scale
+
+| id | item | status | pri | deps/notes |
+|----|------|--------|-----|-----------|
+| O45 | Mass-edit / bulk mark-paid — marking payments paid one-by-one is tedious; need bulk selection + bulk status/payment-method edit | not started | P2 | routes through `markBillPaid` (C6/C8) per selected id |
+| O46 | Batch-payment matching — match a single lump/batch payment against multiple bills/invoices | not started | P2 | extends the matching engine (C19); partial/multi-clear |
+| O47 | Volume/scale check — confirm the app handles large uploads (50+ invoices) and high transaction volume without breaking | not started | P2 | perf + correctness under load |
 
 ### Reports & UX
 
@@ -127,6 +147,7 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 |----|------|--------|-----|-----------|
 | O20 | Reports page redesign + report date semantics (range/asOf consistency across reports) | not started | P2 | |
 | O39 | **Progressive disclosure** — surface advanced accounting UI (lease/ASC 842, deferred revenue, depreciation, multi-line payroll) only when a client actually uses those features; hidden by default to reduce clutter for simple expense-first clients | not started | P2 | pairs with O20 (Reports redesign) |
+| O50 | CPA-review-efficiency design — how the reviewing CPA reviews most efficiently: health-score vs spot-check vs detailed review; what gets surfaced/summarized for sign-off | not started | P2 | pairs with O49 (AI-accuracy layer) |
 
 ### Security, compliance & launch-readiness
 
@@ -155,6 +176,8 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 | O29 | Slack / SMS bot interface | not started | P3 | |
 | O30 | Stripe billing (subscription/usage) | not started | P3 | |
 | O31 | Custom domain support | not started | P3 | |
+| O43 | Split invoices — split one invoice/bill into multiple line items or allocations (e.g. across GL accounts / projects) | not started | P2 | multi-line booking already supported via C20 |
+| O48 | Chatbot-configurable features — explore letting users customize/configure features via the chat interface | not started | P3 | feasibility discussion first |
 
 ### Standard-variant deferrals (common case built; full variants known, not silently missing)
 
