@@ -88,6 +88,23 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferred-by-design.
 
+### ▶ Suggested execution order
+
+Ordered index into the items below (ids are stable; the category tables that follow are the source of truth for each item's detail). `→` = do in this sequence.
+
+- **PHASE 1 — Perfect the common paths** (95% of client usage; do first):
+  **O37** (file-misroute protection) → **O12** (vendor report bug) → **O13** (settings persist) → **O38** (high-frequency path hardening) → **O41** (clean-company shakedown).
+- **PHASE 2 — Trust & integrity** (the "books you can trust" promise):
+  **O49** (AI-accuracy verification) → **O42** (invoice-disappearance safeguard) → **O7** (coverage audit) → **O21** (RLS audit) → **O16** (GL cash integrity) → **O50** (CPA-review-efficiency).
+- **PHASE 3 — Common-path features clients want soon:**
+  **O11** (invoice due-dates) → **O45** (bulk mark-paid) → **O46** (batch payments) → **O51** (scoped deletion) → **O3** (accrued liabilities) → **O6** + **O40** (remittance events).
+- **PHASE 4 — UX & polish:**
+  **O20** (reports redesign) → **O39** (progressive disclosure) → **O14** (render-test harness) → **O43**, **O44**, **O52**, **O53**, **O54** (smaller fixes).
+- **PHASE 5 — Launch gates** (near ship):
+  **O22** (rebuild test) → **O25** (codebase review) → **O23**/**O24** (DPA/SOC2) → **O26** (Sentry DSN) → **O30** (Stripe) → **O31** (custom domain). Plus opportunistic: **O8**, **O9**, **O10**, **O17**, **O18**, **O19**, **O35**, **O36**, **O4**+**O5** (hard close + period-locking — pair; not in the original phase spec, parked here).
+- **PHASE 6 — Deferred / post-launch** (P4 + big features):
+  **O32**, **O33**, **O34** (variant deferrals) → **O27**, **O28**, **O29** (integrated payments, receipt submission, Slack) → **O47**, **O48** (volume/scale, chatbot-config).
+
 ### Accounting events & correctness
 
 | id | item | status | pri | deps/notes |
