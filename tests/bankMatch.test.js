@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planBankImport, isArMatch } from "../src/lib/bankMatch.js";
+import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, RECON_STATUSES } from "../src/lib/bankMatch.js";
 import { glAccountBalance } from "../src/lib/reports.js";
 
 // GL codes (defaults).
@@ -177,5 +177,76 @@ describe("bank import — genuinely unmatched lines still book standalone", () =
     expect(plan.clears).toHaveLength(0);
     expect(plan.standalone).toHaveLength(1);
     expect(plan.standalone[0].id).toBe("bank_4_0");
+  });
+});
+
+// ── #3 DIRECTION LOCK: deposits book Dr Cash / Cr Revenue, not inverted ───────
+// Derive the two GL lines from the invoice-shaped entry exactly as persistJournalEntry
+// does (isDebit = debit_credit !== "credit": primary debited, secondary credited; else
+// primary credited, secondary debited).
+const linesOf = e => {
+  const isDebit = e.debit_credit !== "credit";
+  return isDebit
+    ? [{ code: e.gl_code, debit: e.amount, credit: 0 }, { code: e.secondary_gl_code, debit: 0, credit: e.amount }]
+    : [{ code: e.gl_code, debit: 0, credit: e.amount }, { code: e.secondary_gl_code, debit: e.amount, credit: 0 }];
+};
+const debitOf = (lines, code) => lines.find(l => l.code === code)?.debit || 0;
+const creditOf = (lines, code) => lines.find(l => l.code === code)?.credit || 0;
+
+describe("buildBankLineEntry — direction by type (the deposit-inversion fix)", () => {
+  it("a DEPOSIT (revenue, 4xxx) posts Dr Cash / Cr Revenue — NOT inverted", () => {
+    const e = buildBankLineEntry({ type: "revenue", gl_code: "4000", gl_name: "Revenue", amount: 2500, vendor: "Bob", date: "2026-06-01", confidence: 90 }, { cashCode: "1000", cashName: "Cash" });
+    expect(e.debit_credit).toBe("credit");        // primary (revenue) credited
+    const lines = linesOf(e);
+    expect(debitOf(lines, "1000")).toBe(2500);    // Dr Cash 2500
+    expect(creditOf(lines, "4000")).toBe(2500);   // Cr Revenue 2500
+    expect(debitOf(lines, "4000")).toBe(0);       // revenue is NOT debited (was the bug)
+    expect(creditOf(lines, "1000")).toBe(0);      // cash is NOT credited (was the bug)
+    const d = lines.reduce((s, l) => s + l.debit, 0), c = lines.reduce((s, l) => s + l.credit, 0);
+    expect(d).toBe(c);                            // balanced
+  });
+
+  it("an EXPENSE (6xxx) still posts Dr Expense / Cr Cash (unchanged)", () => {
+    const e = buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 151.55, date: "2026-06-01" }, { cashCode: "1000" });
+    expect(e.debit_credit).toBe("debit");
+    const lines = linesOf(e);
+    expect(debitOf(lines, "6500")).toBe(151.55);  // Dr Expense
+    expect(creditOf(lines, "1000")).toBe(151.55); // Cr Cash
+  });
+
+  it("uses abs(amount) and Cash as the offset for both", () => {
+    const dep = buildBankLineEntry({ type: "revenue", gl_code: "4000", amount: -2500 }, { cashCode: "1000" });
+    expect(dep.amount).toBe(2500);
+    expect(dep.secondary_gl_code).toBe("1000");
+  });
+});
+
+// ── #1 DISMISS LOCK: a dismissed match still books, correct direction ─────────
+describe("dismiss-book reuses buildBankLineEntry (the same correct shape)", () => {
+  it("a dismissed DEPOSIT books a balanced Dr Cash / Cr Revenue entry", () => {
+    // dismissMatch builds: buildBankLineEntry(m.bank_txn, { cashCode, cashName, reason })
+    const bankTxn = { id: "b1", type: "revenue", gl_code: "4000", gl_name: "Revenue", amount: 2500, vendor: "Bob", date: "2026-06-01" };
+    const e = buildBankLineEntry(bankTxn, { cashCode: "1000", cashName: "Cash", reason: "Booked directly — proposed match dismissed" });
+    expect(e.reasoning).toMatch(/dismissed/);
+    expect(e.source).toBe("bank_statement");
+    const lines = linesOf(e);
+    expect(debitOf(lines, "1000")).toBe(2500);    // Dr Cash — income recorded, not stranded
+    expect(creditOf(lines, "4000")).toBe(2500);   // Cr Revenue
+  });
+});
+
+// ── #2 RECON STATUS LOCK: never write a value the CHECK rejects ───────────────
+describe("reconRecordStatus — only CHECK-allowed values (open|complete)", () => {
+  it("review items present → 'open' (was 'needs_review', which violated the CHECK)", () => {
+    expect(reconRecordStatus(2)).toBe("open");
+    expect(reconRecordStatus(1)).toBe("open");
+  });
+  it("no review items → 'complete'", () => {
+    expect(reconRecordStatus(0)).toBe("complete");
+  });
+  it("the chosen status is always in the reconciliations CHECK set; 'needs_review' is not", () => {
+    expect(RECON_STATUSES).toContain(reconRecordStatus(3));
+    expect(RECON_STATUSES).toContain(reconRecordStatus(0));
+    expect(RECON_STATUSES).not.toContain("needs_review");
   });
 });

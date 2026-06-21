@@ -12,7 +12,7 @@ import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./l
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert } from "./lib/writeShapes";
 import { buildPaymentEntry } from "./lib/payments";
-import { planBankImport, isArMatch } from "./lib/bankMatch";
+import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus } from "./lib/bankMatch";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
@@ -3102,13 +3102,8 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           // best guess rather than parked.
           const unmatchedTxns = plan.standalone;
           const newInvoices = unmatchedTxns.map((t)=>({
-            id:Date.now()+Math.random(), vendor:t.vendor, description:t.description, amount:Math.abs(t.amount),
-            date:t.date, type:t.type, project:"General", gl_code:t.gl_code, gl_name:t.gl_name,
-            secondary_gl_code:rc("cash"), secondary_gl_name:rn("cash"),
-            debit_credit:"debit", confidence:t.confidence, reasoning:"Imported via bank statement (no open item matched)",
-            status:"booked", booked_at:new Date().toISOString(), source:"bank_statement",
-            payment_status:"paid", payment_method_used:"bank_transfer", matched:true, auto_matched:true,
-            matched_bank_date:t.date, paid_at: t.date ? new Date(t.date+"T12:00:00").toISOString() : new Date().toISOString(),
+            id:Date.now()+Math.random(), booked_at:new Date().toISOString(),
+            ...buildBankLineEntry(t, { cashCode: rc("cash"), cashName: rn("cash") }),   // direction by type (deposits → Dr Cash / Cr Revenue)
           }));
           if (newInvoices.length > 0) {
             setInvoices(prev => [...newInvoices, ...prev]);
@@ -3131,7 +3126,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
             period_start: txnDates[0] || new Date().toISOString().slice(0,10),
             period_end: txnDates[txnDates.length-1] || new Date().toISOString().slice(0,10),
             statement_balance: 0, books_balance: 0, difference: 0,
-            status: plan.review.length > 0 ? "needs_review" : "complete",
+            status: reconRecordStatus(plan.review.length),   // CHECK allows only open|complete ("needs_review" violated it; review count lives in bankResult.needsReview)
             matched_transactions: autoCleared.map(m => ({ bank_txn: m.bank_txn, invoice_ids: m.invoice_ids, confidence: m.confidence })),
             unmatched_bank: newInvoices.map(i => ({ vendor: i.vendor, amount: i.amount, date: i.date, gl_name: i.gl_name })),
             completed_at: new Date().toISOString(), completed_by: session?.user?.id || null,  // uuid column, not email
@@ -3979,9 +3974,28 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
     showNotification(isPaid ? `Match confirmed — payment posted ✓` : `Partial match recorded`);
   };
 
-  const dismissMatch = (matchId) => {
-    setMatchQueue(prev => prev.filter(m => m.id !== matchId));
-    showNotification("Match dismissed", "error");
+  // "Dismiss" a proposed match means "not THAT match" — NOT "discard the line". The
+  // bank line is a real transaction, so book it directly (in the correct direction
+  // per buildBankLineEntry) using its AI categorization. Income/expense must never
+  // silently vanish on dismiss. Was: just drop from the queue (stranded, unbooked).
+  const dismissMatch = async (matchId) => {
+    const m = (matchQueue || []).find(x => x.id === matchId);
+    setMatchQueue(prev => prev.filter(x => x.id !== matchId));
+    if (!m || !m.bank_txn) { showNotification("Match dismissed", "error"); return; }
+    const entry = { id: Date.now() + Math.random(), booked_at: new Date().toISOString(),
+      ...buildBankLineEntry(m.bank_txn, { cashCode: rc("cash"), cashName: rn("cash"), reason: "Booked directly — proposed match dismissed" }) };
+    setInvoices(prev => [entry, ...prev]);
+    const jeId = await bookToDb(entry);
+    if (!jeId) { showNotification("Couldn't book the dismissed transaction — please try again", "error"); return; }
+    logAudit("bank_line_booked_on_dismiss", `Booked ${entry.vendor || "transaction"} ${fmtMoney(entry.amount)} directly after dismissing a proposed match`, null, { je_id: String(jeId), amount: entry.amount, type: entry.type });
+    showNotification(`Booked ${entry.vendor || "transaction"} as a new transaction ✓`, "success", async () => {
+      try {
+        await supabase.from("journal_entries").update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
+          .eq("id", jeId).eq("company_id", currentCompany.id);
+        await loadAllData();
+      } catch (e) { console.warn("[dismiss] undo failed:", e?.message || e); }
+      showNotification("Removed ✓");
+    });
   };
 
   // ── AP MANAGEMENT ENGINE ──────────────────────────────────────────────────────

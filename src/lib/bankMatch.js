@@ -31,6 +31,41 @@ export function isArMatch(matchType) {
   return t.startsWith("ar") || t.endsWith("_ar");
 }
 
+// reconciliations.status CHECK allows ONLY these two values. The bank-upload record
+// previously wrote "needs_review" when a proposed match was queued, which VIOLATED the
+// CHECK → the insert failed ("couldn't save the reconciliation record"). The review
+// count lives separately in bankResult.needsReview, so the record's status maps to
+// "open" (not fully reconciled) which is CHECK-allowed.
+export const RECON_STATUSES = ["open", "complete"];
+export function reconRecordStatus(reviewCount) {
+  return Number(reviewCount) > 0 ? "open" : "complete";
+}
+
+// Build the invoice-shaped entry for a bank line that books directly (matched no open
+// item, OR a proposed match was dismissed). DIRECTION BY TYPE — the offset is Cash for
+// both, but a deposit credits Revenue and a debit debits Expense:
+//   expense → Dr <gl_code> / Cr Cash   (debit_credit "debit")
+//   revenue → Dr Cash / Cr <gl_code>   (debit_credit "credit")  ← deposits, was inverted
+// Pure (no id / booked_at — the caller adds those), so it's unit-testable and shared
+// by the standalone-book and dismiss-book paths so they can't diverge.
+export function buildBankLineEntry(txn, { cashCode = "1000", cashName = "Cash", reason = "Imported via bank statement (no open item matched)" } = {}) {
+  const amount = Math.abs(Number(txn && txn.amount) || 0);
+  const date = (txn && txn.date) || null;
+  const isRevenue = txn && txn.type === "revenue";
+  return {
+    vendor: txn && txn.vendor, description: txn && txn.description, amount, date,
+    type: txn && txn.type, project: "General",
+    gl_code: txn && txn.gl_code, gl_name: txn && txn.gl_name,
+    secondary_gl_code: cashCode, secondary_gl_name: cashName,
+    debit_credit: isRevenue ? "credit" : "debit",
+    confidence: txn && txn.confidence, reasoning: reason,
+    status: "booked", source: "bank_statement",
+    payment_status: "paid", payment_method_used: "bank_transfer",
+    matched: true, auto_matched: true, matched_bank_date: date,
+    paid_at: date ? new Date(date + "T12:00:00").toISOString() : null,
+  };
+}
+
 // parsedTxns : the parsed/categorized bank lines, each with a stable truthy `id`.
 // autoCleared, queue : matchRecords from the matching engine. Each carries
 //   { bank_txn: {id,date,...}, invoice_ids: [...], match_type: "ap_clear"|"ar_clear"|… }.

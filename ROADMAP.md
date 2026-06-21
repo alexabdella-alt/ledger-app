@@ -6,7 +6,7 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-21
-- **Test suite:** 375 passing (`npm test`, 30 files). **Build:** clean (`npm run build`).
+- **Test suite:** 382 passing (`npm test`, 30 files). **Build:** clean (`npm run build`).
 - **Migrations:** `000`–`044` (numbering non-contiguous; `042` & `044` committed this pass).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
 
@@ -80,6 +80,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 | C55 | Payroll import UI + AI parse (books to ledger) — exists but NOT GAAP-correct/persisted; see O1 | `App.jsx` PayrollView |
 | C56 | #14 Void persistence — void posts a **DB-persisted** reversing entry (`post_journal_entry`), idempotent via `import_metadata.reverses`; Undo soft-deletes the reversal. NOT local-only (was O15; rechecked 2026-06-21) | `fefd399`, `reverseJournalEntry`/`voidInvoiceWithUndo` in `App.jsx` |
 | C57 | #13 Payroll — deterministic `buildPayrollEntry` (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable), role-resolved; fixes the never-persisted bug (PayrollView now posts via `persistMultiLineEntry`); COA role-reconciliation (mig `044`) + new `2101` Payroll Taxes Payable; preview renders the real entry | `src/lib/payroll.js`, `tests/payroll.test.js`, migration `044`, gaapInvariants #13, PayrollView |
+| C60 | Bank deposit/dismiss correctness — direct-book direction by type (deposits post Dr Cash / Cr Revenue, was inverted Dr Revenue / Cr Cash); `dismissMatch` now books the line directly instead of stranding it (income never silently lost); reconciliation record status maps to CHECK-allowed `open` (was `needs_review`, which failed the insert) | `src/lib/bankMatch.js` (`buildBankLineEntry`/`reconRecordStatus`), `tests/bankMatch.test.js`, `App.jsx` |
 | C59 | O37 Smart file-routing / misroute protection — deterministic `detectFileType` (header/column sniff: bank/payroll/invoice/qbo/unknown); bank/payroll/contract importers warn + offer to route on a confident mismatch (never silently mis-process); universal path sniffs spreadsheets and routes payroll/QBO instead of assuming bank. Incident (payroll CSV → 9 wrong bank entries) can't recur | `src/lib/fileDetect.js`, `tests/fileDetect.test.js`, `App.jsx` (`guardImport`/`routeFileToType`), PayrollView |
 | C58 | #9 Prepaid — `buildPrepaidCapitalizeEntry` (Dr 1300 / Cr A/P) + `buildPrepaidAmortizeEntry` (Dr expense / Cr 1300) + `buildPrepaidSchedule` (monthly, last month absorbs rounding → Σ === capitalized, no stranded residual). `bookPrepaid` rerouted off inline/`bookToDb` → builders + `persistMultiLineEntry`. Role-resolved (`prepaid_expenses`). Generate-upfront model kept (no schedule table); contract amortize path already correct post-Phase-0 | `src/lib/prepaid.js`, `tests/prepaid.test.js`, gaapInvariants #9/#9b, `bookPrepaid` |
 
