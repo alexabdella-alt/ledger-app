@@ -6,7 +6,7 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-21
-- **Test suite:** 354 passing (`npm test`, 28 files). **Build:** clean (`npm run build`).
+- **Test suite:** 363 passing (`npm test`, 29 files). **Build:** clean (`npm run build`).
 - **Migrations:** `000`–`044` (numbering non-contiguous; `042` & `044` committed this pass).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
 
@@ -79,7 +79,8 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 | C54 | Sentry error-monitoring integration (code wired; DSN config is O-side) | `2fd4113`, `src/lib/sentry.js` |
 | C55 | Payroll import UI + AI parse (books to ledger) — exists but NOT GAAP-correct/persisted; see O1 | `App.jsx` PayrollView |
 | C56 | #14 Void persistence — void posts a **DB-persisted** reversing entry (`post_journal_entry`), idempotent via `import_metadata.reverses`; Undo soft-deletes the reversal. NOT local-only (was O15; rechecked 2026-06-21) | `fefd399`, `reverseJournalEntry`/`voidInvoiceWithUndo` in `App.jsx` |
-| C57 | #13 Payroll — deterministic `buildPayrollEntry` (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable), role-resolved; fixes the never-persisted bug (PayrollView now posts via `persistMultiLineEntry`); COA role-reconciliation (mig `044`) + new `2101` Payroll Taxes Payable | `src/lib/payroll.js`, `tests/payroll.test.js`, migration `044`, gaapInvariants #13, PayrollView |
+| C57 | #13 Payroll — deterministic `buildPayrollEntry` (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable), role-resolved; fixes the never-persisted bug (PayrollView now posts via `persistMultiLineEntry`); COA role-reconciliation (mig `044`) + new `2101` Payroll Taxes Payable; preview renders the real entry | `src/lib/payroll.js`, `tests/payroll.test.js`, migration `044`, gaapInvariants #13, PayrollView |
+| C58 | #9 Prepaid — `buildPrepaidCapitalizeEntry` (Dr 1300 / Cr A/P) + `buildPrepaidAmortizeEntry` (Dr expense / Cr 1300) + `buildPrepaidSchedule` (monthly, last month absorbs rounding → Σ === capitalized, no stranded residual). `bookPrepaid` rerouted off inline/`bookToDb` → builders + `persistMultiLineEntry`. Role-resolved (`prepaid_expenses`). Generate-upfront model kept (no schedule table); contract amortize path already correct post-Phase-0 | `src/lib/prepaid.js`, `tests/prepaid.test.js`, gaapInvariants #9/#9b, `bookPrepaid` |
 
 ---
 
@@ -92,7 +93,8 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 | id | item | status | pri | deps/notes |
 |----|------|--------|-----|-----------|
 | ~~O1~~ | #13 Payroll — GAAP-correct multi-line builder + never-persisted fix | → C57 | — | done 2026-06-21 (migration `044`) |
-| O2 | #9 Prepaid — shape-extract `buildPrepaidCapitalizeEntry`/`buildPrepaidAmortizeEntry` + tests; route off the inline `bookPrepaid` | not started | **P1** | C20; currently inline in clarification flow, untested |
+| ~~O2~~ | #9 Prepaid — shape-extract builders + route off inline `bookPrepaid` | → C58 | — | done 2026-06-21 |
+| O36 | Unify amortization schedules (prepaid + depreciation + lease) under one model — prepaid/contracts generate-upfront (posted future-dated JEs) while depreciation uses a pending-rows table + run-on-demand. Consolidate to one mechanism for consistency | not started | P3 | surfaced by C58; correctness is fine today, this is consistency/UX |
 | O3 | #10 Accrued liabilities — discrete builder + test (currently only implicit via payroll/AP offsets) | not started | P2 | gaapInvariants has the literal; no dedicated builder |
 | O4 | #17 Hard close — post year-end closing entries (Dr Rev/Cr Exp → Retained Earnings 3100) + period locking | not started | P3 | soft-close (C12) is the correctness fix; pairs with O5 |
 | O5 | Reconciliation period-locking | not started | P3 | pairs with O4 |

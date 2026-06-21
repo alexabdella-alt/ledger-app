@@ -5,6 +5,7 @@ import { buildOpeningBalanceEntry } from "../src/lib/openingBalances.js";
 import { buildDepreciationEntry } from "../src/lib/depreciation.js";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "../src/lib/revenueEntries.js";
 import { buildPayrollEntry } from "../src/lib/payroll.js";
+import { buildPrepaidCapitalizeEntry, buildPrepaidAmortizeEntry } from "../src/lib/prepaid.js";
 import { fiscalYearStart, fiscalYearSplit, computeNetIncome } from "../src/lib/reports.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -75,8 +76,8 @@ const EVENTS = [
   { name: "6 · opening balances (real builder, plug to OBE)", lines: buildOpeningBalanceEntry({ [C.cash]: 5000, [C.rou]: 3000, [C.ap]: 2000 }, { cutoffDate: "2026-01-01", obeCode: C.obe }).lines, movesNI: false },
   { name: "7 · bank/cash opening position (real builder)",    lines: buildOpeningBalanceEntry({ [C.cash]: 5000 }, { cutoffDate: "2026-01-01", obeCode: C.obe }).lines, movesNI: false },
   { name: "8 · depreciation (real builder)",         lines: buildDepreciationEntry({ amount: 200, depExpCode: C.depExp, accumDepCode: C.accumDep }).lines, movesNI: true },
-  { name: "9 · prepaid — capitalize",                lines: [{ code: C.prepaid, debit: 1200, credit: 0 }, { code: C.ap, debit: 0, credit: 1200 }], movesNI: false },
-  { name: "9b · prepaid — monthly amortization",     lines: [{ code: C.expense, debit: 100, credit: 0 }, { code: C.prepaid, debit: 0, credit: 100 }], movesNI: true },
+  { name: "9 · prepaid — capitalize (real builder)", lines: buildPrepaidCapitalizeEntry({ amount: 1200, prepaidCode: C.prepaid, offsetCode: C.ap }).lines, movesNI: false },
+  { name: "9b · prepaid — amortization (real builder)", lines: buildPrepaidAmortizeEntry({ amount: 100, expenseCode: C.expense, prepaidCode: C.prepaid }).lines, movesNI: true },
   { name: "10 · accrued liability recognition",      lines: [{ code: C.wages, debit: 800, credit: 0 }, { code: C.accrued, debit: 0, credit: 800 }], movesNI: true },
   { name: "11 · deferred revenue — receipt (real builder)", lines: buildDeferredRevenueReceiptEntry({ amount: 1200, cashCode: C.cash, deferredRevCode: C.deferredRev }).lines, movesNI: false },
   { name: "11b · deferred revenue — recognition",    lines: [{ code: C.deferredRev, debit: 100, credit: 0 }, { code: C.subRev, debit: 0, credit: 100 }], movesNI: true },

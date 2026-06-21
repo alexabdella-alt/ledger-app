@@ -16,6 +16,7 @@ import { planBankImport, isArMatch } from "./lib/bankMatch";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
+import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
@@ -2046,34 +2047,36 @@ Reply with ONLY the summary text.`;
     return null;
   };
 
-  // Books a prepaid invoice: prepaid asset on purchase + monthly amortization entries.
-  const bookPrepaid = (inv, months, opt) => {
+  // Books a prepaid invoice through the deterministic builders + canonical multi-line
+  // path: capitalize (Dr Prepaid 1300 / Cr A/P) then post the full straight-line
+  // amortization schedule (Dr expense / Cr Prepaid, monthly, last month absorbs
+  // rounding so Σ === the capitalized amount). Was inline + via bookToDb with a
+  // round(amt/months) per-month that left a few cents stranded in 1300.
+  const bookPrepaid = async (inv, months, opt = {}) => {
     const amt = Number(inv.amount) || 0;
-    const expenseCode = inv.gl_code, expenseName = inv.gl_name;
-    const prepaidName = rn("prepaid_expenses");
-    const prepaidEntry = { ...inv, gl_code:rc("prepaid_expenses"), gl_name:prepaidName,
-      secondary_gl_code:rc("accounts_payable"), secondary_gl_name:rn("accounts_payable"), debit_credit:"debit",
-      confidence:100, status:"booked", booked_at:new Date().toISOString(), source:"gaap_prepaid",
-      reasoning: opt.reasoning || `Recorded as a prepaid asset, amortizing over ${months} months.`, prepaid_months: months };
-    setInvoices(prev => [prepaidEntry, ...prev]);
-    bookToDb(prepaidEntry);
-    if (prepaidEntry._contact) createOrUpdateContact({ ...prepaidEntry._contact, gl_code:rc("prepaid_expenses"), gl_name:prepaidName });
+    const prepaidCode = rc("prepaid_expenses"), prepaidName = rn("prepaid_expenses");
+    const startDate = inv.date || new Date().toISOString().slice(0, 10);
 
-    const per = Math.round((amt / months) * 100) / 100;
-    const start = inv.date ? new Date(inv.date+"T12:00:00") : new Date();
-    const amortInvoices = [];
-    for (let k=0;k<Math.min(months,60);k++){
-      const dt = new Date(start.getFullYear(), start.getMonth()+k, start.getDate());
-      amortInvoices.push({ id: Date.now()+Math.random()+k, vendor: inv.vendor,
-        description:`${inv.description||expenseName} — amortization ${k+1}/${months}`, amount: per,
-        date: dt.toISOString().slice(0,10), type:"expense", project: inv.project||"General",
-        gl_code: expenseCode, gl_name: expenseName, secondary_gl_code:rc("prepaid_expenses"), secondary_gl_name:prepaidName,
-        debit_credit:"debit", confidence:100, reasoning:`Monthly amortization of prepaid ${expenseName} (${k+1} of ${months}).`,
-        status:"booked", booked_at:new Date().toISOString(), source:"gaap_prepaid_amort", payment_status:"paid" });
-    }
-    setInvoices(prev => [...amortInvoices, ...prev]);
-    amortInvoices.forEach(e => bookToDb(e));
-    logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid (1300), amortizing over ${months} months`, null, { vendor:inv.vendor, amount:amt, gl_code:rc("prepaid_expenses"), months });
+    const capEntry = buildPrepaidCapitalizeEntry({
+      amount: amt, prepaidCode, offsetCode: rc("accounts_payable"),
+      date: startDate, vendor: inv.vendor,
+      description: `Prepaid – ${inv.vendor || inv.gl_name || "expense"}`,
+      meta: { kind: "prepaid_capitalize", prepaid_months: months },
+    });
+    if (!capEntry || !capEntry.balanced) { showNotification("Couldn't record the prepaid asset.", "error"); return; }
+    const capId = await persistMultiLineEntry(capEntry);   // cutoff-guarded
+    if (!capId) return;                                    // failure already surfaced
+    try { relinkDocsForInvoice(inv.id, capId); } catch {}  // keep the source doc linked
+    if (inv._contact) createOrUpdateContact({ ...inv._contact, gl_code: prepaidCode, gl_name: prepaidName });
+
+    const sched = buildPrepaidSchedule({
+      total: amt, months, startDate, expenseCode: inv.gl_code, prepaidCode,
+      label: inv.description || inv.gl_name || "Prepaid",
+    });
+    for (const je of sched.entries) { await persistMultiLineEntry(je); }
+
+    logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid (1300), amortizing over ${months} months`, null, { vendor: inv.vendor, amount: amt, gl_code: prepaidCode, months });
+    try { await loadAllData(); } catch {}
     showNotification(`Recorded as prepaid — spread over ${months} months ✓`);
   };
 
@@ -2100,7 +2103,7 @@ Reply with ONLY the summary text.`;
   const applyGaapAnswer = async (item, opt) => {
     const inv = item.invoice;
     setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
-    if (opt.prepaidMonths) { bookPrepaid(inv, opt.prepaidMonths, opt); return; }
+    if (opt.prepaidMonths) { await bookPrepaid(inv, opt.prepaidMonths, opt); return; }
     if (opt.deferredRevenueReceipt) { await bookDeferredRevenueReceipt(inv, opt); return; }
     if (opt.bookAsIs) {
       // Revenue earned now — book the receipt in its normal shape (Dr Cash/AR / Cr Revenue),
