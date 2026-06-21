@@ -99,6 +99,7 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 | O4 | #17 Hard close — post year-end closing entries (Dr Rev/Cr Exp → Retained Earnings 3100) + period locking | not started | P3 | soft-close (C12) is the correctness fix; pairs with O5 |
 | O5 | Reconciliation period-locking | not started | P3 | pairs with O4 |
 | O6 | Sales-tax remittance event — Dr Sales Tax Payable (2350) / Cr Cash when remitting to the state | not started | P2 | completes the #16 lifecycle (2350 currently only accrues) |
+| O40 | Payroll-tax remittance event — Dr Payroll Taxes Payable (2101) / Cr Cash when collected payroll taxes are paid to the government; clears the liability | not started | P3 | companion to O6; closes the #13 lifecycle (2101 currently only accrues) |
 | O7 | Comprehensive economic-event coverage audit — verify all 17 events + edge cases end-to-end | not started | P2 | depends on O1,O2 |
 | O8 | Reversal display marker — show original struck-through / "reversed on DATE" (display-only via `import_metadata.reverses`) | not started | P3 | follow-up to C9 |
 | O9 | "Redo opening setup" flow — guarded reverse of the posted opening entry + unlock cutoff | not started | P3 | follow-up to C10 |
@@ -118,12 +119,14 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 | O18 | Normalized reconciliations model (header + `reconciliation_items`, FK to JE lines) — denormalized shape is working today | not started | P3 | CLAUDE.md §11; deliberate separate project |
 | O19 | Drop orphaned `ap_invoices` table (zero references) after confirming empty/unused | not started | P3 | CLAUDE.md §11 |
 | O35 | **COA normalization (Tier-2)** — companies were seeded by different COA versions over time (e.g. `5101`/`6400` Payroll Tax Expense, `2101` Payroll Taxes Payable with NULL roles); migration `009` set roles by v2 code only, so v1-era accounts have NULL roles / vestigial codes. Audit every company for missing/NULL/variant roles and reconcile **all** roles (not just payroll). Set roles (safe); renumber codes only with a JE-line re-point plan (unsafe otherwise). Driven by a live per-company audit. | not started | **P2** | surfaced by payroll (C57/mig `044`, which fixed payroll roles only); affects any role-resolved feature for legacy companies |
+| O37 | **Smart file-routing / misroute protection** — upload screens must detect file type (payroll register vs bank statement vs invoice) and route to the correct parser, or warn before processing. A payroll CSV dropped on the bank importer silently booked 9 wrong bank-expense entries. Real footgun for any user. | open bug | **P1** | per-importer type sniff + a confirm-before-process guard on mismatch |
 
 ### Reports & UX
 
 | id | item | status | pri | deps/notes |
 |----|------|--------|-----|-----------|
 | O20 | Reports page redesign + report date semantics (range/asOf consistency across reports) | not started | P2 | |
+| O39 | **Progressive disclosure** — surface advanced accounting UI (lease/ASC 842, deferred revenue, depreciation, multi-line payroll) only when a client actually uses those features; hidden by default to reduce clutter for simple expense-first clients | not started | P2 | pairs with O20 (Reports redesign) |
 
 ### Security, compliance & launch-readiness
 
@@ -135,6 +138,13 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 | O24 | GITC / SOC 2 readiness | not started | P3 | |
 | O25 | Pre-launch industry-standard full codebase review | not started | P3 | gate before launch |
 | O26 | Sentry DSN setup (integration C54 exists; production DSN + env config) | not started | P2 | |
+
+### Pre-ship milestones
+
+| id | item | status | pri | deps/notes |
+|----|------|--------|-----|-----------|
+| O38 | **High-frequency path hardening** — dedicated correctness + polish pass on the paths an expense-first client uses daily: expense capture (receipt/bill upload → AI categorization → correct expense account, with easy correction when miscategorized), bank feed (import/match/categorize), revenue capture, and clean P&L/expense reports for the simple case. ~95% of real usage; about perfecting common flows, not adding event types (lease/deferred-rev/depreciation/payroll are done but lower-frequency) | not started | **P1** | pre-ship; pairs with O37, O20/O39 |
+| O41 | **Clean end-to-end shakedown** — build a fresh company from scratch with current code and run a full normal cycle (set cutoff → opening balances → book/pay bills → issue/collect invoices → run depreciation → pull financial statements), confirming everything ties with no manual SQL or cleanup. Proves the product works whole and surfaces common-path rough edges in context (vs. accumulated mess in Test 1) | not started | **P1** | pre-ship milestone; depends on O37/O38 fixes landing |
 
 ### Product features
 
