@@ -5,7 +5,7 @@ This is **the** authoritative roadmap. When the user says "add to the roadmap," 
 ids are never reused. Keep the two sections separate. Mark an item DONE only when it's genuinely in
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
-- **Last updated:** 2026-06-20
+- **Last updated:** 2026-06-21
 - **Test suite:** 346 passing (`npm test`, 26 files). **Build:** clean (`npm run build`).
 - **Migrations:** `000`–`042` (numbering non-contiguous; `042` committed this pass).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
@@ -78,6 +78,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 | C53 | Terms of Service + Privacy Policy pages | `ecd3b80` |
 | C54 | Sentry error-monitoring integration (code wired; DSN config is O-side) | `2fd4113`, `src/lib/sentry.js` |
 | C55 | Payroll import UI + AI parse (books to ledger) — exists but NOT GAAP-correct/persisted; see O1 | `App.jsx` PayrollView |
+| C56 | #14 Void persistence — void posts a **DB-persisted** reversing entry (`post_journal_entry`), idempotent via `import_metadata.reverses`; Undo soft-deletes the reversal. NOT local-only (was O15; rechecked 2026-06-21) | `fefd399`, `reverseJournalEntry`/`voidInvoiceWithUndo` in `App.jsx` |
 
 ---
 
@@ -89,7 +90,7 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 
 | id | item | status | pri | deps/notes |
 |----|------|--------|-----|-----------|
-| O1 | #13 Payroll — GAAP-correct multi-line builder (Dr Salaries+Tax Exp / Cr Cash+Taxes Payable) **and fix the never-persisted bug** (PayrollView `postPayroll` calls `setInvoices` only, never `bookToDb` → vanishes on refresh; AI-built; nets to Accrued) | not started | **P1** | needs `buildPayrollEntry` + multi-line path (C20); net-to-Cash signed off |
+| O1 | #13 Payroll — GAAP-correct multi-line builder (Dr Salaries+Tax Exp / Cr Cash+Taxes Payable) **and fix the never-persisted bug** (PayrollView `postPayroll` calls `setInvoices` only, never `bookToDb` → vanishes on refresh; AI-built; nets to Accrued) | in progress | **P1** | needs `buildPayrollEntry` + multi-line path (C20); net-to-Cash signed off; **blocked on migration `043` — new Payroll Taxes Payable account (2150) pending review/apply** |
 | O2 | #9 Prepaid — shape-extract `buildPrepaidCapitalizeEntry`/`buildPrepaidAmortizeEntry` + tests; route off the inline `bookPrepaid` | not started | **P1** | C20; currently inline in clarification flow, untested |
 | O3 | #10 Accrued liabilities — discrete builder + test (currently only implicit via payroll/AP offsets) | not started | P2 | gaapInvariants has the literal; no dedicated builder |
 | O4 | #17 Hard close — post year-end closing entries (Dr Rev/Cr Exp → Retained Earnings 3100) + period locking | not started | P3 | soft-close (C12) is the correctness fix; pairs with O5 |
@@ -108,7 +109,7 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 | O12 | Vendor report shows customers (By-Vendor report mixes AR customers into vendor list) | open bug | **P1** | classify by AP vs AR / contact type |
 | O13 | Company settings fields don't persist to DB — `SettingsView.save()` only sets local state + bank accounts; only `sales_tax_rate` now writes to `companies` (name/address/fiscal/defaults are lost on refresh) | open bug | **P1** | add a `companies` update for the identity/accounting fields |
 | O14 | Component render-test harness (jsdom + ERP-context mock) — unit tests can't mount views; the Send Invoice crash (C31) slipped because only pure seams were tested | not started | P2 | adds a real regression layer for view logic |
-| O15 | `voidInvoiceWithUndo` persistence — verify the void + undo actually persist (not local-only) | needs verify/fix | P2 | similar class to C6/O1 |
+| ~~O15~~ | `voidInvoiceWithUndo` persistence — **rechecked: already done → C56** (DB-persisted reversing entry, not local-only) | → C56 | — | resolved 2026-06-21 |
 | O16 | GL cash integrity — audit every cash figure still derives from `glCashOnHand` (no stored-balance leak) | needs verify | P2 | guardrail extension of C15 |
 | O17 | Payment atomicity — replace compensation-based payment posting with a single `pay_journal_entry` RPC (atomic flag + GL) | not started | P3 | hardening of C8 |
 | O18 | Normalized reconciliations model (header + `reconciliation_items`, FK to JE lines) — denormalized shape is working today | not started | P3 | CLAUDE.md §11; deliberate separate project |
