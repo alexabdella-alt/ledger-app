@@ -55,24 +55,29 @@ Journal entry rules:
               } catch(e) { console.error(e); }
               setPayrollProcessing(false);
             };
-            // Build the standard payroll entry deterministically from the parsed totals
-            // (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable)
-            // and post it through the canonical multi-line path. Accounts resolve by ROLE
-            // (works whether payroll_tax is 6010 or a legacy 5101). Was setInvoices-only →
-            // never persisted (vanished on refresh); now durable like every other event.
+            // The SINGLE source for both the preview and the post: the standard payroll
+            // entry built deterministically from the parsed totals (Dr Salaries / Dr
+            // Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable). Accounts resolve
+            // by ROLE (works whether payroll_tax is 6010 or a legacy 5101). The preview
+            // renders THIS, so what the user reviews is exactly what posts.
+            const payrollEntryFor = (imp) => buildPayrollEntry({
+              gross: Number(imp.total_gross) || 0,
+              netPay: imp.total_net != null ? Number(imp.total_net) : null,
+              employerTaxes: Number(imp.total_employer_taxes) || 0,
+              salariesCode: getAccountByRole("salaries_wages")?.code || "6000",
+              payrollTaxExpCode: getAccountByRole("payroll_tax")?.code || "6010",
+              cashCode: getAccountByRole("cash")?.code || "1000",
+              payrollTaxesPayableCode: getAccountByRole("payroll_taxes_payable")?.code || "2101",
+              date: imp.pay_date,
+              description: `${imp.source} Payroll — ${imp.period}`,
+              meta: { kind: "payroll", source: imp.source, period: imp.period },
+            });
+            const acctName = (code) => (CHART_OF_ACCOUNTS.find(a => String(a.code) === String(code))?.name) || code;
+
+            // Was setInvoices-only → never persisted (vanished on refresh); now durable
+            // like every other event, posting the SAME entry shown in the preview.
             const postPayroll = async (imp) => {
-              const je = buildPayrollEntry({
-                gross: Number(imp.total_gross) || 0,
-                netPay: imp.total_net != null ? Number(imp.total_net) : null,
-                employerTaxes: Number(imp.total_employer_taxes) || 0,
-                salariesCode: getAccountByRole("salaries_wages")?.code || "6000",
-                payrollTaxExpCode: getAccountByRole("payroll_tax")?.code || "6010",
-                cashCode: getAccountByRole("cash")?.code || "1000",
-                payrollTaxesPayableCode: getAccountByRole("payroll_taxes_payable")?.code || "2101",
-                date: imp.pay_date,
-                description: `${imp.source} Payroll — ${imp.period}`,
-                meta: { kind: "payroll", source: imp.source, period: imp.period },
-              });
+              const je = payrollEntryFor(imp);
               if (!je || !je.balanced) { showNotification("Couldn't build the payroll entry — check the totals.", "error"); return; }
               const jeId = await persistMultiLineEntry(je);   // cutoff-guarded; refuses unbalanced
               if (!jeId) return;                              // failure already surfaced (e.g. pre-cutoff)
@@ -127,25 +132,38 @@ Journal entry rules:
                       </div>
                       {!imp.posted && <button onClick={()=>postPayroll(imp)} style={{padding:"9px 20px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:"#fff",cursor:"pointer"}}>Post to Ledger</button>}
                     </div>
-                    {/* Journal entries preview */}
+                    {/* Journal entries preview — renders the SAME entry postPayroll posts
+                        (built by buildPayrollEntry), so what's reviewed is what's written. */}
                     <div style={{borderTop:"1px solid #E4E7EC",overflow:"clip"}}>
-                      <table style={{width:"100%",borderCollapse:"collapse"}}>
-                        <thead><tr style={{background:"#F3F4F6"}}>
-                          {["Account","Debit","Credit"].map(h=><th key={h} style={{padding:"8px 16px",textAlign:"left",fontSize:10,color:"#475467",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}
-                        </tr></thead>
-                        <tbody>
-                          {(imp.journal_entries||[]).map((e,i)=>(
-                            <tr key={i} style={{borderTop:"1px solid #E4E7EC"}}>
-                              <td style={{padding:"10px 16px"}}>
-                                <span style={{fontSize:11,background:"#E4E7EC",color:"#475467",borderRadius:4,padding:"2px 7px",marginRight:8}}>{e.account_code}</span>
-                                <span style={{fontSize:13,color:e.debit>0?"#101828":"#475467",paddingLeft:e.credit>0?16:0}}>{e.account_name}</span>
-                              </td>
-                              <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#101828"}}>{e.debit>0?fmt(e.debit):"—"}</td>
-                              <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#475467"}}>{e.credit>0?fmt(e.credit):"—"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      {(() => {
+                        const je = payrollEntryFor(imp);
+                        const lines = je?.lines || [];
+                        if (!lines.length) return <div style={{padding:"12px 16px",fontSize:13,color:"#D92D20"}}>Couldn't build a balanced payroll entry — check the parsed totals.</div>;
+                        return (
+                          <table style={{width:"100%",borderCollapse:"collapse"}}>
+                            <thead><tr style={{background:"#F3F4F6"}}>
+                              {["Account","Debit","Credit"].map(h=><th key={h} style={{padding:"8px 16px",textAlign:"left",fontSize:10,color:"#475467",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}
+                            </tr></thead>
+                            <tbody>
+                              {lines.map((l,i)=>(
+                                <tr key={i} style={{borderTop:"1px solid #E4E7EC"}}>
+                                  <td style={{padding:"10px 16px"}}>
+                                    <span style={{fontSize:11,background:"#E4E7EC",color:"#475467",borderRadius:4,padding:"2px 7px",marginRight:8}}>{l.code}</span>
+                                    <span style={{fontSize:13,color:l.debit>0?"#101828":"#475467",paddingLeft:l.credit>0?16:0}}>{acctName(l.code)}</span>
+                                  </td>
+                                  <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#101828"}}>{l.debit>0?fmt(l.debit):"—"}</td>
+                                  <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#475467"}}>{l.credit>0?fmt(l.credit):"—"}</td>
+                                </tr>
+                              ))}
+                              <tr style={{borderTop:"2px solid #E4E7EC",background:"#FCFCFD"}}>
+                                <td style={{padding:"8px 16px",fontSize:11,color:"#475467",fontWeight:600}}>TOTAL</td>
+                                <td style={{padding:"8px 16px",fontFamily:"'DM Mono',monospace",fontSize:12,color:"#475467"}}>{fmt(je.totalDebit)}</td>
+                                <td style={{padding:"8px 16px",fontFamily:"'DM Mono',monospace",fontSize:12,color:"#475467"}}>{fmt(je.totalCredit)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}
