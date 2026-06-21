@@ -203,7 +203,7 @@ Existing items that ladder into it:
 
 | id | item | status | pri | deps/notes |
 |----|------|--------|-----|-----------|
-| O20 | Reports page redesign + report date semantics (range/asOf consistency across reports) | not started | P2 | |
+| O20 | Reports page redesign + report date semantics (range/asOf consistency across reports). **Sub-note — fiscal-year-boundary audit (P2, recurring weak spot):** different surfaces apply different period boundaries to "current year" — two instances found so far: P&L-vs-BS period difference, and the Net Income tile-vs-drill-in (the drill summed all-time → pulled prior-period expenses; fixed by scoping to the tile's FY range). Systematically audit that EVERY current-period figure (dashboard tiles, drill-ins, all reports) derives its boundary from ONE shared helper (`fiscalYearStart`/`fiscalYearSplit`), so "current period" means the same thing everywhere. O59's full-year sim will stress period boundaries hard. | not started | P2 | recurring class; lock candidates beyond the per-fix unit tests |
 | O39 | **Progressive disclosure** — surface advanced accounting UI (lease/ASC 842, deferred revenue, depreciation, multi-line payroll) only when a client actually uses those features; hidden by default to reduce clutter for simple expense-first clients | not started | P2 | pairs with O20 (Reports redesign) |
 | O50 | CPA-review-efficiency design — how the reviewing CPA reviews most efficiently: health-score vs spot-check vs detailed review; what gets surfaced/summarized for sign-off | not started | P2 | pairs with O49 (AI-accuracy layer) |
 

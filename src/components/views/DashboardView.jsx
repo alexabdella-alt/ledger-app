@@ -5,7 +5,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
-import { financialHealthScore, computeNetIncome, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance } from "../../lib/reports";
+import { financialHealthScore, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance } from "../../lib/reports";
 import ClarificationFlow from "../ClarificationFlow";
 
 export default function DashboardView() {
@@ -64,6 +64,16 @@ export default function DashboardView() {
     const today = new Date();
     const exp = invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided");
     const rev = invoices.filter(i => glIsRevenue(i.gl_code) && i.status!=="voided");
+    // The Net Income drill is the BREAKDOWN of the dashboard tile's number, so it MUST
+    // use the same period boundary as the tile (current fiscal year). exp/rev above are
+    // all-time (kept for the trailing-6-month burn chart, which crosses the year start);
+    // the revenue/expenses/net DRILLS use these fiscal-year-scoped views so they tie to
+    // the tile by construction (was all-time → pulled prior-period expenses).
+    const fyYear = today.getFullYear();
+    const fyFrom = `${fyYear}-01-01`, fyTo = `${fyYear}-12-31`;
+    const inFY = i => i.date && i.date >= fyFrom && i.date <= fyTo;
+    const expFY = exp.filter(inFY);
+    const revFY = rev.filter(inFY);
     // Open payables: any expense (gl 5xxx/6xxx), not paid, not voided — SAME logic as the Home alert count.
     const openAP = exp.filter(i => i.payment_status!=="paid");
     const openAR = rev.filter(i => i.payment_status!=="collected");
@@ -110,18 +120,18 @@ export default function DashboardView() {
 
     let title, subtitle, body;
     if (d.type==="revenue") {
-      title = "Revenue transactions"; subtitle = `${rev.length} entr${rev.length!==1?"ies":"y"} · ${fmt(rev.reduce((s,i)=>s+i.amount,0))}`;
-      body = txnRows(rev, "#039855");
+      title = "Revenue transactions"; subtitle = `${revFY.length} entr${revFY.length!==1?"ies":"y"} · ${fmt(revFY.reduce((s,i)=>s+i.amount,0))}`;
+      body = txnRows(revFY, "#039855");
     } else if (d.type==="expenses" && !d.cat) {
-      const cats = Object.values(exp.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0,count:0}; a[k].total+=i.amount; a[k].count++; return a;},{})).sort((x,y)=>y.total-x.total);
-      title = "Expenses by category"; subtitle = `${cats.length} categories · ${fmt(exp.reduce((s,i)=>s+i.amount,0))}`;
+      const cats = Object.values(expFY.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0,count:0}; a[k].total+=i.amount; a[k].count++; return a;},{})).sort((x,y)=>y.total-x.total);
+      title = "Expenses by category"; subtitle = `${cats.length} categories · ${fmt(expFY.reduce((s,i)=>s+i.amount,0))}`;
       body = cats.length===0 ? <div style={{ padding:"28px 18px", fontSize:13, color:"#475467", textAlign:"center" }}>No expenses yet.</div> :
         cats.map(c=>clickableRow(c.name,
           <span style={{ fontSize:13, color:"#374151" }}>{c.name} <span style={{ fontSize:11, color:"#98A2B3" }}>· {c.count}</span></span>,
           <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"#D92D20" }}>{fmt(c.total)}</span>,
           ()=>setDashDrill({type:"expenses",cat:c.name})));
     } else if (d.type==="expenses" && d.cat && !d.vendor) {
-      const inCat = exp.filter(i=>(i.gl_name||"Uncoded")===d.cat);
+      const inCat = expFY.filter(i=>(i.gl_name||"Uncoded")===d.cat);
       const vends = Object.values(inCat.reduce((a,i)=>{const v=i.vendor||"Unknown"; if(!a[v])a[v]={vendor:v,total:0,count:0}; a[v].total+=i.amount; a[v].count++; return a;},{})).sort((x,y)=>y.total-x.total);
       title = `${d.cat} — by vendor`; subtitle = `${vends.length} vendors · ${fmt(inCat.reduce((s,i)=>s+i.amount,0))}`;
       body = vends.map(v=>clickableRow(v.vendor,
@@ -129,12 +139,15 @@ export default function DashboardView() {
         <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"#D92D20" }}>{fmt(v.total)}</span>,
         ()=>setDashDrill({type:"expenses",cat:d.cat,vendor:v.vendor})));
     } else if (d.type==="expenses" && d.vendor) {
-      const txns = exp.filter(i=>(i.gl_name||"Uncoded")===d.cat && (i.vendor||"Unknown")===d.vendor);
+      const txns = expFY.filter(i=>(i.gl_name||"Uncoded")===d.cat && (i.vendor||"Unknown")===d.vendor);
       title = `${d.vendor} — ${d.cat}`; subtitle = `${txns.length} transactions · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
       body = txnRows(txns, "#D92D20");
     } else if (d.type==="net") {
-      const r = rev.reduce((s,i)=>s+i.amount,0), e = exp.reduce((s,i)=>s+i.amount,0);
-      title = "Net income"; subtitle = "Profit & loss summary";
+      // SAME source/period as the Net Income (YTD) tile (computeNetIncome over the FY
+      // range) → the breakdown ties to the tile by construction, not a parallel sum.
+      const r = computeRevenue(invoices, { from: fyFrom, to: fyTo });
+      const e = computeExpenses(invoices, { from: fyFrom, to: fyTo });
+      title = "Net income"; subtitle = `Profit & loss summary · ${fyYear}`;
       body = (<div style={{ padding:"8px 0" }}>
         {clickableRow("rev", <span style={{ fontSize:14, color:"#374151" }}>Total Revenue</span>, <span style={{ fontSize:14, fontFamily:"'DM Mono',monospace", color:"#039855" }}>{fmt(r)}</span>, ()=>setDashDrill({type:"revenue"}))}
         {clickableRow("exp", <span style={{ fontSize:14, color:"#374151" }}>Total Expenses</span>, <span style={{ fontSize:14, fontFamily:"'DM Mono',monospace", color:"#D92D20" }}>({fmt(e)})</span>, ()=>setDashDrill({type:"expenses"}))}

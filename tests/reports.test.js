@@ -132,3 +132,37 @@ describe("aging + trial balance", () => {
     expect(tb.accounts).toHaveLength(2);
   });
 });
+
+// ── Net Income drill-in ties to the dashboard tile (fiscal-year boundary) ─────
+// Regression: the Net Income tile scoped to the current year, but the drill-in summed
+// all-time rev/exp → it pulled PRIOR-PERIOD expenses (e.g. last year's, equal to the
+// beginning-RE delta). Both must use the SAME period and source so they tie.
+import { computeNetIncome, computeRevenue, computeExpenses } from "../src/lib/reports.js";
+
+describe("Net Income: tile period == drill-in period (prior-year excluded)", () => {
+  const FY = { from: "2026-01-01", to: "2026-12-31" };
+  const led = [
+    { id: "r1", date: "2026-03-01", gl_code: "4000", type: "revenue", amount: 3500, status: "booked" },
+    { id: "e1", date: "2026-04-01", gl_code: "6500", type: "expense", amount: 16550.73, status: "booked" },
+    { id: "prior", date: "2025-11-01", gl_code: "6100", type: "expense", amount: 1156.65, status: "booked" }, // prior FY — must NOT count
+  ];
+
+  it("current-FY net income excludes the prior-year expense", () => {
+    expect(computeNetIncome(led, FY)).toBe(-13050.73);           // 3500 − 16550.73, NOT − (16550.73+1156.65)
+    expect(computeExpenses(led, FY)).toBe(16550.73);             // prior 1156.65 excluded
+    expect(computeRevenue(led, FY)).toBe(3500);
+  });
+
+  it("the drill breakdown ties to the tile by construction (same fns, same range)", () => {
+    // tile = computeNetIncome(range); drill r/e = computeRevenue/Expenses(range)
+    const tile = computeNetIncome(led, FY);
+    const drillR = computeRevenue(led, FY), drillE = computeExpenses(led, FY);
+    expect(Math.round((drillR - drillE) * 100) / 100).toBe(tile);
+  });
+
+  it("an all-time sum (the OLD drill) would have been wrong — includes prior year", () => {
+    const allTimeExp = computeExpenses(led, {});                 // no range = all-time
+    expect(allTimeExp).toBe(17707.38);                          // 16550.73 + 1156.65 — the wrong number
+    expect(allTimeExp).not.toBe(computeExpenses(led, FY));      // proves the boundary matters
+  });
+});
