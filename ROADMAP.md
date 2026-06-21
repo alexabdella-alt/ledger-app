@@ -106,6 +106,19 @@ Ordered index into the items below (ids are stable; the category tables that fol
 - **PHASE 6 — Deferred / post-launch** (P4 + big features):
   **O32**, **O33**, **O34** (variant deferrals) → **O27**, **O28**, **O29** (integrated payments, receipt submission, Slack) → **O47**, **O48** (volume/scale, chatbot-config).
 
+### ★ North star (vision-tier)
+
+**O56 — "Invisible controller" experience.** The client interacts via an **INBOX** (email and/or Slack) where they forward everything — receipts, invoices, statements — which feeds directly into the app and **becomes the permanent document record**. A **chatbot** (in Slack *and* in-app) answers questions and generates reports on request ("send me my P&L", "how much on travel this quarter?"). Behind the scenes the AI controller does the bookkeeping and the **CPA reviews**. Goal: the client forwards documents and asks questions; their finances feel **handled by a person, not operated by them via software**. The app UI exists for those who want it but isn't required for the core experience. **P3 / vision-tier** — the organizing goal the near-term work serves.
+
+Existing items that ladder into it:
+- **O29** (Slack/SMS bot) — the chat interface layer (Slack + in-app).
+- **O28** (expense/receipt submission) — the forwarding/inbox **input**.
+- **Source-document attachment** (being designed now) — the inbox auto-becomes the **audit trail**; forwarded receipts auto-match to transactions.
+- **O49** (AI-accuracy verification) + **CPA review** (**O50**) — the **trust layer** that MUST be solid before the experience can be hands-off.
+- **O38** (high-frequency path hardening) — the bank-flow + categorization the controller runs behind the scenes.
+
+**Sequencing:** this is a LATER build that sits on top of a **bulletproof core**. Hands-off only works when the behind-the-scenes result is trustworthy (accurate categorization + review). Build the core first (engine done; **O38**/**O49** in progress), *then* this delivery layer.
+
 ### Accounting events & correctness
 
 | id | item | status | pri | deps/notes |
