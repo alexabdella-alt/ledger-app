@@ -16,6 +16,7 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
   // Liabilities
   { code: "2000", name: "Accounts Payable", category: "Liabilities", system_role: "accounts_payable" },
   { code: "2100", name: "Accrued Liabilities", category: "Liabilities", system_role: "accrued_liabilities" },
+  { code: "2101", name: "Payroll Taxes Payable", category: "Liabilities", system_role: "payroll_taxes_payable" },
   { code: "2200", name: "Credit Card Liability", category: "Liabilities", system_role: "credit_card_liability" },
   { code: "2300", name: "Deferred Revenue", category: "Liabilities", system_role: "deferred_revenue" },
   { code: "2350", name: "Sales Tax Payable", category: "Liabilities", system_role: "sales_tax_payable" },

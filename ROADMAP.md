@@ -6,8 +6,8 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-21
-- **Test suite:** 346 passing (`npm test`, 26 files). **Build:** clean (`npm run build`).
-- **Migrations:** `000`–`042` (numbering non-contiguous; `042` committed this pass).
+- **Test suite:** 354 passing (`npm test`, 28 files). **Build:** clean (`npm run build`).
+- **Migrations:** `000`–`044` (numbering non-contiguous; `042` & `044` committed this pass).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
 
 ---
@@ -79,6 +79,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 | C54 | Sentry error-monitoring integration (code wired; DSN config is O-side) | `2fd4113`, `src/lib/sentry.js` |
 | C55 | Payroll import UI + AI parse (books to ledger) — exists but NOT GAAP-correct/persisted; see O1 | `App.jsx` PayrollView |
 | C56 | #14 Void persistence — void posts a **DB-persisted** reversing entry (`post_journal_entry`), idempotent via `import_metadata.reverses`; Undo soft-deletes the reversal. NOT local-only (was O15; rechecked 2026-06-21) | `fefd399`, `reverseJournalEntry`/`voidInvoiceWithUndo` in `App.jsx` |
+| C57 | #13 Payroll — deterministic `buildPayrollEntry` (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable), role-resolved; fixes the never-persisted bug (PayrollView now posts via `persistMultiLineEntry`); COA role-reconciliation (mig `044`) + new `2101` Payroll Taxes Payable | `src/lib/payroll.js`, `tests/payroll.test.js`, migration `044`, gaapInvariants #13, PayrollView |
 
 ---
 
@@ -90,7 +91,7 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 
 | id | item | status | pri | deps/notes |
 |----|------|--------|-----|-----------|
-| O1 | #13 Payroll — GAAP-correct multi-line builder (Dr Salaries+Tax Exp / Cr Cash+Taxes Payable) **and fix the never-persisted bug** (PayrollView `postPayroll` calls `setInvoices` only, never `bookToDb` → vanishes on refresh; AI-built; nets to Accrued) | in progress | **P1** | needs `buildPayrollEntry` + multi-line path (C20); net-to-Cash signed off; **blocked on migration `043` — new Payroll Taxes Payable account (2150) pending review/apply** |
+| ~~O1~~ | #13 Payroll — GAAP-correct multi-line builder + never-persisted fix | → C57 | — | done 2026-06-21 (migration `044`) |
 | O2 | #9 Prepaid — shape-extract `buildPrepaidCapitalizeEntry`/`buildPrepaidAmortizeEntry` + tests; route off the inline `bookPrepaid` | not started | **P1** | C20; currently inline in clarification flow, untested |
 | O3 | #10 Accrued liabilities — discrete builder + test (currently only implicit via payroll/AP offsets) | not started | P2 | gaapInvariants has the literal; no dedicated builder |
 | O4 | #17 Hard close — post year-end closing entries (Dr Rev/Cr Exp → Retained Earnings 3100) + period locking | not started | P3 | soft-close (C12) is the correctness fix; pairs with O5 |
@@ -114,6 +115,7 @@ Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferr
 | O17 | Payment atomicity — replace compensation-based payment posting with a single `pay_journal_entry` RPC (atomic flag + GL) | not started | P3 | hardening of C8 |
 | O18 | Normalized reconciliations model (header + `reconciliation_items`, FK to JE lines) — denormalized shape is working today | not started | P3 | CLAUDE.md §11; deliberate separate project |
 | O19 | Drop orphaned `ap_invoices` table (zero references) after confirming empty/unused | not started | P3 | CLAUDE.md §11 |
+| O35 | **COA normalization (Tier-2)** — companies were seeded by different COA versions over time (e.g. `5101`/`6400` Payroll Tax Expense, `2101` Payroll Taxes Payable with NULL roles); migration `009` set roles by v2 code only, so v1-era accounts have NULL roles / vestigial codes. Audit every company for missing/NULL/variant roles and reconcile **all** roles (not just payroll). Set roles (safe); renumber codes only with a JE-line re-point plan (unsafe otherwise). Driven by a live per-company audit. | not started | **P2** | surfaced by payroll (C57/mig `044`, which fixed payroll roles only); affects any role-resolved feature for legacy companies |
 
 ### Reports & UX
 

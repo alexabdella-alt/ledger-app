@@ -4,6 +4,7 @@ import { reverseEntryLines } from "../src/lib/journalEntries.js";
 import { buildOpeningBalanceEntry } from "../src/lib/openingBalances.js";
 import { buildDepreciationEntry } from "../src/lib/depreciation.js";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "../src/lib/revenueEntries.js";
+import { buildPayrollEntry } from "../src/lib/payroll.js";
 import { fiscalYearStart, fiscalYearSplit, computeNetIncome } from "../src/lib/reports.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -49,7 +50,7 @@ const equationResidual = lines => r2(assetsDelta(lines) - (liabDelta(lines) + eq
 const C = {
   cash: "1000", ar: "1100", prepaid: "1300", rou: "1800", accumDep: "1510",
   ap: "2000", accrued: "2100", deferredRev: "2300", salesTax: "2350",
-  leaseCurr: "2400", leaseLT: "2450", obe: "3400",
+  leaseCurr: "2400", leaseLT: "2450", obe: "3400", payrollTaxesPayable: "2101",
   revenue: "4000", subRev: "4200", wages: "6000", payrollTax: "6010",
   depExp: "6900", expense: "6500",
 };
@@ -80,7 +81,7 @@ const EVENTS = [
   { name: "11 · deferred revenue — receipt (real builder)", lines: buildDeferredRevenueReceiptEntry({ amount: 1200, cashCode: C.cash, deferredRevCode: C.deferredRev }).lines, movesNI: false },
   { name: "11b · deferred revenue — recognition",    lines: [{ code: C.deferredRev, debit: 100, credit: 0 }, { code: C.subRev, debit: 0, credit: 100 }], movesNI: true },
   { name: "12 · lease commencement (ASC 842)",       lines: [{ code: C.rou, debit: 10000, credit: 0 }, { code: C.leaseCurr, debit: 0, credit: 4000 }, { code: C.leaseLT, debit: 0, credit: 6000 }], movesNI: false },
-  { name: "13 · payroll (net to cash, taxes payable)", lines: [{ code: C.wages, debit: 1000, credit: 0 }, { code: C.payrollTax, debit: 76.5, credit: 0 }, { code: C.cash, debit: 0, credit: 800 }, { code: C.accrued, debit: 0, credit: 276.5 }], movesNI: true },
+  { name: "13 · payroll (real builder, net→cash, payroll taxes payable)", lines: buildPayrollEntry({ gross: 1000, netPay: 800, employerTaxes: 76.5, salariesCode: C.wages, payrollTaxExpCode: C.payrollTax, cashCode: C.cash, payrollTaxesPayableCode: C.payrollTaxesPayable }).lines, movesNI: true },
   { name: "16 · sales tax on AR invoice (real builder)", lines: buildArInvoiceEntry({ subtotal: 100, taxRate: 0.07, arCode: C.ar, revenueCode: C.revenue, salesTaxCode: C.salesTax }).lines, movesNI: true },
 ];
 
