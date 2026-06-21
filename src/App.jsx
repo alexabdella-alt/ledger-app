@@ -17,6 +17,7 @@ import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
+import { detectFileType, TYPE_LABEL } from "./lib/fileDetect";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
@@ -612,6 +613,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
   // ── DELETE CONFIRMATION ───────────────────────────────────────────────────────
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, label, onConfirm }
+  // ── FILE MISROUTE PROTECTION (O37) ────────────────────────────────────────────
+  const [misrouteConfirm, setMisrouteConfirm] = useState(null);   // { detected, expected, resolve }
+  const [pendingImportFile, setPendingImportFile] = useState(null); // { type, file } — routed to a view-local importer
 
   // ── OPENING BALANCES ─────────────────────────────────────────────────────────
   // { account_code, account_name, balance, as_of_date, posted }
@@ -2679,7 +2683,24 @@ Reply with only the single word.`,
           mediaType = ext==="pdf" ? "application/pdf" : `image/${ext==="jpg"?"jpeg":ext}`;
         }
 
-        const docType = isSpreadsheet ? "bank_statement" : await classifyFile(base64, mediaType, item.name);
+        // Universal "drop anything" routing. A spreadsheet was previously ASSUMED to
+        // be a bank statement — which silently booked a payroll CSV as bank entries.
+        // Now we sniff it (deterministic) and route payroll/QBO to the right importer;
+        // bank or unrecognized spreadsheets fall through to the bank flow as before.
+        let docType;
+        if (isSpreadsheet) {
+          const det = await detectFileType(file);
+          if (det.confidence === "high" && (det.type === "payroll" || det.type === "qbo")) {
+            routeFileToType(det.type, file);
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:det.type, result:{ routed:true, to:det.type }} : q));
+            logUploadUpdate(item.upload_log_id, { status:"done", doc_type:det.type, result:{ routed:true } });
+            showNotification(`That looked like a ${TYPE_LABEL[det.type]} — routed it to the right importer.`);
+            return;
+          }
+          docType = "bank_statement";   // bank or unrecognized spreadsheet → bank flow
+        } else {
+          docType = await classifyFile(base64, mediaType, item.name);
+        }
 
         // Update status: processing + type known
         setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, type:docType, status:"processing"} : q));
@@ -3308,8 +3329,36 @@ Rules:
   };
 
   // ── BANK FEED ────────────────────────────────────────────────────────────────
+  // ── FILE MISROUTE GUARD (O37) ──────────────────────────────────────────────
+  // Before an importer processes a file, sniff what it actually IS. On a CONFIDENT
+  // mismatch (high confidence, a different known type), warn and offer to route it
+  // to the correct importer — never silently mis-process. Match / unknown / low
+  // confidence → proceed (the drop target is itself a strong prior; don't nag).
+  // Returns true to proceed, false to stop (cancelled or routed elsewhere).
+  const guardImport = async (file, expectedType) => {
+    let det;
+    try { det = await detectFileType(file); } catch { return true; }   // detection failure never blocks
+    const mismatch = det && det.confidence === "high" && det.type !== "unknown" && det.type !== expectedType;
+    if (!mismatch) return true;
+    const choice = await new Promise(resolve => setMisrouteConfirm({ detected: det.type, expected: expectedType, resolve }));
+    if (choice === "route") { routeFileToType(det.type, file); return false; }
+    return choice === "proceed";
+  };
+
+  // Send a file to the importer that matches its detected type. App-scope handlers
+  // process directly; view-local importers (payroll, qbo) get the file stashed in
+  // pendingImportFile and the view auto-consumes it on navigation.
+  const routeFileToType = (type, file) => {
+    if (type === "bank_statement") { setView("bank"); handleBankFile(file); }
+    else if (type === "contract") { setView("contracts"); handleContractFile(file); }
+    else if (type === "invoice") { setView("add"); handleUniversalUpload([file]); }
+    else if (type === "payroll") { setPendingImportFile({ type: "payroll", file }); setView("payroll"); showNotification("Routed to Payroll Import ✓"); }
+    else if (type === "qbo") { setPendingImportFile({ type: "qbo", file }); setView("onboard"); showNotification("Use the QuickBooks import here ✓"); }
+  };
+
   const handleBankFile = async (file) => {
     if (!file) return;
+    if (!(await guardImport(file, "bank_statement"))) return;   // misroute guard
     const allowedTypes = ["text/csv","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/pdf","text/plain"];
     const allowedExts = [".csv",".xlsx",".xls",".pdf",".txt"];
     const ext = "." + file.name.split(".").pop().toLowerCase();
@@ -3468,6 +3517,7 @@ Keep the same array order and index as input.`,
 
   const handleContractFile = async (file) => {
     if (!file) return;
+    if (!(await guardImport(file, "contract"))) return;   // misroute guard
     const ext = "." + file.name.split(".").pop().toLowerCase();
     if (![".pdf",".jpg",".jpeg",".png",".webp"].includes(ext)) {
       showNotification("Please upload a PDF or image of the contract.", "error"); return;
@@ -4754,7 +4804,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, runDepreciationThrough, attachDepreciationToExistingAsset };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, runDepreciationThrough, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
@@ -4820,6 +4870,27 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           </div>
         </div>
       )}
+
+      {/* File misroute warning (O37) — detected type disagrees with the importer. */}
+      {misrouteConfirm && (() => {
+        const close = (choice) => { const r = misrouteConfirm.resolve; setMisrouteConfirm(null); r(choice); };
+        const detLabel = TYPE_LABEL[misrouteConfirm.detected] || "different file";
+        const expLabel = TYPE_LABEL[misrouteConfirm.expected] || "this importer";
+        const dest = { bank_statement:"Bank Import", payroll:"Payroll Import", invoice:"Upload", qbo:"QuickBooks Import", contract:"Contracts" }[misrouteConfirm.detected] || "the right importer";
+        return (
+          <div style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ background:"#FFFFFF", border:"1px solid #DC680333", borderRadius:16, padding:28, maxWidth:440, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
+              <div style={{ fontSize:16, fontWeight:600, marginBottom:10 }}>This looks like a {detLabel}</div>
+              <div style={{ fontSize:13, color:"#475467", marginBottom:20, lineHeight:1.6 }}>You dropped it on the {expLabel} importer. Send it to <b>{dest}</b> instead, or process it here anyway?</div>
+              <div style={{ display:"flex", gap:10, justifyContent:"flex-end", flexWrap:"wrap" }}>
+                <button onClick={()=>close("cancel")} style={{ padding:"8px 16px", borderRadius:8, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", fontSize:13, cursor:"pointer" }}>Cancel</button>
+                <button onClick={()=>close("proceed")} style={{ padding:"8px 16px", borderRadius:8, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", fontSize:13, cursor:"pointer" }}>Process here anyway</button>
+                <button onClick={()=>close("route")} style={{ padding:"8px 16px", borderRadius:8, background:"#4F46E5", border:"none", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>Send to {dest}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Persistent upload status — visible from any tab */}
       {uploadQueue.some(q => q.status==="pending"||q.status==="classifying"||q.status==="processing") && (

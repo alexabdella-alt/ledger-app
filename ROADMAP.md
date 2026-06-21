@@ -6,7 +6,7 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-21
-- **Test suite:** 363 passing (`npm test`, 29 files). **Build:** clean (`npm run build`).
+- **Test suite:** 375 passing (`npm test`, 30 files). **Build:** clean (`npm run build`).
 - **Migrations:** `000`–`044` (numbering non-contiguous; `042` & `044` committed this pass).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
 
@@ -80,6 +80,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 | C55 | Payroll import UI + AI parse (books to ledger) — exists but NOT GAAP-correct/persisted; see O1 | `App.jsx` PayrollView |
 | C56 | #14 Void persistence — void posts a **DB-persisted** reversing entry (`post_journal_entry`), idempotent via `import_metadata.reverses`; Undo soft-deletes the reversal. NOT local-only (was O15; rechecked 2026-06-21) | `fefd399`, `reverseJournalEntry`/`voidInvoiceWithUndo` in `App.jsx` |
 | C57 | #13 Payroll — deterministic `buildPayrollEntry` (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable), role-resolved; fixes the never-persisted bug (PayrollView now posts via `persistMultiLineEntry`); COA role-reconciliation (mig `044`) + new `2101` Payroll Taxes Payable; preview renders the real entry | `src/lib/payroll.js`, `tests/payroll.test.js`, migration `044`, gaapInvariants #13, PayrollView |
+| C59 | O37 Smart file-routing / misroute protection — deterministic `detectFileType` (header/column sniff: bank/payroll/invoice/qbo/unknown); bank/payroll/contract importers warn + offer to route on a confident mismatch (never silently mis-process); universal path sniffs spreadsheets and routes payroll/QBO instead of assuming bank. Incident (payroll CSV → 9 wrong bank entries) can't recur | `src/lib/fileDetect.js`, `tests/fileDetect.test.js`, `App.jsx` (`guardImport`/`routeFileToType`), PayrollView |
 | C58 | #9 Prepaid — `buildPrepaidCapitalizeEntry` (Dr 1300 / Cr A/P) + `buildPrepaidAmortizeEntry` (Dr expense / Cr 1300) + `buildPrepaidSchedule` (monthly, last month absorbs rounding → Σ === capitalized, no stranded residual). `bookPrepaid` rerouted off inline/`bookToDb` → builders + `persistMultiLineEntry`. Role-resolved (`prepaid_expenses`). Generate-upfront model kept (no schedule table); contract amortize path already correct post-Phase-0 | `src/lib/prepaid.js`, `tests/prepaid.test.js`, gaapInvariants #9/#9b, `bookPrepaid` |
 
 ---
@@ -136,7 +137,8 @@ Ordered index into the items below (ids are stable; the category tables that fol
 | O18 | Normalized reconciliations model (header + `reconciliation_items`, FK to JE lines) — denormalized shape is working today | not started | P3 | CLAUDE.md §11; deliberate separate project |
 | O19 | Drop orphaned `ap_invoices` table (zero references) after confirming empty/unused | not started | P3 | CLAUDE.md §11 |
 | O35 | **COA normalization (Tier-2)** — companies were seeded by different COA versions over time (e.g. `5101`/`6400` Payroll Tax Expense, `2101` Payroll Taxes Payable with NULL roles); migration `009` set roles by v2 code only, so v1-era accounts have NULL roles / vestigial codes. Audit every company for missing/NULL/variant roles and reconcile **all** roles (not just payroll). Set roles (safe); renumber codes only with a JE-line re-point plan (unsafe otherwise). Driven by a live per-company audit. | not started | **P2** | surfaced by payroll (C57/mig `044`, which fixed payroll roles only); affects any role-resolved feature for legacy companies |
-| O37 | **Smart file-routing / misroute protection** — upload screens must detect file type (payroll register vs bank statement vs invoice) and route to the correct parser, or warn before processing. A payroll CSV dropped on the bank importer silently booked 9 wrong bank-expense entries. Real footgun for any user. | open bug | **P1** | per-importer type sniff + a confirm-before-process guard on mismatch |
+| ~~O37~~ | Smart file-routing / misroute protection | → C59 | — | done 2026-06-21 (deterministic CSV sniff) |
+| O55 | File-detect AI-classifier extension (fast-follow to C59) — extend the AI document classifier (PDFs/images) to include `payroll` and `qbo`, and add deterministic .xlsx (binary) sniffing via the xlsx lib; today non-CSV files → `unknown` (no mismatch warning) | not started | P2 | follow-up to C59; deterministic CSV path already covers the incident class |
 | O52 | Setup-flow buttons audit — onboarding/setup buttons behave inconsistently (accountant button vanished; "setup bank" routed to balances). Verify every onboarding/setup button's action + routing | open bug | P2 | |
 | O53 | Duplicate-alert routing — clicking a "possible duplicate" alert routes to Home instead of the transaction | open bug | P3 | should deep-link to the entry |
 | O54 | Support-mode bugs — (a) the last-uploaded file from the platform-admin's own instance appears inside a client instance under Support Mode; (b) exiting Support Mode can get stuck on the wrong company instead of returning to the admin's own account | open bug | P2 | multi-tenant/support correctness; follow-up to C47 |
