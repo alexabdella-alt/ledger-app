@@ -10,7 +10,7 @@ import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile
 import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
-import { buildApprovalUpdate, buildAccountInsert } from "./lib/writeShapes";
+import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus } from "./lib/bankMatch";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
@@ -866,18 +866,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       // Load company settings
       const { data: co } = await supabase.from("companies").select("*").eq("id", cid).single();
       if (co) {
-        setCompanySettings({
-          name: co.name||"", taxId: co.tax_id||"", address: co.address||"",
-          city: co.city||"", state: co.state||"", zip: co.zip||"",
-          country: co.country||"US", fiscalYearEnd: co.fiscal_year_end||"12-31",
-          defaultCashAccount: co.default_cash_account||"1000",
-          defaultAPAccount: co.default_ap_account||rc("accounts_payable"),
-          defaultARAccount: co.default_ar_account||rc("accounts_receivable"),
-          currency: co.currency||"USD", logoBase64: null,
-          businessType: co.business_type||"",
-          salesTaxRate: Number(co.sales_tax_rate) || 0,
-          onboardingComplete: !!co.onboarding_complete,
-        });
+        setCompanySettings(mapCompanyRow(co));   // pure read-shape; pairs with buildCompanyUpdate (O13 round-trip)
         setCutoffDate(co.cutoff_date || null);
       }
 

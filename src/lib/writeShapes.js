@@ -42,3 +42,51 @@ export function buildAccountInsert({ companyId, code, name, category = null }) {
     active: true, is_system: false, system_role: null,
   };
 }
+
+// Company identity/accounting settings ↔ the `companies` table (O13). save() must
+// persist ALL these fields, not just sales_tax_rate, or they're lost on refresh.
+// All columns exist (000 baseline + 042 sales_tax_rate) — no migration. The logo is
+// intentionally excluded: the column is `logo_path` (a Storage path), not the base64
+// data URL the app holds, and is never read back — a separate decision (see ROADMAP).
+// onboarding_complete is owned by completeOnboarding, so it's NOT written here.
+export function buildCompanyUpdate(s = {}) {
+  return {
+    name: (s.name && String(s.name).trim()) || "Company",   // name is NOT NULL
+    tax_id: s.taxId || null,
+    address: s.address || null,
+    city: s.city || null,
+    state: s.state || null,
+    zip: s.zip || null,
+    country: s.country || "US",
+    fiscal_year_end: s.fiscalYearEnd || "12-31",
+    currency: s.currency || "USD",
+    default_cash_account: s.defaultCashAccount || "1000",
+    default_ap_account: s.defaultAPAccount || "2000",
+    default_ar_account: s.defaultARAccount || "1100",
+    business_type: s.businessType || null,
+    sales_tax_rate: Number(s.salesTaxRate) || 0,
+  };
+}
+
+// The inverse: a `companies` row → the companySettings shape (used by loadAllData).
+// Pairing it with buildCompanyUpdate makes the persist↔reload round-trip unit-testable.
+export function mapCompanyRow(co = {}) {
+  return {
+    name: co.name || "",
+    taxId: co.tax_id || "",
+    address: co.address || "",
+    city: co.city || "",
+    state: co.state || "",
+    zip: co.zip || "",
+    country: co.country || "US",
+    fiscalYearEnd: co.fiscal_year_end || "12-31",
+    defaultCashAccount: co.default_cash_account || "1000",
+    defaultAPAccount: co.default_ap_account || "2000",
+    defaultARAccount: co.default_ar_account || "1100",
+    currency: co.currency || "USD",
+    logoBase64: null,
+    businessType: co.business_type || "",
+    salesTaxRate: Number(co.sales_tax_rate) || 0,
+    onboardingComplete: !!co.onboarding_complete,
+  };
+}

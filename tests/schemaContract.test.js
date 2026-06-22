@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { randomUUID } from "node:crypto";
-import { buildApprovalUpdate, buildAccountInsert } from "../src/lib/writeShapes.js";
+import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "../src/lib/writeShapes.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // SCHEMA-CONTRACT / WRITE+READ-BACK LOCK.
@@ -213,5 +213,48 @@ describe("reconciliations — denormalized record write + read-back, completed_b
     expect(ins.error).toBeTruthy();
     expect(ins.error.message).toMatch(/uuid/);
     expect(ins.matched).toBe(0);
+  });
+});
+
+// ── O13: company settings persist to `companies` and round-trip (not just sales_tax_rate)
+describe("company settings — save writes ALL identity/accounting fields + round-trips", () => {
+  const settings = {
+    name: "Acme LLC", taxId: "12-3456789", address: "1 Main St", city: "Austin",
+    state: "TX", zip: "78701", country: "US", fiscalYearEnd: "06-30", currency: "USD",
+    defaultCashAccount: "1000", defaultAPAccount: "2000", defaultARAccount: "1100",
+    businessType: "SaaS", salesTaxRate: 8.5, logoBase64: "data:image/png;base64,XXXX",
+    onboardingComplete: true,
+  };
+
+  it("buildCompanyUpdate writes the companies columns (not just sales_tax_rate)", () => {
+    const u = buildCompanyUpdate(settings);
+    expect(u).toMatchObject({
+      name: "Acme LLC", tax_id: "12-3456789", address: "1 Main St", city: "Austin",
+      state: "TX", zip: "78701", country: "US", fiscal_year_end: "06-30", currency: "USD",
+      default_cash_account: "1000", default_ap_account: "2000", default_ar_account: "1100",
+      business_type: "SaaS", sales_tax_rate: 8.5,
+    });
+    // logo excluded (no base64 column); onboarding_complete owned by completeOnboarding
+    expect("logo_path" in u).toBe(false);
+    expect("logo_base64" in u).toBe(false);
+    expect("onboarding_complete" in u).toBe(false);
+  });
+
+  it("write→read round-trips through the DB shape (the persisted fields survive)", () => {
+    const row = buildCompanyUpdate(settings);   // companies column shape (what the DB stores)
+    const back = mapCompanyRow(row);            // what loadAllData reads back
+    for (const k of ["name","taxId","address","city","state","zip","country","fiscalYearEnd","currency","defaultCashAccount","defaultAPAccount","defaultARAccount","businessType","salesTaxRate"]) {
+      expect(back[k]).toBe(settings[k]);
+    }
+  });
+
+  it("name is never null (NOT NULL column) even from an empty draft", () => {
+    expect(buildCompanyUpdate({}).name).toBe("Company");
+    expect(buildCompanyUpdate({ name: "   " }).name).toBe("Company");
+  });
+
+  it("fiscal-year-end persists (feeds the period logic) — not silently dropped", () => {
+    expect(buildCompanyUpdate({ fiscalYearEnd: "03-31" }).fiscal_year_end).toBe("03-31");
+    expect(mapCompanyRow(buildCompanyUpdate({ fiscalYearEnd: "03-31" })).fiscalYearEnd).toBe("03-31");
   });
 });
