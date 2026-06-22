@@ -144,7 +144,7 @@ export default function ReportsView() {
             const drillTxns = () => {
               if (!drill) return [];
               const byDate = (a,b)=>(b.date||"").localeCompare(a.date||"");
-              if (drill.scope==="vendor")   return filtered.filter(i=>glPLType(i.gl_code) && (i.vendor||"Unknown")===drill.value).sort(byDate);
+              if (drill.scope==="vendor")   return filtered.filter(i=>glIsExpense(i.gl_code) && (i.vendor||"Unknown")===drill.value).sort(byDate);  // expenses only — matches the By-Vendor list (no revenue items)
               if (drill.scope==="gl")       return plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===drill.value).sort(byDate);
               if (drill.scope==="cashflow") return filtered.filter(i=>i.date && i.date.slice(0,7)===drill.value).sort(byDate);
               if (drill.scope==="project")  return filtered.filter(i=>glPLType(i.gl_code) && (i.project||"General")===drill.value).sort(byDate);

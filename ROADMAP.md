@@ -6,7 +6,7 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-21
-- **Test suite:** 389 passing (`npm test`, 31 files). **Build:** clean (`npm run build`).
+- **Test suite:** 392 passing (`npm test`, 31 files). **Build:** clean (`npm run build`).
 - **Migrations:** `000`–`044` (numbering non-contiguous; `042` & `044` committed this pass).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
 
@@ -80,6 +80,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 | C55 | Payroll import UI + AI parse (books to ledger) — exists but NOT GAAP-correct/persisted; see O1 | `App.jsx` PayrollView |
 | C56 | #14 Void persistence — void posts a **DB-persisted** reversing entry (`post_journal_entry`), idempotent via `import_metadata.reverses`; Undo soft-deletes the reversal. NOT local-only (was O15; rechecked 2026-06-21) | `fefd399`, `reverseJournalEntry`/`voidInvoiceWithUndo` in `App.jsx` |
 | C57 | #13 Payroll — deterministic `buildPayrollEntry` (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable), role-resolved; fixes the never-persisted bug (PayrollView now posts via `persistMultiLineEntry`); COA role-reconciliation (mig `044`) + new `2101` Payroll Taxes Payable; preview renders the real entry | `src/lib/payroll.js`, `tests/payroll.test.js`, migration `044`, gaapInvariants #13, PayrollView |
+| C62 | O12 By-Vendor report excludes revenue/customers — `computeVendorTotals` classified by GL class (expense only), not by counterparty-name presence, so a revenue invoice with a customer name no longer appears in Expenses-by-Vendor; vendor drill filters `glIsExpense` too; helper gains a `side:'revenue'` option for a future by-customer view | `reports.js` (`computeVendorTotals`), `tests/reports.test.js`, ReportsView |
 | C61 | O13 Company settings persist to DB — `SettingsView.save()` now writes ALL identity/accounting fields (name, address, tax id, fiscal-year-end, currency, default accounts, business type, sales-tax rate) to `companies` via `buildCompanyUpdate`, not just sales_tax_rate; `loadAllData` reads them back via `mapCompanyRow` → survives refresh. No migration (all columns existed). Logo excluded (see O62) | `src/lib/writeShapes.js` (`buildCompanyUpdate`/`mapCompanyRow`), `tests/schemaContract.test.js`, SettingsView, App.jsx |
 | C60 | Bank deposit/dismiss correctness — direct-book direction by type (deposits post Dr Cash / Cr Revenue, was inverted Dr Revenue / Cr Cash); `dismissMatch` now books the line directly instead of stranding it (income never silently lost); reconciliation record status maps to CHECK-allowed `open` (was `needs_review`, which failed the insert) | `src/lib/bankMatch.js` (`buildBankLineEntry`/`reconRecordStatus`), `tests/bankMatch.test.js`, `App.jsx` |
 | C59 | O37 Smart file-routing / misroute protection — deterministic `detectFileType` (header/column sniff: bank/payroll/invoice/qbo/unknown); bank/payroll/contract importers warn + offer to route on a confident mismatch (never silently mis-process); universal path sniffs spreadsheets and routes payroll/QBO instead of assuming bank. Incident (payroll CSV → 9 wrong bank entries) can't recur | `src/lib/fileDetect.js`, `tests/fileDetect.test.js`, `App.jsx` (`guardImport`/`routeFileToType`), PayrollView |
@@ -143,7 +144,7 @@ Existing items that ladder into it:
 
 | id | item | status | pri | deps/notes |
 |----|------|--------|-----|-----------|
-| O12 | Vendor report shows customers (By-Vendor report mixes AR customers into vendor list) | open bug | **P1** | classify by AP vs AR / contact type |
+| ~~O12~~ | Vendor report shows customers (mixed AR customers into vendor list) | → C62 | — | done 2026-06-21 (classify by GL class, expenses only) |
 | ~~O13~~ | Company settings fields don't persist to DB | → C61 | — | done 2026-06-21 (no migration; via buildCompanyUpdate/mapCompanyRow) |
 | O62 | Company logo persistence — the logo is held as a base64 data URL but never saved/loaded; column is `logo_path` (a Storage path, not base64). Decide: base64-in-column vs a Storage bucket, then persist + load it | open bug | P3 | surfaced by O13/C61 (only Settings field that doesn't round-trip) |
 | O14 | Component render-test harness (jsdom + ERP-context mock) — unit tests can't mount views; the Send Invoice crash (C31) slipped because only pure seams were tested | not started | P2 | adds a real regression layer for view logic |

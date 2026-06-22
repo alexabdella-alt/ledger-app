@@ -111,10 +111,15 @@ export function computeCategoryTotals(invoices, range = {}) {
 
 // Per-vendor totals over P&L accounts only (income-statement scope) — the figure
 // the vendor REPORT shows and the AI's get_vendor_summary must equal.
-export function computeVendorTotals(invoices, range = {}) {
+// Spend BY VENDOR — expenses only (the "Expenses by Vendor" report). Classified by
+// GL account CLASS, not by whether a counterparty name exists: a revenue invoice that
+// happens to carry a customer name (e.g. an AR collection) is NOT a vendor expense and
+// must be excluded. `side:"revenue"` gives the symmetric by-customer view if ever needed.
+export function computeVendorTotals(invoices, range = {}, { side = "expense" } = {}) {
+  const include = side === "revenue" ? isRev : isExp;
   const map = {};
   for (const i of liveEntries(invoices, range)) {
-    if (!isRev(i) && !isExp(i)) continue;                 // P&L accounts only
+    if (!include(i)) continue;                            // expense (or revenue) accounts only — by GL class
     const name = i.vendor || "Unknown";
     const v = map[name] || (map[name] = { vendor: name, total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name });
     v.total += num(i.amount); v.count++;

@@ -166,3 +166,29 @@ describe("Net Income: tile period == drill-in period (prior-year excluded)", () 
     expect(allTimeExp).not.toBe(computeExpenses(led, FY));      // proves the boundary matters
   });
 });
+
+// ── By-Vendor (Expenses-by-Vendor) excludes revenue/customers (O12) ───────────
+import { computeVendorTotals } from "../src/lib/reports.js";
+describe("computeVendorTotals — expenses only, classified by GL class not by name", () => {
+  const led = [
+    { id: "v1", date: "2026-03-01", vendor: "AWS",    gl_code: "6500", type: "expense", amount: 100, status: "booked" },
+    { id: "v2", date: "2026-03-02", vendor: "WeWork", gl_code: "6100", type: "expense", amount: 200, status: "booked" },
+    { id: "c1", date: "2026-03-03", vendor: "Bob's",  gl_code: "4000", type: "revenue", amount: 5000, status: "booked" }, // customer revenue — must NOT appear
+  ];
+  it("includes expense vendors, EXCLUDES the revenue customer (the bug)", () => {
+    const rows = computeVendorTotals(led);
+    const names = rows.map(r => r.vendor);
+    expect(names).toContain("AWS");
+    expect(names).toContain("WeWork");
+    expect(names).not.toContain("Bob's");          // revenue customer excluded
+    expect(rows.reduce((s, r) => s + r.total, 0)).toBe(300);  // 100 + 200, not 5300
+  });
+  it("a revenue invoice with a counterparty name does not leak into vendor spend", () => {
+    expect(computeVendorTotals(led).find(r => r.vendor === "Bob's")).toBeUndefined();
+  });
+  it("side:'revenue' gives the symmetric by-customer view (revenue only)", () => {
+    const rows = computeVendorTotals(led, {}, { side: "revenue" });
+    expect(rows.map(r => r.vendor)).toEqual(["Bob's"]);
+    expect(rows[0].total).toBe(5000);
+  });
+});
