@@ -159,9 +159,9 @@ Existing items that ladder into it:
 | O55 | File-detect AI-classifier extension (fast-follow to C59) — extend the AI document classifier (PDFs/images) to include `payroll` and `qbo`, and add deterministic .xlsx (binary) sniffing via the xlsx lib; today non-CSV files → `unknown` (no mismatch warning) | not started | P2 | follow-up to C59; deterministic CSV path already covers the incident class |
 | ~~O57~~ | Credit-card offset binding | → C63 | — | done 2026-06-21 (account picker + offset by account) |
 | O63 | Inline "+ Add credit card account" shortcut on the import picker — when a user has a card statement but no credit-card account set up yet they hit a dead end (must go to Settings first). Add an inline-create on the BankView account picker | not started | P3 | onboarding friction; follow-up to C63/O57 |
-| O58 | Processing-toast "View" button is a no-op — should open the processing queue / file-status surface | open bug | P3 | |
-| O52 | Setup-flow buttons audit — onboarding/setup buttons behave inconsistently (accountant button vanished; "setup bank" routed to balances). Verify every onboarding/setup button's action + routing | open bug | P2 | |
-| O53 | Duplicate-alert routing — clicking a "possible duplicate" alert routes to Home instead of the transaction | open bug | P3 | should deep-link to the entry |
+| ~~O58~~ | Processing-toast "View" button is a no-op | → C66 | — | done 2026-06-21 (navigates home + scrolls to upload zone `#universal-upload-zone`) |
+| ~~O52~~ | Setup-flow buttons audit — onboarding/setup buttons behave inconsistently | → C64 | — | done 2026-06-21 (accountant "coming soon" notice now persists via `accountantDismissed`, no longer vanishes; bank/opening steps verified routing to `settings#bank-accounts-section` / `opening-balances#opening-balances-section` — already correct) |
+| ~~O53~~ | Duplicate-alert routing — clicking a "possible duplicate" alert routes to Home instead of the transaction | → C65 | — | done 2026-06-21 (anomaly notification encodes `txn:<id>`; openNotification deep-links to the flagged entry in the detail panel) |
 | O54 | Support-mode bugs — (a) the last-uploaded file from the platform-admin's own instance appears inside a client instance under Support Mode; (b) exiting Support Mode can get stuck on the wrong company instead of returning to the admin's own account | open bug | P2 | multi-tenant/support correctness; follow-up to C47 |
 
 ### AI quality & data trust

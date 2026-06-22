@@ -1420,7 +1420,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const openNotification = (n) => {
     markNotifRead(n.id);
     if (n.type === "monthly_report") setReportType("monthly"); // land on the archive tab
-    if (n.link_view) setView(n.link_view);
+    // `txn:<id>` link targets open the flagged entry in the detail panel (e.g. a
+    // duplicate-payment alert) instead of a bare view string.
+    const txnLink = typeof n.link_view === "string" && n.link_view.startsWith("txn:") ? n.link_view.slice(4) : null;
+    if (txnLink) {
+      const inv = (invoices || []).find(i => String(i.id) === String(txnLink) || String(i.db_entry_id) === String(txnLink));
+      if (inv) { setReturnTo({ view: "home" }); setSelectedInvoice(inv); setView("detail"); }
+      else setView("home");
+    } else if (n.link_view) setView(n.link_view);
     setNotifOpen(false);
   };
   // Check all triggers and create notifications (deduped) — run after data loads.
@@ -1447,7 +1454,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       // High-severity anomalies.
       const dismissed = getDismissedAnoms();
       const topAnom = runAnomalyDetection(invoicesRef.current, recurringRef.current).find(a => a.severity === "high" && !dismissed.has(a.id));
-      if (topAnom) createNotification({ type: "anomaly", title: topAnom.title, description: topAnom.description, link_view: "home" });
+      if (topAnom) {
+        // Route the alert straight to the flagged transaction when the anomaly carries
+        // one (e.g. "possible duplicate payment") — encode it in link_view as `txn:<id>`,
+        // which openNotification opens in the detail panel. Falls back to home otherwise.
+        const anomTxn = (topAnom.invoice_ids || [])[0];
+        createNotification({ type: "anomaly", title: topAnom.title, description: topAnom.description, link_view: anomTxn != null ? `txn:${anomTxn}` : "home" });
+      }
     } catch (e) { console.warn("[notifications] generate failed:", e?.message || e); }
   };
 
@@ -4920,7 +4933,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               {uploadQueue.find(q=>q.status==="processing"||q.status==="classifying")?.name || ""}
             </div>
           </div>
-          <button onClick={()=>setView("home")} style={{ marginLeft:"auto", background:"none", border:"1px solid #D0D5DD", borderRadius:6, padding:"4px 10px", color:"#4F46E5", fontSize:11, cursor:"pointer", flexShrink:0 }}>View</button>
+          <button onClick={()=>{ setView("home"); setTimeout(()=>document.getElementById("universal-upload-zone")?.scrollIntoView({behavior:"smooth",block:"center"}), 250); }} style={{ marginLeft:"auto", background:"none", border:"1px solid #D0D5DD", borderRadius:6, padding:"4px 10px", color:"#4F46E5", fontSize:11, cursor:"pointer", flexShrink:0 }}>View</button>
         </div>
       )}
 

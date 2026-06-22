@@ -307,12 +307,12 @@ export default function DashboardView() {
                     <div style={{ fontSize:17, fontWeight:700, color:"#101828" }}>Welcome to Shadow CFO — let's get your books set up</div>
                     <div style={{ fontSize:13, color:"#475467", marginTop:3, marginBottom:6 }}>{required} of {steps.length} done. Knock these out and you're ready to roll.</div>
                     {steps.map(renderStep)}
-                    {accountantNotice ? (
+                    {(accountantNotice || accountantDismissed) ? (
                       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid #F3F4F6" }}>
                         <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, background:"#EEF2FF", color:"#4F46E5" }}>✦</span>
                         <div style={{ fontSize:12.5, color:"#475467", lineHeight:1.4 }}>Team invites are coming soon — we'll notify you when this feature is available.</div>
                       </div>
-                    ) : (!accountantDismissed && renderStep(optional))}
+                    ) : renderStep(optional)}
                   </div>
                 );
               })()}
@@ -357,6 +357,7 @@ export default function DashboardView() {
                 .sc-dropzone.dragging{ animation:scDropPulse 1.3s ease-in-out infinite; }
               `}</style>
               <div
+                id="universal-upload-zone"
                 className={`sc-dropzone${universalDragOver?" dragging":""}`}
                 onDragOver={e=>{e.preventDefault();setUniversalDragOver(true);}}
                 onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setUniversalDragOver(false);}}
