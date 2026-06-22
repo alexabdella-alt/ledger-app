@@ -42,13 +42,14 @@ export function reconRecordStatus(reviewCount) {
 }
 
 // Build the invoice-shaped entry for a bank line that books directly (matched no open
-// item, OR a proposed match was dismissed). DIRECTION BY TYPE — the offset is Cash for
-// both, but a deposit credits Revenue and a debit debits Expense:
-//   expense → Dr <gl_code> / Cr Cash   (debit_credit "debit")
-//   revenue → Dr Cash / Cr <gl_code>   (debit_credit "credit")  ← deposits, was inverted
+// item, OR a proposed match was dismissed). DIRECTION BY TYPE, OFFSET BY ACCOUNT — the
+// offset is the GL of the account the statement belongs to (Cash 1000 for a bank
+// account, Credit Card Liability 2200 for a card), NOT hardcoded Cash:
+//   expense → Dr <gl_code> / Cr <offset>   (debit_credit "debit")
+//   revenue → Dr <offset> / Cr <gl_code>   (debit_credit "credit")  ← deposits
 // Pure (no id / booked_at — the caller adds those), so it's unit-testable and shared
 // by the standalone-book and dismiss-book paths so they can't diverge.
-export function buildBankLineEntry(txn, { cashCode = "1000", cashName = "Cash", reason = "Imported via bank statement (no open item matched)" } = {}) {
+export function buildBankLineEntry(txn, { offsetCode = "1000", offsetName = "Cash", reason = "Imported via bank statement (no open item matched)" } = {}) {
   const amount = Math.abs(Number(txn && txn.amount) || 0);
   const date = (txn && txn.date) || null;
   const isRevenue = txn && txn.type === "revenue";
@@ -56,7 +57,7 @@ export function buildBankLineEntry(txn, { cashCode = "1000", cashName = "Cash", 
     vendor: txn && txn.vendor, description: txn && txn.description, amount, date,
     type: txn && txn.type, project: "General",
     gl_code: txn && txn.gl_code, gl_name: txn && txn.gl_name,
-    secondary_gl_code: cashCode, secondary_gl_name: cashName,
+    secondary_gl_code: offsetCode, secondary_gl_name: offsetName,
     debit_credit: isRevenue ? "credit" : "debit",
     confidence: txn && txn.confidence, reasoning: reason,
     status: "booked", source: "bank_statement",

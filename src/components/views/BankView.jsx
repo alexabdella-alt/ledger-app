@@ -6,6 +6,20 @@ import { getAuthHeaders } from "../../lib/supabase";
 
 export default function BankView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  // Which account this statement belongs to — its GL is the offset for direct
+  // bookings (Cr 1000 bank / Cr 2200 credit card). Defaults to the first account.
+  const [importAccountId, setImportAccountId] = React.useState(null);
+  const importAccount = (bankAccounts||[]).find(a => a.id === importAccountId) || (bankAccounts||[])[0] || null;
+  const accountPicker = (bankAccounts||[]).length > 0 && (
+    <div style={{ marginBottom:14, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+      <span style={{ fontSize:13, fontWeight:600, color:"#344054" }}>Account</span>
+      <select value={importAccount?.id || ""} onChange={e=>setImportAccountId(e.target.value)}
+        style={{ background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:8, padding:"8px 12px", fontSize:13, color:"#101828", outline:"none", minWidth:240 }}>
+        {(bankAccounts||[]).map(a => <option key={a.id} value={a.id}>{a.name||"Account"} · {(a.type||"checking").replace("_"," ")}</option>)}
+      </select>
+      <span style={{ fontSize:12, color:"#98A2B3" }}>Charges offset to this account {importAccount?.type==="credit_card" ? "(credit card → liability 2200)" : "(bank → cash 1000)"}</span>
+    </div>
+  );
   return (
             <div>
               <div style={{ marginBottom:28 }}>
@@ -16,8 +30,10 @@ export default function BankView() {
 
               {/* Upload zone */}
               {!bankProcessing && bankTransactions.length === 0 && (
+                <>
+                {accountPicker}
                 <div onDragOver={e=>{e.preventDefault();setBankDragOver(true);}} onDragLeave={()=>setBankDragOver(false)}
-                  onDrop={e=>{e.preventDefault();setBankDragOver(false);handleBankFile(e.dataTransfer.files[0]);}}
+                  onDrop={e=>{e.preventDefault();setBankDragOver(false);handleBankFile(e.dataTransfer.files[0], importAccount);}}
                   onClick={()=>document.getElementById("bank-upload").click()}
                   style={{ border:`2px dashed ${bankDragOver?"#6366F1":"#D0D5DD"}`, borderRadius:16, padding:"52px 32px", textAlign:"center", cursor:"pointer", background:bankDragOver?"#EEF2FF":"#FFFFFF", transition:"all 0.2s", marginBottom:24 }}>
                   <div style={{ fontSize:40, marginBottom:14 }}>🏦</div>
@@ -26,8 +42,9 @@ export default function BankView() {
                   <div style={{ display:"flex", justifyContent:"center", gap:10 }}>
                     {["CSV","XLSX","PDF"].map(f=><span key={f} style={{ background:"#E4E7EC", border:"1px solid #D0D5DD", borderRadius:6, padding:"4px 12px", fontSize:11, color:"#475467" }}>{f}</span>)}
                   </div>
-                  <input id="bank-upload" type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display:"none" }} onChange={e=>handleBankFile(e.target.files[0])} />
+                  <input id="bank-upload" type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display:"none" }} onChange={e=>handleBankFile(e.target.files[0], importAccount)} />
                 </div>
+                </>
               )}
 
               {/* Processing state */}
@@ -164,7 +181,7 @@ export default function BankView() {
                   <button onClick={()=>document.getElementById("bank-upload-2").click()} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:13, cursor:"pointer" }}>
                     + Upload another statement
                   </button>
-                  <input id="bank-upload-2" type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display:"none" }} onChange={e=>handleBankFile(e.target.files[0])} />
+                  <input id="bank-upload-2" type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display:"none" }} onChange={e=>handleBankFile(e.target.files[0], importAccount)} />
                 </div>
               )}
             </div>

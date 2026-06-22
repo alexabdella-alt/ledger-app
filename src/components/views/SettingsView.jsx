@@ -142,7 +142,15 @@ export default function SettingsView() {
                       <div key={ba.id} style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,alignItems:"center"}}>
                         <input value={ba.name} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,name:e.target.value}:b))}
                           placeholder="Account name" style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}/>
-                        <select value={ba.type} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,type:e.target.value}:b))}
+                        <select value={ba.type} onChange={e=>{
+                            const type = e.target.value;
+                            // Default the GL to the type's natural account so a card offsets to
+                            // Credit Card Liability (2200), not Cash. (Still overridable at right.)
+                            const glForType = type==="credit_card" ? (getAccountByRole("credit_card_liability")?.code || "2200")
+                              : type==="loan" ? (getAccountByRole("long_term_debt")?.code || "2500")
+                              : (getAccountByRole("cash")?.code || "1000");
+                            setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,type,gl_code:glForType}:b));
+                          }}
                           style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}>
                           {["checking","savings","credit_card","loan","other"].map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}
                         </select>

@@ -3079,7 +3079,9 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
 
           // Lower-confidence matches AND any that couldn't post a clearing entry →
           // manual review queue (never silently flag-flipped, never double-booked).
-          if (plan.review.length > 0) setMatchQueue(prev => [...plan.review, ...prev]);
+          // Carry the import account onto each queued match so a later dismiss books
+          // the line against the right offset (Cr 2200 for a card), not Cash (C60 interaction).
+          if (plan.review.length > 0) setMatchQueue(prev => [...plan.review.map(m => ({ ...m, importOffsetCode: offsetCode, importOffsetName: offsetName })), ...prev]);
           if (plan.skipped.length > 0) {
             logAudit("bank_match_unclearable", `${plan.skipped.length} auto-match(es) couldn't post a clearing entry (offset not A/P or A/R) — moved to review`);
             showNotification(`${plan.skipped.length} auto-match(es) couldn't post a clearing entry — moved to review`, "error");
@@ -3092,7 +3094,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           const unmatchedTxns = plan.standalone;
           const newInvoices = unmatchedTxns.map((t)=>({
             id:Date.now()+Math.random(), booked_at:new Date().toISOString(),
-            ...buildBankLineEntry(t, { cashCode: rc("cash"), cashName: rn("cash") }),   // direction by type (deposits → Dr Cash / Cr Revenue)
+            ...buildBankLineEntry(t, { offsetCode, offsetName }),   // direction by type + offset by account (card → Cr 2200)
           }));
           if (newInvoices.length > 0) {
             setInvoices(prev => [...newInvoices, ...prev]);
@@ -3111,7 +3113,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           // visible error to the user rather than swallowing the failure.
           const txnDates = withRules.map(t=>t.date).filter(Boolean).sort();
           const reconRecord = {
-            company_id: currentCompany.id, account_name: "Bank statement upload",
+            company_id: currentCompany.id, account_name: (account && account.name) || "Bank statement upload",
             period_start: txnDates[0] || new Date().toISOString().slice(0,10),
             period_end: txnDates[txnDates.length-1] || new Date().toISOString().slice(0,10),
             statement_balance: 0, books_balance: 0, difference: 0,
@@ -3340,9 +3342,14 @@ Rules:
     else if (type === "qbo") { setPendingImportFile({ type: "qbo", file }); setView("onboard"); showNotification("Use the QuickBooks import here ✓"); }
   };
 
-  const handleBankFile = async (file) => {
+  const handleBankFile = async (file, account = null) => {
     if (!file) return;
     if (!(await guardImport(file, "bank_statement"))) return;   // misroute guard
+    // The statement belongs to a specific account — its GL is the offset for direct
+    // bookings (Cr 1000 for a bank account, Cr 2200 for a credit card), not hardcoded
+    // Cash. Falls back to Cash if no account was selected (legacy/no accounts).
+    const offsetCode = (account && account.gl_code) || rc("cash");
+    const offsetName = (account && account.gl_code && getAccountByCode(offsetCode)?.name) || rn("cash");
     const allowedTypes = ["text/csv","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/pdf","text/plain"];
     const allowedExts = [".csv",".xlsx",".xls",".pdf",".txt"];
     const ext = "." + file.name.split(".").pop().toLowerCase();
@@ -3971,8 +3978,12 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
     const m = (matchQueue || []).find(x => x.id === matchId);
     setMatchQueue(prev => prev.filter(x => x.id !== matchId));
     if (!m || !m.bank_txn) { showNotification("Match dismissed", "error"); return; }
+    // Book against the import account's offset (Cr 2200 for a card), carried on the
+    // queued match — not hardcoded Cash (O57 × C60).
+    const offCode = m.importOffsetCode || rc("cash");
+    const offName = m.importOffsetName || rn("cash");
     const entry = { id: Date.now() + Math.random(), booked_at: new Date().toISOString(),
-      ...buildBankLineEntry(m.bank_txn, { cashCode: rc("cash"), cashName: rn("cash"), reason: "Booked directly — proposed match dismissed" }) };
+      ...buildBankLineEntry(m.bank_txn, { offsetCode: offCode, offsetName: offName, reason: "Booked directly — proposed match dismissed" }) };
     setInvoices(prev => [entry, ...prev]);
     const jeId = await bookToDb(entry);
     if (!jeId) { showNotification("Couldn't book the dismissed transaction — please try again", "error"); return; }

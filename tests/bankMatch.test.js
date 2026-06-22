@@ -195,7 +195,7 @@ const creditOf = (lines, code) => lines.find(l => l.code === code)?.credit || 0;
 
 describe("buildBankLineEntry — direction by type (the deposit-inversion fix)", () => {
   it("a DEPOSIT (revenue, 4xxx) posts Dr Cash / Cr Revenue — NOT inverted", () => {
-    const e = buildBankLineEntry({ type: "revenue", gl_code: "4000", gl_name: "Revenue", amount: 2500, vendor: "Bob", date: "2026-06-01", confidence: 90 }, { cashCode: "1000", cashName: "Cash" });
+    const e = buildBankLineEntry({ type: "revenue", gl_code: "4000", gl_name: "Revenue", amount: 2500, vendor: "Bob", date: "2026-06-01", confidence: 90 }, { offsetCode: "1000", offsetName: "Cash" });
     expect(e.debit_credit).toBe("credit");        // primary (revenue) credited
     const lines = linesOf(e);
     expect(debitOf(lines, "1000")).toBe(2500);    // Dr Cash 2500
@@ -207,7 +207,7 @@ describe("buildBankLineEntry — direction by type (the deposit-inversion fix)",
   });
 
   it("an EXPENSE (6xxx) still posts Dr Expense / Cr Cash (unchanged)", () => {
-    const e = buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 151.55, date: "2026-06-01" }, { cashCode: "1000" });
+    const e = buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 151.55, date: "2026-06-01" }, { offsetCode: "1000" });
     expect(e.debit_credit).toBe("debit");
     const lines = linesOf(e);
     expect(debitOf(lines, "6500")).toBe(151.55);  // Dr Expense
@@ -215,7 +215,7 @@ describe("buildBankLineEntry — direction by type (the deposit-inversion fix)",
   });
 
   it("uses abs(amount) and Cash as the offset for both", () => {
-    const dep = buildBankLineEntry({ type: "revenue", gl_code: "4000", amount: -2500 }, { cashCode: "1000" });
+    const dep = buildBankLineEntry({ type: "revenue", gl_code: "4000", amount: -2500 }, { offsetCode: "1000" });
     expect(dep.amount).toBe(2500);
     expect(dep.secondary_gl_code).toBe("1000");
   });
@@ -224,9 +224,9 @@ describe("buildBankLineEntry — direction by type (the deposit-inversion fix)",
 // ── #1 DISMISS LOCK: a dismissed match still books, correct direction ─────────
 describe("dismiss-book reuses buildBankLineEntry (the same correct shape)", () => {
   it("a dismissed DEPOSIT books a balanced Dr Cash / Cr Revenue entry", () => {
-    // dismissMatch builds: buildBankLineEntry(m.bank_txn, { cashCode, cashName, reason })
+    // dismissMatch builds: buildBankLineEntry(m.bank_txn, { offsetCode, offsetName, reason })
     const bankTxn = { id: "b1", type: "revenue", gl_code: "4000", gl_name: "Revenue", amount: 2500, vendor: "Bob", date: "2026-06-01" };
-    const e = buildBankLineEntry(bankTxn, { cashCode: "1000", cashName: "Cash", reason: "Booked directly — proposed match dismissed" });
+    const e = buildBankLineEntry(bankTxn, { offsetCode: "1000", offsetName: "Cash", reason: "Booked directly — proposed match dismissed" });
     expect(e.reasoning).toMatch(/dismissed/);
     expect(e.source).toBe("bank_statement");
     const lines = linesOf(e);
@@ -248,5 +248,46 @@ describe("reconRecordStatus — only CHECK-allowed values (open|complete)", () =
     expect(RECON_STATUSES).toContain(reconRecordStatus(3));
     expect(RECON_STATUSES).toContain(reconRecordStatus(0));
     expect(RECON_STATUSES).not.toContain("needs_review");
+  });
+});
+
+// ── O57: offset follows the import ACCOUNT (card → 2200, bank → 1000) ─────────
+describe("buildBankLineEntry — offset by account (credit-card vs bank)", () => {
+  const off = (e) => e.secondary_gl_code;
+  const linesO = e => {
+    const isDebit = e.debit_credit !== "credit";
+    return isDebit
+      ? [{ code: e.gl_code, debit: e.amount, credit: 0 }, { code: e.secondary_gl_code, debit: 0, credit: e.amount }]
+      : [{ code: e.gl_code, debit: 0, credit: e.amount }, { code: e.secondary_gl_code, debit: e.amount, credit: 0 }];
+  };
+
+  it("a CREDIT-CARD account import books Dr Expense / Cr 2200 (liability), not Cr Cash", () => {
+    const e = buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 80, vendor: "Adobe", date: "2026-06-01" },
+      { offsetCode: "2200", offsetName: "Credit Card Liability" });
+    expect(off(e)).toBe("2200");
+    const lines = linesO(e);
+    expect(lines.find(l => l.code === "6500").debit).toBe(80);   // Dr Expense
+    expect(lines.find(l => l.code === "2200").credit).toBe(80);  // Cr Credit Card Liability
+    expect(lines.find(l => l.code === "1000")).toBeUndefined();  // NOT cash
+  });
+
+  it("a BANK (checking) account import books Dr Expense / Cr 1000 (cash)", () => {
+    const e = buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 80 }, { offsetCode: "1000", offsetName: "Cash" });
+    expect(off(e)).toBe("1000");
+    expect(linesO(e).find(l => l.code === "1000").credit).toBe(80);
+  });
+
+  it("defaults to Cash when no account/offset is given (legacy)", () => {
+    expect(buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 80 }).secondary_gl_code).toBe("1000");
+  });
+
+  it("DISMISS path (C60 interaction): a dismissed credit-card line books Dr Expense / Cr 2200", () => {
+    // dismissMatch reuses buildBankLineEntry with the queued match's importOffsetCode.
+    const e = buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 80, vendor: "Adobe" },
+      { offsetCode: "2200", offsetName: "Credit Card Liability", reason: "Booked directly — proposed match dismissed" });
+    expect(e.secondary_gl_code).toBe("2200");
+    expect(e.reasoning).toMatch(/dismissed/);
+    const lines = linesO(e);
+    expect(lines.find(l => l.code === "2200").credit).toBe(80);  // not Cash
   });
 });
