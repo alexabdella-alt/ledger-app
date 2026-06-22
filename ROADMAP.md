@@ -123,6 +123,20 @@ Existing items that ladder into it:
 
 **Sequencing:** this is a LATER build that sits on top of a **bulletproof core**. Hands-off only works when the behind-the-scenes result is trustworthy (accurate categorization + review). Build the core first (engine done; **O38**/**O49** in progress), *then* this delivery layer.
 
+### ★ PRINCIPLE — Per-tenant learning (the app gets smarter within each client's own instance)
+
+**The app should learn and get smarter WITHIN each customer's own instance over time**, accumulating per-client context so it requires **progressively less user input**. Learning is **PER-TENANT** — scoped to that client's own data, **never shared across clients** — which is both more personal *and* the correct data-isolation / privacy posture (the same boundary RLS enforces; see CLAUDE.md §3). **Core rule: never make the user correct the same thing twice.** Every correction is a **teaching signal** the app remembers and **auto-applies for that client going forward** (always with an override). This is the **mechanism behind the "invisible controller" vision (O56)**: less input over time → eventually hands-off. These instances **compound** — each one makes the app feel more handled and ladders into O56.
+
+**Substrate that already exists (extend, don't duplicate):** the per-company **`client_ai_profile`** table (learned `common_vendors` / `spending_patterns` / `custom_rules` / `ai_notes` — CLAUDE.md §5/§7), the **`vendor_rules`** rules engine (vendor → `gl_code`, applied via the AI `add_rule` action), **recurring suggestions (C36)**, and the **`contacts`** table (vendor/customer `type`). The instances below mostly **extend these** rather than start from zero.
+
+| id | item | status | pri | deps/notes |
+|----|------|--------|-----|-----------|
+| O64 | **Statement format-fingerprint → account auto-detection** — fingerprint a bank/card statement's format (header layout, columns, institution markers) and remember which account it was imported to, so after the first time the import account auto-selects and the user rarely re-picks it per statement | not started | **P2** | **extends C63/O57** (the import account-picker — this removes the manual pick); new fingerprint store keyed per-tenant |
+| O65 | **Vendor → GL category memory** — once a vendor is categorized/recoded, auto-apply that category to future transactions from the same vendor (with override) | not started | **P2** | **extends the `vendor_rules` rules engine** + `client_ai_profile.common_vendors`; pairs with O67 (a recode should *write* the rule) |
+| O66 | **Recurring-transaction learning** — recognize this client's regular rent, payroll cadence, and recurring vendors automatically | not started | **P2** | **extends recurring suggestions (C36)** + `client_ai_profile.spending_patterns`; deepen detection, don't rebuild |
+| O67 | **Categorization-correction learning** — when the AI's guess is corrected (a recode), that correction **sticks** and improves future guesses for this client | not started | **P2** | the teaching-signal core ("never correct twice"); writes through to O65's vendor memory + `client_ai_profile`; pairs with O49 (accuracy) |
+| O68 | **Counterparty learning** — learn who this client's customers vs. vendors are, so the app stops asking | not started | **P2** | **extends `contacts`** (vendor/customer `type`) + `client_ai_profile`; feeds AR-vs-AP routing |
+
 ### Accounting events & correctness
 
 | id | item | status | pri | deps/notes |
