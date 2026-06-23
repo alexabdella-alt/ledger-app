@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, RECON_STATUSES } from "../src/lib/bankMatch.js";
+import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, RECON_STATUSES, allClearingsPosted, shouldRunApMatching } from "../src/lib/bankMatch.js";
 import { glAccountBalance } from "../src/lib/reports.js";
 
 // GL codes (defaults).
@@ -289,5 +289,48 @@ describe("buildBankLineEntry — offset by account (credit-card vs bank)", () =>
     expect(e.reasoning).toMatch(/dismissed/);
     const lines = linesO(e);
     expect(lines.find(l => l.code === "2200").credit).toBe(80);  // not Cash
+  });
+});
+
+// ── O69-B: a match is "cleared" ONLY if every clearing JE actually committed ──────
+// markBillPaid returns false (no JE) for a local-only / unpersisted id. applyMatch
+// must NOT record success / show "payment posted ✓" on a write that didn't happen.
+describe("allClearingsPosted — never claim a write that didn't commit (false-completeness fix)", () => {
+  it("every post succeeded → cleared", () => {
+    expect(allClearingsPosted([true])).toBe(true);
+    expect(allClearingsPosted([true, true])).toBe(true);
+  });
+  it("any failed post → NOT cleared (left in review, no success)", () => {
+    expect(allClearingsPosted([false])).toBe(false);
+    expect(allClearingsPosted([true, false])).toBe(false);
+    expect(allClearingsPosted([false, true])).toBe(false);
+  });
+  it("no posts at all → NOT cleared (the exact bug: 'AP Cleared' with zero journal entries)", () => {
+    expect(allClearingsPosted([])).toBe(false);
+  });
+  it("non-array / garbage → NOT cleared (defensive)", () => {
+    expect(allClearingsPosted(null)).toBe(false);
+    expect(allClearingsPosted(undefined)).toBe(false);
+    expect(allClearingsPosted("ok")).toBe(false);
+  });
+});
+
+// ── O69-C: a credit-card charge ≠ an AP payment, so card imports skip AP-matching ──
+describe("shouldRunApMatching — card imports skip matching; bank imports keep it", () => {
+  it("a credit-card account → DOES NOT run AP-matching (charges direct-book Dr Expense / Cr 2200)", () => {
+    expect(shouldRunApMatching({ type: "credit_card" })).toBe(false);
+  });
+  it("a bank account (checking/savings) → DOES run AP-matching (a debit can clear a bill)", () => {
+    expect(shouldRunApMatching({ type: "checking" })).toBe(true);
+    expect(shouldRunApMatching({ type: "savings" })).toBe(true);
+  });
+  it("loan / other → run matching (only credit_card is excluded)", () => {
+    expect(shouldRunApMatching({ type: "loan" })).toBe(true);
+    expect(shouldRunApMatching({ type: "other" })).toBe(true);
+  });
+  it("missing/unknown account → defaults to bank behavior (matching on, safe & reviewable)", () => {
+    expect(shouldRunApMatching(null)).toBe(true);
+    expect(shouldRunApMatching(undefined)).toBe(true);
+    expect(shouldRunApMatching({})).toBe(true);
   });
 });

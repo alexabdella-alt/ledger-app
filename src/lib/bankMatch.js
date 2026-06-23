@@ -67,6 +67,23 @@ export function buildBankLineEntry(txn, { offsetCode = "1000", offsetName = "Cas
   };
 }
 
+// A proposed match is "cleared" ONLY if every clearing post actually committed a
+// journal entry. markBillPaid returns false (no JE) for a local-only / unpersisted id,
+// so an empty result set OR any false means nothing (or only part) cleared — the UI
+// must NEVER record success or show "payment posted ✓" on a write that didn't happen
+// (the false-completeness bug, O69-B; ties O60). Pure so the policy is unit-tested.
+export function allClearingsPosted(results) {
+  return Array.isArray(results) && results.length > 0 && results.every(Boolean);
+}
+
+// A bank debit can legitimately clear an open payable, so bank-account imports run
+// AP-matching. A CREDIT-CARD charge CREATES a liability (Dr Expense / Cr 2200) and
+// never clears a payable, so card imports skip matching and direct-book (O69-C). A
+// missing/unknown account defaults to bank behavior (safe — matching is reviewable).
+export function shouldRunApMatching(account) {
+  return (account?.type || "checking") !== "credit_card";
+}
+
 // parsedTxns : the parsed/categorized bank lines, each with a stable truthy `id`.
 // autoCleared, queue : matchRecords from the matching engine. Each carries
 //   { bank_txn: {id,date,...}, invoice_ids: [...], match_type: "ap_clear"|"ar_clear"|… }.

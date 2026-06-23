@@ -12,7 +12,7 @@ import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./l
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildPaymentEntry } from "./lib/payments";
-import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus } from "./lib/bankMatch";
+import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching } from "./lib/bankMatch";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun } from "./lib/depreciation";
@@ -3522,49 +3522,92 @@ Keep the same array order and index as input.`,
     setBankProcessing(false); setBankStep(null);
   };
 
-  const bookBankTransactions = async () => {
+  // Book the reviewed bank/card lines (O69 A/C/D). `account` is the source the statement
+  // belongs to — its GL is the OFFSET for direct bookings (card → Cr 2200, bank → Cr 1000),
+  // and its TYPE decides whether AP-matching even applies. Every direct-booked line is
+  // PERSISTED through bookToDb (post_journal_entry) — never local state only — so nothing
+  // can "succeed" in the UI without a real journal entry behind it.
+  const bookBankTransactions = async (account = null) => {
     const toBook = bankTransactions.filter(t => t.checked);
     if (toBook.length === 0) { showNotification("Select at least one transaction to book.", "error"); return; }
-    const newInvoices = toBook.map(t => ({
-      id: t.id, vendor: t.vendor, description: t.description, amount: Math.abs(t.amount),
-      date: t.date, type: t.type, project: "General", gl_code: t.gl_code, gl_name: t.gl_name,
-      secondary_gl_code: rc("cash"),
-      secondary_gl_name: rn("cash"),
-      debit_credit: t.type==="expense"?"debit":"credit", confidence: t.confidence,
-      reasoning: `Imported from bank statement${t.rule_applied?" (vendor rule applied)":""}`,
-      status:"booked", booked_at: new Date().toISOString(), source:"bank_feed",
-      payment_status: "unmatched",
-    }));
 
-    // Add to ledger first
-    const updatedInvoices = [...newInvoices, ...invoices];
-    setInvoices(updatedInvoices);
-    setBankTransactions(prev => prev.filter(t => !t.checked));
-    if (bankTransactions.filter(t=>!t.checked).length === 0) setBankFileName("");
-    checkWatchTriggers(newInvoices, unknownDocs);
+    // O69-D / O57: offset by the account this statement belongs to, not hardcoded Cash.
+    const offsetCode = (account && account.gl_code) || rc("cash");
+    const offsetName = (account && account.gl_code && getAccountByCode(offsetCode)?.name) || rn("cash");
+    const runMatching = shouldRunApMatching(account);   // false for credit_card (O69-C)
 
-    // Run matching engine against all open items
-    const openItems = updatedInvoices.filter(i => !i.matched && i.payment_status !== "paid" && i.payment_status !== "collected" && i.source !== "bank_feed");
-    if (openItems.length > 0) {
-      showNotification(`${newInvoices.length} transactions booked — running matching engine...`);
-      const { autoCleared, queue } = await runMatchingEngine(newInvoices, updatedInvoices);
-
-      // Auto-apply high confidence matches
-      for (const match of autoCleared) {
-        applyMatch(match);
+    // Each checked line → a real, balanced direct-book via the shared builder (direction
+    // by type, offset by account): expense → Dr Expense / Cr <offset>; revenue → reverse.
+    const buildEntry = (t) => ({
+      id: t.id, booked_at: new Date().toISOString(),
+      ...buildBankLineEntry(
+        { id: t.id, date: t.date, description: t.description, vendor: t.vendor, amount: t.amount, type: t.type, gl_code: t.gl_code, gl_name: t.gl_name, confidence: t.confidence },
+        { offsetCode, offsetName, reason: `Imported from ${runMatching ? "bank" : "credit card"} statement${t.rule_applied ? " (vendor rule applied)" : ""}` }
+      ),
+    });
+    const persistDirect = async (lines) => {
+      let booked = 0, failed = 0;
+      for (const t of lines) {
+        const entry = buildEntry(t);
+        setInvoices(prev => [entry, ...prev]);            // optimistic add
+        const jeId = await bookToDb(entry);                // persists, or rolls the add back on fail
+        if (jeId) booked++; else failed++;
       }
+      return { booked, failed };
+    };
 
-      // Add ambiguous matches to queue
-      if (queue.length > 0) {
-        setMatchQueue(prev => [...queue, ...prev]);
-        showNotification(`${autoCleared.length} auto-cleared · ${queue.length} match${queue.length!==1?"es":""} need review`);
-        setView("matching");
-      } else if (autoCleared.length > 0) {
-        showNotification(`${autoCleared.length} accrual${autoCleared.length!==1?"s":""} auto-cleared ✓`);
-      }
-    } else {
-      showNotification(`${newInvoices.length} transaction${newInvoices.length!==1?"s":""} booked ✓`);
+    // ── CREDIT CARD (O69-C): a card charge CREATES a liability (Dr Expense / Cr 2200) —
+    // it does NOT clear an open payable. Skip AP-matching entirely; direct-book + persist
+    // every selected charge. (The rare "paid a vendor bill by card" case is an explicit
+    // opt-in deferred under O69 — it would post Dr A/P / Cr 2200, not Cr Cash.) ──────────
+    if (!runMatching) {
+      const { booked, failed } = await persistDirect(toBook);
+      setBankTransactions(prev => prev.filter(t => !t.checked));
+      setBankFileName("");
+      if (booked > 0) checkWatchTriggers(toBook.map(buildEntry), unknownDocs);
+      try { await loadAllData(); } catch {}
+      showNotification(
+        failed === 0
+          ? `${booked} card charge${booked!==1?"s":""} booked (Dr Expense / Cr ${offsetCode}) ✓`
+          : `${booked} booked · ${failed} failed — please retry the failed charge${failed!==1?"s":""}`,
+        failed === 0 ? "success" : "error"
+      );
+      return;
     }
+
+    // ── BANK ACCOUNT: a bank debit CAN legitimately clear an open payable, so keep
+    // AP-matching. Use the proven planBankImport split so a matched line posts ONLY its
+    // clearing (no double-count) and genuinely-new lines are direct-booked + PERSISTED. ──
+    const parsedTxns = toBook.map(t => ({ id: t.id, date: t.date, description: t.description, vendor: t.vendor, amount: t.amount, type: t.type, gl_code: t.gl_code, gl_name: t.gl_name, confidence: t.confidence }));
+    const openItems = (invoicesRef.current || invoices).filter(i =>
+      !i.matched && i.payment_status !== "paid" && i.payment_status !== "collected" && i.source !== "bank_feed" && i.source !== "bank_statement");
+    const { autoCleared, queue } = await runMatchingEngine(parsedTxns, openItems);
+    const plan = planBankImport({
+      parsedTxns, autoCleared, queue, openItems,
+      codes: { apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"), arCode: rc("accounts_receivable"), cashCode: offsetCode, cashName: offsetName },
+    });
+
+    // Post clearings — record success only when the JE actually committed (O69-B).
+    let clearedOk = 0, clearFailed = 0;
+    for (const c of plan.clears) {
+      const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null });
+      if (ok) clearedOk++; else clearFailed++;
+    }
+    // Genuinely-new (unmatched) lines → direct-book + PERSIST (O69-A).
+    const { booked, failed: bookFailed } = await persistDirect(plan.standalone);
+    // Low-confidence / unclearable → manual review (carry the offset for a later dismiss).
+    if (plan.review.length > 0) setMatchQueue(prev => [...plan.review.map(m => ({ ...m, importOffsetCode: offsetCode, importOffsetName: offsetName })), ...prev]);
+
+    setBankTransactions(prev => prev.filter(t => !t.checked));
+    setBankFileName("");
+    if (booked > 0) checkWatchTriggers(plan.standalone.map(buildEntry), unknownDocs);
+    try { await loadAllData(); } catch {}
+    const failN = clearFailed + bookFailed;
+    showNotification(
+      `${clearedOk} cleared · ${booked} booked${plan.review.length ? ` · ${plan.review.length} need review` : ""}${failN ? ` · ${failN} failed (retry/review)` : ""}`,
+      failN ? "error" : "success"
+    );
+    if (plan.review.length > 0) setView("matching");
   };
 
   // ── CONTRACT HANDLER ─────────────────────────────────────────────────────────
@@ -4023,10 +4066,20 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
       // Full match → canonical collection/payment posting (AR: Dr Cash / Cr A/R ·
       // AP: Dr A/P / Cr Cash) AND persist the flag. Replaces the old local-only
       // clearing entry (setInvoices, never bookToDb) + local flag flip.
+      // O69-B (trust-critical): a match is "cleared" ONLY if EVERY markBillPaid actually
+      // committed a JE. markBillPaid returns false (no JE) for a local-only / unpersisted
+      // id — we must NOT record success on a write that didn't happen. On failure, leave
+      // the match IN the queue (in-review), surface the error, and bail before history.
+      const results = [];
       for (const id of (invoice_ids || [])) {
-        await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: bank_txn?.date || null });
+        results.push(await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: bank_txn?.date || null }));
       }
       try { await loadAllData(); } catch {}
+      if (!allClearingsPosted(results)) {
+        logAudit("match_apply_failed", `Match for ${bank_txn?.vendor || bank_txn?.description || "transaction"} couldn't post a clearing entry — left in review (nothing cleared)`);
+        showNotification("Couldn't post the clearing entry — nothing was cleared; left in review.", "error");
+        return;   // do NOT remove from queue, do NOT record to history, do NOT claim success
+      }
     } else {
       // Partial match — flag only for now (partial GL clearing is a separate feature).
       setInvoices(prev => prev.map(inv => !invoice_ids.includes(inv.id) ? inv : {

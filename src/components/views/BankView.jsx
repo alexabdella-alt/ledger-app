@@ -244,7 +244,7 @@ export default function BankView() {
 
                   {/* Action bar */}
                   <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                    <button onClick={bookBankTransactions} style={{
+                    <button onClick={()=>bookBankTransactions(importAccount)} style={{
                       flex:1, padding:"14px", borderRadius:12, fontSize:14, fontWeight:600,
                       background:"linear-gradient(135deg,#D1FAE5,#039855)", border:"none", color:"#039855", cursor:"pointer"
                     }}>
