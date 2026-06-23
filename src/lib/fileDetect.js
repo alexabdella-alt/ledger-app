@@ -113,6 +113,23 @@ export async function detectFileType(file) {
   }
 }
 
+// Given a deterministic detection result for a SPREADSHEET dropped on the universal
+// "drop anything" zone, decide where it goes. Payroll/QBO route to their dedicated
+// importers only on HIGH confidence (so we never false-route a real bank file).
+// Everything else — a recognized bank/card statement OR an unrecognized transaction
+// CSV (the generic Date/Description/Amount case) — routes to the Bank Import screen,
+// because the offset account (Cash 1000 vs Credit Card 2200) can't be known from the
+// file's content and must be chosen via the account-picker (C63/O57). The universal
+// path therefore NEVER books these inline (no account binding → would crash on the
+// undefined offset, or silently default to Cash and re-break O57 for cards).
+// Returns { to } — the importer/view key to route to.
+export function planUniversalSpreadsheetRoute(det) {
+  if (det && det.confidence === "high" && (det.type === "payroll" || det.type === "qbo")) {
+    return { to: det.type };
+  }
+  return { to: "bank_statement" };
+}
+
 // Human label for a detected type (for the mismatch dialog copy).
 export const TYPE_LABEL = {
   bank_statement: "bank statement",

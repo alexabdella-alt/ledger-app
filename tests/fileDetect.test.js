@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectFromText } from "../src/lib/fileDetect.js";
+import { detectFromText, planUniversalSpreadsheetRoute } from "../src/lib/fileDetect.js";
 
 // Real-shaped header rows for each importer's expected file.
 const BANK = `Date,Description,Amount,Balance,Debit,Credit
@@ -100,5 +100,51 @@ describe("unknown/low confidence never warns (drop target is a strong prior)", (
       const warns = r.confidence === "high" && r.type !== expected;
       expect(warns).toBe(false);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Universal "drop anything" routing decision (the path that crashed with
+// "offsetCode is not defined"). A statement dropped on the MAIN zone must ROUTE
+// to the Bank Import screen — where the account-picker sets the offset (Cash 1000
+// vs Credit Card 2200, O57/C63) — never book inline (no account → crash / silent
+// cash-booking). This covers the previously-untested universal path.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A credit-card statement: bank_statement signals, no way to know it's a CARD (vs a
+// checking account) from content — exactly why the offset must be picked, not guessed.
+const CARD_STATEMENT = `Transaction Date,Posting Date,Description,Amount,Balance
+2026-05-03,2026-05-04,ADOBE SUBSCRIPTION,-54.99,1204.99
+2026-05-07,2026-05-08,UNITED AIRLINES,-410.00,1614.99`;
+
+describe("universal-path routing — a statement routes to Bank Import, never books inline", () => {
+  it("a credit-card / bank statement → routes to the Bank Import screen (account-picker)", () => {
+    const det = detectFromText(CARD_STATEMENT);
+    expect(det.type).toBe("bank_statement");
+    expect(planUniversalSpreadsheetRoute(det).to).toBe("bank_statement");
+  });
+
+  it("a generic Date/Description/Amount CSV (unknown) → still routes to Bank Import (not booked inline)", () => {
+    const det = detectFromText(GENERIC);             // type:"unknown"
+    expect(det.type).toBe("unknown");
+    expect(planUniversalSpreadsheetRoute(det).to).toBe("bank_statement");
+  });
+
+  it("a high-confidence payroll register → routes to Payroll (not the bank flow)", () => {
+    const det = detectFromText(PAYROLL_INCIDENT);
+    expect(det.confidence).toBe("high");
+    expect(planUniversalSpreadsheetRoute(det).to).toBe("payroll");
+  });
+
+  it("a QuickBooks export → routes to the QBO importer", () => {
+    const det = detectFromText(QBO);
+    expect(det.type).toBe("qbo");
+    expect(planUniversalSpreadsheetRoute(det).to).toBe("qbo");
+  });
+
+  it("only HIGH-confidence payroll/qbo route to their importers — anything less goes to Bank Import (the picker resolves it)", () => {
+    expect(planUniversalSpreadsheetRoute({ type: "payroll", confidence: "medium" }).to).toBe("bank_statement");
+    expect(planUniversalSpreadsheetRoute({ type: "payroll", confidence: "low" }).to).toBe("bank_statement");
+    expect(planUniversalSpreadsheetRoute({ type: "qbo", confidence: "low" }).to).toBe("bank_statement");
   });
 });

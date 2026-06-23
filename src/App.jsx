@@ -17,7 +17,7 @@ import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
-import { detectFileType, TYPE_LABEL } from "./lib/fileDetect";
+import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute } from "./lib/fileDetect";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
@@ -2692,16 +2692,35 @@ Reply with only the single word.`,
         let docType;
         if (isSpreadsheet) {
           const det = await detectFileType(file);
-          if (det.confidence === "high" && (det.type === "payroll" || det.type === "qbo")) {
-            routeFileToType(det.type, file);
-            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:det.type, result:{ routed:true, to:det.type }} : q));
-            logUploadUpdate(item.upload_log_id, { status:"done", doc_type:det.type, result:{ routed:true } });
-            showNotification(`That looked like a ${TYPE_LABEL[det.type]} — routed it to the right importer.`);
+          const route = planUniversalSpreadsheetRoute(det);
+          if (route.to === "payroll" || route.to === "qbo") {
+            routeFileToType(route.to, file);
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:route.to, result:{ routed:true, to:route.to }} : q));
+            logUploadUpdate(item.upload_log_id, { status:"done", doc_type:route.to, result:{ routed:true } });
+            showNotification(`That looked like a ${TYPE_LABEL[route.to]} — routed it to the right importer.`);
             return;
           }
           docType = "bank_statement";   // bank or unrecognized spreadsheet → bank flow
         } else {
           docType = await classifyFile(base64, mediaType, item.name);
+        }
+
+        // A bank/card statement's offset account (Cash 1000 for a bank vs Credit Card
+        // 2200 for a card) can't be known from the file's content — only the account it
+        // BELONGS to tells you (O57/C63). So never book a statement inline in the
+        // universal "drop anything" path: that path has no account binding, so it would
+        // either crash on the undefined offset (the "offsetCode is not defined" bug this
+        // fixes) or silently default the offset to Cash and re-break O57 for cards.
+        // Instead ROUTE to the Bank Import screen with the file pre-loaded, where the
+        // account-picker (C63) appears and the user selects the account → correct offset.
+        // Covers both spreadsheet and PDF statements (classifyFile → bank_statement).
+        if (docType === "bank_statement") {
+          setPendingImportFile({ type: "bank_statement", file });
+          setView("bank");
+          setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"bank" }} : q));
+          logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result:{ routed:true } });
+          showNotification("That looked like a bank or card statement — choose the account to import it.");
+          return;
         }
 
         // Update status: processing + type known
@@ -2996,6 +3015,15 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"invoice", result: invoiceResult });
 
         } else if (docType === "bank_statement") {
+          // BACKSTOP ONLY — bank/card statements are now ROUTED to the Bank Import
+          // screen (with the account-picker) above and return before reaching here, so
+          // this branch is unreachable in the normal flow. If a future path ever lands
+          // here, bind a DEFINED offset (Cash default) so there is never a ReferenceError
+          // (the original "offsetCode is not defined" crash); buildBankLineEntry also
+          // defaults to Cash 1000. A real account binding only happens via handleBankFile.
+          const account = null;
+          const offsetCode = rc("cash");
+          const offsetName = rn("cash");
           // Parse bank statement
           let rawTxns = [];
           if (isSpreadsheet) {
