@@ -5,7 +5,7 @@ import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function BankView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   // Which account this statement belongs to — its GL is the offset for direct
   // bookings (Cr 1000 bank / Cr 2200 credit card). Defaults to the first account.
   const [importAccountId, setImportAccountId] = React.useState(null);
@@ -20,14 +20,65 @@ export default function BankView() {
       const f = pendingImportFile.file; setPendingImportFile(null); setPendingBankFile(f);
     }
   }, [pendingImportFile]);
-  const accountPicker = (bankAccounts||[]).length > 0 && (
-    <div style={{ marginBottom:14, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-      <span style={{ fontSize:13, fontWeight:600, color:"#344054" }}>Account</span>
-      <select value={importAccount?.id || ""} onChange={e=>setImportAccountId(e.target.value)}
-        style={{ background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:8, padding:"8px 12px", fontSize:13, color:"#101828", outline:"none", minWidth:240 }}>
-        {(bankAccounts||[]).map(a => <option key={a.id} value={a.id}>{a.name||"Account"} · {(a.type||"checking").replace("_"," ")}</option>)}
-      </select>
-      <span style={{ fontSize:12, color:"#98A2B3" }}>Charges offset to this account {importAccount?.type==="credit_card" ? "(credit card → liability 2200)" : "(bank → cash 1000)"}</span>
+  // Inline "+ Add account" (O63) — create a money source at the point of need so a
+  // user with a card statement but no card source set up doesn't dead-end at Settings.
+  // The offset GL follows the type (credit_card → 2200, bank → 1000, loan → 2500).
+  const [showAddAccount, setShowAddAccount] = React.useState(false);
+  const [addBusy, setAddBusy] = React.useState(false);
+  const [newAcct, setNewAcct] = React.useState({ name:"", type:"credit_card", institution:"" });
+  const fieldStyle = { background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:8, padding:"8px 12px", fontSize:13, color:"#101828", outline:"none" };
+  const submitNewAccount = async () => {
+    if (!createBankAccountInline || addBusy) return;
+    setAddBusy(true);
+    const acct = await createBankAccountInline(newAcct);
+    setAddBusy(false);
+    if (acct) {
+      setImportAccountId(acct.id);               // auto-select so the user imports immediately
+      setShowAddAccount(false);
+      setNewAcct({ name:"", type:"credit_card", institution:"" });
+    }
+  };
+  const hasAccounts = (bankAccounts||[]).length > 0;
+  const accountPicker = (hasAccounts || pendingBankFile || showAddAccount) && (
+    <div style={{ marginBottom:14 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+        <span style={{ fontSize:13, fontWeight:600, color:"#344054" }}>Account</span>
+        {hasAccounts && (
+          <select value={importAccount?.id || ""} onChange={e=>setImportAccountId(e.target.value)}
+            style={{ ...fieldStyle, minWidth:240 }}>
+            {(bankAccounts||[]).map(a => <option key={a.id} value={a.id}>{a.name||"Account"} · {(a.type||"checking").replace("_"," ")}</option>)}
+          </select>
+        )}
+        {!showAddAccount && (
+          <button onClick={()=>setShowAddAccount(true)}
+            style={{ background:"transparent", border:"1px dashed #D0D5DD", borderRadius:8, padding:"8px 14px", fontSize:12, color:"#4F46E5", cursor:"pointer", fontWeight:600 }}>
+            + Add account…
+          </button>
+        )}
+        {hasAccounts && !showAddAccount && (
+          <span style={{ fontSize:12, color:"#98A2B3" }}>Charges offset to this account {importAccount?.type==="credit_card" ? "(credit card → liability 2200)" : "(bank → cash 1000)"}</span>
+        )}
+      </div>
+      {showAddAccount && (
+        <div style={{ marginTop:12, padding:16, border:"1px solid #E4E7EC", borderRadius:12, background:"#F9FAFB", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          <input autoFocus value={newAcct.name} onChange={e=>setNewAcct(p=>({...p,name:e.target.value}))}
+            placeholder="Account name (e.g. Amex Business)" style={{ ...fieldStyle, minWidth:220 }} />
+          <select value={newAcct.type} onChange={e=>setNewAcct(p=>({...p,type:e.target.value}))} style={fieldStyle}>
+            {["credit_card","checking","savings","loan","other"].map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}
+          </select>
+          <input value={newAcct.institution} onChange={e=>setNewAcct(p=>({...p,institution:e.target.value}))}
+            placeholder="Issuer / bank (optional)" style={{ ...fieldStyle, minWidth:180 }} />
+          <span style={{ fontSize:12, color:"#98A2B3" }}>Offsets to {newAcct.type==="credit_card" ? "Credit Card Liability (2200)" : newAcct.type==="loan" ? "Long-Term Debt (2500)" : "Cash (1000)"}</span>
+          <button onClick={submitNewAccount} disabled={addBusy || !newAcct.name.trim()}
+            style={{ background: (addBusy||!newAcct.name.trim())?"#A5B4FC":"#4F46E5", color:"#FFFFFF", border:"none", borderRadius:8, padding:"8px 18px", fontSize:13, fontWeight:600, cursor:(addBusy||!newAcct.name.trim())?"default":"pointer" }}>
+            {addBusy ? "Creating…" : "Create & select"}
+          </button>
+          <button onClick={()=>{ setShowAddAccount(false); setNewAcct({ name:"", type:"credit_card", institution:"" }); }}
+            style={{ background:"#FFFFFF", color:"#475467", border:"1px solid #D0D5DD", borderRadius:8, padding:"8px 16px", fontSize:13, fontWeight:500, cursor:"pointer" }}>
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
   return (

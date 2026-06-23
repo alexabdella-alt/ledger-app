@@ -5,7 +5,7 @@ This is **the** authoritative roadmap. When the user says "add to the roadmap," 
 ids are never reused. Keep the two sections separate. Mark an item DONE only when it's genuinely in
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
-- **Last updated:** 2026-06-21
+- **Last updated:** 2026-06-23
 - **Test suite:** 396 passing (`npm test`, 31 files). **Build:** clean (`npm run build`).
 - **Migrations:** `000`–`044` (numbering non-contiguous; `042` & `044` committed this pass).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
@@ -172,7 +172,7 @@ Existing items that ladder into it:
 | ~~O37~~ | Smart file-routing / misroute protection | → C59 | — | done 2026-06-21 (deterministic CSV sniff) |
 | O55 | File-detect AI-classifier extension (fast-follow to C59) — extend the AI document classifier (PDFs/images) to include `payroll` and `qbo`, and add deterministic .xlsx (binary) sniffing via the xlsx lib; today non-CSV files → `unknown` (no mismatch warning) | not started | P2 | follow-up to C59; deterministic CSV path already covers the incident class |
 | ~~O57~~ | Credit-card offset binding | → C63 | — | done 2026-06-21 (account picker + offset by account) |
-| O63 | Inline "+ Add credit card account" shortcut on the import picker — when a user has a card statement but no credit-card account set up yet they hit a dead end (must go to Settings first). Add an inline-create on the BankView account picker | not started | P3 | onboarding friction; follow-up to C63/O57 |
+| O63 | **Inline "+ Add credit card account" at the point of need (first-use blocker).** The 2200 Credit Card Liability GL account already exists in every seeded COA — the friction is the import account-picker lists only `bank_accounts` (money SOURCES the user registered), and a new user has no credit-card source, so they can't route a card statement's offset to 2200 → dead end, must detour to Settings. **Fix is NOT auto-creating a phantom card source for everyone** (the app can't know if/how many cards a client has or which issuer, and reconciliation needs them distinguished) — it's making source-creation frictionless at the point of need: **(a)** add an inline "+ Add credit card account" option directly in the BankView import picker; **(b) smoother enhancement** — on detecting a dropped statement looks like a card with no matching source, offer to create one on the spot ("This looks like a credit card statement — add a credit card account? [issuer] → offsets to 2200"), turning the dead-end into one-click setup. | **built — pending live verify** | **P2** | **bumped P3→P2 (2026-06-23): first-use blocker for any client with a credit card — i.e. most of them**, hit live during O57 testing; follow-up to C63/O57. **(a) DONE** — inline "+ Add account…" in the BankView import picker (`createBankAccountInline` + shared `glCodeForAccountType`; credit_card→2200/bank→1000/loan→2500; auto-selects the new account); `src/lib/bankAccounts.js`, `tests/bankAccounts.test.js`. **(b) follow-up** — auto-OPEN the inline-add pre-filled with the right type on detection can't be fully done: the deterministic detector can't distinguish card-vs-bank from CSV content (that's the whole O57 premise), so the form just defaults its type to `credit_card` (the common dead-end). A filename/issuer heuristic could refine the default later. |
 | ~~O58~~ | Processing-toast "View" button is a no-op | → C66 | — | done 2026-06-21 (navigates home + scrolls to upload zone `#universal-upload-zone`) |
 | ~~O52~~ | Setup-flow buttons audit — onboarding/setup buttons behave inconsistently | → C64 | — | done 2026-06-21 (accountant "coming soon" notice now persists via `accountantDismissed`, no longer vanishes; bank/opening steps verified routing to `settings#bank-accounts-section` / `opening-balances#opening-balances-section` — already correct) |
 | ~~O53~~ | Duplicate-alert routing — clicking a "possible duplicate" alert routes to Home instead of the transaction | → C65 | — | done 2026-06-21 (anomaly notification encodes `txn:<id>`; openNotification deep-links to the flagged entry in the detail panel) |
@@ -235,7 +235,7 @@ Existing items that ladder into it:
 | O23 | Data-processing / AI disclosure — DPA, subprocessor list, training opt-out, prompt-injection policy | not started | P3 | |
 | O24 | GITC / SOC 2 readiness | not started | P3 | |
 | O25 | Pre-launch industry-standard full codebase review | not started | P3 | gate before launch |
-| O26 | Sentry DSN setup (integration C54 exists; production DSN + env config) | not started | P2 | |
+| O26 | Sentry DSN setup (integration C54 exists; production DSN + env config). **Note (currently false UX):** the error boundary shows *"Our team has been notified"* but with NO DSN configured, errors are NOT actually sent anywhere — the message is a lie today; the browser console is the only error record. When doing O26 (create Sentry account + project → get DSN → add to env config), **confirm errors actually flow to the Sentry dashboard** so the "notified" message becomes true. | not started | P2 | error-boundary message is misleading until DSN is wired |
 
 ### Pre-ship milestones
 
