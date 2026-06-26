@@ -14,11 +14,12 @@ import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompany
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching } from "./lib/bankMatch";
 import { glCodeForAccountType } from "./lib/bankAccounts";
+import { enterSupportState, exitSupportState } from "./lib/supportMode";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
-import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute } from "./lib/fileDetect";
+import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
@@ -410,15 +411,34 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   // Enter a client's context as admin (works because is_company_member() grants
   // platform admins access — migration 020 Option A). Remembers the admin's own
   // company so Exit returns cleanly.
+  // Clear THIS session's upload/preview state so nothing the admin was looking at can
+  // bleed across the support-mode boundary into the client view (O54a). resetCompanyState
+  // (fired by the company-switch effect) also clears these, but doing it up front closes
+  // the brief window during the transition.
+  const clearTransientUploadState = () => {
+    setUploadedFile(null); setUploadQueue([]); setUploadProcessing(false);
+    setDocsPreview(null); fileStoreRef.current = {};
+  };
   const enterSupport = (company) => {
     if (!company?.id) return;
-    setSupportMode({ company, adminCompany: currentCompany });
+    // Never enter support with one of the admin's OWN uploads still processing — its
+    // async result (storeDocument/bookToDb) would land in the CLIENT's context (O54a).
+    if (uploadActiveRef.current) { showNotification("Finish the current upload before entering Support Mode.", "error"); return; }
+    // Preserve the REAL admin company even when entering support from within support
+    // (nested), so Exit always returns to the admin's own account (O54b).
+    const next = enterSupportState(supportMode, company, currentCompany);
+    clearTransientUploadState();
+    setSupportMode(next);
     onSwitchCompany(company);
     setView("dashboard");
     showNotification(`Support Mode — viewing ${company.name}`);
   };
   const exitSupport = () => {
-    setSupportMode(prev => { if (prev?.adminCompany) onSwitchCompany(prev.adminCompany); return null; });
+    const { back } = exitSupportState(supportMode);   // read target directly — no side effect in a setState updater (O54b)
+    setSupportMode(null);
+    clearTransientUploadState();
+    if (back?.id) onSwitchCompany(back);
+    else showNotification("Returned to admin — couldn't resolve your original company; pick it from the switcher.", "error");
     setView("admin");
   };
   // Red-dot badge: failed uploads across all companies in the last 24h.
@@ -2632,11 +2652,10 @@ Reply with only the single word.`,
       })
     });
     const d = await okAIResponse(res);
-    const t = (d.content?.find(b=>b.type==="text")?.text||"").trim().toLowerCase();
-    if (t.includes("bank")) return "bank_statement";
-    if (t.includes("contract")) return "contract";
-    if (t.includes("unknown")) return "unknown";
-    return "invoice";
+    const t = (d.content?.find(b=>b.type==="text")?.text||"");
+    // O44: route an unsure/unrecognized classification to "unknown" (held for review),
+    // not a forced "invoice" guess. Recognizes invoice/receipt/bill positively.
+    return classifyDocReply(t);
   };
 
   // ── UPLOAD LOG ───────────────────────────────────────────────────────────────

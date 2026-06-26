@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectFromText, planUniversalSpreadsheetRoute } from "../src/lib/fileDetect.js";
+import { detectFromText, planUniversalSpreadsheetRoute, classifyDocReply } from "../src/lib/fileDetect.js";
 
 // Real-shaped header rows for each importer's expected file.
 const BANK = `Date,Description,Amount,Balance,Debit,Credit
@@ -146,5 +146,28 @@ describe("universal-path routing — a statement routes to Bank Import, never bo
     expect(planUniversalSpreadsheetRoute({ type: "payroll", confidence: "medium" }).to).toBe("bank_statement");
     expect(planUniversalSpreadsheetRoute({ type: "payroll", confidence: "low" }).to).toBe("bank_statement");
     expect(planUniversalSpreadsheetRoute({ type: "qbo", confidence: "low" }).to).toBe("bank_statement");
+  });
+});
+
+// ── O44: ambiguous-document classification → held for review, never a forced guess ──
+describe("classifyDocReply — unsure/unrecognized routes to 'unknown' (held), not 'invoice'", () => {
+  it("recognizes the four types positively", () => {
+    expect(classifyDocReply("invoice")).toBe("invoice");
+    expect(classifyDocReply("bank_statement")).toBe("bank_statement");
+    expect(classifyDocReply("contract")).toBe("contract");
+    expect(classifyDocReply("unknown")).toBe("unknown");
+  });
+  it("treats receipts/bills as invoices, and tolerates a wordy reply", () => {
+    expect(classifyDocReply("receipt")).toBe("invoice");
+    expect(classifyDocReply("This looks like a bill")).toBe("invoice");
+    expect(classifyDocReply("It is an invoice for services")).toBe("invoice");
+    expect(classifyDocReply("a credit card statement")).toBe("bank_statement");
+  });
+  it("THE FIX: an unsure / unrecognized reply → 'unknown' (was force-guessed as 'invoice')", () => {
+    expect(classifyDocReply("I'm not sure")).toBe("unknown");
+    expect(classifyDocReply("unclear")).toBe("unknown");
+    expect(classifyDocReply("some legal document")).toBe("unknown");
+    expect(classifyDocReply("")).toBe("unknown");
+    expect(classifyDocReply(null)).toBe("unknown");
   });
 });

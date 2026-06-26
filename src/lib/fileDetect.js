@@ -130,6 +130,19 @@ export function planUniversalSpreadsheetRoute(det) {
   return { to: "bank_statement" };
 }
 
+// Map the AI document-type classifier's free-text reply → a docType. Conservative by
+// design (O44 / O60): only a POSITIVELY recognized type routes to a processing pipeline;
+// anything unrecognized or explicitly unsure → "unknown" (held for review), NEVER a
+// forced "invoice" guess that could book the wrong thing. Pure → unit-tested.
+export function classifyDocReply(text) {
+  const t = String(text || "").trim().toLowerCase();
+  // bank OR credit-card statements (the classifier may phrase it either way).
+  if (t.includes("bank") || t.includes("card") || t.includes("statement")) return "bank_statement";
+  if (t.includes("contract")) return "contract";
+  if (t.includes("invoice") || t.includes("receipt") || t.includes("bill")) return "invoice";
+  return "unknown";   // unsure / unrecognized → hold for review, don't guess
+}
+
 // Human label for a detected type (for the mismatch dialog copy).
 export const TYPE_LABEL = {
   bank_statement: "bank statement",
