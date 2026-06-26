@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { depreciableBase, buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun } from "../src/lib/depreciation.js";
+import { depreciableBase, buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue } from "../src/lib/depreciation.js";
 
 const DEP = "6900", ACC = "1510";
 const sumD = ls => ls.reduce((s, l) => s + (l.debit || 0), 0);
@@ -147,5 +147,32 @@ describe("integration (pure): capture → schedule → periodic posting → full
     expect(assetsToFlip).toEqual(["X"]);    // last pending row posts → fully depreciated
     const totalAccum = rows.reduce((s, r) => s + r.amount, 0);
     expect(totalAccum).toBe(1200);          // accumulated depreciation lands exactly on cost − salvage
+  });
+});
+
+// ── O10: depreciationDue — surface unposted months due as of today (dashboard nudge) ──
+describe("depreciationDue — counts pending rows due on/before today", () => {
+  const rows = [
+    { asset_id: "a1", period_date: "2026-01-31", status: "posted"  },
+    { asset_id: "a1", period_date: "2026-02-28", status: "pending" },
+    { asset_id: "a1", period_date: "2026-03-31", status: "pending" },
+    { asset_id: "a2", period_date: "2026-02-28", status: "pending" },
+    { asset_id: "a1", period_date: "2026-12-31", status: "pending" }, // future — not yet due
+  ];
+  it("counts only PENDING rows dated on/before asOf, across assets", () => {
+    const d = depreciationDue(rows, "2026-03-31");
+    expect(d.count).toBe(3);              // Feb a1, Mar a1, Feb a2 (Jan posted, Dec future)
+    expect(d.assets).toBe(2);
+    expect(d.throughDate).toBe("2026-03-31");
+  });
+  it("excludes future-dated and already-posted rows", () => {
+    const d = depreciationDue(rows, "2026-02-28");
+    expect(d.count).toBe(2);              // Feb a1, Feb a2
+    expect(d.throughDate).toBe("2026-02-28");
+  });
+  it("nothing due → zeroed (no nudge)", () => {
+    expect(depreciationDue(rows, "2026-01-01")).toEqual({ count: 0, throughDate: "", assets: 0 });
+    expect(depreciationDue([], "2026-03-31")).toEqual({ count: 0, throughDate: "", assets: 0 });
+    expect(depreciationDue(null, "2026-03-31")).toEqual({ count: 0, throughDate: "", assets: 0 });
   });
 });

@@ -171,3 +171,23 @@ describe("classifyDocReply — unsure/unrecognized routes to 'unknown' (held), n
     expect(classifyDocReply(null)).toBe("unknown");
   });
 });
+
+// ── O55: the AI classifier now recognizes payroll & qbo (PDFs/images), not just the 4 ──
+describe("classifyDocReply — payroll & QBO recognition (O55)", () => {
+  it("a payroll register / paystub reply → payroll", () => {
+    expect(classifyDocReply("payroll")).toBe("payroll");
+    expect(classifyDocReply("This is a payroll register")).toBe("payroll");
+    expect(classifyDocReply("employee paystub")).toBe("payroll");
+  });
+  it("a QuickBooks / GL export reply → qbo", () => {
+    expect(classifyDocReply("qbo")).toBe("qbo");
+    expect(classifyDocReply("a QuickBooks export")).toBe("qbo");
+    expect(classifyDocReply("general ledger export")).toBe("qbo");
+  });
+  it("payroll/qbo win over invoice/bank when the reply could overlap", () => {
+    expect(classifyDocReply("payroll summary statement")).toBe("payroll");   // not bank_statement
+  });
+  it("still falls back to unknown when unsure (O44 preserved)", () => {
+    expect(classifyDocReply("some legal thing")).toBe("unknown");
+  });
+});

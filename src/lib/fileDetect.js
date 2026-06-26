@@ -97,20 +97,40 @@ export function detectFromText(text, fileName = "") {
   return { type: topType, confidence, signals: { [topType]: signals[topType] } };
 }
 
-// Async wrapper over a File/Blob. Deterministic for text/CSV; non-text (pdf/img,
-// binary xlsx) → unknown so no false mismatch warning. Reads only the first 16KB.
+// Async wrapper over a File/Blob. Deterministic for text/CSV AND binary .xlsx/.xls
+// (O55 — sniff the first sheet's header rows via the xlsx lib). PDFs/images can't be
+// sniffed deterministically → unknown (the AI classifier handles those). Reads only a
+// small prefix.
 export async function detectFileType(file) {
   const name = file && file.name ? file.name : "";
   const ext = name.split(".").pop().toLowerCase();
   const isTextual = ["csv", "txt"].includes(ext) || String(file && file.type || "").includes("text");
-  if (!isTextual) return { type: "unknown", confidence: "none", signals: {}, reason: "non-text file — deterministic sniff skipped (AI classifier is a fast-follow)" };
-  try {
-    const blob = file.slice ? file.slice(0, 16384) : file;
-    const text = await blob.text();
-    return detectFromText(text, name);
-  } catch {
-    return { type: "unknown", confidence: "none", signals: {} };
+  if (isTextual) {
+    try {
+      const blob = file.slice ? file.slice(0, 16384) : file;
+      const text = await blob.text();
+      return detectFromText(text, name);
+    } catch {
+      return { type: "unknown", confidence: "none", signals: {} };
+    }
   }
+  // O55: binary spreadsheet — read the first sheet's top rows and column-score them the
+  // same way as a CSV header (so an .xlsx payroll register / bank export classifies
+  // instead of falling to unknown). Lazy xlsx import keeps it out of the main bundle.
+  if (["xlsx", "xls"].includes(ext)) {
+    try {
+      const XLSX = await import("xlsx");
+      const buf = file.arrayBuffer ? await file.arrayBuffer() : file;
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" }).slice(0, 30);
+      const text = rows.map(r => (Array.isArray(r) ? r.join(",") : "")).join("\n");
+      return detectFromText(text, name);
+    } catch {
+      return { type: "unknown", confidence: "none", signals: {}, reason: "xlsx parse failed" };
+    }
+  }
+  return { type: "unknown", confidence: "none", signals: {}, reason: "non-text file (pdf/image) — handled by the AI classifier" };
 }
 
 // Given a deterministic detection result for a SPREADSHEET dropped on the universal
@@ -136,6 +156,10 @@ export function planUniversalSpreadsheetRoute(det) {
 // forced "invoice" guess that could book the wrong thing. Pure → unit-tested.
 export function classifyDocReply(text) {
   const t = String(text || "").trim().toLowerCase();
+  // Payroll & QuickBooks first — a payroll register or QBO export must NOT be mistaken
+  // for a bank statement or invoice (O55: the AI classifier now knows these too).
+  if (t.includes("payroll") || t.includes("paystub") || t.includes("pay stub") || t.includes("paycheck")) return "payroll";
+  if (t.includes("quickbooks") || t.includes("qbo") || t.includes("general ledger export")) return "qbo";
   // bank OR credit-card statements (the classifier may phrase it either way).
   if (t.includes("bank") || t.includes("card") || t.includes("statement")) return "bank_statement";
   if (t.includes("contract")) return "contract";

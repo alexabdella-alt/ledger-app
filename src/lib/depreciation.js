@@ -47,6 +47,17 @@ export function planDepreciationRun(scheduleRows, throughDate) {
   return { due, assetsToFlip };
 }
 
+// O10 — how many depreciation months are DUE but not yet posted as of `asOf`: pending
+// schedule rows dated on/before today. Surfaces the "depreciation is due" nudge so the
+// user runs it (we never auto-post). Returns { count, throughDate, assets }. Pure.
+export function depreciationDue(scheduleRows, asOf = null) {
+  const today = asOf || new Date().toISOString().slice(0, 10);
+  const due = (scheduleRows || []).filter(r => r && r.status === "pending" && String(r.period_date || "") <= today);
+  const throughDate = due.reduce((mx, r) => (String(r.period_date) > mx ? String(r.period_date) : mx), "");
+  const assets = new Set(due.map(r => r.asset_id)).size;
+  return { count: due.length, throughDate, assets };
+}
+
 // Cost less salvage, floored at 0.
 export function depreciableBase(cost, salvage = 0) {
   return Math.max(0, r2(r2(cost) - r2(salvage)));
