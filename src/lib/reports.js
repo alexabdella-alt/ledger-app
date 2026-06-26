@@ -80,6 +80,22 @@ export function fiscalYearStart(asOf, fiscalYearEnd = "12-31") {
   return start.toISOString().slice(0, 10);
 }
 
+// The default reporting window for a freshly-opened Reports page (O70). It ALWAYS
+// ends today — never a stale saved date — and begins at the current period's start.
+//   period "mtd"      → first of the current calendar month
+//   period "ytd"/"fy" → the fiscal-year start (respects a non-calendar fiscal_year_end),
+//                       floored at the company cutoff (no activity exists before it)
+//   period "all"      → unbounded ("" / "")
+// Pure (takes `today`), so the "to == today, from == period start" contract is tested.
+export function currentPeriodRange(period = "fy", { today = null, fiscalYearEnd = "12-31", cutoffDate = null } = {}) {
+  const to = today || new Date().toISOString().slice(0, 10);
+  if (period === "all") return { from: "", to: "" };
+  if (period === "mtd") return { from: to.slice(0, 7) + "-01", to };
+  const fyStart = fiscalYearStart(to, fiscalYearEnd);
+  const from = (cutoffDate && fyStart && String(cutoffDate) > fyStart) ? String(cutoffDate) : (fyStart || (to.slice(0, 4) + "-01-01"));
+  return { from, to };
+}
+
 // Split all-time net income (through `asOf`) into the prior fiscal years' closed net
 // (→ rolls into beginning Retained Earnings) and the current fiscal year's net
 // (→ "Net Income (current period)"). FY start is floored at the cutoff date (no

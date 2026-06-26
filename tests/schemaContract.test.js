@@ -234,9 +234,9 @@ describe("company settings — save writes ALL identity/accounting fields + roun
       default_cash_account: "1000", default_ap_account: "2000", default_ar_account: "1100",
       business_type: "SaaS", sales_tax_rate: 8.5,
     });
-    // logo excluded (no base64 column); onboarding_complete owned by completeOnboarding
-    expect("logo_path" in u).toBe(false);
-    expect("logo_base64" in u).toBe(false);
+    // O62: the logo now persists as a base64 data URL in logo_path; onboarding_complete
+    // is still owned by completeOnboarding (not written here).
+    expect(u.logo_path).toBe("data:image/png;base64,XXXX");
     expect("onboarding_complete" in u).toBe(false);
   });
 
@@ -246,6 +246,13 @@ describe("company settings — save writes ALL identity/accounting fields + roun
     for (const k of ["name","taxId","address","city","state","zip","country","fiscalYearEnd","currency","defaultCashAccount","defaultAPAccount","defaultARAccount","businessType","salesTaxRate"]) {
       expect(back[k]).toBe(settings[k]);
     }
+    // O62: the logo round-trips too (logoBase64 → logo_path → logoBase64)
+    expect(back.logoBase64).toBe(settings.logoBase64);
+  });
+
+  it("O62: a null/absent logo round-trips to null (not undefined/crash)", () => {
+    expect(buildCompanyUpdate({}).logo_path).toBe(null);
+    expect(mapCompanyRow({}).logoBase64).toBe(null);
   });
 
   it("name is never null (NOT NULL column) even from an empty draft", () => {

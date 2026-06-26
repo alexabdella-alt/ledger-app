@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { reversalIndex, reversalFor } from "../../lib/ledger";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 
 export default function BooksView() {
@@ -77,7 +78,14 @@ export default function BooksView() {
     return arr;
   })();
 
+  // O8 — which live originals have been reversed (a separate reversal entry points at
+  // them via import_metadata.reverses). Display-only: the original stays live; we just
+  // mark it "Reversed · DATE" and strike it through.
+  const revIdx = React.useMemo(() => reversalIndex(invoices), [invoices]);
+
   const statusBadge = (i) => {
+    const rev = reversalFor(revIdx, i);
+    if (rev) return <span style={pill("#B42318")} title={`Reversed${rev.date?` on ${fmtDate(rev.date)}`:""}`}>↩ Reversed{rev.date?` · ${fmtDate(rev.date)}`:""}</span>;
     if (i.status==="voided") return <span style={pill("#667085")}>Voided</span>;
     if (i.payment_status==="paid") return <span style={pill("#1570EF")}>Paid · {methodLabel(i.payment_method_used).split(" ")[0]}</span>;
     if (i.payment_status==="collected") return <span style={pill("#039855")}>Collected</span>;
@@ -176,10 +184,11 @@ export default function BooksView() {
               </td></tr>
             ) : rows.map((inv,idx)=>{
               const rev = isRevenue(inv);
+              const reversedInfo = reversalFor(revIdx, inv);   // O8 — original was reversed
               const unpaidExp = isExpense(inv) && inv.payment_status!=="paid" && inv.status!=="voided";
               return (
                 <React.Fragment key={inv.id}>
-                  <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"#EEF2FF":"#FFFFFF", borderBottom:"1px solid #EEF0F4", opacity: inv.status==="voided"?0.55:1, transition:"background 0.1s" }}
+                  <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"#EEF2FF":"#FFFFFF", borderBottom:"1px solid #EEF0F4", opacity: (inv.status==="voided"||reversedInfo)?0.55:1, textDecoration: reversedInfo?"line-through":"none", textDecorationColor: reversedInfo?"#B42318":undefined, transition:"background 0.1s" }}
                     onMouseEnter={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#F9FAFB"; }} onMouseLeave={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#FFFFFF"; }}>
                     <td style={{ padding:"0 16px", fontSize:13, color:"#667085", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
                     <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"#101828" }}>{inv.vendor||"—"}</span></div></td>

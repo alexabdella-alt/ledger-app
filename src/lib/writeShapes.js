@@ -45,9 +45,12 @@ export function buildAccountInsert({ companyId, code, name, category = null }) {
 
 // Company identity/accounting settings ↔ the `companies` table (O13). save() must
 // persist ALL these fields, not just sales_tax_rate, or they're lost on refresh.
-// All columns exist (000 baseline + 042 sales_tax_rate) — no migration. The logo is
-// intentionally excluded: the column is `logo_path` (a Storage path), not the base64
-// data URL the app holds, and is never read back — a separate decision (see ROADMAP).
+// All columns exist (000 baseline + 042 sales_tax_rate) — no migration. The logo (O62)
+// persists as a base64 data URL stored directly in the existing `logo_path` text column
+// (no Storage bucket / signed-URL plumbing, no new column, no user setup). The column was
+// named for a Storage path but is plain text; storing the data URL there round-trips and
+// renders inline (incl. invoice print). A Storage-bucket migration is a clean future
+// optimization if logos get large — the UI caps upload size to keep the row sane.
 // onboarding_complete is owned by completeOnboarding, so it's NOT written here.
 export function buildCompanyUpdate(s = {}) {
   return {
@@ -65,6 +68,7 @@ export function buildCompanyUpdate(s = {}) {
     default_ar_account: s.defaultARAccount || "1100",
     business_type: s.businessType || null,
     sales_tax_rate: Number(s.salesTaxRate) || 0,
+    logo_path: s.logoBase64 || null,   // O62: base64 data URL persisted here
   };
 }
 
@@ -84,7 +88,7 @@ export function mapCompanyRow(co = {}) {
     defaultAPAccount: co.default_ap_account || "2000",
     defaultARAccount: co.default_ar_account || "1100",
     currency: co.currency || "USD",
-    logoBase64: null,
+    logoBase64: co.logo_path || null,   // O62: read the persisted logo back
     businessType: co.business_type || "",
     salesTaxRate: Number(co.sales_tax_rate) || 0,
     onboardingComplete: !!co.onboarding_complete,

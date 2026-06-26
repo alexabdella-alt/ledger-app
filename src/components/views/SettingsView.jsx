@@ -27,6 +27,12 @@ export default function SettingsView() {
               setSaved(true); setTimeout(()=>setSaved(false), 2000);
             };
             const handleLogo = (file) => {
+              if (!file) return;
+              // O62: the logo persists as a base64 data URL in companies.logo_path. Cap the
+              // file size so the row stays sane (base64 inflates ~33%); for anything larger a
+              // Storage bucket is the right home (future). ~750KB source → ~1MB stored.
+              if (file.size > 768 * 1024) { showNotification("Logo is too large — please use an image under 750 KB.", "error"); return; }
+              if (!/^image\//.test(file.type || "")) { showNotification("Please choose an image file for the logo.", "error"); return; }
               const r = new FileReader();
               r.onload = e => { const b64 = e.target.result; setLogoPreview(b64); setDraft(d=>({...d, logoBase64:b64})); };
               r.readAsDataURL(file);

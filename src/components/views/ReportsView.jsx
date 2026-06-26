@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance } from "../../lib/reports";
+import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
 import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
 import MonthlyReportsPanel from "./MonthlyReportsPanel";
@@ -42,6 +42,14 @@ export default function ReportsView() {
     } finally { setAttaching(false); }
   };
   React.useEffect(() => { setDrill(null); setDrillSel(null); }, [reportType]);
+  // O70: on open, the report window auto-defaults to the CURRENT period — "to" is
+  // always today (never a stale saved value from sessionStorage), "from" is the
+  // fiscal-year start (respects fiscal_year_end + cutoff). The user can still change
+  // the range while on the page; reopening Reports resets to the current period.
+  React.useEffect(() => {
+    const { from, to } = currentPeriodRange("fy", { fiscalYearEnd: companySettings?.fiscalYearEnd || "12-31", cutoffDate });
+    setReportDateFrom(from); setReportDateTo(to); setReportRange("custom");
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- run once on open
             // Date filter helper
             const filterByRange = (invList) => {
               if (reportRange === "all") return invList;

@@ -6,6 +6,7 @@ import { buildDepreciationEntry } from "../src/lib/depreciation.js";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "../src/lib/revenueEntries.js";
 import { buildPayrollEntry } from "../src/lib/payroll.js";
 import { buildPrepaidCapitalizeEntry, buildPrepaidAmortizeEntry } from "../src/lib/prepaid.js";
+import { buildAccruedLiabilityEntry } from "../src/lib/accruedLiabilities.js";
 import { fiscalYearStart, fiscalYearSplit, computeNetIncome } from "../src/lib/reports.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -78,7 +79,7 @@ const EVENTS = [
   { name: "8 · depreciation (real builder)",         lines: buildDepreciationEntry({ amount: 200, depExpCode: C.depExp, accumDepCode: C.accumDep }).lines, movesNI: true },
   { name: "9 · prepaid — capitalize (real builder)", lines: buildPrepaidCapitalizeEntry({ amount: 1200, prepaidCode: C.prepaid, offsetCode: C.ap }).lines, movesNI: false },
   { name: "9b · prepaid — amortization (real builder)", lines: buildPrepaidAmortizeEntry({ amount: 100, expenseCode: C.expense, prepaidCode: C.prepaid }).lines, movesNI: true },
-  { name: "10 · accrued liability recognition",      lines: [{ code: C.wages, debit: 800, credit: 0 }, { code: C.accrued, debit: 0, credit: 800 }], movesNI: true },
+  { name: "10 · accrued liability recognition (real builder)", lines: buildAccruedLiabilityEntry({ amount: 800, expenseCode: C.wages, accruedCode: C.accrued }).lines, movesNI: true },
   { name: "11 · deferred revenue — receipt (real builder)", lines: buildDeferredRevenueReceiptEntry({ amount: 1200, cashCode: C.cash, deferredRevCode: C.deferredRev }).lines, movesNI: false },
   { name: "11b · deferred revenue — recognition",    lines: [{ code: C.deferredRev, debit: 100, credit: 0 }, { code: C.subRev, debit: 0, credit: 100 }], movesNI: true },
   { name: "12 · lease commencement (ASC 842)",       lines: [{ code: C.rou, debit: 10000, credit: 0 }, { code: C.leaseCurr, debit: 0, credit: 4000 }, { code: C.leaseLT, debit: 0, credit: 6000 }], movesNI: false },

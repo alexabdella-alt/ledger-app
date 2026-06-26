@@ -192,3 +192,33 @@ describe("computeVendorTotals — expenses only, classified by GL class not by n
     expect(rows[0].total).toBe(5000);
   });
 });
+
+import { currentPeriodRange } from "../src/lib/reports.js";
+// O70 — the Reports window defaults to the CURRENT period on open: "to" is always
+// today (never a stale saved value); "from" is the period start.
+describe("currentPeriodRange — reports default to the current period (to == today)", () => {
+  it("fy/ytd: 'to' is today, 'from' is the fiscal-year start (calendar FY)", () => {
+    const r = currentPeriodRange("fy", { today: "2026-06-26", fiscalYearEnd: "12-31" });
+    expect(r.to).toBe("2026-06-26");
+    expect(r.from).toBe("2026-01-01");
+  });
+  it("respects a NON-calendar fiscal_year_end (FYE 06-30 → prior Jul 1)", () => {
+    const r = currentPeriodRange("fy", { today: "2026-06-26", fiscalYearEnd: "06-30" });
+    expect(r.to).toBe("2026-06-26");
+    expect(r.from).toBe("2025-07-01");          // FY runs Jul 1 → Jun 30
+  });
+  it("floors 'from' at the company cutoff (no activity before Day One)", () => {
+    const r = currentPeriodRange("fy", { today: "2026-06-26", fiscalYearEnd: "12-31", cutoffDate: "2026-03-15" });
+    expect(r.from).toBe("2026-03-15");
+  });
+  it("mtd: 'from' is the first of the current month, 'to' is today", () => {
+    const r = currentPeriodRange("mtd", { today: "2026-06-26" });
+    expect(r).toEqual({ from: "2026-06-01", to: "2026-06-26" });
+  });
+  it("all: unbounded window", () => {
+    expect(currentPeriodRange("all", { today: "2026-06-26" })).toEqual({ from: "", to: "" });
+  });
+  it("'to' tracks the date passed in — never a stale baked-in value", () => {
+    expect(currentPeriodRange("fy", { today: "2027-02-10", fiscalYearEnd: "12-31" })).toEqual({ from: "2027-01-01", to: "2027-02-10" });
+  });
+});

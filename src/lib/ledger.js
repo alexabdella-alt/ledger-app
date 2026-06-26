@@ -72,7 +72,8 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         due_date: e.due_date || undefined,
         confidence: e.ai_confidence ?? 99,
         reasoning: e.ai_reasoning || "Loaded from database",
-        db_entry_id: e.id
+        db_entry_id: e.id,
+        import_metadata: e.import_metadata || null,   // carries reversal linkage (O8)
       });
     } else {
       // Multi-line entry (lease commencement, payroll, taxed AR invoice, …) — expand
@@ -118,6 +119,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
           confidence: e.ai_confidence ?? 99,
           reasoning: e.ai_reasoning || "Loaded from database",
           db_entry_id: e.id,
+          import_metadata: e.import_metadata || null,   // carries reversal linkage (O8)
           balance_sheet_account: ["Assets", "Liabilities", "Equity"].includes(acctDef?.category),
         });
       });
@@ -142,4 +144,30 @@ export async function fetchLedger(supabase, companyId, chartOfAccounts = []) {
     .limit(5000);
   if (error) throw error;
   return flattenJournalEntries(entries, chartOfAccounts);
+}
+
+// O8 — reversal display index. A GAAP reversal (#14) posts a SEPARATE offsetting entry
+// that carries `import_metadata.reverses = <original db id>`; the ORIGINAL stays live
+// (audit trail) with no flag of its own. This scans the flattened rows for those
+// reversal entries and returns a Map<originalDbId, { date, reversalId }> so the UI can
+// mark the original "Reversed · DATE" (display-only — no accounting change). Pure.
+export function reversalIndex(invoices) {
+  const idx = new Map();
+  for (const row of invoices || []) {
+    const reverses = row && row.import_metadata && row.import_metadata.reverses;
+    if (reverses == null || reverses === "") continue;
+    const key = String(reverses);
+    // Keep the earliest reversal date if somehow multiple point at one original.
+    const prev = idx.get(key);
+    if (!prev || (row.date && String(row.date) < String(prev.date))) {
+      idx.set(key, { date: row.date || null, reversalId: row.db_entry_id || row.id || null });
+    }
+  }
+  return idx;
+}
+
+// Is this flattened row an original that has been reversed? (its db id is a key.)
+export function reversalFor(idx, row) {
+  if (!idx || !row) return null;
+  return idx.get(String(row.db_entry_id || row.id)) || null;
 }
