@@ -51,9 +51,9 @@ export default function ApView() {
   const openForm = (inv) => { setPayFormId(inv.id); setPayDate(today); setPayMethod("ach"); setPayRef(""); setPayNotes(""); };
   const confirmPay = (inv) => { markPaid(inv.id, payMethod, { date: payDate, reference: payRef, notes: payNotes }); setPayFormId(null); };
 
-  const Avatar = ({name,size=38}) => <div style={{ width:size,height:size,borderRadius:10,background:vendorColor(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.34,fontWeight:700,color:"#fff",flexShrink:0 }}>{initials(name)}</div>;
-  const fieldLabel = { fontSize:10, color:"#475467", letterSpacing:1, marginBottom:5, fontWeight:500 };
-  const fieldInput = { width:"100%", boxSizing:"border-box", background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:8, padding:"9px 11px", color:"#101828", fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif" };
+  const Avatar = ({name,size=38}) => <div style={{ width:size,height:size,borderRadius:10,background:vendorColor(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.34,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(name)}</div>;
+  const fieldLabel = { fontSize:10, color:"var(--sc-text-2)", letterSpacing:1, marginBottom:5, fontWeight:500 };
+  const fieldInput = { width:"100%", boxSizing:"border-box", background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"9px 11px", color:"var(--sc-text)", fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif" };
 
   const tabs = [["unpaid","Unpaid",unpaid.length],["paid","Paid",paid.length]];
   const active = apView==="paid" ? "paid" : "unpaid";
@@ -62,35 +62,35 @@ export default function ApView() {
     <div>
       {/* Header */}
       <div style={{ marginBottom:18 }}>
-        <div style={{ fontSize:10, letterSpacing:3, color:"#475467", marginBottom:8 }}>MONEY OUT</div>
+        <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>MONEY OUT</div>
         <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Bills & Payments</h1>
-        <div style={{ fontSize:13, color:"#475467", marginTop:6 }}>Your outstanding bills and payment history. Mark a bill paid in one step — it's logged to the audit trail.</div>
+        <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Your outstanding bills and payment history. Mark a bill paid in one step — it's logged to the audit trail.</div>
       </div>
 
       {/* Summary */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:18 }}>
-        <div onClick={()=>setApView("unpaid")} className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:"16px 20px", cursor:"pointer" }}>
-          <div style={{ fontSize:10, color:"#475467", letterSpacing:1.5, marginBottom:8 }}>OUTSTANDING · UNPAID</div>
+        <div onClick={()=>setApView("unpaid")} className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"16px 20px", cursor:"pointer" }}>
+          <div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:1.5, marginBottom:8 }}>OUTSTANDING · UNPAID</div>
           <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between" }}>
-            <div style={{ fontSize:24, fontWeight:700, color:"#D92D20", fontFamily:"'DM Mono',monospace" }}>{fmt(unpaidTotal)}</div>
-            <div style={{ fontSize:13, color:"#475467" }}>{unpaid.length} bill{unpaid.length!==1?"s":""}</div>
+            <div style={{ fontSize:24, fontWeight:700, color:"var(--sc-error)", fontFamily:"'DM Mono',monospace" }}>{fmt(unpaidTotal)}</div>
+            <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>{unpaid.length} bill{unpaid.length!==1?"s":""}</div>
           </div>
         </div>
-        <div onClick={()=>setApView("paid")} className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:"16px 20px", cursor:"pointer" }}>
-          <div style={{ fontSize:10, color:"#475467", letterSpacing:1.5, marginBottom:8 }}>PAID</div>
+        <div onClick={()=>setApView("paid")} className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"16px 20px", cursor:"pointer" }}>
+          <div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:1.5, marginBottom:8 }}>PAID</div>
           <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between" }}>
-            <div style={{ fontSize:24, fontWeight:700, color:"#039855", fontFamily:"'DM Mono',monospace" }}>{fmt(paid.reduce((s,i)=>s+i.amount,0))}</div>
-            <div style={{ fontSize:13, color:"#475467" }}>{paid.length} payment{paid.length!==1?"s":""}</div>
+            <div style={{ fontSize:24, fontWeight:700, color:"var(--sc-success)", fontFamily:"'DM Mono',monospace" }}>{fmt(paid.reduce((s,i)=>s+i.amount,0))}</div>
+            <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>{paid.length} payment{paid.length!==1?"s":""}</div>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display:"flex", gap:6, marginBottom:18, borderBottom:"1px solid #E4E7EC" }}>
+      <div style={{ display:"flex", gap:6, marginBottom:18, borderBottom:"1px solid var(--sc-border)" }}>
         {tabs.map(([id,label,count])=>(
-          <button key={id} onClick={()=>setApView(id)} style={{ padding:"9px 18px", borderRadius:"8px 8px 0 0", fontSize:13, fontWeight:active===id?600:400, background:"transparent", border:"none", borderBottom:active===id?"2px solid #4F46E5":"2px solid transparent", color:active===id?"#4F46E5":"#475467", cursor:"pointer", display:"flex", alignItems:"center", gap:7 }}>
+          <button key={id} onClick={()=>setApView(id)} style={{ padding:"9px 18px", borderRadius:"8px 8px 0 0", fontSize:13, fontWeight:active===id?600:400, background:"transparent", border:"none", borderBottom:active===id?"2px solid var(--sc-gold)":"2px solid transparent", color:active===id?"var(--sc-gold)":"var(--sc-text-2)", cursor:"pointer", display:"flex", alignItems:"center", gap:7 }}>
             {label}
-            {count>0 && <span style={{ fontSize:10, fontWeight:700, color:active===id?"#fff":"#374151", background:active===id?"#4F46E5":"#E4E7EC", borderRadius:20, padding:"1px 7px" }}>{count}</span>}
+            {count>0 && <span style={{ fontSize:10, fontWeight:700, color:active===id?"var(--sc-surface)":"var(--sc-text-2)", background:active===id?"var(--sc-gold)":"var(--sc-border)", borderRadius:20, padding:"1px 7px" }}>{count}</span>}
           </button>
         ))}
       </div>
@@ -98,33 +98,33 @@ export default function ApView() {
       {/* ── UNPAID ── */}
       {active==="unpaid" && (
         unpaid.length===0
-          ? <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:48, textAlign:"center", color:"#475467" }}><div style={{ fontSize:30, marginBottom:10 }}>🎉</div><div style={{ fontSize:14, color:"#101828", marginBottom:4 }}>All caught up</div>No outstanding bills. Upload a bill and it'll appear here.</div>
+          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}>🎉</div><div style={{ fontSize:14, color:"var(--sc-text)", marginBottom:4 }}>All caught up</div>No outstanding bills. Upload a bill and it'll appear here.</div>
           : <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
               {unpaid.map(inv=>{
                 const link = payLink(inv);
                 const overdue = inv.due_date && inv.due_date < today;
                 return (
-                  <div key={inv.id} className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:"16px 18px" }}>
+                  <div key={inv.id} className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"16px 18px" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:14, flexWrap:"wrap" }}>
                       <div style={{ display:"flex", alignItems:"center", gap:13, minWidth:0 }}>
                         <Avatar name={inv.vendor} />
                         <div style={{ minWidth:0 }}>
-                          <div style={{ fontSize:14, fontWeight:600, color:"#101828", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"Unknown vendor"}</div>
-                          <div style={{ fontSize:11, color:"#475467", display:"flex", gap:10, flexWrap:"wrap", marginTop:2, alignItems:"center" }}>
-                            <span style={{ fontFamily:"'DM Mono',monospace", background:"#F3F4F6", padding:"1px 6px", borderRadius:4, color:"#374151" }}>{inv.gl_code} · {inv.gl_name}</span>
-                            <span style={{ color: overdue ? "#D92D20" : "#475467" }}>{inv.due_date ? `Due ${fmtDate(inv.due_date)}${overdue?" · overdue":""}` : "No due date"}</span>
-                            {link && <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ color:"#4F46E5", fontWeight:600, textDecoration:"none" }}>{link.label}</a>}
+                          <div style={{ fontSize:14, fontWeight:600, color:"var(--sc-text)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"Unknown vendor"}</div>
+                          <div style={{ fontSize:11, color:"var(--sc-text-2)", display:"flex", gap:10, flexWrap:"wrap", marginTop:2, alignItems:"center" }}>
+                            <span style={{ fontFamily:"'DM Mono',monospace", background:"var(--sc-surface-2)", padding:"1px 6px", borderRadius:4, color:"var(--sc-text-2)" }}>{inv.gl_code} · {inv.gl_name}</span>
+                            <span style={{ color: overdue ? "var(--sc-error)" : "var(--sc-text-2)" }}>{inv.due_date ? `Due ${fmtDate(inv.due_date)}${overdue?" · overdue":""}` : "No due date"}</span>
+                            {link && <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ color:"var(--sc-gold)", fontWeight:600, textDecoration:"none" }}>{link.label}</a>}
                           </div>
                         </div>
                       </div>
                       <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-                        <div style={{ fontSize:17, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"#D92D20" }}>{fmt(inv.amount)}</div>
-                        {payFormId!==inv.id && <button onClick={()=>openForm(inv)} style={{ padding:"8px 16px", borderRadius:9, fontSize:13, fontWeight:600, background:"#4F46E5", border:"none", color:"#fff", cursor:"pointer" }}>Mark as Paid</button>}
+                        <div style={{ fontSize:17, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmt(inv.amount)}</div>
+                        {payFormId!==inv.id && <button onClick={()=>openForm(inv)} style={{ padding:"8px 16px", borderRadius:9, fontSize:13, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Mark as Paid</button>}
                       </div>
                     </div>
 
                     {payFormId===inv.id && (
-                      <div className="sc-rise" style={{ marginTop:14, paddingTop:14, borderTop:"1px solid #E4E7EC" }}>
+                      <div className="sc-rise" style={{ marginTop:14, paddingTop:14, borderTop:"1px solid var(--sc-border)" }}>
                         <div style={{ display:"grid", gridTemplateColumns:"1fr 1.4fr 1fr", gap:12, marginBottom:12 }}>
                           <div><div style={fieldLabel}>PAYMENT DATE</div><input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} style={fieldInput} /></div>
                           <div><div style={fieldLabel}>PAYMENT METHOD</div>
@@ -136,9 +136,9 @@ export default function ApView() {
                         </div>
                         <div style={{ marginBottom:12 }}><div style={fieldLabel}>NOTES</div><input value={payNotes} onChange={e=>setPayNotes(e.target.value)} placeholder="optional note for the audit trail" style={fieldInput} /></div>
                         <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-                          {vendorSite(inv) && <a href={vendorSite(inv)} target="_blank" rel="noopener noreferrer" style={{ fontSize:12, color:"#4F46E5", fontWeight:600, textDecoration:"none", border:"1px solid #E4E7EC", borderRadius:8, padding:"8px 12px" }}>Open Vendor Portal →</a>}
-                          <button onClick={()=>confirmPay(inv)} style={{ marginLeft:"auto", padding:"9px 18px", borderRadius:9, fontSize:13, fontWeight:600, background:"#039855", border:"none", color:"#fff", cursor:"pointer" }}>✓ Confirm Payment</button>
-                          <button onClick={()=>setPayFormId(null)} style={{ padding:"9px 14px", borderRadius:9, fontSize:13, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#374151", cursor:"pointer" }}>Cancel</button>
+                          {vendorSite(inv) && <a href={vendorSite(inv)} target="_blank" rel="noopener noreferrer" style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:600, textDecoration:"none", border:"1px solid var(--sc-border)", borderRadius:8, padding:"8px 12px" }}>Open Vendor Portal →</a>}
+                          <button onClick={()=>confirmPay(inv)} style={{ marginLeft:"auto", padding:"9px 18px", borderRadius:9, fontSize:13, fontWeight:600, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>✓ Confirm Payment</button>
+                          <button onClick={()=>setPayFormId(null)} style={{ padding:"9px 14px", borderRadius:9, fontSize:13, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>Cancel</button>
                         </div>
                       </div>
                     )}
@@ -151,19 +151,19 @@ export default function ApView() {
       {/* ── PAID ── */}
       {active==="paid" && (
         paid.length===0
-          ? <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, padding:48, textAlign:"center", color:"#475467" }}><div style={{ fontSize:30, marginBottom:10 }}>💸</div>No payments recorded yet.</div>
-          : <div className="sc-card" style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
+          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}>💸</div>No payments recorded yet.</div>
+          : <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                <thead><tr style={{ background:"#F3F4F6" }}>{["Vendor","GL Account","Method","Reference","Date Paid","Amount"].map(h=><th key={h} style={{ padding:"12px 18px", textAlign:h==="Amount"?"right":"left", fontSize:11, color:"#475467", letterSpacing:1, fontWeight:600, borderBottom:"1px solid #E4E7EC" }}>{h.toUpperCase()}</th>)}</tr></thead>
+                <thead><tr style={{ background:"var(--sc-surface-2)" }}>{["Vendor","GL Account","Method","Reference","Date Paid","Amount"].map(h=><th key={h} style={{ padding:"12px 18px", textAlign:h==="Amount"?"right":"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1, fontWeight:600, borderBottom:"1px solid var(--sc-border)" }}>{h.toUpperCase()}</th>)}</tr></thead>
                 <tbody>
                   {paid.map((inv,i)=>(
-                    <tr key={inv.id} onClick={()=>{ setReturnTo({view:"ap",label:"Payables"}); setSelectedInvoice(inv); setView("detail"); }} style={{ cursor:"pointer", background:i%2?"#F9FAFB":"#FFFFFF", borderBottom:"1px solid #F3F4F6" }} onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2?"#F9FAFB":"#FFFFFF"}>
-                      <td style={{ padding:"12px 18px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><Avatar name={inv.vendor} size={28} /><span style={{ fontSize:13, fontWeight:500, color:"#101828" }}>{inv.vendor}</span></div></td>
-                      <td style={{ padding:"12px 18px", fontSize:12, color:"#475467", fontFamily:"'DM Mono',monospace" }}>{inv.gl_code}</td>
-                      <td style={{ padding:"12px 18px" }}><span style={{ fontSize:11, fontWeight:600, color:"#4F46E5", background:"#EEF2FF", border:"1px solid #E4E7EC", borderRadius:20, padding:"2px 10px" }}>{methodLabel(inv.payment_method_used)}</span></td>
-                      <td style={{ padding:"12px 18px", fontSize:12, color:"#475467" }}>{inv.payment_reference || "—"}</td>
-                      <td style={{ padding:"12px 18px", fontSize:12, color:"#475467" }}>{inv.paid_at ? fmtDate(inv.paid_at) : "—"}</td>
-                      <td style={{ padding:"12px 18px", textAlign:"right", fontSize:14, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"#039855" }}>{fmt(inv.amount)}</td>
+                    <tr key={inv.id} onClick={()=>{ setReturnTo({view:"ap",label:"Payables"}); setSelectedInvoice(inv); setView("detail"); }} style={{ cursor:"pointer", background:i%2?"var(--sc-bg)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-surface-2)" }} onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2?"var(--sc-bg)":"var(--sc-surface)"}>
+                      <td style={{ padding:"12px 18px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><Avatar name={inv.vendor} size={28} /><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor}</span></div></td>
+                      <td style={{ padding:"12px 18px", fontSize:12, color:"var(--sc-text-2)", fontFamily:"'DM Mono',monospace" }}>{inv.gl_code}</td>
+                      <td style={{ padding:"12px 18px" }}><span style={{ fontSize:11, fontWeight:600, color:"var(--sc-gold)", background:"var(--sc-gold-soft)", border:"1px solid var(--sc-border)", borderRadius:20, padding:"2px 10px" }}>{methodLabel(inv.payment_method_used)}</span></td>
+                      <td style={{ padding:"12px 18px", fontSize:12, color:"var(--sc-text-2)" }}>{inv.payment_reference || "—"}</td>
+                      <td style={{ padding:"12px 18px", fontSize:12, color:"var(--sc-text-2)" }}>{inv.paid_at ? fmtDate(inv.paid_at) : "—"}</td>
+                      <td style={{ padding:"12px 18px", textAlign:"right", fontSize:14, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--sc-success)" }}>{fmt(inv.amount)}</td>
                     </tr>
                   ))}
                 </tbody>

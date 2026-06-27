@@ -64,27 +64,27 @@ export default function SettingsView() {
             };
             const inp = (k,l,p,type="text") => (
               <div>
-                <div style={{fontSize:11,color:"#475467",marginBottom:4}}>{l}</div>
+                <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>{l}</div>
                 <input type={type} value={draft[k]||""} onChange={e=>setDraft(d=>({...d,[k]:e.target.value}))} placeholder={p}
-                  style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}/>
+                  style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}/>
               </div>
             );
             return (
               <div style={{maxWidth:720}}>
                 <div style={{marginBottom:28}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"#475467",marginBottom:8}}>CONFIGURATION</div>
+                  <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>CONFIGURATION</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Settings</h1>
                 </div>
 
                 {/* Company identity */}
-                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:16}}>COMPANY</div>
+                <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:24,marginBottom:16}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5,marginBottom:16}}>COMPANY</div>
                   <div style={{display:"flex",gap:16,marginBottom:16,alignItems:"flex-start"}}>
                     {/* Logo */}
                     <div style={{flexShrink:0}}>
-                      <div style={{fontSize:11,color:"#475467",marginBottom:6}}>LOGO</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:6}}>LOGO</div>
                       <div onClick={()=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=e=>handleLogo(e.target.files[0]);i.click();}}
-                        style={{width:80,height:80,borderRadius:12,border:"2px dashed #D0D5DD",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",background:"#F3F4F6"}}>
+                        style={{width:80,height:80,borderRadius:12,border:"2px dashed var(--sc-border-2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",background:"var(--sc-surface-2)"}}>
                         {logoPreview ? <img src={logoPreview} style={{width:"100%",height:"100%",objectFit:"contain"}} alt="logo"/> : <span style={{fontSize:24}}>🏢</span>}
                       </div>
                     </div>
@@ -102,53 +102,53 @@ export default function SettingsView() {
                 </div>
 
                 {/* Accounting settings */}
-                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:16}}>ACCOUNTING</div>
+                <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:24,marginBottom:16}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5,marginBottom:16}}>ACCOUNTING</div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
                     <div>
-                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>FISCAL YEAR END</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>FISCAL YEAR END</div>
                       <select value={draft.fiscalYearEnd} onChange={e=>setDraft(d=>({...d,fiscalYearEnd:e.target.value}))}
-                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}>
+                        style={{width:"100%",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}>
                         {[["12-31","December 31"],["03-31","March 31"],["06-30","June 30"],["09-30","September 30"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
                       </select>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>DEFAULT CASH ACCOUNT</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>DEFAULT CASH ACCOUNT</div>
                       <select value={draft.defaultCashAccount} onChange={e=>setDraft(d=>({...d,defaultCashAccount:e.target.value}))}
-                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}>
+                        style={{width:"100%",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}>
                         {CHART_OF_ACCOUNTS.filter(a=>a.category==="Assets").map(a=><option key={a.code} value={a.code}>{a.code} – {a.name}</option>)}
                       </select>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>CURRENCY</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>CURRENCY</div>
                       <select value={draft.currency||"USD"} onChange={e=>setDraft(d=>({...d,currency:e.target.value}))}
-                        style={{width:"100%",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}>
+                        style={{width:"100%",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}>
                         {["USD","EUR","GBP","CAD","AUD"].map(c=><option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>DEFAULT SALES TAX RATE</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>DEFAULT SALES TAX RATE</div>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <input type="number" min="0" step="0.01" value={draft.salesTaxRate ?? 0} onChange={e=>setDraft(d=>({...d,salesTaxRate:e.target.value}))}
-                          style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"9px 12px",color:"#101828",fontSize:13,outline:"none"}}/>
-                        <span style={{fontSize:13,color:"#475467"}}>%</span>
+                          style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}/>
+                        <span style={{fontSize:13,color:"var(--sc-text-2)"}}>%</span>
                       </div>
-                      <div style={{fontSize:11,color:"#98A2B3",marginTop:4}}>Pre-fills new invoices · overridable per invoice</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-mut)",marginTop:4}}>Pre-fills new invoices · overridable per invoice</div>
                     </div>
                   </div>
                 </div>
 
                 {/* Bank accounts */}
-                <div id="bank-accounts-section" style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:24,marginBottom:16,scrollMarginTop:16}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:16}}>BANK ACCOUNTS</div>
-                  <div style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,marginBottom:6,fontSize:10,fontWeight:600,letterSpacing:0.4,color:"#98A2B3"}}>
+                <div id="bank-accounts-section" style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:24,marginBottom:16,scrollMarginTop:16}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5,marginBottom:16}}>BANK ACCOUNTS</div>
+                  <div style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,marginBottom:6,fontSize:10,fontWeight:600,letterSpacing:0.4,color:"var(--sc-text-mut)"}}>
                     <div>ACCOUNT NAME</div><div>TYPE</div><div>GL</div><div>BANK</div><div style={{textAlign:"right"}}>CURRENT BALANCE</div><div/>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
                     {bankAccounts.map(ba=>(
                       <div key={ba.id} style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,alignItems:"center"}}>
                         <input value={ba.name} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,name:e.target.value}:b))}
-                          placeholder="Account name" style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}/>
+                          placeholder="Account name" style={{background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}/>
                         <select value={ba.type} onChange={e=>{
                             const type = e.target.value;
                             // Default the GL to the type's natural account so a card offsets to
@@ -156,60 +156,60 @@ export default function SettingsView() {
                             const glForType = glCodeForAccountType(type, role=>getAccountByRole(role)?.code);
                             setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,type,gl_code:glForType}:b));
                           }}
-                          style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}>
+                          style={{background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}>
                           {["checking","savings","credit_card","loan","other"].map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}
                         </select>
                         <select value={ba.gl_code} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,gl_code:e.target.value}:b))}
-                          style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}>
+                          style={{background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}>
                           {CHART_OF_ACCOUNTS.filter(a=>["Assets","Liabilities"].includes(a.category)).map(a=><option key={a.code} value={a.code}>{a.code}</option>)}
                         </select>
                         <input value={ba.institution||""} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,institution:e.target.value}:b))}
-                          placeholder="Bank name" style={{background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px",color:"#101828",fontSize:12,outline:"none"}}/>
+                          placeholder="Bank name" style={{background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}/>
                         <div style={{position:"relative"}}>
-                          <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#98A2B3",fontSize:12,pointerEvents:"none"}}>$</span>
+                          <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"var(--sc-text-mut)",fontSize:12,pointerEvents:"none"}}>$</span>
                           <input type="number" inputMode="decimal" step="0.01" value={ba.current_balance ?? ""}
                             onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,current_balance:e.target.value}:b))}
                             onBlur={()=>persistBankAccounts && persistBankAccounts()}
-                            placeholder="0.00" style={{width:"100%",boxSizing:"border-box",background:"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"8px 10px 8px 18px",color:"#101828",fontSize:12,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
+                            placeholder="0.00" style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px 8px 18px",color:"var(--sc-text)",fontSize:12,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
                         </div>
-                        <button onClick={()=>setBankAccounts(prev=>prev.filter(b=>b.id!==ba.id))} style={{background:"transparent",border:"1px solid #D0D5DD",borderRadius:7,padding:"7px 10px",color:"#D92D20",cursor:"pointer",fontSize:13}}>×</button>
+                        <button onClick={()=>setBankAccounts(prev=>prev.filter(b=>b.id!==ba.id))} style={{background:"transparent",border:"1px solid var(--sc-border-2)",borderRadius:7,padding:"7px 10px",color:"var(--sc-error)",cursor:"pointer",fontSize:13}}>×</button>
                       </div>
                     ))}
                   </div>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingTop:10,borderTop:"1px solid #F3F4F6"}}>
-                    <div style={{fontSize:12,color:"#475467"}}>Total cash across accounts</div>
-                    <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#039855"}}>${bankAccounts.reduce((s,b)=>s+(parseFloat(b.current_balance)||0),0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingTop:10,borderTop:"1px solid var(--sc-surface-2)"}}>
+                    <div style={{fontSize:12,color:"var(--sc-text-2)"}}>Total cash across accounts</div>
+                    <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--sc-success)"}}>${bankAccounts.reduce((s,b)=>s+(parseFloat(b.current_balance)||0),0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
                   </div>
                   <button onClick={()=>setBankAccounts(prev=>[...prev,{id:Date.now()+Math.random(),name:"",type:"checking",gl_code:getAccountByRole("cash")?.code,institution:"",current_balance:0}])}
-                    style={{fontSize:12,background:"transparent",border:"1px dashed #D0D5DD",borderRadius:8,padding:"7px 16px",color:"#475467",cursor:"pointer"}}>+ Add Bank Account</button>
+                    style={{fontSize:12,background:"transparent",border:"1px dashed var(--sc-border-2)",borderRadius:8,padding:"7px 16px",color:"var(--sc-text-2)",cursor:"pointer"}}>+ Add Bank Account</button>
                 </div>
 
                 {/* EXPORT YOUR DATA — safety net */}
-                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:14,padding:20,marginBottom:24}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5,marginBottom:6}}>YOUR DATA</div>
+                <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:20,marginBottom:24}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5,marginBottom:6}}>YOUR DATA</div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-                    <div style={{fontSize:13,color:"#475467",maxWidth:440,lineHeight:1.5}}>
+                    <div style={{fontSize:13,color:"var(--sc-text-2)",maxWidth:440,lineHeight:1.5}}>
                       Download a CSV of every transaction, contact, and contract. Your data is always yours — keep a copy anytime.
                     </div>
                     <button onClick={exportAllData}
-                      style={{flexShrink:0,height:40,padding:"0 18px",borderRadius:8,fontSize:14,fontWeight:600,background:"#FFFFFF",border:"1px solid #D0D5DD",color:"#344054",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8}}
-                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#4F46E5";e.currentTarget.style.color="#4F46E5";}}
-                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#D0D5DD";e.currentTarget.style.color="#344054";}}>
+                      style={{flexShrink:0,height:40,padding:"0 18px",borderRadius:8,fontSize:14,fontWeight:600,background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8}}
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#4F46E5";e.currentTarget.style.color="#e8b53d";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#D0D5DD";e.currentTarget.style.color="#b9c6d2";}}>
                       ↓ Export All Data (CSV)
                     </button>
                   </div>
                 </div>
 
-                <button onClick={save} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,#D1FAE5,#039855)":"linear-gradient(135deg,#4F46E5,#4338CA)",border:"none",color:saved?"#039855":"#101828",cursor:"pointer",transition:"all 0.3s"}}>
+                <button onClick={save} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:saved?"var(--sc-success)":"var(--sc-text)",cursor:"pointer",transition:"all 0.3s"}}>
                   {saved ? "✓ Saved" : "Save Settings"}
                 </button>
 
                 {/* Legal footer (Item 18) */}
-                <div style={{marginTop:32,paddingTop:18,borderTop:"1px solid #E4E7EC",display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
-                  <span style={{fontSize:12,color:"#98A2B3"}}>Shadow</span>
-                  <span style={{fontSize:12,color:"#4F46E5",cursor:"pointer",fontWeight:500}} onClick={()=>{ setLegalTab("terms"); setView("legal"); }}>Terms of Service</span>
-                  <span style={{color:"#D0D5DD"}}>·</span>
-                  <span style={{fontSize:12,color:"#4F46E5",cursor:"pointer",fontWeight:500}} onClick={()=>{ setLegalTab("privacy"); setView("legal"); }}>Privacy Policy</span>
+                <div style={{marginTop:32,paddingTop:18,borderTop:"1px solid var(--sc-border)",display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontSize:12,color:"var(--sc-text-mut)"}}>Shadow</span>
+                  <span style={{fontSize:12,color:"var(--sc-gold)",cursor:"pointer",fontWeight:500}} onClick={()=>{ setLegalTab("terms"); setView("legal"); }}>Terms of Service</span>
+                  <span style={{color:"var(--sc-border-2)"}}>·</span>
+                  <span style={{fontSize:12,color:"var(--sc-gold)",cursor:"pointer",fontWeight:500}} onClick={()=>{ setLegalTab("privacy"); setView("legal"); }}>Privacy Policy</span>
                 </div>
               </div>
             );

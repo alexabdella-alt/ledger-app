@@ -30,6 +30,7 @@
   --sc-gold-soft:   rgba(232,181,61,0.12);  /* tint fills */
   --sc-gold-line:   rgba(232,181,61,0.30);  /* tint borders */
   --sc-gold-glow:   rgba(232,181,61,0.22);  /* hero glow */
+  --sc-on-accent:   #181206;                /* dark ink for text on gold/bright fills */
 
   /* ---- semantic ---- */
   --sc-success:      #4ade80;
@@ -139,6 +140,11 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
 @keyframes scGoldPulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
 @keyframes scDraw    { from { stroke-dashoffset: var(--sc-draw-len, 1000); } to { stroke-dashoffset: 0; } }
 @keyframes scGrowY   { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes scGrowX   { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Chart bars grow in from their baseline — fast + subtle, safe on dense report screens */
+.sc-bar { transform-origin: left center; animation: scGrowX .55s var(--sc-ease) both; }
+.sc-bar-up { transform-origin: bottom; animation: scGrowY .55s var(--sc-ease) both; }
 
 /* =====================  Utilities  ===================== */
 .sc-rise   { animation: scRise var(--sc-dur-slow) var(--sc-ease) both; }

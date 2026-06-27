@@ -11,7 +11,7 @@ import SecurityView from "./SecurityView";
 // app into a client's context to diagnose/fix things exactly as they see them.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const A = { amber: "#DC6803", amberBg: "#FFFAEB", amberBorder: "#FEDF89", red: "#D92D20", green: "#039855", muted: "#667085" };
+const A = { amber: "var(--sc-warning)", amberBg: "var(--sc-warning-soft)", amberBorder: "#FEDF89", red: "var(--sc-error)", green: "var(--sc-success)", muted: "var(--sc-text-mut)" };
 const fmtMoney = n => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
 const fmtBytes = n => {
   const b = Number(n) || 0;
@@ -53,10 +53,10 @@ export default function AdminView() {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: "1px solid #E4E7EC", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: "1px solid var(--sc-border)", flexWrap: "wrap" }}>
         {TABS.map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
-            style={{ padding: "9px 16px", background: "none", border: "none", borderBottom: tab === id ? `2px solid ${A.amber}` : "2px solid transparent", color: tab === id ? A.amber : "#475467", fontSize: 14, fontWeight: tab === id ? 600 : 500, cursor: "pointer" }}>
+            style={{ padding: "9px 16px", background: "none", border: "none", borderBottom: tab === id ? `2px solid ${A.amber}` : "2px solid transparent", color: tab === id ? A.amber : "var(--sc-text-2)", fontSize: 14, fontWeight: tab === id ? 600 : 500, cursor: "pointer" }}>
             {label}
           </button>
         ))}
@@ -73,18 +73,18 @@ export default function AdminView() {
 
 // ── Shared bits ──────────────────────────────────────────────────────────────
 const Card = ({ title, right, children, accent }) => (
-  <div className="sc-card" style={{ background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 12, marginBottom: 16, overflow: "clip" }}>
+  <div className="sc-card" style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 12, marginBottom: 16, overflow: "clip" }}>
     {title && (
-      <div style={{ padding: "14px 18px", borderBottom: "1px solid #EEF0F4", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: accent || "#101828" }}>{title}</div>
+      <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--sc-border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: accent || "var(--sc-text)" }}>{title}</div>
         {right}
       </div>
     )}
     {children}
   </div>
 );
-const Th = ({ children, align }) => <th style={{ padding: "9px 12px", textAlign: align || "left", fontSize: 11, color: "#98A2B3", letterSpacing: 0.5, fontWeight: 600, borderBottom: "1px solid #E4E7EC", whiteSpace: "nowrap" }}>{String(children).toUpperCase()}</th>;
-const Td = ({ children, align, mono, color }) => <td style={{ padding: "9px 12px", textAlign: align || "left", fontSize: 13, color: color || "#374151", fontFamily: mono ? "'DM Mono',monospace" : "inherit", whiteSpace: "nowrap" }}>{children}</td>;
+const Th = ({ children, align }) => <th style={{ padding: "9px 12px", textAlign: align || "left", fontSize: 11, color: "var(--sc-text-mut)", letterSpacing: 0.5, fontWeight: 600, borderBottom: "1px solid var(--sc-border)", whiteSpace: "nowrap" }}>{String(children).toUpperCase()}</th>;
+const Td = ({ children, align, mono, color }) => <td style={{ padding: "9px 12px", textAlign: align || "left", fontSize: 13, color: color || "var(--sc-text-2)", fontFamily: mono ? "'DM Mono',monospace" : "inherit", whiteSpace: "nowrap" }}>{children}</td>;
 const Empty = ({ children }) => <div style={{ padding: 28, textAlign: "center", color: A.muted, fontSize: 13 }}>{children}</div>;
 const Loading = () => <div style={{ padding: 28, textAlign: "center", color: A.muted, fontSize: 13 }}>Loading…</div>;
 const btn = (bg, color, border) => ({ padding: "5px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: bg, color, border: border || "none", cursor: "pointer", whiteSpace: "nowrap" });
@@ -114,13 +114,13 @@ function ClientsTab({ rpc, enterSupport, showNotification, supabase }) {
       <Card title={`All companies (${rows.length})`} accent={A.amber}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr style={{ background: "#F9FAFB" }}>
+            <thead><tr style={{ background: "var(--sc-bg)" }}>
               {["Company", "Owner", "Created", "Last active", "Txns", "Docs", "Failed 7d", "Storage", "Status", ""].map((h, i) => <Th key={i} align={["Txns", "Docs", "Failed 7d", "Storage"].includes(h) ? "right" : "left"}>{h}</Th>)}
             </tr></thead>
             <tbody>
               {rows.length === 0 ? <tr><td colSpan={10}><Empty>No companies yet.</Empty></td></tr> : rows.map(r => (
-                <tr key={r.company_id} style={{ borderBottom: "1px solid #F2F4F7" }}>
-                  <td style={{ padding: "9px 12px", fontSize: 13, color: "#101828", fontWeight: 600, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</td>
+                <tr key={r.company_id} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
+                  <td style={{ padding: "9px 12px", fontSize: 13, color: "var(--sc-text)", fontWeight: 600, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</td>
                   <td style={{ padding: "9px 12px", fontSize: 13, color: A.muted, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.owner_email || ""}>{r.owner_email || "—"}</td>
                   <Td color={A.muted}>{fmtDate(r.created_at)}</Td>
                   <Td color={A.muted}>{r.last_active ? fmtDate(r.last_active) : "never"}</Td>
@@ -131,10 +131,10 @@ function ClientsTab({ rpc, enterSupport, showNotification, supabase }) {
                   <Td>{statusBadge(r.status)}</Td>
                   <Td>
                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                      <button onClick={() => enterSupport({ id: r.company_id, name: r.name })} style={btnSm("#EA580C", "#fff")}>Support</button>
-                      <button onClick={() => setModal({ kind: "audit", company: r })} style={btnSm("#EEF2FF", "#4F46E5", "1px solid #4F46E533")}>Audit</button>
-                      <button onClick={() => setModal({ kind: "uploads", company: r })} style={btnSm("#EEF2FF", "#4F46E5", "1px solid #4F46E533")}>Uploads</button>
-                      <button onClick={() => resetPassword(r.owner_email)} style={btnSm("#FFFFFF", "#475467", "1px solid #D0D5DD")}>Reset PW</button>
+                      <button onClick={() => enterSupport({ id: r.company_id, name: r.name })} style={btnSm("var(--sc-warning)", "var(--sc-surface)")}>Support</button>
+                      <button onClick={() => setModal({ kind: "audit", company: r })} style={btnSm("var(--sc-gold-soft)", "var(--sc-gold)", "1px solid var(--sc-gold-soft)")}>Audit</button>
+                      <button onClick={() => setModal({ kind: "uploads", company: r })} style={btnSm("var(--sc-gold-soft)", "var(--sc-gold)", "1px solid var(--sc-gold-soft)")}>Uploads</button>
+                      <button onClick={() => resetPassword(r.owner_email)} style={btnSm("var(--sc-surface)", "var(--sc-text-2)", "1px solid var(--sc-border-2)")}>Reset PW</button>
                     </div>
                   </Td>
                 </tr>
@@ -158,35 +158,35 @@ function CompanyModal({ rpc, modal, onClose }) {
 
   return createPortal((
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10001, background: "rgba(17,24,39,0.4)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "48px 24px", overflowY: "auto" }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 900, maxWidth: "96vw", background: "#FFFFFF", borderRadius: 14, boxShadow: "0 24px 80px rgba(16,24,40,0.3)" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #EEF0F4", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 900, maxWidth: "96vw", background: "var(--sc-surface)", borderRadius: 14, boxShadow: "0 24px 80px rgba(16,24,40,0.3)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--sc-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 15, fontWeight: 600 }}>{modal.company.name} — {modal.kind === "audit" ? "Audit Trail" : "Upload History"}</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "#475467", cursor: "pointer", lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "var(--sc-text-2)", cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
         <div style={{ maxHeight: "70vh", overflowY: "auto" }}>
           {!data ? <Loading /> : data.length === 0 ? <Empty>Nothing recorded.</Empty> : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               {modal.kind === "audit" ? (
                 <>
-                  <thead><tr style={{ background: "#F9FAFB" }}><Th>When</Th><Th>Action</Th><Th>Detail</Th><Th>By</Th></tr></thead>
+                  <thead><tr style={{ background: "var(--sc-bg)" }}><Th>When</Th><Th>Action</Th><Th>Detail</Th><Th>By</Th></tr></thead>
                   <tbody>{data.map((a, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid #F2F4F7" }}>
+                    <tr key={i} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
                       <Td color={A.muted} mono>{dt(a.created_at)}</Td>
-                      <Td><span style={{ fontSize: 11, background: "#EEF2FF", color: "#4F46E5", borderRadius: 20, padding: "2px 8px" }}>{(a.action || "").replace(/_/g, " ")}</span></Td>
-                      <td style={{ padding: "10px 14px", fontSize: 13, color: "#374151" }}>{a.detail}</td>
-                      <Td color={a.performed_by === "AI Chat" ? "#4F46E5" : a.performed_by?.startsWith("Platform Admin") ? A.amber : A.muted}>{a.performed_by || "—"}</Td>
+                      <Td><span style={{ fontSize: 11, background: "var(--sc-gold-soft)", color: "var(--sc-gold)", borderRadius: 20, padding: "2px 8px" }}>{(a.action || "").replace(/_/g, " ")}</span></Td>
+                      <td style={{ padding: "10px 14px", fontSize: 13, color: "var(--sc-text-2)" }}>{a.detail}</td>
+                      <Td color={a.performed_by === "AI Chat" ? "var(--sc-gold)" : a.performed_by?.startsWith("Platform Admin") ? A.amber : A.muted}>{a.performed_by || "—"}</Td>
                     </tr>
                   ))}</tbody>
                 </>
               ) : (
                 <>
-                  <thead><tr style={{ background: "#F9FAFB" }}><Th>When</Th><Th>File</Th><Th>Type</Th><Th>Status</Th><Th>Detail</Th></tr></thead>
+                  <thead><tr style={{ background: "var(--sc-bg)" }}><Th>When</Th><Th>File</Th><Th>Type</Th><Th>Status</Th><Th>Detail</Th></tr></thead>
                   <tbody>{data.map((u, i) => {
                     const sc = u.status === "done" ? A.green : u.status === "error" ? A.red : A.amber;
                     return (
-                      <tr key={i} style={{ borderBottom: "1px solid #F2F4F7" }}>
+                      <tr key={i} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
                         <Td color={A.muted} mono>{dt(u.created_at)}</Td>
-                        <Td color="#101828">{u.file_name}</Td>
+                        <Td color="#f3f6f9">{u.file_name}</Td>
                         <Td color={A.muted}>{u.doc_type || "—"}</Td>
                         <Td><span style={{ fontSize: 11, fontWeight: 600, color: sc, background: sc + "14", borderRadius: 20, padding: "2px 8px" }}>{u.status}</span></Td>
                         <td style={{ padding: "10px 14px", fontSize: 12, color: u.error ? A.red : A.muted, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.error || (u.result ? JSON.stringify(u.result) : "")}</td>
@@ -231,18 +231,18 @@ function ProblemsTab({ rpc, enterSupport }) {
       <Card accent={vis && vis.length ? A.red : A.green} title="Booking visibility failures (30d)">
         {vis === null ? <Loading /> : vis.length === 0 ? <Empty>No booking-visibility failures in the last 30 days 🎉</Empty> : (
           <>
-            <div style={{ padding: "12px 18px", display: "flex", alignItems: "baseline", gap: 10, borderBottom: "1px solid #F2F4F7" }}>
+            <div style={{ padding: "12px 18px", display: "flex", alignItems: "baseline", gap: 10, borderBottom: "1px solid var(--sc-surface-2)" }}>
               <span style={{ fontSize: 30, fontWeight: 700, color: A.red, fontFamily: "'DM Mono',monospace" }}>{vis.length}</span>
-              <span style={{ fontSize: 13, color: "#475467" }}>event{vis.length !== 1 ? "s" : ""} across {visCompanies} compan{visCompanies !== 1 ? "ies" : "y"} — investigate immediately</span>
+              <span style={{ fontSize: 13, color: "var(--sc-text-2)" }}>event{vis.length !== 1 ? "s" : ""} across {visCompanies} compan{visCompanies !== 1 ? "ies" : "y"} — investigate immediately</span>
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr style={{ background: "#F9FAFB" }}><Th>When</Th><Th>Company</Th><Th>Detail</Th><Th></Th></tr></thead>
+              <thead><tr style={{ background: "var(--sc-bg)" }}><Th>When</Th><Th>Company</Th><Th>Detail</Th><Th></Th></tr></thead>
               <tbody>{vis.slice(0, 50).map((v, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid #F2F4F7" }}>
+                <tr key={i} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
                   <Td color={A.muted} mono>{dt(v.created_at)}</Td>
-                  <Td color="#101828">{v.company_name || "—"}</Td>
-                  <td style={{ padding: "10px 14px", fontSize: 12, color: "#374151" }}>{v.detail}</td>
-                  <Td>{v.company_id && <button onClick={() => openSupport(v.company_id, v.company_name)} style={btn("#EA580C", "#fff")}>Open in Support</button>}</Td>
+                  <Td color="#f3f6f9">{v.company_name || "—"}</Td>
+                  <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--sc-text-2)" }}>{v.detail}</td>
+                  <Td>{v.company_id && <button onClick={() => openSupport(v.company_id, v.company_name)} style={btn("var(--sc-warning)", "var(--sc-surface)")}>Open in Support</button>}</Td>
                 </tr>
               ))}</tbody>
             </table>
@@ -253,19 +253,19 @@ function ProblemsTab({ rpc, enterSupport }) {
       <Card accent={A.red} title={`Failed uploads`} right={
         <div style={{ display: "flex", gap: 4 }}>
           {[[1, "24h"], [7, "7d"], [30, "30d"]].map(([d, l]) => (
-            <button key={d} onClick={() => setDays(d)} style={{ padding: "4px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", background: days === d ? A.amber : "#FFFFFF", color: days === d ? "#fff" : "#475467", border: `1px solid ${days === d ? A.amber : "#D0D5DD"}` }}>{l}</button>
+            <button key={d} onClick={() => setDays(d)} style={{ padding: "4px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", background: days === d ? A.amber : "var(--sc-surface)", color: days === d ? "var(--sc-surface)" : "var(--sc-text-2)", border: `1px solid ${days === d ? A.amber : "var(--sc-border-2)"}` }}>{l}</button>
           ))}
         </div>}>
         {!failed ? <Loading /> : failed.length === 0 ? <Empty>No failed uploads in this window 🎉</Empty> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr style={{ background: "#F9FAFB" }}><Th>Company</Th><Th>File</Th><Th>Error</Th><Th>When</Th><Th></Th></tr></thead>
+            <thead><tr style={{ background: "var(--sc-bg)" }}><Th>Company</Th><Th>File</Th><Th>Error</Th><Th>When</Th><Th></Th></tr></thead>
             <tbody>{failed.map(f => (
-              <tr key={f.id} style={{ borderBottom: "1px solid #F2F4F7" }}>
-                <Td color="#101828">{f.company_name}</Td>
+              <tr key={f.id} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
+                <Td color="#f3f6f9">{f.company_name}</Td>
                 <Td>{f.file_name}{f.has_storage && <span title="File is in storage — can be reprocessed" style={{ marginLeft: 6, fontSize: 10, color: A.green }}>● stored</span>}</Td>
                 <td style={{ padding: "10px 14px", fontSize: 12, color: A.red, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.error}</td>
                 <Td color={A.muted} mono>{dt(f.created_at)}</Td>
-                <Td><button onClick={() => openSupport(f.company_id, f.company_name)} style={btn("#EA580C", "#fff")}>Open in Support</button></Td>
+                <Td><button onClick={() => openSupport(f.company_id, f.company_name)} style={btn("var(--sc-warning)", "var(--sc-surface)")}>Open in Support</button></Td>
               </tr>
             ))}</tbody>
           </table>
@@ -275,13 +275,13 @@ function ProblemsTab({ rpc, enterSupport }) {
       <Card accent={A.red} title="Recent errors (all companies)">
         {!errors ? <Loading /> : errors.length === 0 ? <Empty>No recent errors.</Empty> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr style={{ background: "#F9FAFB" }}><Th>When</Th><Th>Company</Th><Th>Action</Th><Th>Detail</Th></tr></thead>
+            <thead><tr style={{ background: "var(--sc-bg)" }}><Th>When</Th><Th>Company</Th><Th>Action</Th><Th>Detail</Th></tr></thead>
             <tbody>{errors.map((e, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid #F2F4F7" }}>
+              <tr key={i} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
                 <Td color={A.muted} mono>{dt(e.created_at)}</Td>
                 <Td>{e.company_name || "—"}</Td>
                 <Td><span style={{ fontSize: 11, color: A.red, background: A.red + "14", borderRadius: 20, padding: "2px 8px" }}>{(e.action || "").replace(/_/g, " ")}</span></Td>
-                <td style={{ padding: "10px 14px", fontSize: 12, color: "#374151" }}>{e.detail}</td>
+                <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--sc-text-2)" }}>{e.detail}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -291,17 +291,17 @@ function ProblemsTab({ rpc, enterSupport }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 }}>
         <Card accent={A.amber} title="Stuck uploads (>10 min)">
           {!stuck ? <Loading /> : stuck.length === 0 ? <Empty>Nothing stuck.</Empty> : stuck.map(s => (
-            <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 18px", borderTop: "1px solid #F2F4F7" }}>
-              <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 500, color: "#101828" }}>{s.file_name}</div><div style={{ fontSize: 11, color: A.muted }}>{s.company_name} · stuck {s.minutes_stuck}m</div></div>
-              <button onClick={() => openSupport(s.company_id, s.company_name)} style={btn("#FFFFFF", "#475467", "1px solid #D0D5DD")}>Open</button>
+            <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 18px", borderTop: "1px solid var(--sc-surface-2)" }}>
+              <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 500, color: "var(--sc-text)" }}>{s.file_name}</div><div style={{ fontSize: 11, color: A.muted }}>{s.company_name} · stuck {s.minutes_stuck}m</div></div>
+              <button onClick={() => openSupport(s.company_id, s.company_name)} style={btn("var(--sc-surface)", "var(--sc-text-2)", "1px solid var(--sc-border-2)")}>Open</button>
             </div>
           ))}
         </Card>
 
         <Card accent={A.amber} title="Orphaned documents">
           {!orphans ? <Loading /> : orphans.length === 0 ? <Empty>No orphaned documents.</Empty> : orphans.slice(0, 50).map((o, i) => (
-            <div key={i} style={{ padding: "10px 18px", borderTop: "1px solid #F2F4F7" }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#101828", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.file_name}</div>
+            <div key={i} style={{ padding: "10px 18px", borderTop: "1px solid var(--sc-surface-2)" }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--sc-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.file_name}</div>
               <div style={{ fontSize: 11, color: A.muted }}>{o.company_name} · {o.detail} · {fmtDate(o.created_at)}</div>
             </div>
           ))}
@@ -311,10 +311,10 @@ function ProblemsTab({ rpc, enterSupport }) {
       <Card accent={A.amber} title="Possible duplicate entries (same vendor · amount · date)">
         {!dupes ? <Loading /> : dupes.length === 0 ? <Empty>No duplicates detected.</Empty> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr style={{ background: "#F9FAFB" }}><Th>Company</Th><Th>Vendor</Th><Th>Date</Th><Th align="right">Amount</Th><Th align="right">Count</Th></tr></thead>
+            <thead><tr style={{ background: "var(--sc-bg)" }}><Th>Company</Th><Th>Vendor</Th><Th>Date</Th><Th align="right">Amount</Th><Th align="right">Count</Th></tr></thead>
             <tbody>{dupes.map((d, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid #F2F4F7" }}>
-                <Td>{d.company_name}</Td><Td color="#101828">{d.vendor}</Td><Td color={A.muted}>{fmtDate(d.entry_date)}</Td>
+              <tr key={i} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
+                <Td>{d.company_name}</Td><Td color="#f3f6f9">{d.vendor}</Td><Td color={A.muted}>{fmtDate(d.entry_date)}</Td>
                 <Td align="right" mono>{fmtMoney(d.amount)}</Td>
                 <Td align="right"><span style={{ fontSize: 11, fontWeight: 700, color: A.red, background: A.red + "14", borderRadius: 20, padding: "1px 8px" }}>{d.cnt}×</span></Td>
               </tr>
@@ -335,7 +335,7 @@ function StatsTab({ rpc }) {
   const aiCost = aiCalls * 0.012; // rough blended per-call estimate (Haiku classify + Sonnet extract/code)
 
   const Metric = ({ label, value, sub }) => (
-    <div className="sc-card" style={{ background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 12, padding: "18px 20px" }}>
+    <div className="sc-card" style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 12, padding: "18px 20px" }}>
       <div style={{ fontSize: 12, color: A.muted, fontWeight: 600, marginBottom: 8 }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "'DM Mono',monospace", letterSpacing: -1 }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: A.muted, marginTop: 6 }}>{sub}</div>}
@@ -359,7 +359,7 @@ function StatsTab({ rpc }) {
           {(s.companies_by_month || []).length === 0 ? <Empty>No data.</Empty> : (s.companies_by_month || []).map(m => (
             <div key={m.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 0 }}>
               <div style={{ fontSize: 11, color: A.muted, fontFamily: "'DM Mono',monospace" }}>{m.count}</div>
-              <div style={{ width: "100%", maxWidth: 40, height: `${(m.count / maxMonth) * 90}px`, minHeight: 3, background: "linear-gradient(180deg,#F59E0B,#DC6803)", borderRadius: "4px 4px 0 0" }} />
+              <div style={{ width: "100%", maxWidth: 40, height: `${(m.count / maxMonth) * 90}px`, minHeight: 3, background: "linear-gradient(180deg,#F59E0B,var(--sc-warning))", borderRadius: "4px 4px 0 0" }} />
               <div style={{ fontSize: 10, color: A.muted, whiteSpace: "nowrap" }}>{m.month?.slice(2)}</div>
             </div>
           ))}
@@ -369,16 +369,16 @@ function StatsTab({ rpc }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 }}>
         <Card title="Most active companies (top 10)">
           {(s.top_companies || []).map((c, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 18px", borderTop: i ? "1px solid #F2F4F7" : "none", fontSize: 13 }}>
-              <span style={{ color: "#101828" }}><span style={{ color: A.muted, marginRight: 8 }}>{i + 1}.</span>{c.name}</span>
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 18px", borderTop: i ? "1px solid var(--sc-surface-2)" : "none", fontSize: 13 }}>
+              <span style={{ color: "var(--sc-text)" }}><span style={{ color: A.muted, marginRight: 8 }}>{i + 1}.</span>{c.name}</span>
               <span style={{ fontFamily: "'DM Mono',monospace", color: A.muted }}>{c.txns} txns</span>
             </div>
           ))}
         </Card>
         <Card title="Feature usage (audit actions)">
           {(s.feature_usage || []).map((f, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 18px", borderTop: i ? "1px solid #F2F4F7" : "none", fontSize: 13 }}>
-              <span style={{ color: "#374151" }}>{(f.action || "").replace(/_/g, " ")}</span>
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 18px", borderTop: i ? "1px solid var(--sc-surface-2)" : "none", fontSize: 13 }}>
+              <span style={{ color: "var(--sc-text-2)" }}>{(f.action || "").replace(/_/g, " ")}</span>
               <span style={{ fontFamily: "'DM Mono',monospace", color: A.muted }}>{f.count}</span>
             </div>
           ))}
@@ -416,7 +416,7 @@ function RecoveryTab({ rpc, showNotification }) {
     if (r?.restored) { showNotification("Entry restored — it's back in the client's books ✓"); search(); }
   };
 
-  const inp = { background: "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#101828", outline: "none" };
+  const inp = { background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" };
   return (
     <>
       <Card title="Search all entries (including soft-deleted)" accent={A.amber}>
@@ -430,25 +430,25 @@ function RecoveryTab({ rpc, showNotification }) {
           <div><div style={{ fontSize: 11, color: A.muted, marginBottom: 4 }}>To</div><input type="date" value={f.to} onChange={e => setF(s => ({ ...s, to: e.target.value }))} style={inp} /></div>
           <div><div style={{ fontSize: 11, color: A.muted, marginBottom: 4 }}>Vendor</div><input value={f.vendor} onChange={e => setF(s => ({ ...s, vendor: e.target.value }))} placeholder="name…" style={inp} /></div>
           <div><div style={{ fontSize: 11, color: A.muted, marginBottom: 4 }}>Amount</div><input type="number" value={f.amount} onChange={e => setF(s => ({ ...s, amount: e.target.value }))} placeholder="0.00" style={{ ...inp, width: 110 }} /></div>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#374151", cursor: "pointer", paddingBottom: 8 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--sc-text-2)", cursor: "pointer", paddingBottom: 8 }}>
             <input type="checkbox" checked={f.includeDeleted} onChange={e => setF(s => ({ ...s, includeDeleted: e.target.checked }))} /> Include deleted
           </label>
-          <button onClick={search} style={{ ...btn(A.amber, "#fff"), height: 36, padding: "0 18px", fontSize: 14, borderRadius: 8 }}>Search</button>
+          <button onClick={search} style={{ ...btn(A.amber, "var(--sc-surface)"), height: 36, padding: "0 18px", fontSize: 14, borderRadius: 8 }}>Search</button>
         </div>
         {results && (results.length === 0 ? <Empty>No matching entries.</Empty> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr style={{ background: "#F9FAFB" }}><Th>Date</Th><Th>Company</Th><Th>Vendor</Th><Th>Description</Th><Th align="right">Amount</Th><Th>State</Th><Th></Th></tr></thead>
+            <thead><tr style={{ background: "var(--sc-bg)" }}><Th>Date</Th><Th>Company</Th><Th>Vendor</Th><Th>Description</Th><Th align="right">Amount</Th><Th>State</Th><Th></Th></tr></thead>
             <tbody>{results.map(r => (
-              <tr key={r.id} style={{ borderBottom: "1px solid #F2F4F7", background: r.deleted_at ? "#FEF3F2" : "transparent" }}>
+              <tr key={r.id} style={{ borderBottom: "1px solid var(--sc-surface-2)", background: r.deleted_at ? "var(--sc-error-soft)" : "transparent" }}>
                 <Td color={A.muted}>{fmtDate(r.entry_date)}</Td>
                 <Td color={A.muted}>{r.company_name}</Td>
-                <Td color="#101828">{r.vendor}</Td>
-                <td style={{ padding: "10px 14px", fontSize: 12, color: "#475467", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description}</td>
+                <Td color="#f3f6f9">{r.vendor}</Td>
+                <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--sc-text-2)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description}</td>
                 <Td align="right" mono>{fmtMoney(r.amount)}</Td>
                 <Td>{r.deleted_at
                   ? <span title={`Deleted ${dt(r.deleted_at)}${r.deleted_by_email ? " by " + r.deleted_by_email : ""}`} style={{ fontSize: 11, fontWeight: 700, color: A.red, background: A.red + "14", border: `1px solid ${A.red}33`, borderRadius: 20, padding: "2px 9px" }}>DELETED</span>
                   : <span style={{ fontSize: 11, color: A.green }}>live</span>}</Td>
-                <Td>{r.deleted_at && <button onClick={() => restore(r.id)} style={btn(A.green, "#fff")}>Restore</button>}</Td>
+                <Td>{r.deleted_at && <button onClick={() => restore(r.id)} style={btn(A.green, "var(--sc-surface)")}>Restore</button>}</Td>
               </tr>
             ))}</tbody>
           </table>
@@ -458,16 +458,16 @@ function RecoveryTab({ rpc, showNotification }) {
       <Card title="Trace a file → upload record" accent={A.amber}>
         <div style={{ padding: "16px 18px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 260px" }}><div style={{ fontSize: 11, color: A.muted, marginBottom: 4 }}>File name (partial)</div><input value={fileQ} onChange={e => setFileQ(e.target.value)} onKeyDown={e => e.key === "Enter" && traceFile()} placeholder="invoice.pdf" style={{ ...inp, width: "100%", boxSizing: "border-box" }} /></div>
-          <button onClick={traceFile} style={{ ...btn(A.amber, "#fff"), height: 36, padding: "0 18px", fontSize: 14, borderRadius: 8 }}>Trace</button>
+          <button onClick={traceFile} style={{ ...btn(A.amber, "var(--sc-surface)"), height: 36, padding: "0 18px", fontSize: 14, borderRadius: 8 }}>Trace</button>
         </div>
         {fileRes && (fileRes.length === 0 ? <Empty>No upload records match.</Empty> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr style={{ background: "#F9FAFB" }}><Th>When</Th><Th>Company</Th><Th>File</Th><Th>Type</Th><Th>Status</Th><Th>Detail</Th></tr></thead>
+            <thead><tr style={{ background: "var(--sc-bg)" }}><Th>When</Th><Th>Company</Th><Th>File</Th><Th>Type</Th><Th>Status</Th><Th>Detail</Th></tr></thead>
             <tbody>{fileRes.map(u => {
               const sc = u.status === "done" ? A.green : u.status === "error" ? A.red : A.amber;
               return (
-                <tr key={u.upload_id} style={{ borderBottom: "1px solid #F2F4F7" }}>
-                  <Td color={A.muted} mono>{dt(u.created_at)}</Td><Td>{u.company_name}</Td><Td color="#101828">{u.file_name}</Td>
+                <tr key={u.upload_id} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
+                  <Td color={A.muted} mono>{dt(u.created_at)}</Td><Td>{u.company_name}</Td><Td color="#f3f6f9">{u.file_name}</Td>
                   <Td color={A.muted}>{u.doc_type || "—"}</Td>
                   <Td><span style={{ fontSize: 11, fontWeight: 600, color: sc, background: sc + "14", borderRadius: 20, padding: "2px 8px" }}>{u.status}</span></Td>
                   <td style={{ padding: "10px 14px", fontSize: 12, color: u.error ? A.red : A.muted, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.error || (u.result ? JSON.stringify(u.result) : "")}</td>
@@ -495,8 +495,8 @@ function SystemTab({ rpc }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16, marginBottom: 8 }}>
         <Card title="Database — row counts">
           {!counts ? <Loading /> : Object.entries(counts).map(([k, v]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 18px", borderTop: "1px solid #F2F4F7", fontSize: 13 }}>
-              <span style={{ color: "#374151", fontFamily: "'DM Mono',monospace" }}>{k}</span>
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 18px", borderTop: "1px solid var(--sc-surface-2)", fontSize: 13 }}>
+              <span style={{ color: "var(--sc-text-2)", fontFamily: "'DM Mono',monospace" }}>{k}</span>
               <span style={{ fontFamily: "'DM Mono',monospace", color: A.muted }}>{Number(v).toLocaleString()}</span>
             </div>
           ))}
@@ -505,9 +505,9 @@ function SystemTab({ rpc }) {
           {!stats ? <Loading /> : (
             <div style={{ padding: "4px 0" }}>
               {[["Supabase Storage (documents)", `${stats.storage_gb} GB`], ["Documents stored", (stats.total_documents || 0).toLocaleString()], ["Est. AI calls", (stats.ai_calls_estimate || 0).toLocaleString()], ["Est. Anthropic cost / mo", fmtMoney((stats.ai_calls_estimate || 0) * 0.012)]].map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "9px 18px", borderTop: "1px solid #F2F4F7", fontSize: 13 }}>
-                  <span style={{ color: "#374151" }}>{k}</span>
-                  <span style={{ fontFamily: "'DM Mono',monospace", color: "#101828", fontWeight: 600 }}>{v}</span>
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "9px 18px", borderTop: "1px solid var(--sc-surface-2)", fontSize: 13 }}>
+                  <span style={{ color: "var(--sc-text-2)" }}>{k}</span>
+                  <span style={{ fontFamily: "'DM Mono',monospace", color: "var(--sc-text)", fontWeight: 600 }}>{v}</span>
                 </div>
               ))}
             </div>

@@ -40,7 +40,7 @@ export default function QBOImportView() {
   }, [currentCompany?.id, supabase]);
   React.useEffect(() => { loadRecent(); }, [loadRecent]);
 
-  if (!isAdmin) return <div style={{ maxWidth: 720, color: "#475467", fontSize: 14 }}>Only an owner or admin can import data from QuickBooks.</div>;
+  if (!isAdmin) return <div style={{ maxWidth: 720, color: "var(--sc-text-2)", fontSize: 14 }}>Only an owner or admin can import data from QuickBooks.</div>;
 
   // ── File → 2D grid → parse ──
   const handleFile = async (file) => {
@@ -203,18 +203,18 @@ export default function QBOImportView() {
   };
 
   // ── styles ──
-  const card = { background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 14, padding: 24, marginBottom: 16 };
-  const btn = (primary) => ({ height: 42, padding: "0 22px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", border: primary ? "none" : "1px solid #D0D5DD", background: primary ? "#4F46E5" : "#FFFFFF", color: primary ? "#fff" : "#374151" });
-  const sel = { background: "#F3F4F6", border: "1px solid #D0D5DD", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "#101828", outline: "none" };
+  const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 24, marginBottom: 16 };
+  const btn = (primary) => ({ height: 42, padding: "0 22px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", border: primary ? "none" : "1px solid var(--sc-border-2)", background: primary ? "var(--sc-gold)" : "var(--sc-surface)", color: primary ? "var(--sc-surface)" : "var(--sc-text-2)" });
+  const sel = { background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" };
   const stepLabel = ["instructions", "upload", "columns", "accounts", "importing", "summary"];
   const stepNum = stepLabel.indexOf(step) + 1;
 
   return (
     <div style={{ maxWidth: 880 }}>
       <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 10, letterSpacing: 3, color: "#475467", marginBottom: 8 }}>MIGRATION</div>
+        <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>MIGRATION</div>
         <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Import from QuickBooks</h1>
-        <div style={{ fontSize: 13, color: "#475467", marginTop: 6 }}>Bring your transactions over from QuickBooks Online. {step !== "instructions" && step !== "summary" && `Step ${stepNum} of 5.`}</div>
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Bring your transactions over from QuickBooks Online. {step !== "instructions" && step !== "summary" && `Step ${stepNum} of 5.`}</div>
       </div>
 
       {/* STEP 1 — Instructions */}
@@ -226,12 +226,12 @@ export default function QBOImportView() {
             ["Transactions", 'Reports → Transaction List by Date → set the date range to "All Dates" → Export to Excel or CSV'],
             ["Customers & Vendors (optional)", "Sales → Customers → Export; Expenses → Vendors → Export"],
           ].map(([t, d], i) => (
-            <div key={i} style={{ display: "flex", gap: 12, padding: "12px 0", borderTop: i ? "1px solid #F3F4F6" : "none" }}>
-              <span style={{ width: 24, height: 24, borderRadius: "50%", background: "#EEF2FF", color: "#4F46E5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
-              <div><div style={{ fontSize: 13.5, fontWeight: 600, color: "#101828" }}>{t}</div><div style={{ fontSize: 12.5, color: "#475467", marginTop: 2, lineHeight: 1.5 }}>{d}</div></div>
+            <div key={i} style={{ display: "flex", gap: 12, padding: "12px 0", borderTop: i ? "1px solid var(--sc-surface-2)" : "none" }}>
+              <span style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--sc-gold-soft)", color: "var(--sc-gold)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+              <div><div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--sc-text)" }}>{t}</div><div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginTop: 2, lineHeight: 1.5 }}>{d}</div></div>
             </div>
           ))}
-          <div style={{ fontSize: 12.5, color: "#475467", background: "#F9FAFB", border: "1px solid #EEF0F4", borderRadius: 10, padding: "12px 14px", margin: "14px 0", lineHeight: 1.5 }}>Export as CSV or Excel — we handle both. The Transaction List is the important one; we'll auto-match your QuickBooks accounts to ours and let you fix anything before importing.</div>
+          <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px", margin: "14px 0", lineHeight: 1.5 }}>Export as CSV or Excel — we handle both. The Transaction List is the important one; we'll auto-match your QuickBooks accounts to ours and let you fix anything before importing.</div>
           <button style={btn(true)} onClick={() => setStep("upload")}>I've got my export →</button>
         </div>
       )}
@@ -242,11 +242,11 @@ export default function QBOImportView() {
           <div onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
             onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
             onClick={() => fileRef.current?.click()}
-            style={{ border: `2px dashed ${dragOver ? "#4F46E5" : "#D0D5DD"}`, borderRadius: 14, padding: "48px 24px", textAlign: "center", cursor: "pointer", background: dragOver ? "#FAFAFF" : "#FFFFFF" }}>
+            style={{ border: `2px dashed ${dragOver ? "var(--sc-gold)" : "var(--sc-border-2)"}`, borderRadius: 14, padding: "48px 24px", textAlign: "center", cursor: "pointer", background: dragOver ? "var(--sc-bg)" : "var(--sc-surface)" }}>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleFile(f); }} />
             <div style={{ fontSize: 30, marginBottom: 10 }}>📑</div>
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{dragOver ? "Release to upload" : "Drop your QuickBooks export here"}</div>
-            <div style={{ fontSize: 13, color: "#667085" }}>CSV or Excel · up to {ROW_CAP.toLocaleString()} transactions</div>
+            <div style={{ fontSize: 13, color: "var(--sc-text-mut)" }}>CSV or Excel · up to {ROW_CAP.toLocaleString()} transactions</div>
           </div>
           <button style={{ ...btn(false), marginTop: 14 }} onClick={() => setStep("instructions")}>← Back to instructions</button>
         </div>
@@ -256,11 +256,11 @@ export default function QBOImportView() {
       {step === "columns" && (
         <div style={card}>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Confirm the columns</div>
-          <div style={{ fontSize: 12.5, color: "#475467", marginBottom: 14 }}>We detected these from <strong>{fileName}</strong>. Fix any mapping if it looks off, then check the preview below.</div>
+          <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginBottom: 14 }}>We detected these from <strong>{fileName}</strong>. Fix any mapping if it looks off, then check the preview below.</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginBottom: 18 }}>
             {FIELDS.map(([f, lbl]) => (
               <div key={f} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "#475467", width: 110, flexShrink: 0 }}>{lbl}</span>
+                <span style={{ fontSize: 12, color: "var(--sc-text-2)", width: 110, flexShrink: 0 }}>{lbl}</span>
                 <select value={colMap[f] ?? ""} onChange={e => remap(f, e.target.value)} style={{ ...sel, flex: 1 }}>
                   <option value="">— none —</option>
                   {columns.map((c, i) => <option key={i} value={i}>{c || `Column ${i + 1}`}</option>)}
@@ -268,17 +268,17 @@ export default function QBOImportView() {
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#475467", marginBottom: 6 }}>PREVIEW — first 10 of {parsed.rows.length.toLocaleString()} transactions{parsed.failed.length ? ` · ${parsed.failed.length} rows couldn't be read` : ""}</div>
-          <div style={{ overflowX: "auto", border: "1px solid #E4E7EC", borderRadius: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--sc-text-2)", marginBottom: 6 }}>PREVIEW — first 10 of {parsed.rows.length.toLocaleString()} transactions{parsed.failed.length ? ` · ${parsed.failed.length} rows couldn't be read` : ""}</div>
+          <div style={{ overflowX: "auto", border: "1px solid var(--sc-border)", borderRadius: 10 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-              <thead><tr style={{ background: "#F9FAFB" }}>{["Date", "Name", "Account", "Memo", "Amount"].map(h => <th key={h} style={{ padding: "8px 12px", textAlign: h === "Amount" ? "right" : "left", color: "#98A2B3", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ background: "var(--sc-bg)" }}>{["Date", "Name", "Account", "Memo", "Amount"].map(h => <th key={h} style={{ padding: "8px 12px", textAlign: h === "Amount" ? "right" : "left", color: "var(--sc-text-mut)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
               <tbody>{parsed.rows.slice(0, 10).map((r, i) => (
-                <tr key={i} style={{ borderTop: "1px solid #F3F4F6" }}>
+                <tr key={i} style={{ borderTop: "1px solid var(--sc-surface-2)" }}>
                   <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{r.date}</td>
                   <td style={{ padding: "8px 12px" }}>{r.name || "—"}</td>
                   <td style={{ padding: "8px 12px" }}>{r.account}</td>
                   <td style={{ padding: "8px 12px", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.memo || "—"}</td>
-                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "'DM Mono',monospace", color: r.amount < 0 ? "#039855" : "#101828" }}>{money(r.amount)}</td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "'DM Mono',monospace", color: r.amount < 0 ? "var(--sc-success)" : "var(--sc-text)" }}>{money(r.amount)}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -295,16 +295,16 @@ export default function QBOImportView() {
       {step === "accounts" && (
         <div style={card}>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Map your QuickBooks accounts</div>
-          <div style={{ fontSize: 12.5, color: "#475467", marginBottom: 14 }}>We pre-matched each account. Amber rows defaulted to Miscellaneous — please review those.</div>
-          <div style={{ border: "1px solid #E4E7EC", borderRadius: 10, overflow: "clip" }}>
+          <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginBottom: 14 }}>We pre-matched each account. Amber rows defaulted to Miscellaneous — please review those.</div>
+          <div style={{ border: "1px solid var(--sc-border)", borderRadius: 10, overflow: "clip" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ background: "#F9FAFB" }}>{["QuickBooks account", "Txns", "Total", "Maps to"].map((h, i) => <th key={h} style={{ padding: "9px 14px", textAlign: i === 1 || i === 2 ? "right" : "left", color: "#98A2B3", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ background: "var(--sc-bg)" }}>{["QuickBooks account", "Txns", "Total", "Maps to"].map((h, i) => <th key={h} style={{ padding: "9px 14px", textAlign: i === 1 || i === 2 ? "right" : "left", color: "var(--sc-text-mut)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
               <tbody>{acctStats.map(a => {
                 const isMisc = (acctMap[a.name] || miscCode) === miscCode;
                 return (
-                  <tr key={a.name} style={{ borderTop: "1px solid #F3F4F6", background: isMisc ? "#FFFAEB" : "#FFFFFF" }}>
-                    <td style={{ padding: "9px 14px", fontWeight: 500 }}>{a.name}{isMisc && <span style={{ fontSize: 10, fontWeight: 700, color: "#B54708", marginLeft: 8 }}>review</span>}</td>
-                    <td style={{ padding: "9px 14px", textAlign: "right", color: "#667085" }}>{a.count}</td>
+                  <tr key={a.name} style={{ borderTop: "1px solid var(--sc-surface-2)", background: isMisc ? "var(--sc-warning-soft)" : "var(--sc-surface)" }}>
+                    <td style={{ padding: "9px 14px", fontWeight: 500 }}>{a.name}{isMisc && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--sc-warning)", marginLeft: 8 }}>review</span>}</td>
+                    <td style={{ padding: "9px 14px", textAlign: "right", color: "var(--sc-text-mut)" }}>{a.count}</td>
                     <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'DM Mono',monospace" }}>{money(a.total)}</td>
                     <td style={{ padding: "9px 14px" }}>
                       <select value={acctMap[a.name] || miscCode} onChange={e => setAcctMap(m => ({ ...m, [a.name]: e.target.value }))} style={{ ...sel, width: "100%" }}>
@@ -328,10 +328,10 @@ export default function QBOImportView() {
       {step === "importing" && (
         <div style={card}>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Importing your books…</div>
-          <div style={{ height: 12, background: "#F2F4F7", borderRadius: 6, overflow: "hidden" }}>
-            <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg,#4F46E5,#6366F1)", borderRadius: 6, transition: "width .2s" }} />
+          <div style={{ height: 12, background: "var(--sc-surface-2)", borderRadius: 6, overflow: "hidden" }}>
+            <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg,var(--sc-gold),var(--sc-gold))", borderRadius: 6, transition: "width .2s" }} />
           </div>
-          <div style={{ fontSize: 13, color: "#475467", marginTop: 10 }}>{progress}% — booking balanced journal entries, skipping any duplicates.</div>
+          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 10 }}>{progress}% — booking balanced journal entries, skipping any duplicates.</div>
         </div>
       )}
 
@@ -339,18 +339,18 @@ export default function QBOImportView() {
       {step === "summary" && result && (
         <div style={card}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-            <span style={{ width: 36, height: 36, borderRadius: "50%", background: "#039855", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>✓</span>
+            <span style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--sc-success)", color: "var(--sc-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>✓</span>
             <div style={{ fontSize: 18, fontWeight: 700 }}>Import complete</div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 18 }}>
             {[["Imported", result.imported.toLocaleString()], ["Total", money(result.total)], ["Duplicates skipped", result.skipped.toLocaleString()], ["Accounts mapped", result.accounts]].map(([k, v]) => (
-              <div key={k} style={{ background: "#F9FAFB", border: "1px solid #F0F1F4", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 11, color: "#475467", marginBottom: 4 }}>{k}</div>
-                <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "#101828" }}>{v}</div>
+              <div key={k} style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 4 }}>{k}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--sc-text)" }}>{v}</div>
               </div>
             ))}
           </div>
-          {result.failed > 0 && <div style={{ fontSize: 12.5, color: "#B54708", marginBottom: 14 }}>{result.failed} row{result.failed !== 1 ? "s" : ""} couldn't be imported. {parsed.failed.length > 0 && <span onClick={downloadSkipped} style={{ color: "#4F46E5", cursor: "pointer", fontWeight: 600 }}>Download them →</span>}</div>}
+          {result.failed > 0 && <div style={{ fontSize: 12.5, color: "var(--sc-warning)", marginBottom: 14 }}>{result.failed} row{result.failed !== 1 ? "s" : ""} couldn't be imported. {parsed.failed.length > 0 && <span onClick={downloadSkipped} style={{ color: "var(--sc-gold)", cursor: "pointer", fontWeight: 600 }}>Download them →</span>}</div>}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button style={btn(true)} onClick={() => setView("books")}>View your books →</button>
             <button style={btn(false)} onClick={() => { setStep("instructions"); setResult(null); setParsed({ rows: [], failed: [] }); setGrid(null); }}>Import another file</button>
@@ -361,19 +361,19 @@ export default function QBOImportView() {
       {/* Recent imports + undo (always available) */}
       {recent.length > 0 && (
         <div style={card}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", letterSpacing: 0.5, marginBottom: 6 }}>RECENT IMPORTS</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--sc-gold)", letterSpacing: 0.5, marginBottom: 6 }}>RECENT IMPORTS</div>
           {recent.map(b => (
-            <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid #F3F4F6" }}>
+            <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--sc-surface-2)" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500, color: "#101828" }}>{b.filename || "QuickBooks import"}{b.status === "undone" && <span style={{ fontSize: 11, color: "#98A2B3", marginLeft: 8 }}>(undone)</span>}</div>
-                <div style={{ fontSize: 11.5, color: "#98A2B3", marginTop: 2 }}>{new Date(b.created_at).toLocaleString()} · {b.imported_count} entries · {money(b.total_amount)}{b.skipped_count ? ` · ${b.skipped_count} skipped` : ""}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--sc-text)" }}>{b.filename || "QuickBooks import"}{b.status === "undone" && <span style={{ fontSize: 11, color: "var(--sc-text-mut)", marginLeft: 8 }}>(undone)</span>}</div>
+                <div style={{ fontSize: 11.5, color: "var(--sc-text-mut)", marginTop: 2 }}>{new Date(b.created_at).toLocaleString()} · {b.imported_count} entries · {money(b.total_amount)}{b.skipped_count ? ` · ${b.skipped_count} skipped` : ""}</div>
               </div>
               {b.status === "undone"
-                ? <span style={{ fontSize: 12, color: "#98A2B3" }}>Removed</span>
+                ? <span style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>Removed</span>
                 : (undoing === b.id
-                  ? <span style={{ fontSize: 12, color: "#475467" }}>Undoing…</span>
+                  ? <span style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Undoing…</span>
                   : <button onClick={() => { if (window.confirm(`Undo this import? This soft-deletes all ${b.imported_count} entries from "${b.filename || "the import"}". You can still find them in the audit trail.`)) undoImport(b); }}
-                      style={{ fontSize: 12, color: "#D92D20", background: "#FFFFFF", border: "1px solid #D92D2033", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Undo this import</button>)}
+                      style={{ fontSize: 12, color: "var(--sc-error)", background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Undo this import</button>)}
             </div>
           ))}
         </div>

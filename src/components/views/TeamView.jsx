@@ -65,43 +65,43 @@ export default function TeamView() {
   };
 
   const roleBadge = (r) => {
-    const c = r === "owner" ? "#4F46E5" : r === "admin" ? "#0E9384" : "#475467";
+    const c = r === "owner" ? "var(--sc-gold)" : r === "admin" ? "#0E9384" : "var(--sc-text-2)";
     return <span style={{ fontSize: 11, fontWeight: 600, color: c, background: c + "14", border: `1px solid ${c}33`, borderRadius: 6, padding: "2px 9px", textTransform: "capitalize" }}>{r}</span>;
   };
-  const card = { background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 14, padding: 22, marginBottom: 16 };
-  const input = { background: "#F3F4F6", border: "1px solid #D0D5DD", borderRadius: 10, padding: "10px 12px", color: "#101828", fontSize: 14, outline: "none" };
+  const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 22, marginBottom: 16 };
+  const input = { background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "10px 12px", color: "var(--sc-text)", fontSize: 14, outline: "none" };
 
   if (!isOwner) {
-    return <div style={{ maxWidth: 720, color: "#475467", fontSize: 14 }}>Only the company owner can manage the team.</div>;
+    return <div style={{ maxWidth: 720, color: "var(--sc-text-2)", fontSize: 14 }}>Only the company owner can manage the team.</div>;
   }
 
   return (
     <div style={{ maxWidth: 720 }}>
       <div style={{ marginBottom: 22 }}>
-        <div style={{ fontSize: 10, letterSpacing: 3, color: "#475467", marginBottom: 8 }}>TEAM</div>
+        <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>TEAM</div>
         <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Team & invites</h1>
-        <div style={{ fontSize: 13, color: "#475467", marginTop: 6 }}>Invite teammates as admins (full access) or members (upload, view, and ask the AI — no destructive changes).</div>
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Invite teammates as admins (full access) or members (upload, view, and ask the AI — no destructive changes).</div>
       </div>
 
       {/* ── Invite form ── */}
       <div style={card}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", letterSpacing: 0.5, marginBottom: 14 }}>INVITE A TEAMMATE</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--sc-gold)", letterSpacing: 0.5, marginBottom: 14 }}>INVITE A TEAMMATE</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <input style={{ ...input, flex: "1 1 240px" }} type="email" placeholder="teammate@company.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && sendInvite()} />
           <select style={input} value={role} onChange={e => setRole(e.target.value)}>
             <option value="member">Member</option>
             <option value="admin">Admin</option>
           </select>
-          <button onClick={sendInvite} disabled={busy} style={{ height: 40, padding: "0 18px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#fff", background: busy ? "#C7D2FE" : "#4F46E5", border: "none", cursor: busy ? "default" : "pointer" }}>
+          <button onClick={sendInvite} disabled={busy} style={{ height: 40, padding: "0 18px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: busy ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: busy ? "default" : "pointer" }}>
             {busy ? "Creating…" : "Create invite"}
           </button>
         </div>
         {lastLink && (
-          <div style={{ marginTop: 14, background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{ fontSize: 12.5, color: "#3730A3", marginBottom: 8 }}>Copy this link and send it to your teammate. It works once and expires in 7 days.</div>
+          <div style={{ marginTop: 14, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 12.5, color: "var(--sc-gold)", marginBottom: 8 }}>Copy this link and send it to your teammate. It works once and expires in 7 days.</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input readOnly value={lastLink} onFocus={e => e.target.select()} style={{ ...input, flex: "1 1 280px", fontSize: 12.5, fontFamily: "'DM Mono',monospace", background: "#FFFFFF" }} />
-              <button onClick={() => copy(lastLink)} style={{ height: 40, padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, color: copied ? "#039855" : "#fff", background: copied ? "#ECFDF5" : "#4F46E5", border: copied ? "1px solid #03985533" : "none", cursor: "pointer" }}>{copied ? "Copied ✓" : "Copy link"}</button>
+              <input readOnly value={lastLink} onFocus={e => e.target.select()} style={{ ...input, flex: "1 1 280px", fontSize: 12.5, fontFamily: "'DM Mono',monospace", background: "var(--sc-surface)" }} />
+              <button onClick={() => copy(lastLink)} style={{ height: 40, padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, color: copied ? "var(--sc-success)" : "var(--sc-surface)", background: copied ? "var(--sc-success-soft)" : "var(--sc-gold)", border: copied ? "1px solid var(--sc-success-soft)" : "none", cursor: "pointer" }}>{copied ? "Copied ✓" : "Copy link"}</button>
             </div>
           </div>
         )}
@@ -110,16 +110,16 @@ export default function TeamView() {
       {/* ── Pending invites ── */}
       {invites.length > 0 && (
         <div style={card}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", letterSpacing: 0.5, marginBottom: 6 }}>PENDING INVITES ({invites.length})</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--sc-gold)", letterSpacing: 0.5, marginBottom: 6 }}>PENDING INVITES ({invites.length})</div>
           {invites.map(inv => (
-            <div key={inv.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid #F3F4F6" }}>
+            <div key={inv.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--sc-surface-2)" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500, color: "#101828" }}>{inv.email}</div>
-                <div style={{ fontSize: 11.5, color: "#98A2B3", marginTop: 2 }}>Invited {new Date(inv.created_at).toLocaleDateString()} · expires {new Date(inv.expires_at).toLocaleDateString()}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--sc-text)" }}>{inv.email}</div>
+                <div style={{ fontSize: 11.5, color: "var(--sc-text-mut)", marginTop: 2 }}>Invited {new Date(inv.created_at).toLocaleDateString()} · expires {new Date(inv.expires_at).toLocaleDateString()}</div>
               </div>
               {roleBadge(inv.role)}
-              <button onClick={() => copy(linkFor(inv.token))} style={{ fontSize: 12, color: "#4F46E5", background: "#EEF2FF", border: "1px solid #4F46E533", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Copy link</button>
-              <button onClick={() => revoke(inv)} style={{ fontSize: 12, color: "#D92D20", background: "#FFFFFF", border: "1px solid #D92D2033", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Revoke</button>
+              <button onClick={() => copy(linkFor(inv.token))} style={{ fontSize: 12, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Copy link</button>
+              <button onClick={() => revoke(inv)} style={{ fontSize: 12, color: "var(--sc-error)", background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Revoke</button>
             </div>
           ))}
         </div>
@@ -127,14 +127,14 @@ export default function TeamView() {
 
       {/* ── Current members ── */}
       <div style={card}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", letterSpacing: 0.5, marginBottom: 6 }}>MEMBERS ({members.length})</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--sc-gold)", letterSpacing: 0.5, marginBottom: 6 }}>MEMBERS ({members.length})</div>
         {members.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#475467", paddingTop: 10 }}>Just you for now. Invite a teammate above.</div>
+          <div style={{ fontSize: 13, color: "var(--sc-text-2)", paddingTop: 10 }}>Just you for now. Invite a teammate above.</div>
         ) : members.map(m => (
-          <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid #F3F4F6" }}>
+          <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--sc-surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 500, color: "#101828" }}>{m.full_name || m.email}{m.user_id === session?.user?.id ? " (you)" : ""}</div>
-              <div style={{ fontSize: 11.5, color: "#98A2B3", marginTop: 2 }}>{m.email}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--sc-text)" }}>{m.full_name || m.email}{m.user_id === session?.user?.id ? " (you)" : ""}</div>
+              <div style={{ fontSize: 11.5, color: "var(--sc-text-mut)", marginTop: 2 }}>{m.email}</div>
             </div>
             {roleBadge(m.role)}
           </div>

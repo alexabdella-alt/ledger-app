@@ -9,17 +9,17 @@ const PRODUCT = "Shadow";
 const SUPPORT_EMAIL = "support@shadowcfo.app"; // placeholder — update before launch
 
 const s = {
-  page: { minHeight: "100%", background: "#F7F8FA", fontFamily: "'DM Sans', system-ui, sans-serif", color: "#101828" },
+  page: { minHeight: "100%", background: "var(--sc-bg)", fontFamily: "'DM Sans', system-ui, sans-serif", color: "var(--sc-text)" },
   wrap: { maxWidth: 760, margin: "0 auto", padding: "28px 24px 64px" },
   h1: { fontSize: 28, fontWeight: 700, letterSpacing: -0.5, margin: "0 0 4px" },
-  meta: { fontSize: 12, color: "#98A2B3", marginBottom: 20 },
-  card: { background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 16, padding: "28px 32px" },
-  h2: { fontSize: 16, fontWeight: 700, color: "#101828", margin: "26px 0 8px" },
-  p: { fontSize: 14, lineHeight: 1.7, color: "#344054", margin: "0 0 10px" },
-  li: { fontSize: 14, lineHeight: 1.7, color: "#344054", margin: "0 0 6px" },
-  note: { fontSize: 13, color: "#475467", background: "#F9FAFB", border: "1px solid #EEF0F4", borderRadius: 10, padding: "12px 14px", margin: "14px 0", lineHeight: 1.6 },
-  tab: (active) => ({ padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: active ? 600 : 500, cursor: "pointer", border: `1px solid ${active ? "#4F46E5" : "#D0D5DD"}`, background: active ? "#4F46E5" : "transparent", color: active ? "#fff" : "#475467" }),
-  back: { background: "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 9, padding: "7px 14px", fontSize: 13, color: "#475467", cursor: "pointer", fontWeight: 600 },
+  meta: { fontSize: 12, color: "var(--sc-text-mut)", marginBottom: 20 },
+  card: { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 16, padding: "28px 32px" },
+  h2: { fontSize: 16, fontWeight: 700, color: "var(--sc-text)", margin: "26px 0 8px" },
+  p: { fontSize: 14, lineHeight: 1.7, color: "var(--sc-text-2)", margin: "0 0 10px" },
+  li: { fontSize: 14, lineHeight: 1.7, color: "var(--sc-text-2)", margin: "0 0 6px" },
+  note: { fontSize: 13, color: "var(--sc-text-2)", background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px", margin: "14px 0", lineHeight: 1.6 },
+  tab: (active) => ({ padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: active ? 600 : 500, cursor: "pointer", border: `1px solid ${active ? "var(--sc-gold)" : "var(--sc-border-2)"}`, background: active ? "var(--sc-gold)" : "transparent", color: active ? "var(--sc-surface)" : "var(--sc-text-2)" }),
+  back: { background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 9, padding: "7px 14px", fontSize: 13, color: "var(--sc-text-2)", cursor: "pointer", fontWeight: 600 },
 };
 
 function Terms() {

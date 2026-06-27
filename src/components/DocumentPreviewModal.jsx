@@ -31,27 +31,27 @@ export default function DocumentPreviewModal({ doc, onClose }) {
 
   return createPortal(
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: "2.5vh 2.5vw", boxSizing: "border-box" }} onClick={onClose}>
-      <div style={{ background: "#FFFFFF", borderRadius: 14, width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: "var(--sc-surface)", borderRadius: 14, width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
         {/* Sticky dark header bar — always visible above the document */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 18px", background: "#1E1E2E", flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#F7F8FA", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-            <div style={{ fontSize: 11, color: "#98A2B3", marginTop: 1 }}>{doc.uploaded_at?.slice(0, 10)} · {doc.type}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-bg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 1 }}>{doc.uploaded_at?.slice(0, 10)} · {doc.type}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>
           </div>
           {previewUrl && docHasFile(doc) && (
             <a href={previewUrl} download={doc.name} target="_blank" rel="noreferrer"
-              style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 9, background: "#4F46E5", border: "1px solid #6366F1", color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>↓ Download</a>
+              style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 9, background: "var(--sc-gold)", border: "1px solid var(--sc-gold)", color: "var(--sc-on-accent)", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>↓ Download</a>
           )}
           <button onClick={onClose} aria-label="Close preview" title="Close"
-            onMouseEnter={e => { e.currentTarget.style.background = "#D92D20"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.borderColor = "#D92D20"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#F7F8FA"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
-            style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", color: "#F7F8FA", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
+            onMouseEnter={e => { e.currentTarget.style.background = "var(--sc-error)"; e.currentTarget.style.color = "var(--sc-surface)"; e.currentTarget.style.borderColor = "var(--sc-error)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "var(--sc-bg)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
+            style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", color: "var(--sc-bg)", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
         </div>
 
         {/* Content area fills the rest; scrolls independently */}
-        <div style={{ flex: 1, minHeight: 0, position: "relative", background: "#F9FAFB" }}>
+        <div style={{ flex: 1, minHeight: 0, position: "relative", background: "var(--sc-bg)" }}>
           {previewUrl && isPdfDoc(doc.mediaType) && (
-            <iframe src={previewUrl} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#FFFFFF" }} title={doc.name} />
+            <iframe src={previewUrl} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "var(--sc-surface)" }} title={doc.name} />
           )}
           {previewUrl && isImageDoc(doc.mediaType) && (
             <div style={{ position: "absolute", inset: 0, overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -60,16 +60,16 @@ export default function DocumentPreviewModal({ doc, onClose }) {
           )}
           {previewUrl && !isImageDoc(doc.mediaType) && !isPdfDoc(doc.mediaType) && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <a href={previewUrl} target="_blank" rel="noreferrer" style={{ padding: "12px 22px", borderRadius: 10, background: "#EEF2FF", border: "1px solid #4F46E533", color: "#4F46E5", fontSize: 14, fontWeight: 600, textDecoration: "none" }}>Open file ↗</a>
+              <a href={previewUrl} target="_blank" rel="noreferrer" style={{ padding: "12px 22px", borderRadius: 10, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", fontSize: 14, fontWeight: 600, textDecoration: "none" }}>Open file ↗</a>
             </div>
           )}
           {previewLoading && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#475467", fontSize: 13 }}>Loading file…</div>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--sc-text-2)", fontSize: 13 }}>Loading file…</div>
           )}
           {!docHasFile(doc) && !previewLoading && (
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 24 }}>
               <div style={{ fontSize: 52, opacity: 0.45 }}>{docIcon(doc.type)}</div>
-              <div style={{ fontSize: 13, color: "#475467", textAlign: "center", maxWidth: 460, lineHeight: 1.55, background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 10, padding: "14px 18px" }}>
+              <div style={{ fontSize: 13, color: "var(--sc-text-2)", textAlign: "center", maxWidth: 460, lineHeight: 1.55, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "14px 18px" }}>
                 This document was uploaded before file storage was enabled. Re-upload to enable full preview.
               </div>
             </div>

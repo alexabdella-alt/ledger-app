@@ -311,9 +311,9 @@ function ClarificationCard({ item }) {
   // ── Styles ──
   const pill = (selected) => ({
     padding: "9px 16px", borderRadius: 20, fontSize: 14, fontWeight: 500, cursor: "pointer", textAlign: "left",
-    background: selected ? "#4F46E5" : "#FFFFFF",
-    border: `1px solid ${selected ? "#4F46E5" : "#D0D5DD"}`,
-    color: selected ? "#FFFFFF" : "#344054",
+    background: selected ? "var(--sc-gold)" : "var(--sc-surface)",
+    border: `1px solid ${selected ? "var(--sc-gold)" : "var(--sc-border-2)"}`,
+    color: selected ? "var(--sc-surface)" : "var(--sc-text-2)",
     transition: "all 0.12s", lineHeight: 1.35,
   });
   const thumb = () => {
@@ -326,9 +326,9 @@ function ClarificationCard({ item }) {
   if (done) {
     const ok = done.tone === "success";
     return (
-      <div style={{ background: "#FFFFFF", border: `1px solid ${ok ? "#A6F4C5" : "#E4E7EC"}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }} className="sc-card">
-        <span style={{ width: 22, height: 22, borderRadius: "50%", background: ok ? "#039855" : "#98A2B3", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>✓</span>
-        <span style={{ fontSize: 14, fontWeight: 500, color: "#101828" }}>{done.text}</span>
+      <div style={{ background: "var(--sc-surface)", border: `1px solid ${ok ? "var(--sc-success-soft)" : "var(--sc-border)"}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }} className="sc-card">
+        <span style={{ width: 22, height: 22, borderRadius: "50%", background: ok ? "var(--sc-success)" : "var(--sc-text-mut)", color: "var(--sc-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>✓</span>
+        <span style={{ fontSize: 14, fontWeight: 500, color: "var(--sc-text)" }}>{done.text}</span>
       </div>
     );
   }
@@ -336,12 +336,12 @@ function ClarificationCard({ item }) {
   // ── Skipped (compact) state ──
   if (skipped) {
     return (
-      <div style={{ background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 12, padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 12, padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#B54708", background: "#FEF0C7", border: "1px solid #FEDF89", borderRadius: 20, padding: "2px 9px", whiteSpace: "nowrap" }}>Needs info</span>
-          <span style={{ fontSize: 13, color: "#475467", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.vendor || "Document"}{Number(inv.amount) > 0 ? ` · ${money(inv.amount)}` : ""}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--sc-warning)", background: "var(--sc-warning-soft)", border: "1px solid #FEDF89", borderRadius: 20, padding: "2px 9px", whiteSpace: "nowrap" }}>Needs info</span>
+          <span style={{ fontSize: 13, color: "var(--sc-text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.vendor || "Document"}{Number(inv.amount) > 0 ? ` · ${money(inv.amount)}` : ""}</span>
         </div>
-        <button onClick={() => setSkipped(false)} style={{ flexShrink: 0, fontSize: 13, fontWeight: 500, color: "#4F46E5", background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>Resume</button>
+        <button onClick={() => setSkipped(false)} style={{ flexShrink: 0, fontSize: 13, fontWeight: 500, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>Resume</button>
       </div>
     );
   }
@@ -349,9 +349,9 @@ function ClarificationCard({ item }) {
   const q = questions[step];
 
   return (
-    <div style={{ background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 14, padding: 20, marginBottom: 12, display: "flex", gap: 16 }} className="sc-card">
+    <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 20, marginBottom: 12, display: "flex", gap: 16 }} className="sc-card">
       {/* Thumbnail */}
-      <div style={{ width: 72, height: 88, borderRadius: 10, background: "#F2F4F7", border: "1px solid #E4E7EC", overflow: "clip", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: 72, height: 88, borderRadius: 10, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", overflow: "clip", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {thumb()}
       </div>
 
@@ -359,18 +359,18 @@ function ClarificationCard({ item }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* What the AI knows */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-          <span style={{ width: 22, height: 22, borderRadius: 7, background: "linear-gradient(135deg,#6366F1,#4338CA)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>✦</span>
-          <span style={{ fontSize: 13.5, color: "#475467" }}>{knownText()}</span>
+          <span style={{ width: 22, height: 22, borderRadius: 7, background: "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>✦</span>
+          <span style={{ fontSize: 13.5, color: "var(--sc-text-2)" }}>{knownText()}</span>
         </div>
 
         {!atSummary && q ? (
           <>
             {total > 1 && (
-              <div style={{ fontSize: 11, color: "#98A2B3", fontWeight: 600, letterSpacing: 0.4, margin: "12px 0 6px" }}>QUESTION {step + 1} OF {total}</div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 600, letterSpacing: 0.4, margin: "12px 0 6px" }}>QUESTION {step + 1} OF {total}</div>
             )}
-            <div style={{ fontSize: 16, fontWeight: 500, color: "#101828", margin: total > 1 ? "0 0 12px" : "12px 0", lineHeight: 1.45 }}>{q.prompt}</div>
+            <div style={{ fontSize: 16, fontWeight: 500, color: "var(--sc-text)", margin: total > 1 ? "0 0 12px" : "12px 0", lineHeight: 1.45 }}>{q.prompt}</div>
             {q.explanation && (
-              <div style={{ fontSize: 12.5, color: "#4338CA", background: "#F5F3FF", border: "1px solid #C7D2FE", borderRadius: 10, padding: "10px 12px", lineHeight: 1.55, marginBottom: 12 }}>{q.explanation}</div>
+              <div style={{ fontSize: 12.5, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 10, padding: "10px 12px", lineHeight: 1.55, marginBottom: 12 }}>{q.explanation}</div>
             )}
 
             {q.type === "buttons" && (
@@ -379,8 +379,8 @@ function ClarificationCard({ item }) {
                   const sel = isSelected(q.field, opt);
                   return (
                     <button key={oi} onClick={() => onPill(q.field, opt.value)} style={pill(sel)}
-                      onMouseEnter={e => { if (!sel) { e.currentTarget.style.background = "#F5F3FF"; e.currentTarget.style.borderColor = "#A5B4FC"; } }}
-                      onMouseLeave={e => { if (!sel) { e.currentTarget.style.background = "#FFFFFF"; e.currentTarget.style.borderColor = "#D0D5DD"; } }}>
+                      onMouseEnter={e => { if (!sel) { e.currentTarget.style.background = "var(--sc-gold-soft)"; e.currentTarget.style.borderColor = "var(--sc-gold)"; } }}
+                      onMouseLeave={e => { if (!sel) { e.currentTarget.style.background = "var(--sc-surface)"; e.currentTarget.style.borderColor = "var(--sc-border-2)"; } }}>
                       {opt.label}
                     </button>
                   );
@@ -399,35 +399,35 @@ function ClarificationCard({ item }) {
                     onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); interpretFreeText(); } }}
                     disabled={interpreting}
                     placeholder="Or describe it in your own words..."
-                    style={{ flex: "1 1 260px", minWidth: 0, height: 42, boxSizing: "border-box", background: interpreting ? "#F9FAFB" : "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "#101828", outline: "none" }} />
+                    style={{ flex: "1 1 260px", minWidth: 0, height: 42, boxSizing: "border-box", background: interpreting ? "var(--sc-bg)" : "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "var(--sc-text)", outline: "none" }} />
                   <button onClick={interpretFreeText} disabled={interpreting || !freeText.trim()}
-                    style={{ height: 42, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#fff", background: (interpreting || !freeText.trim()) ? "#C7D2FE" : "#4F46E5", border: "none", cursor: (interpreting || !freeText.trim()) ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-                    {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "#fff", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
+                    style={{ height: 42, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: (interpreting || !freeText.trim()) ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: (interpreting || !freeText.trim()) ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                    {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "var(--sc-surface)", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
                     {interpreting ? "Booking…" : "Use this →"}
                   </button>
                 </div>
-                {freeError && <div style={{ fontSize: 12.5, color: "#D92D20", marginTop: 8 }}>{freeError}</div>}
+                {freeError && <div style={{ fontSize: 12.5, color: "var(--sc-error)", marginTop: 8 }}>{freeError}</div>}
               </div>
             )}
 
             {q.type === "number" && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ position: "relative" }}>
-                  <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#98A2B3", fontSize: 18, pointerEvents: "none" }}>$</span>
+                  <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--sc-text-mut)", fontSize: 18, pointerEvents: "none" }}>$</span>
                   <input type="number" inputMode="decimal" autoFocus value={answers[q.field] ?? ""} onChange={e => setAnswer(q.field, e.target.value)}
                     placeholder="0.00"
-                    style={{ width: 200, height: 48, boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 10, padding: "0 14px 0 30px", fontSize: 20, fontWeight: 600, color: "#101828", outline: "none" }} />
+                    style={{ width: 200, height: 48, boxSizing: "border-box", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "0 14px 0 30px", fontSize: 20, fontWeight: 600, color: "var(--sc-text)", outline: "none" }} />
                 </div>
                 <button disabled={!(answers[q.field] !== "" && answers[q.field] != null)} onClick={() => setStep(s => s + 1)}
-                  style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#fff", background: (answers[q.field] !== "" && answers[q.field] != null) ? "#4F46E5" : "#C7D2FE", border: "none", cursor: (answers[q.field] !== "" && answers[q.field] != null) ? "pointer" : "default" }}>Continue →</button>
+                  style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: (answers[q.field] !== "" && answers[q.field] != null) ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: (answers[q.field] !== "" && answers[q.field] != null) ? "pointer" : "default" }}>Continue →</button>
               </div>
             )}
 
             {q.type === "date" && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <input type="date" autoFocus value={answers[q.field] || ""} onChange={e => setAnswer(q.field, e.target.value)}
-                  style={{ height: 48, boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 10, padding: "0 14px", fontSize: 15, color: "#101828", outline: "none" }} />
-                <button onClick={() => setStep(s => s + 1)} style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#fff", background: "#4F46E5", border: "none", cursor: "pointer" }}>Continue →</button>
+                  style={{ height: 48, boxSizing: "border-box", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "0 14px", fontSize: 15, color: "var(--sc-text)", outline: "none" }} />
+                <button onClick={() => setStep(s => s + 1)} style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: "var(--sc-gold)", border: "none", cursor: "pointer" }}>Continue →</button>
               </div>
             )}
 
@@ -435,53 +435,53 @@ function ClarificationCard({ item }) {
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <input type="text" autoFocus value={answers[q.field] ?? ""} onChange={e => setAnswer(q.field, e.target.value)}
                   placeholder="Vendor name"
-                  style={{ width: 260, height: 48, boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #D0D5DD", borderRadius: 10, padding: "0 14px", fontSize: 15, color: "#101828", outline: "none" }} />
+                  style={{ width: 260, height: 48, boxSizing: "border-box", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "0 14px", fontSize: 15, color: "var(--sc-text)", outline: "none" }} />
                 <button disabled={!String(answers[q.field] || "").trim()} onClick={() => setStep(s => s + 1)}
-                  style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#fff", background: String(answers[q.field] || "").trim() ? "#4F46E5" : "#C7D2FE", border: "none", cursor: String(answers[q.field] || "").trim() ? "pointer" : "default" }}>Continue →</button>
+                  style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: String(answers[q.field] || "").trim() ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: String(answers[q.field] || "").trim() ? "pointer" : "default" }}>Continue →</button>
               </div>
             )}
 
             {/* Back + Skip */}
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 16 }}>
               {step > 0 && (
-                <button onClick={() => setStep(s => s - 1)} style={{ fontSize: 13, color: "#475467", background: "none", border: "none", cursor: "pointer", padding: 0 }}>← Back</button>
+                <button onClick={() => setStep(s => s - 1)} style={{ fontSize: 13, color: "var(--sc-text-2)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>← Back</button>
               )}
-              <button onClick={() => setSkipped(true)} style={{ fontSize: 13, color: "#98A2B3", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Skip for now</button>
+              <button onClick={() => setSkipped(true)} style={{ fontSize: 13, color: "var(--sc-text-mut)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Skip for now</button>
             </div>
           </>
         ) : (
           /* ── Summary (GAAP only — brief, since it has financial-statement impact) ── */
           <>
-            <div style={{ fontSize: 16, fontWeight: 500, color: "#101828", margin: "12px 0 14px", lineHeight: 1.5, display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <span style={{ color: "#039855", flexShrink: 0 }}>✓</span><span>{summaryText()}</span>
+            <div style={{ fontSize: 16, fontWeight: 500, color: "var(--sc-text)", margin: "12px 0 14px", lineHeight: 1.5, display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{ color: "var(--sc-success)", flexShrink: 0 }}>✓</span><span>{summaryText()}</span>
             </div>
             {depOpt && (
-              <div style={{ background: "#F9FAFB", border: "1px solid #EAECF0", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
-                <div style={{ fontSize: 11, letterSpacing: 1, fontWeight: 600, color: "#475467", marginBottom: 10 }}>DEPRECIATION SCHEDULE · STRAIGHT-LINE</div>
+              <div style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+                <div style={{ fontSize: 11, letterSpacing: 1, fontWeight: 600, color: "var(--sc-text-2)", marginBottom: 10 }}>DEPRECIATION SCHEDULE · STRAIGHT-LINE</div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <label style={{ fontSize: 13, color: "#344054", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 13, color: "var(--sc-text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
                     Useful life (years)
                     <input type="number" min="1" step="1" value={depLifeYears} onChange={e => setDepLifeYears(e.target.value)}
-                      style={{ width: 110, height: 36, borderRadius: 8, border: "1px solid #D0D5DD", padding: "0 10px", fontSize: 14 }} />
+                      style={{ width: 110, height: 36, borderRadius: 8, border: "1px solid var(--sc-border-2)", padding: "0 10px", fontSize: 14 }} />
                   </label>
-                  <label style={{ fontSize: 13, color: "#344054", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 13, color: "var(--sc-text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
                     Salvage value ($)
                     <input type="number" min="0" step="0.01" value={depSalvage} onChange={e => setDepSalvage(e.target.value)}
-                      style={{ width: 130, height: 36, borderRadius: 8, border: "1px solid #D0D5DD", padding: "0 10px", fontSize: 14 }} />
+                      style={{ width: 130, height: 36, borderRadius: 8, border: "1px solid var(--sc-border-2)", padding: "0 10px", fontSize: 14 }} />
                   </label>
-                  <label style={{ fontSize: 13, color: "#344054", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 13, color: "var(--sc-text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
                     In-service date
                     <input type="date" value={depInService} onChange={e => setDepInService(e.target.value)}
-                      style={{ height: 36, borderRadius: 8, border: "1px solid #D0D5DD", padding: "0 10px", fontSize: 14 }} />
+                      style={{ height: 36, borderRadius: 8, border: "1px solid var(--sc-border-2)", padding: "0 10px", fontSize: 14 }} />
                   </label>
                 </div>
-                <div style={{ fontSize: 12, color: "#667085", marginTop: 8 }}>Life prefilled from the asset type — adjust if needed. Salvage defaults to $0.</div>
+                <div style={{ fontSize: 12, color: "var(--sc-text-mut)", marginTop: 8 }}>Life prefilled from the asset type — adjust if needed. Salvage defaults to $0.</div>
               </div>
             )}
             <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              <button onClick={finalize} style={{ height: 40, padding: "0 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "#fff", background: "#039855", border: "none", cursor: "pointer" }}>Confirm & Book</button>
-              <button onClick={() => setStep(0)} style={{ fontSize: 13, fontWeight: 500, color: "#4F46E5", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Edit</button>
-              <button onClick={() => setSkipped(true)} style={{ fontSize: 13, color: "#98A2B3", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Skip for now</button>
+              <button onClick={finalize} style={{ height: 40, padding: "0 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: "var(--sc-success)", border: "none", cursor: "pointer" }}>Confirm & Book</button>
+              <button onClick={() => setStep(0)} style={{ fontSize: 13, fontWeight: 500, color: "var(--sc-gold)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Edit</button>
+              <button onClick={() => setSkipped(true)} style={{ fontSize: 13, color: "var(--sc-text-mut)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Skip for now</button>
             </div>
           </>
         )}
@@ -499,10 +499,10 @@ export default function ClarificationFlow() {
   return (
     <div id="clarification-section" style={{ marginBottom: 24 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-        <span style={{ width: 30, height: 30, borderRadius: 9, background: "linear-gradient(135deg,#6366F1,#4338CA)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: "#fff", flexShrink: 0 }}>✦</span>
+        <span style={{ width: 30, height: 30, borderRadius: 9, background: "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: "var(--sc-on-accent)", flexShrink: 0 }}>✦</span>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: "#101828" }}>A few quick questions</div>
-          <div style={{ fontSize: 13, color: "#475467", marginTop: 1 }}>{pending > 0 ? `${pending} ${pending === 1 ? "item needs" : "items need"} a quick answer before I book ${pending === 1 ? "it" : "them"}.` : "All caught up ✓"}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--sc-text)" }}>A few quick questions</div>
+          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 1 }}>{pending > 0 ? `${pending} ${pending === 1 ? "item needs" : "items need"} a quick answer before I book ${pending === 1 ? "it" : "them"}.` : "All caught up ✓"}</div>
         </div>
       </div>
       {clarificationQueue.map(item => <ClarificationCard key={item.id} item={item} />)}

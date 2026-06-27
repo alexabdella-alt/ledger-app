@@ -10,49 +10,49 @@ export default function InvoicesView() {
             <div>
               <div style={{ marginBottom:28, display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
                 <div>
-                  <div style={{ fontSize:10, letterSpacing:3, color:"#475467", marginBottom:8 }}>LEDGER</div>
+                  <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>LEDGER</div>
                   <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>{vendorFilter==="all"?"All Invoices":vendorFilter}</h1>
-                  {vendorFilter!=="all" && <div style={{ fontSize:13, color:"#475467", marginTop:4 }}>{filteredInvoices.length} invoice{filteredInvoices.length!==1?"s":""} · ${filteredInvoices.reduce((s,i)=>s+i.amount,0).toLocaleString("en-US",{minimumFractionDigits:2})} total</div>}
+                  {vendorFilter!=="all" && <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:4 }}>{filteredInvoices.length} invoice{filteredInvoices.length!==1?"s":""} · ${filteredInvoices.reduce((s,i)=>s+i.amount,0).toLocaleString("en-US",{minimumFractionDigits:2})} total</div>}
                 </div>
-                <button onClick={()=>setView("add")} style={{ padding:"10px 20px", borderRadius:8, background:"#E4E7EC", border:"1px solid #D0D5DD", color:"#4F46E5", fontSize:13, cursor:"pointer" }}>+ New Invoice</button>
+                <button onClick={()=>setView("add")} style={{ padding:"10px 20px", borderRadius:8, background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", color:"var(--sc-gold)", fontSize:13, cursor:"pointer" }}>+ New Invoice</button>
               </div>
               {allVendorNames.length>0 && (
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:20 }}>
-                  <button onClick={()=>setVendorFilter("all")} style={{ padding:"6px 14px", borderRadius:20, fontSize:12, background:vendorFilter==="all"?"#E4E7EC":"transparent", border:`1px solid ${vendorFilter==="all"?"#4F46E5":"#D0D5DD"}`, color:vendorFilter==="all"?"#4F46E5":"#475467", cursor:"pointer" }}>All</button>
+                  <button onClick={()=>setVendorFilter("all")} style={{ padding:"6px 14px", borderRadius:20, fontSize:12, background:vendorFilter==="all"?"var(--sc-border)":"transparent", border:`1px solid ${vendorFilter==="all"?"var(--sc-gold)":"var(--sc-border-2)"}`, color:vendorFilter==="all"?"var(--sc-gold)":"var(--sc-text-2)", cursor:"pointer" }}>All</button>
                   {allVendorNames.map(v=>(
-                    <button key={v} onClick={()=>setVendorFilter(v)} style={{ padding:"6px 14px", borderRadius:20, fontSize:12, display:"flex", alignItems:"center", gap:6, background:vendorFilter===v?vendorColor(v)+"33":"transparent", border:`1px solid ${vendorFilter===v?vendorColor(v):"#D0D5DD"}`, color:vendorFilter===v?"#101828":"#475467", cursor:"pointer" }}>
+                    <button key={v} onClick={()=>setVendorFilter(v)} style={{ padding:"6px 14px", borderRadius:20, fontSize:12, display:"flex", alignItems:"center", gap:6, background:vendorFilter===v?vendorColor(v)+"33":"transparent", border:`1px solid ${vendorFilter===v?vendorColor(v):"var(--sc-border-2)"}`, color:vendorFilter===v?"var(--sc-text)":"var(--sc-text-2)", cursor:"pointer" }}>
                       <span style={{ width:8, height:8, borderRadius:"50%", background:vendorColor(v), display:"inline-block" }} />{v}
                     </button>
                   ))}
                 </div>
               )}
-              {filteredInvoices.length===0 ? <div style={{ color:"#475467", fontSize:14 }}>No invoices yet.</div> : (
-                <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:14, overflow:"clip" }}>
+              {filteredInvoices.length===0 ? <div style={{ color:"var(--sc-text-2)", fontSize:14 }}>No invoices yet.</div> : (
+                <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead>
-                      <tr style={{ background:"#F3F4F6" }}>
+                      <tr style={{ background:"var(--sc-surface-2)" }}>
                         {["Vendor","Date","Description","GL Account","Project","Amount",""].map(h=>(
-                          <th key={h} style={{ padding:"13px 16px", textAlign:"left", fontSize:11, color:"#475467", letterSpacing:1.5, fontWeight:500 }}>{h.toUpperCase()}</th>
+                          <th key={h} style={{ padding:"13px 16px", textAlign:"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1.5, fontWeight:500 }}>{h.toUpperCase()}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {filteredInvoices.map((inv,i)=>(
-                        <tr key={inv.id} style={{ borderTop:"1px solid #E4E7EC", background:inv.status==="voided"?"#FEF2F2":i%2===0?"transparent":"#F7F8FA", opacity:inv.status==="voided"?0.5:1 }}>
+                        <tr key={inv.id} style={{ borderTop:"1px solid var(--sc-border)", background:inv.status==="voided"?"var(--sc-error-soft)":i%2===0?"transparent":"var(--sc-bg)", opacity:inv.status==="voided"?0.5:1 }}>
                           <td style={{ padding:"13px 16px", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>
                             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                              <div style={{ width:28, height:28, borderRadius:6, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"#fff", flexShrink:0 }}>{initials(inv.vendor)}</div>
+                              <div style={{ width:28, height:28, borderRadius:6, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"var(--sc-on-accent)", flexShrink:0 }}>{initials(inv.vendor)}</div>
                               <div>
                                 <span style={{ fontSize:13, fontWeight:500 }}>{inv.vendor}</span>
-                                {inv.status==="voided" && <span style={{ fontSize:10, color:"#D92D20", marginLeft:6, background:"#FEF2F2", padding:"1px 6px", borderRadius:10 }}>VOIDED</span>}
+                                {inv.status==="voided" && <span style={{ fontSize:10, color:"var(--sc-error)", marginLeft:6, background:"var(--sc-error-soft)", padding:"1px 6px", borderRadius:10 }}>VOIDED</span>}
                               </div>
                             </div>
                           </td>
-                          <td style={{ padding:"13px 16px", fontSize:13, color:"#475467", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{fmtDate(inv.date)}</td>
-                          <td style={{ padding:"13px 16px", fontSize:13, color:"#475467", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{inv.description}</td>
-                          <td style={{ padding:"13px 16px", fontSize:12, cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}><span style={{ background:"#E4E7EC", padding:"3px 10px", borderRadius:20, color:"#4F46E5" }}>{inv.gl_code} · {inv.gl_name}</span></td>
-                          <td style={{ padding:"13px 16px", fontSize:12, color:"#475467", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{inv.project||"General"}</td>
-                          <td style={{ padding:"13px 16px", fontSize:13, fontFamily:"'DM Mono', monospace", color:inv.type==="revenue"?"#039855":"#D92D20", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>
+                          <td style={{ padding:"13px 16px", fontSize:13, color:"var(--sc-text-2)", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{fmtDate(inv.date)}</td>
+                          <td style={{ padding:"13px 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{inv.description}</td>
+                          <td style={{ padding:"13px 16px", fontSize:12, cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}><span style={{ background:"var(--sc-border)", padding:"3px 10px", borderRadius:20, color:"var(--sc-gold)" }}>{inv.gl_code} · {inv.gl_name}</span></td>
+                          <td style={{ padding:"13px 16px", fontSize:12, color:"var(--sc-text-2)", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{inv.project||"General"}</td>
+                          <td style={{ padding:"13px 16px", fontSize:13, fontFamily:"'DM Mono', monospace", color:inv.type==="revenue"?"var(--sc-success)":"var(--sc-error)", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>
                             {inv.type==="revenue"?"+":"-"}${inv.amount.toLocaleString("en-US",{minimumFractionDigits:2})}
                           </td>
                           <td style={{ padding:"8px 16px" }}>
@@ -62,14 +62,14 @@ export default function InvoicesView() {
                                   onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Void entry for ${inv.vendor} · $${inv.amount} on ${fmtDate(inv.date)}?
 
 Voiding keeps an audit trail.`, onConfirm:()=>{ voidInvoiceWithUndo(inv); }}); }}
-                                  style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", fontSize:11, cursor:"pointer" }}
+                                  style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:11, cursor:"pointer" }}
                                   title="Void (keeps audit trail)">
                                   Void
                                 </button>
                               )}
                               <button
                                 onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Delete ${inv.vendor} · $${inv.amount} on ${fmtDate(inv.date)}? You'll have 30 seconds to undo, and an admin can restore it later.`, onConfirm:()=>{ softDeleteInvoice(inv); }}); }}
-                                style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid #D92D2033", color:"#D92D20", fontSize:11, cursor:"pointer" }}
+                                style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", fontSize:11, cursor:"pointer" }}
                                 title="Delete permanently">
                                 ×
                               </button>

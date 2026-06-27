@@ -217,8 +217,8 @@ function AppWrapper() {
 
   if (session === undefined || appLoading) {
     return (
-      <div style={{minHeight:"100vh",background:"#F7F8FA",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
-        <div style={{color:"#475467",fontSize:14}}>Loading...</div>
+      <div style={{minHeight:"100vh",background:"var(--sc-bg)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+        <div style={{color:"var(--sc-text-2)",fontSize:14}}>Loading...</div>
       </div>
     );
   }
@@ -260,13 +260,13 @@ function AppWrapper() {
 // is already reported to Sentry by the boundary).
 function SentryFallback() {
   return (
-    <div style={{ minHeight:"100vh", background:"#F7F8FA", display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'DM Sans', system-ui, sans-serif" }}>
-      <div style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:16, boxShadow:"0 8px 28px rgba(17,24,39,0.10)", padding:32, maxWidth:480, width:"100%", textAlign:"center" }}>
+    <div style={{ minHeight:"100vh", background:"var(--sc-bg)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'DM Sans', system-ui, sans-serif" }}>
+      <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, boxShadow:"0 8px 28px rgba(17,24,39,0.10)", padding:32, maxWidth:480, width:"100%", textAlign:"center" }}>
         <div style={{ fontSize:34, marginBottom:10 }}>⚠️</div>
-        <h1 style={{ fontSize:20, fontWeight:700, margin:"0 0 8px", color:"#101828" }}>Something went wrong</h1>
-        <p style={{ fontSize:14, color:"#475467", lineHeight:1.6, margin:"0 0 20px" }}>Our team has been notified. Refreshing usually fixes it.</p>
+        <h1 style={{ fontSize:20, fontWeight:700, margin:"0 0 8px", color:"var(--sc-text)" }}>Something went wrong</h1>
+        <p style={{ fontSize:14, color:"var(--sc-text-2)", lineHeight:1.6, margin:"0 0 20px" }}>Our team has been notified. Refreshing usually fixes it.</p>
         <button onClick={()=>window.location.reload()}
-          style={{ padding:"11px 22px", borderRadius:10, background:"#4F46E5", border:"none", color:"#fff", fontSize:14, fontWeight:600, cursor:"pointer" }}>Refresh</button>
+          style={{ padding:"11px 22px", borderRadius:10, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:14, fontWeight:600, cursor:"pointer" }}>Refresh</button>
       </div>
     </div>
   );
@@ -2637,7 +2637,7 @@ CRITICAL RULES:
           title: "Duplicate Invoice Detected",
           label: `Invoice #${invNum} from ${form.vendor.trim()} was already booked on ${dup.date} for $${dup.amount.toFixed(2)} (${dup.gl_name}). Are you sure this is a different charge?`,
           confirmLabel: "Book Anyway",
-          confirmBg: "#ECFDF5", confirmBorder: "1px solid #03985544", confirmColor: "#039855",
+          confirmBg: "var(--sc-success-soft)", confirmBorder: "1px solid var(--sc-success-soft)", confirmColor: "var(--sc-success)",
           onConfirm: doBook,
         });
         return;
@@ -3662,11 +3662,11 @@ Keep the same array order and index as input.`,
 
   // ── CONTRACT HANDLER ─────────────────────────────────────────────────────────
   const CONTRACT_TYPES = {
-    loan: { label:"Loan / Debt", color:"#D92D20", icon:"🏦" },
-    revenue_contract: { label:"Revenue Contract", color:"#039855", icon:"📈" },
-    lease: { label:"Lease", color:"#DC6803", icon:"🏢" },
-    subscription_paid: { label:"Subscription (Paid)", color:"#6366F1", icon:"💳" },
-    subscription_received: { label:"Subscription (Received)", color:"#6366F1", icon:"📦" },
+    loan: { label:"Loan / Debt", color:"var(--sc-error)", icon:"🏦" },
+    revenue_contract: { label:"Revenue Contract", color:"var(--sc-success)", icon:"📈" },
+    lease: { label:"Lease", color:"var(--sc-warning)", icon:"🏢" },
+    subscription_paid: { label:"Subscription (Paid)", color:"var(--sc-gold)", icon:"💳" },
+    subscription_received: { label:"Subscription (Received)", color:"var(--sc-gold)", icon:"📦" },
     equipment_financing: { label:"Equipment Financing", color:"#EC4899", icon:"⚙️" },
     service_agreement: { label:"Service Agreement / Retainer", color:"#14B8A6", icon:"🤝" },
   };
@@ -4174,7 +4174,7 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
   };
 
   // ── AP MANAGEMENT ENGINE ──────────────────────────────────────────────────────
-  const AP_PRIORITY = { critical:"#D92D20", high:"#DC6803", normal:"#039855", low:"#475467" };
+  const AP_PRIORITY = { critical:"var(--sc-error)", high:"var(--sc-warning)", normal:"var(--sc-success)", low:"var(--sc-text-2)" };
 
   const runAPEngine = null; // consolidated into runAPScreen below
 
@@ -4989,8 +4989,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     return acc;
   },{});
 
-  const inputStyle = { width:"100%", background:"#F3F4F6", border:"1px solid #D0D5DD", borderRadius:8, padding:"10px 12px", color:"#101828", fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" };
-  const labelStyle = { display:"block", fontSize:11, color:"#475467", marginBottom:6, letterSpacing:1 };
+  const inputStyle = { width:"100%", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"10px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" };
+  const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
   const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, runDepreciationThrough, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile };
@@ -5000,7 +5000,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
   return (
     <ERPContext.Provider value={erpCtx}>
-    <div style={{ fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", minHeight:"100vh", background:"#F7F8FA", color:"#101828" }}>
+    <div style={{ fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", minHeight:"100vh", background:"var(--sc-bg)", color:"var(--sc-text)" }}>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
       <style>{`
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
@@ -5012,7 +5012,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         body, input, button, select, textarea { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
         /* Consistent form focus + interactive defaults across the app */
         button:not(:disabled){ cursor:pointer; }
-        input:focus, select:focus, textarea:focus { border-color:#4F46E5 !important; box-shadow:0 0 0 3px rgba(79,70,229,0.10); outline:none; }
+        input:focus, select:focus, textarea:focus { border-color:var(--sc-gold) !important; box-shadow:0 0 0 3px rgba(79,70,229,0.10); outline:none; }
         /* Sticky table headers — column labels stay visible while the main area scrolls.
            background-color:inherit pulls each header row's own color onto the cells (the
            tr carries the bg inline; sticky th need their own paint to avoid bleed-through).
@@ -5022,21 +5022,21 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         /* Nav tab hover — pure CSS so React fully owns the active state. Imperative
            DOM hover styling left residue (a hovered-then-abandoned tab kept its color
            because React saw no style diff to reset), making inactive tabs look active. */
-        .sc-navtab:not(.active):hover{ background:#F3F4F6 !important; color:#818CF8 !important; }
-        .sc-subtab:not(.active):hover{ color:#4F46E5 !important; }
+        .sc-navtab:not(.active):hover{ background:var(--sc-surface-2) !important; color:var(--sc-gold) !important; }
+        .sc-subtab:not(.active):hover{ color:var(--sc-gold) !important; }
         /* Sortable table headers — reveal the sort arrow on hover of inactive columns. */
-        .sc-th-sort:hover{ color:#667085 !important; }
+        .sc-th-sort:hover{ color:var(--sc-text-mut) !important; }
         .sc-th-sort:hover .sc-th-arrow{ opacity:1 !important; }
         /* Tabular figures for monospace numbers — fintech-grade alignment */
         [style*="DM Mono"]{ font-variant-numeric: tabular-nums; }
         /* Card elevation (used sparingly) */
         .sc-card{ box-shadow: 0 1px 3px rgba(16,24,40,0.1), 0 1px 2px rgba(16,24,40,0.06); }
-        .sc-skeleton{ background:linear-gradient(90deg,#F2F4F7 0px,#E9ECF2 200px,#F2F4F7 400px); background-size:800px 100%; animation:shimmer 1.4s linear infinite; border-radius:6px; }
-        ::-webkit-scrollbar{width:8px;height:8px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:#D0D5DD;border-radius:8px} ::-webkit-scrollbar-thumb:hover{background:#98A2B3}
+        .sc-skeleton{ background:linear-gradient(90deg,var(--sc-surface-2) 0px,#E9ECF2 200px,var(--sc-surface-2) 400px); background-size:800px 100%; animation:shimmer 1.4s linear infinite; border-radius:6px; }
+        ::-webkit-scrollbar{width:8px;height:8px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:var(--sc-border-2);border-radius:8px} ::-webkit-scrollbar-thumb:hover{background:var(--sc-text-mut)}
       `}</style>
 
       {notification && (
-        <div style={{ position:"fixed", top:20, right:20, zIndex:9999, background:notification.type==="error"?"#FEF2F2":"#ECFDF5", border:`1px solid ${notification.type==="error"?"#D92D20":"#039855"}`, color:notification.type==="error"?"#D92D20":"#039855", padding:"12px 16px 12px 20px", borderRadius:10, fontSize:14, animation:"fadein 0.2s ease", boxShadow:"0 8px 32px rgba(16,24,40,0.18)", display:"flex", alignItems:"center", gap:16, maxWidth:480 }}>
+        <div style={{ position:"fixed", top:20, right:20, zIndex:9999, background:notification.type==="error"?"var(--sc-error-soft)":"var(--sc-success-soft)", border:`1px solid ${notification.type==="error"?"var(--sc-error)":"var(--sc-success)"}`, color:notification.type==="error"?"var(--sc-error)":"var(--sc-success)", padding:"12px 16px 12px 20px", borderRadius:10, fontSize:14, animation:"fadein 0.2s ease", boxShadow:"0 8px 32px rgba(16,24,40,0.18)", display:"flex", alignItems:"center", gap:16, maxWidth:480 }}>
           <span>{notification.msg}</span>
           {notification.undo && (
             <button onClick={()=>{ const fn=notification.undo; dismissNotification(); fn(); }}
@@ -5049,12 +5049,12 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:"#FFFFFF", border:"1px solid #D92D2033", borderRadius:16, padding:28, maxWidth:400, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
+          <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-error-soft)", borderRadius:16, padding:28, maxWidth:400, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
             <div style={{ fontSize:16, fontWeight:600, marginBottom:10 }}>{deleteConfirm.title || "Confirm Delete"}</div>
-            <div style={{ fontSize:13, color:"#475467", marginBottom:20, lineHeight:1.6 }}>{deleteConfirm.label}</div>
+            <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:20, lineHeight:1.6 }}>{deleteConfirm.label}</div>
             <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
-              <button onClick={()=>setDeleteConfirm(null)} style={{ padding:"8px 20px", borderRadius:8, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", fontSize:13, cursor:"pointer" }}>Cancel</button>
-              <button onClick={()=>{ deleteConfirm.onConfirm(); setDeleteConfirm(null); }} style={{ padding:"8px 20px", borderRadius:8, background: deleteConfirm.confirmBg||"#FEE2E2", border: deleteConfirm.confirmBorder||"1px solid #D92D20", color: deleteConfirm.confirmColor||"#D92D20", fontSize:13, cursor:"pointer", fontWeight:600 }}>{deleteConfirm.confirmLabel || "Delete"}</button>
+              <button onClick={()=>setDeleteConfirm(null)} style={{ padding:"8px 20px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer" }}>Cancel</button>
+              <button onClick={()=>{ deleteConfirm.onConfirm(); setDeleteConfirm(null); }} style={{ padding:"8px 20px", borderRadius:8, background: deleteConfirm.confirmBg||"var(--sc-error-soft)", border: deleteConfirm.confirmBorder||"1px solid var(--sc-error)", color: deleteConfirm.confirmColor||"var(--sc-error)", fontSize:13, cursor:"pointer", fontWeight:600 }}>{deleteConfirm.confirmLabel || "Delete"}</button>
             </div>
           </div>
         </div>
@@ -5068,13 +5068,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         const dest = { bank_statement:"Bank Import", payroll:"Payroll Import", invoice:"Upload", qbo:"QuickBooks Import", contract:"Contracts" }[misrouteConfirm.detected] || "the right importer";
         return (
           <div style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <div style={{ background:"#FFFFFF", border:"1px solid #DC680333", borderRadius:16, padding:28, maxWidth:440, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
+            <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-warning-soft)", borderRadius:16, padding:28, maxWidth:440, width:"90%", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
               <div style={{ fontSize:16, fontWeight:600, marginBottom:10 }}>This looks like a {detLabel}</div>
-              <div style={{ fontSize:13, color:"#475467", marginBottom:20, lineHeight:1.6 }}>You dropped it on the {expLabel} importer. Send it to <b>{dest}</b> instead, or process it here anyway?</div>
+              <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:20, lineHeight:1.6 }}>You dropped it on the {expLabel} importer. Send it to <b>{dest}</b> instead, or process it here anyway?</div>
               <div style={{ display:"flex", gap:10, justifyContent:"flex-end", flexWrap:"wrap" }}>
-                <button onClick={()=>close("cancel")} style={{ padding:"8px 16px", borderRadius:8, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", fontSize:13, cursor:"pointer" }}>Cancel</button>
-                <button onClick={()=>close("proceed")} style={{ padding:"8px 16px", borderRadius:8, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", fontSize:13, cursor:"pointer" }}>Process here anyway</button>
-                <button onClick={()=>close("route")} style={{ padding:"8px 16px", borderRadius:8, background:"#4F46E5", border:"none", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>Send to {dest}</button>
+                <button onClick={()=>close("cancel")} style={{ padding:"8px 16px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer" }}>Cancel</button>
+                <button onClick={()=>close("proceed")} style={{ padding:"8px 16px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer" }}>Process here anyway</button>
+                <button onClick={()=>close("route")} style={{ padding:"8px 16px", borderRadius:8, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer" }}>Send to {dest}</button>
               </div>
             </div>
           </div>
@@ -5083,38 +5083,38 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
       {/* Persistent upload status — visible from any tab */}
       {uploadQueue.some(q => q.status==="pending"||q.status==="classifying"||q.status==="processing") && (
-        <div style={{ position:"fixed", bottom:100, left:"50%", transform:"translateX(-50%)", zIndex:999, background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:12, padding:"12px 20px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 8px 32px rgba(0,0,0,0.6)", minWidth:280 }}>
+        <div style={{ position:"fixed", bottom:100, left:"50%", transform:"translateX(-50%)", zIndex:999, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:12, padding:"12px 20px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 8px 32px rgba(0,0,0,0.6)", minWidth:280 }}>
           <div style={{ display:"flex", gap:3 }}>
-            {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"#4F46E5", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+            {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"var(--sc-gold)", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
           </div>
           <div>
-            <div style={{ fontSize:13, color:"#101828", fontWeight:500 }}>
+            <div style={{ fontSize:13, color:"var(--sc-text)", fontWeight:500 }}>
               Processing {uploadQueue.filter(q=>q.status==="pending"||q.status==="classifying"||q.status==="processing").length} file{uploadQueue.filter(q=>q.status==="pending"||q.status==="classifying"||q.status==="processing").length>1?"s":""}...
             </div>
-            <div style={{ fontSize:11, color:"#475467", marginTop:2 }}>
+            <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:2 }}>
               {uploadQueue.find(q=>q.status==="processing"||q.status==="classifying")?.name || ""}
             </div>
           </div>
-          <button onClick={()=>{ setView("home"); setTimeout(()=>document.getElementById("universal-upload-zone")?.scrollIntoView({behavior:"smooth",block:"center"}), 250); }} style={{ marginLeft:"auto", background:"none", border:"1px solid #D0D5DD", borderRadius:6, padding:"4px 10px", color:"#4F46E5", fontSize:11, cursor:"pointer", flexShrink:0 }}>View</button>
+          <button onClick={()=>{ setView("home"); setTimeout(()=>document.getElementById("universal-upload-zone")?.scrollIntoView({behavior:"smooth",block:"center"}), 250); }} style={{ marginLeft:"auto", background:"none", border:"1px solid var(--sc-border-2)", borderRadius:6, padding:"4px 10px", color:"var(--sc-gold)", fontSize:11, cursor:"pointer", flexShrink:0 }}>View</button>
         </div>
       )}
 
       <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
         {/* BOOKING VISIBILITY FAILURE — non-dismissable; a saved entry isn't displaying. */}
         {visibilityAlert && (
-          <div role="alert" style={{ flexShrink:0, background:"#FFFAEB", borderBottom:"1px solid #FEDF89", color:"#B54708", padding:"11px 24px", display:"flex", alignItems:"center", gap:12, fontSize:13, fontWeight:600, zIndex:51 }}>
+          <div role="alert" style={{ flexShrink:0, background:"var(--sc-warning-soft)", borderBottom:"1px solid #FEDF89", color:"var(--sc-warning)", padding:"11px 24px", display:"flex", alignItems:"center", gap:12, fontSize:13, fontWeight:600, zIndex:51 }}>
             <span style={{ fontSize:16 }}>⚠</span>
             <span>A transaction was saved but isn't displaying correctly. Refresh the page — if it's still missing, contact support.</span>
           </div>
         )}
         {/* SUPPORT MODE banner — persistent while a platform admin is viewing a client */}
         {supportMode && (
-          <div style={{ flexShrink:0, background:"linear-gradient(90deg,#EA580C,#F97316)", color:"#fff", padding:"10px 24px", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap", boxShadow:"0 2px 8px rgba(234,88,12,0.35)", zIndex:50 }}>
+          <div style={{ flexShrink:0, background:"linear-gradient(90deg,var(--sc-warning),#F97316)", color:"var(--sc-on-accent)", padding:"10px 24px", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap", boxShadow:"0 2px 8px rgba(234,88,12,0.35)", zIndex:50 }}>
             <span style={{ fontSize:16 }}>🛟</span>
             <div style={{ flex:"1 1 320px", minWidth:0, fontSize:13, fontWeight:600 }}>
               SUPPORT MODE — Viewing <strong>{supportMode.company?.name || currentCompany?.name}</strong> as Platform Admin. Every action is real and logged.
             </div>
-            <button onClick={exitSupport} style={{ flexShrink:0, background:"#FFFFFF", color:"#C2410C", border:"none", borderRadius:8, padding:"7px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>Exit Support Mode →</button>
+            <button onClick={exitSupport} style={{ flexShrink:0, background:"var(--sc-surface)", color:"var(--sc-warning)", border:"none", borderRadius:8, padding:"7px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>Exit Support Mode →</button>
           </div>
         )}
         {/* Top Bar */}
@@ -5181,16 +5181,16 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                         fontFamily:"var(--sc-font-ui)", cursor:"pointer", transition:"all 0.12s" }}>
                       {tab.label}
                       {tab.id==="home" && clarificationQueue.filter(c=>!c.resolved).length>0 && (
-                        <span style={{ background:"#DC6803", color:"#fff", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.filter(c=>!c.resolved).length}</span>
+                        <span style={{ background:"var(--sc-warning)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.filter(c=>!c.resolved).length}</span>
                       )}
                       {tab.admin && adminFailedCount>0 && (
-                        <span title={`${adminFailedCount} failed upload${adminFailedCount!==1?"s":""} in 24h`} style={{ width:8, height:8, borderRadius:"50%", background:"#D92D20", display:"inline-block", flexShrink:0 }} />
+                        <span title={`${adminFailedCount} failed upload${adminFailedCount!==1?"s":""} in 24h`} style={{ width:8, height:8, borderRadius:"50%", background:"var(--sc-error)", display:"inline-block", flexShrink:0 }} />
                       )}
                     </button>
                   );
                 })}
                 {/* Notification bell (Item 55) — clean lucide-style icon, matched to
-                    the Settings gear (muted #6B7280 → #4F46E5 on hover). */}
+                    the Settings gear (muted var(--sc-text-mut) → var(--sc-gold) on hover). */}
                 <button onClick={()=>setNotifOpen(o=>!o)} title="Notifications" aria-label="Notifications"
                   style={{ marginLeft:"auto", alignSelf:"center", position:"relative", width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background: notifOpen?"var(--sc-gold-soft)":"transparent", border:"none", borderRadius:10, cursor:"pointer", color: notifOpen?"var(--sc-gold)":"var(--sc-text-mut)", transition:"all .15s" }}
                   onMouseEnter={e=>{ if(!notifOpen){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
@@ -5200,7 +5200,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                     <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                   </svg>
                   {unreadNotifs>0 && (
-                    <span style={{ position:"absolute", top:2, right:2, width:16, height:16, borderRadius:"50%", background:"var(--sc-error)", color:"#fff", fontSize:10, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, border:"2px solid var(--sc-surface)" }}>{unreadNotifs>9?"9":unreadNotifs}</span>
+                    <span style={{ position:"absolute", top:2, right:2, width:16, height:16, borderRadius:"50%", background:"var(--sc-error)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, border:"2px solid var(--sc-surface)" }}>{unreadNotifs>9?"9":unreadNotifs}</span>
                   )}
                 </button>
               </div>
@@ -5254,9 +5254,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         <div ref={mainContentRef} id="main-content" style={{ flex:1, overflowY:"auto" }}>
           {/* Review banner — visible from any non-dashboard view when items need input */}
           {clarificationQueue.filter(c=>!c.resolved).length > 0 && view !== "home" && view !== "dashboard" && (
-            <div style={{ background:"#FEF3C7", borderBottom:"1px solid #DC680344", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
-              <div style={{ fontSize:13, color:"#DC6803" }}>⚠ {clarificationQueue.filter(c=>!c.resolved).length} invoice{clarificationQueue.filter(c=>!c.resolved).length!==1?"s":""} need{clarificationQueue.filter(c=>!c.resolved).length===1?"s":""} review before booking</div>
-              <button onClick={()=>setView("home")} style={{ background:"#DC680322", border:"1px solid #DC680344", color:"#DC6803", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer" }}>Review →</button>
+            <div style={{ background:"var(--sc-warning-soft)", borderBottom:"1px solid var(--sc-warning-soft)", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
+              <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ {clarificationQueue.filter(c=>!c.resolved).length} invoice{clarificationQueue.filter(c=>!c.resolved).length!==1?"s":""} need{clarificationQueue.filter(c=>!c.resolved).length===1?"s":""} review before booking</div>
+              <button onClick={()=>setView("home")} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer" }}>Review →</button>
             </div>
           )}
           <div key={view} className="sc-rise" style={{ maxWidth:1296, margin:"0 auto", padding:"32px 48px" }}>
@@ -5360,51 +5360,51 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {/* ── NOTIFICATION CENTER (Item 55) ──────────────────────────────────── */}
       {notifOpen && (() => {
         const META = {
-          tax_deadline:        { icon:"📅", color:"#D92D20" },
-          anomaly:             { icon:"⚠",  color:"#DC6803" },
-          reconciliation:      { icon:"🏦", color:"#DC6803" },
+          tax_deadline:        { icon:"📅", color:"var(--sc-error)" },
+          anomaly:             { icon:"⚠",  color:"var(--sc-warning)" },
+          reconciliation:      { icon:"🏦", color:"var(--sc-warning)" },
           needs_review:        { icon:"📄", color:"#CA8504" },
-          report_ready:        { icon:"📊", color:"#039855" },
-          monthly_report:      { icon:"🗓️", color:"#4F46E5" },
-          ai_action:           { icon:"✦",  color:"#4F46E5" },
-          recurring_suggestion:{ icon:"↻",  color:"#4F46E5" },
+          report_ready:        { icon:"📊", color:"var(--sc-success)" },
+          monthly_report:      { icon:"🗓️", color:"var(--sc-gold)" },
+          ai_action:           { icon:"✦",  color:"var(--sc-gold)" },
+          recurring_suggestion:{ icon:"↻",  color:"var(--sc-gold)" },
         };
         const ago = (ts) => { if(!ts) return ""; const s=(Date.now()-new Date(ts))/1000; if(s<60) return "just now"; if(s<3600) return `${Math.floor(s/60)}m ago`; if(s<86400) return `${Math.floor(s/3600)}h ago`; return `${Math.floor(s/86400)}d ago`; };
         return (
           <div onClick={()=>setNotifOpen(false)} style={{ position:"fixed", inset:0, zIndex:1001, background:"rgba(17,24,39,0.25)", display:"flex", justifyContent:"flex-end" }}>
             <style>{`@keyframes notifIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
-            <div onClick={e=>e.stopPropagation()} style={{ width:400, maxWidth:"94vw", height:"100%", background:"#FFFFFF", borderLeft:"1px solid #E4E7EC", boxShadow:"-20px 0 60px rgba(16,24,40,0.18)", display:"flex", flexDirection:"column", animation:"notifIn .22s cubic-bezier(.22,1,.36,1)" }}>
-              <div style={{ padding:"18px 20px", borderBottom:"1px solid #F3F4F6", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
-                <div style={{ fontSize:16, fontWeight:700, color:"#101828" }}>Notifications</div>
+            <div onClick={e=>e.stopPropagation()} style={{ width:400, maxWidth:"94vw", height:"100%", background:"var(--sc-surface)", borderLeft:"1px solid var(--sc-border)", boxShadow:"-20px 0 60px rgba(16,24,40,0.18)", display:"flex", flexDirection:"column", animation:"notifIn .22s cubic-bezier(.22,1,.36,1)" }}>
+              <div style={{ padding:"18px 20px", borderBottom:"1px solid var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                <div style={{ fontSize:16, fontWeight:700, color:"var(--sc-text)" }}>Notifications</div>
                 <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                  {unreadNotifs>0 && <button onClick={markAllNotifsRead} style={{ fontSize:12, color:"#4F46E5", background:"none", border:"none", cursor:"pointer", fontWeight:600 }}>Mark all read</button>}
-                  <button onClick={()=>setNotifOpen(false)} style={{ background:"none", border:"none", color:"#475467", fontSize:22, lineHeight:1, cursor:"pointer" }}>×</button>
+                  {unreadNotifs>0 && <button onClick={markAllNotifsRead} style={{ fontSize:12, color:"var(--sc-gold)", background:"none", border:"none", cursor:"pointer", fontWeight:600 }}>Mark all read</button>}
+                  <button onClick={()=>setNotifOpen(false)} style={{ background:"none", border:"none", color:"var(--sc-text-2)", fontSize:22, lineHeight:1, cursor:"pointer" }}>×</button>
                 </div>
               </div>
               <div style={{ flex:1, overflowY:"auto" }}>
                 {notifications.length===0 ? (
-                  <div style={{ padding:"48px 24px", textAlign:"center", color:"#98A2B3", fontSize:13, lineHeight:1.6 }}>
+                  <div style={{ padding:"48px 24px", textAlign:"center", color:"var(--sc-text-mut)", fontSize:13, lineHeight:1.6 }}>
                     <div style={{ fontSize:32, marginBottom:10 }}>🔔</div>You're all caught up. New alerts about taxes, anomalies, and reviews will show up here.
                   </div>
                 ) : notifications.map(n => {
-                  const m = META[n.type] || { icon:"•", color:"#475467" };
+                  const m = META[n.type] || { icon:"•", color:"var(--sc-text-2)" };
                   return (
-                    <div key={n.id} onClick={()=>openNotification(n)} style={{ display:"flex", gap:12, padding:"14px 18px", borderBottom:"1px solid #F3F4F6", cursor:"pointer", background:n.read?"#FFFFFF":"#F8F9FF", transition:"background .12s" }}
-                      onMouseEnter={e=>e.currentTarget.style.background="#F2F4F7"} onMouseLeave={e=>e.currentTarget.style.background=n.read?"#FFFFFF":"#F8F9FF"}>
+                    <div key={n.id} onClick={()=>openNotification(n)} style={{ display:"flex", gap:12, padding:"14px 18px", borderBottom:"1px solid var(--sc-surface-2)", cursor:"pointer", background:n.read?"var(--sc-surface)":"var(--sc-gold-soft)", transition:"background .12s" }}
+                      onMouseEnter={e=>e.currentTarget.style.background="#F2F4F7"} onMouseLeave={e=>e.currentTarget.style.background=n.read?"var(--sc-surface)":"var(--sc-gold-soft)"}>
                       <div style={{ width:34, height:34, borderRadius:9, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, background:m.color+"18", color:m.color }}>{m.icon}</div>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:600, color:"#101828", lineHeight:1.4 }}>{n.title}</div>
-                        {n.description && <div style={{ fontSize:12, color:"#475467", marginTop:2, lineHeight:1.45 }}>{n.description}</div>}
-                        <div style={{ fontSize:11, color:"#98A2B3", marginTop:4 }}>{ago(n.created_at)}</div>
+                        <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)", lineHeight:1.4 }}>{n.title}</div>
+                        {n.description && <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:2, lineHeight:1.45 }}>{n.description}</div>}
+                        <div style={{ fontSize:11, color:"var(--sc-text-mut)", marginTop:4 }}>{ago(n.created_at)}</div>
                       </div>
-                      {!n.read && <span style={{ width:8, height:8, borderRadius:"50%", background:"#4F46E5", flexShrink:0, marginTop:6 }} />}
+                      {!n.read && <span style={{ width:8, height:8, borderRadius:"50%", background:"var(--sc-gold)", flexShrink:0, marginTop:6 }} />}
                     </div>
                   );
                 })}
               </div>
               {notifications.length>0 && (
-                <div style={{ padding:"12px 18px", borderTop:"1px solid #F3F4F6", flexShrink:0 }}>
-                  <button onClick={clearAllNotifs} style={{ width:"100%", padding:"9px", borderRadius:9, fontSize:13, fontWeight:600, color:"#475467", background:"#F2F4F7", border:"1px solid #E4E7EC", cursor:"pointer" }}>Clear all</button>
+                <div style={{ padding:"12px 18px", borderTop:"1px solid var(--sc-surface-2)", flexShrink:0 }}>
+                  <button onClick={clearAllNotifs} style={{ width:"100%", padding:"9px", borderRadius:9, fontSize:13, fontWeight:600, color:"var(--sc-text-2)", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border)", cursor:"pointer" }}>Clear all</button>
                 </div>
               )}
             </div>
@@ -5416,14 +5416,14 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {/* Bubble button */}
       <button onClick={()=>{ setChatOpen(o=>!o); setHasUnread(false); }} style={{
         position:"fixed", bottom:28, right:28, width:58, height:58, borderRadius:"50%",
-        background:"linear-gradient(135deg,#4F46E5,#6366F1)", border:"none", cursor:"pointer",
+        background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", cursor:"pointer",
         boxShadow:"0 8px 32px rgba(109,40,217,0.5)", display:"flex", alignItems:"center", justifyContent:"center",
         fontSize:24, zIndex:1000, animation:"popbubble 0.3s cubic-bezier(0.34,1.56,0.64,1)",
         transition:"transform 0.2s"
       }} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
         {chatOpen ? "×" : "✦"}
         {hasUnread && !chatOpen && (
-          <div style={{ position:"absolute", top:4, right:4, width:12, height:12, background:"#D92D20", borderRadius:"50%", border:"2px solid #F3F4F6" }} />
+          <div style={{ position:"absolute", top:4, right:4, width:12, height:12, background:"var(--sc-error)", borderRadius:"50%", border:"2px solid var(--sc-surface-2)" }} />
         )}
       </button>
 
@@ -5431,25 +5431,25 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       {chatOpen && (
         <div style={{
           position:"fixed", bottom:100, right:28, width:440, height:560,
-          background:"#FFFFFF", border:"1px solid #D0D5DD", borderRadius:20,
+          background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:20,
           boxShadow:"0 24px 80px rgba(0,0,0,0.7)", display:"flex", flexDirection:"column",
           zIndex:999, animation:"slideup 0.25s cubic-bezier(0.34,1.56,0.64,1)", overflow:"hidden"
         }}>
           {/* Header */}
-          <div style={{ padding:"18px 20px", borderBottom:"1px solid #E4E7EC", background:"linear-gradient(135deg,#EEF2FF,#FFFFFF)", flexShrink:0 }}>
+          <div style={{ padding:"18px 20px", borderBottom:"1px solid var(--sc-border)", background:"linear-gradient(135deg,var(--sc-gold-soft),var(--sc-surface))", flexShrink:0 }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
+                <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
                 <div>
                   <div style={{ fontSize:14, fontWeight:600 }}>Shadow</div>
-                  <div style={{ fontSize:11, color:"#039855" }}>● Online · Your AI Controller</div>
+                  <div style={{ fontSize:11, color:"var(--sc-success)" }}>● Online · Your AI Controller</div>
                 </div>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                 <button onClick={()=>setAiInfoOpen(true)} title="What can the assistant do?"
-                  style={{ width:26, height:26, borderRadius:8, background:"#FFFFFF", border:"1px solid #D0D5DD", color:"#475467", cursor:"pointer", fontSize:13, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>?</button>
+                  style={{ width:26, height:26, borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", fontSize:13, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>?</button>
                 <button onClick={()=>setChatHistoryView(v=>!v)} title="Action history"
-                  style={{ fontSize:11, padding:"5px 11px", borderRadius:8, background:chatHistoryView?"#4F46E5":"#FFFFFF", border:`1px solid ${chatHistoryView?"#4F46E5":"#D0D5DD"}`, color:chatHistoryView?"#fff":"#475467", cursor:"pointer", whiteSpace:"nowrap" }}>
+                  style={{ fontSize:11, padding:"5px 11px", borderRadius:8, background:chatHistoryView?"var(--sc-gold)":"var(--sc-surface)", border:`1px solid ${chatHistoryView?"var(--sc-gold)":"var(--sc-border-2)"}`, color:chatHistoryView?"var(--sc-surface)":"var(--sc-text-2)", cursor:"pointer", whiteSpace:"nowrap" }}>
                   {chatHistoryView ? "← Chat" : "History"}
                 </button>
               </div>
@@ -5459,17 +5459,17 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {/* AI Capability Document — what the assistant can and cannot do (sandbox doc) */}
           {aiInfoOpen && (
             <div onClick={()=>setAiInfoOpen(false)} style={{ position:"absolute", inset:0, zIndex:5, background:"rgba(16,24,40,0.45)", display:"flex", alignItems:"center", justifyContent:"center", padding:18 }}>
-              <div onClick={e=>e.stopPropagation()} style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:16, width:"100%", maxHeight:"100%", overflowY:"auto", boxShadow:"0 20px 60px rgba(16,24,40,0.25)" }}>
-                <div style={{ padding:"16px 18px", borderBottom:"1px solid #F3F4F6", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:"#101828" }}>Your AI CFO</div>
-                  <button onClick={()=>setAiInfoOpen(false)} style={{ background:"none", border:"none", fontSize:20, lineHeight:1, color:"#475467", cursor:"pointer" }}>×</button>
+              <div onClick={e=>e.stopPropagation()} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, width:"100%", maxHeight:"100%", overflowY:"auto", boxShadow:"0 20px 60px rgba(16,24,40,0.25)" }}>
+                <div style={{ padding:"16px 18px", borderBottom:"1px solid var(--sc-surface-2)", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:"var(--sc-text)" }}>Your AI CFO</div>
+                  <button onClick={()=>setAiInfoOpen(false)} style={{ background:"none", border:"none", fontSize:20, lineHeight:1, color:"var(--sc-text-2)", cursor:"pointer" }}>×</button>
                 </div>
                 <div style={{ padding:"14px 18px" }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:"#101828", marginBottom:12 }}>{AI_CAPABILITIES.canTitle}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)", marginBottom:12 }}>{AI_CAPABILITIES.canTitle}</div>
                   <ul style={{ margin:0, padding:0, listStyle:"none" }}>
                     {AI_CAPABILITIES.can.map((t,i)=>(
-                      <li key={i} style={{ display:"flex", gap:8, fontSize:12.5, color:"#344054", lineHeight:1.5, marginBottom:9 }}>
-                        <span style={{ color:"#039855", flexShrink:0 }}>✓</span><span>{t}</span>
+                      <li key={i} style={{ display:"flex", gap:8, fontSize:12.5, color:"var(--sc-text-2)", lineHeight:1.5, marginBottom:9 }}>
+                        <span style={{ color:"var(--sc-success)", flexShrink:0 }}>✓</span><span>{t}</span>
                       </li>
                     ))}
                   </ul>
@@ -5482,7 +5482,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           <div ref={chatScrollRef} style={{ flex:1, overflowY:"auto", padding:"16px 16px 8px" }}>
             {chatHistoryView ? (() => {
               const timeline = chatHistory.filter(m => m.role==="assistant" && (m.actions||[]).length>0).slice().reverse();
-              if (timeline.length===0) return <div style={{ padding:"30px 8px", textAlign:"center", color:"#475467", fontSize:12, lineHeight:1.6 }}>No actions yet. When you ask me to recode transactions, add accounts, or set rules, they'll appear here as a timeline.</div>;
+              if (timeline.length===0) return <div style={{ padding:"30px 8px", textAlign:"center", color:"var(--sc-text-2)", fontSize:12, lineHeight:1.6 }}>No actions yet. When you ask me to recode transactions, add accounts, or set rules, they'll appear here as a timeline.</div>;
               const bucketOf = (d) => {
                 if (!d) return "Earlier";
                 const now = new Date(); const dt = new Date(d);
@@ -5501,17 +5501,17 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                     const showHeader = bucket !== lastBucket; lastBucket = bucket;
                     return (
                     <React.Fragment key={m.id||i}>
-                      {showHeader && <div style={{ fontSize:10, letterSpacing:1, color:"#475467", fontWeight:700, margin: i===0?"0 0 12px":"18px 0 12px" }}>{bucket.toUpperCase()}</div>}
+                      {showHeader && <div style={{ fontSize:10, letterSpacing:1, color:"var(--sc-text-2)", fontWeight:700, margin: i===0?"0 0 12px":"18px 0 12px" }}>{bucket.toUpperCase()}</div>}
                       <div style={{ display:"flex", gap:10, marginBottom:14 }}>
                         <div style={{ flexShrink:0, width:8, display:"flex", flexDirection:"column", alignItems:"center" }}>
-                          <div style={{ width:8, height:8, borderRadius:"50%", background:"#4F46E5", marginTop:3 }} />
-                          {i<timeline.length-1 && <div style={{ flex:1, width:2, background:"#E4E7EC", marginTop:2 }} />}
+                          <div style={{ width:8, height:8, borderRadius:"50%", background:"var(--sc-gold)", marginTop:3 }} />
+                          {i<timeline.length-1 && <div style={{ flex:1, width:2, background:"var(--sc-border)", marginTop:2 }} />}
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:11, color:"#475467", marginBottom:4 }}>{m.created_at ? new Date(m.created_at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : ""}</div>
+                          <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:4 }}>{m.created_at ? new Date(m.created_at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : ""}</div>
                           {(m.actions||[]).map((a,j)=>(
-                            <div key={j} style={{ fontSize:12, color:"#101828", lineHeight:1.5, display:"flex", gap:6, marginBottom:3 }}>
-                              <span style={{ color:"#4F46E5", flexShrink:0 }}>⚡</span><span>{a}</span>
+                            <div key={j} style={{ fontSize:12, color:"var(--sc-text)", lineHeight:1.5, display:"flex", gap:6, marginBottom:3 }}>
+                              <span style={{ color:"var(--sc-gold)", flexShrink:0 }}>⚡</span><span>{a}</span>
                             </div>
                           ))}
                         </div>
@@ -5525,7 +5525,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             {chatHistory.map((msg, idx)=>(
               <div key={msg.id||idx} style={{ marginBottom:14, display:"flex", justifyContent:msg.role==="user"?"flex-end":"flex-start" }}>
                 {msg.role==="assistant" && (
-                  <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0, marginRight:8, marginTop:2 }}>✦</div>
+                  <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0, marginRight:8, marginTop:2 }}>✦</div>
                 )}
                 <div style={{ maxWidth:"80%" }}>
                   {(() => {
@@ -5538,17 +5538,17 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                     return (
                       <div style={{
                         padding:"10px 14px", borderRadius:msg.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",
-                        background:msg.role==="user"?"linear-gradient(135deg,#4F46E5,#4338CA)":"#F3F4F6",
-                        fontSize:13, lineHeight:1.6, color:msg.role==="user"?"#fff":"#101828", whiteSpace:"pre-wrap"
+                        background:msg.role==="user"?"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))":"var(--sc-surface-2)",
+                        fontSize:13, lineHeight:1.6, color:msg.role==="user"?"var(--sc-surface)":"var(--sc-text)", whiteSpace:"pre-wrap"
                       }}>{text}</div>
                     );
                   })()}
                   {msg.actions?.length>0 && (
-                    <div style={{ marginTop:10, background:"#ECFDF5", border:"1px solid #03985544", borderRadius:12, padding:"12px 14px" }}>
-                      <div style={{ fontSize:10, fontWeight:700, color:"#039855", letterSpacing:1, marginBottom:8 }}>✓ ACTIONS TAKEN</div>
+                    <div style={{ marginTop:10, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", borderRadius:12, padding:"12px 14px" }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:"var(--sc-success)", letterSpacing:1, marginBottom:8 }}>✓ ACTIONS TAKEN</div>
                       {msg.actions.map((a,i)=>(
-                        <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:12, color:"#039855", marginBottom: i < msg.actions.length-1 ? 6 : 0, lineHeight:1.4 }}>
-                          <span style={{ color:"#039855", flexShrink:0, marginTop:1 }}>⚡</span>
+                        <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:12, color:"var(--sc-success)", marginBottom: i < msg.actions.length-1 ? 6 : 0, lineHeight:1.4 }}>
+                          <span style={{ color:"var(--sc-success)", flexShrink:0, marginTop:1 }}>⚡</span>
                           <span>{a}</span>
                         </div>
                       ))}
@@ -5566,10 +5566,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             ))}
             {chatLoading && (
               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
-                <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0 }}>✦</div>
-                <div style={{ padding:"10px 14px", background:"#E4E7EC", borderRadius:"16px 16px 16px 4px" }}>
+                <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, flexShrink:0 }}>✦</div>
+                <div style={{ padding:"10px 14px", background:"var(--sc-border)", borderRadius:"16px 16px 16px 4px" }}>
                   <div style={{ display:"flex", gap:4 }}>
-                    {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"#475467", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+                    {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"var(--sc-text-2)", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
                   </div>
                 </div>
               </div>
@@ -5582,20 +5582,20 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           {!chatHistoryView && chatHistory.length < 3 && (
             <div style={{ padding:"0 16px 8px", display:"flex", flexWrap:"wrap", gap:6 }}>
               {["What's my burn rate?","Show me unpaid bills","What's my P&L this month?","Did anything need my attention?"].map(s=>(
-                <button key={s} onClick={()=>{ setChatInput(s); chatInputRef.current?.focus(); }} style={{ fontSize:11, padding:"5px 10px", borderRadius:20, background:"#E4E7EC", border:"1px solid #D0D5DD", color:"#475467", cursor:"pointer", textAlign:"left" }}>{s}</button>
+                <button key={s} onClick={()=>{ setChatInput(s); chatInputRef.current?.focus(); }} style={{ fontSize:11, padding:"5px 10px", borderRadius:20, background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", textAlign:"left" }}>{s}</button>
               ))}
             </div>
           )}
 
           {/* Input */}
-          <div style={{ padding:"12px 16px", borderTop:"1px solid #E4E7EC", display:"flex", gap:8, flexShrink:0 }}>
+          <div style={{ padding:"12px 16px", borderTop:"1px solid var(--sc-border)", display:"flex", gap:8, flexShrink:0 }}>
             <input ref={chatInputRef} value={chatInput} onChange={e=>setChatInput(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&handleChatSend()}
               placeholder="Ask anything about your books..."
-              style={{ flex:1, background:"#F3F4F6", border:"1px solid #D0D5DD", borderRadius:10, padding:"10px 14px", color:"#101828", fontSize:13, outline:"none", fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }} />
+              style={{ flex:1, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:10, padding:"10px 14px", color:"var(--sc-text)", fontSize:13, outline:"none", fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }} />
             <button onClick={handleChatSend} disabled={chatLoading||!chatInput.trim()} style={{
-              width:40, height:40, borderRadius:10, background:(chatLoading||!chatInput.trim())?"#E4E7EC":"linear-gradient(135deg,#4F46E5,#6366F1)",
-              border:"none", color:"#101828", cursor:(chatLoading||!chatInput.trim())?"not-allowed":"pointer", fontSize:16, flexShrink:0
+              width:40, height:40, borderRadius:10, background:(chatLoading||!chatInput.trim())?"var(--sc-border)":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",
+              border:"none", color:"var(--sc-text)", cursor:(chatLoading||!chatInput.trim())?"not-allowed":"pointer", fontSize:16, flexShrink:0
             }}>↑</button>
           </div>
         </div>

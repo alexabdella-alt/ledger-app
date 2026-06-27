@@ -36,60 +36,60 @@ export default function OpeningBalancesView() {
             return (
               <div style={{maxWidth:680}}>
                 <div id="opening-balances-section" style={{marginBottom:24,scrollMarginTop:16}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"#475467",marginBottom:8}}>SETUP</div>
+                  <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>SETUP</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Opening Balances</h1>
-                  <div style={{fontSize:13,color:"#475467",marginTop:6}}>Enter your account balances as of the date you're starting your books. This sets the baseline for all reports.</div>
+                  <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Enter your account balances as of the date you're starting your books. This sets the baseline for all reports.</div>
                 </div>
 
                 {/* Cutoff (Day One) — editable until the opening entry is posted, then locked */}
-                <div style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:12,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
-                  <div style={{fontSize:13,color:"#475467",flexShrink:0}}>Cutoff date (Day One):</div>
+                <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+                  <div style={{fontSize:13,color:"var(--sc-text-2)",flexShrink:0}}>Cutoff date (Day One):</div>
                   <input type="date" value={cutoffDate||""} disabled={openingPosted} onChange={e=>saveCutoffDate(e.target.value)}
-                    style={{background: openingPosted?"#F3F4F6":"#FFFFFF",border:"1px solid #D0D5DD",borderRadius:8,padding:"7px 12px",color:"#101828",fontSize:13,outline:"none",cursor:openingPosted?"not-allowed":"text"}}/>
-                  {openingPosted && <span style={{fontSize:12,color:"#475467"}}>🔒 locked — opening balances posted</span>}
-                  <div style={{marginLeft:"auto",fontSize:12,color:isBalanced?"#039855":"#D92D20",fontWeight:500}}>
+                    style={{background: openingPosted?"var(--sc-surface-2)":"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",cursor:openingPosted?"not-allowed":"text"}}/>
+                  {openingPosted && <span style={{fontSize:12,color:"var(--sc-text-2)"}}>🔒 locked — opening balances posted</span>}
+                  <div style={{marginLeft:"auto",fontSize:12,color:isBalanced?"var(--sc-success)":"var(--sc-error)",fontWeight:500}}>
                     {isBalanced ? "✓ Balanced" : `Out of balance by ${fmt(Math.abs(totalAssets-totalLiab-totalEquity))}`}
                   </div>
                 </div>
-                {!cutoffDate && <div style={{background:"#FEF3C7",border:"1px solid #DC680344",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12.5,color:"#92400E"}}>Set your cutoff date first — it's the day your books begin. No transactions may be dated before it; everything before it is captured here as opening balances.</div>}
+                {!cutoffDate && <div style={{background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12.5,color:"var(--sc-warning)"}}>Set your cutoff date first — it's the day your books begin. No transactions may be dated before it; everything before it is captured here as opening balances.</div>}
 
                 {/* Balance sheet input by category */}
                 {["Assets","Liabilities","Equity"].map(cat => (
-                  <div key={cat} style={{background:"#FFFFFF",border:"1px solid #E4E7EC",borderRadius:12,overflow:"hidden",marginBottom:12}}>
-                    <div style={{padding:"12px 20px",background:"#F3F4F6",borderBottom:"1px solid #E4E7EC",display:"flex",justifyContent:"space-between"}}>
-                      <div style={{fontSize:12,fontWeight:600,color:"#4F46E5",letterSpacing:0.5}}>{cat.toUpperCase()}</div>
-                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:"#101828"}}>
+                  <div key={cat} style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,overflow:"hidden",marginBottom:12}}>
+                    <div style={{padding:"12px 20px",background:"var(--sc-surface-2)",borderBottom:"1px solid var(--sc-border)",display:"flex",justifyContent:"space-between"}}>
+                      <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5}}>{cat.toUpperCase()}</div>
+                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:"var(--sc-text)"}}>
                         {fmt(CHART_OF_ACCOUNTS.filter(a=>a.category===cat).reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0))}
                       </div>
                     </div>
                     {CHART_OF_ACCOUNTS.filter(a=>a.category===cat).map((acct,i)=>(
-                      <div key={acct.code} style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:i>0?"1px solid #E4E7EC":"none"}}>
+                      <div key={acct.code} style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:i>0?"1px solid var(--sc-border)":"none"}}>
                         <div style={{flex:1}}>
-                          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"#475467",marginRight:10}}>{acct.code}</span>
+                          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{acct.code}</span>
                           <span style={{fontSize:13}}>{acct.name}</span>
                         </div>
-                        {bankLinked.has(acct.code) && <span style={{fontSize:10,color:"#4F46E5",marginRight:8}}>from bank</span>}
+                        {bankLinked.has(acct.code) && <span style={{fontSize:10,color:"var(--sc-gold)",marginRight:8}}>from bank</span>}
                         <input type="number" value={balances[acct.code]||""} readOnly={bankLinked.has(acct.code)}
                           onChange={bankLinked.has(acct.code) ? undefined : e=>setBalances(b=>({...b,[acct.code]:e.target.value}))}
                           placeholder="0.00" step="0.01" title={bankLinked.has(acct.code)?"From the linked bank account's balance (bank-as-source-of-truth)":undefined}
-                          style={{width:140,background:bankLinked.has(acct.code)?"#EEF2FF":"#F3F4F6",border:"1px solid #D0D5DD",borderRadius:8,padding:"7px 12px",color:"#101828",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right",cursor:bankLinked.has(acct.code)?"not-allowed":"text"}}/>
+                          style={{width:140,background:bankLinked.has(acct.code)?"var(--sc-gold-soft)":"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right",cursor:bankLinked.has(acct.code)?"not-allowed":"text"}}/>
                       </div>
                     ))}
                   </div>
                 ))}
 
                 {/* Summary */}
-                <div style={{background:"#FFFFFF",border:"1px solid #D0D5DD",borderRadius:12,padding:"14px 20px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,textAlign:"center"}}>
-                  {[["Total Assets",totalAssets,"#039855"],["Total Liabilities",totalLiab,"#D92D20"],["Total Equity",totalEquity,"#4F46E5"]].map(([l,v,c])=>(
+                <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:12,padding:"14px 20px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,textAlign:"center"}}>
+                  {[["Total Assets",totalAssets,"var(--sc-success)"],["Total Liabilities",totalLiab,"var(--sc-error)"],["Total Equity",totalEquity,"var(--sc-gold)"]].map(([l,v,c])=>(
                     <div key={l}>
-                      <div style={{fontSize:11,color:"#475467",marginBottom:4}}>{l}</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>{l}</div>
                       <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:c}}>{fmt(v)}</div>
                     </div>
                   ))}
                 </div>
 
                 {(() => { const canPost = isBalanced && !!cutoffDate; return (
-                <button onClick={post} disabled={!canPost} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:canPost?"linear-gradient(135deg,#4F46E5,#4338CA)":"#E4E7EC",border:"none",color:canPost?"#fff":"#475467",cursor:canPost?"pointer":"not-allowed"}}>
+                <button onClick={post} disabled={!canPost} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:canPost?"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))":"var(--sc-border)",border:"none",color:canPost?"var(--sc-surface)":"var(--sc-text-2)",cursor:canPost?"pointer":"not-allowed"}}>
                   {openingPosted ? "Update Opening Balances" : "Post Opening Balances"}
                 </button> ); })()}
               </div>

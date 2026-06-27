@@ -33,7 +33,7 @@ const LOAD_FUNCTIONS = [
   "loadChatHistory → chat_messages  .eq(company_id)",
 ];
 
-const C = { pass: "#039855", warn: "#DC6803", fail: "#D92D20", muted: "#667085" };
+const C = { pass: "var(--sc-success)", warn: "var(--sc-warning)", fail: "var(--sc-error)", muted: "var(--sc-text-mut)" };
 
 export default function SecurityView() {
   const { supabase, currentCompany, companies, session } = useERP();
@@ -153,57 +153,57 @@ export default function SecurityView() {
   // ── Small presentational helpers ──
   const Dot = ({ s }) => <span style={{ display: "inline-flex", width: 18, height: 18, borderRadius: "50%", background: (s === "pass" ? C.pass : s === "warn" ? C.warn : C.fail) + "1A", color: s === "pass" ? C.pass : s === "warn" ? C.warn : C.fail, alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{s === "pass" ? "✓" : s === "warn" ? "!" : "✕"}</span>;
   const Card = ({ title, status, desc, statusLabel, children }) => (
-    <div className="sc-card" style={{ background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 14, padding: "18px 20px", marginBottom: 14 }}>
+    <div className="sc-card" style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "18px 20px", marginBottom: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <Dot s={status || "warn"} />
-        <div style={{ fontSize: 14, fontWeight: 600, color: "#101828" }}>{title}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)" }}>{title}</div>
         <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: status === "pass" ? C.pass : status === "warn" ? C.warn : C.fail }}>
           {statusLabel || (status === "pass" ? "PASS" : status === "warn" ? "NEEDS ATTENTION" : "FAIL")}
         </span>
       </div>
-      {desc && <div style={{ fontSize: 12.5, color: "#667085", marginBottom: 12, lineHeight: 1.5 }}>{desc}</div>}
+      {desc && <div style={{ fontSize: 12.5, color: "var(--sc-text-mut)", marginBottom: 12, lineHeight: 1.5 }}>{desc}</div>}
       {children}
     </div>
   );
   const Row = ({ ok, label, right }) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderTop: "1px solid #F3F4F6", fontSize: 13 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderTop: "1px solid var(--sc-surface-2)", fontSize: 13 }}>
       <span style={{ color: ok ? C.pass : C.fail, fontWeight: 800, width: 16, flexShrink: 0 }}>{ok ? "✓" : "✕"}</span>
-      <span style={{ color: "#374151", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'DM Mono',monospace", fontSize: 12 }}>{label}</span>
-      {right != null && <span style={{ marginLeft: "auto", fontSize: 12, color: "#667085", fontFamily: "'DM Mono',monospace", flexShrink: 0 }}>{right}</span>}
+      <span style={{ color: "var(--sc-text-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'DM Mono',monospace", fontSize: 12 }}>{label}</span>
+      {right != null && <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--sc-text-mut)", fontFamily: "'DM Mono',monospace", flexShrink: 0 }}>{right}</span>}
     </div>
   );
   const migrationNote = (mig) => (
-    <div style={{ fontSize: 12.5, color: C.warn, background: "#FFFAEB", border: "1px solid #FEDF89", borderRadius: 10, padding: "10px 12px", lineHeight: 1.5 }}>
-      This check reads database catalog metadata, which requires the <code style={{ background: "#FEF0C7", padding: "1px 5px", borderRadius: 4 }}>{mig}</code> migration (the <code>security_check()</code> function). Apply it in Supabase, then re-run.
+    <div style={{ fontSize: 12.5, color: C.warn, background: "var(--sc-warning-soft)", border: "1px solid #FEDF89", borderRadius: 10, padding: "10px 12px", lineHeight: 1.5 }}>
+      This check reads database catalog metadata, which requires the <code style={{ background: "var(--sc-warning-soft)", padding: "1px 5px", borderRadius: 4 }}>{mig}</code> migration (the <code>security_check()</code> function). Apply it in Supabase, then re-run.
     </div>
   );
 
   return (
     <div style={{ maxWidth: 860 }}>
       <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 10, letterSpacing: 3, color: "#475467", marginBottom: 8 }}>SECURITY</div>
+        <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>SECURITY</div>
         <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Data isolation check</h1>
-        <div style={{ fontSize: 13, color: "#475467", marginTop: 6 }}>Automated verification that one company can never see another company's data.</div>
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Automated verification that one company can never see another company's data.</div>
       </div>
 
       {/* Overall status banner */}
-      <div style={{ background: overall === "pass" ? "#ECFDF3" : overall === "warn" ? "#FFFAEB" : "#FEF3F2", border: `1px solid ${(overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail)}40`, borderLeft: `4px solid ${overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail}`, borderRadius: 12, padding: "16px 20px", marginBottom: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ width: 42, height: 42, borderRadius: 11, background: overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: "#fff", flexShrink: 0 }}>{overall === "pass" ? "✓" : overall === "warn" ? "!" : "✕"}</div>
+      <div style={{ background: overall === "pass" ? "var(--sc-success-soft)" : overall === "warn" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)", border: `1px solid ${(overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail)}40`, borderLeft: `4px solid ${overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail}`, borderRadius: 12, padding: "16px 20px", marginBottom: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ width: 42, height: 42, borderRadius: 11, background: overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: "var(--sc-on-accent)", flexShrink: 0 }}>{overall === "pass" ? "✓" : overall === "warn" ? "!" : "✕"}</div>
         <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail }}>
             {!r ? "Running checks…" : issues > 0 ? `${issues} issue${issues > 1 ? "s" : ""} found ⚠` : warns > 0 ? `${warns} check${warns > 1 ? "s" : ""} need attention` : "All checks passed ✓"}
           </div>
-          <div style={{ fontSize: 12, color: "#667085", marginTop: 3 }}>
+          <div style={{ fontSize: 12, color: "var(--sc-text-mut)", marginTop: 3 }}>
             {lastChecked ? `Last checked ${lastChecked.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}` : "—"}
             {currentCompany?.name ? ` · ${currentCompany.name}` : ""}
           </div>
         </div>
-        <button onClick={runCheck} disabled={running} style={{ flexShrink: 0, height: 40, padding: "0 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, background: running ? "#E4E7EC" : "#4F46E5", border: "none", color: running ? "#98A2B3" : "#fff", cursor: running ? "default" : "pointer" }}>
+        <button onClick={runCheck} disabled={running} style={{ flexShrink: 0, height: 40, padding: "0 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, background: running ? "var(--sc-border)" : "var(--sc-gold)", border: "none", color: running ? "var(--sc-text-mut)" : "var(--sc-surface)", cursor: running ? "default" : "pointer" }}>
           {running ? "Running…" : "Run Security Check"}
         </button>
       </div>
 
-      <div style={{ fontSize: 12.5, color: C.warn, background: "#FFFAEB", border: "1px solid #FEDF89", borderRadius: 10, padding: "10px 14px", marginBottom: 18, fontWeight: 500 }}>
+      <div style={{ fontSize: 12.5, color: C.warn, background: "var(--sc-warning-soft)", border: "1px solid #FEDF89", borderRadius: 10, padding: "10px 14px", marginBottom: 18, fontWeight: 500 }}>
         ⚠ Run this check before adding any new client.
       </div>
 
@@ -228,7 +228,7 @@ export default function SecurityView() {
             {(r.isolation.live || []).map(x => (
               <Row key={x.table} ok={x.ok} label={x.table} right={x.error ? "error" : `${x.all} / ${x.mine} rows`} />
             ))}
-            <div style={{ fontSize: 11, color: "#98A2B3", letterSpacing: 1, margin: "12px 0 2px", fontWeight: 600 }}>LOAD FUNCTIONS (CODE-VERIFIED)</div>
+            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", letterSpacing: 1, margin: "12px 0 2px", fontWeight: 600 }}>LOAD FUNCTIONS (CODE-VERIFIED)</div>
             {(r.isolation.static || []).map(x => <Row key={x.name} ok={x.ok} label={x.name} />)}
           </>
         )}
@@ -265,11 +265,11 @@ export default function SecurityView() {
               ? <Row ok={true} label={`All ${r.policies.total} policies gate on company membership${(r.policies.exceptions || []).length ? ` · ${(r.policies.exceptions || []).length} known exception` : ""}`} />
               : r.policies.open.map((p, i) => <Row key={i} ok={false} label={`${p.table} · ${p.policy} (${p.cmd})`} right="OPEN" />)}
             {(r.policies.exceptions || []).map((p, i) => (
-              <div key={`exc-${i}`} style={{ display: "flex", gap: 10, padding: "8px 0", borderTop: "1px solid #F3F4F6" }}>
+              <div key={`exc-${i}`} style={{ display: "flex", gap: 10, padding: "8px 0", borderTop: "1px solid var(--sc-surface-2)" }}>
                 <span style={{ color: C.warn, fontWeight: 800, width: 16, flexShrink: 0 }}>!</span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontFamily: "'DM Mono',monospace", color: "#374151" }}>{p.table} · {p.policy} ({p.cmd}) <span style={{ color: C.warn, fontWeight: 700 }}>— expected exception</span></div>
-                  <div style={{ fontSize: 12, color: "#667085", marginTop: 2, lineHeight: 1.5 }}>Expected — new users must be able to create their first company. Protected by the <code style={{ background: "#F2F4F7", padding: "1px 5px", borderRadius: 4 }}>create_company()</code> SECURITY DEFINER RPC.</div>
+                  <div style={{ fontSize: 12, fontFamily: "'DM Mono',monospace", color: "var(--sc-text-2)" }}>{p.table} · {p.policy} ({p.cmd}) <span style={{ color: C.warn, fontWeight: 700 }}>— expected exception</span></div>
+                  <div style={{ fontSize: 12, color: "var(--sc-text-mut)", marginTop: 2, lineHeight: 1.5 }}>Expected — new users must be able to create their first company. Protected by the <code style={{ background: "var(--sc-surface-2)", padding: "1px 5px", borderRadius: 4 }}>create_company()</code> SECURITY DEFINER RPC.</div>
                 </div>
               </div>
             ))}
@@ -278,11 +278,11 @@ export default function SecurityView() {
       </Card>
 
       {/* ── Documentation ── */}
-      <div style={{ background: "#F9FAFB", border: "1px solid #E4E7EC", borderRadius: 14, padding: "20px 22px", marginTop: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#101828", marginBottom: 12 }}>How tenant isolation works</div>
+      <div style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "20px 22px", marginTop: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-text)", marginBottom: 12 }}>How tenant isolation works</div>
 
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#4F46E5", marginBottom: 4 }}>What is RLS, and why it matters</div>
-        <p style={{ fontSize: 12.5, color: "#475467", lineHeight: 1.6, margin: "0 0 14px" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-gold)", marginBottom: 4 }}>What is RLS, and why it matters</div>
+        <p style={{ fontSize: 12.5, color: "var(--sc-text-2)", lineHeight: 1.6, margin: "0 0 14px" }}>
           Row-Level Security (RLS) is a Postgres feature that filters every query at the database level. With RLS on,
           a policy decides which rows a request may see or change. This app ships the public anon key in the browser,
           so client-side <code>.eq("company_id", …)</code> filters are <strong>not</strong> a security boundary — anyone
@@ -290,8 +290,8 @@ export default function SecurityView() {
           client only ever reads rows for companies the signed-in user belongs to.
         </p>
 
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#4F46E5", marginBottom: 4 }}>How data isolation works here</div>
-        <p style={{ fontSize: 12.5, color: "#475467", lineHeight: 1.6, margin: "0 0 14px" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-gold)", marginBottom: 4 }}>How data isolation works here</div>
+        <p style={{ fontSize: 12.5, color: "var(--sc-text-2)", lineHeight: 1.6, margin: "0 0 14px" }}>
           Every tenant table carries a <code>company_id</code>. The <code>is_company_member(company_id)</code> helper
           (SECURITY DEFINER) checks the <code>company_users</code> membership table for the current <code>auth.uid()</code>.
           Each table's SELECT / INSERT / UPDATE / DELETE policy calls that helper, so the database returns zero rows for
@@ -300,8 +300,8 @@ export default function SecurityView() {
           confirming an unfiltered count equals the company-scoped count.
         </p>
 
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#4F46E5", marginBottom: 4 }}>What to do if a check fails</div>
-        <ul style={{ fontSize: 12.5, color: "#475467", lineHeight: 1.7, margin: "0", paddingLeft: 18 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-gold)", marginBottom: 4 }}>What to do if a check fails</div>
+        <ul style={{ fontSize: 12.5, color: "var(--sc-text-2)", lineHeight: 1.7, margin: "0", paddingLeft: 18 }}>
           <li><strong>RLS off (Test 1):</strong> a table has <code>rowsecurity = false</code>. Re-apply <code>001_enable_rls.sql</code> and verify the table is listed there. Do not onboard new clients until fixed.</li>
           <li><strong>Isolation leak (Test 2):</strong> an unfiltered count exceeds the company count — RLS is missing or a policy is too broad. Treat as a critical incident: investigate the table's policies immediately.</li>
           <li><strong>Audit gaps (Test 3):</strong> rows with an unset <code>performed_by</code> are legacy entries from before audit attribution; new actions populate it. Investigate only if recent rows are unset.</li>

@@ -8,8 +8,8 @@ import { downloadCSV } from "../lib/insights";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const money = n => "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
-const SLICE_COLORS = ["#4F46E5", "#6366F1", "#818CF8", "#A5B4FC", "#C7D2FE", "#E0E7FF"];
-const OTHER_COLOR = "#98A2B3";
+const SLICE_COLORS = ["var(--sc-gold)", "var(--sc-gold)", "var(--sc-gold)", "var(--sc-gold)", "var(--sc-gold)", "var(--sc-gold-soft)"];
+const OTHER_COLOR = "var(--sc-text-mut)";
 
 // Group a data array down to `max` slices, rolling the remainder into "Other".
 function capSlices(data, max = 6) {
@@ -40,13 +40,13 @@ function BarChart({ data }) {
         return (
           <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)}
             style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", gap: 8 }}>
-            <div title={d.label} style={{ width: 118, flexShrink: 0, fontSize: 11, color: "#475467", textAlign: "right", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{d.label}</div>
-            <div style={{ flex: 1, minWidth: 0, position: "relative", height: 20, background: "#F2F4F7", borderRadius: 5 }}>
-              <div style={{ width: `${pct}%`, height: "100%", background: hover === i ? "#4338CA" : "#4F46E5", borderRadius: 5, transition: "background .12s" }} />
+            <div title={d.label} style={{ width: 118, flexShrink: 0, fontSize: 11, color: "var(--sc-text-2)", textAlign: "right", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{d.label}</div>
+            <div style={{ flex: 1, minWidth: 0, position: "relative", height: 20, background: "var(--sc-surface-2)", borderRadius: 5 }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: hover === i ? "var(--sc-gold)" : "var(--sc-gold)", borderRadius: 5, transition: "background .12s" }} />
               <span style={{
                 position: "absolute", top: 0, height: 20, display: "flex", alignItems: "center",
                 fontSize: 10.5, fontWeight: 600, fontFamily: "'DM Mono',monospace", whiteSpace: "nowrap", pointerEvents: "none",
-                ...(inside ? { right: 8, color: "#FFFFFF" } : { left: `calc(${pct}% + 6px)`, color: "#101828" }),
+                ...(inside ? { right: 8, color: "var(--sc-on-accent)" } : { left: `calc(${pct}% + 6px)`, color: "var(--sc-text)" }),
               }}>{money(d.value)}</span>
             </div>
           </div>
@@ -84,15 +84,15 @@ function PieChart({ data }) {
     <div style={{ padding: "2px" }}>
       <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block", overflow: "visible" }}>
         {items.map((it, i) => (
-          <path key={i} d={it.path} fill={it.color} stroke="#FFFFFF" strokeWidth="1.5"
+          <path key={i} d={it.path} fill={it.color} stroke="#1b2630" strokeWidth="1.5"
             opacity={hover === -1 || hover === i ? 1 : 0.4}
             onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "default" }} />
         ))}
         {items.map((it, i) => (
           <g key={"l" + i} opacity={hover === -1 || hover === i ? 1 : 0.35}>
-            <polyline points={`${it.ex},${it.ey} ${it.lx},${it.ly} ${it.anchorX},${it.ly}`} fill="none" stroke="#D0D5DD" strokeWidth="1" />
-            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly - 1} fontSize="9" fill="#475467" textAnchor={it.right ? "start" : "end"}>{truncLabel(it.label, 12)}</text>
-            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly + 9} fontSize="8.5" fontWeight="600" fill="#101828" textAnchor={it.right ? "start" : "end"} fontFamily="'DM Mono',monospace">{money(it.value)} · {Math.round(it.pct)}%</text>
+            <polyline points={`${it.ex},${it.ey} ${it.lx},${it.ly} ${it.anchorX},${it.ly}`} fill="none" stroke="#3a4d5e" strokeWidth="1" />
+            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly - 1} fontSize="9" fill="#b9c6d2" textAnchor={it.right ? "start" : "end"}>{truncLabel(it.label, 12)}</text>
+            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly + 9} fontSize="8.5" fontWeight="600" fill="#f3f6f9" textAnchor={it.right ? "start" : "end"} fontFamily="'DM Mono',monospace">{money(it.value)} · {Math.round(it.pct)}%</text>
           </g>
         ))}
       </svg>
@@ -115,18 +115,18 @@ function LineChart({ data }) {
   return (
     <div style={{ position: "relative", padding: "4px 2px" }}>
       <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: "block" }}>
-        <path d={area} fill="#4F46E5" opacity="0.08" />
-        <path d={line} fill="none" stroke="#4F46E5" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={area} fill="#e8b53d" opacity="0.08" />
+        <path d={line} fill="none" stroke="#e8b53d" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         {pts.map((d, i) => (
           <g key={i}>
-            <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3} fill="#4F46E5" stroke="#FFFFFF" strokeWidth="1.5"
+            <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3} fill="#e8b53d" stroke="#1b2630" strokeWidth="1.5"
               onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} />
-            <text x={x(i)} y={H - 9} fontSize="9" fill="#98A2B3" textAnchor="middle">{String(d.label).slice(0, 7)}</text>
+            <text x={x(i)} y={H - 9} fontSize="9" fill="#7d8fa0" textAnchor="middle">{String(d.label).slice(0, 7)}</text>
           </g>
         ))}
       </svg>
       {hover >= 0 && (
-        <div style={{ position: "absolute", top: 0, left: `${(hover / (pts.length - 1)) * 100}%`, transform: "translateX(-50%)", background: "#101828", color: "#fff", fontSize: 10, padding: "3px 7px", borderRadius: 6, whiteSpace: "nowrap", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", top: 0, left: `${(hover / (pts.length - 1)) * 100}%`, transform: "translateX(-50%)", background: "var(--sc-text)", color: "var(--sc-on-accent)", fontSize: 10, padding: "3px 7px", borderRadius: 6, whiteSpace: "nowrap", pointerEvents: "none" }}>
           {pts[hover].label}: {money(pts[hover].value)}
         </div>
       )}
@@ -135,38 +135,38 @@ function LineChart({ data }) {
 }
 
 const TREND = {
-  up: { icon: "↑", color: "#D92D20" },        // expenses up = bad/red by default
-  down: { icon: "↓", color: "#039855" },
-  flat: { icon: "→", color: "#98A2B3" },
-  stable: { icon: "→", color: "#98A2B3" },
+  up: { icon: "↑", color: "var(--sc-error)" },        // expenses up = bad/red by default
+  down: { icon: "↓", color: "var(--sc-success)" },
+  flat: { icon: "→", color: "var(--sc-text-mut)" },
+  stable: { icon: "→", color: "var(--sc-text-mut)" },
 };
 
 function SummaryCard({ title, metrics, notes }) {
   return (
     <div>
-      {title && <div style={{ fontSize: 12.5, fontWeight: 700, color: "#101828", marginBottom: 10 }}>{title}</div>}
+      {title && <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--sc-text)", marginBottom: 10 }}>{title}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {(metrics || []).slice(0, 8).map((m, i) => {
           const t = TREND[String(m.trend || "").toLowerCase()] || TREND.flat;
           return (
-            <div key={i} style={{ background: "#F9FAFB", border: "1px solid #F0F1F4", borderRadius: 10, padding: "9px 11px" }}>
-              <div style={{ fontSize: 10.5, color: "#475467", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.label}</div>
+            <div key={i} style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "9px 11px" }}>
+              <div style={{ fontSize: 10.5, color: "var(--sc-text-2)", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.label}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: "#101828", fontFamily: "'DM Mono',monospace" }}>{m.value}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "var(--sc-text)", fontFamily: "'DM Mono',monospace" }}>{m.value}</span>
                 {m.trend && <span style={{ fontSize: 12, color: t.color, fontWeight: 700 }}>{t.icon}</span>}
               </div>
             </div>
           );
         })}
       </div>
-      {notes && <div style={{ fontSize: 11.5, color: "#475467", lineHeight: 1.5, marginTop: 10, paddingTop: 9, borderTop: "1px solid #F0F1F4" }}>{notes}</div>}
+      {notes && <div style={{ fontSize: 11.5, color: "var(--sc-text-2)", lineHeight: 1.5, marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--sc-border)" }}>{notes}</div>}
     </div>
   );
 }
 
 function Frame({ children }) {
   return (
-    <div style={{ marginTop: 8, background: "#FFFFFF", border: "1px solid #E4E7EC", borderRadius: 12, padding: "12px 14px" }}>
+    <div style={{ marginTop: 8, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 12, padding: "12px 14px" }}>
       {children}
     </div>
   );
@@ -181,13 +181,13 @@ export default function ChatRichOutput({ rich, onNavigate }) {
         if (item.kind === "chart") {
           return (
             <Frame key={idx}>
-              {item.title && <div style={{ fontSize: 12.5, fontWeight: 700, color: "#101828", marginBottom: 10 }}>{item.title}</div>}
+              {item.title && <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--sc-text)", marginBottom: 10 }}>{item.title}</div>}
               {item.chart_type === "pie" ? <PieChart data={item.data} />
                 : item.chart_type === "line" ? <LineChart data={item.data} />
                 : <BarChart data={item.data} />}
               {item.report_view && (
                 <button onClick={() => onNavigate && onNavigate(item.report_view)}
-                  style={{ marginTop: 10, background: "none", border: "1px solid #D0D5DD", borderRadius: 8, padding: "5px 12px", color: "#4F46E5", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                  style={{ marginTop: 10, background: "none", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "5px 12px", color: "var(--sc-gold)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
                   View full report →
                 </button>
               )}
@@ -200,7 +200,7 @@ export default function ChatRichOutput({ rich, onNavigate }) {
         if (item.kind === "csv") {
           return (
             <button key={idx} onClick={() => downloadCSV(item.filename, item.headers, item.rows)}
-              style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, background: "#EEF2FF", border: "1px solid #4F46E533", borderRadius: 10, padding: "9px 14px", color: "#4F46E5", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", borderRadius: 10, padding: "9px 14px", color: "var(--sc-gold)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
               ⬇ Download {item.filename}
             </button>
           );
