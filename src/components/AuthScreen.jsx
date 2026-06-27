@@ -2,7 +2,7 @@ import React from "react";
 import { supabase } from "../lib/supabase";
 import LegalView from "./LegalView";
 
-// Shadow CFO eclipse mark — a luminous disc partly occluded by shadow.
+// Shadow eclipse mark — a luminous disc partly occluded by shadow.
 function EclipseMark({ size = 40 }) {
   const id = React.useId();
   return (
@@ -91,7 +91,7 @@ function AuthScreen({ onAuth, invite }) {
             <span className="sc-wordmark">in the shadows.</span>
           </h1>
           <p className="sc-rise-2" style={{ fontSize:16, lineHeight:1.65, color:"#475467", margin:"0 0 40px", maxWidth:460 }}>
-            Shadow CFO is the AI controller that does the books, watches the numbers, and tells you what matters — before you have to ask.
+            Shadow is the AI controller that does the books, watches the numbers, and tells you what matters — before you have to ask.
           </p>
           <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
             {features.map(([t, d], i) => (
@@ -130,7 +130,7 @@ function AuthScreen({ onAuth, invite }) {
               {mode === "login" ? "Welcome back" : mode === "signup" ? "Get started" : "Reset your password"}
             </h2>
             <div style={{ fontSize:13, color:"#475467" }}>
-              {mode === "login" ? "Sign in to your Shadow CFO workspace." : mode === "signup" ? "Create your workspace in seconds." : "Enter your email and we'll send you a secure reset link."}
+              {mode === "login" ? "Sign in to your Shadow workspace." : mode === "signup" ? "Create your workspace in seconds." : "Enter your email and we'll send you a secure reset link."}
             </div>
           </div>
 
@@ -163,7 +163,7 @@ function AuthScreen({ onAuth, invite }) {
 
           <div style={{ textAlign:"center", marginTop:22, fontSize:13, color:"#475467" }}>
             {mode === "login"
-              ? <>New to Shadow CFO? <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("signup");setError(null);}}>Create an account</span></>
+              ? <>New to Shadow? <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("signup");setError(null);}}>Create an account</span></>
               : mode === "signup"
               ? <>Already have an account? <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("login");setError(null);}}>Sign in</span></>
               : <span style={{ color:"#4F46E5", cursor:"pointer", fontWeight:500 }} onClick={()=>{setMode("login");setError(null);setMessage(null);}}>← Back to sign in</span>}

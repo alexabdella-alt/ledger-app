@@ -206,7 +206,7 @@ export default function SettingsView() {
 
                 {/* Legal footer (Item 18) */}
                 <div style={{marginTop:32,paddingTop:18,borderTop:"1px solid #E4E7EC",display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
-                  <span style={{fontSize:12,color:"#98A2B3"}}>Shadow CFO</span>
+                  <span style={{fontSize:12,color:"#98A2B3"}}>Shadow</span>
                   <span style={{fontSize:12,color:"#4F46E5",cursor:"pointer",fontWeight:500}} onClick={()=>{ setLegalTab("terms"); setView("legal"); }}>Terms of Service</span>
                   <span style={{color:"#D0D5DD"}}>·</span>
                   <span style={{fontSize:12,color:"#4F46E5",cursor:"pointer",fontWeight:500}} onClick={()=>{ setLegalTab("privacy"); setView("legal"); }}>Privacy Policy</span>

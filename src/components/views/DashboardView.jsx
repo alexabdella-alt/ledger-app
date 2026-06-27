@@ -7,6 +7,8 @@ import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import { financialHealthScore, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance } from "../../lib/reports";
 import ClarificationFlow from "../ClarificationFlow";
+import StatCard from "../ui/StatCard";
+import { t } from "../../lib/theme";
 
 export default function DashboardView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, glCash, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, runDepreciationThrough, depreciationDueInfo, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
@@ -323,7 +325,7 @@ export default function DashboardView() {
                 );
                 return (
                   <div style={{ background:"#FFFFFF", border:"1px solid #C7D2FE", borderRadius:16, padding:"20px 22px", marginBottom:20 }}>
-                    <div style={{ fontSize:17, fontWeight:700, color:"#101828" }}>Welcome to Shadow CFO — let's get your books set up</div>
+                    <div style={{ fontSize:17, fontWeight:700, color:"#101828" }}>Welcome to Shadow — let's get your books set up</div>
                     <div style={{ fontSize:13, color:"#475467", marginTop:3, marginBottom:6 }}>{required} of {steps.length} done. Knock these out and you're ready to roll.</div>
                     {steps.map(renderStep)}
                     {(accountantNotice || accountantDismissed) ? (
@@ -632,29 +634,21 @@ export default function DashboardView() {
                 const cash = glCash;      // GL cash on hand — same source as the Balance Sheet cash line
                 const runwayExact = computeRunway(cash, avgBurn);
                 const runway = runwayExact === null ? null : Math.floor(runwayExact);
-                const runwayColor = runway===null?"#475467":runway<6?"#D92D20":runway<=12?"#DC6803":"#039855";
+                const runwayColor = runway===null?t.textMut:runway<6?t.error:runway<=12?t.warning:t.success;
                 const ytdNet = computeNetIncome(invoices, { from: `${year}-01-01`, to: `${year}-12-31` });
-                const fmt0 = n => "$"+Math.round(Math.abs(n)).toLocaleString("en-US");
+                const money = n => (n<0?"-":"")+"$"+Math.round(Math.abs(n)).toLocaleString("en-US");
+                // Cash is the HERO figure (gold); the rest are semantic. All count up on load.
                 const cards = [
-                  { label:"CASH BALANCE", value:(cash<0?"-":"")+fmt0(cash), color:cash>=0?"#101828":"#D92D20", sub:"Cash on hand", drill:{type:"cash"} },
-                  { label:"MONTHLY BURN", value:fmt0(burnThisMonth), color:"#D92D20", sub:"Expenses this month", drill:{type:"burn"} },
-                  { label:"RUNWAY", value: runway===null?"∞":`${runway} mo`, color:runwayColor, sub: runway===null?"Add cash to calculate":runway<6?"Less than 6 months":runway<=12?"6–12 months":"Healthy", drill:{type:"runway"} },
-                  { label:"NET INCOME (YTD)", value:(ytdNet<0?"-":"")+fmt0(ytdNet), color:ytdNet>=0?"#039855":"#D92D20", sub:`Revenue − expenses · ${year}`, drill:{type:"net"} },
+                  { label:"CASH ON HAND", value:cash, fmt:money, accent:"gold", sub:"Across all accounts", drill:{type:"cash"} },
+                  { label:"MONTHLY BURN", value:burnThisMonth, fmt:money, color:t.error, sub:"Expenses this month", drill:{type:"burn"} },
+                  { label:"RUNWAY", value: runway===null?0:runway, fmt:(runway===null?()=>"∞":(n=>`${n} mo`)), color:runwayColor, sub: runway===null?"Add cash to calculate":runway<6?"Less than 6 months":runway<=12?"6–12 months":"Healthy", drill:{type:"runway"} },
+                  { label:`NET INCOME · ${year}`, value:ytdNet, fmt:money, color:ytdNet>=0?t.success:t.error, sub:"Revenue − expenses, year to date", drill:{type:"net"} },
                 ];
                 return (
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:16, marginBottom:24 }}>
-                    {cards.map(c=>(
-                      <div key={c.label} onClick={()=>setDashDrill(c.drill)} className="sc-card"
-                        onMouseEnter={e=>{e.currentTarget.style.borderColor="#D0D5DD"; e.currentTarget.style.transform="translateY(-1px)";}}
-                        onMouseLeave={e=>{e.currentTarget.style.borderColor="#E4E7EC"; e.currentTarget.style.transform="translateY(0)";}}
-                        style={{ background:"#FFFFFF", border:"1px solid #E4E7EC", borderRadius:12, padding:"22px 24px", cursor:"pointer", transition:"border-color 0.12s, transform 0.12s" }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                          <div style={{ fontSize:12, color:"#667085", letterSpacing:0.4, fontWeight:600 }}>{c.label}</div>
-                          <span style={{ fontSize:14, color:"#98A2B3", fontWeight:600 }}>›</span>
-                        </div>
-                        <div style={{ fontSize:32, fontWeight:700, color:c.color, fontFamily:"'DM Mono',monospace", letterSpacing:-1, lineHeight:1.1 }}>{c.value}</div>
-                        <div style={{ fontSize:12, color:"#667085", marginTop:8 }}>{c.sub}</div>
-                      </div>
+                    {cards.map((c,i)=>(
+                      <StatCard key={c.label} eyebrow={c.label} value={c.value} format={c.fmt}
+                        accent={c.accent} color={c.color} sub={c.sub} index={i} onClick={()=>setDashDrill(c.drill)} />
                     ))}
                   </div>
                 );

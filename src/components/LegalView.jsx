@@ -5,7 +5,7 @@ import React from "react";
 // Plain English, professional, and protective of the operator.
 
 const EFFECTIVE = "June 2026";
-const PRODUCT = "Shadow CFO";
+const PRODUCT = "Shadow";
 const SUPPORT_EMAIL = "support@shadowcfo.app"; // placeholder — update before launch
 
 const s = {

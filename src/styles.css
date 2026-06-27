@@ -1,29 +1,80 @@
 /* =====================================================================
-   Shadow CFO — global design layer (Light theme)
-   Clean, airy, professional SaaS aesthetic (Stripe / Linear / Vercel).
+   SHADOW — global design layer · "Midnight + Gold"
+   The invisible controller: a near-black canvas, dark-slate surfaces, and
+   gold reserved for money, emphasis, and CTAs. This file is the SINGLE
+   SOURCE OF TRUTH for color, type, spacing, radii, motion. Components read
+   the tokens via var(--sc-*) (and the JS accessors in src/lib/theme.js).
    ===================================================================== */
 
 :root {
-  /* surfaces */
-  --sc-bg:        #F8F9FB;   /* page */
-  --sc-surface:   #F3F4F6;   /* inputs / hover */
-  --sc-card:      #FFFFFF;   /* cards / panels */
-  --sc-border:    #E5E7EB;   /* default border */
-  --sc-border-2:  #D1D5DB;   /* emphasized border */
-  /* text */
-  --sc-text:      #111827;   /* primary */
-  --sc-text-2:    #374151;   /* secondary */
-  --sc-text-mut:  #6B7280;   /* muted */
-  --sc-text-ph:   #9CA3AF;   /* placeholder */
-  /* brand + semantic */
-  --sc-accent:        #4F46E5;
-  --sc-accent-deep:   #4338CA;
-  --sc-accent-soft:   #EEF2FF;
-  --sc-success:       #059669;
-  --sc-warning:       #D97706;
-  --sc-error:         #DC2626;
-  --sc-shadow:        0 1px 3px rgba(0,0,0,0.08);
-  --sc-shadow-lg:     0 8px 28px rgba(17,24,39,0.10);
+  /* ---- surfaces (midnight → slate) ---- */
+  --sc-bg:        #0f1419;   /* page canvas (midnight) */
+  --sc-bg-deep:   #0a0d12;   /* wells / behind cards */
+  --sc-surface:   #1b2630;   /* cards / panels (dark slate) */
+  --sc-surface-2: #223040;   /* raised / inputs */
+  --sc-surface-3: #2a3a4b;   /* hover / active raise */
+  --sc-card:      #1b2630;   /* alias kept for older refs */
+  --sc-border:    #2a3845;   /* default hairline */
+  --sc-border-2:  #3a4d5e;   /* emphasized border */
+
+  /* ---- text (high-contrast on dark) ---- */
+  --sc-text:      #f3f6f9;   /* primary / off-white */
+  --sc-text-2:    #b9c6d2;   /* secondary */
+  --sc-text-mut:  #7d8fa0;   /* muted / labels */
+  --sc-text-ph:   #57697a;   /* placeholder / dim */
+
+  /* ---- gold (the one bold move — money, emphasis, CTAs) ---- */
+  --sc-gold:        #e8b53d;
+  --sc-gold-bright: #f6cb5b;
+  --sc-gold-deep:   #bf9226;
+  --sc-gold-soft:   rgba(232,181,61,0.12);  /* tint fills */
+  --sc-gold-line:   rgba(232,181,61,0.30);  /* tint borders */
+  --sc-gold-glow:   rgba(232,181,61,0.22);  /* hero glow */
+
+  /* ---- semantic ---- */
+  --sc-success:      #4ade80;
+  --sc-success-soft: rgba(74,222,128,0.13);
+  --sc-error:        #f2674c;   /* warm red */
+  --sc-error-soft:   rgba(242,103,76,0.14);
+  --sc-warning:      #efa53a;
+  --sc-warning-soft: rgba(239,165,58,0.14);
+
+  /* legacy aliases (older components referenced these names) */
+  --sc-accent:      var(--sc-gold);
+  --sc-accent-deep: var(--sc-gold-deep);
+  --sc-accent-soft: var(--sc-gold-soft);
+
+  /* ---- elevation ---- */
+  --sc-shadow:    0 1px 2px rgba(0,0,0,0.45);
+  --sc-shadow-lg: 0 20px 55px -12px rgba(0,0,0,0.65);
+  --sc-glow:      0 0 0 1px var(--sc-gold-line), 0 14px 44px -10px var(--sc-gold-glow);
+
+  /* ---- type ---- */
+  --sc-font-display: 'Fraunces', Georgia, 'Times New Roman', serif;   /* editorial, restraint */
+  --sc-font-ui:      'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --sc-font-mono:    'DM Mono', ui-monospace, 'SF Mono', Menlo, monospace; /* figures */
+  --sc-fs-eyebrow: 11px;   /* uppercase labels */
+  --sc-fs-sm:      13px;
+  --sc-fs-base:    14.5px;
+  --sc-fs-lg:      18px;
+  --sc-fs-h3:      22px;
+  --sc-fs-h2:      30px;
+  --sc-fs-h1:      44px;
+  --sc-fs-hero:    64px;   /* oversized money figures */
+  --sc-tracking-eyebrow: 0.16em;
+
+  /* ---- radii ---- */
+  --sc-r-sm: 8px;
+  --sc-r:    12px;
+  --sc-r-lg: 16px;
+  --sc-r-xl: 22px;
+
+  /* ---- motion ---- */
+  --sc-dur-fast: 120ms;
+  --sc-dur:      200ms;
+  --sc-dur-slow: 420ms;
+  --sc-ease:        cubic-bezier(.22,1,.36,1);  /* out-expo-ish — confident settle */
+  --sc-ease-in-out: cubic-bezier(.65,0,.35,1);
 }
 
 * { box-sizing: border-box; }
@@ -33,8 +84,8 @@ body {
   margin: 0;
   background: var(--sc-bg);
   color: var(--sc-text);
-  font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 15px;
+  font-family: var(--sc-font-ui);
+  font-size: var(--sc-fs-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -42,77 +93,97 @@ body {
 }
 #root { position: relative; z-index: 1; min-height: 100vh; background: var(--sc-bg); }
 
-/* Text selection */
-::selection { background: rgba(79,70,229,0.16); color: #111827; }
+/* Ambient: a faint gold aura at the canvas edges — atmosphere, not decoration. */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(900px 520px at 100% -8%, rgba(232,181,61,0.07), transparent 60%),
+    radial-gradient(760px 480px at -6% 0%, rgba(74,222,128,0.035), transparent 55%);
+}
 
-/* Quiet, light scrollbars */
-* { scrollbar-width: thin; scrollbar-color: #D1D5DB transparent; }
+/* Display + figures helpers */
+.sc-display { font-family: var(--sc-font-display); font-optical-sizing: auto; letter-spacing: -0.01em; }
+.sc-mono    { font-family: var(--sc-font-mono); font-variant-numeric: tabular-nums; }
+.sc-eyebrow { font-family: var(--sc-font-ui); font-size: var(--sc-fs-eyebrow); letter-spacing: var(--sc-tracking-eyebrow); text-transform: uppercase; color: var(--sc-text-mut); font-weight: 600; }
+
+/* Text selection — gold wash */
+::selection { background: rgba(232,181,61,0.26); color: #fff; }
+
+/* Dark scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #34465a transparent; }
 *::-webkit-scrollbar { width: 11px; height: 11px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb {
-  background: #D1D5DB; border: 3px solid transparent; background-clip: padding-box; border-radius: 999px;
-}
-*::-webkit-scrollbar-thumb:hover { background: #9CA3AF; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb { background: #34465a; border: 3px solid transparent; background-clip: padding-box; border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: #46596d; background-clip: padding-box; }
 
-/* Keyboard focus ring */
-:focus-visible { outline: 2px solid var(--sc-accent); outline-offset: 2px; border-radius: 8px; }
+/* Keyboard focus — gold ring */
+:focus-visible { outline: 2px solid var(--sc-gold); outline-offset: 2px; border-radius: 8px; }
 
-/* Inputs get a soft indigo ring on focus, app-wide */
+/* Inputs get a gold ring on focus, app-wide */
 input:focus, textarea:focus, select:focus {
-  border-color: var(--sc-accent) !important;
-  box-shadow: 0 0 0 3px rgba(79,70,229,0.14);
+  border-color: var(--sc-gold) !important;
+  box-shadow: 0 0 0 3px rgba(232,181,61,0.16);
 }
 ::placeholder { color: var(--sc-text-ph); }
 
-button { transition: transform .14s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease; }
+button { transition: transform var(--sc-dur-fast) ease, box-shadow var(--sc-dur) ease, background var(--sc-dur) ease, color var(--sc-dur) ease, border-color var(--sc-dur) ease; }
 button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
 
 /* =====================  Keyframes  ===================== */
-@keyframes scRise   { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
-@keyframes scFade   { from { opacity:0; } to { opacity:1; } }
-@keyframes scScaleIn{ from { opacity:0; transform:scale(.96); } to { opacity:1; transform:scale(1); } }
-@keyframes scShimmer{ 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
-@keyframes scFloat  { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }
-@keyframes scSpin   { to { transform:rotate(360deg); } }
+@keyframes scRise    { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+@keyframes scFade    { from { opacity:0; } to { opacity:1; } }
+@keyframes scScaleIn { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:scale(1); } }
+@keyframes scShimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+@keyframes scFloat   { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }
+@keyframes scSpin    { to { transform:rotate(360deg); } }
+@keyframes scGoldPulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+@keyframes scDraw    { from { stroke-dashoffset: var(--sc-draw-len, 1000); } to { stroke-dashoffset: 0; } }
+@keyframes scGrowY   { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 
 /* =====================  Utilities  ===================== */
-.sc-rise   { animation: scRise .5s cubic-bezier(.22,1,.36,1) both; }
+.sc-rise   { animation: scRise var(--sc-dur-slow) var(--sc-ease) both; }
 .sc-fade   { animation: scFade .6s ease both; }
-.sc-scale  { animation: scScaleIn .4s cubic-bezier(.22,1,.36,1) both; }
-.sc-rise-1 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .06s both; }
-.sc-rise-2 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .12s both; }
-.sc-rise-3 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .18s both; }
-.sc-rise-4 { animation: scRise .5s cubic-bezier(.22,1,.36,1) .24s both; }
+.sc-scale  { animation: scScaleIn var(--sc-dur-slow) var(--sc-ease) both; }
+.sc-rise-1 { animation: scRise var(--sc-dur-slow) var(--sc-ease) .06s both; }
+.sc-rise-2 { animation: scRise var(--sc-dur-slow) var(--sc-ease) .12s both; }
+.sc-rise-3 { animation: scRise var(--sc-dur-slow) var(--sc-ease) .18s both; }
+.sc-rise-4 { animation: scRise var(--sc-dur-slow) var(--sc-ease) .24s both; }
 .sc-float  { animation: scFloat 5s ease-in-out infinite; }
 
-/* Indigo gradient wordmark on light */
+/* Gold gradient wordmark */
 .sc-wordmark {
-  background: linear-gradient(100deg, #4338CA 0%, #4F46E5 45%, #6366F1 75%, #4F46E5 100%);
+  background: linear-gradient(100deg, var(--sc-gold-deep) 0%, var(--sc-gold) 42%, var(--sc-gold-bright) 70%, var(--sc-gold) 100%);
   background-size: 220% auto;
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
-  animation: scShimmer 7s linear infinite;
+  animation: scShimmer 8s linear infinite;
 }
 
-/* Cards opt into the subtle product shadow + hover lift */
+/* Cards — subtle elevation + gold-edged hover lift */
 .sc-card {
   box-shadow: var(--sc-shadow);
-  transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, border-color .25s ease;
+  transition: transform var(--sc-dur) var(--sc-ease), box-shadow var(--sc-dur-slow) ease, border-color var(--sc-dur-slow) ease;
 }
 .sc-card:hover { transform: translateY(-2px); box-shadow: var(--sc-shadow-lg); border-color: var(--sc-border-2) !important; }
 
-/* Shimmer skeleton */
-.sc-shimmer { background: linear-gradient(90deg,#F3F4F6 25%,#E5E7EB 37%,#F3F4F6 63%); background-size:400% 100%; animation: scShimmer 1.4s ease infinite; }
+/* Nav tabs — gold active underline on midnight */
+.sc-navtab { position: relative; color: var(--sc-text-mut); }
+.sc-navtab:hover { color: var(--sc-text); }
+.sc-navtab.active { color: var(--sc-text); }
 
-/* Primary CTA sheen */
+/* Shimmer skeleton (dark) */
+.sc-shimmer { background: linear-gradient(90deg,#1b2630 25%,#243140 37%,#1b2630 63%); background-size:400% 100%; animation: scShimmer 1.4s ease infinite; }
+
+/* Primary CTA sheen (a gold ingot catching light) */
 .sc-cta { position: relative; overflow: hidden; }
 .sc-cta::after {
   content:""; position:absolute; inset:0;
-  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%);
+  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.30) 50%, transparent 70%);
   transform: translateX(-120%); transition: transform .6s ease;
 }
 .sc-cta:hover::after { transform: translateX(120%); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  body::before { display: none; }
 }

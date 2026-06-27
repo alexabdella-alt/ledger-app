@@ -662,7 +662,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   const [selectedPayments, setSelectedPayments] = useState(new Set());
   const [apSettings] = useState({ autoApproveThreshold: AP_AUTO_APPROVE_THRESHOLD });
   const [cashBalance, setCashBalance] = useState("");
-  const CHAT_GREETING = "Hey — I'm Shadow CFO. Just upload your documents on Home and I'll handle the bookkeeping. Ask me anything — your burn rate, P&L, unpaid bills — or tell me what to do and I'll take you there. What do you need?";
+  const CHAT_GREETING = "Hey — I'm Shadow. Just upload your documents on Home and I'll handle the bookkeeping. Ask me anything — your burn rate, P&L, unpaid bills — or tell me what to do and I'll take you there. What do you need?";
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState([
@@ -5118,36 +5118,37 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           </div>
         )}
         {/* Top Bar */}
-        <div style={{ background:"#FFFFFF", borderBottom:"1px solid #E4E7EC", flexShrink:0 }}>
+        <div style={{ background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", flexShrink:0 }}>
           {/* Brand + Company + User row */}
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 32px", height:64 }}>
-            <div onClick={()=>setView("home")} title="Go to Home" style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}>
+            <div onClick={()=>setView("home")} title="Go to Home" style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
+              {/* Eclipse logomark — a gold disc partly eclipsed by a midnight disc → a "shadow" crescent */}
               <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
                 <defs>
                   <linearGradient id="scTopMark" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#818CF8" />
-                    <stop offset="100%" stopColor="#4F46E5" />
+                    <stop offset="0%" stopColor="#f6cb5b" />
+                    <stop offset="100%" stopColor="#bf9226" />
                   </linearGradient>
                 </defs>
-                <circle cx="24" cy="24" r="13" fill="url(#scTopMark)" />
-                <circle cx="30.5" cy="20.5" r="11" fill="#FFFFFF" />
+                <circle cx="24" cy="24" r="14" fill="url(#scTopMark)" />
+                <circle cx="30.5" cy="20" r="11.5" fill="var(--sc-surface)" />
               </svg>
-              <span className="sc-wordmark" style={{ fontSize:16, letterSpacing:3, fontWeight:700, fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>SHADOW CFO</span>
+              <span className="sc-wordmark sc-display" style={{ fontSize:21, letterSpacing:1, fontWeight:600 }}>Shadow</span>
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:14 }}>
               <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
               <button onClick={()=>setView("settings")} title="Settings" aria-label="Settings"
-                style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px", borderRadius:9, background: SETTINGS_VIEWS.includes(view)?"#EEF2FF":"transparent", border:`1px solid ${SETTINGS_VIEWS.includes(view)?"#4F46E5":"#E4E7EC"}`, color: SETTINGS_VIEWS.includes(view)?"#4F46E5":"#475467", cursor:"pointer", transition:"all .15s" }}
-                onMouseEnter={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="#F3F4F6"; e.currentTarget.style.color="#4F46E5"; }}}
-                onMouseLeave={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#475467"; }}}>
+                style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px", borderRadius:9, background: SETTINGS_VIEWS.includes(view)?"var(--sc-gold-soft)":"transparent", border:`1px solid ${SETTINGS_VIEWS.includes(view)?"var(--sc-gold-line)":"var(--sc-border)"}`, color: SETTINGS_VIEWS.includes(view)?"var(--sc-gold)":"var(--sc-text-mut)", cursor:"pointer", transition:"all .15s" }}
+                onMouseEnter={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
+                onMouseLeave={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--sc-text-mut)"; }}}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink:0 }}>
                   <circle cx="12" cy="12" r="3"></circle>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                 </svg>
                 <span style={{ fontSize:13, fontWeight:500 }}>Settings</span>
               </button>
-              <span style={{ fontSize:11, color:"#98A2B3", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session?.user?.email}</span>
-              <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid #D0D5DD", color:"#475467", fontSize:12, cursor:"pointer" }}>Sign out</button>
+              <span style={{ fontSize:11, color:"var(--sc-text-ph)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session?.user?.email}</span>
+              <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
           {/* Nav — 5 tabs */}
@@ -5161,23 +5162,23 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               ...(isPlatformAdmin ? [{ id:"admin", label:"⚙ Admin", group:["admin"], admin:true }] : []),
             ];
             return (
-              <div style={{ display:"flex", width:"100%", borderBottom:"1px solid #E4E7EC", padding:"0 20px", gap:4 }}>
+              <div style={{ display:"flex", width:"100%", borderBottom:"1px solid var(--sc-border)", padding:"0 20px", gap:4 }}>
                 {tabs.map(tab => {
                   const isActive = tab.group.includes(view);
-                  const accent = tab.admin ? "#DC6803" : "#4F46E5";
+                  const accent = tab.admin ? "var(--sc-warning)" : "var(--sc-gold)";
                   return (
                     <button key={tab.id}
                       className={tab.admin ? undefined : (isActive?"sc-navtab active":"sc-navtab")}
                       onClick={()=>{ if(tab.id==="books") setBooksFilter("all"); setView(tab.id); setVendorFilter("all"); }}
-                      onMouseEnter={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="#FEF0C7"; }) : undefined}
-                      onMouseLeave={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="#FFFAEB"; }) : undefined}
-                      style={{ height:46, padding:"0 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-                        background: tab.admin ? (isActive?"#FEF0C7":"#FFFAEB") : "transparent",
-                        border: tab.admin ? "1px solid #FEDF89" : "none", borderBottomWidth: tab.admin?2:2,
-                        borderBottom: isActive?`2px solid ${accent}`:(tab.admin?"2px solid #FEDF89":"2px solid transparent"),
+                      onMouseEnter={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="var(--sc-warning-soft)"; }) : undefined}
+                      onMouseLeave={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="transparent"; }) : undefined}
+                      style={{ height:46, padding:"0 18px", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                        background: tab.admin ? (isActive?"var(--sc-warning-soft)":"transparent") : "transparent",
+                        border: tab.admin ? "1px solid var(--sc-warning-soft)" : "none", borderBottomWidth: 2,
+                        borderBottom: isActive?`2px solid ${accent}`:"2px solid transparent",
                         borderRadius: tab.admin ? "8px 8px 0 0" : 0,
-                        color: isActive?(tab.admin?"#B54708":"#101828"):(tab.admin?"#B54708":"#475467"), fontSize:14, fontWeight: isActive?600:(tab.admin?600:500),
-                        cursor:"pointer", transition:"all 0.12s" }}>
+                        color: isActive?(tab.admin?"var(--sc-warning)":"var(--sc-text)"):"var(--sc-text-mut)", fontSize:14, fontWeight: isActive?600:500,
+                        fontFamily:"var(--sc-font-ui)", cursor:"pointer", transition:"all 0.12s" }}>
                       {tab.label}
                       {tab.id==="home" && clarificationQueue.filter(c=>!c.resolved).length>0 && (
                         <span style={{ background:"#DC6803", color:"#fff", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.filter(c=>!c.resolved).length}</span>
@@ -5191,15 +5192,15 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                 {/* Notification bell (Item 55) — clean lucide-style icon, matched to
                     the Settings gear (muted #6B7280 → #4F46E5 on hover). */}
                 <button onClick={()=>setNotifOpen(o=>!o)} title="Notifications" aria-label="Notifications"
-                  style={{ marginLeft:"auto", alignSelf:"center", position:"relative", width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background: notifOpen?"#EEF2FF":"transparent", border:"none", borderRadius:10, cursor:"pointer", color: notifOpen?"#4F46E5":"#6B7280", transition:"all .15s" }}
-                  onMouseEnter={e=>{ if(!notifOpen){ e.currentTarget.style.background="#F3F4F6"; e.currentTarget.style.color="#4F46E5"; }}}
-                  onMouseLeave={e=>{ if(!notifOpen){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#6B7280"; }}}>
+                  style={{ marginLeft:"auto", alignSelf:"center", position:"relative", width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background: notifOpen?"var(--sc-gold-soft)":"transparent", border:"none", borderRadius:10, cursor:"pointer", color: notifOpen?"var(--sc-gold)":"var(--sc-text-mut)", transition:"all .15s" }}
+                  onMouseEnter={e=>{ if(!notifOpen){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
+                  onMouseLeave={e=>{ if(!notifOpen){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--sc-text-mut)"; }}}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink:0 }}>
                     <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
                     <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                   </svg>
                   {unreadNotifs>0 && (
-                    <span style={{ position:"absolute", top:2, right:2, width:16, height:16, borderRadius:"50%", background:"#D92D20", color:"#fff", fontSize:10, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, border:"2px solid #FFFFFF" }}>{unreadNotifs>9?"9":unreadNotifs}</span>
+                    <span style={{ position:"absolute", top:2, right:2, width:16, height:16, borderRadius:"50%", background:"var(--sc-error)", color:"#fff", fontSize:10, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, border:"2px solid var(--sc-surface)" }}>{unreadNotifs>9?"9":unreadNotifs}</span>
                   )}
                 </button>
               </div>
@@ -5235,13 +5236,13 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               else setView(id);
             };
             return (
-              <div style={{ display:"flex", background:"#FFFFFF", borderBottom:"1px solid #F3F4F6", padding:"0 16px", gap:4, overflowX:"auto" }}>
+              <div style={{ display:"flex", background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", padding:"0 16px", gap:4, overflowX:"auto" }}>
                 {subs.map(([id,label])=>(
                   <button key={id} onClick={()=>go(id)}
                     className={activeSub(id)?"sc-subtab active":"sc-subtab"}
-                    style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:activeSub(id)?"2px solid #4F46E5":"2px solid transparent", color:activeSub(id)?"#4F46E5":"#475467", fontSize:12, cursor:"pointer", whiteSpace:"nowrap", transition:"color 0.12s", display:"inline-flex", alignItems:"center", gap:6 }}>
+                    style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:activeSub(id)?"2px solid var(--sc-gold)":"2px solid transparent", color:activeSub(id)?"var(--sc-gold)":"var(--sc-text-mut)", fontSize:12, cursor:"pointer", whiteSpace:"nowrap", transition:"color 0.12s", display:"inline-flex", alignItems:"center", gap:6 }}>
                     {label}
-                    {id==="ap" && apUnpaid>0 && <span style={{ fontSize:10, fontWeight:700, color:"#B54708", background:"#FEF0C7", border:"1px solid #FEDF89", borderRadius:20, padding:"1px 7px", lineHeight:1.4 }}>{apUnpaid}</span>}
+                    {id==="ap" && apUnpaid>0 && <span style={{ fontSize:10, fontWeight:700, color:"var(--sc-warning)", background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:20, padding:"1px 7px", lineHeight:1.4 }}>{apUnpaid}</span>}
                   </button>
                 ))}
               </div>
@@ -5440,7 +5441,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#4F46E5,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
                 <div>
-                  <div style={{ fontSize:14, fontWeight:600 }}>Shadow CFO</div>
+                  <div style={{ fontSize:14, fontWeight:600 }}>Shadow</div>
                   <div style={{ fontSize:11, color:"#039855" }}>● Online · Your AI Controller</div>
                 </div>
               </div>
