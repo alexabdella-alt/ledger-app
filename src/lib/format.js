@@ -26,4 +26,13 @@ function fmtDate(d, opts) {
   return date.toLocaleDateString("en-US", opts || { month: "short", day: "numeric", year: "numeric" });
 }
 
-export { initials, vendorColor, fmtDate };
+// Signed money: "$1,234.50" / "-$786.50". A negative balance (e.g. an overdrawn
+// cash account) MUST render with its sign — never as a positive magnitude, which
+// would mask an overdraft and overstate assets (the Balance Sheet sign-flip bug).
+function fmtSignedMoney(n, { decimals = 2 } = {}) {
+  const v = Number(n) || 0;
+  const body = "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return v < 0 ? "-" + body : body;
+}
+
+export { initials, vendorColor, fmtDate, fmtSignedMoney };

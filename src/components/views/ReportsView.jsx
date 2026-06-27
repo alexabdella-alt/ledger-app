@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate, fmtSignedMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
@@ -449,7 +449,10 @@ export default function ReportsView() {
                     {/* BALANCE SHEET */}
                     {reportType==="balance" && (() => {
                       if (drill) return renderDrill();
-                      const bsFmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+                      // Sign-aware: a negative asset (e.g. overdrawn cash) renders as -$X, never
+                      // as a positive magnitude (the masked-overdraft bug). Call sites that pass
+                      // Math.abs(...) with their own sign prefix stay correct (abs → no extra "-").
+                      const bsFmt = fmtSignedMoney;
 
                       // "As of" date — accumulate all transactions through reportDateTo
                       const asOf = reportDateTo || new Date().toISOString().slice(0,10);

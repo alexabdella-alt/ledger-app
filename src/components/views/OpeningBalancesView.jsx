@@ -16,7 +16,9 @@ export default function OpeningBalancesView() {
             const existing = {}; (openingBalances||[]).forEach(b => { existing[b.account_code] = b.balance; });
             const balancesInit = bsAccts.reduce((acc,a) => ({...acc,[a.code]: bankLinked.has(a.code) ? bankBalFor(a.code) : (existing[a.code] ?? "")}), {});
             const balances = Object.keys(openingBalBalances).length > 0 ? { ...openingBalBalances } : balancesInit;
-            bankLinked.forEach(code => { balances[code] = bankBalFor(code); });   // bank balance always wins
+            // Bank-linked cash is PRE-FILLED from the bank balance (when known) but stays
+            // editable — an established business must be able to type its day-one cash, and a
+            // new business whose bank balance isn't recorded yet shouldn't be locked to 0.
             const setBalances = setOpeningBalBalances;
 
             const totalAssets = CHART_OF_ACCOUNTS.filter(a=>a.category==="Assets").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
@@ -29,7 +31,10 @@ export default function OpeningBalancesView() {
             // overridden from bank balances in the handler, so we send only grid values.
             const post = async () => {
               const grid = {};
-              bsAccts.forEach(a => { if (!bankLinked.has(a.code)) { const v = parseFloat(balances[a.code]); if (v) grid[a.code] = v; } });
+              // Send ALL entered balances incl. bank-linked cash. postOpeningBalances uses the
+              // bank's recorded balance only as a FALLBACK when the grid omits a GL code, so the
+              // value shown here (bank pre-fill or a manual entry) is what actually posts.
+              bsAccts.forEach(a => { const v = parseFloat(balances[a.code]); if (v) grid[a.code] = v; });
               await postOpeningBalances(grid);
             };
 
@@ -68,11 +73,11 @@ export default function OpeningBalancesView() {
                           <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{acct.code}</span>
                           <span style={{fontSize:13}}>{acct.name}</span>
                         </div>
-                        {bankLinked.has(acct.code) && <span style={{fontSize:10,color:"var(--sc-gold)",marginRight:8}}>from bank</span>}
-                        <input type="number" value={balances[acct.code]||""} readOnly={bankLinked.has(acct.code)}
-                          onChange={bankLinked.has(acct.code) ? undefined : e=>setBalances(b=>({...b,[acct.code]:e.target.value}))}
-                          placeholder="0.00" step="0.01" title={bankLinked.has(acct.code)?"From the linked bank account's balance (bank-as-source-of-truth)":undefined}
-                          style={{width:140,background:bankLinked.has(acct.code)?"var(--sc-gold-soft)":"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right",cursor:bankLinked.has(acct.code)?"not-allowed":"text"}}/>
+                        {bankLinked.has(acct.code) && bankBalFor(acct.code)>0 && <span style={{fontSize:10,color:"var(--sc-gold)",marginRight:8}} title="Pre-filled from the linked bank account — editable">from bank</span>}
+                        <input type="number" value={balances[acct.code]||""}
+                          onChange={e=>setBalances(b=>({...b,[acct.code]:e.target.value}))}
+                          placeholder="0.00" step="0.01"
+                          style={{width:140,background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right",cursor:"text"}}/>
                       </div>
                     ))}
                   </div>

@@ -1228,14 +1228,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
       logAudit("opening_balance_blocked_precutoff", `Blocked: ${pre.length} pre-cutoff transactions exist`, null, { cutoff, count: pre.length });
       return false;
     }
-    // Bank-as-source-of-truth: bank-linked cash GL codes come from bank balances
-    // (the grid shows them read-only), so there's one opening amount per GL account.
+    // Bank-as-source-of-truth, but as a FALLBACK only: a bank-linked cash GL code is
+    // valued from the bank's recorded balance ONLY when the grid didn't provide one. If
+    // the user entered (or the bank pre-fill carried) an opening cash amount, THAT wins —
+    // so opening cash can actually be set, including for a brand-new business whose bank
+    // `current_balance` hasn't been recorded yet. Avoids both the "locked to 0" dead-end
+    // and double-opening the same GL account.
     const merged = { ...(gridBalancesByCode || {}) };
     const bankSum = {};
     for (const b of (bankAccounts || [])) {
       if (b.gl_code) bankSum[b.gl_code] = (bankSum[b.gl_code] || 0) + (Number(b.current_balance) || 0);
     }
-    for (const [code, val] of Object.entries(bankSum)) merged[code] = val;   // bank-linked cash wins, summed across banks
+    for (const [code, val] of Object.entries(bankSum)) {
+      if (merged[code] == null || merged[code] === "" || Number(merged[code]) === 0) merged[code] = val;
+    }
     const { lines } = buildOpeningBalanceEntry(merged, { cutoffDate: cutoff, obeCode: OBE_CODE, accounts: CHART_OF_ACCOUNTS });
     if (!lines.length) { showNotification("Enter at least one opening balance first", "error"); return false; }
 
