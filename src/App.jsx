@@ -15,6 +15,7 @@ import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching } from "./lib/bankMatch";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
+import { pickActiveCompany } from "./lib/companies";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
@@ -156,6 +157,16 @@ function AppWrapper() {
     else clearSentryUser();
   }, [session?.user?.id, currentCompany?.id]);
 
+  // Persist the ACTIVE company per user so a refresh restores it (was resetting to the
+  // first company — a multi-company user could end up working in the wrong company's
+  // books without noticing, a real data-integrity hazard). Durable across refresh;
+  // restored + validated in loadCompanies. (A profile/DB store would add cross-device.)
+  useEffect(() => {
+    if (session?.user?.id && currentCompany?.id) {
+      try { localStorage.setItem(`cfai_lastCompany_${session.user.id}`, String(currentCompany.id)); } catch {}
+    }
+  }, [session?.user?.id, currentCompany?.id]);
+
   // Look up the invite (company name + validity) for the pre-login banner.
   useEffect(() => {
     if (!inviteToken) return;
@@ -204,7 +215,12 @@ function AppWrapper() {
         .not("accepted_at", "is", null);
       const cos = (data||[]).map(r=>({...r.companies, role:r.role}));
       setCompanies(cos);
-      setCurrentCompany(prev => prev || (cos.length > 0 ? cos[0] : null));
+      // Restore the last-selected company instead of always defaulting to the first —
+      // pickActiveCompany validates it's still in the user's accepted list.
+      let lastId = null;
+      try { lastId = localStorage.getItem(`cfai_lastCompany_${sess.user.id}`); } catch {}
+      const restored = pickActiveCompany(cos, lastId);
+      setCurrentCompany(prev => prev || restored);
       if (cos.length === 0) setShowCompanySetup(true);
     } finally {
       setAppLoading(false);

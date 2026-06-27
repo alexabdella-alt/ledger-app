@@ -21,10 +21,16 @@ export default function OpeningBalancesView() {
             // new business whose bank balance isn't recorded yet shouldn't be locked to 0.
             const setBalances = setOpeningBalBalances;
 
+            // Opening Balance Equity (3400) is the AUTO-PLUG, never a manual input: the user
+            // enters only their known asset/liability (and optional equity) day-one balances,
+            // and the app silently posts the balancing figure to OBE so the entry balances
+            // without the user touching the equity side (how QuickBooks etc. handle this).
+            const OBE = "3400";
             const totalAssets = CHART_OF_ACCOUNTS.filter(a=>a.category==="Assets").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
             const totalLiab = CHART_OF_ACCOUNTS.filter(a=>a.category==="Liabilities").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
-            const totalEquity = CHART_OF_ACCOUNTS.filter(a=>a.category==="Equity").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
-            const isBalanced = Math.abs(totalAssets - totalLiab - totalEquity) < 0.01;
+            const totalEquity = CHART_OF_ACCOUNTS.filter(a=>a.category==="Equity"&&a.code!==OBE).reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
+            const obePlug = totalAssets - totalLiab - totalEquity;          // the app posts this to OBE 3400
+            const hasEntry = bsAccts.some(a=>a.code!==OBE && parseFloat(balances[a.code]));
 
             // Post via the canonical handler: one balanced opening JE (plug to OBE 3400),
             // persisted + saved to opening_balances (survives refresh). Bank-linked cash is
@@ -52,22 +58,25 @@ export default function OpeningBalancesView() {
                   <input type="date" value={cutoffDate||""} disabled={openingPosted} onChange={e=>saveCutoffDate(e.target.value)}
                     style={{background: openingPosted?"var(--sc-surface-2)":"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",cursor:openingPosted?"not-allowed":"text"}}/>
                   {openingPosted && <span style={{fontSize:12,color:"var(--sc-text-2)"}}>🔒 locked — opening balances posted</span>}
-                  <div style={{marginLeft:"auto",fontSize:12,color:isBalanced?"var(--sc-success)":"var(--sc-error)",fontWeight:500}}>
-                    {isBalanced ? "✓ Balanced" : `Out of balance by ${fmt(Math.abs(totalAssets-totalLiab-totalEquity))}`}
+                  <div style={{marginLeft:"auto",fontSize:12,color:"var(--sc-success)",fontWeight:500}}>
+                    {hasEntry ? <>✓ Auto-balanced{Math.abs(obePlug)>=0.01 ? <span style={{color:"var(--sc-text-2)",fontWeight:400}}> — {fmt(obePlug)} to Opening Balance Equity</span> : null}</> : "Enter your day-one balances"}
                   </div>
                 </div>
                 {!cutoffDate && <div style={{background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12.5,color:"var(--sc-warning)"}}>Set your cutoff date first — it's the day your books begin. No transactions may be dated before it; everything before it is captured here as opening balances.</div>}
 
-                {/* Balance sheet input by category */}
-                {["Assets","Liabilities","Equity"].map(cat => (
+                {/* Balance sheet input by category. OBE (3400) is excluded from inputs — it's the
+                    auto-plug, shown as a computed line under Equity so the user SEES where the
+                    balancing figure goes without having to enter it. */}
+                {["Assets","Liabilities","Equity"].map(cat => {
+                  const accts = CHART_OF_ACCOUNTS.filter(a=>a.category===cat && a.code!==OBE);
+                  const catTotal = accts.reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0) + (cat==="Equity"?obePlug:0);
+                  return (
                   <div key={cat} style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,overflow:"hidden",marginBottom:12}}>
                     <div style={{padding:"12px 20px",background:"var(--sc-surface-2)",borderBottom:"1px solid var(--sc-border)",display:"flex",justifyContent:"space-between"}}>
                       <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5}}>{cat.toUpperCase()}</div>
-                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:"var(--sc-text)"}}>
-                        {fmt(CHART_OF_ACCOUNTS.filter(a=>a.category===cat).reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0))}
-                      </div>
+                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:"var(--sc-text)"}}>{fmt(catTotal)}</div>
                     </div>
-                    {CHART_OF_ACCOUNTS.filter(a=>a.category===cat).map((acct,i)=>(
+                    {accts.map((acct,i)=>(
                       <div key={acct.code} style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:i>0?"1px solid var(--sc-border)":"none"}}>
                         <div style={{flex:1}}>
                           <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{acct.code}</span>
@@ -80,12 +89,24 @@ export default function OpeningBalancesView() {
                           style={{width:140,background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right",cursor:"text"}}/>
                       </div>
                     ))}
+                    {/* Auto-plug line — Opening Balance Equity (computed, not editable) */}
+                    {cat==="Equity" && (
+                      <div style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:accts.length?"1px solid var(--sc-border)":"none",background:"var(--sc-gold-soft)"}}>
+                        <div style={{flex:1}}>
+                          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{OBE}</span>
+                          <span style={{fontSize:13}}>Opening Balance Equity</span>
+                          <span style={{fontSize:11,color:"var(--sc-gold)",marginLeft:8}}>auto-balanced</span>
+                        </div>
+                        <div style={{width:140,textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:13,color:"var(--sc-text)",paddingRight:12}} title="The app posts this balancing figure for you — no manual entry needed">{fmt(obePlug)}</div>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
 
                 {/* Summary */}
                 <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:12,padding:"14px 20px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,textAlign:"center"}}>
-                  {[["Total Assets",totalAssets,"var(--sc-success)"],["Total Liabilities",totalLiab,"var(--sc-error)"],["Total Equity",totalEquity,"var(--sc-gold)"]].map(([l,v,c])=>(
+                  {[["Total Assets",totalAssets,"var(--sc-success)"],["Total Liabilities",totalLiab,"var(--sc-error)"],["Total Equity",totalEquity+obePlug,"var(--sc-gold)"]].map(([l,v,c])=>(
                     <div key={l}>
                       <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>{l}</div>
                       <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:c}}>{fmt(v)}</div>
@@ -93,7 +114,7 @@ export default function OpeningBalancesView() {
                   ))}
                 </div>
 
-                {(() => { const canPost = isBalanced && !!cutoffDate; return (
+                {(() => { const canPost = !!cutoffDate && hasEntry; return (
                 <button onClick={post} disabled={!canPost} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:canPost?"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))":"var(--sc-border)",border:"none",color:canPost?"var(--sc-surface)":"var(--sc-text-2)",cursor:canPost?"pointer":"not-allowed"}}>
                   {openingPosted ? "Update Opening Balances" : "Post Opening Balances"}
                 </button> ); })()}

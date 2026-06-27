@@ -29,6 +29,7 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
   { code: "3100", name: "Retained Earnings", category: "Equity", system_role: "retained_earnings" },
   { code: "3200", name: "Additional Paid-In Capital", category: "Equity", system_role: "additional_paid_in_capital" },
   { code: "3300", name: "Owner's Draw / Distributions", category: "Equity", system_role: "owners_draw" },
+  { code: "3400", name: "Opening Balance Equity", category: "Equity", system_role: "opening_balance_equity" },
   // Revenue
   { code: "4000", name: "Product Revenue", category: "Revenue", system_role: "product_revenue" },
   { code: "4100", name: "Service Revenue", category: "Revenue", system_role: "service_revenue" },

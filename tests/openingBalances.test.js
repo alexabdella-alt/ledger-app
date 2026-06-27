@@ -38,6 +38,18 @@ describe("buildOpeningBalanceEntry — one balanced opening entry, plug to OBE",
     ]);
   });
 
+  it("onboarding: user enters ONLY known asset/liability balances → app auto-plugs OBE so it balances (no equity entered)", () => {
+    // Shakedown BUG 1: a non-accountant enters $50k cash + a $10k loan and nothing on the
+    // equity side; the entry must still post balanced via the Opening Balance Equity plug.
+    const { lines } = buildOpeningBalanceEntry({ "1000": 50000, "2500": 10000 }, { cutoffDate: "2026-02-01" });
+    const debits = lines.reduce((s, l) => s + l.debit, 0);
+    const credits = lines.reduce((s, l) => s + l.credit, 0);
+    expect(debits).toBe(credits);                                   // balanced
+    expect(lines).toContainEqual({ code: "1000", debit: 50000, credit: 0 });   // Dr Cash
+    expect(lines).toContainEqual({ code: "2500", debit: 0, credit: 10000 });   // Cr Loan
+    expect(lines).toContainEqual({ code: OBE_CODE, debit: 0, credit: 40000 }); // plug: 50000 - 10000
+  });
+
   it("is balance-sheet-only — never touches net income (no 4xxx/5–8xxx lines)", () => {
     const { lines } = buildOpeningBalanceEntry({ "1000": 5000, "1500": 3000, "2000": 2000, "3100": 6000 }, {});
     expect(lines.some(l => isPL(l.code))).toBe(false);
