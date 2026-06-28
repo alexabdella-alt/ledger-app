@@ -149,6 +149,41 @@ export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode 
     !cleared.has(String(i.db_entry_id != null ? i.db_entry_id : i.id)));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PREVIEW = EXECUTOR: derive each bank line's BOOKING FATE from the SAME planBankImport
+// result the booking will use, so the review screen shows exactly what will be booked.
+// (The drift this fixes: the review table rendered the AI's per-line categorization —
+// "Service Revenue", "Professional Services" — for lines that actually book as A/R / A/P
+// CLEARINGS, because matching only ran at Book time. A user could distrust or cancel the
+// import based on a wrong preview.) Returns { [bankId]: { fate, side, clears…, label } }
+// where fate ∈ "clear_ar" | "clear_ap" | "review" | "direct".
+// ─────────────────────────────────────────────────────────────────────────────
+export function bankLineFates(parsedTxns = [], plan = {}, openItems = []) {
+  const fates = {};
+  const invById = new Map((openItems || []).map((i) => [String(i.id), i]));
+  for (const c of plan.clears || []) {
+    const inv = invById.get(String(c.invoiceId));
+    fates[String(c.bankId)] = {
+      fate: c.side === "ar" ? "clear_ar" : "clear_ap",
+      side: c.side,
+      clearsInvoiceId: String(c.invoiceId),
+      clearsVendor: (inv && inv.vendor) || null,
+      clearsAmount: (c.entry && c.entry.amount != null) ? c.entry.amount : (inv && inv.amount) || null,
+      label: c.side === "ar"
+        ? `Clears A/R — ${(inv && inv.vendor) || "receivable"}`
+        : `Clears A/P — ${(inv && inv.vendor) || "payable"}`,
+    };
+  }
+  for (const m of plan.review || []) {
+    const bid = (m.bank_txn && m.bank_txn.id != null) ? m.bank_txn.id : m.bank_txn_id;
+    if (bid != null && !fates[String(bid)]) fates[String(bid)] = { fate: "review", label: "Needs review (uncertain match)" };
+  }
+  for (const t of parsedTxns || []) {
+    if (!fates[String(t.id)]) fates[String(t.id)] = { fate: "direct", label: null };   // books as categorized
+  }
+  return fates;
+}
+
 // True only for A/R match types ("ar_clear", "partial_ar"). A naive
 // `.includes("ar")` is WRONG — "ap_clear" and "partial_ap" both contain "ar".
 export function isArMatch(matchType) {

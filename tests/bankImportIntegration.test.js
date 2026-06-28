@@ -280,3 +280,45 @@ describe("deterministic matcher runs regardless of `type` (the early-return wiri
     expect(m).toHaveLength(3);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PREVIEW = EXECUTOR: the review screen's per-line fate must come from the SAME plan the
+// booking uses, so what the user approves is what books. bankLineFates derives each line's
+// fate from planBankImport — a matched line previews as "clears A/R/A/P", never as a fresh
+// revenue/expense (the drift that nearly made a cautious user cancel a correct import).
+// ─────────────────────────────────────────────────────────────────────────────
+import { bankLineFates } from "../src/lib/bankMatch.js";
+
+describe("bankLineFates — preview fate == booked fate (one shared matching result)", () => {
+  const open = [
+    { id: "acme-inv",      vendor: "Acme Corp",            amount: 4500, type: "revenue", gl_code: "4000", secondary_gl_code: "1100" },
+    { id: "riverside-inv", vendor: "Riverside Cafe",       amount: 1284, type: "revenue", gl_code: "4100", secondary_gl_code: "1100" },
+    { id: "pixel-bill",    vendor: "Pixel Contractor LLC", amount: 1800, type: "expense", gl_code: "6800", secondary_gl_code: "2000" },
+  ];
+  const parsed = [
+    { id: "b-acme", vendor: "Acme Corp",            amount: 4500, type: "revenue" },
+    { id: "b-riv",  vendor: "Riverside Cafe",       amount: 1284, type: "revenue" },
+    { id: "b-pix",  vendor: "Pixel Contractor LLC", amount: 1800, type: "expense" },
+    { id: "b-new",  vendor: "New Vendor",           amount: 250,  type: "expense" },
+  ];
+  const autoCleared = autoMatchBankLines(parsed, open, { arCode: "1100", apCode: "2000" });
+  const plan = planBankImport({ parsedTxns: parsed, autoCleared, queue: [], openItems: open, codes });
+  const fates = bankLineFates(parsed, plan, open);
+
+  it("matched deposits/payments preview as A/R / A/P clearings (NOT fresh revenue/expense)", () => {
+    expect(fates["b-acme"]).toMatchObject({ fate: "clear_ar", clearsVendor: "Acme Corp" });
+    expect(fates["b-riv"]).toMatchObject({ fate: "clear_ar", clearsVendor: "Riverside Cafe" });
+    expect(fates["b-pix"]).toMatchObject({ fate: "clear_ap", clearsVendor: "Pixel Contractor LLC" });
+  });
+
+  it("genuinely-new line previews as direct (books as categorized)", () => {
+    expect(fates["b-new"]).toMatchObject({ fate: "direct" });
+  });
+
+  it("the previewed clears EXACTLY equal what planBankImport will book (no drift)", () => {
+    const previewClears = Object.entries(fates).filter(([, f]) => f.fate.startsWith("clear_")).map(([id]) => id).sort();
+    const bookedClears = plan.clears.map(c => String(c.bankId)).sort();
+    expect(previewClears).toEqual(bookedClears);   // preview set === booked set
+    expect(previewClears).toEqual(["b-acme", "b-pix", "b-riv"]);
+  });
+});
