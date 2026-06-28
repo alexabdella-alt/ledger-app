@@ -38,7 +38,7 @@ import { normalizeName } from "./docDirection.js";
 // item clears at most once (greedy). Returns autoCleared-shaped records carrying
 // bank_txn + bank_txn_id so planBankImport excludes them from standalone booking.
 // ─────────────────────────────────────────────────────────────────────────────
-export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTolerance = 0.01, arCode, apCode } = {}) {
+export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTolerance = 0.01, arCode, apCode, trace } = {}) {
   // Robust amount coercion: real AI-categorized amounts can arrive as "$4,500.00" or
   // "4,500" strings; a bare Number() yields NaN → the line is silently skipped → matching
   // collapses to zero. Strip currency/grouping first.
@@ -53,11 +53,12 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
   const itemAP = (i) => apCode != null ? (eq(i.secondary_gl_code, apCode) || eq(i.gl_code, apCode)) : i.type === "expense";
   const used = new Set();   // an open item may clear only once
   const matches = [];
+  const note = (rec) => { if (trace) trace.push(rec); };
   for (const t of parsedTxns || []) {
     const amt = num(t.amount);
-    if (!amt) continue;
+    if (!amt) { note({ bank: t.id, vendor: t.vendor, amount: t.amount, matched: false, reason: "unparseable amount" }); continue; }
     const partyNorm = normalizeName(t.vendor || t.description);
-    if (!partyNorm || partyNorm.length < 2) continue;
+    if (!partyNorm || partyNorm.length < 2) { note({ bank: t.id, vendor: t.vendor, amount: amt, matched: false, reason: "no usable party name" }); continue; }
     // Soft direction hint from the bank line's category (deposit→AR, payment→AP). Only a
     // preference: if the hint finds nothing we relax and let the matched item's offset decide.
     const wantsAR = t.type === "revenue";
@@ -80,9 +81,27 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
     // Prefer a hint-consistent match; relax to either side only when the line had no hint.
     let cand = (openItems || []).find((i) => matchesItem(i, true));
     if (!cand && !wantsAR && !wantsAP) cand = (openItems || []).find((i) => matchesItem(i, false));
-    if (!cand) continue;
+    if (!cand) {
+      // Per-line reason for the [bank-match] results log — progressively relax the criteria
+      // to pinpoint WHICH one excluded every candidate (so a live miss is self-explaining).
+      if (trace) {
+        const arap = (openItems || []).filter((i) => itemAR(i) || itemAP(i));
+        const unused = arap.filter((i) => !used.has(String(i.id)));
+        const amtOk = unused.filter((i) => [i.ar_amount, i.balance_remaining, i.amount].map(num).filter((v) => v > 0).some((v) => Math.abs(v - amt) <= amountTolerance));
+        const nameOk = amtOk.filter((i) => { const n = normalizeName(i.vendor); return n && (n === partyNorm || n.includes(partyNorm) || partyNorm.includes(n)); });
+        let reason;
+        if (arap.length === 0) reason = "no A/R or A/P open items in the candidate set";
+        else if (unused.length === 0) reason = "all A/R/A/P candidates already taken by earlier lines";
+        else if (amtOk.length === 0) reason = `no candidate amount ≈ ${amt} (open A/R-A/P amounts: ${unused.map((i) => num(i.amount)).join(", ")})`;
+        else if (nameOk.length === 0) reason = `amount matched but name "${partyNorm}" ≠ [${amtOk.map((i) => `"${normalizeName(i.vendor)}"`).join(", ")}]`;
+        else reason = `name+amount matched ${nameOk.map((i) => i.id).join(",")} but the ${wantsAR ? "deposit→A/R" : wantsAP ? "payment→A/P" : "side"} hint excluded it`;
+        note({ bank: t.id, vendor: t.vendor, amount: amt, type: t.type, matched: false, reason });
+      }
+      continue;
+    }
     used.add(String(cand.id));
     const side = itemAR(cand) ? "ar" : "ap";
+    note({ bank: t.id, vendor: t.vendor, amount: amt, matched: true, invoiceId: String(cand.id), side });
     matches.push({
       bank_txn_id: t.id,
       bank_txn: t,

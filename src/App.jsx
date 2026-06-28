@@ -4120,13 +4120,16 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
     // drifted from "revenue"/"expense" can't be silently excluded before matching even runs.
     const arCodeForMatch = rc("accounts_receivable");
     const apCodeForMatch = rc("accounts_payable");
-    const deterministic = autoMatchBankLines(newBankTxns, currentInvoices, { arCode: arCodeForMatch, apCode: apCodeForMatch });
+    const matchTrace = [];
+    const deterministic = autoMatchBankLines(newBankTxns, currentInvoices, { arCode: arCodeForMatch, apCode: apCodeForMatch, trace: matchTrace });
     // Diagnostic (bank-import matching): surfaces the ACTUAL candidate set + match results at
     // runtime so a live miss is debuggable from the browser console (the unit data matches 3/3).
     try {
       console.info("[bank-match] candidates:", currentInvoices.filter(i => (arCodeForMatch && (String(i.secondary_gl_code)===String(arCodeForMatch)||String(i.gl_code)===String(arCodeForMatch))) || (apCodeForMatch && (String(i.secondary_gl_code)===String(apCodeForMatch)||String(i.gl_code)===String(apCodeForMatch)))).map(i => ({ id: i.id, vendor: i.vendor, amount: i.amount, type: i.type, gl: i.gl_code, off: i.secondary_gl_code })));
       console.info("[bank-match] bank lines:", newBankTxns.map(t => ({ id: t.id, vendor: t.vendor, amount: t.amount, type: t.type })));
       console.info("[bank-match] deterministic matches:", deterministic.map(m => ({ bank: m.bank_txn_id, inv: m.invoice_ids, side: m.match_type })));
+      console.info(`[bank-match] results (${deterministic.length}/${newBankTxns.length} matched):`);
+      for (const r of matchTrace) console.info(`  · ${r.matched ? "✓ MATCHED" : "✗ no match"} — ${r.vendor} $${r.amount}${r.matched ? ` → ${r.invoiceId} (${r.side})` : ` — ${r.reason}`}`);
     } catch {}
     const handledBankIds = new Set(deterministic.map(m => String(m.bank_txn_id)));
     const handledInvIds  = new Set(deterministic.flatMap(m => (m.invoice_ids || []).map(String)));

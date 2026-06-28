@@ -200,3 +200,50 @@ describe("bank import — matched lines CLEAR (no silent disappearance): 9 direc
     expect(cashFromClearings).toBe(3984);   // before the fix this was 0 — the lines vanished
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOOP/RESULTS PROOF: the matcher iterates EVERY bank line independently and records
+// each outcome. The [bank-match] trace gives a per-line verdict (matched→which item, or
+// the precise reason it didn't) so a live miss is self-explaining — and it proves the
+// loop matches all 3 on the exact-name+amount case, not 1.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("autoMatchBankLines — per-line results trace (loop matches ALL, not just the first)", () => {
+  const open = [
+    { id: "acme-inv",      vendor: "Acme Corporation",     amount: 4500, type: "revenue", gl_code: "4000", secondary_gl_code: "1100" }, // fuzzy name
+    { id: "riverside-inv", vendor: "Riverside Cafe",       amount: 1284, type: "revenue", gl_code: "4100", secondary_gl_code: "1100" }, // exact
+    { id: "pixel-bill",    vendor: "Pixel Contractor LLC", amount: 1800, type: "expense", gl_code: "6800", secondary_gl_code: "2000" }, // exact
+    { id: "meridian-inv",  vendor: "Meridian Group",       amount: 6800, type: "revenue", gl_code: "4000", secondary_gl_code: "1100" }, // no bank line
+  ];
+  const bankLines = [
+    { id: "b-acme", vendor: "Acme Corp",            amount: 4500, type: "revenue" },
+    { id: "b-riv",  vendor: "Riverside Cafe",       amount: 1284, type: "revenue" },
+    { id: "b-pix",  vendor: "Pixel Contractor LLC", amount: 1800, type: "expense" },
+  ];
+
+  it("trace shows ✓ for ALL 3 (Acme fuzzy + Riverside/Pixel exact) — not 1-of-3", () => {
+    const trace = [];
+    const m = autoMatchBankLines(bankLines, open, { arCode: "1100", apCode: "2000", trace });
+    expect(m).toHaveLength(3);
+    expect(trace.filter(r => r.matched)).toHaveLength(3);
+    expect(trace.find(r => r.bank === "b-acme")).toMatchObject({ matched: true, invoiceId: "acme-inv", side: "ar" });
+    expect(trace.find(r => r.bank === "b-riv")).toMatchObject({ matched: true, invoiceId: "riverside-inv", side: "ar" });
+    expect(trace.find(r => r.bank === "b-pix")).toMatchObject({ matched: true, invoiceId: "pixel-bill", side: "ap" });
+  });
+
+  it("a later line still matches after an earlier one did (no short-circuit / no consume-all)", () => {
+    // Reverse order + an extra leading no-match line: every real line must still match.
+    const trace = [];
+    const m = autoMatchBankLines(
+      [{ id: "noise", vendor: "Unknown Vendor", amount: 999, type: "expense" }, ...bankLines.slice().reverse()],
+      open, { arCode: "1100", apCode: "2000", trace });
+    expect(m).toHaveLength(3);
+    expect(trace.find(r => r.bank === "noise").matched).toBe(false);
+  });
+
+  it("the reason diagnostic pinpoints WHY a line misses (amount off by a cent)", () => {
+    const trace = [];
+    autoMatchBankLines([{ id: "x", vendor: "Riverside Cafe", amount: 1283, type: "revenue" }], open, { arCode: "1100", apCode: "2000", trace });
+    expect(trace[0].matched).toBe(false);
+    expect(trace[0].reason).toMatch(/no candidate amount/);
+  });
+});
