@@ -488,7 +488,7 @@ export default function DashboardView() {
                                   // user reviews), so there are no match numbers at upload time. Don't
                                   // fabricate a "Matched 0 of 0" summary; tell the truth + link there.
                                   <span onClick={()=>setView("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
-                                    ↪ Routed to Bank Import — review &amp; book your transactions there
+                                    📄 Ready in Bank Import — review &amp; book your transactions there →
                                   </span>
                                 ) : (
                                   <span onClick={()=>setView("matching")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open matching detail">

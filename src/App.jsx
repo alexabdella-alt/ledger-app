@@ -2853,11 +2853,17 @@ Reply with only the single word.`,
         // account-picker (C63) appears and the user selects the account → correct offset.
         // Covers both spreadsheet and PDF statements (classifyFile → bank_statement).
         if (docType === "bank_statement") {
+          // DON'T hijack navigation. A bank statement is the highest-stakes import
+          // (bulk + probabilistic matching + the future CPA-review, O50), so it gets a
+          // dedicated, deliberately-reachable destination (Books → Bank Import) rather
+          // than an inline panel. We stash the file (BankView consumes it on arrival via
+          // pendingImportFile) and SURFACE the result where the user already is — a
+          // queue link + a notification — instead of yanking them to another screen.
           setPendingImportFile({ type: "bank_statement", file });
-          setView("bank");
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"bank" }} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result:{ routed:true } });
-          showNotification("That looked like a bank or card statement — choose the account to import it.");
+          showNotification("Bank statement uploaded — review & book it in Bank Import (Books → Bank Import).");
+          try { createNotification?.({ type:"bank_import", title:"Bank statement ready to import", description:"Open Bank Import to pick the account, review the matches, and book it.", link_view:"bank" }); } catch {}
           return;
         }
 
@@ -5300,7 +5306,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           </div>
           {/* Nav — 5 tabs */}
           {(() => {
-            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
+            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","bank","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports"];
             const tabs = [
               { id:"home", label:"Home", group:["home","dashboard","add","review"] },
@@ -5356,11 +5362,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
           {/* Sub-nav for Books / Reports / Settings */}
           {(() => {
-            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
+            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","bank","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports"];
             const SETTINGS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
             let subs = null;
-            if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["ap","Payables"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["payroll","Payroll"],["docs","Documents"]];
+            if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["ap","Payables"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["bank","Bank Import"],["payroll","Payroll"],["docs","Documents"]];
             // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
             else if (SETTINGS.includes(view)) {
               subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import from QuickBooks"]];
