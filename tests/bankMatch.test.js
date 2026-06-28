@@ -466,3 +466,92 @@ describe("planBankImport — id type mismatch between parsed line and engine ech
     expect(plan.standalone).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MATCHING COVERAGE (deterministic pass). The LLM matcher missed 2 of 3 real
+// matches: Riverside ("Riverside Cafe (Maria)" invoice vs "Riverside Cafe" bank —
+// parenthetical) and Pixel (near-exact name + exact amount on the A/P payment side).
+// autoMatchBankLines pairs by normalized party name + exact amount, symmetric across
+// A/R deposits and A/P payments, so all three clear and AR→6,800 / AP→0.
+// ─────────────────────────────────────────────────────────────────────────────
+import { autoMatchBankLines } from "../src/lib/bankMatch.js";
+
+describe("autoMatchBankLines — tolerant name + exact amount, symmetric A/R and A/P", () => {
+  const openItems = [
+    { id: "acme",      vendor: "Acme Corp",            amount: 4500, type: "revenue", payment_status: "uncollected", matched: false },
+    { id: "riverside", vendor: "Riverside Cafe (Maria)", amount: 1284, type: "revenue", payment_status: "uncollected", matched: false },
+    { id: "pixel",     vendor: "Pixel Contractor LLC", amount: 1800, type: "expense", payment_status: "unpaid",       matched: false },
+  ];
+  const parsedTxns = [
+    { id: "b0", vendor: "ACME CORP",         description: "ACME CORP INV PAYMENT",     amount: 4500, type: "revenue" },
+    { id: "b1", vendor: "Riverside Cafe",    description: "RIVERSIDE CAFE PAYMENT",    amount: 1284, type: "revenue" },
+    { id: "b2", vendor: "Pixel Contractor",  description: "PIXEL CONTRACTOR LLC",      amount: 1800, type: "expense" },
+  ];
+
+  const m = autoMatchBankLines(parsedTxns, openItems);
+
+  it("matches ALL THREE (Acme, Riverside parenthetical, Pixel A/P side)", () => {
+    expect(m).toHaveLength(3);
+    const byBank = Object.fromEntries(m.map(x => [x.bank_txn_id, x]));
+    expect(byBank.b0.invoice_ids).toEqual(["acme"]);
+    expect(byBank.b1.invoice_ids).toEqual(["riverside"]);   // parenthetical tolerated
+    expect(byBank.b2.invoice_ids).toEqual(["pixel"]);       // LLC suffix tolerated, A/P side
+  });
+
+  it("assigns the correct side: deposit→ar_clear, payment→ap_clear", () => {
+    const byBank = Object.fromEntries(m.map(x => [x.bank_txn_id, x]));
+    expect(byBank.b0.match_type).toBe("ar_clear");
+    expect(byBank.b1.match_type).toBe("ar_clear");
+    expect(byBank.b2.match_type).toBe("ap_clear");
+  });
+
+  it("carries bank_txn + bank_txn_id so planBankImport excludes them from standalone", () => {
+    for (const x of m) { expect(x.bank_txn).toBeTruthy(); expect(x.bank_txn_id).toBeTruthy(); expect(x.auto_clear).toBe(true); }
+  });
+
+  it("requires the amount to match — a same-name line with a different amount does NOT match", () => {
+    const res = autoMatchBankLines(
+      [{ id: "x", vendor: "Acme Corp", amount: 4499, type: "revenue" }],   // $1 off
+      [{ id: "acme", vendor: "Acme Corp", amount: 4500, type: "revenue" }]
+    );
+    expect(res).toHaveLength(0);
+  });
+
+  it("does not cross sides — a deposit never clears an open payable of the same amount/name", () => {
+    const res = autoMatchBankLines(
+      [{ id: "x", vendor: "Pixel Contractor", amount: 1800, type: "revenue" }],   // deposit
+      [{ id: "pixel", vendor: "Pixel Contractor LLC", amount: 1800, type: "expense" }]  // payable
+    );
+    expect(res).toHaveLength(0);
+  });
+
+  it("clears each open item only once (two identical bank lines → one match)", () => {
+    const res = autoMatchBankLines(
+      [{ id: "a", vendor: "Acme", amount: 4500, type: "revenue" }, { id: "b", vendor: "Acme", amount: 4500, type: "revenue" }],
+      [{ id: "acme", vendor: "Acme Corp", amount: 4500, type: "revenue" }]
+    );
+    expect(res).toHaveLength(1);   // only one line clears the single open invoice
+  });
+
+  it("end-to-end through planBankImport → AR clears to 6,800, AP to 0, no standalone double-book", () => {
+    const ledger = [
+      { id: "acme",      vendor: "Acme Corp",             date: "2026-05-01", amount: 4500, type: "revenue", debit_credit: "credit", gl_code: REV, secondary_gl_code: AR, status: "booked", payment_status: "uncollected", matched: false },
+      { id: "riverside", vendor: "Riverside Cafe (Maria)",date: "2026-05-02", amount: 1284, type: "revenue", debit_credit: "credit", gl_code: REV, secondary_gl_code: AR, status: "booked", payment_status: "uncollected", matched: false },
+      { id: "globex",    vendor: "Globex",                date: "2026-05-03", amount: 6800, type: "revenue", debit_credit: "credit", gl_code: REV, secondary_gl_code: AR, status: "booked", payment_status: "uncollected", matched: false },
+      { id: "pixel",     vendor: "Pixel Contractor LLC",  date: "2026-05-04", amount: 1800, type: "expense", debit_credit: "debit",  gl_code: EXP, secondary_gl_code: AP, status: "booked", payment_status: "unpaid",       matched: false },
+    ];
+    const parsed = [
+      { id: "b0", vendor: "ACME CORP",        description: "ACME CORP INV PAYMENT",  date: "2026-06-10", amount: 4500, type: "revenue", gl_code: REV, gl_name: "Revenue" },
+      { id: "b1", vendor: "Riverside Cafe",   description: "RIVERSIDE CAFE PAYMENT", date: "2026-06-11", amount: 1284, type: "revenue", gl_code: REV, gl_name: "Revenue" },
+      { id: "b2", vendor: "Pixel Contractor", description: "PIXEL CONTRACTOR LLC",   date: "2026-06-12", amount: 1800, type: "expense", gl_code: EXP, gl_name: "Professional Services" },
+    ];
+    const autoCleared = autoMatchBankLines(parsed, ledger);
+    const plan = planBankImport({ parsedTxns: parsed, autoCleared, queue: [], openItems: ledger, codes });
+
+    expect(plan.clears).toHaveLength(3);
+    expect(plan.standalone).toHaveLength(0);   // all matched → nothing direct-booked
+    const after = [...ledger, ...plan.clears.map(clearRow)];
+    expect(glAccountBalance(AR, after)).toBe(6800);   // 12,584 − 4,500 − 1,284
+    expect(glAccountBalance(AP, after)).toBe(0);       // Pixel cleared
+  });
+});

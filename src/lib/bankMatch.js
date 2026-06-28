@@ -23,6 +23,60 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildPaymentEntry } from "./payments.js";
+import { normalizeName } from "./docDirection.js";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Deterministic high-confidence matcher (runs BEFORE the LLM pass). The AI matcher
+// missed close-but-not-exact party names ("Riverside Cafe (Maria)" vs "Riverside
+// Cafe") and was unreliable on the payment→bill (A/P) side even on a near-exact name.
+// This pairs a bank line to an open item purely by NORMALIZED party name (suffixes
+// like LLC/Inc and parentheticals stripped by normalizeName) + EXACT amount — and it
+// is symmetric: a deposit clears an open A/R invoice and a payment clears an open A/P
+// bill through the identical code path. Only confident (exact-amount, name-overlap)
+// pairs auto-clear here; anything fuzzier still falls to the LLM/review queue.
+//   - deposit  (type "revenue") → open receivable (type "revenue") → ar_clear
+//   - payment  (type "expense") → open payable    (type "expense") → ap_clear
+// Each open item clears at most once (greedy, first-fit). Returns autoCleared-shaped
+// records carrying `bank_txn` + `bank_txn_id` so planBankImport excludes them from
+// standalone booking (no double-count).
+// ─────────────────────────────────────────────────────────────────────────────
+export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTolerance = 0.01 } = {}) {
+  const used = new Set();   // an open item may clear only once
+  const matches = [];
+  for (const t of parsedTxns || []) {
+    const isRevenue = t.type === "revenue";
+    const wantType = isRevenue ? "revenue" : "expense";
+    const amt = Math.abs(Number(t.amount) || 0);
+    if (!amt) continue;
+    const partyNorm = normalizeName(t.vendor || t.description);
+    if (!partyNorm || partyNorm.length < 2) continue;
+    const cand = (openItems || []).find((i) => {
+      if (used.has(String(i.id))) return false;
+      if (i.type !== wantType) return false;
+      const iAmt = Math.abs(Number(i.balance_remaining ?? i.amount) || 0);
+      if (Math.abs(iAmt - amt) > amountTolerance) return false;
+      const iNorm = normalizeName(i.vendor);
+      if (!iNorm || iNorm.length < 2) return false;
+      // Substring either direction so a parenthetical/suffix on either side still matches.
+      return iNorm === partyNorm || iNorm.includes(partyNorm) || partyNorm.includes(iNorm);
+    });
+    if (!cand) continue;
+    used.add(String(cand.id));
+    matches.push({
+      bank_txn_id: t.id,
+      bank_txn: t,
+      invoice_ids: [String(cand.id)],
+      match_type: isRevenue ? "ar_clear" : "ap_clear",
+      confidence: 99,
+      amount_matched: amt,
+      amount_remaining: 0,
+      auto_clear: true,
+      deterministic: true,
+      reasoning: `Exact amount $${amt.toFixed(2)} + party "${cand.vendor}" ≈ "${t.vendor || t.description}"`,
+    });
+  }
+  return matches;
+}
 
 // True only for A/R match types ("ar_clear", "partial_ar"). A naive
 // `.includes("ar")` is WRONG — "ap_clear" and "partial_ap" both contain "ar".

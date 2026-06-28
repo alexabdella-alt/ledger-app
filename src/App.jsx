@@ -12,7 +12,7 @@ import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./l
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildPaymentEntry } from "./lib/payments";
-import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching } from "./lib/bankMatch";
+import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines } from "./lib/bankMatch";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
 import { pickActiveCompany } from "./lib/companies";
@@ -4104,6 +4104,22 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
     if (openPayables.length === 0 && openReceivables.length === 0) return { autoCleared: [], queue: [] };
     if (newBankTxns.length === 0) return { autoCleared: [], queue: [] };
 
+    // ── 1) Deterministic pass: exact amount + normalized party name (reliable, no AI).
+    // Catches the cases the LLM missed (suffix/parenthetical name diffs; A/P payment side)
+    // and is symmetric across A/R and A/P. These auto-clear; only the REMAINDER goes to the
+    // LLM for fuzzier judgment. (Carries bank_txn so planBankImport excludes from standalone.)
+    const deterministic = autoMatchBankLines(newBankTxns, [...openPayables, ...openReceivables]);
+    const handledBankIds = new Set(deterministic.map(m => String(m.bank_txn_id)));
+    const handledInvIds  = new Set(deterministic.flatMap(m => (m.invoice_ids || []).map(String)));
+    const remainingTxns      = newBankTxns.filter(t => !handledBankIds.has(String(t.id)));
+    const remainPayables     = openPayables.filter(i => !handledInvIds.has(String(i.id)));
+    const remainReceivables  = openReceivables.filter(i => !handledInvIds.has(String(i.id)));
+
+    // 2) Nothing left for the LLM (everything matched, or no open items remain) → done.
+    if (remainingTxns.length === 0 || (remainPayables.length === 0 && remainReceivables.length === 0)) {
+      return { autoCleared: deterministic, queue: [] };
+    }
+
     setMatchProcessing(true);
     try {
       const res = await fetch(AI_PROXY_URL, {
@@ -4156,13 +4172,13 @@ For no_match, return empty invoice_ids and no clearing_entry.`,
 `Match these bank transactions against open items:
 
 BANK TRANSACTIONS (new):
-${JSON.stringify(newBankTxns.map(t => ({ id: t.id, date: t.date, description: t.description, vendor: t.vendor, amount: t.amount, type: t.type })))}
+${JSON.stringify(remainingTxns.map(t => ({ id: t.id, date: t.date, description: t.description, vendor: t.vendor, amount: t.amount, type: t.type })))}
 
 OPEN PAYABLES (unpaid expenses):
-${JSON.stringify(openPayables.map(i => ({ id: i.id, vendor: i.vendor, description: i.description, amount: i.amount, date: i.date, gl_code: i.gl_code, gl_name: i.gl_name, balance_remaining: i.balance_remaining || i.amount })))}
+${JSON.stringify(remainPayables.map(i => ({ id: i.id, vendor: i.vendor, description: i.description, amount: i.amount, date: i.date, gl_code: i.gl_code, gl_name: i.gl_name, balance_remaining: i.balance_remaining || i.amount })))}
 
 OPEN RECEIVABLES (uncollected revenue):
-${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, description: i.description, amount: i.amount, date: i.date, gl_code: i.gl_code, gl_name: i.gl_name, balance_remaining: i.balance_remaining || i.amount })))}`
+${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, description: i.description, amount: i.amount, date: i.date, gl_code: i.gl_code, gl_name: i.gl_name, balance_remaining: i.balance_remaining || i.amount })))}`
           }]
         })
       });
@@ -4171,11 +4187,15 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
       const result = JSON.parse((data.content?.find(b => b.type === "text")?.text || "{}").replace(/```json|```/g, "").trim());
       const matches = result.matches || [];
 
-      const autoCleared = [];
+      const autoCleared = [...deterministic];   // deterministic matches always stand
       const queue = [];
 
       for (const match of matches) {
         if (match.match_type === "no_match" || !match.invoice_ids?.length) continue;
+        // Never let the LLM re-match a line or open item the deterministic pass already took.
+        if (handledBankIds.has(String(match.bank_txn_id))) continue;
+        match.invoice_ids = match.invoice_ids.filter(id => !handledInvIds.has(String(id)));
+        if (!match.invoice_ids.length) continue;
 
         const matchRecord = {
           id: Date.now() + Math.random(),
@@ -4204,7 +4224,7 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
       return { autoCleared, queue };
     } catch(e) {
       console.error("Matching engine error:", e);
-      return { autoCleared: [], queue: [] };
+      return { autoCleared: deterministic, queue: [] };   // LLM failed — still keep the sure matches
     } finally {
       setMatchProcessing(false);
     }
