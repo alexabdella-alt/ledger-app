@@ -4,16 +4,19 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
+import { classifyTxn, txnStatus } from "../../lib/txnPresent";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 
 export default function BooksView() {
   const {
-    invoices, setInvoices, markPaid, persistRecode, logAudit,
+    invoices, setInvoices, markPaid, markBillPaid, loadAllData, getAccountByRole, persistRecode, logAudit,
     setSelectedInvoice, setView, CHART_OF_ACCOUNTS,
     booksFilter, setBooksFilter,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
     reconciliations, docLibrary, storeDocument, fileToBase64,
   } = useERP();
+  const apCode = getAccountByRole?.("accounts_payable")?.code;
+  const arCode = getAccountByRole?.("accounts_receivable")?.code;
   const [showReconHistory, setShowReconHistory] = React.useState(false);
 
   const [search, setSearch] = React.useState("");
@@ -83,14 +86,17 @@ export default function BooksView() {
   // mark it "Reversed · DATE" and strike it through.
   const revIdx = React.useMemo(() => reversalIndex(invoices), [invoices]);
 
+  // Plain-language status a non-accountant can scan: Open / Received / Paid (+ Voided /
+  // Reversed / Needs Review). No raw "· BANK_TRANSFER" technical suffix in the list.
   const statusBadge = (i) => {
     const rev = reversalFor(revIdx, i);
     if (rev) return <span style={pill("var(--sc-error)")} title={`Reversed${rev.date?` on ${fmtDate(rev.date)}`:""}`}>↩ Reversed{rev.date?` · ${fmtDate(rev.date)}`:""}</span>;
     if (i.status==="voided") return <span style={pill("var(--sc-text-mut)")}>Voided</span>;
-    if (i.payment_status==="paid") return <span style={pill("#1570EF")}>Paid · {methodLabel(i.payment_method_used).split(" ")[0]}</span>;
-    if (i.payment_status==="collected") return <span style={pill("var(--sc-success)")}>Collected</span>;
     if (needsReview(i)) return <span style={pill("var(--sc-warning)")}>Needs Review</span>;
-    return <span style={pill("var(--sc-success)")}>Booked</span>;
+    const cls = classifyTxn(i, { apCode, arCode });
+    const st = txnStatus(i, cls);
+    const tone = st.tone==="success" ? "var(--sc-success)" : st.tone==="warning" ? "var(--sc-warning)" : "#1570EF";
+    return <span style={pill(tone)} title={i.payment_method_used ? `${st.label} · ${methodLabel(i.payment_method_used)}` : st.label}>{st.label}</span>;
   };
   function pill(c){ return { display:"inline-flex", alignItems:"center", fontSize:11, fontWeight:600, color:c, background:c+"14", border:`1px solid ${c}29`, borderRadius:6, padding:"3px 9px", whiteSpace:"nowrap", lineHeight:1.2 }; }
 
@@ -148,9 +154,10 @@ export default function BooksView() {
       )}
 
       {filter!=="contracts" && (<>
-      {/* Table */}
-      <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, overflow:"clip" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+      {/* Table — contained: horizontal scroll instead of clipping the right edge (Status +
+          action button were running off the page). overflowX:auto keeps it within the card. */}
+      <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, overflowX:"auto", overflowY:"clip" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:760 }}>
           <thead><tr style={{ background:"var(--sc-bg)" }}>
             {["Date","Vendor","Description","GL Account","Amount","Status",""].map((h,i)=>{
               const sortable = h!=="";
@@ -183,9 +190,9 @@ export default function BooksView() {
                 </div>
               </td></tr>
             ) : rows.map((inv,idx)=>{
-              const rev = isRevenue(inv);
+              // What this row actually IS — drives sign/color, account shown, and the action.
+              const cls = classifyTxn(inv, { apCode, arCode });
               const reversedInfo = reversalFor(revIdx, inv);   // O8 — original was reversed
-              const unpaidExp = isExpense(inv) && inv.payment_status!=="paid" && inv.status!=="voided";
               return (
                 <React.Fragment key={inv.id}>
                   <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"var(--sc-gold-soft)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", opacity: (inv.status==="voided"||reversedInfo)?0.55:1, textDecoration: reversedInfo?"line-through":"none", textDecorationColor: reversedInfo?"var(--sc-error)":undefined, transition:"background 0.1s" }}
@@ -193,13 +200,18 @@ export default function BooksView() {
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
                     <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor||"—"}</span></div></td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
-                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{inv.gl_code}</span>{inv.gl_name}</td>
-                    <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: rev?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{rev?"+":"−"}{fmt(inv.amount)}</td>
+                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>{cls.account.name}</td>
+                    <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(inv.amount)}</td>
                     <td style={{ padding:"0 16px" }}>{statusBadge(inv)}</td>
                     <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
-                      {unpaidExp && (
+                      {/* Settle action ONLY on a genuinely open item — never on a settlement/clearing entry. */}
+                      {cls.settleAction==="pay" && (
                         <button onClick={e=>{ e.stopPropagation(); setPayRowId(payRowId===inv.id?null:inv.id); setPayMethod("ach"); setPayDate(new Date().toISOString().slice(0,10)); }}
                           style={{ padding:"5px 11px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>Mark Paid</button>
+                      )}
+                      {cls.settleAction==="collect" && (
+                        <button onClick={async e=>{ e.stopPropagation(); const ok = await markBillPaid?.(inv.id, { side:"ar" }); if (ok) { try { await loadAllData?.(); } catch {} showNotification?.("Marked as received ✓"); } }}
+                          style={{ padding:"5px 11px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>Mark Received</button>
                       )}
                     </td>
                   </tr>
