@@ -43,6 +43,12 @@ function beforeSend(event) {
   return event;
 }
 
+// True when a DSN is configured — lets error UI tell the truth about whether an error
+// was actually reported, instead of claiming "notified" when no DSN is set.
+export function isSentryEnabled() {
+  return !!import.meta.env.VITE_SENTRY_DSN;
+}
+
 // Initialize Sentry. Safe to call always — does nothing without a DSN.
 export function initSentry() {
   const dsn = import.meta.env.VITE_SENTRY_DSN;

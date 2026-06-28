@@ -1,11 +1,18 @@
 import React from "react";
+import { Sentry } from "../lib/sentry";
 
 // Catches render/runtime errors anywhere in the tree so one bad component
-// shows a recoverable message instead of blanking the whole page.
+// shows a recoverable message instead of blanking the whole page. This OUTER
+// boundary sits ABOVE the in-app Sentry.ErrorBoundary, so it must also report —
+// otherwise an error in App/AppWrapper (above the inner boundary) reaches no one.
 export default class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(error) { return { error }; }
-  componentDidCatch(error, info) { console.error("[ErrorBoundary] caught:", error, info?.componentStack); }
+  componentDidCatch(error, info) {
+    console.error("[ErrorBoundary] caught:", error, info?.componentStack);
+    // No-op without a DSN; reported (after beforeSend scrubbing) when configured.
+    try { Sentry.captureException(error, { contexts: { react: { componentStack: info?.componentStack } } }); } catch { /* never let reporting throw */ }
+  }
   reset = () => this.setState({ error: null });
   render() {
     if (!this.state.error) return this.props.children;

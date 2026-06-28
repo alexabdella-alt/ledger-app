@@ -25,7 +25,7 @@ import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
-import { Sentry, setSentryUser, clearSentryUser } from "./lib/sentry";
+import { Sentry, setSentryUser, clearSentryUser, isSentryEnabled } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
@@ -282,7 +282,7 @@ function SentryFallback() {
       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, boxShadow:"0 8px 28px rgba(17,24,39,0.10)", padding:32, maxWidth:480, width:"100%", textAlign:"center" }}>
         <div style={{ fontSize:34, marginBottom:10 }}>⚠️</div>
         <h1 style={{ fontSize:20, fontWeight:700, margin:"0 0 8px", color:"var(--sc-text)" }}>Something went wrong</h1>
-        <p style={{ fontSize:14, color:"var(--sc-text-2)", lineHeight:1.6, margin:"0 0 20px" }}>Our team has been notified. Refreshing usually fixes it.</p>
+        <p style={{ fontSize:14, color:"var(--sc-text-2)", lineHeight:1.6, margin:"0 0 20px" }}>{isSentryEnabled() ? "Our team has been notified. Refreshing usually fixes it." : "Refreshing usually fixes it. If it keeps happening, please let us know."}</p>
         <button onClick={()=>window.location.reload()}
           style={{ padding:"11px 22px", borderRadius:10, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:14, fontWeight:600, cursor:"pointer" }}>Refresh</button>
       </div>
