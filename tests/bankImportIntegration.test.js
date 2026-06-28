@@ -322,3 +322,49 @@ describe("bankLineFates — preview fate == booked fate (one shared matching res
     expect(previewClears).toEqual(["b-acme", "b-pix", "b-riv"]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DISPLAY BUG (C97): the review preview previously ran only over `!needs_review` lines, so a
+// deterministic A/R/A/P match that the AI categorizer happened to flag "needs review" was
+// stranded in the needs-review section as a fresh revenue/expense — never showing its clearing
+// chip. The fix runs the preview over ALL lines (a deterministic exact match is confident
+// regardless of categorizer confidence) and reclassifies matched lines out of needs-review.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("review preview covers needs_review-flagged lines (matchable items not stranded)", () => {
+  const open = [
+    { id: "acme-inv",      vendor: "Acme Corp",            amount: 4500, type: "revenue", gl_code: "4000", secondary_gl_code: "1100" },
+    { id: "riverside-inv", vendor: "Riverside Cafe",       amount: 1284, type: "revenue", gl_code: "4100", secondary_gl_code: "1100" },
+    { id: "pixel-bill",    vendor: "Pixel Contractor LLC", amount: 1800, type: "expense", gl_code: "6800", secondary_gl_code: "2000" },
+  ];
+  // The categorizer flagged the matchable deposits/payments AND Stripe as needs_review.
+  const lines = [
+    { id: "b-acme",   vendor: "Acme Corp",            amount: 4500, type: "revenue", needs_review: true, checked: false },
+    { id: "b-riv",    vendor: "Riverside Cafe",       amount: 1284, type: "revenue", needs_review: true, checked: false },
+    { id: "b-pix",    vendor: "Pixel Contractor LLC", amount: 1800, type: "expense", needs_review: true, checked: false },
+    { id: "b-stripe", vendor: "Stripe",               amount: 3200, type: "revenue", needs_review: true, checked: false }, // no open invoice → direct
+  ];
+  // Preview pipeline EXACTLY as BankView's bankPreview useMemo runs it — over ALL lines.
+  const parsed = lines.map(t => ({ id: t.id, vendor: t.vendor, amount: t.amount, type: t.type }));
+  const openItems = matchableOpenItems(open, { arCode: "1100", apCode: "2000" });
+  const autoCleared = autoMatchBankLines(parsed, openItems, { arCode: "1100", apCode: "2000" });
+  const plan = planBankImport({ parsedTxns: parsed, autoCleared, queue: [], openItems, codes });
+  const fates = bankLineFates(parsed, plan, openItems);
+
+  it("matchable needs_review lines get clear_ar/clear_ap fates (not stranded as fresh rev/exp)", () => {
+    expect(fates["b-acme"].fate).toBe("clear_ar");
+    expect(fates["b-riv"].fate).toBe("clear_ar");
+    expect(fates["b-pix"].fate).toBe("clear_ap");
+  });
+
+  it("a genuinely-new line (Stripe, no invoice) stays direct — books as categorized revenue", () => {
+    expect(fates["b-stripe"].fate).toBe("direct");
+  });
+
+  it("reclassification moves matched lines OUT of needs-review (confident + checked); non-matches untouched", () => {
+    const matched = new Set(Object.keys(fates).filter(id => fates[id].fate === "clear_ar" || fates[id].fate === "clear_ap"));
+    const reclassed = lines.map(t => (matched.has(t.id) && (t.needs_review || !t.checked)) ? { ...t, needs_review: false, checked: true } : t);
+    expect(reclassed.find(t => t.id === "b-acme")).toMatchObject({ needs_review: false, checked: true });
+    expect(reclassed.find(t => t.id === "b-pix")).toMatchObject({ needs_review: false, checked: true });
+    expect(reclassed.find(t => t.id === "b-stripe")).toMatchObject({ needs_review: true, checked: false }); // no match → unchanged
+  });
+});

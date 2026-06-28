@@ -3,9 +3,10 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
+import { autoMatchBankLines, matchableOpenItems, planBankImport, bankLineFates, shouldRunApMatching } from "../../lib/bankMatch";
 
 export default function BankView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, bankPreview, bankPreviewLoading, setBankPreview, runBankPreview, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, rc, rn, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, cashBalance, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setCashBalance, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   // Which account this statement belongs to — its GL is the offset for direct
   // bookings (Cr 1000 bank / Cr 2200 credit card). Defaults to the first account.
   const [importAccountId, setImportAccountId] = React.useState(null);
@@ -20,13 +21,42 @@ export default function BankView() {
       const f = pendingImportFile.file; setPendingImportFile(null); setPendingBankFile(f);
     }
   }, [pendingImportFile]);
-  // Re-run the match PREVIEW when the chosen account changes (a card vs bank flips whether
-  // matching applies, and the offset). Keeps "what you see" in sync with "what books".
+  // PREVIEW = EXECUTOR, computed SYNCHRONOUSLY from the deterministic matcher (pure, no AI,
+  // no async) so the review screen always reflects the real match plan with no loading race.
+  // Runs over ALL lines (incl. AI-flagged "needs review" ones — a deterministic exact A/R/A/P
+  // match is CONFIDENT regardless of the categorizer's confidence). The booking re-derives the
+  // same deterministic matches, so a previewed clearing is exactly what books.
+  const bankPreview = React.useMemo(() => {
+    const lines = bankTransactions || [];
+    if (!lines.length) return { fates: {}, clears: 0 };
+    if (!shouldRunApMatching(importAccount)) return { fates: {}, clears: 0, cardMode: true };
+    const arCode = rc("accounts_receivable"), apCode = rc("accounts_payable"), accruedCode = rc("accrued_liabilities");
+    const cashCode = (importAccount && importAccount.gl_code) || rc("cash");
+    const parsedTxns = lines.map(t => ({ id: t.id, date: t.date, description: t.description, vendor: t.vendor, amount: t.amount, type: t.type, gl_code: t.gl_code, gl_name: t.gl_name, confidence: t.confidence }));
+    const openItems = matchableOpenItems(invoices, { arCode, apCode, accruedCode });
+    const autoCleared = autoMatchBankLines(parsedTxns, openItems, { arCode, apCode });
+    const plan = planBankImport({ parsedTxns, autoCleared, queue: [], openItems, codes: { apCode, accruedCode, arCode, cashCode, cashName: rn("cash") } });
+    const fates = bankLineFates(parsedTxns, plan, openItems);
+    const clears = Object.values(fates).filter(f => f.fate === "clear_ar" || f.fate === "clear_ap").length;
+    return { fates, clears };
+  }, [bankTransactions, importAccount, invoices, rc, rn]);
+
+  // A deterministic match is confident — pull those lines OUT of "needs review" and check them
+  // so they show the clearing chip in the main table and book by default. Guarded so it settles
+  // (only mutates when something actually changes → no render loop).
   React.useEffect(() => {
-    const lines = (bankTransactions || []).filter(t => !t.needs_review);
-    if (lines.length && runBankPreview) runBankPreview(importAccount, lines);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [importAccountId]);
+    const fates = bankPreview.fates || {};
+    const matched = new Set(Object.keys(fates).filter(id => fates[id].fate === "clear_ar" || fates[id].fate === "clear_ap"));
+    if (!matched.size) return;
+    setBankTransactions(prev => {
+      let changed = false;
+      const next = prev.map(t => {
+        if (matched.has(String(t.id)) && (t.needs_review || !t.checked)) { changed = true; return { ...t, needs_review: false, checked: true }; }
+        return t;
+      });
+      return changed ? next : prev;
+    });
+  }, [bankPreview, setBankTransactions]);
   // Inline "+ Add account" (O63) — create a money source at the point of need so a
   // user with a card statement but no card source set up doesn't dead-end at Settings.
   // The offset GL follows the type (credit_card → 2200, bank → 1000, loan → 2500).
@@ -202,13 +232,9 @@ export default function BankView() {
                     <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip", marginBottom:20 }}>
                       <div style={{ padding:"14px 20px", borderBottom:"1px solid var(--sc-border)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         {(() => {
-                          // Preview summary — what WILL book, from the shared matching result.
-                          if (bankPreviewLoading) return <div style={{ fontSize:12, color:"var(--sc-text-mut)" }}>⟳ Matching against your open invoices & bills…</div>;
-                          const fates = bankPreview?.fates || {};
-                          const vals = Object.values(fates);
-                          const clears = vals.filter(f => f.fate === "clear_ar" || f.fate === "clear_ap").length;
-                          const review = vals.filter(f => f.fate === "review").length;
-                          if (bankPreview && clears > 0) return <div style={{ fontSize:12, color:"var(--sc-success)" }}>✓ {clears} will <strong>clear an open A/R / A/P</strong> · {vals.length - clears - review} book as new{review ? ` · ${review} need review` : ""} — this is exactly what books</div>;
+                          // Preview summary — what WILL book, from the SAME deterministic match the booking uses.
+                          const clears = bankPreview?.clears || 0;
+                          if (clears > 0) return <div style={{ fontSize:12, color:"var(--sc-success)" }}>✓ {clears} will <strong>clear an open A/R / A/P</strong> · the rest book as new — this is exactly what books</div>;
                           return <div style={{ fontSize:12, color:"var(--sc-success)" }}>✓ Auto-categorized — review & uncheck any you want to skip</div>;
                         })()}
                         <div style={{ display:"flex", gap:8 }}>
@@ -285,7 +311,7 @@ export default function BankView() {
                     }}>
                       {bankProcessing ? "Booking…" : `✓ Book ${bankTransactions.filter(t=>t.checked).length} Selected Transaction${bankTransactions.filter(t=>t.checked).length!==1?"s":""} to Ledger`}
                     </button>
-                    <button onClick={()=>{setBankTransactions([]);setBankFileName("");setBankPreview&&setBankPreview(null);}} style={{ padding:"14px 20px", borderRadius:12, fontSize:13, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>
+                    <button onClick={()=>{setBankTransactions([]);setBankFileName("");}} style={{ padding:"14px 20px", borderRadius:12, fontSize:13, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>
                       Clear
                     </button>
                   </div>
