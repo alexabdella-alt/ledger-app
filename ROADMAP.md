@@ -6,7 +6,7 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-28
-- **Test suite:** 521 passing (`npm test`, 39 files). **Build:** clean (`npm run build`).
+- **Test suite:** 526 passing (`npm test`, 39 files). **Build:** clean (`npm run build`).
 - **Migrations:** `000`–`045` applied (numbering non-contiguous; `045_drop_ap_invoices.sql` applied 2026-06-26 — dropped the orphaned `ap_invoices` table + dead `ap_aging` view, confirmed 0 rows). `046_company_aliases.sql` written (optional — adds `companies.aliases` for O75 self-identity; name-based direction works without it).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
 

@@ -43,6 +43,14 @@ const SIGNALS = {
 };
 const SCORED_TYPES = ["payroll", "bank_statement", "invoice"];
 
+// O55: a payroll-register filename is a strong, deliberate signal — provider names and
+// payroll words rarely appear on a bank/invoice export. Used to rescue payroll files whose
+// COLUMNS are sparse/ambiguous (so they don't silently fall through to the bank flow).
+const PAYROLL_FILENAME = /payroll|pay[\s_-]?stub|paystub|pay[\s_-]?check|paycheck|payslip|\bwages?\b|gusto|paychex|\badp\b|rippling|justworks|onpay|trinet|zenefits/i;
+function fileNameSuggestsPayroll(fileName) {
+  return PAYROLL_FILENAME.test(String(fileName || ""));
+}
+
 // Minimal CSV → cells (split on comma/semicolon/tab, strip surrounding quotes).
 // Headers rarely contain quoted delimiters, so this is sufficient for sniffing.
 const splitLine = line => String(line).split(/[,;\t]/).map(c => c.replace(/^["']+|["']+$/g, "").trim());
@@ -67,8 +75,14 @@ function looksLikeQbo(rows) {
 
 // THE pure core — classify from raw text (CSV header). Unit-tested directly.
 export function detectFromText(text, fileName = "") {
+  const fnPayroll = fileNameSuggestsPayroll(fileName);
   const rows = toRows(text);
-  if (!rows.length) return { type: "unknown", confidence: "none", signals: {} };
+  // No readable header (e.g. an empty/odd sheet) — fall back to the filename signal.
+  if (!rows.length) {
+    return fnPayroll
+      ? { type: "payroll", confidence: "medium", signals: { filename: ["payroll"] }, reason: "filename indicates payroll" }
+      : { type: "unknown", confidence: "none", signals: {} };
+  }
 
   // QBO first — distinctive columns, so a QuickBooks export never scores as bank.
   const qbo = looksLikeQbo(rows);
@@ -88,12 +102,22 @@ export function detectFromText(text, fileName = "") {
   const ranked = SCORED_TYPES.map(t => [t, score[t]]).sort((a, b) => b[1] - a[1]);
   const [topType, topScore] = ranked[0];
   const secondScore = ranked[1][1];
-  if (topScore === 0) return { type: "unknown", confidence: "none", signals: {} };
 
   const margin = topScore - secondScore;
   let confidence = "low";
   if (topScore >= 2 && margin >= 2) confidence = "high";
   else if (topScore >= 2 && margin >= 1) confidence = "medium";
+
+  // O55: a payroll-named file routes to payroll UNLESS the columns clearly say bank_statement
+  // (a high-confidence bank export wins — it was just oddly named). This rescues payroll
+  // registers whose columns are sparse/ambiguous (low/zero score) that would otherwise fall
+  // through to the bank flow (and book a payroll register as bank transactions).
+  if (fnPayroll && !(topType === "bank_statement" && confidence === "high")) {
+    return { type: "payroll", confidence: "high",
+      signals: { payroll: [...signals.payroll, "filename"] }, reason: "filename indicates payroll" };
+  }
+
+  if (topScore === 0) return { type: "unknown", confidence: "none", signals: {} };
   return { type: topType, confidence, signals: { [topType]: signals[topType] } };
 }
 

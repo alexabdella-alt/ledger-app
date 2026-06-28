@@ -191,3 +191,25 @@ describe("classifyDocReply — payroll & QBO recognition (O55)", () => {
     expect(classifyDocReply("some legal thing")).toBe("unknown");
   });
 });
+
+describe("detectFromText — payroll filename rescue (O55 xlsx-payroll misroute)", () => {
+  it("sparse-column payroll register named 'payroll' → payroll (was → bank fallback)", () => {
+    // Columns the column-scorer can't pin (no 'gross/net/withholding' headers).
+    const text = "Name,Amount,Date\nJane Smith,4401.20,2026-06-15\nJohn Doe,3890.00,2026-06-15";
+    expect(detectFromText(text, "June_2026_Payroll.xlsx").type).toBe("payroll");
+  });
+  it("provider-named file (Gusto) → payroll even with thin columns", () => {
+    expect(detectFromText("Employee,Pay\nA,100", "gusto-export.csv").type).toBe("payroll");
+  });
+  it("empty/odd sheet + payroll filename → payroll (filename fallback)", () => {
+    expect(detectFromText("", "ADP_payroll_register.xlsx").type).toBe("payroll");
+  });
+  it("a clear bank statement oddly named 'payroll account' STAYS bank (content wins)", () => {
+    const bank = "Date,Description,Debit,Credit,Running Balance\n2026-06-01,ACH,100,,900\n2026-06-02,POS,50,,850";
+    expect(detectFromText(bank, "payroll_account_statement.csv").type).toBe("bank_statement");
+  });
+  it("a normal bank file (no payroll in name) is unaffected", () => {
+    const bank = "Date,Description,Amount,Balance\n2026-06-01,Coffee,-5,995";
+    expect(detectFromText(bank, "chase_june.csv").type).toBe("bank_statement");
+  });
+});
