@@ -264,6 +264,8 @@ function AppWrapper() {
         currentCompany={currentCompany}
         companies={companies}
         onSwitchCompany={setCurrentCompany}
+        setCurrentCompany={setCurrentCompany}
+        setCompanies={setCompanies}
         onNewCompany={()=>setShowCompanySetup(true)}
         onSignOut={handleSignOut}
         supabase={supabase}
@@ -290,7 +292,7 @@ function SentryFallback() {
   );
 }
 
-function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany, onSignOut, supabase, persistedView, onViewChange }) {
+function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCompany, setCompanies, onNewCompany, onSignOut, supabase, persistedView, onViewChange }) {
   // ── Team roles (Item 20). owner < admin < member. Default to "owner" when a role
   // isn't present (single-user / legacy) so existing accounts keep full access.
   const userRole = currentCompany?.role || "owner";
