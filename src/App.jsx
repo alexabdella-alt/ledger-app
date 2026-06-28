@@ -5,7 +5,7 @@ import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
-import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, computeNetIncome, liveEntries, glAccountBalance, glCashOnHand } from "./lib/reports";
+import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, computeNetIncome, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
 import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
@@ -361,8 +361,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [bankProgress, setBankProgress] = useState(0);
   const [bankFileName, setBankFileName] = useState("");
 
-  // Reports state
-  const [reportType, setReportType] = useState("pl");
+  // Reports state — reportType (P&L / Balance Sheet / Cash Flow / …) persists across refresh
+  // so the chosen report sub-tab survives a reload (same pattern as booksFilter/reportRange).
+  const [reportType, setReportType] = useState(() => ss("cfai_reportType", "pl"));
   const [reportRange, setReportRange] = useState(() => ss("cfai_reportRange", "custom"));
   const [reportDateFrom, setReportDateFrom] = useState(() => ss("cfai_reportDateFrom", new Date().getFullYear() + "-01-01"));
   const [reportDateTo, setReportDateTo] = useState(() => ss("cfai_reportDateTo", new Date().toISOString().slice(0,10)));
@@ -373,7 +374,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     sessionStorage.setItem("cfai_reportRange", reportRange);
     sessionStorage.setItem("cfai_reportDateFrom", reportDateFrom);
     sessionStorage.setItem("cfai_reportDateTo", reportDateTo);
-  } catch {} }, [booksFilter, vendorFilter, reportRange, reportDateFrom, reportDateTo]);
+    sessionStorage.setItem("cfai_reportType", reportType);
+  } catch {} }, [booksFilter, vendorFilter, reportRange, reportDateFrom, reportDateTo, reportType]);
   const [basisMode, setBasisMode] = useState("accrual"); // "cash" | "accrual" | "comparison"
   const [basisNarration, setBasisNarration] = useState(null);
   const [basisNarrationLoading, setBasisNarrationLoading] = useState(false);
@@ -675,8 +677,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [sentInvoices, setSentInvoices] = useState([]);
   const [sentInvoiceDraft, setSentInvoiceDraft] = useState(null); // invoice being created
 
-  // AP state
-  const [apView, setApView] = useState("inbox"); // inbox | queue | approvals | aging
+  // AP state — apView persists across refresh (declared here, so its own persist effect)
+  const [apView, setApView] = useState(() => ss("cfai_apView", "inbox")); // inbox | queue | approvals | aging
+  useEffect(() => { try { sessionStorage.setItem("cfai_apView", apView); } catch {} }, [apView]);
   const [apAgingNarration, setApAgingNarration] = useState(null);
   const [apAgingLoading, setApAgingLoading] = useState(false);
   const [checkRunMode, setCheckRunMode] = useState(false);
@@ -5414,8 +5417,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               if (isMember) subs = subs.filter(([id]) => ["tax","tax1099","audit"].includes(id)); // members: read-only settings only
             }
             if (!subs) return null;
-            // Unpaid bills count for the amber badge on the Payables tab.
-            const apUnpaid = invoices.filter(i => (glIsExpense(i.gl_code) || i.type==="expense") && i.status!=="voided" && i.payment_status!=="paid").length;
+            // Payables badge = the SAME source the Payables tab lists (openPayables → live
+            // bills booked to A/P that are still unpaid). The old inline filter counted EVERY
+            // non-paid expense incl. direct cash expenses that were never payables → phantom
+            // count (e.g. "4" when the tab shows none). Now badge === tab, and 0 when clear.
+            const apUnpaid = openPayables(invoices).length;
             const activeSub = (id) => {
               if (id.startsWith("reports:")) return view==="reports" && (reportType||"pl")===id.split(":")[1];
               if (id==="books:contracts") return view==="books" && booksFilter==="contracts";

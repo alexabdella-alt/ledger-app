@@ -5,7 +5,7 @@ export default function CoaView() {
   const {
     CHART_OF_ACCOUNTS, persistAccountEdit, deleteAccount, addCustomAccount,
     coaEditingCode, setCoaEditingCode, coaEditDraft, setCoaEditDraft,
-    coaAddDraft, setCoaAddDraft, coaShowAdd, setCoaShowAdd, showNotification,
+    coaAddDraft, setCoaAddDraft, coaShowAdd, setCoaShowAdd, showNotification, setDeleteConfirm,
   } = useERP();
 
   const editingId = coaEditingCode; const setEditingId = setCoaEditingCode;
@@ -42,7 +42,14 @@ export default function CoaView() {
     if (ok) { setAddDraft({ code: "", name: "", category: "Expenses" }); setShowAdd(false); }
   };
   const toggleActive = async (acct) => { setBusy(acct.db_id || acct.code); await persistAccountEdit(acct, { active: acct.active === false ? true : false }); setBusy(null); };
-  const removeAccount = async (acct) => { setBusy(acct.db_id || acct.code); await deleteAccount(acct); setBusy(null); };
+  const removeAccount = (acct) => {
+    // Confirm before deleting a chart-of-accounts account (deleteAccount already blocks
+    // system accounts + accounts with transactions, but deletion still warrants a confirm).
+    setDeleteConfirm({
+      label: `Delete account ${acct.code} · ${acct.name}? This can't be undone. (System accounts and accounts with transactions are protected.)`,
+      onConfirm: async () => { setBusy(acct.db_id || acct.code); await deleteAccount(acct); setBusy(null); },
+    });
+  };
 
   const lockIcon = (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>

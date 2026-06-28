@@ -88,7 +88,7 @@ function SourceDocPreview({ doc, onExpand }) {
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit,
-    setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
+    setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
@@ -146,7 +146,14 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
       showNotification && showNotification("Couldn't save the recode — please try again.", "error");
     }
   };
-  const doVoid = (inv) => { voidInvoiceWithUndo(inv, "Voided from detail panel"); onClose(); };
+  // Confirm before voiding a journal entry (destructive, even with Undo) — consistent with
+  // the Books-list void. setDeleteConfirm opens the app's confirm modal.
+  const doVoid = (inv) => {
+    setDeleteConfirm({
+      label: `Void the entry for ${inv.vendor || "this transaction"}${inv.amount!=null ? ` · $${Math.abs(inv.amount).toLocaleString()}` : ""}? It stays in the audit trail and posts a reversing entry. You'll have a moment to undo.`,
+      onConfirm: () => { voidInvoiceWithUndo(inv, "Voided from detail panel"); onClose(); },
+    });
+  };
 
   return createPortal((
     <>
