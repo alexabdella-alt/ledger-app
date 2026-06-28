@@ -391,3 +391,78 @@ describe("planBankImport — N lines → N bookings, never N×N (P0 duplication 
     expect(plan.clears.length + plan.standalone.length).toBe(N);   // 3 + 9 = 12, never 144
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P0 #2 — matched lines must be excluded from standalone even when the bank_txn
+// OBJECT didn't resolve. The live double-count: handleBankFile gave each line a
+// 13-digit numeric id; the matching LLM echoed it back as a STRING, so
+// runMatchingEngine's strict-=== `bank_txn` lookup returned undefined, planBankImport
+// saw `m.bank_txn?.id == null`, and the matched line stayed in `standalone` → booked
+// TWICE (once as the clearing 'manual' entry, once as a mis-coded 'bank_import' entry:
+// Riverside hit Revenue, Pixel hit Expense). Fix: planBankImport falls back to the flat
+// `bank_txn_id` echo; id type mismatches are String()-coerced. These tests feed the
+// exact broken shape (no bank_txn object, only bank_txn_id) and a number/string id
+// mismatch, asserting the matched line is held out of standalone either way.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("planBankImport — matched line excluded even when bank_txn object is unresolved (P0 double-count)", () => {
+  // The shakedown company's exact shape: Acme + Riverside collections (AR), Pixel payment (AP),
+  // plus one genuinely-new line. Open AR also has an untouched Globex invoice (6,800) so we can
+  // assert the residual. ALL ids numeric (as live), and autoCleared carries ONLY bank_txn_id
+  // (the find failed → no bank_txn object) — the precise failure mode.
+  const openItems = [
+    { id: "acme",     vendor: "Acme Corp",   date: "2026-05-01", amount: 4500, type: "revenue", debit_credit: "credit", gl_code: REV, secondary_gl_code: AR, status: "booked", payment_status: "uncollected", matched: false },
+    { id: "riverside",vendor: "Riverside",   date: "2026-05-02", amount: 1284, type: "revenue", debit_credit: "credit", gl_code: REV, secondary_gl_code: AR, status: "booked", payment_status: "uncollected", matched: false },
+    { id: "globex",   vendor: "Globex",      date: "2026-05-03", amount: 6800, type: "revenue", debit_credit: "credit", gl_code: REV, secondary_gl_code: AR, status: "booked", payment_status: "uncollected", matched: false },
+    { id: "pixel",    vendor: "Pixel Labs",  date: "2026-05-04", amount: 1800, type: "expense", debit_credit: "debit",  gl_code: EXP, secondary_gl_code: AP, status: "booked", payment_status: "unpaid",       matched: false },
+  ];
+  // 4 parsed bank lines: 3 match (Acme/Riverside/Pixel), 1 is genuinely new. Numeric ids, as live.
+  const parsedTxns = [
+    { id: 1719500000000, vendor: "Acme Corp",  description: "ACH DEPOSIT ACME",   date: "2026-06-10", amount: 4500, type: "revenue", gl_code: REV, gl_name: "Revenue" },
+    { id: 1719500000001, vendor: "Riverside",  description: "ACH DEPOSIT RIVER",  date: "2026-06-11", amount: 1284, type: "revenue", gl_code: REV, gl_name: "Revenue" },
+    { id: 1719500000002, vendor: "Pixel Labs", description: "ACH PMT PIXEL",      date: "2026-06-12", amount: 1800, type: "expense", gl_code: EXP, gl_name: "Professional Services" },
+    { id: 1719500000003, vendor: "New Vendor", description: "POS NEW VENDOR",     date: "2026-06-13", amount:  250, type: "expense", gl_code: EXP, gl_name: "Travel" },
+  ];
+  // Engine output AS PRODUCED in the bug: NO bank_txn object (strict-=== find failed), only the
+  // flat bank_txn_id echoed back as a STRING (number→string round-trip through the LLM).
+  const autoCleared = [
+    { bank_txn_id: "1719500000000", bank_txn: undefined, invoice_ids: ["acme"],      match_type: "ar_clear", auto_clear: true, confidence: 98 },
+    { bank_txn_id: "1719500000001", bank_txn: undefined, invoice_ids: ["riverside"], match_type: "ar_clear", auto_clear: true, confidence: 98 },
+    { bank_txn_id: "1719500000002", bank_txn: undefined, invoice_ids: ["pixel"],     match_type: "ap_clear", auto_clear: true, confidence: 98 },
+  ];
+
+  const plan = planBankImport({ parsedTxns, autoCleared, queue: [], openItems, codes });
+
+  it("N=4, K=3 matched → 3 clears + 1 standalone = 4 bookings; NO line booked both ways", () => {
+    expect(plan.clears).toHaveLength(3);
+    expect(plan.standalone).toHaveLength(1);                         // only the genuinely-new line
+    expect(plan.clears.length + plan.standalone.length).toBe(4);     // N total — not N+K (the double-book)
+    const standaloneIds = plan.standalone.map(t => String(t.id));
+    expect(standaloneIds).toEqual(["1719500000003"]);               // the 3 matched lines are NOT here
+    for (const id of ["1719500000000", "1719500000001", "1719500000002"])
+      expect(standaloneIds).not.toContain(id);
+  });
+
+  it("AR clears to the CORRECT residual 6,800 (not 2,300 — Acme is not credited twice)", () => {
+    expect(glAccountBalance(AR, openItems)).toBe(12584);            // before: 4500+1284+6800
+    const after = [...openItems, ...plan.clears.filter(c => c.side === "ar").map(clearRow)];
+    expect(glAccountBalance(AR, after)).toBe(6800);                 // after: only Acme+Riverside cleared, once each
+  });
+
+  it("AP clears Pixel fully (1,800 → 0), each matched line clears exactly once", () => {
+    expect(glAccountBalance(AP, openItems)).toBe(1800);
+    const after = [...openItems, ...plan.clears.filter(c => c.side === "ap").map(clearRow)];
+    expect(glAccountBalance(AP, after)).toBe(0);
+  });
+});
+
+describe("planBankImport — id type mismatch between parsed line and engine echo (String-coerced)", () => {
+  const openItems = [{ id: "bill1", vendor: "Nike", date: "2026-05-01", amount: 100, type: "expense", debit_credit: "debit", gl_code: EXP, secondary_gl_code: AP, status: "booked", payment_status: "unpaid", matched: false }];
+  // Parsed line id is a NUMBER; engine echoes a STRING. Must still exclude from standalone.
+  const parsedTxns = [{ id: 42, vendor: "Nike", description: "ACH NIKE", date: "2026-06-10", amount: 100, type: "expense", gl_code: EXP, gl_name: "Travel" }];
+  const autoCleared = [{ bank_txn_id: "42", bank_txn: undefined, invoice_ids: ["bill1"], match_type: "ap_clear", auto_clear: true, confidence: 98 }];
+  const plan = planBankImport({ parsedTxns, autoCleared, queue: [], openItems, codes });
+  it("number id vs string echo → still excluded (no double-book)", () => {
+    expect(plan.clears).toHaveLength(1);
+    expect(plan.standalone).toHaveLength(0);
+  });
+});

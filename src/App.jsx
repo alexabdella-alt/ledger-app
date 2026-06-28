@@ -3649,7 +3649,13 @@ Keep the same array order and index as input.`,
         return t;
       });
 
-      setBankTransactions(withRules.map((t,i) => ({ ...t, id: Date.now()+i, checked: !t.needs_review })));
+      // Stable, AI-round-trip-safe line ids. A 13-digit numeric id (Date.now()+i) comes
+      // back from the matching LLM as a string (or reformatted), so the strict-=== bank_txn
+      // lookup failed and the matched line was NOT excluded from standalone → double-booked
+      // (once as the clearing entry, once as a mis-coded bank_import entry). A short, string,
+      // underscore-tagged id echoes back verbatim (never falsy id:0) and is the matching key.
+      const idStamp = Date.now();
+      setBankTransactions(withRules.map((t,i) => ({ ...t, id: `bank_${idStamp}_${i}`, checked: !t.needs_review })));
       setBankProgress(100);
       showNotification(`${withRules.length} transactions imported — ${withRules.filter(t=>t.needs_review).length} need review`);
     } catch(e) {
@@ -4182,7 +4188,7 @@ ${JSON.stringify(openReceivables.map(i => ({ id: i.id, vendor: i.vendor, descrip
           reasoning: match.reasoning,
           clearing_entry: match.clearing_entry,
           auto_clear: match.auto_clear,
-          bank_txn: newBankTxns.find(t => t.id === match.bank_txn_id),
+          bank_txn: newBankTxns.find(t => String(t.id) === String(match.bank_txn_id)),  // string-tolerant: the LLM may echo the id with a different type
           matched_invoices: [...openPayables, ...openReceivables].filter(i => match.invoice_ids.includes(i.id)),
           status: "pending",
           created_at: new Date().toISOString(),

@@ -110,7 +110,13 @@ export function planBankImport({ parsedTxns = [], autoCleared = [], queue = [], 
     // "cle-ar"!), so a substring test mis-routes every AP match to the AR side and the
     // A/P clearing silently fails to post. Match the A/R type explicitly instead.
     const side = isArMatch(m.match_type) ? "ar" : "ap";
-    const bankId = m.bank_txn?.id != null ? String(m.bank_txn.id) : null;
+    // Exclusion key for the standalone filter. Prefer the resolved bank_txn object, but
+    // FALL BACK to the engine's flat `bank_txn_id` echo so a matched line is held out of
+    // standalone booking even when the bank_txn lookup failed (e.g. an id type mismatch in
+    // the matching round-trip). Without this fallback a matched line gets booked twice —
+    // once as its clearing entry, once as a standalone bank_import entry.
+    const bankIdRaw = m.bank_txn?.id ?? m.bank_txn_id;
+    const bankId = bankIdRaw != null ? String(bankIdRaw) : null;
     const date = m.bank_txn?.date || null;
     let posted = 0;
     for (const id of m.invoice_ids || []) {
@@ -130,7 +136,7 @@ export function planBankImport({ parsedTxns = [], autoCleared = [], queue = [], 
 
   // Queued + unclearable matches are held out of standalone booking too (their
   // clearing posts when the user confirms the match).
-  for (const m of review) if (m.bank_txn?.id != null) handledBankIds.add(String(m.bank_txn.id));
+  for (const m of review) { const bid = m.bank_txn?.id ?? m.bank_txn_id; if (bid != null) handledBankIds.add(String(bid)); }
 
   const standalone = (parsedTxns || []).filter((t) => !handledBankIds.has(String(t.id)));
 
