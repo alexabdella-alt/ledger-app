@@ -12,7 +12,7 @@ import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./l
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildPaymentEntry } from "./lib/payments";
-import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines } from "./lib/bankMatch";
+import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
 import { pickActiveCompany } from "./lib/companies";
@@ -3737,8 +3737,12 @@ Keep the same array order and index as input.`,
     // AP-matching. Use the proven planBankImport split so a matched line posts ONLY its
     // clearing (no double-count) and genuinely-new lines are direct-booked + PERSISTED. ──
     const parsedTxns = toBook.map(t => ({ id: t.id, date: t.date, description: t.description, vendor: t.vendor, amount: t.amount, type: t.type, gl_code: t.gl_code, gl_name: t.gl_name, confidence: t.confidence }));
-    const openItems = (invoicesRef.current || invoices).filter(i =>
-      !i.matched && i.payment_status !== "paid" && i.payment_status !== "collected" && i.source !== "bank_feed" && i.source !== "bank_statement");
+    // Candidate open items from GL TRUTH (a live clearing JE links a settled bill), NOT a
+    // payment_status flag that can go stale when a clearing is later reversed/soft-deleted.
+    // Built here, BEFORE persistDirect books anything, so it's the pristine pre-import set.
+    const openItems = matchableOpenItems(invoicesRef.current || invoices, {
+      arCode: rc("accounts_receivable"), apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"),
+    });
     const { autoCleared, queue } = await runMatchingEngine(parsedTxns, openItems);
     const plan = planBankImport({
       parsedTxns, autoCleared, queue, openItems,
@@ -4100,12 +4104,12 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
   // Run matching engine against a set of new bank transactions
   const runMatchingEngine = async (newBankTxns, currentInvoices) => {
     // Collect all open items (unmatched invoices/accruals)
-    const openPayables = currentInvoices.filter(inv =>
-      inv.type === "expense" && !inv.matched && inv.payment_status !== "paid"
-    );
-    const openReceivables = currentInvoices.filter(inv =>
-      inv.type === "revenue" && !inv.matched && inv.payment_status !== "collected"
-    );
+    // Split the already-open candidate set (the live caller passes matchableOpenItems, which
+    // determined "open" from GL truth) by side. DON'T re-filter on payment_status here — that
+    // flag is the stale signal matchableOpenItems deliberately bypasses; re-applying it would
+    // re-drop the very items we just recovered.
+    const openPayables = currentInvoices.filter(inv => inv.type === "expense" && !inv.matched);
+    const openReceivables = currentInvoices.filter(inv => inv.type === "revenue" && !inv.matched);
 
     if (openPayables.length === 0 && openReceivables.length === 0) return { autoCleared: [], queue: [] };
     if (newBankTxns.length === 0) return { autoCleared: [], queue: [] };

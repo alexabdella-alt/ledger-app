@@ -99,6 +99,37 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
   return matches;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Build the OPEN-ITEM candidate set the matcher runs against — from GL TRUTH, not a
+// payment_status flag. (The 1-of-3 contamination: the old filter excluded anything
+// flagged "collected"/"paid", and the three invoices WITH bank lines carried those flags
+// from prior rounds whose clearing JEs were later reversed/soft-deleted — restoring the
+// A/R-A/P balance but leaving the stale flag. Only the no-bank-line invoice, never
+// matched, kept a clean flag and survived → exactly the live candidates: Array(1).)
+//
+// An A/R or A/P item is SETTLED only when a LIVE clearing JE links to it
+// (import_metadata.payment_for === its entry id). No live link → still open, whatever the
+// flag says. This is built BEFORE the current import books anything, so it reflects the
+// pristine pre-import ledger. Returns only clearable (A/R / A/P / accrued) items.
+// ─────────────────────────────────────────────────────────────────────────────
+export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode } = {}) {
+  const eq = (a, b) => a != null && b != null && String(a) === String(b);
+  const codeOnLeg = (i, code) => code != null && (eq(i.secondary_gl_code, code) || eq(i.gl_code, code));
+  const isClearable = (i) => codeOnLeg(i, arCode) || codeOnLeg(i, apCode) || codeOnLeg(i, accruedCode);
+  // Bills/invoices that a LIVE (non-voided, non-deleted) clearing JE already settled.
+  const cleared = new Set(
+    (invoices || [])
+      .filter(i => i && i.import_metadata && i.import_metadata.payment_for != null && i.status !== "voided" && !i.deleted_at)
+      .map(i => String(i.import_metadata.payment_for))
+  );
+  return (invoices || []).filter(i =>
+    i &&
+    isClearable(i) &&
+    i.source !== "bank_feed" && i.source !== "bank_statement" &&   // not the bank lines themselves
+    !i.matched &&                                                  // session optimistic guard
+    !cleared.has(String(i.db_entry_id != null ? i.db_entry_id : i.id)));
+}
+
 // True only for A/R match types ("ar_clear", "partial_ar"). A naive
 // `.includes("ar")` is WRONG — "ap_clear" and "partial_ap" both contain "ar".
 export function isArMatch(matchType) {

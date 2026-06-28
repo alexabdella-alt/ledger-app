@@ -79,3 +79,65 @@ describe("bank import — REAL flatten → match → book path (company 24d5e576
     expect(m[0].invoice_ids).toEqual(["riverside-inv"]);   // the real invoice, not the prior cash deposit
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE 1-of-3 ROOT CAUSE: the candidate set was built from a payment_status FLAG, not
+// GL truth. The three invoices WITH bank lines carried stale "collected"/"paid" flags
+// (prior rounds' clearings were reversed/soft-deleted → A/R-A/P restored, flag left
+// behind), so the old filter dropped them — only Meridian (never matched, clean flag)
+// survived → live console `candidates: Array(1)`. matchableOpenItems keys on a LIVE
+// clearing-JE link instead, so all four stay candidates.
+// ─────────────────────────────────────────────────────────────────────────────
+import { matchableOpenItems } from "../src/lib/bankMatch.js";
+
+describe("matchableOpenItems — open from GL truth, not a stale payment_status flag", () => {
+  // Flattened shape. Three are FLAGGED collected/paid but have NO live clearing JE.
+  const flatInvoices = [
+    { id: "acme-inv",      db_entry_id: "acme-inv",      vendor: "Acme Corp",            amount: 4500, type: "revenue", gl_code: "4000", secondary_gl_code: "1100", payment_status: "collected", source: "universal_upload" },
+    { id: "riverside-inv", db_entry_id: "riverside-inv", vendor: "Riverside Cafe",       amount: 1284, type: "revenue", gl_code: "4100", secondary_gl_code: "1100", payment_status: "collected", source: "universal_upload" },
+    { id: "pixel-bill",    db_entry_id: "pixel-bill",    vendor: "Pixel Contractor LLC", amount: 1800, type: "expense", gl_code: "6800", secondary_gl_code: "2000", payment_status: "paid",      source: "universal_upload" },
+    { id: "meridian-inv",  db_entry_id: "meridian-inv",  vendor: "Meridian Group",       amount: 6800, type: "revenue", gl_code: "4000", secondary_gl_code: "1100", payment_status: "uncollected", source: "universal_upload" },
+  ];
+
+  it("the OLD flag-based filter drops the 3 with bank lines → only 1 candidate (the live bug)", () => {
+    const oldFilter = flatInvoices.filter(i =>
+      !i.matched && i.payment_status !== "paid" && i.payment_status !== "collected" && i.source !== "bank_feed" && i.source !== "bank_statement");
+    expect(oldFilter).toHaveLength(1);
+    expect(oldFilter[0].id).toBe("meridian-inv");
+  });
+
+  it("matchableOpenItems keeps ALL 4 (no live clearing JE links any of them)", () => {
+    const open = matchableOpenItems(flatInvoices, { arCode: "1100", apCode: "2000" });
+    expect(open.map(i => i.id).sort()).toEqual(["acme-inv", "meridian-inv", "pixel-bill", "riverside-inv"]);
+  });
+
+  it("a LIVE clearing JE (import_metadata.payment_for) DOES settle its item → excluded", () => {
+    const withClearing = [
+      ...flatInvoices,
+      { id: "clr-acme", db_entry_id: "clr-acme", vendor: "Acme Corp", amount: 4500, type: "expense", gl_code: "1000", secondary_gl_code: "1100", source: "manual", status: "posted", import_metadata: { kind: "ar_payment", payment_for: "acme-inv" } },
+    ];
+    const open = matchableOpenItems(withClearing, { arCode: "1100", apCode: "2000" });
+    expect(open.find(i => i.id === "acme-inv")).toBeUndefined();   // genuinely collected → out
+    expect(open.find(i => i.id === "riverside-inv")).toBeTruthy(); // still open → in
+  });
+
+  it("a soft-deleted/voided clearing does NOT settle (item stays open)", () => {
+    const withDeadClearing = [
+      ...flatInvoices,
+      { id: "clr-x", db_entry_id: "clr-x", vendor: "Riverside Cafe", source: "manual", deleted_at: "2026-06-01", import_metadata: { payment_for: "riverside-inv" } },
+    ];
+    const open = matchableOpenItems(withDeadClearing, { arCode: "1100", apCode: "2000" });
+    expect(open.find(i => i.id === "riverside-inv")).toBeTruthy();   // reversed clearing → open again
+  });
+
+  it("end-to-end: matchableOpenItems candidate set → all 3 bank lines match", () => {
+    const open = matchableOpenItems(flatInvoices, { arCode: "1100", apCode: "2000" });
+    const parsed = [
+      { id: "b-acme", vendor: "Acme Corp", amount: 4500, type: "revenue" },
+      { id: "b-riv",  vendor: "Riverside Cafe", amount: 1284, type: "revenue" },
+      { id: "b-pix",  vendor: "Pixel Contractor LLC", amount: 1800, type: "expense" },
+    ];
+    const m = autoMatchBankLines(parsed, open, { arCode: "1100", apCode: "2000" });
+    expect(m).toHaveLength(3);
+  });
+});
