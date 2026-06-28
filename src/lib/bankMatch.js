@@ -41,20 +41,28 @@ import { normalizeName } from "./docDirection.js";
 // standalone booking (no double-count).
 // ─────────────────────────────────────────────────────────────────────────────
 export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTolerance = 0.01 } = {}) {
+  // Robust amount coercion: real AI-categorized amounts can arrive as "$4,500.00" or
+  // "4,500" strings; a bare Number() yields NaN → the line is silently skipped → matching
+  // collapses to zero. Strip currency/grouping first.
+  const num = (v) => { if (v == null) return NaN; const n = Number(String(v).replace(/[$,\s]/g, "")); return Number.isFinite(n) ? Math.abs(n) : NaN; };
   const used = new Set();   // an open item may clear only once
   const matches = [];
   for (const t of parsedTxns || []) {
     const isRevenue = t.type === "revenue";
     const wantType = isRevenue ? "revenue" : "expense";
-    const amt = Math.abs(Number(t.amount) || 0);
+    const amt = num(t.amount);
     if (!amt) continue;
     const partyNorm = normalizeName(t.vendor || t.description);
     if (!partyNorm || partyNorm.length < 2) continue;
     const cand = (openItems || []).find((i) => {
       if (used.has(String(i.id))) return false;
       if (i.type !== wantType) return false;
-      const iAmt = Math.abs(Number(i.balance_remaining ?? i.amount) || 0);
-      if (Math.abs(iAmt - amt) > amountTolerance) return false;
+      // A TAXED A/R invoice's revenue row carries the ex-tax `amount` (e.g. 1,200) but the
+      // bank deposit equals the FULL receivable, exposed as `ar_amount` (1,284). Match the
+      // bank amount against ANY of the candidate's known amounts (full receivable, remaining
+      // balance, or line amount) so a sales-tax line doesn't break the match.
+      const iAmts = [i.ar_amount, i.balance_remaining, i.amount].map(num).filter(v => v > 0);
+      if (!iAmts.some(v => Math.abs(v - amt) <= amountTolerance)) return false;
       const iNorm = normalizeName(i.vendor);
       if (!iNorm || iNorm.length < 2) return false;
       // Substring either direction so a parenthetical/suffix on either side still matches.

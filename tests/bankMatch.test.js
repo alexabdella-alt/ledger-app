@@ -555,3 +555,23 @@ describe("autoMatchBankLines — tolerant name + exact amount, symmetric A/R and
     expect(glAccountBalance(AP, after)).toBe(0);       // Pixel cleared
   });
 });
+
+describe("autoMatchBankLines — robust to currency-string amounts + taxed-invoice ar_amount", () => {
+  it("matches when amounts are '$4,500.00'/'1,284' strings (Number() would NaN → skip → 0 matches)", () => {
+    const m = autoMatchBankLines(
+      [{ id: "x", vendor: "Acme Corp", amount: "$4,500.00", type: "revenue" }],
+      [{ id: "acme", vendor: "Acme Corp", amount: "4,500", type: "revenue" }]
+    );
+    expect(m).toHaveLength(1);
+    expect(m[0].invoice_ids).toEqual(["acme"]);
+  });
+
+  it("matches a taxed AR invoice on ar_amount (full receivable), not the ex-tax line amount", () => {
+    const m = autoMatchBankLines(
+      [{ id: "x", vendor: "Riverside Cafe", amount: 1284, type: "revenue" }],          // bank deposit = full
+      [{ id: "riv", vendor: "Riverside Cafe (Maria)", amount: 1200, ar_amount: 1284, type: "revenue" }]  // revenue row ex-tax
+    );
+    expect(m).toHaveLength(1);
+    expect(m[0].invoice_ids).toEqual(["riv"]);
+  });
+});
