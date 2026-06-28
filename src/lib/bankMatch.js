@@ -26,61 +26,74 @@ import { buildPaymentEntry } from "./payments.js";
 import { normalizeName } from "./docDirection.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Deterministic high-confidence matcher (runs BEFORE the LLM pass). The AI matcher
-// missed close-but-not-exact party names ("Riverside Cafe (Maria)" vs "Riverside
-// Cafe") and was unreliable on the payment→bill (A/P) side even on a near-exact name.
-// This pairs a bank line to an open item purely by NORMALIZED party name (suffixes
-// like LLC/Inc and parentheticals stripped by normalizeName) + EXACT amount — and it
-// is symmetric: a deposit clears an open A/R invoice and a payment clears an open A/P
-// bill through the identical code path. Only confident (exact-amount, name-overlap)
-// pairs auto-clear here; anything fuzzier still falls to the LLM/review queue.
-//   - deposit  (type "revenue") → open receivable (type "revenue") → ar_clear
-//   - payment  (type "expense") → open payable    (type "expense") → ap_clear
-// Each open item clears at most once (greedy, first-fit). Returns autoCleared-shaped
-// records carrying `bank_txn` + `bank_txn_id` so planBankImport excludes them from
-// standalone booking (no double-count).
+// Deterministic high-confidence matcher (runs BEFORE the LLM pass). Pairs a bank line
+// to an open item by NORMALIZED party name (LLC/Inc + parentheticals stripped) + EXACT
+// amount. The CLEAR SIDE is keyed on the open item's A/R or A/P OFFSET GL CODE — NOT on
+// a `type` string. (The earlier `type === "revenue"/"expense"` filter was the silent
+// killer: an item whose flattened/categorized `type` drifted from those exact strings
+// vanished from the candidate set, so a payable or a 4100-revenue invoice never matched
+// even with an identical name + exact amount. The AR/AP account code is the reliable
+// anchor; the bank line's revenue/expense `type` is only a soft direction PREFERENCE,
+// relaxed when the line carries no usable hint.) Symmetric across A/R and A/P; each open
+// item clears at most once (greedy). Returns autoCleared-shaped records carrying
+// bank_txn + bank_txn_id so planBankImport excludes them from standalone booking.
 // ─────────────────────────────────────────────────────────────────────────────
-export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTolerance = 0.01 } = {}) {
+export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTolerance = 0.01, arCode, apCode } = {}) {
   // Robust amount coercion: real AI-categorized amounts can arrive as "$4,500.00" or
   // "4,500" strings; a bare Number() yields NaN → the line is silently skipped → matching
   // collapses to zero. Strip currency/grouping first.
   const num = (v) => { if (v == null) return NaN; const n = Number(String(v).replace(/[$,\s]/g, "")); return Number.isFinite(n) ? Math.abs(n) : NaN; };
+  const eq = (a, b) => a != null && b != null && String(a) === String(b);
+  // An open item is a RECEIVABLE if its A/R account appears on either leg; PAYABLE if A/P.
+  // When the caller supplies the A/R / A/P codes (production), key STRICTLY on them — the
+  // reliable anchor, and it excludes prior direct-booked Dr Cash/Cr Rev entries (offset =
+  // Cash, not A/R) from being mistaken for open receivables. Only when no codes are given
+  // (legacy callers) fall back to the `type` string.
+  const itemAR = (i) => arCode != null ? (eq(i.secondary_gl_code, arCode) || eq(i.gl_code, arCode)) : i.type === "revenue";
+  const itemAP = (i) => apCode != null ? (eq(i.secondary_gl_code, apCode) || eq(i.gl_code, apCode)) : i.type === "expense";
   const used = new Set();   // an open item may clear only once
   const matches = [];
   for (const t of parsedTxns || []) {
-    const isRevenue = t.type === "revenue";
-    const wantType = isRevenue ? "revenue" : "expense";
     const amt = num(t.amount);
     if (!amt) continue;
     const partyNorm = normalizeName(t.vendor || t.description);
     if (!partyNorm || partyNorm.length < 2) continue;
-    const cand = (openItems || []).find((i) => {
+    // Soft direction hint from the bank line's category (deposit→AR, payment→AP). Only a
+    // preference: if the hint finds nothing we relax and let the matched item's offset decide.
+    const wantsAR = t.type === "revenue";
+    const wantsAP = t.type === "expense";
+    const matchesItem = (i, respectHint) => {
       if (used.has(String(i.id))) return false;
-      if (i.type !== wantType) return false;
-      // A TAXED A/R invoice's revenue row carries the ex-tax `amount` (e.g. 1,200) but the
-      // bank deposit equals the FULL receivable, exposed as `ar_amount` (1,284). Match the
-      // bank amount against ANY of the candidate's known amounts (full receivable, remaining
-      // balance, or line amount) so a sales-tax line doesn't break the match.
+      const ar = itemAR(i), ap = itemAP(i);
+      if (!ar && !ap) return false;                    // only ever clear a real A/R or A/P open item
+      if (respectHint && wantsAR && !ar) return false; // a deposit shouldn't pay a bill, and vice-versa
+      if (respectHint && wantsAP && !ap) return false;
+      // A TAXED A/R invoice's revenue row carries ex-tax `amount` but the bank deposit equals
+      // the FULL receivable, exposed as `ar_amount`. Match against ANY known amount.
       const iAmts = [i.ar_amount, i.balance_remaining, i.amount].map(num).filter(v => v > 0);
       if (!iAmts.some(v => Math.abs(v - amt) <= amountTolerance)) return false;
       const iNorm = normalizeName(i.vendor);
       if (!iNorm || iNorm.length < 2) return false;
       // Substring either direction so a parenthetical/suffix on either side still matches.
       return iNorm === partyNorm || iNorm.includes(partyNorm) || partyNorm.includes(iNorm);
-    });
+    };
+    // Prefer a hint-consistent match; relax to either side only when the line had no hint.
+    let cand = (openItems || []).find((i) => matchesItem(i, true));
+    if (!cand && !wantsAR && !wantsAP) cand = (openItems || []).find((i) => matchesItem(i, false));
     if (!cand) continue;
     used.add(String(cand.id));
+    const side = itemAR(cand) ? "ar" : "ap";
     matches.push({
       bank_txn_id: t.id,
       bank_txn: t,
       invoice_ids: [String(cand.id)],
-      match_type: isRevenue ? "ar_clear" : "ap_clear",
+      match_type: side === "ar" ? "ar_clear" : "ap_clear",
       confidence: 99,
       amount_matched: amt,
       amount_remaining: 0,
       auto_clear: true,
       deterministic: true,
-      reasoning: `Exact amount $${amt.toFixed(2)} + party "${cand.vendor}" ≈ "${t.vendor || t.description}"`,
+      reasoning: `Exact amount $${amt.toFixed(2)} + party "${cand.vendor}" ≈ "${t.vendor || t.description}" (clears ${side.toUpperCase()})`,
     });
   }
   return matches;

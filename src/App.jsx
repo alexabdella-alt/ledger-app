@@ -4110,11 +4110,20 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
     if (openPayables.length === 0 && openReceivables.length === 0) return { autoCleared: [], queue: [] };
     if (newBankTxns.length === 0) return { autoCleared: [], queue: [] };
 
-    // ── 1) Deterministic pass: exact amount + normalized party name (reliable, no AI).
-    // Catches the cases the LLM missed (suffix/parenthetical name diffs; A/P payment side)
-    // and is symmetric across A/R and A/P. These auto-clear; only the REMAINDER goes to the
-    // LLM for fuzzier judgment. (Carries bank_txn so planBankImport excludes from standalone.)
-    const deterministic = autoMatchBankLines(newBankTxns, [...openPayables, ...openReceivables]);
+    // ── 1) Deterministic pass: exact amount + normalized party name, side keyed on the
+    // A/R-or-A/P OFFSET CODE (not a `type` string). Feed it the FULL open-items list (NOT
+    // the type-filtered openPayables/openReceivables) so an item whose flattened `type`
+    // drifted from "revenue"/"expense" can't be silently excluded before matching even runs.
+    const arCodeForMatch = rc("accounts_receivable");
+    const apCodeForMatch = rc("accounts_payable");
+    const deterministic = autoMatchBankLines(newBankTxns, currentInvoices, { arCode: arCodeForMatch, apCode: apCodeForMatch });
+    // Diagnostic (bank-import matching): surfaces the ACTUAL candidate set + match results at
+    // runtime so a live miss is debuggable from the browser console (the unit data matches 3/3).
+    try {
+      console.info("[bank-match] candidates:", currentInvoices.filter(i => (arCodeForMatch && (String(i.secondary_gl_code)===String(arCodeForMatch)||String(i.gl_code)===String(arCodeForMatch))) || (apCodeForMatch && (String(i.secondary_gl_code)===String(apCodeForMatch)||String(i.gl_code)===String(apCodeForMatch)))).map(i => ({ id: i.id, vendor: i.vendor, amount: i.amount, type: i.type, gl: i.gl_code, off: i.secondary_gl_code })));
+      console.info("[bank-match] bank lines:", newBankTxns.map(t => ({ id: t.id, vendor: t.vendor, amount: t.amount, type: t.type })));
+      console.info("[bank-match] deterministic matches:", deterministic.map(m => ({ bank: m.bank_txn_id, inv: m.invoice_ids, side: m.match_type })));
+    } catch {}
     const handledBankIds = new Set(deterministic.map(m => String(m.bank_txn_id)));
     const handledInvIds  = new Set(deterministic.flatMap(m => (m.invoice_ids || []).map(String)));
     const remainingTxns      = newBankTxns.filter(t => !handledBankIds.has(String(t.id)));
