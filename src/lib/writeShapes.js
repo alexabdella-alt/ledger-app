@@ -89,6 +89,7 @@ export function mapCompanyRow(co = {}) {
     defaultARAccount: co.default_ar_account || "1100",
     currency: co.currency || "USD",
     logoBase64: co.logo_path || null,   // O62: read the persisted logo back
+    aliases: co.aliases || "",          // O75: self-identity (DBA/aka), comma-separated
     businessType: co.business_type || "",
     salesTaxRate: Number(co.sales_tax_rate) || 0,
     onboardingComplete: !!co.onboarding_complete,

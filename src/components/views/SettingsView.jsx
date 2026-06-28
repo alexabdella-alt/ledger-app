@@ -22,6 +22,10 @@ export default function SettingsView() {
                   const { error } = await supabase.from("companies").update(buildCompanyUpdate(draft)).eq("id", currentCompany.id);
                   if (error) { console.warn("[settings] save:", error.message); showNotification("Couldn't save settings — please try again", "error"); return; }
                 } catch (e) { console.warn("[settings] save:", e?.message || e); showNotification("Couldn't save settings — please try again", "error"); return; }
+                // O75 self-identity aliases — separate guarded write so a pre-migration
+                // (no `aliases` column) degrades silently without failing the whole save.
+                try { await supabase.from("companies").update({ aliases: draft.aliases || null }).eq("id", currentCompany.id); }
+                catch (e) { console.warn("[settings] aliases not persisted (apply migration 046):", e?.message || e); }
               }
               logAudit("settings_saved", `Company settings updated: ${draft.name}`);
               setSaved(true); setTimeout(()=>setSaved(false), 2000);
@@ -92,6 +96,12 @@ export default function SettingsView() {
                       {inp("name","Company Name","Acme Corp")}
                       {inp("taxId","EIN / Tax ID","XX-XXXXXXX")}
                     </div>
+                  </div>
+                  {/* O75 — self-identity: used to tell YOUR outgoing invoices (revenue) from
+                      vendor bills you received (expense). Same PDF, opposite meaning. */}
+                  <div style={{marginBottom:16}}>
+                    {inp("aliases","Also known as / DBA","Northwind, Northwind Studio LLC")}
+                    <div style={{fontSize:11,color:"var(--sc-text-mut)",marginTop:5}}>Any other names you invoice under (comma-separated). Used to recognize <strong>your own</strong> invoices as revenue and bills addressed to you as expenses.</div>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:12}}>
                     {inp("address","Street Address","123 Main St")}

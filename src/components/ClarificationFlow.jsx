@@ -83,11 +83,40 @@ function ClarificationCard({ item }) {
     logAudit, showNotification, applyGaapAnswer,
     CHART_OF_ACCOUNTS, addCustomAccount,
   } = useERP();
-  const inv = item.invoice || {};
-  const session = React.useMemo(() => deriveSession(item), [item]);
+  // O75 correction UX — let the user override the fundamental type/direction on ANY
+  // clarification (not just the sub-detail), and re-route to type-appropriate questions
+  // so we never ask a follow-up (e.g. prepaid period) on top of a wrong premise.
+  const [correctedType, setCorrectedType] = React.useState(null);
+  const baseInv = item.invoice || {};
+  const effType = correctedType || baseInv.type;
+  const effItem = React.useMemo(() => {
+    if (!correctedType || correctedType === baseInv.type) return item;
+    const isRev = correctedType === "revenue";
+    const acct = (CHART_OF_ACCOUNTS || []).find(a => a.category === (isRev ? "Revenue" : "Expenses")) || {};
+    const effInv = {
+      ...baseInv, type: correctedType,
+      gl_code: acct.code, gl_name: acct.name,
+      secondary_gl_code: isRev ? "1100" : "2000",
+      secondary_gl_name: isRev ? "Accounts Receivable" : "Accounts Payable",
+      debit_credit: isRev ? "credit" : "debit",
+      questions: [],
+    };
+    // Drop the old (wrong-premise) framing: no duplicate/gaap branch, ask a fresh,
+    // type-correct category question.
+    return {
+      ...item, invoice: effInv, gaap: undefined, isDuplicate: undefined, existingInvoice: undefined,
+      question: `How would you categorize this ${isRev ? "revenue" : "expense"}?`,
+      options: (CHART_OF_ACCOUNTS || []).filter(a => a.category === (isRev ? "Revenue" : "Expenses")).slice(0, 6).map(a => ({ code: a.code, name: a.name })),
+      suggestedCode: effInv.gl_code, suggestedName: effInv.gl_name,
+    };
+  }, [correctedType, item, baseInv, CHART_OF_ACCOUNTS]);
+  const inv = effItem.invoice || {};
+  const session = React.useMemo(() => deriveSession(effItem), [effItem]);
   const { kind, questions } = session;
 
   const [step, setStep] = React.useState(0);
+  // When the user flips the type, restart the (now type-correct) questions from the top.
+  React.useEffect(() => { setStep(0); }, [correctedType]);
   const [skipped, setSkipped] = React.useState(false);
   const [answers, setAnswers] = React.useState(() => {
     const init = {};
@@ -485,6 +514,24 @@ function ClarificationCard({ item }) {
             </div>
           </>
         )}
+
+        {/* O75 — type/direction override, consistently available on EVERY clarification.
+            Lets the user correct the fundamental classification (not just the sub-detail)
+            and re-routes to type-correct questions instead of locking in a wrong premise. */}
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px dashed var(--sc-border)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>Wrong type?</span>
+          {[["revenue", "This is revenue"], ["expense", "This is an expense"]].map(([t, label]) => {
+            const active = effType === t;
+            return (
+              <button key={t} onClick={() => { if (!active && !done) setCorrectedType(t); }} disabled={active || !!done}
+                style={{ fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 7, cursor: active || done ? "default" : "pointer",
+                  background: active ? "var(--sc-gold-soft)" : "transparent", color: active ? "var(--sc-gold)" : "var(--sc-text-2)",
+                  border: `1px solid ${active ? "var(--sc-gold-line)" : "var(--sc-border-2)"}` }}>
+                {active ? "✓ " : ""}{label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

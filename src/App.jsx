@@ -16,6 +16,7 @@ import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allCl
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
 import { pickActiveCompany } from "./lib/companies";
+import { companyIdentityNames, classifyDocDirection } from "./lib/docDirection";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
@@ -592,6 +593,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     defaultARAccount: "1100",
     currency: "USD",
     logoBase64: null,
+    aliases: "",               // O75: self-identity (DBA/aka) for revenue-vs-expense direction
     businessType: "",          // SaaS | Consulting | Restaurant | ... (migration 025)
     salesTaxRate: 0,           // default blended sales-tax % (migration 042); pre-fills Send Invoice
     onboardingComplete: false, // hides the Home onboarding checklist when true
@@ -772,7 +774,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
     setReconSessions([]); setReconciliations([]); setOpeningBalances([]);
     setSentInvoices([]); setClarificationQueue([]);
     setBankAccounts([{ id:"default", name:"Primary Checking", type:"checking", gl_code:rc("cash"), last4:"", institution:"" }]);
-    setCompanySettings({ name:"", taxId:"", address:"", city:"", state:"", zip:"", country:"US", fiscalYearEnd:"12-31", defaultCashAccount:"1000", defaultAPAccount:"2000", defaultARAccount:"1100", currency:"USD", logoBase64:null, salesTaxRate:0 });
+    setCompanySettings({ name:"", taxId:"", address:"", city:"", state:"", zip:"", country:"US", fiscalYearEnd:"12-31", defaultCashAccount:"1000", defaultAPAccount:"2000", defaultARAccount:"1100", currency:"USD", logoBase64:null, aliases:"", salesTaxRate:0 });
 
     // Selections, drill-downs, previews
     setSelectedInvoice(null); setReturnTo(null); setGlDrilldown(null);
@@ -2840,7 +2842,7 @@ Reply with only the single word.`,
 
 Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if there is only one invoice:
 [
-  {"vendor":"Exact vendor name","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details","vendor_address":"full mailing address if shown, else empty","vendor_email":"email if shown, else empty","vendor_phone":"phone if shown, else empty","vendor_website":"website/domain if shown, else empty","payment_terms":"e.g. Net 30 if shown, else empty","account_number":"our account number with this vendor if shown, else empty","tax_id":"their EIN / tax ID if shown, else empty","confidence_score":0.95,"questions":[]},
+  {"vendor":"Exact vendor name","issuer":"the party that ISSUED/SENT this invoice — the 'From'/'Bill From'/letterhead company","recipient":"the party being BILLED — the 'Bill To'/'To'/customer","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details","vendor_address":"full mailing address if shown, else empty","vendor_email":"email if shown, else empty","vendor_phone":"phone if shown, else empty","vendor_website":"website/domain if shown, else empty","payment_terms":"e.g. Net 30 if shown, else empty","account_number":"our account number with this vendor if shown, else empty","tax_id":"their EIN / tax ID if shown, else empty","confidence_score":0.95,"questions":[]},
   ...one object per invoice...
 ]
 For "type":"revenue" the "vendor" field is the CUSTOMER's name and the address/email/phone/etc. describe that customer. Leave any field you can't find as an empty string — never guess.
@@ -2857,10 +2859,11 @@ CONFIDENCE & CLARIFYING QUESTIONS:
   - "personal" — it might be a personal expense. options ["Yes, book it","No, it's personal — skip"].
   Write every question the way you'd text a client — never use accounting jargon, GL codes, or confidence numbers.
 
-To determine type — DEFAULT TO "expense" when unclear. The vast majority of uploaded documents are vendor bills this business must pay.
-- type = "expense": a vendor/supplier is billing this business. Signals: "Bill To: [your company]", "Please remit", "Amount Due", vendor is a supplier/service provider, utility, or contractor.
-- type = "revenue": ONLY use this when there are clear, unambiguous signals the business itself issued the invoice TO a customer. Signals: this business name appears as the FROM/issuing party, "Invoice To: [customer name]", customer is being charged.
-- When in doubt or ambiguous, always use "expense".
+DIRECTION — anchor on WHO THIS BUSINESS IS. This business is: "${companySettings?.name || "(not set)"}"${companySettings?.aliases ? ` (also known as: ${companySettings.aliases})` : ""}.
+- If THIS BUSINESS is the issuer (its name is the From/Bill-From/letterhead party) → type = "revenue" (an invoice they SENT a customer).
+- If THIS BUSINESS is the recipient (its name is the Bill-To/To party) → type = "expense" (a bill they RECEIVED).
+- Always fill "issuer" and "recipient" with the exact names on the document so direction can be verified.
+- If the business identity above is "(not set)" or neither party clearly matches it, default to "expense" (most uploads are vendor bills) and let the reviewer confirm.
 
 Rules:
 - Do NOT merge multiple invoices into one — each distinct invoice gets its own object
@@ -2889,6 +2892,20 @@ Rules:
             logUploadUpdate(item.upload_log_id, { status:"error", error:"Could not extract invoice data — try a clearer scan" });
             return;
           }
+
+          // O75 — DETERMINISTIC DIRECTION from the company's own identity (don't trust the
+          // AI's guess alone): if the company ISSUED the doc → revenue/AR; if it's the
+          // RECIPIENT → expense/AP; if identity is set but neither/both match → ambiguous
+          // (ask, never guess). If no identity is configured, leave the AI's type as-is
+          // (`unknown` → current behavior). `_direction` drives routing below.
+          const identityNames = companyIdentityNames(companySettings);
+          const identitySet = identityNames.length > 0;
+          extractedList = extractedList.map(ex => {
+            const dir = classifyDocDirection({ issuer: ex.issuer || ex.from || "", recipient: ex.recipient || ex.bill_to || ex.to || "", identityNames });
+            if (dir.direction === "revenue") return { ...ex, type: "revenue", _direction: "revenue" };
+            if (dir.direction === "expense") return { ...ex, type: "expense", _direction: "expense" };
+            return { ...ex, _direction: identitySet ? "ambiguous" : "unknown" };
+          });
 
           // Batch GL code all invoices in one call
           const codeRes = await fetch(AI_PROXY_URL, {
@@ -2981,8 +2998,11 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               invoice.reasoning = `Meals booked to Travel & Entertainment (6400) — 50% deductible under current tax law, deductible portion ${fmtMoney(invoice.deductible_amount)}. ${invoice.reasoning||""}`.trim();
               mealsBooked += 1;
             }
-            // GAAP review — capital vs expense, prepaid, leasehold, vehicle.
-            const gaapItem = buildGaapClarification(invoice);
+            // GAAP review — capital vs expense, prepaid, leasehold, vehicle. ONLY for
+            // expenses: a prepaid/capitalize question presupposes the doc is an expense, so
+            // never ask it on revenue (the Meridian wrong-premise bug — a misclassified
+            // invoice was shown only prepaid-amortization options). O75.
+            const gaapItem = invoice.type === "revenue" ? null : buildGaapClarification(invoice);
 
             // Duplicate check — runs before any other routing. First an exact
             // invoice-number match, then a smart fuzzy match (same vendor + amount
@@ -3008,9 +3028,15 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
                 suggestedCode: invoice.gl_code,
                 suggestedName: invoice.gl_name,
               });
-            // Revenue classification always needs human confirmation — the prompt defaults to expense,
-            // so a "revenue" result means the AI saw a signal but it may still be wrong.
-            } else if (!rule && isRevenue) {
+            // O75 — DIRECTION confirmed by the company's own identity → book straight as
+            // revenue/AR (no "is this revenue?" nag; this is the "your own invoices just
+            // work" case). The doc is coded to a 4xxx revenue account already.
+            } else if (extracted._direction === "revenue") {
+              highConfidence.push(invoice);
+            // AMBIGUOUS (identity set but neither/both parties matched) OR the AI guessed
+            // revenue without identity confirmation → ask direction FIRST, offering both a
+            // revenue and an expense category (a type/direction correction, not a sub-detail).
+            } else if (extracted._direction === "ambiguous" || (!rule && isRevenue)) {
               const revenueAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Revenue").slice(0, 2);
               const expenseAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Expenses")
                 .filter(a => [rc("cogs"),rc("professional_services"),rc("technology_software")].includes(a.code));
@@ -3018,9 +3044,11 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
                 id: Date.now() + Math.random(),
                 invoice,
                 queueItemId: item.id,
-                question: `This looks like revenue — confirm: did your business issue this invoice TO a customer? Or is it a bill you received?`,
+                directionFirst: true,
+                question: `Did your business SEND this invoice to a customer (revenue), or is it a bill you RECEIVED (expense)?`,
                 options: [
-                  ...revenueAccts.map(a => ({ code: a.code, name: a.name })),
+                  ...revenueAccts.map(a => ({ code: a.code, name: a.name,
+                    typeOverride: { type: "revenue", secondary_gl_code: rc("accounts_receivable"), secondary_gl_name: rn("accounts_receivable") } })),
                   ...expenseAccts.map(a => ({
                     code: a.code, name: a.name,
                     typeOverride: { type: "expense", secondary_gl_code: rc("accounts_payable"), secondary_gl_name: rn("accounts_payable") }
