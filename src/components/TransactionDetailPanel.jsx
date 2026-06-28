@@ -3,7 +3,16 @@ import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
 import { initials, vendorColor, fmtDate } from "../lib/format";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
+import { classifyBankReason } from "../lib/bankMatch";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
+
+// Older bank-import entries stored the PROVENANCE ("Imported from bank statement") in the
+// reasoning field instead of the GL-choice rationale. When we see that placeholder, derive a
+// real classification sentence from the entry's own vendor/account so the panel never shows
+// the provenance as "AI reasoning". New imports already store proper reasoning.
+const PROVENANCE_RE = /^\s*imported (from|via)\b/i;
+const displayReasoning = (sel) =>
+  sel && sel.reasoning && PROVENANCE_RE.test(sel.reasoning) ? classifyBankReason(sel) : (sel && sel.reasoning);
 
 // Shared transaction detail slide-in. Used by Books and every Reports drill-down so
 // the panel lives in exactly one place. Pass the invoice id + an onClose handler.
@@ -189,13 +198,13 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                     <span style={{ color: "var(--sc-text)", textAlign: "right", wordBreak: "break-word" }}>{v}</span>
                   </div>
                 ))}
-                {sel.reasoning && (
+                {displayReasoning(sel) && (
                   <div style={{ marginTop: 16, background: "var(--sc-gold-soft)", borderLeft: "3px solid var(--sc-gold)", borderRadius: "0 10px 10px 0", padding: "14px 16px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e8b53d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
                       <div style={{ fontSize: 11, letterSpacing: 1.5, color: "var(--sc-gold)", fontWeight: 600 }}>AI REASONING</div>
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--sc-text-2)", lineHeight: 1.6 }}>{sel.reasoning}</div>
+                    <div style={{ fontSize: 13, color: "var(--sc-text-2)", lineHeight: 1.6 }}>{displayReasoning(sel)}</div>
                   </div>
                 )}
               </div>

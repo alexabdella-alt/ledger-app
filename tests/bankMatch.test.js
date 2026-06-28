@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, RECON_STATUSES, allClearingsPosted, shouldRunApMatching } from "../src/lib/bankMatch.js";
+import { planBankImport, isArMatch, buildBankLineEntry, classifyBankReason, reconRecordStatus, RECON_STATUSES, allClearingsPosted, shouldRunApMatching } from "../src/lib/bankMatch.js";
 import { glAccountBalance } from "../src/lib/reports.js";
 
 // GL codes (defaults).
@@ -221,13 +221,48 @@ describe("buildBankLineEntry — direction by type (the deposit-inversion fix)",
   });
 });
 
+describe("classifyBankReason — GL-choice rationale, never the provenance", () => {
+  it("prefers the categorizer's reasoning when present", () => {
+    const txn = { reasoning: "AWS = cloud infrastructure → 6500 Technology & Software", vendor: "AWS", gl_code: "6500", gl_name: "Technology & Software" };
+    expect(classifyBankReason(txn)).toBe("AWS = cloud infrastructure → 6500 Technology & Software");
+  });
+
+  it("falls back to a CLASSIFICATION sentence (vendor → account), not 'imported from...'", () => {
+    const r = classifyBankReason({ vendor: "Adobe", gl_code: "6500", gl_name: "Technology & Software" });
+    expect(r).toContain("Categorized to");
+    expect(r).toContain("Technology & Software");
+    expect(r).toContain("Adobe");
+    expect(r).not.toMatch(/imported/i);          // never the provenance
+    expect(r).not.toMatch(/bank statement/i);
+  });
+
+  it("degrades gracefully with neither reasoning nor vendor", () => {
+    expect(classifyBankReason({ gl_code: "6500", gl_name: "Software" })).toBe("Categorized to Software (6500).");
+    expect(classifyBankReason({})).toBe("Categorized to this account.");
+  });
+
+  it("buildBankLineEntry stores classification reasoning, NOT provenance", () => {
+    // even if a stale 'imported...' string slips into reasoning, it's only honored when it
+    // looks like a real reason — a deposit with a vendor produces a vendor→account sentence.
+    const e = buildBankLineEntry({ type: "expense", gl_code: "6500", gl_name: "Technology & Software", amount: 80, vendor: "Adobe" }, { offsetCode: "1000" });
+    expect(e.reasoning).not.toMatch(/imported|bank statement/i);
+    expect(e.reasoning).toContain("Adobe");
+    // a categorizer-supplied reason rides through unchanged
+    const e2 = buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 80, reasoning: "Recurring SaaS subscription" }, { offsetCode: "1000" });
+    expect(e2.reasoning).toBe("Recurring SaaS subscription");
+  });
+});
+
 // ── #1 DISMISS LOCK: a dismissed match still books, correct direction ─────────
 describe("dismiss-book reuses buildBankLineEntry (the same correct shape)", () => {
   it("a dismissed DEPOSIT books a balanced Dr Cash / Cr Revenue entry", () => {
-    // dismissMatch builds: buildBankLineEntry(m.bank_txn, { offsetCode, offsetName, reason })
+    // dismissMatch builds: buildBankLineEntry(m.bank_txn, { offsetCode, offsetName })
     const bankTxn = { id: "b1", type: "revenue", gl_code: "4000", gl_name: "Revenue", amount: 2500, vendor: "Bob", date: "2026-06-01" };
-    const e = buildBankLineEntry(bankTxn, { offsetCode: "1000", offsetName: "Cash", reason: "Booked directly — proposed match dismissed" });
-    expect(e.reasoning).toMatch(/dismissed/);
+    const e = buildBankLineEntry(bankTxn, { offsetCode: "1000", offsetName: "Cash" });
+    // reasoning is the GL CLASSIFICATION (vendor → account), not the dismiss provenance.
+    expect(e.reasoning).toContain("Revenue");
+    expect(e.reasoning).toContain("Bob");
+    expect(e.reasoning).not.toMatch(/dismissed|imported/i);
     expect(e.source).toBe("bank_statement");
     const lines = linesOf(e);
     expect(debitOf(lines, "1000")).toBe(2500);    // Dr Cash — income recorded, not stranded
@@ -284,9 +319,10 @@ describe("buildBankLineEntry — offset by account (credit-card vs bank)", () =>
   it("DISMISS path (C60 interaction): a dismissed credit-card line books Dr Expense / Cr 2200", () => {
     // dismissMatch reuses buildBankLineEntry with the queued match's importOffsetCode.
     const e = buildBankLineEntry({ type: "expense", gl_code: "6500", amount: 80, vendor: "Adobe" },
-      { offsetCode: "2200", offsetName: "Credit Card Liability", reason: "Booked directly — proposed match dismissed" });
+      { offsetCode: "2200", offsetName: "Credit Card Liability" });
     expect(e.secondary_gl_code).toBe("2200");
-    expect(e.reasoning).toMatch(/dismissed/);
+    expect(e.reasoning).toContain("Adobe");           // GL classification, not the dismiss provenance
+    expect(e.reasoning).not.toMatch(/dismissed|imported/i);
     const lines = linesO(e);
     expect(lines.find(l => l.code === "2200").credit).toBe(80);  // not Cash
   });

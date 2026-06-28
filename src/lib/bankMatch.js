@@ -209,17 +209,33 @@ export function reconRecordStatus(reviewCount) {
 //   revenue → Dr <offset> / Cr <gl_code>   (debit_credit "credit")  ← deposits
 // Pure (no id / booked_at — the caller adds those), so it's unit-testable and shared
 // by the standalone-book and dismiss-book paths so they can't diverge.
-export function buildBankLineEntry(txn, { offsetCode = "1000", offsetName = "Cash", reason = "Imported via bank statement (no open item matched)" } = {}) {
+// The plain-language CLASSIFICATION reason for a bank line — WHY it was booked to this GL
+// account (vendor + signal → account), for the transaction-detail "AI reasoning". Prefers the
+// categorizer's reasoning; otherwise builds one from the vendor + chosen account. Never the
+// provenance ("imported from bank statement"), which is redundant with `source`/the UI.
+export function classifyBankReason(txn = {}) {
+  const r = txn && txn.reasoning && String(txn.reasoning).trim();
+  if (r) return r;
+  const acct = txn.gl_name ? `${txn.gl_name}${txn.gl_code ? ` (${txn.gl_code})` : ""}` : (txn.gl_code || "this account");
+  const who = txn.vendor || txn.description;
+  return who ? `Categorized to ${acct} based on "${who}".` : `Categorized to ${acct}.`;
+}
+
+export function buildBankLineEntry(txn, { offsetCode = "1000", offsetName = "Cash" } = {}) {
   const amount = Math.abs(Number(txn && txn.amount) || 0);
   const date = (txn && txn.date) || null;
   const isRevenue = txn && txn.type === "revenue";
+  // The `reasoning` field must explain the GL CLASSIFICATION (why this account), NOT the
+  // provenance ("imported from bank statement" — that's already shown via `source`/the UI).
+  // Prefer the categorizer's reason; else a real classification fallback (vendor → account).
   return {
     vendor: txn && txn.vendor, description: txn && txn.description, amount, date,
     type: txn && txn.type, project: "General",
     gl_code: txn && txn.gl_code, gl_name: txn && txn.gl_name,
     secondary_gl_code: offsetCode, secondary_gl_name: offsetName,
     debit_credit: isRevenue ? "credit" : "debit",
-    confidence: txn && txn.confidence, reasoning: reason,
+    confidence: txn && txn.confidence,
+    reasoning: classifyBankReason(txn),
     status: "booked", source: "bank_statement",
     payment_status: "paid", payment_method_used: "bank_transfer",
     matched: true, auto_matched: true, matched_bank_date: date,
