@@ -77,4 +77,20 @@ describe("buildArInvoiceEntry (#4/#16) — Dr A/R / Cr Revenue [/ Cr Sales Tax P
     expect(buildArInvoiceEntry({ subtotal: 100, revenueCode: REV })).toBe(null);
     expect(buildArInvoiceEntry({ subtotal: 100, taxRate: 0.08, arCode: AR, revenueCode: REV })).toBe(null);  // tax but no salesTaxCode
   });
+
+  // Shakedown: the Riverside invoice ($1,200 services + $84 tax @ 7% = $1,284) was
+  // booked Dr A/R 1284 / Cr Revenue 1284 — lumping tax into revenue. This is the exact
+  // split the uploaded-invoice path now produces (persistJournalEntry derives subtotal =
+  // total − tax_amount, then books via this builder).
+  it("Riverside: $1,284 total with $84 tax → Dr A/R 1284 / Cr Revenue 1200 / Cr 2350 84", () => {
+    const total = 1284, tax = 84, subtotal = total - tax;
+    const je = buildArInvoiceEntry({ subtotal, taxAmount: tax, arCode: AR, revenueCode: REV, salesTaxCode: TAX, customer: "Riverside" });
+    expect(je.balanced).toBe(true);
+    expect(je.lines).toEqual([
+      { code: AR, name: null, debit: 1284, credit: 0, memo: null },
+      { code: REV, name: null, debit: 0, credit: 1200, memo: null },
+      { code: TAX, name: null, debit: 0, credit: 84, memo: null },
+    ]);
+    expect(je.lines.find(l => l.code === REV).credit).toBe(1200);   // revenue is NET of tax, not 1284
+  });
 });

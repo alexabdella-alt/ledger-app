@@ -19,7 +19,7 @@ import { pickActiveCompany } from "./lib/companies";
 import { companyIdentityNames, classifyDocDirection } from "./lib/docDirection";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue } from "./lib/depreciation";
-import { buildDeferredRevenueReceiptEntry } from "./lib/revenueEntries";
+import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
@@ -1101,21 +1101,46 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
 
       const amt = Number(invoice.amount) || 0;
       const memo = invoice.description;
+      const entryDate   = invoice.date || new Date().toISOString().slice(0,10);
       // Balanced lines (no journal_entry_id — the RPC assigns it atomically).
-      const lines = [];
-      if (secondaryAcct) {
-        if (isDebit) {
-          lines.push({ account_id: primaryAcct.id,   debit: amt, credit: 0,   memo });
-          lines.push({ account_id: secondaryAcct.id, debit: 0,   credit: amt, memo });
-        } else {
-          lines.push({ account_id: primaryAcct.id,   debit: 0,   credit: amt, memo });
-          lines.push({ account_id: secondaryAcct.id, debit: amt, credit: 0,   memo });
+      let lines = [];
+
+      // SALES-TAX SPLIT (uploaded AR invoices): tax collected is a LIABILITY, not
+      // revenue. A revenue invoice carrying `tax_amount` books the 3-line split — Dr A/R
+      // (total) / Cr Revenue (subtotal) / Cr Sales Tax Payable (2350) — via the SAME
+      // tested builder the Send-Invoice flow uses. (Was: full total lumped into revenue,
+      // overstating income + omitting the tax liability — the Riverside shakedown bug.)
+      const taxAmt = Number(invoice.tax_amount) || 0;
+      if (!isDebit && taxAmt > 0 && glIsRevenue(invoice.gl_code) && secondaryAcct) {
+        const arCode = invoice.secondary_gl_code || rc("accounts_receivable");
+        const stCode = getAccountByRole("sales_tax_payable")?.code || "2350";
+        const subtotal = Math.round((amt - taxAmt) * 100) / 100;
+        const built = buildArInvoiceEntry({ subtotal, taxAmount: taxAmt, arCode, revenueCode: invoice.gl_code, salesTaxCode: stCode, date: entryDate, customer: invoice.vendor, invoiceNumber: invoice.invoice_number, memo });
+        if (built && built.balanced) {
+          const resolved = [];
+          for (const l of built.lines) {
+            const a = await ensureAccount(l.code, l.code === stCode ? "Sales Tax Payable" : (l.code === arCode ? "Accounts Receivable" : invoice.gl_name));
+            if (!a) { resolved.length = 0; break; }
+            resolved.push({ account_id: a.id, debit: l.debit, credit: l.credit, memo });
+          }
+          if (resolved.length === built.lines.length) lines = resolved;
         }
-      } else {
-        lines.push({ account_id: primaryAcct.id, debit: isDebit ? amt : 0, credit: isDebit ? 0 : amt, memo });
       }
 
-      const entryDate   = invoice.date || new Date().toISOString().slice(0,10);
+      if (lines.length === 0) {
+        if (secondaryAcct) {
+          if (isDebit) {
+            lines.push({ account_id: primaryAcct.id,   debit: amt, credit: 0,   memo });
+            lines.push({ account_id: secondaryAcct.id, debit: 0,   credit: amt, memo });
+          } else {
+            lines.push({ account_id: primaryAcct.id,   debit: 0,   credit: amt, memo });
+            lines.push({ account_id: secondaryAcct.id, debit: amt, credit: 0,   memo });
+          }
+        } else {
+          lines.push({ account_id: primaryAcct.id, debit: isDebit ? amt : 0, credit: isDebit ? 0 : amt, memo });
+        }
+      }
+
       const description  = `${invoice.vendor || ""} – ${invoice.description || invoice.vendor || ""}`;
       const source       = normalizeSource(invoice.source);  // satisfy journal_entries_source_check
       const meta = {
@@ -2842,7 +2867,7 @@ Reply with only the single word.`,
 
 Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if there is only one invoice:
 [
-  {"vendor":"Exact vendor name","issuer":"the party that ISSUED/SENT this invoice — the 'From'/'Bill From'/letterhead company","recipient":"the party being BILLED — the 'Bill To'/'To'/customer","description":"what was purchased","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details","vendor_address":"full mailing address if shown, else empty","vendor_email":"email if shown, else empty","vendor_phone":"phone if shown, else empty","vendor_website":"website/domain if shown, else empty","payment_terms":"e.g. Net 30 if shown, else empty","account_number":"our account number with this vendor if shown, else empty","tax_id":"their EIN / tax ID if shown, else empty","confidence_score":0.95,"questions":[]},
+  {"vendor":"Exact vendor name","issuer":"the party that ISSUED/SENT this invoice — the 'From'/'Bill From'/letterhead company","recipient":"the party being BILLED — the 'Bill To'/'To'/customer","description":"what was purchased","amount":"123.45 — the TOTAL due (incl. any sales tax)","subtotal":"pre-tax subtotal if a tax line is shown, else empty","tax_amount":"the sales tax / VAT amount if a tax line is shown, else empty","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details","vendor_address":"full mailing address if shown, else empty","vendor_email":"email if shown, else empty","vendor_phone":"phone if shown, else empty","vendor_website":"website/domain if shown, else empty","payment_terms":"e.g. Net 30 if shown, else empty","account_number":"our account number with this vendor if shown, else empty","tax_id":"their EIN / tax ID if shown, else empty","confidence_score":0.95,"questions":[]},
   ...one object per invoice...
 ]
 For "type":"revenue" the "vendor" field is the CUSTOMER's name and the address/email/phone/etc. describe that customer. Leave any field you can't find as an empty string — never guess.
@@ -2867,7 +2892,8 @@ DIRECTION — anchor on WHO THIS BUSINESS IS. This business is: "${companySettin
 
 Rules:
 - Do NOT merge multiple invoices into one — each distinct invoice gets its own object
-- amount = total due on that specific invoice only`,
+- amount = total due on that specific invoice only (the full amount incl. any sales tax)
+- If the invoice shows a sales-tax / VAT line, ALSO return "subtotal" (pre-tax) and "tax_amount". Sales tax collected is a liability owed to the state, never revenue — capturing it lets the books credit Sales Tax Payable instead of lumping it into revenue. Leave both empty if there's no tax line.`,
               messages:[{role:"user", content:[
                 {type:mediaType==="application/pdf"?"document":"image", source:{type:"base64",media_type:mediaType,data:base64}},
                 {type:"text", text:"Extract every invoice or receipt in this document. Return one JSON object per invoice."}
@@ -2952,6 +2978,9 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               vendor: extracted.vendor?.trim() || "Unknown",
               description: extracted.description || "",
               amount: parseFloat(extracted.amount) || 0,
+              // Sales tax pulled from the invoice → split to Sales Tax Payable (2350) at
+              // booking for revenue invoices (persistJournalEntry), never lumped into revenue.
+              tax_amount: parseFloat(extracted.tax_amount) || 0,
               date: extracted.date || new Date().toISOString().slice(0,10),
               // Classify `type` from the GL code (same basis as flattenJournalEntries +
               // the canonical layer) so the in-session row is never mis-slotted by an odd
