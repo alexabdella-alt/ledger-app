@@ -141,3 +141,62 @@ describe("matchableOpenItems — open from GL truth, not a stale payment_status 
     expect(m).toHaveLength(3);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE FLIP SIDE (silent disappearance): matched lines were excluded from direct-booking
+// (correct) but their CLEARING JE never posted (bug) — markBillPaid gated the clearing on
+// `payment_status !== newStatus`, and after the matchable-open-items fix a matched line
+// legitimately carries a STALE collected/paid flag, so the gate skipped the post. The line
+// cleared NOTHING and its cash movement vanished, while markBillPaid still returned success.
+// Fix: post the clearing on GL truth (no LIVE clearing JE linked), never on the flag.
+// This asserts the ACCOUNTING COMPLETENESS: 3 matched + 9 unmatched = 9 direct + 3 clearing
+// = 12 bookings, AR→6,800, AP→0, and the matched lines DO move cash via their clearings.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("bank import — matched lines CLEAR (no silent disappearance): 9 direct + 3 clearing = 12", () => {
+  // Flattened invoices, with the stale collected/paid flags from the live state.
+  const flatInvoices = [
+    { id: "acme-inv",      db_entry_id: "acme-inv",      vendor: "Acme Corp",            amount: 4500, type: "revenue", gl_code: "4000", secondary_gl_code: "1100", debit_credit: "credit", status: "booked", payment_status: "collected",   source: "universal_upload" },
+    { id: "riverside-inv", db_entry_id: "riverside-inv", vendor: "Riverside Cafe",       amount: 1284, type: "revenue", gl_code: "4100", secondary_gl_code: "1100", debit_credit: "credit", status: "booked", payment_status: "collected",   source: "universal_upload" },
+    { id: "pixel-bill",    db_entry_id: "pixel-bill",    vendor: "Pixel Contractor LLC", amount: 1800, type: "expense", gl_code: "6800", secondary_gl_code: "2000", debit_credit: "debit",  status: "booked", payment_status: "paid",        source: "universal_upload" },
+    { id: "meridian-inv",  db_entry_id: "meridian-inv",  vendor: "Meridian Group",       amount: 6800, type: "revenue", gl_code: "4000", secondary_gl_code: "1100", debit_credit: "credit", status: "booked", payment_status: "uncollected", source: "universal_upload" },
+  ];
+  const open = matchableOpenItems(flatInvoices, { arCode: "1100", apCode: "2000" });
+
+  // 3 matchable bank lines + 9 unmatched (genuinely-new misc expenses).
+  const matched = [
+    { id: "b-acme", vendor: "Acme Corp",            amount: 4500, type: "revenue", gl_code: "4000" },
+    { id: "b-riv",  vendor: "Riverside Cafe",       amount: 1284, type: "revenue", gl_code: "4100" },
+    { id: "b-pix",  vendor: "Pixel Contractor LLC", amount: 1800, type: "expense", gl_code: "6800" },
+  ];
+  const unmatched = Array.from({ length: 9 }, (_, i) => ({ id: `u${i}`, vendor: `Misc ${i}`, amount: 100 + i, type: "expense", gl_code: "6500" }));
+  const parsedTxns = [...matched, ...unmatched];
+
+  const autoCleared = autoMatchBankLines(parsedTxns, open, { arCode: "1100", apCode: "2000" });
+  const plan = planBankImport({ parsedTxns, autoCleared, queue: [], openItems: open, codes });
+
+  it("partitions into 3 clearings + 9 standalone = 12 bookings (none vanish)", () => {
+    expect(autoCleared).toHaveLength(3);
+    expect(plan.clears).toHaveLength(3);       // matched → clearing JE (NOT dropped)
+    expect(plan.standalone).toHaveLength(9);   // unmatched → direct
+    expect(plan.clears.length + plan.standalone.length).toBe(12);
+  });
+
+  it("every clearing builds a real balanced JE (the step that silently posted nothing)", () => {
+    for (const c of plan.clears) {
+      expect(c.entry).toBeTruthy();                                  // buildPaymentEntry produced an entry
+      expect(c.entry.amount).toBeGreaterThan(0);
+      expect([c.entry.gl_code, c.entry.secondary_gl_code]).toContain("1000");  // cash leg present
+    }
+  });
+
+  it("AR clears to 6,800 and AP to 0 (Acme+Riverside collected, Pixel paid; Meridian still open)", () => {
+    const after = [...flatInvoices, ...plan.clears.map(clearRow)];
+    expect(glAccountBalance("1100", after)).toBe(6800);
+    expect(glAccountBalance("2000", after)).toBe(0);
+  });
+
+  it("the 3 matched lines DO move cash via their clearings (+4,500 +1,284 −1,800 = +3,984)", () => {
+    const cashFromClearings = glAccountBalance("1000", plan.clears.map(clearRow));
+    expect(cashFromClearings).toBe(3984);   // before the fix this was 0 — the lines vanished
+  });
+});

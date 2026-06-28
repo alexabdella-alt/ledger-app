@@ -4583,20 +4583,26 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
     // ── GL PAYMENT MOVEMENT (Step 1 integrity) ──────────────────────────────────
     // Post the balanced payment entry (AP: Dr AP/Accrued · Cr Cash · AR: Dr Cash · Cr
-    // AR) BEFORE flipping the flag, only on the unpaid→paid transition and only when
-    // the bill was booked to a liability/receivable. A bill booked direct-to-cash was
-    // already settled at booking, so it stays flag-only (never double-credit Cash).
-    // Posting first means a GL failure bails before the flag is written, so the flag
-    // and the GL movement are always consistent.
-    const isTransition = snap.payment_status !== newStatus;
-    if (isTransition) {
+    // AR) BEFORE flipping the flag, when the bill was booked to a liability/receivable.
+    // A bill booked direct-to-cash was already settled at booking → buildPaymentEntry
+    // returns null and it stays flag-only (never double-credit Cash).
+    //
+    // The post decision is driven by GL TRUTH — whether a LIVE clearing JE already links
+    // to this bill — NOT by the payment_status flag. (The vanishing-clearing bug: gating
+    // on `payment_status !== newStatus` skipped the post whenever the flag was already
+    // "collected"/"paid". After the matchable-open-items fix a matched bank line legitimately
+    // carries a STALE collected/paid flag from a reversed prior round, so that gate silently
+    // dropped the clearing — the line cleared nothing and its cash movement disappeared,
+    // while markBillPaid still returned success. The `already` probe below is the correct,
+    // GL-based idempotency guard; the flag is not a posting precondition.)
+    {
       const payEntry = buildPaymentEntry(inv, side, {
         apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"),
         arCode: rc("accounts_receivable"), cashCode: rc("cash"), cashName: rn("cash"),
         date: paidDate || at.slice(0, 10), billDbId: dbId,
       });
       if (payEntry) {
-        // Idempotency: don't double-post if a live payment JE already links to this bill.
+        // Idempotency: don't double-post if a LIVE payment JE already links to this bill.
         let already = false;
         try {
           const { data } = await supabase.from("journal_entries").select("id")
@@ -4604,7 +4610,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             .eq("import_metadata->>payment_for", String(dbId))
             .is("deleted_at", null).eq("status", "posted").limit(1);
           already = Array.isArray(data) && data.length > 0;
-        } catch { /* probe failed — rely on the transition guard above */ }
+        } catch { /* probe failed — fall through and post; a true dup is rare and reversible */ }
         if (!already) {
           postedPaymentId = await persistJournalEntry(payEntry);
           if (!postedPaymentId) return await fail("payment GL entry post failed");
