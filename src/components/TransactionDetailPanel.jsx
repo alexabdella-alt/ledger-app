@@ -129,13 +129,22 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
     } catch (e) { console.error(e); showNotification("Couldn't attach document.", "error"); }
     setSrcUploading(false);
   };
-  const doRecode = (inv, code) => {
+  const doRecode = async (inv, code) => {
     const acct = (CHART_OF_ACCOUNTS || []).find(a => a.code === code);
     if (!acct) return;
+    const before = { gl_code: inv.gl_code, gl_name: inv.gl_name };
     setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, gl_code: acct.code, gl_name: acct.name } : i));
-    logAudit && logAudit("recode", `Recoded ${inv.vendor} → ${acct.name}`, { gl_code: inv.gl_code }, { gl_code: acct.code, gl_name: acct.name });
-    persistRecode && persistRecode([{ ...inv, gl_code: acct.code }], acct.code, acct.name);
     setRecodeOpen(false);
+    // Verify the DB write committed before treating it as done — on failure, revert the
+    // optimistic change and tell the user (no silent false success).
+    const ok = persistRecode ? await persistRecode([{ ...inv, gl_code: acct.code }], acct.code, acct.name) : false;
+    if (ok) {
+      logAudit && logAudit("recode", `Recoded ${inv.vendor} → ${acct.name}`, { gl_code: inv.gl_code }, { gl_code: acct.code, gl_name: acct.name });
+      showNotification && showNotification(`Recoded to ${acct.name} ✓`);
+    } else {
+      setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, ...before } : i));
+      showNotification && showNotification("Couldn't save the recode — please try again.", "error");
+    }
   };
   const doVoid = (inv) => { voidInvoiceWithUndo(inv, "Voided from detail panel"); onClose(); };
 

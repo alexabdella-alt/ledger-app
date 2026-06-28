@@ -17,6 +17,7 @@ import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
 import { pickActiveCompany } from "./lib/companies";
 import { companyIdentityNames, classifyDocDirection } from "./lib/docDirection";
+import { composeAssistantReply } from "./lib/chatReply";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/revenueEntries";
@@ -1034,39 +1035,45 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   };
 
   // ── SUPABASE PERSISTENCE ──────────────────────────────────────
-  // Reclassify the debit line of an existing journal entry in Supabase
+  // Reclassify the debit line of an existing journal entry in Supabase. Returns TRUE
+  // only when every targeted entry's line actually committed — callers must NOT report
+  // success on a falsy return (the chatbot/panel false-success bug: it claimed "✓
+  // reclassed" while this silently no-op'd on a not-yet-persisted entry or swallowed a
+  // failed update).
   const persistRecode = async (recodedInvoices, newGlCode, newGlName) => {
-    if (!currentCompany?.id) return;
-    const withDbId = recodedInvoices.filter(i => i.db_entry_id);
-    if (withDbId.length === 0) return;
+    if (!currentCompany?.id) return false;
+    const targets = recodedInvoices || [];
+    if (targets.length === 0) return false;
+    // Every target must have a DB id; otherwise we can't persist the change (the
+    // "worked on retry" race — the entry hadn't finished saving on the first attempt).
+    const withDbId = targets.filter(i => i.db_entry_id);
+    if (withDbId.length !== targets.length) {
+      console.warn("[persistRecode] not all entries persisted yet — recode not committed");
+      return false;
+    }
     try {
       // Ensure the new account exists in Supabase
-      let { data: acctRow } = await supabase.from("accounts")
+      let { data: acctRow, error: acctErr } = await supabase.from("accounts")
         .select("id").eq("company_id", currentCompany.id).eq("code", newGlCode).single();
+      if (acctErr && acctErr.code !== "PGRST116") { console.error("[persistRecode] account lookup:", acctErr.message); return false; }
       if (!acctRow) {
         const acctDef = CHART_OF_ACCOUNTS.find(a => a.code === newGlCode);
-        const { data: created } = await supabase.from("accounts").insert(
+        const { data: created, error: insErr } = await supabase.from("accounts").insert(
           buildAccountInsert({ companyId: currentCompany.id, code: newGlCode, name: newGlName || acctDef?.name || newGlCode, category: acctDef?.category })
         ).select("id").single();
+        if (insErr || !created) { console.error("[persistRecode] account insert:", insErr?.message); return false; }
         acctRow = created;
       }
-      if (!acctRow?.id) return;
-      // Update the primary (debit) line of each journal entry
+      if (!acctRow?.id) return false;
+      // Update the primary (debit/credit) line of each journal entry — check EVERY write.
       for (const inv of withDbId) {
         const isDebit = inv.debit_credit !== "credit";
-        if (isDebit) {
-          await supabase.from("journal_entry_lines")
-            .update({ account_id: acctRow.id })
-            .eq("journal_entry_id", inv.db_entry_id)
-            .gt("debit", 0);
-        } else {
-          await supabase.from("journal_entry_lines")
-            .update({ account_id: acctRow.id })
-            .eq("journal_entry_id", inv.db_entry_id)
-            .gt("credit", 0);
-        }
+        const q = supabase.from("journal_entry_lines").update({ account_id: acctRow.id }).eq("journal_entry_id", inv.db_entry_id);
+        const { error } = await (isDebit ? q.gt("debit", 0) : q.gt("credit", 0));
+        if (error) { console.error("[persistRecode] line update:", error.message); return false; }
       }
-    } catch(e) { console.error("persistRecode error:", e); }
+      return true;
+    } catch(e) { console.error("persistRecode error:", e); return false; }
   };
 
   // Write a journal entry to Supabase when an invoice is booked
@@ -4668,6 +4675,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
       // Execute actions
       let actionSummary = [];
+      let actionFailures = [];   // mutating actions whose WRITE did not commit — the reply
+                                 // must surface these, never a false "✓ done" (chatbot
+                                 // false-success bug). Each handler verifies its own write.
       let richOutputs = [];   // inline chat outputs: charts, CSV buttons, summary cards
       const newRules = [...rules];
 
@@ -4794,14 +4804,25 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         if (action.type === "recode" && action.invoiceIds?.length) {
           const toRecode = invoices.filter(inv => action.invoiceIds.includes(inv.id));
           const beforeState = toRecode.map(i => ({ id:i.id, gl_code:i.gl_code, gl_name:i.gl_name }));
+          // Optimistic update, then VERIFY the DB write committed before reporting success.
           setInvoices(prev => prev.map(inv =>
             action.invoiceIds.includes(inv.id)
               ? { ...inv, gl_code: action.gl_code, gl_name: action.gl_name, recode_note: `Recoded by AI assistant` }
               : inv
           ));
-          logAudit("ai_recode", `AI recoded ${toRecode.length} invoice(s) → ${action.gl_name}`, beforeState, { gl_code: action.gl_code, gl_name: action.gl_name });
-          persistRecode(toRecode, action.gl_code, action.gl_name); // fire-and-forget
-          actionSummary.push(`Recoded ${toRecode.length} invoice(s) → ${action.gl_name}`);
+          const ok = await persistRecode(toRecode, action.gl_code, action.gl_name);
+          if (ok) {
+            logAudit("ai_recode", `AI recoded ${toRecode.length} invoice(s) → ${action.gl_name}`, beforeState, { gl_code: action.gl_code, gl_name: action.gl_name });
+            actionSummary.push(`Recoded ${toRecode.length} invoice(s) → ${action.gl_name}`);
+          } else {
+            // Write didn't commit → revert the optimistic change and record the failure so
+            // the reply can't claim "✓ reclassed" (the reported false-success bug).
+            setInvoices(prev => prev.map(inv => {
+              const b = beforeState.find(x => x.id === inv.id);
+              return b ? { ...inv, gl_code: b.gl_code, gl_name: b.gl_name, recode_note: undefined } : inv;
+            }));
+            actionFailures.push(`recode → ${action.gl_name}`);
+          }
         }
         if (action.type === "retag_project" && action.invoiceIds?.length) {
           setInvoices(prev => prev.map(inv =>
@@ -4812,8 +4833,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         }
         if (action.type === "add_account") {
           if (action.code && action.name && action.category) {
-            await addCustomAccount({ code: action.code, name: action.name, category: action.category });
-            actionSummary.push(`Added account: ${action.code} ${action.name} (${action.category})`);
+            const ok = await addCustomAccount({ code: action.code, name: action.name, category: action.category });
+            if (ok === false) actionFailures.push(`add account ${action.code} ${action.name}`);
+            else actionSummary.push(`Added account: ${action.code} ${action.name} (${action.category})`);
           }
         }
         if (action.type === "delete_invoice") {
@@ -4861,6 +4883,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           if (toReverse) {
             const revId = await reverseJournalEntry(toReverse, action.reason || "Reversed via AI", true);
             if (revId) { await loadAllData().catch(() => {}); actionSummary.push(`Reversing entry created for ${toReverse.vendor} $${toReverse.amount}`); }
+            else actionFailures.push(`reverse ${toReverse.vendor}`);   // didn't post → don't claim success
           }
         }
         if (action.type === "delete_contract") {
@@ -4996,6 +5019,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
         return `I found ${ambiguous.matches.length} matching ${ambiguous.vendor ? ambiguous.vendor + " " : ""}charges — which one did you want me to ${verb}? ${list}${more}. Tell me which one (or say "all") and I'll take care of it.`;
       };
 
+      // A mutating write failed to commit → resync the UI to DB truth (undo any optimistic
+      // state) before we render the (honest) reply.
+      if (actionFailures.length) { try { await loadAllData(); } catch {} }
+
       const assistantMsg = {
         role: "assistant",
         content: memberBlocked
@@ -5004,7 +5031,8 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             ? clarifyText()
             : bulkBlocked
               ? "I can delete items one at a time for safety. Which specific entry would you like me to remove first?"
-              : (result.reply || "Done!"),
+              // NEVER claim success on a write that didn't commit — surface failures.
+              : composeAssistantReply({ reply: result.reply, actionFailures, actionSummary }),
         actions: (memberBlocked || clarifyNeeded || bulkBlocked) ? [] : actionSummary,
         rich: (memberBlocked || clarifyNeeded || bulkBlocked) ? [] : richOutputs,
         id: Date.now() + 1,
