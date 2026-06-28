@@ -182,16 +182,21 @@ export default function DashboardView() {
       title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${txns.length} transactions · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
       body = txnRows(txns, "var(--sc-error)");
     } else if (d.type==="runway") {
-      const tdy=new Date();
-      const mk=k=>new Date(tdy.getFullYear(),tdy.getMonth()-k,1).toISOString().slice(0,7);
-      const burns=[0,1,2].map(k=>exp.filter(i=>i.date?.startsWith(mk(k))).reduce((s,i)=>s+i.amount,0)).filter(b=>b>0);
-      const avgBurn=burns.length?burns.reduce((s,b)=>s+b,0)/burns.length:0;
+      // Compute from the SAME canonical source as the card face (computeBurnRate trailing 3-mo
+      // over the months that HAVE expense data + computeRunway), so the breakdown ties to the
+      // headline. The old inline math averaged a fixed last-3-CALENDAR-month window
+      // (e.g. June/May/Apr); when activity sat in an earlier month (a Feb statement viewed in
+      // June) that window was empty → avgBurn 0 → the drill showed "∞ / —" while the card
+      // showed a real finite runway (same summary-vs-detail divergence as the report drill).
+      const today=new Date().toISOString().slice(0,10);
+      const avgBurn=computeBurnRate(invoices, { asOf: today });   // trailing 3-mo, canonical
       const cash=glCash;   // GL cash on hand — the one canonical source (no ad-hoc cash math)
-      const runway=avgBurn>0?Math.floor(cash/avgBurn):null;
+      const runwayExact=computeRunway(cash, avgBurn);
+      const runway=runwayExact===null?null:Math.floor(runwayExact);
       title="Runway"; subtitle="How long your cash lasts at the current burn rate";
       body=(<div style={{ padding:"18px 20px" }}>
         <div style={{ fontSize:30, fontWeight:700, fontFamily:"'DM Mono',monospace", color: runway===null?"var(--sc-text-2)":runway<6?"var(--sc-error)":runway<=12?"var(--sc-warning)":"var(--sc-success)", marginBottom:14 }}>{runway===null?"∞":`${runway} months`}</div>
-        {[["Estimated cash on hand", fmt(cash)],["Average monthly burn (3-mo)", fmt(avgBurn)],["Runway = cash ÷ avg burn", runway===null?"—":`${fmt(cash)} ÷ ${fmt(avgBurn)} ≈ ${runway} mo`]].map(([k,v])=>(
+        {[["Cash on hand", fmt(cash)],["Average monthly burn (trailing 3-mo)", fmt(avgBurn)],["Runway = cash ÷ monthly burn", runway===null?"—":`${fmt(cash)} ÷ ${fmt(avgBurn)} ≈ ${runway} mo`]].map(([k,v])=>(
           <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:"1px solid var(--sc-surface-2)", fontSize:13 }}><span style={{ color:"var(--sc-text-2)" }}>{k}</span><span style={{ fontFamily:"'DM Mono',monospace" }}>{v}</span></div>
         ))}
         <div style={{ marginTop:14, display:"flex", gap:10 }}>
