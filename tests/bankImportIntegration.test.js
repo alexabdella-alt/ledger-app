@@ -247,3 +247,36 @@ describe("autoMatchBankLines — per-line results trace (loop matches ALL, not j
     expect(trace[0].reason).toMatch(/no candidate amount/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WIRING: the deterministic matcher must run + its results survive even when the items'
+// `type` would have tripped the old `if (openPayables==0 && openReceivables==0) return []`
+// guard that sat BEFORE the deterministic pass. With every item's type drifted, that guard
+// produced 0 candidates and the engine returned [] before deterministic ran → the flaky LLM
+// was the only matcher (nondeterministic 0/1-of-3). Offset-keyed matching is unaffected.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("deterministic matcher runs regardless of `type` (the early-return wiring bug)", () => {
+  // type set to values that make `type === "expense"/"revenue"` FALSE for all → the old guard
+  // would have short-circuited to [] before the deterministic pass.
+  const driftedOpen = [
+    { id: "acme-inv",      vendor: "Acme Corporation",     amount: 4500, type: "ar_invoice", gl_code: "4000", secondary_gl_code: "1100" },
+    { id: "riverside-inv", vendor: "Riverside Cafe",       amount: 1284, type: "ar_invoice", gl_code: "4100", secondary_gl_code: "1100" },
+    { id: "pixel-bill",    vendor: "Pixel Contractor LLC", amount: 1800, type: "bill",       gl_code: "6800", secondary_gl_code: "2000" },
+  ];
+  const bankLines = [
+    { id: "b-acme", vendor: "Acme Corp",            amount: 4500, type: "revenue" },
+    { id: "b-riv",  vendor: "Riverside Cafe",       amount: 1284, type: "revenue" },
+    { id: "b-pix",  vendor: "Pixel Contractor LLC", amount: 1800, type: "expense" },
+  ];
+
+  it("old type-based guard WOULD have been empty (0 candidates) → engine returned [] pre-deterministic", () => {
+    const oldOpenPayables = driftedOpen.filter(i => i.type === "expense");
+    const oldOpenReceivables = driftedOpen.filter(i => i.type === "revenue");
+    expect(oldOpenPayables.length === 0 && oldOpenReceivables.length === 0).toBe(true);  // guard would short-circuit
+  });
+
+  it("but the deterministic matcher (offset-keyed) still matches all 3 — 0 LLM dependence", () => {
+    const m = autoMatchBankLines(bankLines, driftedOpen, { arCode: "1100", apCode: "2000" });
+    expect(m).toHaveLength(3);
+  });
+});

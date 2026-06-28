@@ -3743,7 +3743,7 @@ Keep the same array order and index as input.`,
     const openItems = matchableOpenItems(invoicesRef.current || invoices, {
       arCode: rc("accounts_receivable"), apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"),
     });
-    const { autoCleared, queue } = await runMatchingEngine(parsedTxns, openItems);
+    const { autoCleared, queue, deterministicCount = 0, llmCount = 0 } = await runMatchingEngine(parsedTxns, openItems);
     const plan = planBankImport({
       parsedTxns, autoCleared, queue, openItems,
       codes: { apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"), arCode: rc("accounts_receivable"), cashCode: offsetCode, cashName: offsetName },
@@ -3765,8 +3765,11 @@ Keep the same array order and index as input.`,
     if (booked > 0) checkWatchTriggers(plan.standalone.map(buildEntry), unknownDocs);
     try { await loadAllData(); } catch {}
     const failN = clearFailed + bookFailed;
+    // Surface the matcher breakdown so the deterministic vs LLM contribution is visible WITHOUT
+    // the console (deterministic should carry the exact-match cases every time — if this shows
+    // "deterministic: 0" on an exact-name+amount import, the pre-matcher isn't seeing the data).
     showNotification(
-      `${clearedOk} cleared · ${booked} booked${plan.review.length ? ` · ${plan.review.length} need review` : ""}${failN ? ` · ${failN} failed (retry/review)` : ""}`,
+      `${clearedOk} cleared · ${booked} booked${plan.review.length ? ` · ${plan.review.length} need review` : ""}${failN ? ` · ${failN} failed (retry/review)` : ""} — matched via deterministic: ${deterministicCount}, AI: ${llmCount}`,
       failN ? "error" : "success"
     );
     if (plan.review.length > 0) setView("matching");
@@ -4103,43 +4106,37 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
 
   // Run matching engine against a set of new bank transactions
   const runMatchingEngine = async (newBankTxns, currentInvoices) => {
-    // Collect all open items (unmatched invoices/accruals)
-    // Split the already-open candidate set (the live caller passes matchableOpenItems, which
-    // determined "open" from GL truth) by side. DON'T re-filter on payment_status here — that
-    // flag is the stale signal matchableOpenItems deliberately bypasses; re-applying it would
-    // re-drop the very items we just recovered.
-    const openPayables = currentInvoices.filter(inv => inv.type === "expense" && !inv.matched);
-    const openReceivables = currentInvoices.filter(inv => inv.type === "revenue" && !inv.matched);
+    if (!newBankTxns?.length || !currentInvoices?.length) return { autoCleared: [], queue: [], deterministicCount: 0, llmCount: 0 };
 
-    if (openPayables.length === 0 && openReceivables.length === 0) return { autoCleared: [], queue: [] };
-    if (newBankTxns.length === 0) return { autoCleared: [], queue: [] };
-
-    // ── 1) Deterministic pass: exact amount + normalized party name, side keyed on the
-    // A/R-or-A/P OFFSET CODE (not a `type` string). Feed it the FULL open-items list (NOT
-    // the type-filtered openPayables/openReceivables) so an item whose flattened `type`
-    // drifted from "revenue"/"expense" can't be silently excluded before matching even runs.
+    // ── 1) DETERMINISTIC PASS — runs FIRST, before any early return, independent of the LLM.
+    // Pure, no AI: exact amount + normalized name, side keyed on the A/R/A/P OFFSET code (not a
+    // `type` string). Its matches are AUTHORITATIVE and survive to booking regardless of what
+    // the LLM does. (The wiring bug this fixes: the old `if (openPayables==0 && openReceivables
+    // ==0) return []` guard sat BEFORE this and was computed from a `type` string — when `type`
+    // drifted, both were empty and the ENTIRE engine returned [] before the deterministic matcher
+    // ran, so the flaky LLM was the only matcher → nondeterministic 0/1-of-3 on identical input.)
     const arCodeForMatch = rc("accounts_receivable");
     const apCodeForMatch = rc("accounts_payable");
     const matchTrace = [];
     const deterministic = autoMatchBankLines(newBankTxns, currentInvoices, { arCode: arCodeForMatch, apCode: apCodeForMatch, trace: matchTrace });
-    // Diagnostic (bank-import matching): surfaces the ACTUAL candidate set + match results at
-    // runtime so a live miss is debuggable from the browser console (the unit data matches 3/3).
     try {
+      console.info(`[bank-match] DETERMINISTIC matched: ${deterministic.length}/${newBankTxns.length}`, deterministic.map(m => ({ bank: m.bank_txn_id, inv: m.invoice_ids, side: m.match_type })));
       console.info("[bank-match] candidates:", currentInvoices.filter(i => (arCodeForMatch && (String(i.secondary_gl_code)===String(arCodeForMatch)||String(i.gl_code)===String(arCodeForMatch))) || (apCodeForMatch && (String(i.secondary_gl_code)===String(apCodeForMatch)||String(i.gl_code)===String(apCodeForMatch)))).map(i => ({ id: i.id, vendor: i.vendor, amount: i.amount, type: i.type, gl: i.gl_code, off: i.secondary_gl_code })));
       console.info("[bank-match] bank lines:", newBankTxns.map(t => ({ id: t.id, vendor: t.vendor, amount: t.amount, type: t.type })));
-      console.info("[bank-match] deterministic matches:", deterministic.map(m => ({ bank: m.bank_txn_id, inv: m.invoice_ids, side: m.match_type })));
-      console.info(`[bank-match] results (${deterministic.length}/${newBankTxns.length} matched):`);
       for (const r of matchTrace) console.info(`  · ${r.matched ? "✓ MATCHED" : "✗ no match"} — ${r.vendor} $${r.amount}${r.matched ? ` → ${r.invoiceId} (${r.side})` : ` — ${r.reason}`}`);
     } catch {}
+
     const handledBankIds = new Set(deterministic.map(m => String(m.bank_txn_id)));
     const handledInvIds  = new Set(deterministic.flatMap(m => (m.invoice_ids || []).map(String)));
-    const remainingTxns      = newBankTxns.filter(t => !handledBankIds.has(String(t.id)));
-    const remainPayables     = openPayables.filter(i => !handledInvIds.has(String(i.id)));
-    const remainReceivables  = openReceivables.filter(i => !handledInvIds.has(String(i.id)));
+    const remainingTxns  = newBankTxns.filter(t => !handledBankIds.has(String(t.id)));
+    // Best-effort side split for the LLM of ONLY what deterministic didn't take. `type` here is
+    // fine — the deterministic (offset-based) result already stands no matter how `type` looks.
+    const remainPayables    = currentInvoices.filter(inv => inv.type === "expense" && !inv.matched && !handledInvIds.has(String(inv.id)));
+    const remainReceivables = currentInvoices.filter(inv => inv.type === "revenue" && !inv.matched && !handledInvIds.has(String(inv.id)));
 
-    // 2) Nothing left for the LLM (everything matched, or no open items remain) → done.
+    // 2) Nothing left for the LLM → return the DETERMINISTIC set (never []).
     if (remainingTxns.length === 0 || (remainPayables.length === 0 && remainReceivables.length === 0)) {
-      return { autoCleared: deterministic, queue: [] };
+      return { autoCleared: deterministic, queue: [], deterministicCount: deterministic.length, llmCount: 0 };
     }
 
     setMatchProcessing(true);
@@ -4231,7 +4228,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           clearing_entry: match.clearing_entry,
           auto_clear: match.auto_clear,
           bank_txn: newBankTxns.find(t => String(t.id) === String(match.bank_txn_id)),  // string-tolerant: the LLM may echo the id with a different type
-          matched_invoices: [...openPayables, ...openReceivables].filter(i => match.invoice_ids.includes(i.id)),
+          matched_invoices: (currentInvoices || []).filter(i => match.invoice_ids.includes(i.id)),
           status: "pending",
           created_at: new Date().toISOString(),
         };
@@ -4243,10 +4240,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         }
       }
 
-      return { autoCleared, queue };
+      try { console.info(`[bank-match] LLM added: ${autoCleared.length - deterministic.length} · total autoCleared: ${autoCleared.length}`); } catch {}
+      return { autoCleared, queue, deterministicCount: deterministic.length, llmCount: autoCleared.length - deterministic.length };
     } catch(e) {
-      console.error("Matching engine error:", e);
-      return { autoCleared: deterministic, queue: [] };   // LLM failed — still keep the sure matches
+      // LLM failed/timed out — NEVER zero out the deterministic matches; they stand alone.
+      console.error("Matching engine error (deterministic matches retained):", e);
+      return { autoCleared: deterministic, queue: [], deterministicCount: deterministic.length, llmCount: 0 };
     } finally {
       setMatchProcessing(false);
     }
