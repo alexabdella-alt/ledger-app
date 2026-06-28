@@ -327,7 +327,7 @@ export default function ReconView() {
             completed.map(r=>{
               const od = r.completed_at && (Date.now()-new Date(r.completed_at).getTime())/86400000 > 35;
               return (
-                <div key={r.id} onClick={()=>setViewRecId(r.id)} onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                <div key={r.id} onClick={()=>setViewRecId(r.id)} onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                   style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"13px 20px", borderTop:"1px solid var(--sc-surface-2)", cursor:"pointer" }}>
                   <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {fmtDate(r.period_start)} → {fmtDate(r.period_end)}</div><div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{fmt(r.statement_balance)} · {r.completed_at?fmtDate(r.completed_at):""}</div></div>
                   <span style={{ fontSize:11, fontWeight:600, color: od?"var(--sc-error)":"var(--sc-success)", background:(od?"var(--sc-error)":"var(--sc-success)")+"14", border:`1px solid ${(od?"var(--sc-error)":"var(--sc-success)")}33`, borderRadius:20, padding:"3px 10px" }}>{od?"Overdue":"Complete"}</span>

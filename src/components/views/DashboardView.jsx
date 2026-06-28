@@ -95,7 +95,7 @@ export default function DashboardView() {
       ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>No transactions here.</div>
       : [...arr].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(inv=>(
           <div key={inv.id} onClick={()=>{ setReturnTo({view:"home",label:"Home"}); setSelectedInvoice(inv); setView("detail"); }}
-            onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+            onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, padding:"11px 18px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)" }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
               <span style={{ fontSize:11, color:"var(--sc-text-2)", width:80, flexShrink:0 }}>{fmtDate(inv.date)||"—"}</span>
@@ -113,7 +113,7 @@ export default function DashboardView() {
         ));
 
     const clickableRow = (key, left, right, onClick) => (
-      <div key={key} onClick={onClick} onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+      <div key={key} onClick={onClick} onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
         style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, padding:"13px 18px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)" }}>
         {left}
         <span style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>{right}<span style={{ color:"var(--sc-text-mut)" }}>›</span></span>
@@ -180,7 +180,7 @@ export default function DashboardView() {
       const max = Math.max(1,...months.map(m=>m.total));
       title = "Monthly burn"; subtitle = "Last 6 months — click a month to see its transactions";
       body = months.map(m=>(
-        <div key={m.key} onClick={()=>setDashDrill({type:"burn",month:m.key,monthLabel:m.label})} onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+        <div key={m.key} onClick={()=>setDashDrill({type:"burn",month:m.key,monthLabel:m.label})} onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
           style={{ padding:"12px 18px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)" }}>
           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
             <span style={{ fontSize:13, color:"var(--sc-text-2)" }}>{m.label}</span>
@@ -763,7 +763,7 @@ export default function DashboardView() {
                           const ml = monthsLeft(c);
                           return (
                             <div key={c.id||i} onClick={()=>{ setSelectedContract(c); setContractView("detail"); setView("contracts"); }}
-                              onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                              onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                               style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 20px", borderTop: i?"1px solid var(--sc-surface-2)":"none", cursor:"pointer" }}>
                               <div style={{ minWidth:0 }}>
                                 <div style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{c.counterparty||"Contract"}</div>
@@ -796,7 +796,7 @@ export default function DashboardView() {
                     {shown.length===0 ? <div style={{ padding:"44px", textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>Nothing yet — drop a document above to get started.</div> :
                       shown.map((it,idx)=>(
                         <div key={idx} onClick={()=>{ if(it.inv){ setReturnTo({view:"home",label:"Home"}); setSelectedInvoice(it.inv); setView("detail"); } }}
-                          onMouseEnter={e=>{ if(it.inv) e.currentTarget.style.background="#F9FAFB"; }} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                          onMouseEnter={e=>{ if(it.inv) e.currentTarget.style.background="var(--sc-surface-2)"; }} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                           style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 24px", borderTop: idx?"1px solid var(--sc-surface-2)":"none", cursor: it.inv?"pointer":"default", transition:"background 0.1s" }}>
                           <div style={{ width:36, height:36, borderRadius:10, background: it.amount!=null?(it.rev?"var(--sc-success-soft)":"var(--sc-error-soft)"):"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{it.icon}</div>
                           <div style={{ flex:1, minWidth:0 }}>

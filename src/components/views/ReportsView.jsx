@@ -5,15 +5,19 @@ import { initials, vendorColor, fmtDate, fmtSignedMoney } from "../../lib/format
 import { getAuthHeaders } from "../../lib/supabase";
 import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
+import { reportNavBack } from "../../lib/reportNav";
 import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
 import MonthlyReportsPanel from "./MonthlyReportsPanel";
 
 export default function ReportsView() {
-  const { runDepreciationThrough, attachDepreciationToExistingAsset, isOwner, isAdmin, cutoffDate, glCash, getAccountByRole, reconciliations, anomalies, setReturnTo, AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
-  const [plDrill, setPlDrill] = React.useState(null); // {type:"rev-acct"|"exp-acct"|"exp-vendor", code, name, vendor?}
-  // Drill-down for the other reports: {scope:"vendor"|"gl"|"cashflow"|"project"|"bsacct", value, label}
-  const [drill, setDrill] = React.useState(null);
-  const [drillSel, setDrillSel] = React.useState(null); // selected transaction id for the slide-in
+  const { plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, runDepreciationThrough, attachDepreciationToExistingAsset, isOwner, isAdmin, cutoffDate, glCash, getAccountByRole, reconciliations, anomalies, setReturnTo, AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  // plDrill / drill / drillSel are now LIFTED to ERP context (above) so they survive the
+  // transaction-detail round-trip — Back returns to the line-item list, not the report top.
+  // In-report Back pops exactly one drill level via the shared reportNavBack state machine.
+  const goReportBack = () => {
+    const prev = reportNavBack({ view: "reports", reportType, plDrill, drill });
+    if (prev) { setPlDrill(prev.plDrill); setDrill(prev.drill); setDrillSel(null); }
+  };
   const [tbAdjusted, setTbAdjusted] = React.useState(true); // trial balance: adjusted (exclude voided) vs unadjusted
   const [depRunDate, setDepRunDate] = React.useState(new Date().toISOString().slice(0, 10));
   const [depRunning, setDepRunning] = React.useState(false);
@@ -41,7 +45,9 @@ export default function ReportsView() {
       });
     } finally { setAttaching(false); }
   };
-  React.useEffect(() => { setDrill(null); setDrillSel(null); }, [reportType]);
+  // NOTE: drill state is no longer cleared on a ReportsView remount (that would wipe the
+  // drill when returning from the transaction detail → the skip bug). It's cleared only when
+  // the user actively switches report tabs (the tab onClick below).
   // O70: on open, the report window auto-defaults to the CURRENT period — "to" is
   // always today (never a stale saved value from sessionStorage), "from" is the
   // fiscal-year start (respects fiscal_year_end + cutoff). The user can still change
@@ -145,7 +151,9 @@ export default function ReportsView() {
             const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${reportDateFrom} → ${reportDateTo}` : "Custom Range" };
             // Friendly report name for the transaction detail back button.
             const reportName = { pl:"Income Statement", balance:"Balance Sheet", trial:"Trial Balance", araging:"AR Aging", apaging:"AP Aging", kpis:"KPIs", vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project" }[reportType] || "Reports";
-            const reportReturn = { view:"reports", label:reportName, reportType };
+            // Back from a drilled transaction returns to the line-item LIST it came from (the
+            // drill state is preserved in ERP), so label the Back with that list, not the report.
+            const reportReturn = { view:"reports", label:(plDrill?.vendor || plDrill?.name || drill?.label || reportName), reportType };
 
             // ── Report drill-downs ──────────────────────────────────────────────
             // The transactions behind a clicked row, honoring the active date range.
@@ -174,7 +182,7 @@ export default function ReportsView() {
               return (
                 <div className="sc-rise" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip", marginBottom:16 }}>
                   <div style={{ padding:"16px 24px", borderBottom:"1px solid var(--sc-border)", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-                    <button onClick={()=>setDrill(null)} style={{ background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer" }}>← Back</button>
+                    <button onClick={goReportBack} style={{ background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer" }}>← Back</button>
                     <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                       {crumbs.map((c,ci)=>(
                         <span key={ci} style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -197,7 +205,7 @@ export default function ReportsView() {
                           const rev = isRev(inv);
                           return (
                             <tr key={inv.id} onClick={()=>setDrillSel(inv.id)} style={{ cursor:"pointer", height:52, background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", opacity:inv.status==="voided"?0.55:1, transition:"background 0.1s" }}
-                              onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="#FFFFFF"}>
+                              onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="var(--sc-surface)"}>
                               <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{fmtDate(inv.date)}</td>
                               {!hideVendor && <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor||"—"}</span></div></td>}
                               <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
@@ -224,7 +232,7 @@ export default function ReportsView() {
                 {/* Controls */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
                   {[["pl","P&L"],["balance","Balance Sheet"],["trial","Trial Balance"],["araging","AR Aging"],["apaging","AP Aging"],["kpis","KPIs"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"],["monthly","Monthly Reports"]].map(([id,label])=>(
-                    <button key={id} onClick={()=>setReportType(id)} style={{ padding:"8px 16px", borderRadius:20, fontSize:13, background:reportType===id?"var(--sc-gold)":"transparent", border:`1px solid ${reportType===id?"var(--sc-gold)":"var(--sc-border-2)"}`, color:reportType===id?"var(--sc-surface-2)":"var(--sc-text-2)", cursor:"pointer", fontWeight:reportType===id?600:400 }}>{label}</button>
+                    <button key={id} onClick={()=>{ setReportType(id); setPlDrill(null); setDrill(null); setDrillSel(null); }} style={{ padding:"8px 16px", borderRadius:20, fontSize:13, background:reportType===id?"var(--sc-gold)":"transparent", border:`1px solid ${reportType===id?"var(--sc-gold)":"var(--sc-border-2)"}`, color:reportType===id?"var(--sc-surface-2)":"var(--sc-text-2)", cursor:"pointer", fontWeight:reportType===id?600:400 }}>{label}</button>
                   ))}
                   <div style={{ flex:1 }} />
                   {/* Date range — custom inputs always visible, preset buttons for quick selection */}
@@ -294,7 +302,7 @@ export default function ReportsView() {
                           return (
                             <div className="sc-rise" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
                               <div style={{ padding:"16px 24px", borderBottom:"1px solid var(--sc-border)", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-                                <button onClick={back} style={{ background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer" }}>← Back</button>
+                                <button onClick={goReportBack} style={{ background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer" }}>← Back</button>
                                 <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                                   {crumbs.map((c,ci)=>(
                                     <span key={ci} style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -309,7 +317,7 @@ export default function ReportsView() {
                               {kind==="vendors" ? (
                                 data.map(v=>(
                                   <div key={v.vendor} onClick={()=>setPlDrill({type:"exp-vendor",code:plDrill.code,name:plDrill.name,vendor:v.vendor})}
-                                    onMouseEnter={e=>e.currentTarget.style.background="#F3F4F6"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 24px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ width:26, height:26, borderRadius:7, background:vendorColor(v.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"var(--sc-on-accent)" }}>{initials(v.vendor)}</span>
@@ -325,7 +333,7 @@ export default function ReportsView() {
                                 data.length===0 ? <div style={{ padding:24, fontSize:13, color:"var(--sc-text-2)" }}>No transactions in range.</div> :
                                 data.map(inv=>(
                                   <div key={inv.id} onClick={()=>{ setReturnTo(reportReturn); setSelectedInvoice(inv); setView("detail"); }}
-                                    onMouseEnter={e=>e.currentTarget.style.background="#F3F4F6"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 24px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)" }}>
                                     <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
                                       <span style={{ fontSize:11, color:"var(--sc-text-2)", width:78, flexShrink:0 }}>{fmtDate(inv.date)}</span>
@@ -364,7 +372,7 @@ export default function ReportsView() {
                               {revRows.length===0 ? <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>No revenue recorded</div> :
                                 revRows.map(row=>(
                                   <div key={row.code} onClick={()=>setPlDrill({type:"rev-acct",code:row.code,name:row.name})} title="View transactions"
-                                    onMouseEnter={e=>e.currentTarget.style.background="#E4E7EC"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
@@ -388,7 +396,7 @@ export default function ReportsView() {
                                 <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:2, marginBottom:12 }}>COST OF REVENUE</div>
                                 {cogsRows.map(row=>(
                                   <div key={row.code} onClick={()=>setPlDrill({type:"exp-acct",code:row.code,name:row.name})} title="Drill into vendors"
-                                    onMouseEnter={e=>e.currentTarget.style.background="#E4E7EC"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
@@ -412,7 +420,7 @@ export default function ReportsView() {
                               {opexRows.length===0 ? <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>No expenses recorded</div> :
                                 opexRows.map(row=>(
                                   <div key={row.code} onClick={()=>setPlDrill({type:"exp-acct",code:row.code,name:row.name})} title="Drill into vendors"
-                                    onMouseEnter={e=>e.currentTarget.style.background="#E4E7EC"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
@@ -498,7 +506,7 @@ export default function ReportsView() {
                         if (bal === 0) return null;
                         return (
                           <div onClick={()=>setDrill({scope:"bsacct",value:a.code,label:a.name})} title="View transactions"
-                            onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                            onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                             style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid var(--sc-surface-2)",cursor:"pointer"}}>
                             <div style={{fontSize:13,color:"var(--sc-text-2)"}}>
                               <span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}
@@ -566,7 +574,7 @@ export default function ReportsView() {
                             {/* Paid-in capital accounts (Common Stock, APIC) — show all except Retained Earnings (3100) */}
                             {bsEquity.filter(a => a.code !== "3100" && getBal(a.code) !== 0).map(a=>(
                               <div key={a.code} onClick={()=>setDrill({scope:"bsacct",value:a.code,label:a.name})} title="View transactions"
-                                onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                 style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid var(--sc-surface-2)",cursor:"pointer"}}>
                                 <div style={{fontSize:13,color:"var(--sc-text-2)"}}><span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}</div>
                                 <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"var(--sc-error)":"var(--sc-text)"}}>{bsFmt(getBal(a.code))}</div>
@@ -622,7 +630,7 @@ export default function ReportsView() {
                           <tbody>
                             {vendorRows.map((v,i)=>(
                               <tr key={v.name} onClick={()=>setDrill({scope:"vendor",value:v.name,label:v.name})} title="View transactions"
-                                onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
+                                onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
                                 style={{ borderTop:"1px solid var(--sc-border)", background:i%2===0?"transparent":"var(--sc-bg)", cursor:"pointer" }}>
                                 <td style={{ padding:"13px 20px" }}>
                                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -662,7 +670,7 @@ export default function ReportsView() {
                           <tbody>
                             {glRows.map((row,i)=>(
                               <tr key={row.code} onClick={()=>setDrill({scope:"gl",value:row.code,label:row.name})} title="View transactions"
-                                onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
+                                onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
                                 style={{ borderTop:"1px solid var(--sc-border)", background:i%2===0?"transparent":"var(--sc-bg)", cursor:"pointer" }}>
                                 <td style={{ padding:"13px 20px" }}>
                                   <span style={{ background:"var(--sc-border)", padding:"3px 10px", borderRadius:20, fontSize:12, color:"var(--sc-gold)" }}>{row.code} · {row.name}</span>
@@ -706,7 +714,7 @@ export default function ReportsView() {
                                 const running = cashRows.slice(0,i+1).reduce((s,r)=>s+(r.inflow-r.outflow),0);
                                 return (
                                   <tr key={row.month} onClick={()=>setDrill({scope:"cashflow",value:row.month,label:fmtDate(`${row.month}-01`,{month:"short",year:"numeric"})})} title="View transactions"
-                                    onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
+                                    onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
                                     style={{ borderTop:"1px solid var(--sc-border)", background:i%2===0?"transparent":"var(--sc-bg)", cursor:"pointer" }}>
                                     <td style={{ padding:"13px 20px", fontSize:13, fontWeight:500 }}>{fmtDate(`${row.month}-01`,{month:"short",year:"numeric"})}</td>
                                     <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-success)" }}>{fmt(row.inflow)}</td>
@@ -739,7 +747,7 @@ export default function ReportsView() {
                               const pnet = p.revenue - p.expenses;
                               return (
                                 <tr key={p.name} onClick={()=>setDrill({scope:"project",value:p.name,label:p.name})} title="View transactions"
-                                  onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
+                                  onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
                                   style={{ borderTop:"1px solid var(--sc-border)", background:i%2===0?"transparent":"var(--sc-bg)", cursor:"pointer" }}>
                                   <td style={{ padding:"13px 20px", fontSize:13, fontWeight:500, color:"var(--sc-gold)" }}>{p.name}</td>
                                   <td style={{ padding:"13px 20px", fontSize:13, color:"var(--sc-text-2)" }}>{p.count}</td>

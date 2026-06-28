@@ -81,7 +81,7 @@ export default function VendorsView() {
                         <tbody>
                           {vTxns.map((i,idx)=>(
                             <tr key={i.id||idx} onClick={()=>setVSel(i.id)}
-                              onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                              onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                               style={{ borderBottom:"1px solid var(--sc-surface-2)", cursor:"pointer" }}>
                               <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)", whiteSpace:"nowrap" }}>{fmtDate(i.date)}</td>
                               <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>

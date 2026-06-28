@@ -132,7 +132,7 @@ export default function BooksView() {
                 const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"var(--sc-gold)", icon:"📄" };
                 return (
                   <tr key={c.id||idx} onClick={()=>setSelContract(c)} style={{ cursor:"pointer", background:idx%2?"var(--sc-bg)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-surface-2)" }}
-                    onMouseEnter={e=>e.currentTarget.style.background="#EEF2FF"} onMouseLeave={e=>e.currentTarget.style.background=idx%2?"var(--sc-bg)":"var(--sc-surface)"}>
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=idx%2?"var(--sc-bg)":"var(--sc-surface)"}>
                     <td style={{ padding:"12px 16px", fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{c.counterparty||"—"}</td>
                     <td style={{ padding:"12px 16px" }}><span style={{ fontSize:11, fontWeight:600, color:ct.color, background:ct.color+"14", border:`1px solid ${ct.color}33`, borderRadius:20, padding:"2px 9px" }}>{ct.icon} {ct.label}</span></td>
                     <td style={{ padding:"12px 16px", textAlign:"right", fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{c.payment_amount?fmt(c.payment_amount):"—"}</td>
@@ -189,7 +189,7 @@ export default function BooksView() {
               return (
                 <React.Fragment key={inv.id}>
                   <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"var(--sc-gold-soft)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", opacity: (inv.status==="voided"||reversedInfo)?0.55:1, textDecoration: reversedInfo?"line-through":"none", textDecorationColor: reversedInfo?"var(--sc-error)":undefined, transition:"background 0.1s" }}
-                    onMouseEnter={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#F9FAFB"; }} onMouseLeave={e=>{ if(selId!==inv.id) e.currentTarget.style.background="#FFFFFF"; }}>
+                    onMouseEnter={e=>{ if(selId!==inv.id) e.currentTarget.style.background="var(--sc-surface-2)"; }} onMouseLeave={e=>{ if(selId!==inv.id) e.currentTarget.style.background="var(--sc-surface)"; }}>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
                     <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor||"—"}</span></div></td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
@@ -241,7 +241,7 @@ export default function BooksView() {
                 const color = r.status==="in_progress"?"var(--sc-warning)":od?"var(--sc-error)":"var(--sc-success)";
                 const label = r.status==="in_progress"?"In Progress":od?"Overdue":"Complete";
                 return (
-                  <div key={r.id} onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                  <div key={r.id} onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 18px", borderTop:"1px solid var(--sc-surface-2)" }}>
                     <div><div style={{ fontSize:13, fontWeight:500 }}>{r.account_name} · {fmtDate(r.period_start)} → {fmtDate(r.period_end)}</div><div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{fmt(r.statement_balance)}{r.completed_at?` · ${fmtDate(r.completed_at)}`:""}</div></div>
                     <span style={{ fontSize:11, fontWeight:600, color, background:color+"14", border:`1px solid ${color}33`, borderRadius:20, padding:"3px 10px" }}>{label}</span>
