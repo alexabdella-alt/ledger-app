@@ -334,3 +334,60 @@ describe("shouldRunApMatching — card imports skip matching; bank imports keep 
     expect(shouldRunApMatching({})).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P0 — bank import must book each line EXACTLY ONCE (never N×N).
+// The catastrophic shakedown bug: importing a 12-line statement produced each
+// unmatched line ~12 times (12 = the line count) — the signature of the "book the
+// unmatched set" step running once PER parsed line instead of once over the set.
+// planBankImport is the pure partition that decides what gets booked: it must split
+// the N parsed lines into clears (matched) + standalone (new) + review with each
+// line landing in exactly ONE bucket and no duplicates — so the total bookings are
+// |clears| + |standalone| ≤ N, structurally never N×N. (The handler also carries a
+// re-entrancy guard so a second invocation can't re-book the same set.)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("planBankImport — N lines → N bookings, never N×N (P0 duplication guard)", () => {
+  // 12 parsed lines: 3 will match open bills (clear), 9 are genuinely new (standalone).
+  const N = 12;
+  const parsedTxns = Array.from({ length: N }, (_, i) => ({
+    id: `bank_run_${i}`, vendor: `Vendor ${i}`, description: `LINE ${i}`,
+    date: "2026-06-10", amount: 100 + i, type: "expense", gl_code: EXP, gl_name: "Travel",
+  }));
+  // Three open A/P bills the matching engine clears (indices 0,5,11).
+  const matchedIdx = [0, 5, 11];
+  const openItems = matchedIdx.map(i => ({
+    id: `bill${i}`, vendor: `Vendor ${i}`, date: "2026-05-01", amount: 100 + i, type: "expense",
+    debit_credit: "debit", gl_code: EXP, secondary_gl_code: AP, status: "booked",
+    payment_status: "unpaid", matched: false,
+  }));
+  const autoCleared = matchedIdx.map(i => ({
+    bank_txn: { id: `bank_run_${i}`, date: "2026-06-10", vendor: `Vendor ${i}`, amount: -(100 + i) },
+    invoice_ids: [`bill${i}`], match_type: "ap_clear", auto_clear: true, confidence: 98,
+  }));
+
+  const plan = planBankImport({ parsedTxns, autoCleared, queue: [], openItems, codes });
+
+  it("partitions all N lines: |clears| + |standalone| + |review| === N, no line counted twice", () => {
+    const total = plan.clears.length + plan.standalone.length + plan.review.length;
+    expect(total).toBe(N);                    // every line bucketed once — not N more per line
+    expect(plan.clears).toHaveLength(3);      // the 3 matched → clearing only
+    expect(plan.standalone).toHaveLength(9);  // the 9 new → direct-book only
+  });
+
+  it("standalone has NO duplicate ids (each unmatched line booked exactly once)", () => {
+    const ids = plan.standalone.map(t => String(t.id));
+    expect(new Set(ids).size).toBe(ids.length);              // no dupes
+    expect(ids.length).toBe(9);                              // 9, not 9×12=108
+  });
+
+  it("matched lines are ABSENT from standalone (cleared, never also direct-booked)", () => {
+    const standaloneIds = new Set(plan.standalone.map(t => String(t.id)));
+    for (const i of matchedIdx) expect(standaloneIds.has(`bank_run_${i}`)).toBe(false);
+    // and they DID clear — they didn't silently post nothing
+    expect(plan.clears.map(c => c.bankId).sort()).toEqual(["bank_run_0", "bank_run_11", "bank_run_5"].sort());
+  });
+
+  it("total bookings (clears + standalone) === N, the no-N×N invariant", () => {
+    expect(plan.clears.length + plan.standalone.length).toBe(N);   // 3 + 9 = 12, never 144
+  });
+});

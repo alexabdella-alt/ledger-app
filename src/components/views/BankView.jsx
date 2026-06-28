@@ -244,11 +244,11 @@ export default function BankView() {
 
                   {/* Action bar */}
                   <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                    <button onClick={()=>bookBankTransactions(importAccount)} style={{
+                    <button onClick={()=>bookBankTransactions(importAccount)} disabled={bankProcessing} style={{
                       flex:1, padding:"14px", borderRadius:12, fontSize:14, fontWeight:600,
-                      background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:"pointer"
+                      background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:bankProcessing?"wait":"pointer", opacity:bankProcessing?0.6:1
                     }}>
-                      ✓ Book {bankTransactions.filter(t=>t.checked).length} Selected Transaction{bankTransactions.filter(t=>t.checked).length!==1?"s":""} to Ledger
+                      {bankProcessing ? "Booking…" : `✓ Book ${bankTransactions.filter(t=>t.checked).length} Selected Transaction${bankTransactions.filter(t=>t.checked).length!==1?"s":""} to Ledger`}
                     </button>
                     <button onClick={()=>{setBankTransactions([]);setBankFileName("");}} style={{ padding:"14px 20px", borderRadius:12, fontSize:13, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>
                       Clear

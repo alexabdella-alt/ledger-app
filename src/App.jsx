@@ -699,6 +699,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, onNewCompany
   // Keeps File objects alive across view changes (File objects can't live in React state reliably)
   const fileStoreRef = useRef({}); // { [queueItemId]: File }
   const uploadActiveRef = useRef(false); // prevents concurrent processing
+  const bankBookingRef = useRef(false);  // P0: prevents re-entrant bank booking (no N× duplication)
 
   const allProjects = useMemo(() => [...new Set([...PROJECTS, ...customProjects])], [customProjects]);
 
@@ -3664,6 +3665,15 @@ Keep the same array order and index as input.`,
   // PERSISTED through bookToDb (post_journal_entry) — never local state only — so nothing
   // can "succeed" in the UI without a real journal entry behind it.
   const bookBankTransactions = async (account = null) => {
+    // P0 (bank-import N× duplication): hard re-entrancy guard. Without it, a second
+    // invocation while the awaits are in flight (double-click, an effect re-firing, a
+    // re-render re-triggering the Book button) re-books the SAME selected set — each line
+    // posting once per invocation. The guard holds for the entire async run and the review
+    // rows are only cleared on success, so each selected line books exactly once.
+    if (bankBookingRef.current) { showNotification("Still booking the previous batch — one moment…", "info"); return; }
+    bankBookingRef.current = true;
+    setBankProcessing(true);
+    try {
     const toBook = bankTransactions.filter(t => t.checked);
     if (toBook.length === 0) { showNotification("Select at least one transaction to book.", "error"); return; }
 
@@ -3744,6 +3754,10 @@ Keep the same array order and index as input.`,
       failN ? "error" : "success"
     );
     if (plan.review.length > 0) setView("matching");
+    } finally {
+      bankBookingRef.current = false;
+      setBankProcessing(false);
+    }
   };
 
   // ── CONTRACT HANDLER ─────────────────────────────────────────────────────────
