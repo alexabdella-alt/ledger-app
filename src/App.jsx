@@ -790,11 +790,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setSelectedPayments(new Set()); setDeleteConfirm(null); setDocsPreview(null);
     setVendorsSelectedContact(null);
 
-    // Filters / per-tab view selections
-    setBooksFilter("all"); setVendorFilter("all");
-    setApView("inbox"); setArView("inbox");
+    // Filters / per-tab view selections. The PERSISTED ones (booksFilter, apView,
+    // reportType — see the cfai_* sessionStorage writes) must RESTORE their saved value,
+    // not snap to a hardcoded default: this reset runs on every company-load (incl. on
+    // refresh, via the [currentCompany?.id] effect), so hardcoding here clobbered the value
+    // the useState initializer just restored (then the persist effect wrote the default back
+    // → the C103 persistence silently never worked). Non-persisted selections still default.
+    setBooksFilter(ss("cfai_booksFilter", "all")); setVendorFilter("all");
+    setApView(ss("cfai_apView", "inbox")); setArView("inbox");
     setDocsFilterType("all"); setAuditSearch(""); setAuditActionFilter("all");
-    setBasisMode("accrual"); setReportType("pl");
+    setBasisMode("accrual"); setReportType(ss("cfai_reportType", "pl"));
     setCheckRunMode(false); setChatHistoryView(false);
 
     // In-progress wizards / processing flags / drag states
