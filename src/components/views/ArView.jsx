@@ -28,10 +28,12 @@ export default function ArView() {
             // arOpen still drive the per-invoice lists below for display.)
             const totalAR = glAccountBalance(getAccountByRole("accounts_receivable")?.code, invoices);
 
-            // Aging buckets by invoice date
+            // Aging buckets — age from the invoice's DUE date when it has one (O11), so the
+            // buckets reflect days PAST DUE (true AR aging), falling back to the invoice date
+            // for older rows that never captured terms.
             const aging = { current:{count:0,total:0,items:[]}, d60:{count:0,total:0,items:[]}, d90:{count:0,total:0,items:[]}, d90plus:{count:0,total:0,items:[]} };
             arOpen.forEach(inv => {
-              const days = Math.floor((new Date(today)-new Date(inv.date||today))/86400000);
+              const days = Math.floor((new Date(today)-new Date(inv.due_date||inv.date||today))/86400000);
               const b = days<=30?"current":days<=60?"d60":days<=90?"d90":"d90plus";
               aging[b].count++; aging[b].total+=arAmt(inv); aging[b].items.push(inv);
             });

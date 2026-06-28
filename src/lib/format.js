@@ -35,4 +35,31 @@ function fmtSignedMoney(n, { decimals = 2 } = {}) {
   return v < 0 ? "-" + body : body;
 }
 
-export { initials, vendorColor, fmtDate, fmtSignedMoney };
+// Payment terms → net days (O11). "Net 30" → 30, "Due on receipt"/"COD" → 0, "45 days" → 45,
+// "2/10 Net 30" (early-pay discount) → the net term (30). Returns null when unparseable so the
+// caller leaves due_date empty rather than guessing.
+function termsToDays(terms) {
+  if (terms == null) return null;
+  const t = String(terms).toLowerCase().trim();
+  if (!t) return null;
+  if (/(due on receipt|on receipt|^cod$|cash on delivery|immediate|due immediately|prepaid|paid)/.test(t)) return 0;
+  const net = t.match(/net\s*(\d{1,3})/);
+  if (net) return parseInt(net[1], 10);
+  const days = t.match(/\b(\d{1,3})\s*days?\b/);
+  if (days) return parseInt(days[1], 10);
+  return null;
+}
+
+// Derive a due date (YYYY-MM-DD) from an issue date + payment terms. Null if terms don't
+// parse or the date is invalid — never invents a due date without a basis.
+function deriveDueDate(issueDate, terms) {
+  const days = termsToDays(terms);
+  if (days == null || !issueDate) return null;
+  const s = String(issueDate).trim();
+  const d = new Date(s.length <= 10 ? s + "T12:00:00" : s);
+  if (isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export { initials, vendorColor, fmtDate, fmtSignedMoney, termsToDays, deriveDueDate };

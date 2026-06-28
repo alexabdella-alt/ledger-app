@@ -48,7 +48,14 @@ export default function InvoicesView() {
                               </div>
                             </div>
                           </td>
-                          <td style={{ padding:"13px 16px", fontSize:13, color:"var(--sc-text-2)", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{fmtDate(inv.date)}</td>
+                          <td style={{ padding:"13px 16px", fontSize:13, color:"var(--sc-text-2)", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>
+                            <div>{fmtDate(inv.date)}</div>
+                            {inv.due_date && (() => {
+                              const unpaid = inv.payment_status !== "paid" && inv.payment_status !== "collected";
+                              const overdue = unpaid && String(inv.due_date) < new Date().toISOString().slice(0,10);
+                              return <div style={{ fontSize:11, marginTop:2, color: overdue ? "var(--sc-error)" : "var(--sc-text-mut)" }}>Due {fmtDate(inv.due_date)}{overdue ? " · overdue" : ""}</div>;
+                            })()}
+                          </td>
                           <td style={{ padding:"13px 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{inv.description}</td>
                           <td style={{ padding:"13px 16px", fontSize:12, cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}><span style={{ background:"var(--sc-border)", padding:"3px 10px", borderRadius:20, color:"var(--sc-gold)" }}>{inv.gl_code} · {inv.gl_name}</span></td>
                           <td style={{ padding:"13px 16px", fontSize:12, color:"var(--sc-text-2)", cursor:"pointer" }} onClick={()=>{ setReturnTo({view:"invoices",label:"Invoices"}); setSelectedInvoice(inv); setView("detail"); }}>{inv.project||"General"}</td>
