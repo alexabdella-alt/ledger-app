@@ -11,6 +11,7 @@ import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/ai
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
+import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
 import { glCodeForAccountType } from "./lib/bankAccounts";
@@ -1914,6 +1915,7 @@ Reply with ONLY the summary text.`;
       logAudit("invoice_restored", `Restored ${items.length} entr${items.length===1?"y":"ies"}`, null, null);
       showNotification("Restored ✓");
     });
+    return allIds;   // committed journal_entry ids — callers (AI chat) gate "✓ done" on a non-empty result (O78)
   };
   const softDeleteInvoice = (invoice, byAI=false) => softDeleteInvoices([invoice], byAI);
 
@@ -1962,10 +1964,10 @@ Reply with ONLY the summary text.`;
   // "Void" now posts a persisted reversing entry (was local-only, never durable).
   // Undo soft-deletes the reversal so the original stands alone again.
   const voidInvoiceWithUndo = async (invoice, reason, byAI=false) => {
-    if (!invoice) return;
+    if (!invoice) return null;
     const snap = { ...invoice };
     const revId = await reverseJournalEntry(invoice, reason || "Voided", byAI);
-    if (!revId) return;                                // failure already toasted
+    if (!revId) return null;                           // failure already toasted; caller must not claim success
     try { await loadAllData(); } catch {}              // original + reversal both visible, net zero
     showNotification(`Reversed ${snap.vendor || "entry"} — tap Undo to restore`, "success", async () => {
       try {
@@ -1977,6 +1979,7 @@ Reply with ONLY the summary text.`;
       logAudit("entry_reversal_undone", `Undid reversal of ${snap.vendor || "entry"}`, null, { reversal_id: String(revId) });
       showNotification("Restored ✓");
     });
+    return revId;   // the committed reversal id — caller gates "✓ voided" on this (O78)
   };
 
   // Soft-delete one or more contracts with a single Undo toast that restores the batch.
@@ -1988,13 +1991,15 @@ Reply with ONLY the summary text.`;
     snaps.forEach(s => logAudit("contract_deleted", `Deleted contract: ${s.counterparty || s.contract_type || "contract"}`, s, null, byAI ? "AI Chat" : "owner"));
     const idset = new Set(snaps.map(s => String(s.id)));
     setContracts(prev => prev.filter(c => !idset.has(String(c.id))));
+    let committed = 0, anyError = false;
     if (currentCompany?.id) {
       for (const s of snaps) {
-        if (!s.db_id) continue;
+        if (!s.db_id) { committed++; continue; }   // session-only contract (never persisted) — already gone for good
         const { error } = await supabase.from("contracts")
           .update({ deleted_at: new Date().toISOString(), deleted_by: uid })
           .eq("id", s.db_id).eq("company_id", currentCompany.id);
-        if (error) console.error("softDeleteContracts failed:", error.message);
+        if (error) { console.error("softDeleteContracts failed:", error.message); anyError = true; }
+        else committed++;
       }
     }
     const label = items.length === 1 ? (snaps[0].counterparty || "contract") : `${items.length} contracts`;
@@ -2006,8 +2011,134 @@ Reply with ONLY the summary text.`;
       logAudit("contract_restored", `Restored ${items.length} contract${items.length===1?"":"s"}`, null, null);
       showNotification("Restored ✓");
     });
+    return { ok: !anyError && committed > 0, committed };   // caller gates "✓ removed" on this (O78)
   };
   const softDeleteContract = (contract, byAI=false) => softDeleteContracts([contract], byAI);
+
+  // ── Chat-action persistence (O78 / O51) ────────────────────────────────────
+  // Every AI chat mutation must DURABLY write + be VERIFIED, then re-sync the local
+  // read-model from DB truth. These resolve the normalized FKs the tables require, then
+  // route through the verified write helpers (src/lib/chatActions.js). On failure they
+  // return { ok:false } so the chat reply surfaces it honestly (never a false "✓ done").
+  const _norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // vendor name → contacts.id (vendor_rules.contact_id is NOT NULL). create=true makes one
+  // when absent (adding a rule for a not-yet-known vendor); delete paths pass create=false.
+  const resolveContactId = async (name, type = "vendor", create = true) => {
+    if (!currentCompany?.id || !name) return null;
+    try {
+      const { data } = await supabase.from("contacts").select("id, name").eq("company_id", currentCompany.id).is("deleted_at", null);
+      const hit = (data || []).find(c => _norm(c.name) === _norm(name));
+      if (hit) return hit.id;
+      if (!create) return null;
+      const { data: made, error } = await supabase.from("contacts")
+        .insert({ company_id: currentCompany.id, name, type: type || "vendor" }).select("id").single();
+      if (error || !made) { console.warn("[resolveContactId] create failed:", error?.message); return null; }
+      return made.id;
+    } catch (e) { console.warn("[resolveContactId]", e?.message); return null; }
+  };
+  // gl_code → accounts.id, creating the account if missing (mirrors persistRecode).
+  const resolveAccountId = async (glCode, glName) => {
+    if (!currentCompany?.id || !glCode) return null;
+    const live = getAccountByCode(glCode)?.db_id;
+    if (live) return live;
+    try {
+      const { data: row } = await supabase.from("accounts").select("id").eq("company_id", currentCompany.id).eq("code", glCode).maybeSingle();
+      if (row?.id) return row.id;
+      const def = CHART_OF_ACCOUNTS.find(a => a.code === glCode);
+      const { data: made, error } = await supabase.from("accounts")
+        .insert(buildAccountInsert({ companyId: currentCompany.id, code: glCode, name: glName || def?.name || glCode, category: def?.category })).select("id").single();
+      if (error || !made) { console.warn("[resolveAccountId] create failed:", error?.message); return null; }
+      return made.id;
+    } catch (e) { console.warn("[resolveAccountId]", e?.message); return null; }
+  };
+
+  // add_rule / set_contact_rule (rule part): one active vendor→account rule per contact.
+  const persistChatRule = async ({ vendor, gl_code, gl_name, project }) => {
+    if (!currentCompany?.id) return { ok: false, error: "no company" };
+    const contactId = await resolveContactId(vendor, "vendor", true);
+    const accountId = await resolveAccountId(gl_code, gl_name);
+    if (!contactId || !accountId) return { ok: false, error: "couldn't resolve vendor or account" };
+    // replace any existing active rule for this contact, then insert+verify the new one.
+    await deleteVerified(supabase, "vendor_rules", { company_id: currentCompany.id, contact_id: contactId });
+    const res = await insertVerified(supabase, "vendor_rules", buildVendorRuleRow({ companyId: currentCompany.id, contactId, accountId, project }));
+    if (res.ok) setRules(prev => [...prev.filter(r => _norm(r.vendor) !== _norm(vendor)), { id: res.row.id, vendor, gl_code, gl_name, project: project || null }]);
+    return res;
+  };
+  // delete_rule: scoped delete (O51) of this vendor's rule — verified gone, resynced.
+  const deleteChatRule = async (vendor) => {
+    if (!currentCompany?.id) return { ok: false, error: "no company" };
+    const contactId = await resolveContactId(vendor, "vendor", false);
+    if (!contactId) { setRules(prev => prev.filter(r => _norm(r.vendor) !== _norm(vendor))); return { ok: true, deleted: false }; } // no contact → no rule
+    const res = await deleteVerified(supabase, "vendor_rules", { company_id: currentCompany.id, contact_id: contactId });
+    if (res.ok) setRules(prev => prev.filter(r => _norm(r.vendor) !== _norm(vendor)));
+    return res;
+  };
+  // add_recurring: expense recurring net-to-cash (debit expense / credit cash).
+  const persistChatRecurring = async ({ name, vendor, amount, gl_code, gl_name, frequency, next_date, project }) => {
+    if (!currentCompany?.id) return { ok: false, error: "no company" };
+    const debitAccountId = await resolveAccountId(gl_code, gl_name);
+    const creditAccountId = getAccountByRole("cash")?.db_id || await resolveAccountId(rc("cash"), rn("cash"));
+    if (!debitAccountId || !creditAccountId) return { ok: false, error: "couldn't resolve accounts" };
+    const contactId = vendor ? await resolveContactId(vendor, "vendor", true) : null;
+    const res = await insertVerified(supabase, "recurring_transactions", buildRecurringRow({
+      companyId: currentCompany.id, name, contactId, amount, debitAccountId, creditAccountId,
+      frequency, nextDate: next_date || new Date().toISOString().slice(0, 10), project,
+    }));
+    if (res.ok) setRecurring(prev => [{ id: res.row.id, name, vendor: vendor || "", amount: parseFloat(amount) || 0, gl_code, gl_name, frequency: res.row.frequency, next_date: res.row.next_date, last_run: null, active: true, created_at: res.row.created_at }, ...prev]);
+    return res;
+  };
+  // pause_recurring: flip active=false on the persisted row, verified.
+  const pauseChatRecurring = async (name) => {
+    const target = (recurring || []).find(r => _norm(r.name) === _norm(name));
+    if (!target) return { ok: false, error: "no matching recurring" };
+    if (target.id == null || typeof target.id === "number") return { ok: false, error: "recurring isn't saved yet" };
+    const res = await updateVerified(supabase, "recurring_transactions", target.id, { active: false });
+    if (res.ok) setRecurring(prev => prev.map(r => r.id === target.id ? { ...r, active: false } : r));
+    return res;
+  };
+  // retag_project: project lives on journal_entry_lines.project (per line), so update every
+  // line of the target entries, then VERIFY the read-back. (flatten now reads project back so
+  // a refresh shows the tag — src/lib/ledger.js.)
+  const persistChatRetagProject = async (invoiceIds, project) => {
+    if (!currentCompany?.id) return { ok: false, error: "no company" };
+    const dbIds = [...new Set(invoices.filter(i => invoiceIds.includes(i.id)).map(i => i.db_entry_id).filter(Boolean))];
+    if (!dbIds.length) return { ok: false, error: "entries aren't saved yet" };
+    const { error } = await supabase.from("journal_entry_lines").update({ project }).in("journal_entry_id", dbIds).eq("company_id", currentCompany.id);
+    if (error) return { ok: false, error: error.message };
+    const { data: chk } = await supabase.from("journal_entry_lines").select("journal_entry_id, project").in("journal_entry_id", dbIds).eq("company_id", currentCompany.id);
+    if (!Array.isArray(chk) || !chk.length || !chk.every(r => r.project === project)) return { ok: false, error: "project did not persist on the entry lines" };
+    setInvoices(prev => prev.map(inv => invoiceIds.includes(inv.id) ? { ...inv, project } : inv));
+    if (!allProjects.includes(project)) setCustomProjects(p => [...p, project]);
+    return { ok: true };
+  };
+  // add_contact / update_contact / set_contact_rule (contact part): write + verify a contact.
+  const persistChatContact = async ({ name, contact_type, email, phone, payment_terms, notes, tags, min_expected, max_expected, gl_code, gl_name }, updates) => {
+    if (!currentCompany?.id || !name) return { ok: false, error: "missing company/name" };
+    try {
+      const { data: list } = await supabase.from("contacts").select("*").eq("company_id", currentCompany.id);
+      const existing = (list || []).find(c => _norm(c.name) === _norm(name));
+      const ALLOWED = ["email", "phone", "payment_terms", "notes", "tags", "type", "expected_min", "expected_max"];
+      const payload = updates
+        ? Object.fromEntries(Object.entries(updates).filter(([k]) => ALLOWED.includes(k)))
+        : { company_id: currentCompany.id, name, type: contact_type || "vendor", email: email || null, phone: phone || null, payment_terms: payment_terms || null, notes: notes || null, tags: tags || [], expected_min: min_expected || null, expected_max: max_expected || null };
+      if (updates && !Object.keys(payload).length) return { ok: false, error: "no recognized fields to update" };
+      let row, error;
+      if (existing) ({ data: row, error } = await supabase.from("contacts").update(payload).eq("id", existing.id).select().single());
+      else ({ data: row, error } = await supabase.from("contacts").insert(payload).select().single());
+      if (error || !row?.id) return { ok: false, error: error?.message || "no row returned" };
+      const { data: confirmed } = await supabase.from("contacts").select("*").eq("id", row.id).maybeSingle();
+      if (!confirmed) return { ok: false, error: "contact missing after write" };
+      setContacts(prev => {
+        const i = prev.findIndex(c => _norm(c.name) === _norm(name));
+        const merged = { ...(i >= 0 ? prev[i] : {}), ...confirmed, id: confirmed.id, db_id: confirmed.id, fromContact: true, min_expected: confirmed.expected_min, max_expected: confirmed.expected_max };
+        if (i >= 0) { const u = [...prev]; u[i] = merged; return u; }
+        return [merged, ...prev];
+      });
+      // optional GL rule (add_contact / set_contact_rule with a gl_code)
+      if (gl_code) { await persistChatRule({ vendor: name, gl_code, gl_name, project: null }); }
+      return { ok: true, row: confirmed };
+    } catch (e) { return { ok: false, error: String(e?.message || e) }; }
+  };
 
   const persistContact = async (contact) => {
     if (!currentCompany?.id) return;
@@ -4791,7 +4922,6 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                                  // must surface these, never a false "✓ done" (chatbot
                                  // false-success bug). Each handler verifies its own write.
       let richOutputs = [];   // inline chat outputs: charts, CSV buttons, summary cards
-      const newRules = [...rules];
 
       // ── Bulk-delete protection ──
       // Count how many items the requested deletes would remove. If more than 3,
@@ -4937,11 +5067,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           }
         }
         if (action.type === "retag_project" && action.invoiceIds?.length) {
-          setInvoices(prev => prev.map(inv =>
-            action.invoiceIds.includes(inv.id) ? { ...inv, project: action.project } : inv
-          ));
-          if (!allProjects.includes(action.project)) setCustomProjects(p => [...p, action.project]);
-          actionSummary.push(`Tagged ${action.invoiceIds.length} invoice(s) → Project: ${action.project}`);
+          // Persist the project onto the journal_entries + verify (was setState-only → lost on refresh).
+          const res = await persistChatRetagProject(action.invoiceIds, action.project);
+          if (res.ok) actionSummary.push(`Tagged ${action.invoiceIds.length} invoice(s) → Project: ${action.project}`);
+          else actionFailures.push(`tag → Project: ${action.project}`);
         }
         if (action.type === "add_account") {
           if (action.code && action.name && action.category) {
@@ -4956,8 +5085,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           if (action.invoice_id) {
             const target = invoices.find(i => String(i.id) === String(action.invoice_id));
             if (target) {
-              softDeleteInvoice(target, true);
-              actionSummary.push(`Deleted entry: ${target.vendor} $${target.amount}`);
+              // VERIFY the soft-delete committed (returns the deleted JE ids) before claiming success.
+              const ids = await softDeleteInvoice(target, true);
+              if (ids && ids.length) actionSummary.push(`Deleted entry: ${target.vendor} $${target.amount}`);
+              else actionFailures.push(`delete ${target.vendor}`);
             } else {
               actionSummary.push(`Entry ${action.invoice_id} not found`);
             }
@@ -4968,8 +5099,9 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               (!action.date || i.date === action.date)
             );
             if (toDelete.length > 0) {
-              softDeleteInvoices(toDelete, true);
-              actionSummary.push(`Deleted ${toDelete.length} entr${toDelete.length===1?"y":"ies"} for ${action.vendor}`);
+              const ids = await softDeleteInvoices(toDelete, true);
+              if (ids && ids.length) actionSummary.push(`Deleted ${toDelete.length} entr${toDelete.length===1?"y":"ies"} for ${action.vendor}`);
+              else actionFailures.push(`delete ${action.vendor}`);
             } else {
               actionSummary.push(`No matching entries found for ${action.vendor}`);
             }
@@ -4979,12 +5111,17 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           // Void = mark as voided but keep for audit trail (reversible via Undo).
           if (action.invoice_id) {
             const target = invoices.find(i => String(i.id) === String(action.invoice_id));
-            if (target) { voidInvoiceWithUndo(target, action.reason || "Voided via AI", true); actionSummary.push(`Voided entry: ${target.vendor}`); }
-            else { actionSummary.push(`Entry ${action.invoice_id} not found`); }
+            if (target) {
+              const revId = await voidInvoiceWithUndo(target, action.reason || "Voided via AI", true);  // VERIFY the reversal posted
+              if (revId) actionSummary.push(`Voided entry: ${target.vendor}`);
+              else actionFailures.push(`void ${target.vendor}`);
+            } else { actionSummary.push(`Entry ${action.invoice_id} not found`); }
           } else if (action.vendor) {
             const toVoid = invoices.filter(i => i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) && i.status!=="voided");
-            toVoid.forEach(t => voidInvoiceWithUndo(t, action.reason || "Voided via AI", true));
-            actionSummary.push(`Voided ${toVoid.length} entr${toVoid.length===1?"y":"ies"} for ${action.vendor}`);
+            let voided = 0;
+            for (const t of toVoid) { const revId = await voidInvoiceWithUndo(t, action.reason || "Voided via AI", true); if (revId) voided++; }
+            if (voided) actionSummary.push(`Voided ${voided} entr${voided===1?"y":"ies"} for ${action.vendor}`);
+            if (voided < toVoid.length) actionFailures.push(`void ${toVoid.length - voided} entr${(toVoid.length-voided)===1?"y":"ies"} for ${action.vendor}`);
           }
         }
         if (action.type === "reverse_entry") {
@@ -5005,36 +5142,38 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               action.contract_id ? String(c.id) === String(action.contract_id)
               : c.counterparty?.toLowerCase().includes(action.counterparty?.toLowerCase())
             );
-            toDelete.forEach(c => softDeleteContract(c, true));
-            actionSummary.push(`Contract removed: ${action.counterparty || action.contract_id}`);
+            if (toDelete.length) {
+              const res = await softDeleteContracts(toDelete, true);   // VERIFY the DB delete committed
+              if (res?.ok) actionSummary.push(`Contract removed: ${action.counterparty || action.contract_id}`);
+              else actionFailures.push(`remove contract ${action.counterparty || action.contract_id}`);
+            } else {
+              actionSummary.push(`No matching contract found for ${action.counterparty || action.contract_id}`);
+            }
           }
         }
         if (action.type === "add_rule") {
-          const idx = newRules.findIndex(r => r.vendor?.toLowerCase() === action.vendor?.toLowerCase());
-          const rule = { vendor: action.vendor, gl_code: action.gl_code, gl_name: action.gl_name, project: action.project || null };
-          if (idx >= 0) newRules[idx] = rule; else newRules.push(rule);
-          actionSummary.push(`Rule saved: ${action.vendor} → ${action.gl_name}${action.project ? ` / ${action.project}` : ""}`);
+          // Persist to vendor_rules (contact→account) + verify; was setState-only (lost on refresh).
+          const res = await persistChatRule({ vendor: action.vendor, gl_code: action.gl_code, gl_name: action.gl_name, project: action.project });
+          if (res.ok) actionSummary.push(`Rule saved: ${action.vendor} → ${action.gl_name}${action.project ? ` / ${action.project}` : ""}`);
+          else actionFailures.push(`rule ${action.vendor} → ${action.gl_name}`);
         }
         if (action.type === "delete_rule") {
-          const before = newRules.length;
-          const filtered = newRules.filter(r => r.vendor?.toLowerCase() !== action.vendor?.toLowerCase());
-          newRules.splice(0, newRules.length, ...filtered);
-          actionSummary.push(`Rule removed for ${action.vendor}`);
+          const res = await deleteChatRule(action.vendor);    // scoped delete (O51), verified gone
+          if (res.ok) actionSummary.push(`Rule removed for ${action.vendor}`);
+          else actionFailures.push(`remove rule for ${action.vendor}`);
         }
         if (action.type === "add_recurring") {
-          const newRec = {
-            id: Date.now()+Math.random(), name: action.name, vendor: action.vendor||action.name,
-            amount: parseFloat(action.amount)||0, gl_code: action.gl_code, gl_name: action.gl_name,
-            frequency: action.frequency||"monthly", next_date: action.next_date||new Date().toISOString().slice(0,10),
-            project: action.project||"General", active: true, created_at: new Date().toISOString(), last_run: null
-          };
-          setRecurring(prev => [newRec, ...prev]);
-          logAudit("recurring_created", `AI created recurring: ${action.name} $${action.amount} ${action.frequency}`);
-          actionSummary.push(`Recurring created: ${action.name} · $${action.amount}/${action.frequency}`);
+          // Persist to recurring_transactions + verify; was setState-only (lost on refresh).
+          const res = await persistChatRecurring({ name: action.name, vendor: action.vendor, amount: action.amount, gl_code: action.gl_code, gl_name: action.gl_name, frequency: action.frequency, next_date: action.next_date, project: action.project });
+          if (res.ok) {
+            logAudit("recurring_created", `AI created recurring: ${action.name} $${action.amount} ${action.frequency}`);
+            actionSummary.push(`Recurring created: ${action.name} · $${action.amount}/${action.frequency}`);
+          } else actionFailures.push(`recurring ${action.name}`);
         }
         if (action.type === "pause_recurring") {
-          setRecurring(prev => prev.map(r => r.name?.toLowerCase()===action.name?.toLowerCase() ? {...r, active:false} : r));
-          actionSummary.push(`Recurring paused: ${action.name}`);
+          const res = await pauseChatRecurring(action.name);  // flip active=false + verify
+          if (res.ok) actionSummary.push(`Recurring paused: ${action.name}`);
+          else actionFailures.push(`pause recurring ${action.name}`);
         }
         // ── Inline display outputs (render in the chat; never mutate data) ──
         if (action.type === "render_chart") {
@@ -5063,54 +5202,29 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           }
         }
         if (action.type === "add_contact") {
-          const newContact = {
-            id: Date.now() + Math.random(),
-            name: action.name,
-            type: action.contact_type || "vendor",
-            gl_code: action.gl_code || null,
-            gl_name: action.gl_name || null,
-            payment_terms: action.payment_terms || null,
-            email: action.email || null,
-            phone: action.phone || null,
-            notes: action.notes || null,
-            tags: action.tags || [],
-            min_expected: action.min_expected || null,
-            max_expected: action.max_expected || null,
-            created_at: new Date().toISOString(),
-          };
-          setContacts(prev => {
-            const exists = prev.findIndex(c => c.name?.toLowerCase() === action.name?.toLowerCase());
-            if (exists >= 0) { const u=[...prev]; u[exists]={...u[exists],...newContact}; return u; }
-            return [newContact, ...prev];
+          // Persist to contacts + verify (and a GL rule if gl_code given); was setState-only.
+          const res = await persistChatContact({
+            name: action.name, contact_type: action.contact_type, email: action.email, phone: action.phone,
+            payment_terms: action.payment_terms, notes: action.notes, tags: action.tags,
+            min_expected: action.min_expected, max_expected: action.max_expected,
+            gl_code: action.gl_code, gl_name: action.gl_name,
           });
-          logAudit("contact_added", `${action.contact_type==="customer"?"Customer":"Vendor"} added: ${action.name}`, null, newContact);
-          actionSummary.push(`${action.contact_type==="customer"?"Customer":"Vendor"} added: ${action.name}`);
-          // Also add GL rule if gl_code provided
-          if (action.gl_code) {
-            const idx = newRules.findIndex(r => r.vendor?.toLowerCase() === action.name?.toLowerCase());
-            const rule = { vendor: action.name, gl_code: action.gl_code, gl_name: action.gl_name, project: null };
-            if (idx >= 0) newRules[idx] = rule; else newRules.push(rule);
-          }
+          if (res.ok) {
+            logAudit("contact_added", `${action.contact_type==="customer"?"Customer":"Vendor"} added: ${action.name}`, null, { name: action.name });
+            actionSummary.push(`${action.contact_type==="customer"?"Customer":"Vendor"} added: ${action.name}`);
+          } else actionFailures.push(`add contact ${action.name}`);
         }
         if (action.type === "update_contact") {
-          setContacts(prev => prev.map(c =>
-            c.name?.toLowerCase() === action.name?.toLowerCase()
-              ? { ...c, ...action.updates }
-              : c
-          ));
-          actionSummary.push(`Updated contact: ${action.name}`);
+          const res = await persistChatContact({ name: action.name }, action.updates || {});
+          if (res.ok) actionSummary.push(`Updated contact: ${action.name}`);
+          else actionFailures.push(`update contact ${action.name}`);
         }
         if (action.type === "set_contact_rule") {
-          // Update contact GL + add rule
-          setContacts(prev => prev.map(c =>
-            c.name?.toLowerCase() === action.name?.toLowerCase()
-              ? { ...c, gl_code: action.gl_code, gl_name: action.gl_name }
-              : c
-          ));
-          const idx = newRules.findIndex(r => r.vendor?.toLowerCase() === action.name?.toLowerCase());
-          const rule = { vendor: action.name, gl_code: action.gl_code, gl_name: action.gl_name, project: action.project || null };
-          if (idx >= 0) newRules[idx] = rule; else newRules.push(rule);
-          actionSummary.push(`Rule set for ${action.name} → ${action.gl_name}`);
+          // persist the contact (creates if needed) AND the GL rule; the contact write
+          // chains the vendor rule internally when gl_code is present.
+          const res = await persistChatContact({ name: action.name, gl_code: action.gl_code, gl_name: action.gl_name });
+          if (res.ok) actionSummary.push(`Rule set for ${action.name} → ${action.gl_name}`);
+          else actionFailures.push(`set rule for ${action.name}`);
         }
         // Comprehensive AI audit trail: every action the AI takes is logged as "AI Chat".
         // delete_invoice / void_invoice / delete_contract already log (with before/after)
@@ -5120,7 +5234,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           logAI(`ai_${action.type}`, _added.join("; "));
         }
       }
-      setRules(newRules);
+      // (rule mutations now persist + re-sync setRules inside their handlers — no trailing clobber)
 
       // Build the clarification reply when a modify target was ambiguous (Item 98).
       const clarifyText = () => {

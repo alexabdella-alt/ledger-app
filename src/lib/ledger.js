@@ -58,6 +58,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         secondary_gl_code: offsetLine?.accounts?.code,
         secondary_gl_name: offsetLine?.accounts?.name,
         debit_credit: primaryIsDebit ? "debit" : "credit",
+        project: primaryLine?.project || offsetLine?.project || "General",   // read back the per-line project (retag persistence)
         status: "booked", booked_at: e.created_at, source: e.source,
         payment_status: e.payment_status || "unpaid",
         approval_status: e.approval_status || undefined,
@@ -108,6 +109,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
           secondary_gl_code: isDebit ? primaryCredit?.accounts?.code : primaryDebit?.accounts?.code,
           secondary_gl_name: isDebit ? primaryCredit?.accounts?.name : primaryDebit?.accounts?.name,
           debit_credit: isDebit ? "debit" : "credit",
+          project: l.project || "General",   // read back the per-line project (retag persistence)
           status: "booked", booked_at: e.created_at, source: e.source,
           // Read the canonical payment state back (was hardcoded "unpaid" — which
           // silently discarded a saved "paid"/"collected" on every refresh for

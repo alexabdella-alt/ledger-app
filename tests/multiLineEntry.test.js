@@ -25,8 +25,24 @@ const dbEntry = (id, date, lines, over = {}) => ({
   created_at: `${date}T10:00:00Z`, ...over,
   journal_entry_lines: lines.map(l => ({
     debit: l.debit || 0, credit: l.credit || 0,
+    ...(l.project !== undefined ? { project: l.project } : {}),
     accounts: { code: l.code, name: l.name || l.code },
   })),
+});
+
+// retag_project round-trip (O78): project lives on journal_entry_lines.project and flatten
+// must read it back, else a chat retag would persist but vanish on refresh.
+describe("project round-trips through flatten (retag persistence read-side)", () => {
+  it("reads the per-line project back (simple + multi-line); defaults to General when absent", () => {
+    const flat = flattenJournalEntries([
+      dbEntry("simple", "2026-05-01", [{ code: "6500", debit: 100, project: "Apollo" }, { code: "1000", credit: 100, project: "Apollo" }]),
+      dbEntry("noproj", "2026-05-02", [{ code: "6500", debit: 50 }, { code: "1000", credit: 50 }]),
+      dbEntry("multi", "2026-05-03", [{ code: "6000", debit: 80, project: "Zephyr" }, { code: "6100", debit: 20, project: "Zephyr" }, { code: "1000", credit: 100, project: "Zephyr" }]),
+    ], []);
+    expect(flat.find(r => r.id === "simple").project).toBe("Apollo");
+    expect(flat.find(r => r.id === "noproj").project).toBe("General");      // safe default, not undefined
+    expect(flat.filter(r => String(r.id).startsWith("multi")).every(r => r.project === "Zephyr")).toBe(true);
+  });
 });
 
 describe("deferred-revenue recognition: posted ONCE, derivations AGREE", () => {
