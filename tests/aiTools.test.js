@@ -59,6 +59,45 @@ describe("executeAITool", () => {
     expect(out2.count).toBe(0); // voided entries never returned
   });
 
+  it("search_transactions: ≤200 matches → NOT truncated, no disclosure note", async () => {
+    const out = await executeAITool("search_transactions", { vendor: "Adobe" }, ctx);
+    expect(out.truncated).toBe(false);
+    expect(out.note).toBeUndefined();
+    expect(out.count).toBe(out.total_count);            // listed == all matches
+    expect(out.total_count).toBe(2);
+  });
+
+  it("search_transactions: >200 matches → truncated list, complete totals, visible disclosure", async () => {
+    // 250 matching transactions, $10 each → total $2,500 across ALL matches.
+    const many = Array.from({ length: 250 }, (_, k) => ({
+      id: 1000 + k, vendor: "Pixel", amount: 10,
+      date: `${Y}-01-${String((k % 28) + 1).padStart(2, "0")}`,
+      gl_code: "6800", gl_name: "Professional Services", type: "expense", status: "posted", payment_status: "paid",
+    }));
+    const bigCtx = { ...ctx, getLedger: async () => many };
+    // limit:200 exercises the hard cap (default is 50; 200 is the max the model can request).
+    const res = await executeAITool("search_transactions", { vendor: "Pixel", limit: 200 }, bigCtx);
+    expect(res.count).toBe(200);                          // listed set is capped at 200
+    expect(res.total_count).toBe(250);                    // but total_count reflects ALL matches
+    expect(res.total_amount).toBe(2500);                  // and total_amount covers all 250, not 200
+    expect(res.truncated).toBe(true);
+    expect(typeof res.note).toBe("string");
+    expect(res.note).toMatch(/200 most recent of 250/);   // the honest disclosure
+    expect(res.transactions).toHaveLength(200);
+  });
+
+  it("search_transactions: respects an explicit limit and discloses truncation against it", async () => {
+    const many = Array.from({ length: 20 }, (_, k) => ({
+      id: 2000 + k, vendor: "Pixel", amount: 10, date: `${Y}-01-${String(k + 1).padStart(2, "0")}`,
+      gl_code: "6800", gl_name: "Professional Services", type: "expense", status: "posted", payment_status: "paid",
+    }));
+    const out = await executeAITool("search_transactions", { vendor: "Pixel", limit: 5 }, { ...ctx, getLedger: async () => many });
+    expect(out.count).toBe(5);
+    expect(out.total_count).toBe(20);
+    expect(out.truncated).toBe(true);
+    expect(out.note).toMatch(/5 most recent of 20/);
+  });
+
   it("get_category_totals: complete + sorted high→low, voided excluded", async () => {
     const out = await executeAITool("get_category_totals", { period: "all_time" }, ctx);
     expect(out.categories[0]).toMatchObject({ gl_code: "6100", total: 2000 }); // Rent largest

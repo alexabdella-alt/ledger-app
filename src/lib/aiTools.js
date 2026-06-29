@@ -53,14 +53,27 @@ async function searchTransactions(input, ctx) {
     return true;
   });
   const total = rows.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const matchCount = rows.length;                       // ALL matches (before the display cap)
   // Most recent first, so the AI always lists the latest matches first when
   // disambiguating ("which Adobe charge — Jun 9, May 8, or Apr 7?").
   rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-  rows = rows.slice(0, Math.min(input.limit || 50, 200)).map(i => ({
+  const cap = Math.min(input.limit || 50, 200);
+  const listed = rows.slice(0, cap).map(i => ({
     id: i.id, date: i.date, vendor: i.vendor, amount: i.amount, gl_code: i.gl_code, gl_name: i.gl_name,
     type: i.type, payment_status: i.payment_status, due_date: i.due_date, description: i.description,
   }));
-  return { count: rows.length, total_amount: r2(total), transactions: rows };
+  // The listed rows can be a TRUNCATED slice while total_amount/total_count reflect ALL
+  // matches. Surface that explicitly so the AI never presents a partial list as complete —
+  // it must tell the user "showing the N most recent of M" when truncated is true.
+  const truncated = matchCount > listed.length;
+  return {
+    count: listed.length,                               // rows actually listed
+    total_count: matchCount,                            // total matches (may exceed count)
+    total_amount: r2(total),                            // sum over ALL matches, not just listed
+    truncated,
+    ...(truncated ? { note: `Showing the ${listed.length} most recent of ${matchCount} total matches. total_amount reflects all ${matchCount}. Tell the user the list is truncated and that the total covers everything; offer to narrow by date/amount to see specific ones.` } : {}),
+    transactions: listed,
+  };
 }
 
 // All three flow through the canonical layer in reports.js — so the AI's numbers
@@ -175,7 +188,7 @@ const PERIOD_ENUM = ["this_month", "last_month", "this_year", "last_year", "all_
 export const AI_TOOLS = [
   {
     name: "search_transactions",
-    description: "Search journal entries / transactions by vendor, GL code, date range, amount range, or payment status. Use when the user asks about specific transactions, a vendor, or a date range. Returns matching entries.",
+    description: "Search journal entries / transactions by vendor, GL code, date range, amount range, or payment status. Use when the user asks about specific transactions, a vendor, or a date range. Returns matching entries (most recent first). The listed `transactions` are capped (default 50, max 200) but `total_count` and `total_amount` always reflect ALL matches. If `truncated` is true, you MUST tell the user the list is partial (e.g. 'showing the 200 most recent of N') and that the total covers everything — never present a truncated list as the complete set.",
     input_schema: {
       type: "object",
       properties: {
