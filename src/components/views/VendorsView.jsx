@@ -106,7 +106,7 @@ export default function VendorsView() {
                     ))}
                   </div>
 
-                  <TransactionDetailPanel invoiceId={vSel} onClose={()=>setVSel(null)} returnContext={{ view:"vendors", label:v.name, contact:v }} />
+                  <TransactionDetailPanel invoiceId={vSel} onClose={()=>setVSel(null)} onNavigate={setVSel} returnContext={{ view:"vendors", label:v.name, contact:v }} />
                 </div>
               );
             }

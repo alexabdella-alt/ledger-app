@@ -209,13 +209,21 @@ export function reconRecordStatus(reviewCount) {
 //   revenue → Dr <offset> / Cr <gl_code>   (debit_credit "credit")  ← deposits
 // Pure (no id / booked_at — the caller adds those), so it's unit-testable and shared
 // by the standalone-book and dismiss-book paths so they can't diverge.
+// A stored "reasoning" that's really just PROVENANCE ("Imported from bank statement",
+// "Imported from QBO") is NOT a GL-choice rationale — it must be treated as ABSENT so a real
+// classification is derived. This is the literal value older bank/QBO entries stored in
+// ai_reasoning; matching it here is what lets the detail panel show a real reason at display
+// time with no re-upload (the b5f50a0 display-override was a no-op because it delegated back
+// to this function, which then echoed the placeholder straight back).
+export const PROVENANCE_RE = /^\s*imported (from|via)\b/i;
+
 // The plain-language CLASSIFICATION reason for a bank line — WHY it was booked to this GL
 // account (vendor + signal → account), for the transaction-detail "AI reasoning". Prefers the
 // categorizer's reasoning; otherwise builds one from the vendor + chosen account. Never the
 // provenance ("imported from bank statement"), which is redundant with `source`/the UI.
 export function classifyBankReason(txn = {}) {
   const r = txn && txn.reasoning && String(txn.reasoning).trim();
-  if (r) return r;
+  if (r && !PROVENANCE_RE.test(r)) return r;   // a real reason wins; a provenance placeholder does not
   const acct = txn.gl_name ? `${txn.gl_name}${txn.gl_code ? ` (${txn.gl_code})` : ""}` : (txn.gl_code || "this account");
   const who = txn.vendor || txn.description;
   return who ? `Categorized to ${acct} based on "${who}".` : `Categorized to ${acct}.`;

@@ -4,15 +4,15 @@ import { useERP } from "./ERPContext";
 import { initials, vendorColor, fmtDate } from "../lib/format";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyBankReason } from "../lib/bankMatch";
+import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
 
-// Older bank-import entries stored the PROVENANCE ("Imported from bank statement") in the
-// reasoning field instead of the GL-choice rationale. When we see that placeholder, derive a
-// real classification sentence from the entry's own vendor/account so the panel never shows
-// the provenance as "AI reasoning". New imports already store proper reasoning.
-const PROVENANCE_RE = /^\s*imported (from|via)\b/i;
-const displayReasoning = (sel) =>
-  sel && sel.reasoning && PROVENANCE_RE.test(sel.reasoning) ? classifyBankReason(sel) : (sel && sel.reasoning);
+// Older bank/QBO entries stored the PROVENANCE ("Imported from bank statement") in the
+// reasoning field instead of the GL-choice rationale. classifyBankReason now treats a
+// provenance placeholder as absent and derives a real classification sentence from the
+// entry's own vendor/account — so existing entries show a proper reason with no re-upload.
+// We still gate on sel.reasoning so an entry with NO stored reasoning shows no block.
+const displayReasoning = (sel) => (sel && sel.reasoning ? classifyBankReason(sel) : null);
 
 // Shared transaction detail slide-in. Used by Books and every Reports drill-down so
 // the panel lives in exactly one place. Pass the invoice id + an onClose handler.
@@ -94,7 +94,7 @@ function SourceDocPreview({ doc, onExpand }) {
   );
 }
 
-export default function TransactionDetailPanel({ invoiceId, onClose, returnContext }) {
+export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit,
     setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
@@ -207,6 +207,25 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                     <div style={{ fontSize: 13, color: "var(--sc-text-2)", lineHeight: 1.6 }}>{displayReasoning(sel)}</div>
                   </div>
                 )}
+                {/* Matched settlement ↔ original linkage (both directions, clickable). */}
+                {(() => {
+                  const orig = clearedOriginal(sel, invoices);
+                  const settledBy = clearingSettlement(sel, invoices);
+                  const link = orig || settledBy;
+                  if (!link) return null;
+                  const text = orig
+                    ? `Cleared the ${orig.vendor} ${orig.docNoun} (${fmtM(orig.amount)})`
+                    : `Settled by ${settledBy.actionNoun}${settledBy.date ? ` on ${fmtDate(settledBy.date)}` : ""} (${fmtM(settledBy.amount)})`;
+                  return (
+                    <div style={{ marginTop: 12, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 10, letterSpacing: 1, color: "var(--sc-text-2)", fontWeight: 600, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "var(--sc-gold)" }}>↔</span> MATCHED SETTLEMENT</div>
+                      <div style={{ fontSize: 13, color: "var(--sc-text)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <span style={{ wordBreak: "break-word" }}>{text}</span>
+                        {onNavigate && <button onClick={() => onNavigate(link.id)} style={{ flexShrink: 0, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>View →</button>}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 {(() => {

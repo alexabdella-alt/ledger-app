@@ -909,7 +909,7 @@ export default function ReportsView() {
                     </div>
 
                     {/* Shared transaction detail slide-in for all report drill-downs */}
-                    <TransactionDetailPanel invoiceId={drillSel} onClose={()=>setDrillSel(null)} returnContext={reportReturn} />
+                    <TransactionDetailPanel invoiceId={drillSel} onClose={()=>setDrillSel(null)} onNavigate={setDrillSel} returnContext={reportReturn} />
                   </div>
                 )}
               </div>

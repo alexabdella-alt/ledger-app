@@ -106,6 +106,31 @@ describe("financialHealthScore", () => {
     expect(Number.isFinite(h.score)).toBe(true);
     expect(h.score).toBeGreaterThanOrEqual(0);
   });
+
+  // O79: only a COMPLETED reconciliation counts. import/matching ≠ reconcile, and an
+  // in-progress draft must not register either.
+  const reconItem = (h) => h.items.find((i) => i.id === "reconciled");
+
+  it("no reconciliations → 'Never reconciled to bank', 0 pts", () => {
+    const r = reconItem(financialHealthScore({ invoices: healthyLedger, cashBalance: 20000, reconciliations: [], now: NOW }));
+    expect(r.met).toBe(false);
+    expect(r.points).toBe(0);
+    expect(r.detail).toBe("Never reconciled to bank");
+  });
+
+  it("an in-progress draft (no completed_at) does NOT count as reconciled", () => {
+    const draft = [{ status: "in_progress", period_end: "2026-06-10", created_at: "2026-06-10" }];
+    const r = reconItem(financialHealthScore({ invoices: healthyLedger, cashBalance: 20000, reconciliations: draft, now: NOW }));
+    expect(r.met).toBe(false);
+    expect(r.detail).toBe("Never reconciled to bank");
+  });
+
+  it("a completed reconciliation flips it → 'Last reconciled X days ago' + 20 pts", () => {
+    const r = reconItem(financialHealthScore({ invoices: healthyLedger, cashBalance: 20000, reconciliations: [{ status: "complete", completed_at: "2026-06-10" }], now: NOW }));
+    expect(r.met).toBe(true);
+    expect(r.points).toBe(20);
+    expect(r.detail).toMatch(/^Last reconciled \d+ days ago$/);
+  });
 });
 
 // ── Items 24/83/100: aging + trial balance reconcile, exclude voided ─────────

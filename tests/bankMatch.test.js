@@ -241,6 +241,19 @@ describe("classifyBankReason — GL-choice rationale, never the provenance", () 
     expect(classifyBankReason({})).toBe("Categorized to this account.");
   });
 
+  it("does NOT echo a stored PROVENANCE placeholder — derives instead (the b5f50a0 no-op bug)", () => {
+    // This is exactly what older bank/QBO entries stored in ai_reasoning. The display-override
+    // delegated to classifyBankReason, which used to `return r` and hand the placeholder right
+    // back → panel still showed "Imported from bank statement".
+    const bank = classifyBankReason({ reasoning: "Imported from bank statement", vendor: "Adobe", gl_code: "6500", gl_name: "Technology & Software" });
+    expect(bank).not.toMatch(/imported|bank statement/i);
+    expect(bank).toContain("Adobe");
+    expect(bank).toContain("Technology & Software");
+    // also the credit-card and QBO provenance variants
+    expect(classifyBankReason({ reasoning: "Imported from credit card statement", vendor: "Uber", gl_code: "6400", gl_name: "Travel" })).not.toMatch(/imported/i);
+    expect(classifyBankReason({ reasoning: "Imported from QBO", vendor: "Stripe", gl_code: "4000", gl_name: "Revenue" })).not.toMatch(/imported/i);
+  });
+
   it("buildBankLineEntry stores classification reasoning, NOT provenance", () => {
     // even if a stale 'imported...' string slips into reasoning, it's only honored when it
     // looks like a real reason — a deposit with a vendor produces a vendor→account sentence.

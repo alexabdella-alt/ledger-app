@@ -692,6 +692,9 @@ export default function DashboardView() {
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{it.label}</div>
                               <div style={{ fontSize:11.5, color:"var(--sc-text-mut)", marginTop:1 }}>{it.detail}</div>
+                              {it.id==="reconciled" && !it.met && (
+                                <button onClick={()=>setView("recon")} style={{ marginTop:6, padding:"4px 10px", borderRadius:7, fontSize:11.5, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Reconcile now →</button>
+                              )}
                             </div>
                             <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:it.met?"var(--sc-success)":"var(--sc-text-mut)", flexShrink:0 }}>{it.met?"+":""}{it.points}<span style={{ color:"var(--sc-text-mut)", fontWeight:400 }}>/{it.max}</span></span>
                           </div>

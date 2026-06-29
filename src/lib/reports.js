@@ -356,7 +356,10 @@ export function financialHealthScore({ invoices = [], cashBalance = 0, reconcili
   const cash = num(cashBalance);
   const runway = burn > 0 ? cash / burn : (cash > 0 ? Infinity : 0);
 
-  const lastRecon = (reconciliations || []).map(r => r.completed_at || r.period_end || r.created_at).filter(Boolean).sort().pop();
+  // Only a COMPLETED reconciliation counts. `completed_at` is written solely when ReconView's
+  // "complete" runs; in-progress drafts (and the dead import-side row) have no completed_at, so
+  // merely starting a reconcile — or importing/matching — must NOT register as "reconciled".
+  const lastRecon = (reconciliations || []).map(r => r.completed_at).filter(Boolean).sort().pop();
   const reconAge = lastRecon ? (now - new Date(lastRecon)) / 86400000 : Infinity;
 
   const overdueAR = live.filter(i => arUnpaid(i) && i.due_date && daysOverdue(i.due_date, now) > 60);
@@ -370,7 +373,7 @@ export function financialHealthScore({ invoices = [], cashBalance = 0, reconcili
 
   const items = [
     { label: "Runway over 6 months", max: 25, points: runway >= 6 ? 25 : (runway >= 3 ? 12 : 0), met: runway >= 6, detail: burn > 0 ? `~${runway === Infinity ? "∞" : runway.toFixed(1)} months at ${fmtMoney(burn)}/mo burn` : "No recent burn / cash not set" },
-    { label: "Reconciled within 35 days", max: 20, points: reconAge <= 35 ? 20 : 0, met: reconAge <= 35, detail: lastRecon ? `Last matched ${Math.round(reconAge)} days ago` : "Never reconciled to bank" },
+    { id: "reconciled", label: "Reconciled within 35 days", max: 20, points: reconAge <= 35 ? 20 : 0, met: reconAge <= 35, detail: lastRecon ? `Last reconciled ${Math.round(reconAge)} days ago` : "Never reconciled to bank" },
     { label: "No receivables 60+ days overdue", max: 15, points: overdueAR.length === 0 ? 15 : 0, met: overdueAR.length === 0, detail: overdueAR.length ? `${overdueAR.length} invoice${overdueAR.length > 1 ? "s" : ""} 60+ days late totaling ${fmtMoney(overdueARtotal)}` : "None 60+ days overdue" },
     { label: "Burn flat or declining", max: 15, points: burnOk ? 15 : 0, met: burnOk, detail: prevM == null ? "Not enough history yet" : (burnOk ? "Burn is steady or down month-over-month" : `Burn up ${Math.round((curM / prevM - 1) * 100)}% vs last month`) },
     { label: "No high-severity anomalies", max: 15, points: highAnoms.length === 0 ? 15 : 0, met: highAnoms.length === 0, detail: highAnoms.length ? `${highAnoms.length} high-severity flag${highAnoms.length > 1 ? "s" : ""}` : "Nothing unusual flagged" },

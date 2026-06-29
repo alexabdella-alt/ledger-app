@@ -5372,7 +5372,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           </div>
           {/* Nav — 5 tabs */}
           {(() => {
-            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","bank","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
+            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","bank","recon","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports"];
             const tabs = [
               { id:"home", label:"Home", group:["home","dashboard","add","review"] },
@@ -5428,11 +5428,11 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
 
           {/* Sub-nav for Books / Reports / Settings */}
           {(() => {
-            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","bank","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
+            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","bank","recon","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
             const REPORTS = ["reports"];
             const SETTINGS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
             let subs = null;
-            if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["ap","Payables"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["bank","Bank Import"],["payroll","Payroll"],["docs","Documents"]];
+            if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["ap","Payables"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["bank","Bank Import"],["recon","Reconcile"],["payroll","Payroll"],["docs","Documents"]];
             // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
             else if (SETTINGS.includes(view)) {
               subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import from QuickBooks"]];
