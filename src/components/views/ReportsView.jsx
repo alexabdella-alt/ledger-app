@@ -174,7 +174,15 @@ export default function ReportsView() {
             const renderDrill = () => {
               const txns = drillTxns();
               const isRev = i => glIsRevenue(i.gl_code) || i.type==="revenue";
-              const total = txns.reduce((s,i)=>s+i.amount,0);
+              // Account-keyed drills (a balance-sheet account, or a P&L category — both keyed by
+              // drill.value = an account code) show the NET effect on that account, not the gross
+              // sum of amounts: entries that CREDIT the account (a payment clearing A/P, a contra/
+              // refund to an expense) REDUCE it. glAccountBalance walks each row's signed leg
+              // contribution, so the total ties to the Balance Sheet / trial-balance line for that
+              // account. Non-account groupings (vendor / month / project) keep the plain sum.
+              const total = (drill.scope==="bsacct" || drill.scope==="gl")
+                ? glAccountBalance(drill.value, txns)
+                : txns.reduce((s,i)=>s+i.amount,0);
               const scopeLabel = { vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project", bsacct:"Balance Sheet" }[drill.scope];
               const hideVendor = drill.scope==="vendor", hideGL = drill.scope==="gl";
               const cols = ["Date", ...(hideVendor?[]:["Vendor"]), "Description", ...(hideGL?[]:["GL Account"]), "Amount", "Status"];

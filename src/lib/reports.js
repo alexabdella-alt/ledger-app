@@ -227,6 +227,24 @@ export function openReceivables(invoices) {
   return (invoices || []).filter(i => isLiveEntry(i) && arUnpaid(i));
 }
 
+// GL-TRUTH open A/R & A/P LISTS — only entries that actually touch the A/R (A/P) account
+// on a leg (primary, or the offset leg of a simple 2-line entry) AND are still uncollected
+// (unpaid). This is the predicate that EXCLUDES a direct-cash revenue/expense that never
+// created a receivable/payable — e.g. a Stripe payout booked Dr Cash / Cr Revenue, or a card
+// charge booked Dr Expense / Cr Cash. Those satisfy isRev/isExp + the payment flag (so the
+// looser openReceivables/openPayables include them), but have no A/R/A/P leg. The rows here
+// tie to glAccountBalance(arCode/apCode), so a card's count + list + total all reconcile.
+// arCode/apCode missing → empty (degrade safely rather than over-report).
+const touchesAccount = (i, code) => code != null &&
+  (String(i.gl_code) === String(code) ||
+   (!String(i.id).includes("_") && String(i.secondary_gl_code) === String(code)));
+export function openReceivablesGL(invoices, arCode) {
+  return (invoices || []).filter(i => isLiveEntry(i) && arUnpaid(i) && touchesAccount(i, arCode));
+}
+export function openPayablesGL(invoices, apCode) {
+  return (invoices || []).filter(i => isLiveEntry(i) && apUnpaid(i) && touchesAccount(i, apCode));
+}
+
 // ── AR / AP AGING (Items 24, 83) ────────────────────────────────────────────
 export function agingReport(invoices, side = "ar", now = new Date()) {
   const open = (invoices || []).filter(i => isLiveEntry(i) && (side === "ar" ? arUnpaid(i) : apUnpaid(i)));

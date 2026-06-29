@@ -5,7 +5,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
-import { financialHealthScore, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance } from "../../lib/reports";
+import { financialHealthScore, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
 import ClarificationFlow from "../ClarificationFlow";
 import StatCard from "../ui/StatCard";
@@ -64,9 +64,13 @@ export default function DashboardView() {
     const inFY = i => i.date && i.date >= fyFrom && i.date <= fyTo;
     const expFY = exp.filter(inFY);
     const revFY = rev.filter(inFY);
-    // Open payables: any expense (gl 5xxx/6xxx), not paid, not voided — SAME logic as the Home alert count.
-    const openAP = exp.filter(i => i.payment_status!=="paid");
-    const openAR = rev.filter(i => i.payment_status!=="collected");
+    // Open payables/receivables: GL-truth — only entries that actually touch the A/P (A/R)
+    // account leg and are still unpaid (uncollected), so the drill list matches the card's
+    // count/total and ties to glAccountBalance. (Was "any expense/revenue not paid/collected",
+    // which pulled in direct-cash entries — e.g. a Stripe payout booked Dr Cash / Cr Revenue —
+    // that never created a payable/receivable.)
+    const openAP = openPayablesGL(invoices, getAccountByRole?.("accounts_payable")?.code);
+    const openAR = openReceivablesGL(invoices, getAccountByRole?.("accounts_receivable")?.code);
 
     const crumbs = [{ label:"Dashboard", to:null }];
     if (d.type==="revenue") crumbs.push({ label:"Revenue", to:{type:"revenue"} });
@@ -555,17 +559,22 @@ export default function DashboardView() {
 
               {/* ── AP ACTIONABLE ALERTS ── */}
               {(() => {
-                // Open payables: any expense (gl 5xxx/6xxx), not paid, not voided — SAME logic as the drill list.
-                const ap = invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided");
-                const unpaid = ap.filter(i => i.payment_status!=="paid");
-                const openAR = invoices.filter(i=>glIsRevenue(i.gl_code)&&i.payment_status!=="collected"&&i.status!=="voided");
+                // GL-truth open A/P & A/R LISTS — only entries that actually touch the A/P (A/R)
+                // account leg and are still unpaid/uncollected, so the card's COUNT and the drill
+                // LIST tie to the GL TOTAL below. (Was "any expense/revenue not paid/collected",
+                // which counted direct-cash entries — e.g. a Stripe payout Dr Cash / Cr Revenue —
+                // that are not receivables/payables: count/list disagreed with the total.)
+                const apCode = getAccountByRole("accounts_payable")?.code;
+                const arCode = getAccountByRole("accounts_receivable")?.code;
+                const unpaid = openPayablesGL(invoices, apCode);
+                const openAR = openReceivablesGL(invoices, arCode);
                 if (unpaid.length===0 && openAR.length===0) return null;
                 const today = new Date().toISOString().slice(0,10);
-                // AP total = the canonical GL balance of the Accounts Payable account (same
-                // source as the Balance Sheet + Payables), so all three reconcile.
-                const total = glAccountBalance(getAccountByRole("accounts_payable")?.code, invoices);
+                // AP/AR totals = the canonical GL balance of the A/P / A/R accounts (same source
+                // as the Balance Sheet + Payables), so card total, count, and drill list reconcile.
+                const total = glAccountBalance(apCode, invoices);
                 const overdue = unpaid.filter(i=>i.due_date && i.due_date<today);
-                const arTotal = glAccountBalance(getAccountByRole("accounts_receivable")?.code, invoices);   // GL-derived, same source as AP/Balance Sheet
+                const arTotal = glAccountBalance(arCode, invoices);   // GL-derived, same source as AP/Balance Sheet
                 return (
                   <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
                     {unpaid.length>0 && (

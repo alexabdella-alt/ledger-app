@@ -1,10 +1,57 @@
 import { describe, it, expect } from "vitest";
-import { computeKPIs, financialHealthScore, trialBalance, agingReport } from "../src/lib/reports.js";
+import { computeKPIs, financialHealthScore, trialBalance, agingReport, openReceivablesGL, openPayablesGL, glAccountBalance } from "../src/lib/reports.js";
 
 const NOW = new Date("2026-06-15");
 const kpi = (ledger, key, opts = {}) => computeKPIs(ledger, { now: NOW, ...opts }).find(k => k.key === key);
 const rev = (amount, date = "2026-06-01", extra = {}) => ({ id: Math.random(), vendor: "Acme", amount, date, gl_code: "4000", gl_name: "Revenue", type: "revenue", status: "posted", payment_status: "collected", ...extra });
 const exp = (amount, gl_code = "6100", date = "2026-06-01", extra = {}) => ({ id: Math.random(), vendor: "Rent", amount, date, gl_code, gl_name: "Expense", type: "expense", status: "posted", payment_status: "paid", ...extra });
+
+// ── GL-truth open A/R & A/P lists (dashboard card count/list ties to the GL total) ──
+describe("openReceivablesGL / openPayablesGL — exclude direct-cash, tie to glAccountBalance", () => {
+  // Meridian: an issued invoice Dr A/R 1100 / Cr Revenue 4000 — a genuine receivable.
+  const meridian = { id: "inv-mer", vendor: "Meridian Health", amount: 6800, date: "2026-05-01", gl_code: "4000", gl_name: "Revenue", secondary_gl_code: "1100", type: "revenue", debit_credit: "credit", status: "posted", payment_status: "unpaid" };
+  // Stripe: a payout booked Dr Cash 1000 / Cr Revenue 4100 — money already received, NO A/R leg.
+  const stripe = { id: "dep-stripe", vendor: "Stripe", amount: 3200, date: "2026-05-10", gl_code: "4100", gl_name: "Revenue", secondary_gl_code: "1000", type: "revenue", debit_credit: "credit", status: "posted", payment_status: "unpaid" };
+
+  it("open receivables = only the genuine A/R invoice (Stripe excluded), count + sum tie to GL A/R", () => {
+    const list = openReceivablesGL([meridian, stripe], "1100");
+    expect(list.map(i => i.id)).toEqual(["inv-mer"]);          // Stripe excluded
+    expect(list.length).toBe(1);                                // count = 1, not 2
+    const listSum = list.reduce((s, i) => s + i.amount, 0);
+    expect(listSum).toBe(6800);                                 // total = $6,800
+    expect(glAccountBalance("1100", [meridian, stripe])).toBe(6800); // ties to the GL A/R balance
+  });
+
+  // Bill: Dr Expense 6000 / Cr A/P 2000 — a genuine payable. Card: Dr Expense 6500 / Cr Cash 1000.
+  const bill = { id: "bill-1", vendor: "Pixel", amount: 1500, date: "2026-05-01", gl_code: "6000", secondary_gl_code: "2000", type: "expense", debit_credit: "debit", status: "posted", payment_status: "unpaid" };
+  const card = { id: "card-1", vendor: "Adobe", amount: 800, date: "2026-05-03", gl_code: "6500", secondary_gl_code: "1000", type: "expense", debit_credit: "debit", status: "posted", payment_status: "unpaid" };
+
+  it("open payables = only the A/P bill (direct-cash card charge excluded), ties to GL A/P", () => {
+    const list = openPayablesGL([bill, card], "2000");
+    expect(list.map(i => i.id)).toEqual(["bill-1"]);
+    expect(glAccountBalance("2000", [bill, card])).toBe(1500);
+    expect(list.reduce((s, i) => s + i.amount, 0)).toBe(1500);
+  });
+
+  it("missing account code → empty (degrade safely, never over-report)", () => {
+    expect(openReceivablesGL([meridian, stripe], undefined)).toEqual([]);
+  });
+});
+
+// ── Report account drill: NET (signed) total, not gross — ties to the account balance ──
+describe("account-drill total is the NET effect on the account (the gross-vs-net bug)", () => {
+  // A/P 2000 with a bill (Cr A/P 1500) AND a payment clearing it (Dr A/P 1500 / Cr Cash).
+  const bill = { id: "b", vendor: "Pixel", amount: 1500, date: "2026-05-01", gl_code: "6000", secondary_gl_code: "2000", type: "expense", debit_credit: "debit", status: "posted" };
+  const payment = { id: "p", vendor: "Pixel", amount: 1500, date: "2026-05-20", gl_code: "2000", secondary_gl_code: "1000", type: "expense", debit_credit: "debit", status: "posted" };
+  const txns = [bill, payment];
+
+  it("gross sum overstates; glAccountBalance nets the clearing entry to the true balance", () => {
+    const gross = txns.reduce((s, i) => s + i.amount, 0);
+    expect(gross).toBe(3000);                          // the old (wrong) drill total
+    expect(glAccountBalance("2000", txns)).toBe(0);    // NET: bill +1500, payment −1500 = paid off
+    expect(txns.length).toBe(2);                        // count stays correct
+  });
+});
 
 // ── Item 33: KPIs ───────────────────────────────────────────────────────────
 describe("computeKPIs", () => {
