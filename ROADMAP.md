@@ -140,6 +140,26 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 Priority: **P1** now/next · **P2** soon · **P3** later/launch · **P4** deferred-by-design.
 
+### ◆◆ PRODUCT THESIS (the organizing principle — read this first) ◆◆
+
+**"The conversation is the product; the app is the back office."**
+
+Shadow's **primary interface is a CHATBOT** the user talks to like texting a bookkeeper — ideally **in a channel they already live in** (Slack, email, text). They feed it documents, ask questions ("how much did I spend on AWS last month?"), request reports, set reminders, ask it to send follow-ups — and **never have to open the app if they don't want to.** The full app (tabs, GL, reports, journal entries) still exists — as the **back office / CPA + power-user surface** — but it is **OPTIONAL, not the main way the user interacts.**
+
+**Why.** The target customer (a small-business owner) doesn't want to **learn accounting software** — even *simple* software. They lack the time/bandwidth and would rather pay someone to handle it. QBO's flaw isn't that it's hard; it's that it **must be operated at all.** Shadow's wedge is **removing the operating**: it *feels* like texting a bookkeeper because functionally it **is** one. The bot is the **TRANSLATOR between human and accounting.**
+
+**THE CARDINAL PRINCIPLE — the interaction boundary (what the bot may and may not ask):**
+- ✅ **OK to ask the user — human questions about their business:** *"What was this $400 for?", "Is this a subscription?", "Business or personal?", "Which project is this?"*
+- ❌ **NEVER ask the user — accounting decisions or jargon:** *"Should we credit the payable?", "Is this 6100 or 6200?",* debits/credits, GL codes, journal-entry concepts. The bot translates the human answer into the accounting **silently. The user never sees a debit.** (This is the chat-side twin of **O77**'s "ask rarely, in plain language, let them state the category" — generalized into a hard boundary: human-language questions yes, accounting-language questions never.)
+
+**What this reorganizes (re-weighting, not new mechanics):**
+- **O80 (Shadow Assistant) is reframed from "a later vision feature" to the PRIMARY PRODUCT SURFACE** — the roadmap's **center of gravity**, not a nice-to-have. (Its layers — memory/reminders, proactive surfacing, conversational ledger Q&A, task execution, assistant framing — are the product, not an add-on.)
+- **NEW implied item → CHANNEL INTEGRATION (O82):** deliver the bot **where the user already is** (Slack first; email/text later) so *"never open the app"* becomes literally true. (Subsumes/realizes the old O29 Slack-bot idea; ties the O56 invisible-controller inbox.)
+- **App declutter is SECONDARY** (fewer tabs, hide the accounting machinery, organize around **user questions** not accounting concepts). It matters for the **optional** deep-dive, but **the bot carrying the load is the bigger lever** — don't let UI polish outrank the conversational surface.
+- **O81 (bot safety) rises in importance:** if the bot is the **primary high-power interface** (it both reads everything and acts on the books), guardrails / anti-prompt-injection matter **even more** — it's not an edge surface, it's the front door.
+
+**Dependency order toward this vision:** **O78** (persistence — bot actions must stick ✅ C112) → **O80** (assistant capability: memory/reminders/proactive/send-on-behalf) → **O82 channel integration (Slack)** → **O81** (safety hardening for primary-interface use) → **app declutter** (secondary). The **trust layer (O60 / O49 / O50) underpins all of it** — the bot's answers and actions must be **correct + verifiable**, because a conversational bookkeeper that's confidently wrong is worse than no bookkeeper. The **scalability constraint on O80 layer 3** (answer by QUERY, not ingestion) is a hard requirement of this thesis, not an optimization — a primary interface must work at any client's history size.
+
 ### ✅ Triage 2026-06-28 — resolved/cleaned (ids stay stable; full evidence in Section 1)
 
 **Shipped since logged → C# (removed from the active list):** O1→C57 · O2→C58 · O3→C71 · O8→C72 · O10→C77 · O11→C99 (collections *reminders* the only remainder, folded into O38) · O12→C62 · O13→C61 · O15→C56 · O16→C100 · O19→C78 · O37→C59 · O44→C75 · O52→C64 · O53→C65 · O54→C74 · O55→C76/C101 · O57→C63 · O58→C66 · O62→C73 · O63→C68 · O69→C69 · O70→C70 · O73→C85–C96/C97 · O75→C82. **Subsumed:** O42 → O60 (the specific case of the general completeness guarantee). **Parked (P4/deferred-by-design):** O32, O33, O34, O36 → see the PARKED section at the bottom.
@@ -331,7 +351,8 @@ Existing items that ladder into it:
 |----|------|--------|-----|-----------|
 | O27 | Integrated vendor payments (actually pay bills, not just record) | not started | P3 | |
 | O28 | Expense / receipt submission (employee capture flow) | not started | P3 | |
-| O29 | Slack / SMS bot interface | not started | P3 | |
+| O29 | ~~Slack / SMS bot interface~~ → **superseded by O82** (channel integration is now the primary-surface item, per the PRODUCT THESIS) | superseded | — | see O82 |
+| O82 | **CHANNEL INTEGRATION — deliver the bot where the user already is (Slack first; email/text later).** The enabler that makes *"never open the app"* literally true: surface the Shadow Assistant (O80) in the user's existing channel so feeding docs / asking questions / setting reminders / requesting reports all happen in Slack (then email/text), not in a tab they have to remember to open. Realizes the old O29 Slack-bot idea and the **O56** invisible-controller inbox (the forwarded channel auto-becomes the document record / audit trail). **Primary-surface item per the PRODUCT THESIS** (not P3 polish) — but sequenced **after O80** (the assistant capability must exist before it's worth piping into a channel) and paired with **O81** (a primary high-power interface in an external channel raises the safety/anti-injection bar). | not started | **P2** | thesis-tier; **supersedes O29**; needs O80 first; ties O56 (inbox→audit trail) + O81 (safety) + O60/O49 (trust) |
 | O30 | Stripe billing (subscription/usage) | not started | P3 | |
 | O31 | Custom domain support | not started | P3 | |
 | O43 | Split invoices — split one invoice/bill into multiple line items or allocations (e.g. across GL accounts / projects) | not started | P2 | multi-line booking already supported via C20 |
