@@ -12,6 +12,7 @@ import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./l
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
+import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, hashFile } from "./lib/documentIntake";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
 import { glCodeForAccountType } from "./lib/bankAccounts";
@@ -2925,6 +2926,40 @@ Reply with only the single word.`,
       .catch(e => console.error("upload_log update error:", e));
   };
 
+  // ── O60 Document Completeness: the INDEPENDENT intake ledger ────────────────
+  // Log a document's ARRIVAL to document_intake FIRST — before any AI/parsing/booking —
+  // with a known client-generated id so the pipeline can annotate its status later. Write
+  // is dead-simple (a hash + insert); on failure we SURFACE it (never block the upload
+  // silently — a failed intake log is itself a completeness signal).
+  const logIntake = async (intakeId, file, source = "upload") => {
+    if (!currentCompany?.id || !intakeId || !file) return;
+    try {
+      const contentHash = await hashFile(file);
+      const row = { id: intakeId, ...buildIntakeRow({ companyId: currentCompany.id, filename: file?.name || null, contentHash, source, uploadedBy: session?.user?.id || null }) };
+      const res = await insertIntake(supabase, row);
+      if (!res.ok) {
+        console.error("[document_intake] arrival log FAILED:", res.error);
+        showNotification("Heads up — we couldn't record this upload in the intake ledger. It may still process, but flag it if your books look short.", "error");
+      }
+    } catch (e) { console.error("[document_intake] logIntake error:", e); }
+  };
+  // Annotate the intake row as the doc moves through (best-effort: a missed update just
+  // leaves it non-terminal, so reconciliation still surfaces it — fail-safe by design).
+  const markIntake = (intakeId, status, opts = {}) => {
+    if (!currentCompany?.id || !intakeId) return;
+    setIntakeStatus(supabase, intakeId, status, opts).then(res => {
+      if (!res.ok) console.warn("[document_intake] status update failed:", status, res?.error);
+    }).catch(e => console.warn("[document_intake] markIntake error:", e));
+  };
+  // The completeness check — surface every document that fell through (received/processing
+  // stuck, or failed). Independent of the recording pipeline (reads the intake population).
+  const reconcileDroppedDocs = async (opts = {}) => {
+    if (!currentCompany?.id) return [];
+    const res = await fetchDroppedIntake(supabase, currentCompany.id, opts);
+    if (!res.ok) console.warn("[document_intake] reconcile failed:", res.error);
+    return res.dropped || [];
+  };
+
   const handleUniversalUpload = (files) => {
     if (!files?.length) return;
     const allowed = [".pdf",".jpg",".jpeg",".png",".webp",".csv",".xlsx",".xls"];
@@ -2937,7 +2972,10 @@ Reply with only the single word.`,
       fileStoreRef.current[id] = f;
       const uploadLogId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : null;
       if (uploadLogId) logUploadStart(uploadLogId, { file_name: f.name, file_type: f.type || f.name.split(".").pop().toLowerCase(), file_size_bytes: f.size });
-      return { id, name: f.name, status: "pending", type: null, result: null, error: null, upload_log_id: uploadLogId };
+      // O60: log ARRIVAL to the independent intake ledger FIRST (before any processing).
+      const intakeId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : null;
+      if (intakeId) logIntake(intakeId, f, "upload");
+      return { id, name: f.name, status: "pending", type: null, result: null, error: null, upload_log_id: uploadLogId, intake_id: intakeId };
     });
     setUploadQueue(prev => [...queueItems, ...prev]);
     // useEffect below picks up "pending" items and processes them in background
@@ -2988,6 +3026,7 @@ Reply with only the single word.`,
             routeFileToType(route.to, file);
             setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:route.to, result:{ routed:true, to:route.to }} : q));
             logUploadUpdate(item.upload_log_id, { status:"done", doc_type:route.to, result:{ routed:true } });
+            markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `routed to ${route.to} importer` });   // terminal: in a visible queue, not lost
             showNotification(`That looked like a ${TYPE_LABEL[route.to]} — routed it to the right importer.`);
             return;
           }
@@ -3003,6 +3042,7 @@ Reply with only the single word.`,
           routeFileToType(docType, file);
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:docType, result:{ routed:true, to:docType }} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:docType, result:{ routed:true } });
+          markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `routed to ${docType} importer` });   // terminal: in a visible queue
           showNotification(`That looked like a ${TYPE_LABEL[docType]} — routed it to the right importer.`);
           return;
         }
@@ -3026,6 +3066,7 @@ Reply with only the single word.`,
           setPendingImportFile({ type: "bank_statement", file });
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"bank" }} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result:{ routed:true } });
+          markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "routed to Bank Import — pending review/booking" });   // terminal: visible in Bank Import
           showNotification("Bank statement uploaded — review & book it in Bank Import (Books → Bank Import).");
           try { createNotification?.({ type:"bank_import", title:"Bank statement ready to import", description:"Open Bank Import to pick the account, review the matches, and book it.", link_view:"bank" }); } catch {}
           return;
@@ -3034,6 +3075,7 @@ Reply with only the single word.`,
         // Update status: processing + type known
         setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, type:docType, status:"processing"} : q));
         logUploadUpdate(item.upload_log_id, { status:"processing", doc_type:docType });
+        markIntake(item.intake_id, INTAKE_STATUS.PROCESSING, { detail: `processing as ${docType}` });
 
         if (docType === "invoice") {
           // Extract ALL invoices in the document (handles single and multi-invoice PDFs)
@@ -3094,6 +3136,7 @@ Rules:
           if (extractedList.length === 0) {
             setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:"Could not extract invoice data — try a clearer scan"} : q));
             logUploadUpdate(item.upload_log_id, { status:"error", error:"Could not extract invoice data — try a clearer scan" });
+            markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "couldn't extract invoice data — held for review" });   // terminal: visible, not lost
             return;
           }
 
@@ -3356,6 +3399,10 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           };
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: invoiceResult} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"invoice", result: invoiceResult });
+          // O60 terminal: booked → recorded (+ JE links); nothing booked but in the
+          // clarification queue → held_for_review (visible, not lost).
+          if (highConfidence.length > 0) markIntake(item.intake_id, INTAKE_STATUS.RECORDED, { journalEntryIds: highConfidence.map(i => i.db_entry_id).filter(Boolean), detail: `${highConfidence.length} invoice(s) booked` });
+          else markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: needsClarification.length ? "awaiting clarification in review queue" : "no transaction extracted — needs review" });
 
         } else if (docType === "bank_statement") {
           // BACKSTOP ONLY — bank/card statements are now ROUTED to the Bank Import
@@ -3532,6 +3579,7 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           };
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: bankResult} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result: bankResult });
+          markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "bank statement in review/booking flow" });   // terminal: visible queue
 
         } else if (docType === "contract") {
           // Full contract analysis — two calls to avoid token limits
@@ -3591,6 +3639,7 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
           };
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: contractResult} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"contract", result: contractResult });
+          markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "contract imported — review/post in Contracts" });   // terminal: visible queue
 
         } else if (docType === "unknown") {
           // Ask Claude to explain AND propose a journal entry (or explicitly say none needed)
@@ -3682,6 +3731,7 @@ Rules:
           const unknownResult = { document_type: unknownRecord.document_type, entry_needed: unknownRecord.entry_needed, watching: unknownRecord.watch_for?.length > 0 };
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"unknown", result: unknownResult} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"unknown", result: unknownResult });
+          markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "unrecognized document — held for review (catch-all)" });   // terminal: never void
         }
 
     } catch(e) {
@@ -3689,6 +3739,7 @@ Rules:
       const errMsg = e?.message || String(e) || "Processing failed";
       setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:`${errMsg} — try again`} : q));
       logUploadUpdate(item.upload_log_id, { status:"error", error:`${errMsg} — try again` });
+      markIntake(item.intake_id, INTAKE_STATUS.FAILED, { detail: errMsg });   // O60: NON-terminal → reconciliation surfaces it
     } finally {
       // Clean up file ref and release lock so next pending item can run
       delete fileStoreRef.current[item.id];
@@ -5326,7 +5377,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, runDepreciationThrough, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, runDepreciationThrough, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
