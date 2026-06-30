@@ -6,7 +6,7 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-28
-- **Test suite:** 738 passing (`npm test`, 52 files; incl. `noUndefinedRefs` scope-scan over all 91 src files; incl. **fault-injection** suites that deliberately break the pipeline to prove the O60/O49 trust nets catch it — C115). **Build:** clean (`npm run build`).
+- **Test suite:** 750 passing (`npm test`, 53 files; incl. `noUndefinedRefs` scope-scan over all 92 src files; incl. **fault-injection** suites that deliberately break the pipeline to prove the O60/O49 trust nets catch it — C115). **Build:** clean (`npm run build`).
 - **Pending migration to apply:** `047_document_intake_ledger.sql` (O60 intake ledger — run in Supabase SQL editor).
 - **Live verification:** `VERIFICATION.md` (repo root) is the manual click-through checklist for built-but-not-live-verified work — worked under **O83** (pre-launch gate). Unit-test green ≠ live-verified.
 - **Migrations:** `000`–`045` applied (numbering non-contiguous; `045_drop_ap_invoices.sql` applied 2026-06-26 — dropped the orphaned `ap_invoices` table + dead `ap_aging` view, confirmed 0 rows). `046_company_aliases.sql` written (optional — adds `companies.aliases` for O75 self-identity; name-based direction works without it).
@@ -222,7 +222,7 @@ The vision's direction is sound; this names what it RESTS ON, so the build order
 - **It's the operational glue that makes "conversation is the product" real:** **O49** (detect) → **bot** (ask, via **O82** channel) → **books** (resolve) → **O64–O68** (learn). One organism, not a pipeline of features.
 - Reframes **O77** (clarification model): the "ask rarely, in plain language, let them state it" model is *this loop at the upload moment*; O49→bot is *the same loop post-booking*. Same discipline, two entry points.
 
-**Sequencing:** goal-state synthesis — depends on **O49 (✅ C114)**, **O80** (assistant can ask/act), **O82** (channel), **O64–O68** (learning). **Nearer-term slice (buildable now):** when an O50 flag needs *client* info, surface an **"Ask the client"** action that **drafts the plain-language question** (Alex sends it, or it goes via the bot); the client's answer **resolves the flag** (route through the existing `reviewOverride`/`reviewApprove`). That single action is the seed of the whole loop and ships without O80/O82.
+**Sequencing:** goal-state synthesis — depends on **O49 (✅ C114)**, **O80** (assistant can ask/act), **O82** (channel), **O64–O68** (learning). **Nearer-term slice — ✅ SHIPPED C117:** the **"Ask the client"** action on an O50 flag drafts a plain-language, jargon-free question (Cardinal-Principle-enforced; `src/lib/clarify.js` `draftClientQuestion`), and the client's answer maps to an account (`answerToAccount` — vendor-rule-aware) and **resolves the flag via the verified `reviewOverride`** (a vague answer → null → refuses to resolve). Shipped **without O80/O82**; the drafted question carries a structured `channel` payload so O82 can later auto-send + auto-ingest. **Remaining (O80/O82-dependent):** auto-send to the client's channel + auto-ingest the reply; deeper AI answer→account mapping; the O64–O68 learning write-back so the question decays.
 
 ### ★ North star (vision-tier)
 
