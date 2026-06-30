@@ -113,6 +113,19 @@
 - ⬜ **H7g · EMPTY STATE** — on a clean company (or after clearing the queue) → a clear **"All clear — nothing needs review"** state. *This is the reassuring signal the books are trustworthy.*
   *Boundary:* "all clear" means *nothing the trust layer detected* — it does NOT mean confidently-wrong coding was caught (H6f); that's control-total reconciliation (O59).
 
+## H8. Clarification loop — "Ask the client" first slice (C117)
+
+**Risk: HIGH** (it resolves flags into the books via the verified review path — a wrong/false resolution corrupts coding). On a flagged needs-review item in the **Review** tab:
+
+- ⬜ **H8a · "💬 Ask the client" drafts a sensible PLAIN-LANGUAGE question** — click it on a flag (e.g. a vague $1–2k expense).
+  *Expected:* a drafted question that names the **vendor + amount + date** and is phrased for a human — e.g. *"Hey — what was the $400 payment to The Hartford on Feb 22 for? (a one-time purchase, a recurring subscription, a service, or something else)"*. **NO GL codes, no "debit/credit/payable", no jargon.** A Copy button works.
+- ⬜ **H8b · a client answer resolves the flag + re-codes correctly** — type a plain answer (e.g. *"it's our business insurance"*) into "Client's answer" → **Apply answer**.
+  *Expected:* the item leaves the queue and the txn is **re-coded to Insurance** (open it in Books + refresh → new account sticks — same verified `reviewOverride` path as H7e).
+- ⬜ **H8c · a vague answer does NOT falsely resolve** — type something unmappable (*"idk"*, *"a payment"*) → Apply.
+  *Expected:* it refuses with "couldn't map that answer yet — rephrase or use Override"; the flag **stays** (never books on a guess).
+- ⬜ **H8d · revenue framing** — on a flagged *deposit/revenue* item, the drafted question is phrased as income ("the $X from …, a one-time project or ongoing/retainer work?").
+  *Shippable-now note:* the question is drafted + (manually) sent + answer pasted back. **O82-dependent (not yet):** auto-send to the client's channel and auto-ingest their reply — the `channel` payload is already structured for it.
+
 ---
 
 # 🟠 MEDIUM RISK

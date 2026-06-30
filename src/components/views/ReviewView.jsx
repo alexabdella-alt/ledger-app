@@ -4,6 +4,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildReviewQueue } from "../../lib/reviewQueue";
+import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
 
 // O50 — CPA Review Dashboard. Consumes O60 (dropped/incomplete docs via reconcileDroppedDocs)
 // and O49 (low-confidence-and-material txns via flagsForReview) into one review surface.
@@ -20,6 +21,10 @@ export default function ReviewView() {
   const [busyId, setBusyId] = React.useState(null);
   const [overrideFor, setOverrideFor] = React.useState(null);   // flagged-txn id being overridden
   const [overrideCode, setOverrideCode] = React.useState("");
+  const [askFor, setAskFor] = React.useState(null);             // flagged-txn id with the "ask client" panel open
+  const [askDraft, setAskDraft] = React.useState("");          // the drafted plain-language question
+  const [askAnswer, setAskAnswer] = React.useState("");        // the client's answer (pre-O82: pasted manually)
+  const [copied, setCopied] = React.useState(false);
 
   const refreshDropped = React.useCallback(async () => {
     setLoadingDropped(true);
@@ -56,6 +61,29 @@ export default function ReviewView() {
     else showNotification(`Couldn't resolve — ${r.error}`, "error");
   };
   const openTxn = (txn) => { setReturnTo && setReturnTo({ view: "review", label: "Review" }); setSelectedInvoice && setSelectedInvoice(invoices.find(i => i.id === txn.id) || txn); setView && setView("detail"); };
+
+  // ── Clarification loop (first slice): draft a plain-language question for the client; their
+  // answer maps to an account and resolves the flag through the verified review action. ──
+  const onAskClient = (txn) => {
+    const d = draftClientQuestion(txn);
+    setAskFor(txn.id); setAskDraft(d.question); setAskAnswer(""); setCopied(false);
+    setOverrideFor(null);
+  };
+  const onCopyQuestion = () => {
+    try { navigator?.clipboard?.writeText(askDraft); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard may be unavailable */ }
+  };
+  const onApplyAnswer = async (txn) => {
+    const mapped = answerToAccount(askAnswer, { getAccountByRole, rules, vendor: txn.vendor });
+    if (!mapped || !mapped.gl_code) {
+      showNotification("I couldn't map that answer to a category yet — rephrase it (e.g. \"business insurance\") or use Override.", "error");
+      return;   // still ambiguous → never falsely resolve
+    }
+    setBusyId(txn.id);
+    const r = await reviewOverride(txn, mapped.gl_code, mapped.gl_name);   // same verified persistence path
+    setBusyId(null);
+    if (r.ok) { showNotification(`Resolved from the client's answer → ${mapped.gl_name} ✓`, "success"); setAskFor(null); setAskAnswer(""); }
+    else showNotification(`Couldn't resolve — ${r.error}`, "error");
+  };
 
   const statCard = (label, value, tone) => (
     <div style={{ flex: "1 1 160px", background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "16px 18px" }}>
@@ -106,6 +134,7 @@ export default function ReviewView() {
             {needsReview.map(t => {
               const tone = t.severity === "high" ? "var(--sc-error)" : "var(--sc-warning)";
               const isOv = overrideFor === t.id;
+              const isAsk = askFor === t.id;
               return (
                 <div key={t.id} style={{ background: "var(--sc-surface)", border: `1px solid ${t.severity === "high" ? "var(--sc-error-soft)" : "var(--sc-border)"}`, borderRadius: 14, padding: "16px 18px" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
@@ -139,8 +168,29 @@ export default function ReviewView() {
                         <button onClick={() => { setOverrideFor(null); setOverrideCode(""); }} style={{ padding: "8px 12px", borderRadius: 9, fontSize: 13, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
                       </>
                     )}
+                    {!isOv && <button disabled={busyId === t.id} onClick={() => onAskClient(t)} style={{ padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer" }}>💬 Ask the client</button>}
                     <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--sc-text-2)" }}>Leave it to decide later — it stays here.</span>
                   </div>
+
+                  {/* Clarification loop (first slice): drafted plain-language question → client answers → resolve */}
+                  {isAsk && (
+                    <div style={{ marginTop: 12, background: "var(--sc-bg)", border: "1px solid var(--sc-gold-soft)", borderRadius: 11, padding: "14px 16px" }}>
+                      <div style={{ fontSize: 10, letterSpacing: 1.2, color: "var(--sc-gold)", fontWeight: 600, marginBottom: 8 }}>ASK THE CLIENT — plain-language question (send via Slack/email/text)</div>
+                      <div style={{ fontSize: 13.5, color: "var(--sc-text)", lineHeight: 1.55, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 9, padding: "11px 13px" }}>{askDraft}</div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                        <button onClick={onCopyQuestion} style={{ padding: "7px 13px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", cursor: "pointer" }}>{copied ? "Copied ✓" : "Copy question"}</button>
+                        <span style={{ fontSize: 11.5, color: "var(--sc-text-2)", alignSelf: "center" }}>When O82 (channel) lands, the bot sends this and ingests the reply automatically.</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--sc-text-2)", margin: "12px 0 6px", letterSpacing: 0.4 }}>CLIENT'S ANSWER</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <input value={askAnswer} onChange={(e) => setAskAnswer(e.target.value)} placeholder='e.g. "it’s our business insurance"'
+                          style={{ flex: "1 1 260px", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "9px 12px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
+                        <button disabled={busyId === t.id || !askAnswer.trim()} onClick={() => onApplyAnswer(t)} style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: askAnswer.trim() ? "pointer" : "not-allowed", opacity: askAnswer.trim() ? 1 : 0.6 }}>Apply answer</button>
+                        <button onClick={() => { setAskFor(null); setAskAnswer(""); }} style={{ padding: "9px 12px", borderRadius: 8, fontSize: 13, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Close</button>
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginTop: 8 }}>The answer maps to the right account and books it correctly — the client never sees a GL code. A vague answer won't resolve it.</div>
+                    </div>
+                  )}
                 </div>
               );
             })}
