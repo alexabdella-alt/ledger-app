@@ -112,6 +112,8 @@
 - ⬜ **H7f · RESOLVE a dropped doc** — Dismiss / Acknowledge an incomplete doc → it leaves the completeness section and **stays gone after refresh** (its intake row is now terminal).
 - ⬜ **H7g · EMPTY STATE** — on a clean company (or after clearing the queue) → a clear **"All clear — nothing needs review"** state. *This is the reassuring signal the books are trustworthy.*
   *Boundary:* "all clear" means *nothing the trust layer detected* — it does NOT mean confidently-wrong coding was caught (H6f); that's control-total reconciliation (O59).
+- ⬜ **H7h · NO render-before-data flash (C118)** — open the **Review** tab fresh / hard-refresh on it / switch companies while on it.
+  *Expected:* a single stable **"Loading your review queue…"** until data is ready, then the final content renders **once** — **no flash/snap** of all-clear or a partial mid-load state. (Gated on `companyDataLoaded` AND the first reconcile completing — "not loaded" ≠ "all-clear".) Same fix class as the home checklist flash (E5).
 
 ## H8. Clarification loop — "Ask the client" first slice (C117)
 

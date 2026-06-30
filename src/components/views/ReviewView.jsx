@@ -13,11 +13,12 @@ const _m0 = (n) => "$" + Math.round(Math.abs(Number(n) || 0)).toLocaleString("en
 
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
-    reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo } = useERP();
+    reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
   const [loadingDropped, setLoadingDropped] = React.useState(true);
+  const [droppedLoaded, setDroppedLoaded] = React.useState(false);   // has the FIRST reconcile completed? ("loaded" ≠ "empty")
   const [busyId, setBusyId] = React.useState(null);
   const [overrideFor, setOverrideFor] = React.useState(null);   // flagged-txn id being overridden
   const [overrideCode, setOverrideCode] = React.useState("");
@@ -26,16 +27,23 @@ export default function ReviewView() {
   const [askAnswer, setAskAnswer] = React.useState("");        // the client's answer (pre-O82: pasted manually)
   const [copied, setCopied] = React.useState(false);
 
-  const refreshDropped = React.useCallback(async () => {
+  // Plain function (not useCallback): reconcileDroppedDocs is a fresh closure each ERP render,
+  // so depending on it would re-run the effect every render (excess refetching). Run the load
+  // once per company instead; action handlers call refreshDropped() directly to re-sync.
+  const refreshDropped = async () => {
     setLoadingDropped(true);
     try { const d = await (reconcileDroppedDocs ? reconcileDroppedDocs() : Promise.resolve([])); setDropped(Array.isArray(d) ? d : []); }
     catch { setDropped([]); }
-    finally { setLoadingDropped(false); }
-  }, [reconcileDroppedDocs]);
-  React.useEffect(() => { refreshDropped(); }, [refreshDropped]);
+    finally { setLoadingDropped(false); setDroppedLoaded(true); }
+  };
+  React.useEffect(() => { setDroppedLoaded(false); refreshDropped(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [currentCompany?.id]);
 
   const flagged = flagsForReview ? flagsForReview() : [];
   const { completeness, needsReview, unknown, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs });
+  // STABLE LOAD GATE: hold a single loading state until BOTH the company data (invoices — the
+  // flag source) AND the first dropped-docs reconcile have loaded. "not loaded" is distinct
+  // from "empty/all-clear", so we never flash the all-clear or a partial mid-load state.
+  const ready = (companyDataLoaded !== false) && droppedLoaded;
 
   // ── actions (persist + verify; honest-on-failure; re-sync the view) ──
   const onApprove = async (txn) => {
@@ -207,8 +215,8 @@ export default function ReviewView() {
                 <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Review</h1>
                 <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Everything the trust layer flagged for a human: documents that didn't fully record, and transactions the AI wasn't sure about. Approve, override, or resolve — an empty screen means the books are clean.</div>
               </div>
-              {loadingDropped && summary.totalItems === 0 ? (
-                <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>Checking the books…</div>
+              {!ready ? (
+                <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>Loading your review queue…</div>
               ) : summary.allClear ? (
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-success-soft)", borderRadius:14, padding:48, textAlign:"center" }}>
                   <div style={{ fontSize:32, marginBottom:12 }}>✓</div>
