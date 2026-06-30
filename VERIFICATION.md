@@ -60,6 +60,9 @@
 - ⬜ **H2e · THE GUARANTEE — reconciliation surfaces a dropped doc** — simulate a drop: leave/insert an intake row `status='received'`, `received_at` ~60 min ago, with **no** JE. Call `reconcileDroppedDocs` (or `select * from document_intake where status not in ('recorded','held_for_review','rejected')`).
   *Expected:* that row is **flagged "received but never recorded"** even though no JE/document exists — independent of the recording pipeline.
 - ⬜ **H2f · intake-write failure surfaces (no silent swallow)** — if you can force the insert to fail → a visible non-blocking notice + console error; upload still proceeds.
+- ⬜ **H2g · LIVE FAULT INJECTION — drop one doc in a real batch** *(do during the year-run)* — upload **several** docs at once where **one is deliberately broken** (a corrupt/zero-byte PDF or a blank image that won't extract). After processing, `reconcileDroppedDocs()` (console) / query non-terminal rows.
+  *Expected:* the good docs reach `recorded`/`held`; the broken one is `failed` (or stuck) and **surfaced by reconciliation** — and the **good ones do NOT false-positive**. This is the live mirror of `tests/documentIntake.faultInjection.test.js`.
+  *Boundary to remember:* a doc the pipeline **falsely marks `recorded` with no real JE** is NOT caught by this net (status is trusted) — that's control-total reconciliation's job (O59), not intake completeness.
 
 ## H3. Dashboard open-receivables / open-payables — GL-truth rewrite (C110)
 
@@ -88,6 +91,10 @@
 - ⬜ **H6b** — a genuinely ambiguous / low-confidence **material** txn (confidence < 75, amount ≥ ~$1k) **is** in `flagsForReview()`, carrying its chosen account + confidence + reasoning + reason.
 - ⬜ **H6c** — **does NOT over-flag:** on a normal company, `reviewFlagSummary().count` is a small fraction of the ledger (a handful), not most of it. *(If nearly everything is flagged, the materiality/threshold tuning is off — that defeats the burden-reduction.)*
 - ⬜ **H6d** — materiality interaction live: a small ambiguous charge ($ tens) does not flag; a large/unusual one with the same uncertainty does.
+- ⬜ **H6e · LIVE FAULT INJECTION — ambiguous-and-material txn gets flagged** *(do during the year-run)* — upload a genuinely ambiguous **material** transaction (a vague-vendor / unclear-purpose charge for ≥ ~$1–2k, the kind the categorizer scores < 75%).
+  *Expected:* it lands in `flagsForReview()` with its chosen account + confidence + reason; the clean uploads around it do not. Live mirror of `tests/confidenceFlag.faultInjection.test.js`.
+- ⬜ **H6f · BOUNDARY — confidently-WRONG is NOT caught (don't expect it to be)** — if the AI confidently mis-codes something (e.g. an AWS charge → Rent at 95%), O49 will **not** flag it (it flags *uncertainty*, not *incorrectness*).
+  *Expected/awareness:* do **not** treat an empty review queue as "the books are correct" — only "the AI wasn't unsure." Catching confidently-wrong coding is **control-total reconciliation / CPA spot-check** (O59 Layer 1/2, O50), a separate net.
   *Note:* confidence must actually be populated on entries (`ai_confidence`) — entries with no score default to confident (not flagged). New bank/invoice uploads carry it; very old entries may not.
 
 ---
