@@ -17,20 +17,20 @@
 
 # 🔴 HIGH RISK — verify first
 
-## H0. ⚠️ AI reasoning shows real classification, NOT "Imported from bank statement" — **SUSPECTED STILL BROKEN**
+## H0. AI reasoning shows real classification, NOT "Imported from bank statement" — **✅ resolved (H0a); H0b pending**
 
-**Risk: HIGH** · **Status: ⬜ SUSPECTED-STILL-BROKEN — never confirmed live.**
+**Risk: HIGH** · **Status: H0a ✅ verified live 2026-06-29 (the previously-suspected-broken path now works); H0b ⬜ still unverified.**
 
-*What/history:* the detail panel's "AI REASONING" should explain *why this GL account* (vendor → account), not the provenance string "Imported from bank statement". Two fixes shipped: **C107** added a display-time derive, but it was a **no-op** (it called `classifyBankReason`, which echoed the stored provenance back). **C109** hardened `classifyBankReason` so a provenance string is treated as *absent* → it derives a real reason. **The open problem:** you clicked a bank txn *after a fix* and it **still showed "Imported from bank statement"**; we hand-waved "needs a fresh upload" and **never actually confirmed**. So this is unverified on **two** independent paths:
+*What/history:* the detail panel's "AI REASONING" should explain *why this GL account* (vendor → account), not the provenance string "Imported from bank statement". Two fixes shipped: **C107** added a display-time derive, but it was a **no-op** (it called `classifyBankReason`, which echoed the stored provenance back). **C109** hardened `classifyBankReason` so a provenance string is treated as *absent* → it derives a real reason. **The previously-open problem** (you clicked a bank txn after a fix and it *still* showed "Imported from bank statement", never confirmed) is now **resolved** — H0a confirms C109's display-derive works live on existing entries, no re-upload. The two paths:
 
-- ⬜ **H0a · existing entry, display-time derive (should work post-C109, no re-upload)** — *Steps:* open an **already-booked** bank-imported transaction → read the AI REASONING box.
+- ✅ **H0a · existing entry, display-time derive (should work post-C109, no re-upload)** — *Steps:* open an **already-booked** bank-imported transaction → read the AI REASONING box.
   *Expected:* a real classification ("Categorized to <account> based on <vendor>" or the categorizer's rationale) — **NOT "Imported from bank statement"**.
-  *If it STILL shows the provenance string here → C109's display derive is NOT working live → reopen as a real bug* (the most likely culprit: the panel isn't routing through the hardened `classifyBankReason`, or `sel.reasoning` arrives in a shape the regex misses — capture the literal stored value).
+  **✅ VERIFIED LIVE (2026-06-29):** clicking an existing bank transaction shows real classification reasoning, not the provenance string. C109's display-derive works as intended; no re-upload needed.
 
 - ⬜ **H0b · fresh bank upload, stored-at-write (the "deferred" path)** — *Steps:* upload a **new** bank statement → book a line → open that transaction.
   *Expected:* real "why this account" reasoning from the categorizer (the prompt now asks for it), never the provenance string.
 
-> Verify BOTH. H0a is the one that was reported broken — if it fails, do not mark this area green.
+> H0a (the previously-reported-broken path) is ✅. H0b (fresh-upload stored-at-write) still ⬜ — verify on the next bank upload to fully close this area.
 
 ## H1. Chatbot action persistence (O78 / O51 — C112)
 
