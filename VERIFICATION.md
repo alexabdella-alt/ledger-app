@@ -86,7 +86,7 @@
 
 ## H6. O49 — AI confidence flagging (C114)
 
-**Risk: HIGH** (it's the trust-layer surfacing of silent errors). The flagged set is on the ERP context as `flagsForReview()` / `reviewFlagSummary()` (no UI yet — that's O50). Verify via the console or a temporary surface, against a company with some AI-categorized data:
+**Risk: HIGH** (it's the trust-layer surfacing of silent errors). The flagged set is on the ERP context as `flagsForReview()` / `reviewFlagSummary()` — and now also rendered in the **Review** tab (O50/H7). Verify via the Review screen or the console, against a company with some AI-categorized data:
 - ⬜ **H6a** — a clean, unambiguous, confidently-categorized txn (e.g. a known-vendor expense, confidence ≥ 75) is **not** in `flagsForReview()`.
 - ⬜ **H6b** — a genuinely ambiguous / low-confidence **material** txn (confidence < 75, amount ≥ ~$1k) **is** in `flagsForReview()`, carrying its chosen account + confidence + reasoning + reason.
 - ⬜ **H6c** — **does NOT over-flag:** on a normal company, `reviewFlagSummary().count` is a small fraction of the ledger (a handful), not most of it. *(If nearly everything is flagged, the materiality/threshold tuning is off — that defeats the burden-reduction.)*
@@ -96,6 +96,22 @@
 - ⬜ **H6f · BOUNDARY — confidently-WRONG is NOT caught (don't expect it to be)** — if the AI confidently mis-codes something (e.g. an AWS charge → Rent at 95%), O49 will **not** flag it (it flags *uncertainty*, not *incorrectness*).
   *Expected/awareness:* do **not** treat an empty review queue as "the books are correct" — only "the AI wasn't unsure." Catching confidently-wrong coding is **control-total reconciliation / CPA spot-check** (O59 Layer 1/2, O50), a separate net.
   *Note:* confidence must actually be populated on entries (`ai_confidence`) — entries with no score default to confident (not flagged). New bank/invoice uploads carry it; very old entries may not.
+
+## H7. O50 — CPA Review Dashboard (C116)
+
+**Risk: HIGH** (the CPA's cockpit — and approve/override/resolve are persisted writes; a false "resolved" is a trust break). The **Review** tab consumes O60 (incomplete docs) + O49 (flagged txns). Reach it via the top-nav **Review** tab.
+
+- ⬜ **H7a · summary + sections render** — open **Review**.
+  *Expected:* a summary row (Incomplete docs / Flagged txns / $ flagged), then an "Incomplete documents" section (from O60) and a "Needs your review" section (from O49). Dark theme, **no white-hover** on rows/buttons.
+- ⬜ **H7b · completeness section shows a dropped doc** — after H2g (upload a failing doc), open Review.
+  *Expected:* the failed/stuck doc appears under Incomplete documents with filename, age, status, reason + **Re-upload / Acknowledge / Dismiss** actions.
+- ⬜ **H7c · needs-review shows a flagged txn with full context** — with an ambiguous-material txn present (H6e).
+  *Expected:* a card with vendor, amount, **chosen account**, **confidence %**, the flag reason, the AI **reasoning**, and any **alternatives** ("Also considered: 6200 Utilities").
+- ⬜ **H7d · APPROVE persists + re-syncs** — click **Approve** on a flagged txn → it disappears from the queue. **Hard-refresh** → it stays gone (the entry's confidence is now 100; it won't re-flag). *Never says "approved" without the committed write.*
+- ⬜ **H7e · OVERRIDE re-codes + persists** — click **Override…**, pick a different account, **Save** → the txn leaves the queue AND is re-coded. Open the transaction (Books) and **refresh** → it shows the **new account** (a real recode, not just a flag flip).
+- ⬜ **H7f · RESOLVE a dropped doc** — Dismiss / Acknowledge an incomplete doc → it leaves the completeness section and **stays gone after refresh** (its intake row is now terminal).
+- ⬜ **H7g · EMPTY STATE** — on a clean company (or after clearing the queue) → a clear **"All clear — nothing needs review"** state. *This is the reassuring signal the books are trustworthy.*
+  *Boundary:* "all clear" means *nothing the trust layer detected* — it does NOT mean confidently-wrong coding was caught (H6f); that's control-total reconciliation (O59).
 
 ---
 
