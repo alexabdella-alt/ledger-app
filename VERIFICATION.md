@@ -81,12 +81,14 @@
 
 - ⬜ **H5a · figures match reports** — ask "how much on software last quarter?", "what's my runway?", "show everything from <vendor>" → cross-check one figure against the dashboard/report; must match to the penny (bot queries, doesn't guess).
 
-## H6. O49 — AI confidence flagging — **NOT BUILT YET**
+## H6. O49 — AI confidence flagging (C114)
 
-**Risk: HIGH** (it's the trust-layer surfacing of silent errors). When shipped, verify:
-- ⬜ **H6a** — a clean, unambiguous txn is **not** flagged.
-- ⬜ **H6b** — an ambiguous / low-confidence txn **is** flagged, with a reason.
-- ⬜ **H6c** — a clean batch does **not** over-flag (no "flag everything" noise).
+**Risk: HIGH** (it's the trust-layer surfacing of silent errors). The flagged set is on the ERP context as `flagsForReview()` / `reviewFlagSummary()` (no UI yet — that's O50). Verify via the console or a temporary surface, against a company with some AI-categorized data:
+- ⬜ **H6a** — a clean, unambiguous, confidently-categorized txn (e.g. a known-vendor expense, confidence ≥ 75) is **not** in `flagsForReview()`.
+- ⬜ **H6b** — a genuinely ambiguous / low-confidence **material** txn (confidence < 75, amount ≥ ~$1k) **is** in `flagsForReview()`, carrying its chosen account + confidence + reasoning + reason.
+- ⬜ **H6c** — **does NOT over-flag:** on a normal company, `reviewFlagSummary().count` is a small fraction of the ledger (a handful), not most of it. *(If nearly everything is flagged, the materiality/threshold tuning is off — that defeats the burden-reduction.)*
+- ⬜ **H6d** — materiality interaction live: a small ambiguous charge ($ tens) does not flag; a large/unusual one with the same uncertainty does.
+  *Note:* confidence must actually be populated on entries (`ai_confidence`) — entries with no score default to confident (not flagged). New bank/invoice uploads carry it; very old entries may not.
 
 ---
 
