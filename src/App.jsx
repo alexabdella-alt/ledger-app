@@ -1614,7 +1614,7 @@ Net income: $${pl.net_income.current} (prior $${pl.net_income.prior})
 Cash on hand: $${payload.cash.cash_on_hand}; monthly burn: $${payload.cash.burn_rate}; runway: ${payload.cash.runway_months ?? "n/a"} months
 Receivables: $${payload.receivables.total} ($${payload.receivables.overdue} overdue); Payables: $${payload.payables.total} ($${payload.payables.overdue} overdue)
 Top vendors: ${payload.top_vendors.map(v => `${v.vendor} $${v.total}`).join(", ") || "none"}
-Health score: ${payload.health.score}/100 (${payload.health.tier})
+Business health (plain-language, do NOT invent a numeric score): ${payload.health.headline || payload.health.tone || "n/a"}
 ${payload.anomalies.length ? "Flags: " + payload.anomalies.map(a => a.title).join("; ") : "No anomalies flagged."}
 
 Reply with ONLY the summary text.`;

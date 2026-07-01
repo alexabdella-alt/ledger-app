@@ -532,7 +532,9 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
 
   const kpis = computeKPIs(live, { cashBalance: cash, now: monthEnd })
     .map(k => ({ key: k.key, label: k.label, display: k.display, status: k.status, trend: k.trend, explanation: k.explanation }));
-  const h = financialHealthScore({ invoices: live, cashBalance: cash, reconciliations, anomalies, onboardingComplete, now: monthEnd });
+  // Owner-facing plain-language health (businessHealth) — the 0–100 grade/score was removed
+  // (C120); the monthly report must not resurrect it. Same GL-truth inputs.
+  const bh = businessHealth(live, { cash, now: monthEnd });
 
   // Top 5 vendors by expense spend this month (canonical live gate + GL classification).
   const cur = liveEntries(live, curRange);
@@ -553,17 +555,17 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
     receivables: { total: arT.total, overdue: arT.overdue, count: arT.count },
     payables: { total: apT.total, overdue: apT.overdue, count: apT.count },
     kpis,
-    health: { score: h.score, grade: h.grade, tier: h.tier, summary: h.summary },
+    health: { tone: bh.tone, headline: bh.headline, concerns: bh.concerns },
     top_vendors: topVendors,
     anomalies: anomList,
     transaction_count: cur.length,
-    summary: templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, arTotal: arT.total, arOverdue: arT.overdue, runway, health: h, txns: cur.length }),
+    summary: templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, arTotal: arT.total, arOverdue: arT.overdue, runway, txns: cur.length }),
   };
   return payload;
 }
 
 // Plain-English fallback executive summary (used when the AI call is unavailable).
-function templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, arTotal, arOverdue, runway, health, txns }) {
+function templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, arTotal, arOverdue, runway, txns }) {
   const M = formatPeriod(period);
   if (txns === 0) return `No transactions were recorded in ${M}. Once activity comes in, this summary will cover your revenue, expenses, cash position, and key metrics for the month.`;
   const s = [];
@@ -572,6 +574,6 @@ function templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, 
   if (topVendors[0]) s.push(`Your largest expense was ${topVendors[0].vendor} at ${fmtMoney(topVendors[0].total)}.`);
   if (arTotal > 0) s.push(`You have ${fmtMoney(arTotal)} in receivables outstanding${arOverdue > 0 ? `, ${fmtMoney(arOverdue)} of it overdue` : ""}.`);
   if (runway != null && runway < 6) s.push(`At the current burn rate your runway is about ${runway} months — worth keeping an eye on cash.`);
-  s.push(`Overall financial health: ${health.tier} (grade ${health.grade}).`);
+  // (No 0–100 health score / letter grade — that system was removed; plain-language only.)
   return s.join(" ");
 }

@@ -70,10 +70,13 @@ describe("buildMonthlyReport — month with activity", () => {
     expect(r.receivables.total).toBe(4000);           // the one unpaid invoice
     expect(r.receivables.overdue).toBe(4000);         // due 2026-03-01, well past May 31
   });
-  it("includes the 5 KPIs and a health score", () => {
+  it("includes the 5 KPIs and plain-language health (no removed 0–100 score/grade)", () => {
     expect(r.kpis).toHaveLength(5);
-    expect(typeof r.health.score).toBe("number");
-    expect(r.health.grade).toMatch(/[A-F]/);
+    expect(["good", "watch", "concern"]).toContain(r.health.tone);
+    expect(typeof r.health.headline).toBe("string");
+    expect(r.health.headline.length).toBeGreaterThan(0);
+    expect(r.health).not.toHaveProperty("score");   // the removed system must not resurface
+    expect(r.health).not.toHaveProperty("grade");
   });
   it("writes a non-empty templated executive summary", () => {
     expect(r.summary).toContain("May 2026");
@@ -101,9 +104,10 @@ describe("buildMonthlyReport — month with no activity", () => {
     expect(r.anomalies).toEqual([]);
     expect(r.transaction_count).toBe(0);
   });
-  it("still produces all 5 KPIs and a health score", () => {
+  it("still produces all 5 KPIs and plain-language health", () => {
     expect(r.kpis).toHaveLength(5);
-    expect(typeof r.health.score).toBe("number");
+    expect(["good", "watch", "concern"]).toContain(r.health.tone);
+    expect(typeof r.health.headline).toBe("string");
   });
   it("writes a sensible no-activity summary", () => {
     expect(r.summary).toMatch(/No transactions/i);

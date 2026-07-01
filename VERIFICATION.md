@@ -211,6 +211,16 @@
 - ⬜ **M7e · incomplete schedule → review, not a guess** — if a due row is malformed (no amount), it is **not** auto-posted; a "depreciation needs a look" notification appears (→ Review), instead of posting a wrong entry.
   *Note:* no migration. The Reports "run depreciation through a date" control remains as a CPA override; the manual owner nudge is what's removed. *(Sibling flagged, not fixed: the dashboard "Contract journal entries ready to post → Review Contracts" prompt is the same class — see the audit in the commit report.)*
 
+## M8. Monthly Reports compute live from the GL — tie to the dashboard (C127)
+
+*Was: every month showed **0 transactions / $0.00** for a company with real booked data, because the panel read STALE STORED SNAPSHOTS from `monthly_reports` (generated once, never refreshed — the unique `(company_id, period)` row + skip-if-exists generator made an empty/pre-data snapshot permanent). Fix: `MonthlyReportsPanel` now computes **every month live** via the canonical `buildMonthlyReport` (same GL-truth `computeRevenue/Expenses/…` + `glCashOnHand` as the dashboard). The stored table is only an OVERLAY for the AI executive summary, and even that is used ONLY when its snapshot figures still match the live compute (stale/poisoned narratives are rejected).*
+
+- ⬜ **M8a · figures are non-zero and tie to the dashboard** — Reports → Monthly Reports. Each month with booked activity shows its **real** Revenue / Net income (not $0 / "0 transactions"). Open a month → its P&L revenue/expenses/net **tie to the dashboard / Income Statement** for that period, to the penny. **Risk: HIGH (was fully broken).**
+- ⬜ **M8b · no removed 0–100 health score anywhere** — the report's **Business Health** card shows a plain-language tone pill (**Healthy / Worth a look / Needs attention**) + a one-line headline — **no** "X/100", no letter grade. The **Executive Summary** narrative never says "health score of 45 out of 100" and, with real data, does **not** falsely claim "no runway."
+- ⬜ **M8c · stale AI summary is rejected** — a month whose old stored snapshot was written against $0 data shows the **live templated** summary (correct numbers), not the poisoned AI prose. (Once a fresh snapshot regenerates with matching figures, its AI summary is used.)
+- ⬜ **M8d · Print/PDF + CSV reflect live numbers** — Print/PDF and Download CSV export the same live figures; the PDF's health line reads the plain-language tone, not a score.
+- ⬜ **M8e · site-wide consistency (audit)** — every report type (P&L, Balance Sheet, Trial Balance, AR/AP Aging, KPIs, By Vendor, By Category, Cash Flow, By Project, Monthly Reports) derives from the **same live `invoices` GL array** via `reports.js`; spot-check that AR aging total = Balance-Sheet AR line = dashboard AR, and P&L net = Income Statement net. *(Audit result: Monthly Reports was the ONLY divergence; all others already shared the one GL source.)*
+
 ---
 
 # 🟢 LOW RISK — cosmetic / nav
