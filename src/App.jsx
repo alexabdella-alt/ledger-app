@@ -871,15 +871,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     loadAllData();
   }, [currentCompany?.id]);
 
-  // AUTO-POST due depreciation once the ledger has loaded (so the GL-truth idempotency guard can
-  // see existing entries). Once per company session — the ref guard keeps re-renders from re-running.
-  useEffect(() => {
-    if (!companyDataLoaded || !currentCompany?.id) return;
-    if (autoDepRunRef.current === currentCompany.id) return;
-    autoDepRunRef.current = currentCompany.id;
-    autoPostDepreciation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyDataLoaded, currentCompany?.id]);
+  // (Depreciation auto-post effect lives AFTER autoPostDepreciation + companyDataLoaded are
+  // declared — see below — so its deps array can't hit a temporal dead zone at render time.)
 
   // Surface the team-invite welcome / error toast set by AppWrapper after accept.
   useEffect(() => {
@@ -2648,6 +2641,18 @@ Reply with ONLY the summary text.`;
     }
     return { posted, flagged: incomplete.length };
   };
+
+  // AUTO-POST due depreciation once the ledger has loaded (so the GL-truth idempotency guard can
+  // see existing entries). Declared HERE — after companyDataLoaded / autoDepRunRef /
+  // autoPostDepreciation — so the deps array can't hit a temporal dead zone at render time (the
+  // P0 crash when this effect sat above those declarations). Once per company (the ref guard).
+  useEffect(() => {
+    if (!companyDataLoaded || !currentCompany?.id) return;
+    if (autoDepRunRef.current === currentCompany.id) return;
+    autoDepRunRef.current = currentCompany.id;
+    autoPostDepreciation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyDataLoaded, currentCompany?.id]);
 
   // Attach depreciation to an ALREADY-capitalized asset whose Dr Fixed Asset / Cr AP
   // entry already exists — for back-filling assets capitalized before a schedule was
