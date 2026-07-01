@@ -327,7 +327,10 @@ describe("businessHealth — owner-facing status, no books-health, honest", () =
     expect(bh.headline).toMatch(/profitable/i);
     expect(bh.headline).toMatch(/healthy/i);
     expect(bh.concerns).toEqual([]);
-    expect(bh.facts.map(f => f.key)).toEqual(["profit", "runway", "cash"]);
+    // the FOUR key numbers live here (once) — cash, monthly burn, runway, net income
+    expect(bh.facts.map(f => f.key)).toEqual(["cash", "burn", "runway", "profit"]);
+    expect(bh.facts.map(f => f.label)).toEqual(["Cash on hand", "Monthly burn", "Runway", `Net income · 2026`]);
+    expect(bh.facts.every(f => f.drill)).toBe(true);   // each figure drills in (replaced the metric cards)
   });
 
   it("overdue AR surfaces as a concern with the number + an action (not a grade)", () => {
@@ -349,7 +352,9 @@ describe("businessHealth — owner-facing status, no books-health, honest", () =
     const rw = bh.concerns.find(c => c.key === "runway");
     expect(rw).toBeTruthy();
     expect(rw.text).toMatch(/runway/i);
-    expect(bh.tone).toBe("concern");         // < 3 months = high severity
+    expect(rw.text).not.toMatch(/\/mo|\$9,000/);   // burn is in the facts row — don't restate it here
+    expect(rw.actionView).toBe("runway");          // "See burn breakdown →" still drills in
+    expect(bh.tone).toBe("concern");               // < 3 months = high severity
     expect(bh.headline).toMatch(/loss|runway/i);
   });
 

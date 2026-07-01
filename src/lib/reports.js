@@ -451,15 +451,22 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {
   const prevM = ms.length > 1 ? monthExp[ms[ms.length - 2]] : null;
   const burnUpPct = (prevM && prevM > 0 && curM > prevM * 1.05) ? Math.round((curM / prevM - 1) * 100) : 0;
 
+  // The FOUR key numbers live here (once) as the facts under the headline — they replaced the
+  // separate metric-card row so the owner never sees the same figures twice. `drill` opens the
+  // same dashboard drill the old cards did. Monthly burn = THIS month's spend (matches the old
+  // "Monthly Burn" card); runway uses trailing-3-mo avg burn (stability), same as before.
+  const monthBurn = computeBurnRate(invoices, { asOf: `${today.slice(0, 7)}-31`, months: 1 });
   const facts = [
-    { key: "profit", label: net >= 0 ? "Profitable" : "Operating at a loss", value: `${money(net)} net this year`, tone: net >= 0 ? "good" : "concern" },
-    { key: "runway", label: "Runway", value: runwayInfinite ? "Cash steady — no burn" : `~${runway} month${runway === 1 ? "" : "s"}`, tone: (runwayInfinite || runway >= 6) ? "good" : runway >= 3 ? "watch" : "concern" },
-    { key: "cash", label: "Cash on hand", value: money(cash), tone: "neutral" },
+    { key: "cash",   label: "Cash on hand",         value: money(cash),                                    tone: "neutral",                                                                     drill: "cash" },
+    { key: "burn",   label: "Monthly burn",         value: money(monthBurn),                               tone: "neutral",                                                                     drill: "burn" },
+    { key: "runway", label: "Runway",               value: runwayInfinite ? "No burn" : `~${runway} mo`,   tone: (runwayInfinite || runway >= 6) ? "good" : runway >= 3 ? "watch" : "concern",  drill: "runway" },
+    { key: "profit", label: `Net income · ${year}`, value: money(net),                                     tone: net >= 0 ? "good" : "concern",                                                 drill: "net" },
   ];
 
   const concerns = [];
   if (net < 0) concerns.push({ key: "profit", severity: "high", text: `You're spending more than you're earning this year (${money(net)} net).` });
-  if (!runwayInfinite && runway < 6) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: `Only ~${runway} month${runway === 1 ? "" : "s"} of runway at the current burn (${money(burn)}/mo).`, actionLabel: "See burn breakdown", actionView: "runway" });
+  // Don't re-state the burn number here — it's already in the facts row above; reference it.
+  if (!runwayInfinite && runway < 6) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: `Only ~${runway} month${runway === 1 ? "" : "s"} of runway at the current spending pace.`, actionLabel: "See burn breakdown", actionView: "runway" });
   if (overdue.length) concerns.push({ key: "ar", severity: overdueTotal >= 5000 ? "high" : "med", text: `${overdue.length} invoice${overdue.length > 1 ? "s are" : " is"} 60+ days overdue (${money(overdueTotal)}).`, actionLabel: "Chase overdue invoices", actionView: "ar" });
   if (burnUpPct) concerns.push({ key: "burn", severity: "med", text: `Spending is up ${burnUpPct}% versus last month.` });
 

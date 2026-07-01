@@ -8,7 +8,6 @@ import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
 import ClarificationFlow from "../ClarificationFlow";
-import StatCard from "../ui/StatCard";
 import { t } from "../../lib/theme";
 
 export default function DashboardView() {
@@ -636,41 +635,11 @@ export default function DashboardView() {
                 );
               })()}
 
-              {/* ── KEY NUMBERS ── */}
-              {(() => {
-                const tdy = new Date();
-                const cm = tdy.toISOString().slice(0,7);
-                const today = tdy.toISOString().slice(0,10);
-                const year = String(tdy.getFullYear());
-                // Canonical figures (reports.js) — identical to P&L, monthly report, and the AI.
-                const burnThisMonth = computeBurnRate(invoices, { asOf: `${cm}-31`, months: 1 });
-                const avgBurn = computeBurnRate(invoices, { asOf: today });          // trailing 3-mo
-                const cash = glCash;      // GL cash on hand — same source as the Balance Sheet cash line
-                const runwayExact = computeRunway(cash, avgBurn);
-                const runway = runwayExact === null ? null : Math.floor(runwayExact);
-                const runwayColor = runway===null?t.textMut:runway<6?t.error:runway<=12?t.warning:t.success;
-                const ytdNet = computeNetIncome(invoices, { from: `${year}-01-01`, to: `${year}-12-31` });
-                const money = n => (n<0?"-":"")+"$"+Math.round(Math.abs(n)).toLocaleString("en-US");
-                // Cash is the HERO figure (gold); the rest are semantic. All count up on load.
-                const cards = [
-                  { label:"CASH ON HAND", value:cash, fmt:money, accent:"gold", sub:"Across all accounts", drill:{type:"cash"} },
-                  { label:"MONTHLY BURN", value:burnThisMonth, fmt:money, color:t.error, sub:"Expenses this month", drill:{type:"burn"} },
-                  { label:"RUNWAY", value: runway===null?0:runway, fmt:(runway===null?()=>"∞":(n=>`${n} mo`)), color:runwayColor, sub: runway===null?"Add cash to calculate":runway<6?"Less than 6 months":runway<=12?"6–12 months":"Healthy", drill:{type:"runway"} },
-                  { label:`NET INCOME · ${year}`, value:ytdNet, fmt:money, color:ytdNet>=0?t.success:t.error, sub:"Revenue − expenses, year to date", drill:{type:"net"} },
-                ];
-                return (
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:16, marginBottom:24 }}>
-                    {cards.map((c,i)=>(
-                      <StatCard key={c.label} eyebrow={c.label} value={c.value} format={c.fmt}
-                        accent={c.accent} color={c.color} sub={c.sub} index={i} onClick={()=>setDashDrill(c.drill)} />
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {/* ── FINANCIAL HEALTH — owner-facing, plain-language business status (was: letter grade) ──
-                   Shows BUSINESS health (profit / runway / cash / overdue AR / burn) with specifics +
-                   actions. Books-health (reconciled/setup/anomalies) is deliberately NOT here — that's
+              {/* ── HOW YOUR BUSINESS IS DOING — the SINGLE "how you're doing" block ──
+                   Plain-language headline + the FOUR key numbers (cash / monthly burn / runway /
+                   net income) as facts + real concerns/actions. This replaced BOTH the old
+                   four-metric-card row AND a separate narrative card, which showed the same figures
+                   twice. Books-health (reconciled/setup/anomalies) is deliberately NOT here — that's
                    Shadow's job, surfaced in the CPA Review queue (O50), not a demerit on the owner. */}
               {invoices.length > 0 && (() => {
                 const bh = businessHealth(invoices, { cash: glCash });
@@ -685,11 +654,15 @@ export default function DashboardView() {
                       <span style={{ fontSize:11, fontWeight:700, color:toneColor, background:toneSoft, border:`1px solid ${toneColor}33`, borderRadius:6, padding:"2px 9px" }}>{toneLabel}</span>
                     </div>
                     <div style={{ fontSize:13.5, color:"var(--sc-text)", lineHeight:1.55 }}>{bh.headline}</div>
-                    <div style={{ display:"flex", gap:24, flexWrap:"wrap", marginTop:14 }}>
+                    {/* The four key numbers — clickable to drill, tone-colored, once (no metric-card row anymore). */}
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:14, marginTop:16, paddingTop:14, borderTop:"1px solid var(--sc-surface-2)" }}>
                       {bh.facts.map(f => (
-                        <div key={f.key} style={{ minWidth:110 }}>
+                        <div key={f.key} onClick={f.drill ? ()=>setDashDrill({ type:f.drill }) : undefined}
+                          onMouseEnter={f.drill ? e=>e.currentTarget.style.background="var(--sc-surface-2)" : undefined}
+                          onMouseLeave={f.drill ? e=>e.currentTarget.style.background="transparent" : undefined}
+                          style={{ cursor:f.drill?"pointer":"default", borderRadius:9, padding:"6px 8px", margin:"-6px -8px", transition:"background .1s" }}>
                           <div style={{ fontSize:10, letterSpacing:0.8, color:"var(--sc-text-2)", fontWeight:600, textTransform:"uppercase" }}>{f.label}</div>
-                          <div style={{ fontSize:15, fontWeight:700, fontFamily:"'DM Mono',monospace", color:factColor(f.tone), marginTop:3 }}>{f.value}</div>
+                          <div style={{ fontSize:20, fontWeight:700, fontFamily:"'DM Mono',monospace", color:factColor(f.tone), marginTop:3 }}>{f.value}</div>
                         </div>
                       ))}
                     </div>
