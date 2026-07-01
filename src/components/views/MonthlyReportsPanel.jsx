@@ -22,6 +22,7 @@ export default function MonthlyReportsPanel() {
   const { supabase, currentCompany, setView, invoices, reconciliations, anomalies, companySettings, cashGlCodes } = useERP();
   const [storedSummaries, setStoredSummaries] = React.useState({}); // period -> { summary, generated_at }
   const [openPeriod, setOpenPeriod] = React.useState(null);
+  const [plView, setPlView] = React.useState("month");             // "month" | "ytd" — P&L scope toggle
 
   React.useEffect(() => {
     let alive = true;
@@ -54,6 +55,7 @@ export default function MonthlyReportsPanel() {
         reconciliations: reconciliations || [],
         anomalies: anomalies || [],
         onboardingComplete: companySettings?.onboardingComplete,
+        fiscalYearEnd: companySettings?.fiscalYearEnd || "12-31",
       });
       // Overlay the stored AI narrative ONLY if that snapshot is current (its figures still
       // match the live compute) — otherwise it's stale/poisoned and we keep the live template.
@@ -112,7 +114,15 @@ export default function MonthlyReportsPanel() {
   // ── Single report view ──
   const d = open;
   const label = d.label || formatPeriod(d.period);
-  const pl = d.pl || {}, cash = d.cash || {}, ar = d.receivables || {}, ap = d.payables || {}, health = d.health || {};
+  // P&L scope toggle: "month" = the selected month; "ytd" = fiscal-year-start → selected month.
+  // Both come from the SAME canonical GL compute (buildMonthlyReport → computeRevenue/Expenses
+  // over a single-month vs. fiscal-year-to-date range), so both tie to the dashboard/P&L.
+  const isYtd = plView === "ytd";
+  const pl = (isYtd ? d.pl_ytd : d.pl) || {}, cash = d.cash || {}, ar = d.receivables || {}, ap = d.payables || {}, health = d.health || {};
+  const plCurHead = isYtd ? "YTD" : "THIS MONTH";
+  const plPriorHead = isYtd ? "PRIOR YR" : "PRIOR";
+  const plDeltaHead = isYtd ? "YoY" : "MoM";
+  const plScope = isYtd ? "Year to date" : "This month";
 
   const downloadPL = () => {
     const rows = [
@@ -121,7 +131,7 @@ export default function MonthlyReportsPanel() {
       ["Total Expenses", -(pl.expenses_total?.current ?? 0), -(pl.expenses_total?.prior ?? 0), -(pl.expenses_total?.change ?? 0), pl.expenses_total?.changePct ?? ""],
       ["Net Income", pl.net_income?.current ?? 0, pl.net_income?.prior ?? 0, pl.net_income?.change ?? 0, pl.net_income?.changePct ?? ""],
     ];
-    downloadCSV(`monthly-pl-${d.period}.csv`, ["Line", "Current", "Prior Month", "Change ($)", "Change (%)"], rows);
+    downloadCSV(`monthly-pl-${d.period}${isYtd ? "-ytd" : ""}.csv`, ["Line", isYtd ? "YTD" : "This Month", isYtd ? "Prior Year" : "Prior Month", "Change ($)", "Change (%)"], rows);
   };
 
   // Print-only HTML → basis for the CPA-reviewed PDF.
@@ -138,8 +148,8 @@ export default function MonthlyReportsPanel() {
       <h1>${esc(label)} — Financial Summary</h1>
       <div class="sub">${esc(currentCompany?.name || "")} · computed from the live ledger</div>
       <div class="summary">${esc(d.summary || "")}</div>
-      <h2>Profit &amp; Loss</h2>
-      <table><thead><tr class="sub"><th style="text-align:left;">Line</th><th style="text-align:right;">This month</th><th style="text-align:right;">Prior</th><th style="text-align:right;">Change</th><th style="text-align:right;">%</th></tr></thead><tbody>
+      <h2>Profit &amp; Loss <span class="sub">· ${esc(plScope)}${isYtd ? ` (${esc(d.pl_ytd?.range?.from || "")} → ${esc(label)})` : ""}</span></h2>
+      <table><thead><tr class="sub"><th style="text-align:left;">Line</th><th style="text-align:right;">${isYtd ? "YTD" : "This month"}</th><th style="text-align:right;">${isYtd ? "Prior yr" : "Prior"}</th><th style="text-align:right;">Change</th><th style="text-align:right;">%</th></tr></thead><tbody>
       ${row("Revenue", pl.revenue?.current, pl.revenue?.prior, pl.revenue?.change, pl.revenue?.changePct)}
       ${(pl.expense_lines || []).map(l => row("  " + l.category, -(l.current || 0), -(l.prior || 0), -(l.change || 0), l.changePct)).join("")}
       ${row("Total Expenses", -(pl.expenses_total?.current || 0), -(pl.expenses_total?.prior || 0), -(pl.expenses_total?.change || 0), pl.expenses_total?.changePct)}
@@ -194,15 +204,35 @@ export default function MonthlyReportsPanel() {
         <div style={{ fontSize: 15, lineHeight: 1.6, color: "var(--sc-text)" }}>{d.summary}</div>
       </div>
 
-      {/* P&L with MoM */}
+      {/* P&L — Month vs YTD toggle (both from the same canonical GL compute) */}
       <div style={card}>
-        <div style={sectionTitle}>Profit &amp; Loss</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ ...sectionTitle, marginBottom: 2 }}>Profit &amp; Loss</div>
+            <div style={{ fontSize: 11.5, color: "var(--sc-text-mut)" }}>
+              {isYtd
+                ? `Year to date · ${d.pl_ytd?.range?.from || ""} → ${label}`
+                : `${label} only`}
+            </div>
+          </div>
+          {/* segmented toggle */}
+          <div role="tablist" aria-label="P&L scope" style={{ display: "inline-flex", background: "var(--sc-bg)", border: "1px solid var(--sc-border-2)", borderRadius: 9, padding: 2 }}>
+            {[["month", "This month"], ["ytd", "Year to date"]].map(([k, lbl]) => {
+              const on = plView === k;
+              return (
+                <button key={k} role="tab" aria-selected={on} onClick={() => setPlView(k)}
+                  style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: "6px 14px", borderRadius: 7,
+                    background: on ? "var(--sc-gold)" : "transparent", color: on ? "var(--sc-on-accent)" : "var(--sc-text-2)" }}>{lbl}</button>
+              );
+            })}
+          </div>
+        </div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
           <thead><tr style={{ color: "var(--sc-text-mut)", fontSize: 11 }}>
             <th style={{ textAlign: "left", padding: "0 12px 8px" }}>LINE</th>
-            <th style={{ textAlign: "right", padding: "0 12px 8px" }}>THIS MONTH</th>
-            <th style={{ textAlign: "right", padding: "0 12px 8px" }}>PRIOR</th>
-            <th style={{ textAlign: "right", padding: "0 12px 8px" }}>MoM</th>
+            <th style={{ textAlign: "right", padding: "0 12px 8px" }}>{plCurHead}</th>
+            <th style={{ textAlign: "right", padding: "0 12px 8px" }}>{plPriorHead}</th>
+            <th style={{ textAlign: "right", padding: "0 12px 8px" }}>{plDeltaHead}</th>
           </tr></thead>
           <tbody>
             {plRow("Revenue", pl.revenue || {}, false, false, true)}

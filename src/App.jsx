@@ -1649,6 +1649,7 @@ Reply with ONLY the summary text.`;
         invoices: live, cashBalance: glCashOnHand(invoices, cashGlCodes, { asOf: `${target}-31` }),
         reconciliations: reconciliationsRef.current,
         anomalies, onboardingComplete: companySettings.onboardingComplete,
+        fiscalYearEnd: companySettings.fiscalYearEnd || "12-31",
       });
       const aiSummary = await generateExecSummary(target, payload);
       if (aiSummary) payload.summary = aiSummary;

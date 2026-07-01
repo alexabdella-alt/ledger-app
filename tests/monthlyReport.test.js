@@ -78,6 +78,32 @@ describe("buildMonthlyReport — month with activity", () => {
     expect(r.health).not.toHaveProperty("score");   // the removed system must not resurface
     expect(r.health).not.toHaveProperty("grade");
   });
+  it("month-keyed KPIs are NOT spuriously N/A when the report month has revenue (TZ-safe key)", () => {
+    // Regression: computeKPIs used now.toISOString() (UTC) for the month key, so a local
+    // end-of-month rolled into the next month for users behind UTC → the strip showed
+    // "N/A — no revenue" while the P&L body showed real figures. Absolute month metrics must
+    // compute for May (which has $14k revenue).
+    const gm = r.kpis.find(k => k.key === "gross_margin");
+    expect(gm.status).not.toBe("na");
+    expect(gm.display).toMatch(/%$/);
+    const oer = r.kpis.find(k => k.key === "opex_ratio");
+    expect(oer.status).not.toBe("na");
+  });
+  it("computes a YTD P&L cumulative from the fiscal-year start through the month", () => {
+    // Default FY end 12-31 → YTD = 2026-01-01 → 2026-05-31.
+    // Revenue: May 14000 + Apr 8000 = 22000; Expenses: May 4500 + Apr 2000 + Mar 1800 = 8300; net 13700.
+    expect(r.pl_ytd.range.from).toBe("2026-01-01");
+    expect(r.pl_ytd.revenue.current).toBe(22000);
+    expect(r.pl_ytd.expenses_total.current).toBe(8300);
+    expect(r.pl_ytd.net_income.current).toBe(13700);
+    // YTD ≥ the single month → the two views are distinct.
+    expect(r.pl_ytd.revenue.current).toBeGreaterThan(r.pl.revenue.current);
+  });
+  it("YTD respects a non-Jan-1 fiscal year start", () => {
+    // FY end 06-30 → the fiscal year containing May 2026 starts 2025-07-01.
+    const ry = buildMonthlyReport("2026-05", { invoices, cashBalance: 20000, fiscalYearEnd: "06-30" });
+    expect(ry.pl_ytd.range.from).toBe("2025-07-01");
+  });
   it("writes a non-empty templated executive summary", () => {
     expect(r.summary).toContain("May 2026");
     expect(r.summary.length).toBeGreaterThan(40);

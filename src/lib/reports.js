@@ -313,8 +313,13 @@ export function trialBalance(invoices, { includeVoided = false } = {}) {
 // explanation, trend:"up"|"down"|"flat"|null }. Divide-by-zero → status "na".
 export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}) {
   const live = (invoices || []).filter(isLiveEntry);
-  const thisMonth = now.toISOString().slice(0, 7);
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
+  // TZ-safe month keys: derive from LOCAL date components, NEVER toISOString() (UTC). A local
+  // end-of-month (endOfMonth("2026-05") = May 31 23:59 local) rolls into the NEXT month under
+  // UTC for any user behind UTC — that starved this strip of the month's rows and wrongly showed
+  // "N/A — no revenue" while the P&L body (TZ-safe string ranges) showed real figures.
+  const ymLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const thisMonth = ymLocal(now);
+  const lastMonth = ymLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1));
   const inMonth = m => live.filter(i => ymOf(i.date) === m);
   const sum = (set, pred) => set.filter(pred).reduce((s, i) => s + num(i.amount), 0);
   const rev = set => sum(set, isRev), cogs = set => sum(set, i => isCOGS(i.gl_code)), opex = set => sum(set, i => isOpEx(i.gl_code)), exp = set => sum(set, isExp);
@@ -504,7 +509,7 @@ const endOfMonth = (period) => {
 const pctChange = (c, p) => (p === 0 ? null : r1(((c - p) / Math.abs(p)) * 100)); // null = no prior basis
 const momLine = (c, p) => ({ current: r2(c), prior: r2(p), change: r2(c - p), changePct: pctChange(c, p) });
 
-export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false } = {}) {
+export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false, fiscalYearEnd = "12-31" } = {}) {
   const live = (invoices || []).filter(isLiveEntry);
   const prior = priorPeriod(period);
   const monthEnd = endOfMonth(period);
@@ -522,6 +527,24 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   const prvCatMap = Object.fromEntries(computeCategoryTotals(live, prvRange).map(c => [c.category, c.total]));
   const expenseLines = curCats.map(c => ({ category: c.category, ...momLine(c.total, prvCatMap[c.category] || 0) }))
     .concat(Object.entries(prvCatMap).filter(([cat]) => !curCats.some(c => c.category === cat)).map(([cat, prv]) => ({ category: cat, ...momLine(0, prv) })))
+    .sort((a, b) => b.current - a.current);
+
+  // YEAR-TO-DATE P&L: cumulative from the company's FISCAL-year start through the selected
+  // month, from the SAME canonical functions — just a wider {from,to}. Respects a non-Jan-1
+  // fiscal year (fiscalYearStart), so YTD ties to the Balance Sheet's fiscal-year logic and the
+  // dashboard. Prior column = the SAME window in the PRIOR fiscal year (YoY).
+  const ytdFrom = fiscalYearStart(`${period}-01`, fiscalYearEnd) || `${period.slice(0, 4)}-01-01`;
+  const ytdRange = { from: ytdFrom, to: curRange.to };
+  const priorYrPeriod = `${Number(period.slice(0, 4)) - 1}${period.slice(4)}`;   // e.g. 2026-06 → 2025-06
+  const ytdPriorFrom = fiscalYearStart(`${priorYrPeriod}-01`, fiscalYearEnd) || `${priorYrPeriod.slice(0, 4)}-01-01`;
+  const ytdPriorRange = { from: ytdPriorFrom, to: `${priorYrPeriod}-31` };
+  const revYtd = computeRevenue(live, ytdRange), revYtdP = computeRevenue(live, ytdPriorRange);
+  const expYtd = computeExpenses(live, ytdRange), expYtdP = computeExpenses(live, ytdPriorRange);
+  const netYtd = computeNetIncome(live, ytdRange), netYtdP = computeNetIncome(live, ytdPriorRange);
+  const ytdCats = computeCategoryTotals(live, ytdRange);
+  const ytdPrvCatMap = Object.fromEntries(computeCategoryTotals(live, ytdPriorRange).map(c => [c.category, c.total]));
+  const ytdExpenseLines = ytdCats.map(c => ({ category: c.category, ...momLine(c.total, ytdPrvCatMap[c.category] || 0) }))
+    .concat(Object.entries(ytdPrvCatMap).filter(([cat]) => !ytdCats.some(c => c.category === cat)).map(([cat, prv]) => ({ category: cat, ...momLine(0, prv) })))
     .sort((a, b) => b.current - a.current);
 
   const cash = r2(num(cashBalance));   // GL cash, passed in by the caller (glCashOnHand)
@@ -551,6 +574,7 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   const payload = {
     period, prior_period: prior, label: formatPeriod(period), generated_at: new Date().toISOString(),
     pl: { revenue: momLine(revCur, revPrv), expenses_total: momLine(expCur, expPrv), net_income: momLine(netCur, netPrv), expense_lines: expenseLines },
+    pl_ytd: { revenue: momLine(revYtd, revYtdP), expenses_total: momLine(expYtd, expYtdP), net_income: momLine(netYtd, netYtdP), expense_lines: ytdExpenseLines, range: ytdRange },
     cash: { cash_on_hand: r2(cash), burn_rate: r2(burn), runway_months: runway },
     receivables: { total: arT.total, overdue: arT.overdue, count: arT.count },
     payables: { total: apT.total, overdue: apT.overdue, count: apT.count },

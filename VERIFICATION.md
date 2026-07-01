@@ -221,6 +221,16 @@
 - ⬜ **M8d · Print/PDF + CSV reflect live numbers** — Print/PDF and Download CSV export the same live figures; the PDF's health line reads the plain-language tone, not a score.
 - ⬜ **M8e · site-wide consistency (audit)** — every report type (P&L, Balance Sheet, Trial Balance, AR/AP Aging, KPIs, By Vendor, By Category, Cash Flow, By Project, Monthly Reports) derives from the **same live `invoices` GL array** via `reports.js`; spot-check that AR aging total = Balance-Sheet AR line = dashboard AR, and P&L net = Income Statement net. *(Audit result: Monthly Reports was the ONLY divergence; all others already shared the one GL source.)*
 
+## M9. Monthly Report — Key Metrics N/A fix + P&L Month/YTD toggle (C129)
+
+*Two changes on the (now live) monthly report. (1) The **Key Metrics** strip showed "N/A — no revenue" for absolute metrics even though the P&L body had real figures: `computeKPIs` keyed its month via `now.toISOString()` (UTC), so a local end-of-month (May 31 23:59) rolled into the NEXT month for any user behind UTC, starving the strip. Fixed to derive the month key from LOCAL date components (TZ-safe), matching the body's string ranges. (2) Added a **Month / Year-to-date** toggle on the P&L, both from the same canonical `buildMonthlyReport` compute.*
+
+- ⬜ **M9a · absolute Key Metrics compute (not N/A)** — open a month that has revenue → **Gross Margin, Operating Expense Ratio, Days Sales Outstanding** show real numbers (e.g. "100%", "18%", "22 days"), **not** "N/A — no revenue yet". They must be consistent with the P&L body for that month. **Risk: MED (was a TZ bug hiding real figures).**
+- ⬜ **M9b · legitimately-comparative / no-data N/A is still clear** — **Current Ratio** shows "N/A — no current liabilities" *only* when there are genuinely no unpaid bills; **Burn Multiple** shows "N/A — no new revenue" *only* when revenue didn't grow vs the prior month. These are correct, not bugs.
+- ⬜ **M9c · P&L Month/YTD toggle** — the P&L card has a **This month / Year to date** segmented toggle. *This month* = the selected month (MoM vs prior month). *Year to date* = cumulative from the **fiscal-year start** through the selected month (YoY vs prior-year YTD); column headers switch to **YTD / PRIOR YR / YoY** and a subtitle shows the range (e.g. `2026-01-01 → May 2026`). YTD revenue/expenses/net ≥ the single month and **tie to the dashboard YTD / Income Statement** to the penny.
+- ⬜ **M9d · non-Jan-1 fiscal year respected** — for a company whose fiscal year end ≠ 12-31 (Settings), the YTD range starts at the correct fiscal-year start (e.g. FY end 06-30 → YTD begins the prior **July 1**), not Jan 1.
+- ⬜ **M9e · CSV / Print follow the toggle** — with YTD selected, **Download CSV** and **Print / PDF** export the YTD figures with YTD/Prior-Year column labels; with This month selected, they export the month.
+
 ---
 
 # 🟢 LOW RISK — cosmetic / nav
