@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPayrollEntry } from "../src/lib/payroll.js";
+import { buildPayrollEntry, isPayrollBankLine, matchPayrollBankLine, planPayrollBankLines, flagIncompletePayroll, PAYROLL_INCOMPLETE_NOTE } from "../src/lib/payroll.js";
 
 const WAGES = "6000", PTAX = "6010", CASH = "1000", PTP = "2101";
 const codes = { salariesCode: WAGES, payrollTaxExpCode: PTAX, cashCode: CASH, payrollTaxesPayableCode: PTP };
@@ -65,5 +65,72 @@ describe("buildPayrollEntry (#13) — Dr Salaries+Tax / Cr Cash+Payroll Taxes Pa
     expect(buildPayrollEntry({ gross: 0, ...codes })).toBe(null);
     expect(buildPayrollEntry({ gross: 1000, netPay: 1200, ...codes })).toBe(null);   // net > gross → withholdings negative
     expect(buildPayrollEntry({ gross: 1000, employeeWithholdings: 0, salariesCode: WAGES })).toBe(null); // no cash code
+  });
+});
+
+// ── O72: bank net-pay line ↔ register reconciliation (no double-count) ────────
+describe("O72 payroll-from-statement — match the register's net, never double-book", () => {
+  // A booked payroll REGISTER run (buildPayrollEntry stamps import_metadata.kind='payroll').
+  const registerRun = (over = {}) => ({
+    id: "reg1", db_entry_id: "je-reg1", date: "2026-06-15", status: "posted",
+    import_metadata: { kind: "payroll", gross: 6000, net: 4401, withholdings: 1599, employer_taxes: 459 },
+    ...over,
+  });
+  const bankNet = (over = {}) => ({ id: "bl1", date: "2026-06-16", vendor: "PAYROLL JANE SMITH", description: "PAYROLL JANE SMITH NET", amount: 4401, type: "expense", gl_code: "6000", ...over });
+
+  it("(detect) isPayrollBankLine recognizes payroll net lines, not generic expenses", () => {
+    expect(isPayrollBankLine({ description: "PAYROLL JANE SMITH NET" })).toBe(true);
+    expect(isPayrollBankLine({ vendor: "Gusto", description: "direct deposit" })).toBe(true);
+    expect(isPayrollBankLine({ vendor: "Adobe", description: "monthly subscription" })).toBe(false);
+    expect(isPayrollBankLine({ vendor: "AWS", description: "cloud" })).toBe(false);
+  });
+
+  it("(b) a bank net-pay line MATCHES the register's net → suppressed, NOT re-booked", () => {
+    const ledger = [registerRun()];
+    const plan = planPayrollBankLines([bankNet()], ledger);
+    expect(plan.matched).toHaveLength(1);
+    expect(plan.matched[0].matchId).toBe("je-reg1");
+    expect(plan.incomplete).toHaveLength(0);   // not flagged
+    expect(plan.rest).toHaveLength(0);          // not direct-booked
+  });
+
+  it("matchPayrollBankLine ties on NET (not gross), within a date window; wrong amount misses", () => {
+    const ledger = [registerRun()];
+    expect(matchPayrollBankLine(bankNet({ amount: 4401 }), ledger)).toBeTruthy();
+    expect(matchPayrollBankLine(bankNet({ amount: 6000 }), ledger)).toBeNull();   // gross ≠ the cash disbursement
+    expect(matchPayrollBankLine(bankNet({ date: "2026-09-01" }), ledger)).toBeNull(); // outside window
+  });
+
+  it("(c) register + statement together = ONE payroll cost — the net line adds nothing", () => {
+    // The register already booked Dr Salaries 6000 (gross). The bank net line is the SAME
+    // disbursement → matched/suppressed, so salaries are counted once (6000), not 6000+4401.
+    const ledger = [registerRun()];
+    const plan = planPayrollBankLines([bankNet()], ledger);
+    const extraSalaryBooked = plan.rest.length + plan.incomplete.length;   // what WOULD post a salary line
+    expect(extraSalaryBooked).toBe(0);                                     // nothing extra → no double-count
+    // two employees' runs match their two bank lines independently (no cross/double match)
+    const reg2 = registerRun({ id: "reg2", db_entry_id: "je-reg2", import_metadata: { kind: "payroll", gross: 3000, net: 2200 } });
+    const plan2 = planPayrollBankLines([bankNet(), bankNet({ id: "bl2", amount: 2200 })], [registerRun(), reg2]);
+    expect(plan2.matched.map(m => m.matchId).sort()).toEqual(["je-reg1", "je-reg2"]);
+    expect(plan2.incomplete).toHaveLength(0);
+  });
+
+  it("(d) bank net line with NO register → flagged incomplete (net booked, but low-confidence + honest note)", () => {
+    const plan = planPayrollBankLines([bankNet()], []);   // no register in the ledger
+    expect(plan.matched).toHaveLength(0);
+    expect(plan.incomplete).toHaveLength(1);
+    const flagged = flagIncompletePayroll(plan.incomplete[0]);
+    expect(flagged.confidence).toBe(40);                  // low → O49 flags it for review
+    expect(flagged.payroll_incomplete).toBe(true);
+    expect(flagged.reasoning).toBe(PAYROLL_INCOMPLETE_NOTE);
+    expect(flagged.reasoning).toMatch(/register|understates|withholding/i);   // honest about what's missing
+  });
+
+  it("non-payroll standalone lines pass through untouched (no false positives)", () => {
+    const adobe = { id: "x", vendor: "Adobe", description: "subscription", amount: 80, gl_code: "6500" };
+    const plan = planPayrollBankLines([adobe], [registerRun()]);
+    expect(plan.rest).toEqual([adobe]);
+    expect(plan.matched).toHaveLength(0);
+    expect(plan.incomplete).toHaveLength(0);
   });
 });

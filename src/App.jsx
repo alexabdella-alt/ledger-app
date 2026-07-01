@@ -16,6 +16,7 @@ import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDrop
 import { flaggedForReview, reviewSummary } from "./lib/confidenceFlag";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
+import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
 import { pickActiveCompany } from "./lib/companies";
@@ -4028,21 +4029,38 @@ Keep the same array order and index as input.`,
       const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null });
       if (ok) clearedOk++; else clearFailed++;
     }
-    // Genuinely-new (unmatched) lines → direct-book + PERSIST (O69-A).
-    const { booked, failed: bookFailed } = await persistDirect(plan.standalone);
+    // O72: before direct-booking the "new" lines, pull out payroll NET-pay lines. Ones that
+    // MATCH a booked payroll register run are SUPPRESSED (the register already recorded that
+    // cash disbursement — booking again would double-count salaries). Ones with NO register are
+    // booked at net but FLAGGED incomplete (low confidence + note → O49 review), never silently
+    // treated as full salary.
+    const pr = planPayrollBankLines(plan.standalone, invoicesRef.current || invoices);
+    // Genuinely-new (unmatched) NON-payroll lines → direct-book + PERSIST (O69-A).
+    const { booked, failed: bookFailed } = await persistDirect(pr.rest);
+    // Payroll-with-no-register → book net + flag incomplete.
+    let payrollIncompleteBooked = 0, payrollIncompleteFailed = 0;
+    for (const t of pr.incomplete) {
+      const entry = buildEntry(flagIncompletePayroll(t));
+      setInvoices(prev => [entry, ...prev]);
+      const jeId = await bookToDb(entry);
+      if (jeId) payrollIncompleteBooked++; else payrollIncompleteFailed++;
+    }
+    const payrollMatched = pr.matched.length;   // suppressed — reconciled to a register, no double-count
+    if (payrollMatched > 0) logAudit("payroll_bank_matched", `${payrollMatched} payroll net-pay bank line(s) matched an uploaded register — not re-booked (no double-count)`);
     // Low-confidence / unclearable → manual review (carry the offset for a later dismiss).
     if (plan.review.length > 0) setMatchQueue(prev => [...plan.review.map(m => ({ ...m, importOffsetCode: offsetCode, importOffsetName: offsetName })), ...prev]);
 
     setBankTransactions(prev => prev.filter(t => !t.checked));
     setBankFileName("");
-    if (booked > 0) checkWatchTriggers(plan.standalone.map(buildEntry), unknownDocs);
+    if (booked > 0) checkWatchTriggers(pr.rest.map(buildEntry), unknownDocs);
     try { await loadAllData(); } catch {}
-    const failN = clearFailed + bookFailed;
+    const failN = clearFailed + bookFailed + payrollIncompleteFailed;
+    const totalBooked = booked + payrollIncompleteBooked;
     // Surface the matcher breakdown so the deterministic vs LLM contribution is visible WITHOUT
     // the console (deterministic should carry the exact-match cases every time — if this shows
     // "deterministic: 0" on an exact-name+amount import, the pre-matcher isn't seeing the data).
     showNotification(
-      `${clearedOk} cleared · ${booked} booked${plan.review.length ? ` · ${plan.review.length} need review` : ""}${failN ? ` · ${failN} failed (retry/review)` : ""} — matched via deterministic: ${deterministicCount}, AI: ${llmCount}`,
+      `${clearedOk} cleared · ${totalBooked} booked${payrollMatched ? ` · ${payrollMatched} payroll matched to register` : ""}${payrollIncompleteBooked ? ` · ${payrollIncompleteBooked} payroll flagged (no register)` : ""}${plan.review.length ? ` · ${plan.review.length} need review` : ""}${failN ? ` · ${failN} failed (retry/review)` : ""} — matched via deterministic: ${deterministicCount}, AI: ${llmCount}`,
       failN ? "error" : "success"
     );
     if (plan.review.length > 0) setView("matching");

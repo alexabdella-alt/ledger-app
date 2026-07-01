@@ -54,3 +54,65 @@ export function buildPayrollEntry({
     meta: meta || { kind: "payroll", gross: g, net, withholdings: wh, employer_taxes: emp },
   });
 }
+
+// ── O72: bank net-pay line ↔ payroll register reconciliation ─────────────────
+// A bank line like "PAYROLL JANE SMITH NET $4,401" is the SAME cash disbursement the register
+// already recorded (Cr Cash net). Booking it as a fresh salary expense (a) loses the payroll
+// detail and (b) double-counts salaries when the register is also uploaded. So a payroll bank
+// line MATCHES the register's net (and is suppressed — no re-book); with no register, it books
+// net but is FLAGGED incomplete (ties O49) rather than pretending net = full salary.
+
+const _num = (n) => Number(n) || 0;
+
+// Detect a payroll NET-pay bank line (targeted, to avoid false positives on generic expenses).
+const PAYROLL_LINE_RE = /\bpayroll\b|\bnet pay\b|\bpaychex\b|\bgusto\b|\badp\b|\brippling\b|\bjustworks\b|\bonpay\b|\btrinet\b|\bzenefits\b/i;
+export function isPayrollBankLine(txn = {}) {
+  return PAYROLL_LINE_RE.test(`${txn.vendor || ""} ${txn.description || ""}`);
+}
+
+// Find a booked payroll REGISTER entry (import_metadata.kind==="payroll") whose NET matches this
+// bank line's amount within a date window. Returns the matching ledger row, or null. `usedIds`
+// prevents two bank lines matching the same register run (and dedupes an entry's own flat rows).
+export function matchPayrollBankLine(bankLine = {}, ledger = [], { dateWindowDays = 10, usedIds = new Set() } = {}) {
+  const amt = Math.abs(_num(bankLine.amount));
+  if (!(amt > 0)) return null;
+  for (const i of (ledger || [])) {
+    const m = i && i.import_metadata;
+    if (!m || m.kind !== "payroll") continue;
+    if (i.status === "voided" || i.status === "deleted") continue;
+    const id = String(i.db_entry_id ?? i.id);
+    if (usedIds.has(id)) continue;
+    const net = Math.abs(_num(m.net != null ? m.net : i.amount));
+    if (Math.abs(net - amt) > 0.01) continue;
+    if (bankLine.date && i.date) {
+      const dd = Math.abs((new Date(bankLine.date) - new Date(i.date)) / 86400000);
+      if (isNaN(dd) || dd > dateWindowDays) continue;
+    }
+    return i;
+  }
+  return null;
+}
+
+export const PAYROLL_INCOMPLETE_NOTE = "Net pay booked from the bank line — the payroll register (gross wages + tax withholdings) wasn't uploaded, so this understates salary expense and omits the payroll-tax liability. Upload the register to record the full entry.";
+
+// Mark a payroll bank line that has NO register to complete it: book its net, but at low
+// confidence + an honest note so O49 flags it for review (don't pretend partial payroll is whole).
+export function flagIncompletePayroll(txn = {}) {
+  return { ...txn, confidence: 40, reasoning: PAYROLL_INCOMPLETE_NOTE, payroll_incomplete: true };
+}
+
+// Partition bank "standalone" lines (the ones about to be direct-booked) for payroll safety:
+//   matched     → payroll net lines that clear a booked register run  → SUPPRESS (no re-book)
+//   incomplete  → payroll net lines with no register                  → book net + flag (flagIncompletePayroll)
+//   rest        → everything else                                     → book unchanged
+export function planPayrollBankLines(standalone = [], ledger = [], { dateWindowDays = 10 } = {}) {
+  const rest = [], matched = [], incomplete = [];
+  const used = new Set();
+  for (const t of (standalone || [])) {
+    if (!isPayrollBankLine(t)) { rest.push(t); continue; }
+    const m = matchPayrollBankLine(t, ledger, { dateWindowDays, usedIds: used });
+    if (m) { used.add(String(m.db_entry_id ?? m.id)); matched.push({ line: t, matchId: m.db_entry_id ?? m.id }); }
+    else { incomplete.push(t); }
+  }
+  return { rest, matched, incomplete };
+}

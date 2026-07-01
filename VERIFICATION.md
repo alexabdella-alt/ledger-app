@@ -140,6 +140,19 @@
 - ⬜ **H9f · HONEST, not rosy** — a genuine problem (short runway / big overdue AR / loss) is stated plainly with the number + next step; tone pill goes amber/red.
 - ⬜ **H9g · other home elements intact** — the upload zone, the "1 open receivable · $6,800" AR nudge, the "books haven't been matched to your bank — upload statement" banner, and the Activity feed are all still present and unchanged.
 
+## H10. Payroll-from-statement — no double-count, register is authoritative (O72 / C123)
+
+**Risk: HIGH** (double-counted salaries / understated payroll = materially wrong books). **Prereq:** a payroll **register** upload and a **bank statement** containing the net-pay line (e.g. "PAYROLL … NET $4,401").
+
+- ⬜ **H10a · register books the FULL entry** — upload a payroll register → the resulting journal entry is Dr Salaries/Wages (gross) / Dr Payroll Tax Expense (employer) / **Cr Cash (net)** / Cr Payroll Taxes Payable (2101). Not just net-as-salary.
+- ⬜ **H10b · bank net line MATCHES the register, does NOT re-book** — with that register already booked, import the bank statement and book the net-pay line.
+  *Expected:* the net line is **matched to the register** (a "N payroll matched to register" note), **not booked as a second salary expense**. Salary expense on the P&L is the **gross once**, not gross + net.
+- ⬜ **H10c · register + statement together = ONE payroll cost** — check the P&L salaries figure after doing both.
+  *Expected:* it equals the register's gross (single run), **not doubled**. (This is the core O72 fix.)
+- ⬜ **H10d · bank-net-only (no register) → booked but FLAGGED incomplete** — import a statement net-pay line with **no** register uploaded.
+  *Expected:* it books the net, but shows up in the **Review** queue (O49) with low confidence and the note "payroll register wasn't uploaded — understates salary / omits tax liability. Upload the register." It does **not** silently pretend net = full salary.
+  *Note:* no migration — accounts already exist (6000 salaries, 2101 payroll taxes payable via migration 044).
+
 ---
 
 # 🟠 MEDIUM RISK
