@@ -400,8 +400,18 @@ export function financialHealthScore({ invoices = [], cashBalance = 0, reconcili
 
   const score = Math.round(items.reduce((s, i) => s + i.points, 0));
   const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F";
-  const color = score >= 80 ? "#039855" : score >= 60 ? "#DC6803" : "#D92D20";
-  const tier = score >= 80 ? "Strong" : score >= 60 ? "Good" : "Needs attention";
+  // Grade, word-label, and color ALL derive from ONE map keyed on `grade`, so they can never
+  // disagree. (Bug: they were three independent score-band computations with MISALIGNED
+  // thresholds — grade used 10-pt bands (D=60–69) while tier used ≥80/≥60/<60 — so a score of
+  // 60–69 rendered "Grade D · Good" at once. Single source ⇒ always consistent.)
+  const GRADE_META = {
+    A: { tier: "Strong",          color: "#039855" },
+    B: { tier: "Good",            color: "#039855" },
+    C: { tier: "Fair",            color: "#DC6803" },
+    D: { tier: "Needs attention", color: "#DC6803" },
+    F: { tier: "At risk",         color: "#D92D20" },
+  };
+  const { tier, color } = GRADE_META[grade];
   const concern = items.filter(i => !i.met).sort((a, b) => b.max - a.max)[0];
   let summary = `Your financial health is ${tier}.`;
   if (concern) {

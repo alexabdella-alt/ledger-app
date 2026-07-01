@@ -6,8 +6,8 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-28
-- **Test suite:** 750 passing (`npm test`, 53 files; incl. `noUndefinedRefs` scope-scan over all 92 src files; incl. **fault-injection** suites that deliberately break the pipeline to prove the O60/O49 trust nets catch it — C115). **Build:** clean (`npm run build`).
-- **Pending migration to apply:** `047_document_intake_ledger.sql` (O60 intake ledger — run in Supabase SQL editor).
+- **Test suite:** 751 passing (`npm test`, 53 files; incl. `noUndefinedRefs` scope-scan over all 92 src files; incl. **fault-injection** suites that deliberately break the pipeline to prove the O60/O49 trust nets catch it — C115). **Build:** clean (`npm run build`).
+- **Pending migrations to apply:** `047_document_intake_ledger.sql` (O60 intake ledger) · `048_rls_exposed_tables.sql` (O21 — closes the `rls_disabled_in_public` exposure; **security, apply soon**).
 - **Live verification:** `VERIFICATION.md` (repo root) is the manual click-through checklist for built-but-not-live-verified work — worked under **O83** (pre-launch gate). Unit-test green ≠ live-verified.
 - **Migrations:** `000`–`045` applied (numbering non-contiguous; `045_drop_ap_invoices.sql` applied 2026-06-26 — dropped the orphaned `ap_invoices` table + dead `ap_aging` view, confirmed 0 rows). `046_company_aliases.sql` written (optional — adds `companies.aliases` for O75 self-identity; name-based direction works without it).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
@@ -370,7 +370,7 @@ Existing items that ladder into it:
 
 | id | item | status | pri | deps/notes |
 |----|------|--------|-----|-----------|
-| O21 | Full RLS policy audit — reconcile all committed policies vs live (~135) per table | not started | **P1** | tenant-isolation assurance |
+| O21 | **RLS policy audit — reconcile committed policies vs live per table.** **Exposure fix ✅ C119 (`rls_disabled_in_public`):** live had **4 public tables with RLS DISABLED** (policies existed but inert → readable/writable via the anon key): `ap_invoices`, `opening_balances`, `payroll_imports`, `reconciliation_items`. **Migration `048_rls_exposed_tables.sql`** (written, awaiting apply): drops the dead `ap_invoices` (self-guarded, supersedes `045`); enables RLS on the other 3 (activating their existing correct `auth_company_ids()` policies) + adds the missing `ob_delete` policy (the app deletes `opening_balances` on edit). Verified no blanket `USING(true)` SELECT policies anywhere; `default_chart_of_accounts`+`rate_limit` are intentional enabled-but-0-policy deny-all. **Low-priority follow-up (do NOT fix now):** two `WITH CHECK (true)` **INSERT** policies — `companies_insert` and `users_insert` — let any authenticated user insert a `companies`/`users` row (a spam vector, **not** a cross-tenant read leak since neither is a SELECT policy). Also contradicts CLAUDE.md §2 ("direct company INSERT blocked" — live drifted from `001`'s intent). Tighten to a scoped `WITH CHECK` (or route company creation solely through `create_company` RPC) when convenient. **Remaining:** the broader committed-vs-live policy reconciliation across all ~135 policies. | **exposure ✅ C119 (048 pending apply)**; broader recon remains | **P1** pre-launch gate; tenant isolation; migration `048` |
 | O22 | Live rebuild test + auth-trigger capture — prove `000`→`042` rebuilds to live; the `auth.users`→`public.users` sync trigger lives outside `public` and isn't in `000` | not started | P2 | CLAUDE.md §11 caveat |
 | O23 | Data-processing / AI disclosure — DPA, subprocessor list, training opt-out, prompt-injection policy | not started | P3 | |
 | O24 | GITC / SOC 2 readiness | not started | P3 | |

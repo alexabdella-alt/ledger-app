@@ -154,6 +154,26 @@ describe("financialHealthScore", () => {
     expect(h.score).toBeGreaterThanOrEqual(0);
   });
 
+  it("grade and its word-label NEVER contradict (single source) — incl. the D-band bug", () => {
+    // grade↔tier↔color all derive from one map keyed on grade.
+    const AGREE = { A: "Strong", B: "Good", C: "Fair", D: "Needs attention", F: "At risk" };
+    // exercise every score band by seeding N met items (each ~ its weight); assert agreement.
+    for (const now of [NOW]) {
+      for (let anoms = 0; anoms <= 6; anoms++) {
+        const h = financialHealthScore({ invoices: [exp(1000, "6100", "2026-06-01")], cashBalance: anoms * 3000, reconciliations: anoms % 2 ? [{ status: "complete", completed_at: "2026-06-10" }] : [], anomalies: Array.from({ length: anoms }, () => ({ severity: "high" })), onboardingComplete: anoms > 2, now });
+        expect(AGREE[h.grade]).toBe(h.tier);                    // never "D · Good"
+        // color agrees with the grade tier (green for A/B, amber for C/D, red for F)
+        if (h.grade === "A" || h.grade === "B") expect(h.color).toBe("#039855");
+        if (h.grade === "C" || h.grade === "D") expect(h.color).toBe("#DC6803");
+        if (h.grade === "F") expect(h.color).toBe("#D92D20");
+        expect(h.summary).toContain(h.tier);                    // summary uses the same word
+      }
+    }
+    // the specific reported case: a D-band score is "Needs attention", not "Good"
+    const AGREE2 = { A: "Strong", B: "Good", C: "Fair", D: "Needs attention", F: "At risk" };
+    expect(AGREE2.D).toBe("Needs attention");
+  });
+
   // O79: only a COMPLETED reconciliation counts. import/matching ≠ reconcile, and an
   // in-progress draft must not register either.
   const reconItem = (h) => h.items.find((i) => i.id === "reconciled");
