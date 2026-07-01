@@ -249,13 +249,15 @@ export default function ReportsView() {
                   </select>
                 </div>
 
-                {/* Depreciation posts automatically when due (no manual "run" trigger). Only the
-                    owner/admin maintenance tool — attach depreciation to an already-capitalized
-                    asset — remains here. */}
+                {/* Depreciation auto-posts silently when due (App.jsx autoPostDepreciation) — the
+                    owner should never see the system narrate a bookkeeping action it performed on
+                    its own (same principle as the removed run-depreciation nudge / reconcile nag).
+                    No "posts automatically" announcement here; the record lives in the audit log.
+                    Only the owner/admin maintenance tool — attach depreciation to an
+                    already-capitalized asset — remains. */}
                 {(isOwner || isAdmin) && (
                   <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:24, padding:"12px 14px", background:"var(--sc-bg)", border:"1px solid var(--sc-border)", borderRadius:10 }}>
                     <span style={{ fontSize:13, fontWeight:600, color:"var(--sc-text-2)" }}>Depreciation</span>
-                    <span style={{ fontSize:12.5, color:"var(--sc-text-mut)" }}>Posts automatically each month it's due.</span>
                     <button onClick={()=>setAttachOpen(o=>!o)} style={{ marginLeft:"auto", fontSize:12, fontWeight:500, color:"var(--sc-text-2)", background:"none", border:"none", cursor:"pointer" }}>{attachOpen?"Close":"Attach to existing asset"}</button>
                   </div>
                 )}
