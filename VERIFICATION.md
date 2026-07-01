@@ -261,6 +261,16 @@
 - ⬜ **M12e · print/PDF unaffected** — the Monthly Report **Print / PDF** still renders on white paper (its intentional hardcoded light colors were deliberately left — CSS tokens don't resolve in the print popup).
 - ⬜ **M12f · nothing regressed** — money figures, signs, drills, toggles all still work; this pass changed only styling values, not logic.
 
+## M13. Reconciliation books-set = cash movements only (C133 · O88)
+
+*Diagnosis of the O88 inclusion question (flagged in M11d). The recon "books side" was built on **P&L membership** (`glIsRevenue||glIsExpense||type`), not cash participation — so **accrual bills** (Dr Expense / Cr A/P) and **uncollected AR invoices** (Dr A/R / Cr Revenue), which move no cash, were included as permanent unmatchable phantoms that **corrupted the difference** (and the accrual bill+payment double-counted). Fixed: the books-set now derives from GL **cash-account participation** (`src/lib/reconcile.js` — a leg hits the reconciled account's cash code), each entry once, signed by its cash-leg direction. Cash-basis companies see **no change** (verified: every direct-cash / settlement case is byte-identical); accrual companies get the phantoms removed.*
+
+- ⬜ **M13a · accrual bill absent, its payment present** — book an unpaid **bill** (accrual), then reconcile the period: the bill does **not** appear in the books side / unmatched list; only its **payment** (when made, Dr A/P / Cr Cash) appears, at the paid amount. **Risk: MED (recon math; cash-basis unaffected).**
+- ⬜ **M13b · uncollected AR invoice absent, its collection present** — an **issued invoice** not yet collected is absent from the recon set; the **collection** (Dr Cash / Cr A/R) is present as money-IN.
+- ⬜ **M13c · difference no longer inflated** — for a company that uses accrual bills/invoices, the reconciliation **difference** and **books balance** no longer carry phantom non-cash entries; the books side ties to the bank's cash movements.
+- ⬜ **M13d · direct-cash companies unchanged** — a cash-basis company (expenses/revenue booked straight to cash) reconciles exactly as before — same rows, same signs, same difference.
+- ⬜ **M13e · partial payment + transfer + multi-line** — a **partial** payment appears at the cash amount (not the bill total); a **transfer** between two of your accounts appears in **each** account's recon with the correct opposite sign; a **payroll/multi-line** entry contributes one row (the net cash leg), not every leg.
+
 ---
 
 # 🟢 LOW RISK — cosmetic / nav

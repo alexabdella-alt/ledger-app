@@ -1,7 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { classifyTxn } from "../../lib/txnPresent";
+import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
@@ -66,7 +65,7 @@ export default function ReconView() {
   const {
     bankAccounts, invoices, setInvoices, reconciliations,
     currentCompany, session, supabase, bookToDb, logAudit, showNotification, loadAllData,
-    CHART_OF_ACCOUNTS, setView, getAccountByRole,
+    CHART_OF_ACCOUNTS, setView, getAccountByRole, cashGlCodes,
   } = useERP();
 
   const fmt = n => (n<0?"-":"")+"$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
@@ -117,12 +116,21 @@ export default function ReconView() {
     return memberNames[uid] || "—";
   };
 
-  const booksRows = invoices.filter(i => i.status!=="voided" && i.date && i.date>=periodStart && i.date<=periodEnd && (glIsRevenue(i.gl_code)||glIsExpense(i.gl_code)||i.type==="expense"||i.type==="revenue"));
-  // Settlement-aware sign (§9): a bank-matched A/R COLLECTION flattens to gl_code=Cash+
-  // type="expense" but is money IN — the old `glIsRevenue||type==="revenue"` signed it negative,
-  // corrupting the reconciliation difference. classifyTxn reads the settlement kind (GL truth).
-  const _apCode = getAccountByRole?.("accounts_payable")?.code, _arCode = getAccountByRole?.("accounts_receivable")?.code;
-  const bookSigned = i => classifyTxn(i, { apCode: _apCode, arCode: _arCode }).inflow ? Math.abs(i.amount) : -Math.abs(i.amount);
+  // Books side = entries that actually HIT the reconciled cash account (GL-derived, §9/§12).
+  // The bank only sees cash, so an accrual bill (Dr Expense / Cr A/P) or an uncollected AR
+  // invoice (Dr A/R / Cr Revenue) — which move no cash — must NOT be here (they were before,
+  // as permanent unmatchable phantoms that corrupted the difference). Each cash entry appears
+  // once, signed by its cash-leg direction (cash debited = in +, credited = out −).
+  const reconCashCodes = React.useMemo(() => {
+    const acct = (bankAccounts||[]).find(b => String(b.id)===String(accountId));
+    if (acct?.gl_code) return [String(acct.gl_code)];                 // the specific reconciled bank account
+    const all = [...(cashGlCodes||[])].map(String);
+    if (all.length) return all;                                        // manual/unlinked → any cash account
+    const role = getAccountByRole?.("cash")?.code;
+    return role ? [String(role)] : [];
+  }, [accountId, bankAccounts, cashGlCodes]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const booksRows = reconBooksSet(invoices, { cashCodes: reconCashCodes, from: periodStart, to: periodEnd });
+  const bookSigned = i => cashLegSigned(i, reconCashCodes);
   const matchedBookIds = new Set(bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook));
   const unmatchedBank = bankTxns.filter(t=>!t._matchBook && !t._ignored);
   const unmatchedBooks = booksRows.filter(b=>!matchedBookIds.has(b.id) && !outstanding[b.id]);
@@ -166,7 +174,7 @@ export default function ReconView() {
   const queueSave = () => { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(()=>saveNow("in_progress"), 2000); };
 
   const runAutoMatch = (txns) => {
-    const books = invoices.filter(i => i.status!=="voided" && i.date && i.date>=periodStart && i.date<=periodEnd && (glIsRevenue(i.gl_code)||glIsExpense(i.gl_code)||i.type==="expense"||i.type==="revenue"));
+    const books = reconBooksSet(invoices, { cashCodes: reconCashCodes, from: periodStart, to: periodEnd });
     const used = new Set(); let n=0;
     const out = txns.map(t => {
       if (t._matchBook) return t;
