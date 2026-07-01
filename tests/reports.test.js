@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeKPIs, financialHealthScore, trialBalance, agingReport, openReceivablesGL, openPayablesGL, glAccountBalance } from "../src/lib/reports.js";
+import { computeKPIs, financialHealthScore, businessHealth, trialBalance, agingReport, openReceivablesGL, openPayablesGL, glAccountBalance } from "../src/lib/reports.js";
 
 const NOW = new Date("2026-06-15");
 const kpi = (ledger, key, opts = {}) => computeKPIs(ledger, { now: NOW, ...opts }).find(k => k.key === key);
@@ -312,5 +312,61 @@ describe("currentPeriodRange — reports default to the current period (to == to
   });
   it("'to' tracks the date passed in — never a stale baked-in value", () => {
     expect(currentPeriodRange("fy", { today: "2027-02-10", fiscalYearEnd: "12-31" })).toEqual({ from: "2027-01-01", to: "2027-02-10" });
+  });
+});
+
+// ── Owner-facing business health (plain-language, no letter grade) ───────────
+describe("businessHealth — owner-facing status, no books-health, honest", () => {
+  const NOW2 = new Date("2026-06-15");
+  // profitable + long runway: revenue >> expenses, healthy cash
+  const healthy = [rev(20000, "2026-06-01"), exp(1000, "6100", "2026-06-01"), exp(1000, "6100", "2026-05-01"), exp(1000, "6100", "2026-04-01")];
+
+  it("healthy business → tone 'good', reassuring headline, no concerns", () => {
+    const bh = businessHealth(healthy, { cash: 40000, now: NOW2 });
+    expect(bh.tone).toBe("good");
+    expect(bh.headline).toMatch(/profitable/i);
+    expect(bh.headline).toMatch(/healthy/i);
+    expect(bh.concerns).toEqual([]);
+    expect(bh.facts.map(f => f.key)).toEqual(["profit", "runway", "cash"]);
+  });
+
+  it("overdue AR surfaces as a concern with the number + an action (not a grade)", () => {
+    const led = [...healthy, { id: "od", vendor: "Globex", amount: 6800, date: "2026-01-01", due_date: "2026-01-15", gl_code: "4000", gl_name: "Revenue", type: "revenue", status: "posted", payment_status: "unpaid" }];
+    const bh = businessHealth(led, { cash: 40000, now: NOW2 });
+    const ar = bh.concerns.find(c => c.key === "ar");
+    expect(ar).toBeTruthy();
+    expect(ar.text).toMatch(/6,800/);
+    expect(ar.text).toMatch(/overdue/i);
+    expect(ar.actionView).toBe("ar");
+    expect(ar.actionLabel).toBeTruthy();
+    expect(ar.severity).toBe("high");   // >= $5k
+  });
+
+  it("short runway is stated honestly (not hidden) with the month count + burn", () => {
+    // heavy burn, little cash → short runway
+    const led = [exp(9000, "6100", "2026-06-01"), exp(9000, "6100", "2026-05-01"), exp(9000, "6100", "2026-04-01")];
+    const bh = businessHealth(led, { cash: 9000, now: NOW2 });
+    const rw = bh.concerns.find(c => c.key === "runway");
+    expect(rw).toBeTruthy();
+    expect(rw.text).toMatch(/runway/i);
+    expect(bh.tone).toBe("concern");         // < 3 months = high severity
+    expect(bh.headline).toMatch(/loss|runway/i);
+  });
+
+  it("a real loss is said plainly, never falsely rosy", () => {
+    const led = [rev(2000, "2026-06-01"), exp(9000, "6100", "2026-06-01")];
+    const bh = businessHealth(led, { cash: 5000, now: NOW2 });
+    expect(bh.concerns.some(c => c.key === "profit")).toBe(true);
+    expect(bh.facts.find(f => f.key === "profit").tone).toBe("concern");
+    expect(bh.tone).toBe("concern");
+  });
+
+  it("does NOT include any books-health items (reconciled / setup / anomalies)", () => {
+    const bh = businessHealth(healthy, { cash: 40000, now: NOW2 });
+    const blob = JSON.stringify(bh).toLowerCase();
+    expect(blob).not.toMatch(/reconcil/);
+    expect(blob).not.toMatch(/setup|onboard/);
+    expect(blob).not.toMatch(/anomal/);
+    expect(blob).not.toMatch(/grade|\/ 100|score/);   // no letter grade / score language
   });
 });

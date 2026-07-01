@@ -422,6 +422,59 @@ export function financialHealthScore({ invoices = [], cashBalance = 0, reconcili
   return { score, grade, color, tier, items, summary };
 }
 
+// ── OWNER-FACING BUSINESS HEALTH (plain-language, actionable) ────────────────
+// The "am I okay, and what do I do?" read for the business owner — built ONLY from things
+// the owner cares about and can act on: profitability, runway, cash, overdue AR, burn trend.
+// Deliberately EXCLUDES books-health (reconciled / setup / anomalies): those are SHADOW's job
+// (the bookkeeping the client pays us to do) and belong to the internal CPA review queue (O50),
+// NOT as a demerit on the owner's dashboard. Honest, not rosy — a real problem is stated plainly
+// with its number and a next step. Returns { tone, headline, facts[], concerns[] }.
+export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {}) {
+  const year = now.getFullYear();
+  const today = now.toISOString().slice(0, 10);
+  const money = (n) => (num(n) < 0 ? "−" : "") + "$" + Math.abs(Math.round(num(n))).toLocaleString("en-US");
+
+  const net = computeNetIncome(invoices, { from: `${year}-01-01`, to: `${year}-12-31` });
+  const burn = computeBurnRate(invoices, { asOf: today });
+  const runwayRaw = computeRunway(cash, burn);                       // months, or null when there's no burn
+  const runwayInfinite = runwayRaw === null;
+  const runway = runwayInfinite ? Infinity : Math.floor(runwayRaw);
+
+  const overdue = (invoices || []).filter(i => isLiveEntry(i) && arUnpaid(i) && i.due_date && daysOverdue(i.due_date, now) > 60);
+  const overdueTotal = r2(overdue.reduce((s, i) => s + num(owedAmount(i)), 0));
+
+  // burn trend — this month vs the previous month that has data
+  const monthExp = {};
+  for (const i of liveEntries(invoices, { to: today })) if (isExp(i)) { const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + num(i.amount); }
+  const ms = Object.keys(monthExp).sort();
+  const curM = ms.length ? monthExp[ms[ms.length - 1]] : 0;
+  const prevM = ms.length > 1 ? monthExp[ms[ms.length - 2]] : null;
+  const burnUpPct = (prevM && prevM > 0 && curM > prevM * 1.05) ? Math.round((curM / prevM - 1) * 100) : 0;
+
+  const facts = [
+    { key: "profit", label: net >= 0 ? "Profitable" : "Operating at a loss", value: `${money(net)} net this year`, tone: net >= 0 ? "good" : "concern" },
+    { key: "runway", label: "Runway", value: runwayInfinite ? "Cash steady — no burn" : `~${runway} month${runway === 1 ? "" : "s"}`, tone: (runwayInfinite || runway >= 6) ? "good" : runway >= 3 ? "watch" : "concern" },
+    { key: "cash", label: "Cash on hand", value: money(cash), tone: "neutral" },
+  ];
+
+  const concerns = [];
+  if (net < 0) concerns.push({ key: "profit", severity: "high", text: `You're spending more than you're earning this year (${money(net)} net).` });
+  if (!runwayInfinite && runway < 6) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: `Only ~${runway} month${runway === 1 ? "" : "s"} of runway at the current burn (${money(burn)}/mo).`, actionLabel: "See burn breakdown", actionView: "runway" });
+  if (overdue.length) concerns.push({ key: "ar", severity: overdueTotal >= 5000 ? "high" : "med", text: `${overdue.length} invoice${overdue.length > 1 ? "s are" : " is"} 60+ days overdue (${money(overdueTotal)}).`, actionLabel: "Chase overdue invoices", actionView: "ar" });
+  if (burnUpPct) concerns.push({ key: "burn", severity: "med", text: `Spending is up ${burnUpPct}% versus last month.` });
+
+  concerns.sort((a, b) => (a.severity === "high" ? 0 : 1) - (b.severity === "high" ? 0 : 1));
+  const tone = concerns.some(c => c.severity === "high") ? "concern" : concerns.length ? "watch" : "good";
+
+  const profitPhrase = net >= 0 ? "You're profitable" : "You're running at a loss";
+  const runwayPhrase = runwayInfinite ? "" : ` with ~${runway} month${runway === 1 ? "" : "s"} of runway`;
+  const headline = !concerns.length
+    ? `${profitPhrase}${runwayPhrase}. Everything looks healthy right now.`
+    : `${profitPhrase}${runwayPhrase}. ${tone === "concern" ? "Needs attention" : "Heads up"}: ${concerns[0].text}`;
+
+  return { tone, headline, facts, concerns };
+}
+
 // ── MONTHLY REPORT (Item 11) ────────────────────────────────────────────────
 // Build the full immutable payload for one month's financial summary. Pure and
 // fully testable — the AI executive summary is layered on top by the app (this

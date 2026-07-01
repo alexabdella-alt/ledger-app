@@ -5,7 +5,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
-import { financialHealthScore, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
+import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
 import ClarificationFlow from "../ClarificationFlow";
 import StatCard from "../ui/StatCard";
@@ -20,7 +20,6 @@ export default function DashboardView() {
   const [bizType, setBizType] = React.useState(""); // business-type modal draft
   const [bizFye, setBizFye] = React.useState("12-31");
   const [accountantNotice, setAccountantNotice] = React.useState(false); // "coming soon" inline message
-  const [healthOpen, setHealthOpen] = React.useState(false); // financial health breakdown modal
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
   const goToSection = (view, anchorId) => {
@@ -669,43 +668,38 @@ export default function DashboardView() {
                 );
               })()}
 
-              {/* ── FINANCIAL HEALTH SCORE (Item 63) — below the metric cards ── */}
+              {/* ── FINANCIAL HEALTH — owner-facing, plain-language business status (was: letter grade) ──
+                   Shows BUSINESS health (profit / runway / cash / overdue AR / burn) with specifics +
+                   actions. Books-health (reconciled/setup/anomalies) is deliberately NOT here — that's
+                   Shadow's job, surfaced in the CPA Review queue (O50), not a demerit on the owner. */}
               {invoices.length > 0 && (() => {
-                const h = financialHealthScore({ invoices, cashBalance: glCash, reconciliations, anomalies, onboardingComplete: companySettings.onboardingComplete });
-                const ring = `conic-gradient(${h.color} ${h.score * 3.6}deg, var(--sc-border) 0deg)`;
+                const bh = businessHealth(invoices, { cash: glCash });
+                const toneColor = bh.tone === "good" ? "var(--sc-success)" : bh.tone === "watch" ? "var(--sc-warning)" : "var(--sc-error)";
+                const toneSoft  = bh.tone === "good" ? "var(--sc-success-soft)" : bh.tone === "watch" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)";
+                const toneLabel = bh.tone === "good" ? "Healthy" : bh.tone === "watch" ? "Worth a look" : "Needs attention";
+                const factColor = t => t === "good" ? "var(--sc-success)" : t === "watch" ? "var(--sc-warning)" : t === "concern" ? "var(--sc-error)" : "var(--sc-text)";
                 return (
-                  <div style={{ marginBottom:24 }}>
-                    <div onClick={()=>setHealthOpen(o=>!o)} className="sc-card"
-                      onMouseEnter={e=>e.currentTarget.style.borderColor="#D0D5DD"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E4E7EC"}
-                      style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"18px 22px", cursor:"pointer", display:"flex", alignItems:"center", gap:18, transition:"border-color .12s" }}>
-                      <div style={{ width:64, height:64, borderRadius:"50%", background:ring, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                        <div style={{ width:50, height:50, borderRadius:"50%", background:"var(--sc-surface)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-                          <span style={{ fontSize:18, fontWeight:800, color:h.color, fontFamily:"'DM Mono',monospace", lineHeight:1 }}>{h.score}</span>
-                          <span style={{ fontSize:9, color:"var(--sc-text-mut)", fontWeight:700 }}>/ 100</span>
-                        </div>
-                      </div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          <span style={{ fontSize:15, fontWeight:700, color:"var(--sc-text)" }}>Financial Health</span>
-                          <span style={{ fontSize:11, fontWeight:700, color:h.color, background:h.color+"16", border:`1px solid ${h.color}33`, borderRadius:6, padding:"2px 9px" }}>Grade {h.grade} · {h.tier}</span>
-                        </div>
-                        <div style={{ fontSize:12.5, color:"var(--sc-text-2)", marginTop:4, lineHeight:1.5 }}>{h.summary}</div>
-                      </div>
-                      <span style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:600, flexShrink:0 }}>{healthOpen?"Hide ▲":"Breakdown ▼"}</span>
+                  <div className="sc-card" style={{ marginBottom:24, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderLeft:`3px solid ${toneColor}`, borderRadius:14, padding:"18px 22px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:15, fontWeight:700, color:"var(--sc-text)" }}>How your business is doing</span>
+                      <span style={{ fontSize:11, fontWeight:700, color:toneColor, background:toneSoft, border:`1px solid ${toneColor}33`, borderRadius:6, padding:"2px 9px" }}>{toneLabel}</span>
                     </div>
-                    {healthOpen && (
-                      <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"6px 22px 14px", marginTop:8 }}>
-                        {h.items.map((it,i)=>(
-                          <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:i>0?"1px solid var(--sc-surface-2)":"none" }}>
-                            <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, background:it.met?"var(--sc-success)":"var(--sc-error-soft)", color:it.met?"var(--sc-surface)":"var(--sc-error)", border:it.met?"none":"1px solid var(--sc-error-soft)" }}>{it.met?"✓":"!"}</span>
-                            <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{it.label}</div>
-                              <div style={{ fontSize:11.5, color:"var(--sc-text-mut)", marginTop:1 }}>{it.detail}</div>
-                              {it.id==="reconciled" && !it.met && (
-                                <button onClick={()=>setView("recon")} style={{ marginTop:6, padding:"4px 10px", borderRadius:7, fontSize:11.5, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Reconcile now →</button>
-                              )}
-                            </div>
-                            <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:it.met?"var(--sc-success)":"var(--sc-text-mut)", flexShrink:0 }}>{it.met?"+":""}{it.points}<span style={{ color:"var(--sc-text-mut)", fontWeight:400 }}>/{it.max}</span></span>
+                    <div style={{ fontSize:13.5, color:"var(--sc-text)", lineHeight:1.55 }}>{bh.headline}</div>
+                    <div style={{ display:"flex", gap:24, flexWrap:"wrap", marginTop:14 }}>
+                      {bh.facts.map(f => (
+                        <div key={f.key} style={{ minWidth:110 }}>
+                          <div style={{ fontSize:10, letterSpacing:0.8, color:"var(--sc-text-2)", fontWeight:600, textTransform:"uppercase" }}>{f.label}</div>
+                          <div style={{ fontSize:15, fontWeight:700, fontFamily:"'DM Mono',monospace", color:factColor(f.tone), marginTop:3 }}>{f.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {bh.concerns.length > 0 && (
+                      <div style={{ marginTop:14, borderTop:"1px solid var(--sc-surface-2)", paddingTop:12, display:"flex", flexDirection:"column", gap:9 }}>
+                        {bh.concerns.map(c => (
+                          <div key={c.key} style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                            <span style={{ width:6, height:6, borderRadius:"50%", background: c.severity==="high"?"var(--sc-error)":"var(--sc-warning)", flexShrink:0 }} />
+                            <span style={{ fontSize:12.5, color:"var(--sc-text-2)", flex:1, minWidth:120 }}>{c.text}</span>
+                            {c.actionView && <button onClick={()=>setDashDrill({ type:c.actionView })} style={{ padding:"5px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer", flexShrink:0 }}>{c.actionLabel} →</button>}
                           </div>
                         ))}
                       </div>

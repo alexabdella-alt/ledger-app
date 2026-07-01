@@ -128,6 +128,17 @@
 - ⬜ **H8d · revenue framing** — on a flagged *deposit/revenue* item, the drafted question is phrased as income ("the $X from …, a one-time project or ongoing/retainer work?").
   *Shippable-now note:* the question is drafted + (manually) sent + answer pasted back. **O82-dependent (not yet):** auto-send to the client's channel and auto-ingest their reply — the `channel` payload is already structured for it.
 
+## H9. Financial Health card — plain-language business status, no letter grade (C120)
+
+**Risk: HIGH** (owner-facing framing + honesty — must not falsely reassure, must not blame the owner for our job). On the **dashboard** "How your business is doing" card:
+
+- ⬜ **H9a · NO letter grade / score** — the card shows a plain-language headline + a tone pill (Healthy / Worth a look / Needs attention), **not** an A–F grade or "N / 100" ring.
+- ⬜ **H9b · plain-language, specific headline** — e.g. *"You're profitable with ~8 months of runway. Everything looks healthy right now."* or, with an issue, *"…Heads up: 3 invoices are overdue ($6,800)."* Reads conversational, not judgmental.
+- ⬜ **H9c · facts row** — shows Profitable/Loss (net this year), Runway (~N months), Cash on hand — colored by tone.
+- ⬜ **H9d · concerns are specific + actionable** — a real issue (short runway, overdue AR ≥60d, rising burn, loss) appears with the **number** and, where relevant, an action button (**Chase overdue invoices →**, **See burn breakdown →**) that drills in.
+- ⬜ **H9e · books-health is GONE from the owner view** — **no** "reconciled within 35 days", **no** "setup complete", **no** "Reconcile now →" nag, **no** points/breakdown. The owner is **not** docked for accounting admin Shadow does (that lives in the CPA Review queue, O50). *(Reconcile is still reachable via Books → Reconcile — it's just not a demerit here.)*
+- ⬜ **H9f · HONEST, not rosy** — a business with a genuine problem (short runway / big overdue AR / operating at a loss) says so plainly with the number + a next step; the tone pill goes amber/red. It does **not** hide a real concern behind a friendly headline.
+
 ---
 
 # 🟠 MEDIUM RISK
