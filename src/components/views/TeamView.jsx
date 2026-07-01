@@ -65,7 +65,7 @@ export default function TeamView() {
   };
 
   const roleBadge = (r) => {
-    const c = r === "owner" ? "var(--sc-gold)" : r === "admin" ? "#0E9384" : "var(--sc-text-2)";
+    const c = r === "owner" ? "var(--sc-gold)" : r === "admin" ? "var(--sc-success)" : "var(--sc-text-2)";
     return <span style={{ fontSize: 11, fontWeight: 600, color: c, background: c + "14", border: `1px solid ${c}33`, borderRadius: 6, padding: "2px 9px", textTransform: "capitalize" }}>{r}</span>;
   };
   const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 22, marginBottom: 16 };
@@ -98,9 +98,9 @@ export default function TeamView() {
         </div>
         {lastLink && (
           <div style={{ marginTop: 14, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{ fontSize: 12.5, color: "var(--sc-gold)", marginBottom: 8 }}>Copy this link and send it to your teammate. It works once and expires in 7 days.</div>
+            <div style={{ fontSize: 13, color: "var(--sc-gold)", marginBottom: 8 }}>Copy this link and send it to your teammate. It works once and expires in 7 days.</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input readOnly value={lastLink} onFocus={e => e.target.select()} style={{ ...input, flex: "1 1 280px", fontSize: 12.5, fontFamily: "'DM Mono',monospace", background: "var(--sc-surface)" }} />
+              <input readOnly value={lastLink} onFocus={e => e.target.select()} style={{ ...input, flex: "1 1 280px", fontSize: 13, fontFamily: "'DM Mono',monospace", background: "var(--sc-surface)" }} />
               <button onClick={() => copy(lastLink)} style={{ height: 40, padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, color: copied ? "var(--sc-success)" : "var(--sc-surface)", background: copied ? "var(--sc-success-soft)" : "var(--sc-gold)", border: copied ? "1px solid var(--sc-success-soft)" : "none", cursor: "pointer" }}>{copied ? "Copied ✓" : "Copy link"}</button>
             </div>
           </div>
@@ -114,8 +114,8 @@ export default function TeamView() {
           {invites.map(inv => (
             <div key={inv.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--sc-surface-2)" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--sc-text)" }}>{inv.email}</div>
-                <div style={{ fontSize: 11.5, color: "var(--sc-text-mut)", marginTop: 2 }}>Invited {new Date(inv.created_at).toLocaleDateString()} · expires {new Date(inv.expires_at).toLocaleDateString()}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--sc-text)" }}>{inv.email}</div>
+                <div style={{ fontSize: 12, color: "var(--sc-text-mut)", marginTop: 2 }}>Invited {new Date(inv.created_at).toLocaleDateString()} · expires {new Date(inv.expires_at).toLocaleDateString()}</div>
               </div>
               {roleBadge(inv.role)}
               <button onClick={() => copy(linkFor(inv.token))} style={{ fontSize: 12, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Copy link</button>
@@ -133,8 +133,8 @@ export default function TeamView() {
         ) : members.map(m => (
           <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--sc-surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--sc-text)" }}>{m.full_name || m.email}{m.user_id === session?.user?.id ? " (you)" : ""}</div>
-              <div style={{ fontSize: 11.5, color: "var(--sc-text-mut)", marginTop: 2 }}>{m.email}</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--sc-text)" }}>{m.full_name || m.email}{m.user_id === session?.user?.id ? " (you)" : ""}</div>
+              <div style={{ fontSize: 12, color: "var(--sc-text-mut)", marginTop: 2 }}>{m.email}</div>
             </div>
             {roleBadge(m.role)}
           </div>

@@ -33,7 +33,7 @@ export default function DocumentPreviewModal({ doc, onClose }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: "2.5vh 2.5vw", boxSizing: "border-box" }} onClick={onClose}>
       <div style={{ background: "var(--sc-surface)", borderRadius: 14, width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
         {/* Sticky dark header bar — always visible above the document */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 18px", background: "#1E1E2E", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 18px", background: "var(--sc-surface)", flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-bg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
             <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 1 }}>{doc.uploaded_at?.slice(0, 10)} · {doc.type}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>

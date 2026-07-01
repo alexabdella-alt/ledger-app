@@ -5,6 +5,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { classifyTxn, txnStatus } from "../../lib/txnPresent";
+import { pill } from "../../lib/ui";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 
 export default function BooksView() {
@@ -105,13 +106,13 @@ export default function BooksView() {
     if (needsReview(i)) return <span style={pill("var(--sc-warning)")}>Needs Review</span>;
     const cls = classifyTxn(i, { apCode, arCode });
     const st = txnStatus(i, cls);
-    const tone = st.tone==="success" ? "var(--sc-success)" : st.tone==="warning" ? "var(--sc-warning)" : "#1570EF";
+    const tone = st.tone==="success" ? "var(--sc-success)" : st.tone==="warning" ? "var(--sc-warning)" : "var(--sc-info)";
     return <span style={pill(tone)} title={i.payment_method_used ? `${st.label} · ${methodLabel(i.payment_method_used)}` : st.label}>{st.label}</span>;
   };
   function pill(c){ return { display:"inline-flex", alignItems:"center", fontSize:11, fontWeight:600, color:c, background:c+"14", border:`1px solid ${c}29`, borderRadius:6, padding:"3px 9px", whiteSpace:"nowrap", lineHeight:1.2 }; }
 
   const fpill = (id,label) => (
-    <button key={id} onClick={()=>setBooksFilter(id)} style={{ padding:"7px 14px", borderRadius:8, fontSize:13, fontWeight:filter===id?600:400, background:filter===id?"var(--sc-gold)":"var(--sc-surface)", border:`1px solid ${filter===id?"var(--sc-gold)":"var(--sc-border)"}`, color:filter===id?"var(--sc-surface)":"var(--sc-text-2)", cursor:"pointer" }}>{label}</button>
+    <button key={id} onClick={()=>setBooksFilter(id)} style={pill(filter===id)}>{label}</button>
   );
 
   return (
@@ -179,7 +180,7 @@ export default function BooksView() {
                   style={{ padding:"10px 16px", textAlign:h==="Amount"?"right":"left", fontSize:12, color: active?"var(--sc-gold)":"var(--sc-text-mut)", letterSpacing:0.6, fontWeight:600, borderBottom:"1px solid var(--sc-border)", whiteSpace:"nowrap", cursor:sortable?"pointer":"default", userSelect:"none" }}>
                   <span style={{ display:"inline-flex", alignItems:"center", gap:5 }}>
                     {h.toUpperCase()}
-                    {sortable && <span className="sc-th-arrow" style={{ fontSize:11, color: active?"var(--sc-gold)":"#CDD2DC", opacity: active?1:0, transition:"opacity 0.12s" }}>{arrow}</span>}
+                    {sortable && <span className="sc-th-arrow" style={{ fontSize:11, color: active?"var(--sc-gold)":"var(--sc-border)", opacity: active?1:0, transition:"opacity 0.12s" }}>{arrow}</span>}
                   </span>
                 </th>
               );
@@ -194,7 +195,7 @@ export default function BooksView() {
                   <div style={{ fontSize:13, color:"var(--sc-text-mut)", marginBottom:20, maxWidth:340, marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>{search||filter!=="all"?"Try clearing your search or switching filters to see more.":"Upload an invoice, receipt, or bank statement and it'll appear here, fully coded."}</div>
                   {!(search||filter!=="all") && (
                     <button onClick={()=>setView("home")}
-                      onMouseEnter={e=>e.currentTarget.style.background="#4338CA"} onMouseLeave={e=>e.currentTarget.style.background="#4F46E5"}
+                      onMouseEnter={e=>e.currentTarget.style.background="var(--sc-gold-deep)"} onMouseLeave={e=>e.currentTarget.style.background="var(--sc-gold)"}
                       style={{ height:36, padding:"0 18px", borderRadius:8, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:14, fontWeight:500, cursor:"pointer", transition:"background 0.12s" }}>Upload a document →</button>
                   )}
                 </div>

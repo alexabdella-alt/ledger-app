@@ -40,8 +40,8 @@ export default function DetailView() {
                   </div>
                 )}
                 <button onClick={()=>{ setVendorFilter(selectedInvoice.vendor); setView("invoices"); }}
-                  onMouseEnter={e=>{ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.borderColor="#98A2B3"; }}
-                  onMouseLeave={e=>{ e.currentTarget.style.background="var(--sc-surface)"; e.currentTarget.style.borderColor="#D0D5DD"; }}
+                  onMouseEnter={e=>{ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.borderColor="var(--sc-text-mut)"; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.background="var(--sc-surface)"; e.currentTarget.style.borderColor="var(--sc-border-2)"; }}
                   style={{ marginTop:20, height:40, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"0 16px", color:"var(--sc-text-2)", fontSize:14, fontWeight:500, cursor:"pointer", width:"100%", transition:"all 0.12s" }}>
                   View all invoices for {selectedInvoice.vendor} →
                 </button>

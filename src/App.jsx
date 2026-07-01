@@ -5619,7 +5619,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
       <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
         {/* BOOKING VISIBILITY FAILURE — non-dismissable; a saved entry isn't displaying. */}
         {visibilityAlert && (
-          <div role="alert" style={{ flexShrink:0, background:"var(--sc-warning-soft)", borderBottom:"1px solid #FEDF89", color:"var(--sc-warning)", padding:"11px 24px", display:"flex", alignItems:"center", gap:12, fontSize:13, fontWeight:600, zIndex:51 }}>
+          <div role="alert" style={{ flexShrink:0, background:"var(--sc-warning-soft)", borderBottom:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", padding:"11px 24px", display:"flex", alignItems:"center", gap:12, fontSize:13, fontWeight:600, zIndex:51 }}>
             <span style={{ fontSize:16 }}>⚠</span>
             <span>A transaction was saved but isn't displaying correctly. Refresh the page — if it's still missing, contact support.</span>
           </div>
@@ -5643,7 +5643,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
               <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
                 <defs>
                   <linearGradient id="scTopMark" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#f6cb5b" />
+                    <stop offset="0%" stopColor="var(--sc-gold-bright)" />
                     <stop offset="100%" stopColor="#bf9226" />
                   </linearGradient>
                 </defs>
@@ -5884,7 +5884,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           tax_deadline:        { icon:"📅", color:"var(--sc-error)" },
           anomaly:             { icon:"⚠",  color:"var(--sc-warning)" },
           reconciliation:      { icon:"🏦", color:"var(--sc-warning)" },
-          needs_review:        { icon:"📄", color:"#CA8504" },
+          needs_review:        { icon:"📄", color:"var(--sc-gold-deep)" },
           report_ready:        { icon:"📊", color:"var(--sc-success)" },
           monthly_report:      { icon:"🗓️", color:"var(--sc-gold)" },
           ai_action:           { icon:"✦",  color:"var(--sc-gold)" },
@@ -5989,7 +5989,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
                   <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)", marginBottom:12 }}>{AI_CAPABILITIES.canTitle}</div>
                   <ul style={{ margin:0, padding:0, listStyle:"none" }}>
                     {AI_CAPABILITIES.can.map((t,i)=>(
-                      <li key={i} style={{ display:"flex", gap:8, fontSize:12.5, color:"var(--sc-text-2)", lineHeight:1.5, marginBottom:9 }}>
+                      <li key={i} style={{ display:"flex", gap:8, fontSize: 13, color:"var(--sc-text-2)", lineHeight:1.5, marginBottom:9 }}>
                         <span style={{ color:"var(--sc-success)", flexShrink:0 }}>✓</span><span>{t}</span>
                       </li>
                     ))}

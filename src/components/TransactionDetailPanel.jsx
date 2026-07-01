@@ -4,6 +4,7 @@ import { useERP } from "./ERPContext";
 import { initials, vendorColor, fmtDate } from "../lib/format";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind } from "../lib/txnPresent";
+import { badge } from "../lib/ui";
 import { classifyBankReason } from "../lib/bankMatch";
 import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
@@ -28,15 +29,14 @@ const fmtM = n => "$" + Math.abs(n || 0).toLocaleString("en-US", { minimumFracti
 const isRevenue = i => (i.gl_code ? glIsRevenue(i.gl_code) : i.type === "revenue");
 const isExpense = i => (i.gl_code ? glIsExpense(i.gl_code) : i.type === "expense");
 
-function pill(c) { return { display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 600, color: c, background: c + "14", border: `1px solid ${c}29`, borderRadius: 6, padding: "3px 9px", whiteSpace: "nowrap", lineHeight: 1.2 }; }
-
-// Shared status badge — also used by the Reports drill-down tables.
+// Shared status badge — also used by the Reports drill-down tables. Canonical badge()
+// tones (lib/ui) so the tint + border are token-driven, not hand-mixed hex+alpha.
 export function txnStatusBadge(i) {
-  if (i.status === "voided") return <span style={pill("var(--sc-text-mut)")}>Voided</span>;
-  if (i.payment_status === "paid") return <span style={pill("#1570EF")}>Paid · {methodLabel(i.payment_method_used).split(" ")[0]}</span>;
-  if (i.payment_status === "collected") return <span style={pill("var(--sc-success)")}>Collected</span>;
-  if (needsReview(i)) return <span style={pill("var(--sc-warning)")}>Needs Review</span>;
-  return <span style={pill("var(--sc-success)")}>Booked</span>;
+  if (i.status === "voided") return <span style={badge("neutral")}>Voided</span>;
+  if (i.payment_status === "paid") return <span style={badge("info")}>Paid · {methodLabel(i.payment_method_used).split(" ")[0]}</span>;
+  if (i.payment_status === "collected") return <span style={badge("success")}>Collected</span>;
+  if (needsReview(i)) return <span style={badge("warning")}>Needs Review</span>;
+  return <span style={badge("success")}>Booked</span>;
 }
 
 // Inline source-document preview. Resolves a viewable URL — a data: URL for files
@@ -67,7 +67,7 @@ function SourceDocPreview({ doc, onExpand }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--sc-surface-2)" }}>
         <span style={{ fontSize: 18, flexShrink: 0 }}>{isPdf ? "📄" : isImg ? "🖼" : docIcon(doc.type)}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+          <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
           <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginTop: 1 }}>{doc.uploaded_at ? fmtDate(doc.uploaded_at) : ""}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>
         </div>
         <button onClick={onExpand} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer", whiteSpace: "nowrap" }}>View full ↗</button>
@@ -212,7 +212,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                 {displayReasoning(sel) && (
                   <div style={{ marginTop: 16, background: "var(--sc-gold-soft)", borderLeft: "3px solid var(--sc-gold)", borderRadius: "0 10px 10px 0", padding: "14px 16px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e8b53d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--sc-gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
                       <div style={{ fontSize: 11, letterSpacing: 1.5, color: "var(--sc-gold)", fontWeight: 600 }}>AI REASONING</div>
                     </div>
                     <div style={{ fontSize: 13, color: "var(--sc-text-2)", lineHeight: 1.6 }}>{displayReasoning(sel)}</div>

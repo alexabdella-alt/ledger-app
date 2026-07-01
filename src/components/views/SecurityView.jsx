@@ -161,7 +161,7 @@ export default function SecurityView() {
           {statusLabel || (status === "pass" ? "PASS" : status === "warn" ? "NEEDS ATTENTION" : "FAIL")}
         </span>
       </div>
-      {desc && <div style={{ fontSize: 12.5, color: "var(--sc-text-mut)", marginBottom: 12, lineHeight: 1.5 }}>{desc}</div>}
+      {desc && <div style={{ fontSize: 13, color: "var(--sc-text-mut)", marginBottom: 12, lineHeight: 1.5 }}>{desc}</div>}
       {children}
     </div>
   );
@@ -173,7 +173,7 @@ export default function SecurityView() {
     </div>
   );
   const migrationNote = (mig) => (
-    <div style={{ fontSize: 12.5, color: C.warn, background: "var(--sc-warning-soft)", border: "1px solid #FEDF89", borderRadius: 10, padding: "10px 12px", lineHeight: 1.5 }}>
+    <div style={{ fontSize: 13, color: C.warn, background: "var(--sc-warning-soft)", border: "1px solid var(--sc-warning-soft)", borderRadius: 10, padding: "10px 12px", lineHeight: 1.5 }}>
       This check reads database catalog metadata, which requires the <code style={{ background: "var(--sc-warning-soft)", padding: "1px 5px", borderRadius: 4 }}>{mig}</code> migration (the <code>security_check()</code> function). Apply it in Supabase, then re-run.
     </div>
   );
@@ -203,7 +203,7 @@ export default function SecurityView() {
         </button>
       </div>
 
-      <div style={{ fontSize: 12.5, color: C.warn, background: "var(--sc-warning-soft)", border: "1px solid #FEDF89", borderRadius: 10, padding: "10px 14px", marginBottom: 18, fontWeight: 500 }}>
+      <div style={{ fontSize: 13, color: C.warn, background: "var(--sc-warning-soft)", border: "1px solid var(--sc-warning-soft)", borderRadius: 10, padding: "10px 14px", marginBottom: 18, fontWeight: 500 }}>
         ⚠ Run this check before adding any new client.
       </div>
 
@@ -282,7 +282,7 @@ export default function SecurityView() {
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-text)", marginBottom: 12 }}>How tenant isolation works</div>
 
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-gold)", marginBottom: 4 }}>What is RLS, and why it matters</div>
-        <p style={{ fontSize: 12.5, color: "var(--sc-text-2)", lineHeight: 1.6, margin: "0 0 14px" }}>
+        <p style={{ fontSize: 13, color: "var(--sc-text-2)", lineHeight: 1.6, margin: "0 0 14px" }}>
           Row-Level Security (RLS) is a Postgres feature that filters every query at the database level. With RLS on,
           a policy decides which rows a request may see or change. This app ships the public anon key in the browser,
           so client-side <code>.eq("company_id", …)</code> filters are <strong>not</strong> a security boundary — anyone
@@ -291,7 +291,7 @@ export default function SecurityView() {
         </p>
 
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-gold)", marginBottom: 4 }}>How data isolation works here</div>
-        <p style={{ fontSize: 12.5, color: "var(--sc-text-2)", lineHeight: 1.6, margin: "0 0 14px" }}>
+        <p style={{ fontSize: 13, color: "var(--sc-text-2)", lineHeight: 1.6, margin: "0 0 14px" }}>
           Every tenant table carries a <code>company_id</code>. The <code>is_company_member(company_id)</code> helper
           (SECURITY DEFINER) checks the <code>company_users</code> membership table for the current <code>auth.uid()</code>.
           Each table's SELECT / INSERT / UPDATE / DELETE policy calls that helper, so the database returns zero rows for
@@ -301,7 +301,7 @@ export default function SecurityView() {
         </p>
 
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-gold)", marginBottom: 4 }}>What to do if a check fails</div>
-        <ul style={{ fontSize: 12.5, color: "var(--sc-text-2)", lineHeight: 1.7, margin: "0", paddingLeft: 18 }}>
+        <ul style={{ fontSize: 13, color: "var(--sc-text-2)", lineHeight: 1.7, margin: "0", paddingLeft: 18 }}>
           <li><strong>RLS off (Test 1):</strong> a table has <code>rowsecurity = false</code>. Re-apply <code>001_enable_rls.sql</code> and verify the table is listed there. Do not onboard new clients until fixed.</li>
           <li><strong>Isolation leak (Test 2):</strong> an unfiltered count exceeds the company count — RLS is missing or a policy is too broad. Treat as a critical incident: investigate the table's policies immediately.</li>
           <li><strong>Audit gaps (Test 3):</strong> rows with an unset <code>performed_by</code> are legacy entries from before audit attribution; new actions populate it. Investigate only if recent rows are unset.</li>

@@ -162,7 +162,7 @@ Journal entry rules:
                                   <td style={{padding:"10px 16px",fontFamily:"'DM Mono',monospace",fontSize:13,color:"var(--sc-text-2)"}}>{l.credit>0?fmt(l.credit):"—"}</td>
                                 </tr>
                               ))}
-                              <tr style={{borderTop:"2px solid var(--sc-border)",background:"#FCFCFD"}}>
+                              <tr style={{borderTop:"2px solid var(--sc-border)",background:"var(--sc-surface)"}}>
                                 <td style={{padding:"8px 16px",fontSize:11,color:"var(--sc-text-2)",fontWeight:600}}>TOTAL</td>
                                 <td style={{padding:"8px 16px",fontFamily:"'DM Mono',monospace",fontSize:12,color:"var(--sc-text-2)"}}>{fmt(je.totalDebit)}</td>
                                 <td style={{padding:"8px 16px",fontFamily:"'DM Mono',monospace",fontSize:12,color:"var(--sc-text-2)"}}>{fmt(je.totalCredit)}</td>

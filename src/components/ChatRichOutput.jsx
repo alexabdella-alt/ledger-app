@@ -84,15 +84,15 @@ function PieChart({ data }) {
     <div style={{ padding: "2px" }}>
       <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block", overflow: "visible" }}>
         {items.map((it, i) => (
-          <path key={i} d={it.path} fill={it.color} stroke="#1b2630" strokeWidth="1.5"
+          <path key={i} d={it.path} fill={it.color} stroke="var(--sc-surface)" strokeWidth="1.5"
             opacity={hover === -1 || hover === i ? 1 : 0.4}
             onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "default" }} />
         ))}
         {items.map((it, i) => (
           <g key={"l" + i} opacity={hover === -1 || hover === i ? 1 : 0.35}>
-            <polyline points={`${it.ex},${it.ey} ${it.lx},${it.ly} ${it.anchorX},${it.ly}`} fill="none" stroke="#3a4d5e" strokeWidth="1" />
-            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly - 1} fontSize="9" fill="#b9c6d2" textAnchor={it.right ? "start" : "end"}>{truncLabel(it.label, 12)}</text>
-            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly + 9} fontSize="8.5" fontWeight="600" fill="#f3f6f9" textAnchor={it.right ? "start" : "end"} fontFamily="'DM Mono',monospace">{money(it.value)} · {Math.round(it.pct)}%</text>
+            <polyline points={`${it.ex},${it.ey} ${it.lx},${it.ly} ${it.anchorX},${it.ly}`} fill="none" stroke="var(--sc-border-2)" strokeWidth="1" />
+            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly - 1} fontSize="9" fill="var(--sc-text-2)" textAnchor={it.right ? "start" : "end"}>{truncLabel(it.label, 12)}</text>
+            <text x={it.right ? it.anchorX + 3 : it.anchorX - 3} y={it.ly + 9} fontSize="8.5" fontWeight="600" fill="var(--sc-text)" textAnchor={it.right ? "start" : "end"} fontFamily="'DM Mono',monospace">{money(it.value)} · {Math.round(it.pct)}%</text>
           </g>
         ))}
       </svg>
@@ -115,13 +115,13 @@ function LineChart({ data }) {
   return (
     <div style={{ position: "relative", padding: "4px 2px" }}>
       <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: "block" }}>
-        <path d={area} fill="#e8b53d" opacity="0.08" />
-        <path d={line} fill="none" stroke="#e8b53d" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={area} fill="var(--sc-gold)" opacity="0.08" />
+        <path d={line} fill="none" stroke="var(--sc-gold)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         {pts.map((d, i) => (
           <g key={i}>
-            <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3} fill="#e8b53d" stroke="#1b2630" strokeWidth="1.5"
+            <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3} fill="var(--sc-gold)" stroke="var(--sc-surface)" strokeWidth="1.5"
               onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} />
-            <text x={x(i)} y={H - 9} fontSize="9" fill="#7d8fa0" textAnchor="middle">{String(d.label).slice(0, 7)}</text>
+            <text x={x(i)} y={H - 9} fontSize="9" fill="var(--sc-text-mut)" textAnchor="middle">{String(d.label).slice(0, 7)}</text>
           </g>
         ))}
       </svg>
@@ -144,7 +144,7 @@ const TREND = {
 function SummaryCard({ title, metrics, notes }) {
   return (
     <div>
-      {title && <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--sc-text)", marginBottom: 10 }}>{title}</div>}
+      {title && <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-text)", marginBottom: 10 }}>{title}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {(metrics || []).slice(0, 8).map((m, i) => {
           const t = TREND[String(m.trend || "").toLowerCase()] || TREND.flat;
@@ -159,7 +159,7 @@ function SummaryCard({ title, metrics, notes }) {
           );
         })}
       </div>
-      {notes && <div style={{ fontSize: 11.5, color: "var(--sc-text-2)", lineHeight: 1.5, marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--sc-border)" }}>{notes}</div>}
+      {notes && <div style={{ fontSize: 12, color: "var(--sc-text-2)", lineHeight: 1.5, marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--sc-border)" }}>{notes}</div>}
     </div>
   );
 }
@@ -181,7 +181,7 @@ export default function ChatRichOutput({ rich, onNavigate }) {
         if (item.kind === "chart") {
           return (
             <Frame key={idx}>
-              {item.title && <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--sc-text)", marginBottom: 10 }}>{item.title}</div>}
+              {item.title && <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-text)", marginBottom: 10 }}>{item.title}</div>}
               {item.chart_type === "pie" ? <PieChart data={item.data} />
                 : item.chart_type === "line" ? <LineChart data={item.data} />
                 : <BarChart data={item.data} />}
@@ -200,7 +200,7 @@ export default function ChatRichOutput({ rich, onNavigate }) {
         if (item.kind === "csv") {
           return (
             <button key={idx} onClick={() => downloadCSV(item.filename, item.headers, item.rows)}
-              style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", borderRadius: 10, padding: "9px 14px", color: "var(--sc-gold)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", borderRadius: 10, padding: "9px 14px", color: "var(--sc-gold)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               ⬇ Download {item.filename}
             </button>
           );

@@ -210,8 +210,8 @@ export default function SettingsView() {
                     </div>
                     <button onClick={exportAllData}
                       style={{flexShrink:0,height:40,padding:"0 18px",borderRadius:8,fontSize:14,fontWeight:600,background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8}}
-                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#4F46E5";e.currentTarget.style.color="#e8b53d";}}
-                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#D0D5DD";e.currentTarget.style.color="#b9c6d2";}}>
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--sc-gold)";e.currentTarget.style.color="var(--sc-gold)";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--sc-border-2)";e.currentTarget.style.color="var(--sc-text-2)";}}>
                       ↓ Export All Data (CSV)
                     </button>
                   </div>

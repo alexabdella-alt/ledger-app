@@ -119,7 +119,7 @@ export default function ReviewView() {
                 <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--sc-warning-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⚠</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.filename || "document"}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--sc-text-2)", marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
                     {d.received_at ? `Arrived ${fmtDate(d.received_at)}` : ""}{d.age_minutes != null ? ` · ${d.age_minutes}m ago` : ""} · status <strong style={{ color: "var(--sc-text)" }}>{d.status}</strong> — {d.reason}
                   </div>
                 </div>
@@ -152,14 +152,14 @@ export default function ReviewView() {
                         <span onClick={() => openTxn(t)} style={{ fontSize: 15, fontWeight: 600, color: "var(--sc-text)", cursor: "pointer" }}>{t.vendor || "Transaction"}</span>
                         <span style={{ fontSize: 14, fontWeight: 700, fontFamily: "'DM Mono',monospace" }}>{_m(t.amount)}</span>
                         <span style={{ fontSize: 11, color: tone, background: t.severity === "high" ? "var(--sc-error-soft)" : "var(--sc-warning-soft)", borderRadius: 20, padding: "2px 9px", fontWeight: 600 }}>{t.confidence}% sure</span>
-                        {t.date && <span style={{ fontSize: 11.5, color: "var(--sc-text-2)" }}>{fmtDate(t.date)}</span>}
+                        {t.date && <span style={{ fontSize: 12, color: "var(--sc-text-2)" }}>{fmtDate(t.date)}</span>}
                       </div>
-                      <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginTop: 6 }}>
+                      <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>
                         AI chose <strong style={{ color: "var(--sc-text)" }}>{t.gl_code} {t.gl_name}</strong> — {t.reason}
                       </div>
-                      {t.reasoning && <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginTop: 4, fontStyle: "italic" }}>“{t.reasoning}”</div>}
+                      {t.reasoning && <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 4, fontStyle: "italic" }}>“{t.reasoning}”</div>}
                       {Array.isArray(t.alternatives) && t.alternatives.length > 0 && (
-                        <div style={{ fontSize: 11.5, color: "var(--sc-text-2)", marginTop: 4 }}>Also considered: {t.alternatives.map(a => `${a.gl_code || ""} ${a.gl_name || ""}`.trim()).join(", ")}</div>
+                        <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 4 }}>Also considered: {t.alternatives.map(a => `${a.gl_code || ""} ${a.gl_name || ""}`.trim()).join(", ")}</div>
                       )}
                     </div>
                   </div>
@@ -168,7 +168,7 @@ export default function ReviewView() {
                     {!isOv && <button disabled={busyId === t.id} onClick={() => { setOverrideFor(t.id); setOverrideCode(t.gl_code || ""); }} style={{ padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-gold)", cursor: "pointer" }}>Override…</button>}
                     {isOv && (
                       <>
-                        <select value={overrideCode} onChange={e => setOverrideCode(e.target.value)} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "var(--sc-text)", outline: "none", maxWidth: 280 }}>
+                        <select value={overrideCode} onChange={e => setOverrideCode(e.target.value)} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none", maxWidth: 280 }}>
                           <option value="">Recode to…</option>
                           {(CHART_OF_ACCOUNTS || []).map(a => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
                         </select>
@@ -177,17 +177,17 @@ export default function ReviewView() {
                       </>
                     )}
                     {!isOv && <button disabled={busyId === t.id} onClick={() => onAskClient(t)} style={{ padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer" }}>💬 Ask the client</button>}
-                    <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--sc-text-2)" }}>Leave it to decide later — it stays here.</span>
+                    <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--sc-text-2)" }}>Leave it to decide later — it stays here.</span>
                   </div>
 
                   {/* Clarification loop (first slice): drafted plain-language question → client answers → resolve */}
                   {isAsk && (
                     <div style={{ marginTop: 12, background: "var(--sc-bg)", border: "1px solid var(--sc-gold-soft)", borderRadius: 11, padding: "14px 16px" }}>
                       <div style={{ fontSize: 10, letterSpacing: 1.2, color: "var(--sc-gold)", fontWeight: 600, marginBottom: 8 }}>ASK THE CLIENT — plain-language question (send via Slack/email/text)</div>
-                      <div style={{ fontSize: 13.5, color: "var(--sc-text)", lineHeight: 1.55, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 9, padding: "11px 13px" }}>{askDraft}</div>
+                      <div style={{ fontSize: 13, color: "var(--sc-text)", lineHeight: 1.55, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 9, padding: "11px 13px" }}>{askDraft}</div>
                       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                         <button onClick={onCopyQuestion} style={{ padding: "7px 13px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", cursor: "pointer" }}>{copied ? "Copied ✓" : "Copy question"}</button>
-                        <span style={{ fontSize: 11.5, color: "var(--sc-text-2)", alignSelf: "center" }}>When O82 (channel) lands, the bot sends this and ingests the reply automatically.</span>
+                        <span style={{ fontSize: 12, color: "var(--sc-text-2)", alignSelf: "center" }}>When O82 (channel) lands, the bot sends this and ingests the reply automatically.</span>
                       </div>
                       <div style={{ fontSize: 11, color: "var(--sc-text-2)", margin: "12px 0 6px", letterSpacing: 0.4 }}>CLIENT'S ANSWER</div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

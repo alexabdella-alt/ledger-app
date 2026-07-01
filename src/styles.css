@@ -39,6 +39,8 @@
   --sc-error-soft:   rgba(242,103,76,0.14);
   --sc-warning:      #efa53a;
   --sc-warning-soft: rgba(239,165,58,0.14);
+  --sc-info:         #5aa2e8;   /* calm blue — "paid"/informational, tuned for the dark canvas */
+  --sc-info-soft:    rgba(90,162,232,0.14);
 
   /* legacy aliases (older components referenced these names) */
   --sc-accent:      var(--sc-gold);
@@ -65,10 +67,21 @@
   --sc-tracking-eyebrow: 0.16em;
 
   /* ---- radii ---- */
-  --sc-r-sm: 8px;
-  --sc-r:    12px;
-  --sc-r-lg: 16px;
-  --sc-r-xl: 22px;
+  --sc-r-sm:   8px;    /* buttons, inputs, badges */
+  --sc-r:      12px;   /* nested tiles */
+  --sc-r-card: 14px;   /* the canonical card/panel radius */
+  --sc-r-lg:   16px;
+  --sc-r-xl:   22px;
+  --sc-r-pill: 999px;  /* filter/tab pills, round chips */
+
+  /* ---- spacing scale (4px rhythm — one scale for padding/margin/gap) ---- */
+  --sc-sp-1: 4px;
+  --sc-sp-2: 8px;
+  --sc-sp-3: 12px;
+  --sc-sp-4: 16px;
+  --sc-sp-5: 20px;
+  --sc-sp-6: 24px;
+  --sc-sp-8: 32px;
 
   /* ---- motion ---- */
   --sc-dur-fast: 120ms;

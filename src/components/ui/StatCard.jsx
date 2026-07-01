@@ -49,7 +49,7 @@ export default function StatCard({
         {format(n)}
       </div>
       <div style={{ height: 2, width: isHero ? 44 : 26, marginTop: 14, borderRadius: 2, background: isHero ? "linear-gradient(90deg, var(--sc-gold), transparent)" : t.border2 }} />
-      {sub && <div style={{ marginTop: 12, fontSize: 12.5, color: t.textMut }}>{sub}</div>}
+      {sub && <div style={{ marginTop: 12, fontSize: 13, color: t.textMut }}>{sub}</div>}
     </div>
   );
 }

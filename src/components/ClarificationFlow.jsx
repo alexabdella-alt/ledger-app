@@ -367,7 +367,7 @@ function ClarificationCard({ item }) {
     return (
       <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 12, padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--sc-warning)", background: "var(--sc-warning-soft)", border: "1px solid #FEDF89", borderRadius: 20, padding: "2px 9px", whiteSpace: "nowrap" }}>Needs info</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--sc-warning)", background: "var(--sc-warning-soft)", border: "1px solid var(--sc-warning-soft)", borderRadius: 20, padding: "2px 9px", whiteSpace: "nowrap" }}>Needs info</span>
           <span style={{ fontSize: 13, color: "var(--sc-text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.vendor || "Document"}{Number(inv.amount) > 0 ? ` · ${money(inv.amount)}` : ""}</span>
         </div>
         <button onClick={() => setSkipped(false)} style={{ flexShrink: 0, fontSize: 13, fontWeight: 500, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>Resume</button>
@@ -389,7 +389,7 @@ function ClarificationCard({ item }) {
         {/* What the AI knows */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
           <span style={{ width: 22, height: 22, borderRadius: 7, background: "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>✦</span>
-          <span style={{ fontSize: 13.5, color: "var(--sc-text-2)" }}>{knownText()}</span>
+          <span style={{ fontSize: 13, color: "var(--sc-text-2)" }}>{knownText()}</span>
         </div>
 
         {!atSummary && q ? (
@@ -399,7 +399,7 @@ function ClarificationCard({ item }) {
             )}
             <div style={{ fontSize: 16, fontWeight: 500, color: "var(--sc-text)", margin: total > 1 ? "0 0 12px" : "12px 0", lineHeight: 1.45 }}>{q.prompt}</div>
             {q.explanation && (
-              <div style={{ fontSize: 12.5, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 10, padding: "10px 12px", lineHeight: 1.55, marginBottom: 12 }}>{q.explanation}</div>
+              <div style={{ fontSize: 13, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 10, padding: "10px 12px", lineHeight: 1.55, marginBottom: 12 }}>{q.explanation}</div>
             )}
 
             {q.type === "buttons" && (
@@ -435,7 +435,7 @@ function ClarificationCard({ item }) {
                     {interpreting ? "Booking…" : "Use this →"}
                   </button>
                 </div>
-                {freeError && <div style={{ fontSize: 12.5, color: "var(--sc-error)", marginTop: 8 }}>{freeError}</div>}
+                {freeError && <div style={{ fontSize: 13, color: "var(--sc-error)", marginTop: 8 }}>{freeError}</div>}
               </div>
             )}
 

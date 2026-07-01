@@ -250,6 +250,17 @@
 - ⬜ **M11c · Vendor spend excludes settlements** — a vendor's **spend / open-AP totals** count only real bills (debits to 5–8xxx), **not** the A/P payment settlement that cleared them (no double-count); the vendor's transaction list shows no money-in rows.
 - ⬜ **M11d · Reconciliation difference is settlement-aware** — in Reconcile, a period containing a **collection** contributes it as **money-IN** on the books side (previously signed negative, inflating the difference); the books-vs-bank difference reflects true cash direction. *(Deeper note: whether an accrual bill AND its payment should both appear in the recon books set is a separate inclusion question logged under O88 — this fix corrects the SIGN only.)*
 
+## M12. Design-system consistency pass — Layer A / foundations (C132)
+
+*Consolidation, NOT a redesign. A token layer (`src/styles.css` + `src/lib/theme.js`) + canonical style factories (`src/lib/ui.js`: `card`/`sectionTitle`/`pill`/`badge`/`btn`/`field`, spacing scale `sp`, type scale `fs`, radius scale) now back the kit components (`ui/Card`, `ui/Button`, `Badge`) so a card/button/badge has ONE implementation. Applied: all off-theme hardcoded hex (old light-mode indigo/blue/green/amber/grey leftovers + token duplicates) → Midnight+Gold tokens; off-scale font sizes (11.5/12.5/13.5) snapped to the scale; the Books + Reports filter pills unified onto the one `pill()`. Layout/structure/behavior unchanged. **Eyeball each screen — nothing should look broken; it should look more uniform.***
+
+- ⬜ **M12a · dark theme is uniform (no light-mode bleed)** — scan Dashboard, Reports, Review, Transactions: **no** stray light/washed panels, bright indigo/blue buttons, or pale-grey borders that don't match the Midnight+Gold palette. Every surface is dark slate; every accent is gold/green/red/amber/blue-info from the palette. **Risk: LOW (visual only).**
+- ⬜ **M12b · cards look identical across screens** — panels on Dashboard, Reports (incl. Monthly Reports), Review, Books share the same dark-slate fill, hairline border, corner radius, and shadow — no one screen's cards look subtly different.
+- ⬜ **M12c · filter/tab pills are one style** — the **Transactions** sub-tabs (All/Revenue/Expenses/Unpaid/…) and the **Reports** type selector (P&L/Balance Sheet/…) are the same pill: gold fill + dark text when active, quiet outline when idle, same shape.
+- ⬜ **M12d · buttons / badges consistent** — primary actions are the gold button; secondary are the quiet outline; status badges (Paid/Collected/Needs Review/etc.) use the shared tone chips — no per-screen one-offs.
+- ⬜ **M12e · print/PDF unaffected** — the Monthly Report **Print / PDF** still renders on white paper (its intentional hardcoded light colors were deliberately left — CSS tokens don't resolve in the print popup).
+- ⬜ **M12f · nothing regressed** — money figures, signs, drills, toggles all still work; this pass changed only styling values, not logic.
+
 ---
 
 # 🟢 LOW RISK — cosmetic / nav

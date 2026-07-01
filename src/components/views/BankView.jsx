@@ -275,13 +275,13 @@ export default function BankView() {
                                   if (fate && (fate.fate === "clear_ar" || fate.fate === "clear_ap")) {
                                     const isAr = fate.fate === "clear_ar";
                                     return (
-                                      <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:11.5, fontWeight:600, color: isAr ? "var(--sc-success)" : "var(--sc-warning)", background: isAr ? "var(--sc-success-soft)" : "var(--sc-warning-soft)", border:`1px solid ${isAr ? "var(--sc-success-soft)" : "var(--sc-warning-soft)"}`, borderRadius:8, padding:"4px 9px" }} title={`This deposit/payment clears an open ${isAr ? "receivable" : "payable"} — it posts ${isAr ? "Dr Cash / Cr A/R" : "Dr A/P / Cr Cash"}, not a fresh ${t.type}.`}>
+                                      <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize: 12, fontWeight:600, color: isAr ? "var(--sc-success)" : "var(--sc-warning)", background: isAr ? "var(--sc-success-soft)" : "var(--sc-warning-soft)", border:`1px solid ${isAr ? "var(--sc-success-soft)" : "var(--sc-warning-soft)"}`, borderRadius:8, padding:"4px 9px" }} title={`This deposit/payment clears an open ${isAr ? "receivable" : "payable"} — it posts ${isAr ? "Dr Cash / Cr A/R" : "Dr A/P / Cr Cash"}, not a fresh ${t.type}.`}>
                                         ↔ Clears {isAr ? "A/R" : "A/P"} · {fate.clearsVendor || (isAr ? "receivable" : "payable")}
                                       </span>
                                     );
                                   }
                                   if (fate && fate.fate === "review") {
-                                    return <span style={{ fontSize:11.5, fontWeight:600, color:"var(--sc-gold)" }} title="Uncertain match — you'll confirm it in Matching.">⌛ Needs review</span>;
+                                    return <span style={{ fontSize: 12, fontWeight:600, color:"var(--sc-gold)" }} title="Uncertain match — you'll confirm it in Matching.">⌛ Needs review</span>;
                                   }
                                   return (
                                     <select value={t.gl_code} onChange={e=>{

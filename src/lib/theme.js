@@ -34,6 +34,8 @@ export const t = {
   errorSoft: "var(--sc-error-soft)",
   warning: "var(--sc-warning)",
   warningSoft: "var(--sc-warning-soft)",
+  info: "var(--sc-info)",
+  infoSoft: "var(--sc-info-soft)",
   // elevation
   shadow: "var(--sc-shadow)",
   shadowLg: "var(--sc-shadow-lg)",
@@ -45,8 +47,11 @@ export const t = {
   // radii
   rSm: "var(--sc-r-sm)",
   r: "var(--sc-r)",
+  rCard: "var(--sc-r-card)",
   rLg: "var(--sc-r-lg)",
   rXl: "var(--sc-r-xl)",
+  rPill: "var(--sc-r-pill)",
+  onAccent: "var(--sc-on-accent)",
   // motion
   durFast: "var(--sc-dur-fast)",
   dur: "var(--sc-dur)",

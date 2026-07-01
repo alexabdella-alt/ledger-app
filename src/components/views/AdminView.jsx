@@ -11,7 +11,7 @@ import SecurityView from "./SecurityView";
 // app into a client's context to diagnose/fix things exactly as they see them.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const A = { amber: "var(--sc-warning)", amberBg: "var(--sc-warning-soft)", amberBorder: "#FEDF89", red: "var(--sc-error)", green: "var(--sc-success)", muted: "var(--sc-text-mut)" };
+const A = { amber: "var(--sc-warning)", amberBg: "var(--sc-warning-soft)", amberBorder: "var(--sc-warning-soft)", red: "var(--sc-error)", green: "var(--sc-success)", muted: "var(--sc-text-mut)" };
 const fmtMoney = n => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
 const fmtBytes = n => {
   const b = Number(n) || 0;
@@ -186,7 +186,7 @@ function CompanyModal({ rpc, modal, onClose }) {
                     return (
                       <tr key={i} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
                         <Td color={A.muted} mono>{dt(u.created_at)}</Td>
-                        <Td color="#f3f6f9">{u.file_name}</Td>
+                        <Td color="var(--sc-text)">{u.file_name}</Td>
                         <Td color={A.muted}>{u.doc_type || "—"}</Td>
                         <Td><span style={{ fontSize: 11, fontWeight: 600, color: sc, background: sc + "14", borderRadius: 20, padding: "2px 8px" }}>{u.status}</span></Td>
                         <td style={{ padding: "10px 14px", fontSize: 12, color: u.error ? A.red : A.muted, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.error || (u.result ? JSON.stringify(u.result) : "")}</td>
@@ -240,7 +240,7 @@ function ProblemsTab({ rpc, enterSupport }) {
               <tbody>{vis.slice(0, 50).map((v, i) => (
                 <tr key={i} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
                   <Td color={A.muted} mono>{dt(v.created_at)}</Td>
-                  <Td color="#f3f6f9">{v.company_name || "—"}</Td>
+                  <Td color="var(--sc-text)">{v.company_name || "—"}</Td>
                   <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--sc-text-2)" }}>{v.detail}</td>
                   <Td>{v.company_id && <button onClick={() => openSupport(v.company_id, v.company_name)} style={btn("var(--sc-warning)", "var(--sc-surface)")}>Open in Support</button>}</Td>
                 </tr>
@@ -261,7 +261,7 @@ function ProblemsTab({ rpc, enterSupport }) {
             <thead><tr style={{ background: "var(--sc-bg)" }}><Th>Company</Th><Th>File</Th><Th>Error</Th><Th>When</Th><Th></Th></tr></thead>
             <tbody>{failed.map(f => (
               <tr key={f.id} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
-                <Td color="#f3f6f9">{f.company_name}</Td>
+                <Td color="var(--sc-text)">{f.company_name}</Td>
                 <Td>{f.file_name}{f.has_storage && <span title="File is in storage — can be reprocessed" style={{ marginLeft: 6, fontSize: 10, color: A.green }}>● stored</span>}</Td>
                 <td style={{ padding: "10px 14px", fontSize: 12, color: A.red, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.error}</td>
                 <Td color={A.muted} mono>{dt(f.created_at)}</Td>
@@ -314,7 +314,7 @@ function ProblemsTab({ rpc, enterSupport }) {
             <thead><tr style={{ background: "var(--sc-bg)" }}><Th>Company</Th><Th>Vendor</Th><Th>Date</Th><Th align="right">Amount</Th><Th align="right">Count</Th></tr></thead>
             <tbody>{dupes.map((d, i) => (
               <tr key={i} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
-                <Td>{d.company_name}</Td><Td color="#f3f6f9">{d.vendor}</Td><Td color={A.muted}>{fmtDate(d.entry_date)}</Td>
+                <Td>{d.company_name}</Td><Td color="var(--sc-text)">{d.vendor}</Td><Td color={A.muted}>{fmtDate(d.entry_date)}</Td>
                 <Td align="right" mono>{fmtMoney(d.amount)}</Td>
                 <Td align="right"><span style={{ fontSize: 11, fontWeight: 700, color: A.red, background: A.red + "14", borderRadius: 20, padding: "1px 8px" }}>{d.cnt}×</span></Td>
               </tr>
@@ -359,7 +359,7 @@ function StatsTab({ rpc }) {
           {(s.companies_by_month || []).length === 0 ? <Empty>No data.</Empty> : (s.companies_by_month || []).map(m => (
             <div key={m.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 0 }}>
               <div style={{ fontSize: 11, color: A.muted, fontFamily: "'DM Mono',monospace" }}>{m.count}</div>
-              <div style={{ width: "100%", maxWidth: 40, height: `${(m.count / maxMonth) * 90}px`, minHeight: 3, background: "linear-gradient(180deg,#F59E0B,var(--sc-warning))", borderRadius: "4px 4px 0 0" }} />
+              <div style={{ width: "100%", maxWidth: 40, height: `${(m.count / maxMonth) * 90}px`, minHeight: 3, background: "linear-gradient(180deg,var(--sc-warning),var(--sc-warning))", borderRadius: "4px 4px 0 0" }} />
               <div style={{ fontSize: 10, color: A.muted, whiteSpace: "nowrap" }}>{m.month?.slice(2)}</div>
             </div>
           ))}
@@ -442,7 +442,7 @@ function RecoveryTab({ rpc, showNotification }) {
               <tr key={r.id} style={{ borderBottom: "1px solid var(--sc-surface-2)", background: r.deleted_at ? "var(--sc-error-soft)" : "transparent" }}>
                 <Td color={A.muted}>{fmtDate(r.entry_date)}</Td>
                 <Td color={A.muted}>{r.company_name}</Td>
-                <Td color="#f3f6f9">{r.vendor}</Td>
+                <Td color="var(--sc-text)">{r.vendor}</Td>
                 <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--sc-text-2)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description}</td>
                 <Td align="right" mono>{fmtMoney(r.amount)}</Td>
                 <Td>{r.deleted_at
@@ -467,7 +467,7 @@ function RecoveryTab({ rpc, showNotification }) {
               const sc = u.status === "done" ? A.green : u.status === "error" ? A.red : A.amber;
               return (
                 <tr key={u.upload_id} style={{ borderBottom: "1px solid var(--sc-surface-2)" }}>
-                  <Td color={A.muted} mono>{dt(u.created_at)}</Td><Td>{u.company_name}</Td><Td color="#f3f6f9">{u.file_name}</Td>
+                  <Td color={A.muted} mono>{dt(u.created_at)}</Td><Td>{u.company_name}</Td><Td color="var(--sc-text)">{u.file_name}</Td>
                   <Td color={A.muted}>{u.doc_type || "—"}</Td>
                   <Td><span style={{ fontSize: 11, fontWeight: 600, color: sc, background: sc + "14", borderRadius: 20, padding: "2px 8px" }}>{u.status}</span></Td>
                   <td style={{ padding: "10px 14px", fontSize: 12, color: u.error ? A.red : A.muted, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.error || (u.result ? JSON.stringify(u.result) : "")}</td>

@@ -5,6 +5,7 @@ import { initials, vendorColor, fmtDate, fmtSignedMoney } from "../../lib/format
 import { getAuthHeaders } from "../../lib/supabase";
 import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
+import { pill } from "../../lib/ui";
 import { reportNavBack } from "../../lib/reportNav";
 import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
 import MonthlyReportsPanel from "./MonthlyReportsPanel";
@@ -237,7 +238,7 @@ export default function ReportsView() {
                 {/* Controls */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
                   {[["pl","P&L"],["balance","Balance Sheet"],["trial","Trial Balance"],["araging","AR Aging"],["apaging","AP Aging"],["kpis","KPIs"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"],["monthly","Monthly Reports"]].map(([id,label])=>(
-                    <button key={id} onClick={()=>{ setReportType(id); setPlDrill(null); setDrill(null); setDrillSel(null); }} style={{ padding:"8px 16px", borderRadius:20, fontSize:13, background:reportType===id?"var(--sc-gold)":"transparent", border:`1px solid ${reportType===id?"var(--sc-gold)":"var(--sc-border-2)"}`, color:reportType===id?"var(--sc-surface-2)":"var(--sc-text-2)", cursor:"pointer", fontWeight:reportType===id?600:400 }}>{label}</button>
+                    <button key={id} onClick={()=>{ setReportType(id); setPlDrill(null); setDrill(null); setDrillSel(null); }} style={pill(reportType===id)}>{label}</button>
                   ))}
                   <div style={{ flex:1 }} />
                   {/* Date range — custom inputs always visible, preset buttons for quick selection */}
@@ -266,7 +267,7 @@ export default function ReportsView() {
                     asset whose Dr Fixed Asset / Cr AP entry already exists. Posts NO new
                     capitalization JE; idempotent (skips if already linked). */}
                 {(isOwner || isAdmin) && attachOpen && (
-                  <div style={{ display:"flex", alignItems:"flex-end", gap:12, flexWrap:"wrap", marginBottom:24, padding:"12px 14px", background:"#FFFBF5", border:"1px solid #FEDF89", borderRadius:10 }}>
+                  <div style={{ display:"flex", alignItems:"flex-end", gap:12, flexWrap:"wrap", marginBottom:24, padding:"12px 14px", background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:10 }}>
                     <label style={{ fontSize:12, color:"var(--sc-text-2)", display:"flex", flexDirection:"column", gap:4 }}>Capitalization entry id
                       <input value={attachJe} onChange={e=>setAttachJe(e.target.value)} placeholder="journal_entries.id" style={{ width:320, height:36, borderRadius:8, border:"1px solid var(--sc-border-2)", padding:"0 10px", fontSize:13, fontFamily:"monospace" }} /></label>
                     <label style={{ fontSize:12, color:"var(--sc-text-2)", display:"flex", flexDirection:"column", gap:4 }}>Life (yrs)
@@ -778,7 +779,7 @@ export default function ReportsView() {
                       // due-date view; in clean books they sum to this total.
                       const agingTotal = glAccountBalance(getAccountByRole(side==="ar"?"accounts_receivable":"accounts_payable")?.code, invoices);
                       const today = new Date().toISOString().slice(0,10);
-                      const sevColor = d => d>90?"var(--sc-error)":d>60?"var(--sc-warning)":d>30?"#CA8504":d>0?"var(--sc-text-2)":"var(--sc-success)";
+                      const sevColor = d => d>90?"var(--sc-error)":d>60?"var(--sc-warning)":d>30?"var(--sc-gold-deep)":d>0?"var(--sc-text-2)":"var(--sc-success)";
                       const csvBtn = { background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:9, padding:"8px 14px", fontSize:12, color:"var(--sc-text-2)", cursor:"pointer", fontWeight:600 };
                       const exportCsv = () => { const rows=[]; rep.buckets.forEach(b=>b.rows.forEach(r=>rows.push([b.label,r.party,r.date||"",r.due_date||"",r.days_overdue,r.amount]))); downloadCSV(`${side}-aging-${today}.csv`, ["Bucket", side==="ar"?"Customer":"Vendor","Invoice Date","Due Date","Days Overdue","Amount"], rows); };
                       return (
@@ -887,7 +888,7 @@ export default function ReportsView() {
                     {/* ── KPIs (Item 33) ── */}
                     {reportType==="kpis" && (() => {
                       const kpis = computeKPIs(invoices, { cashBalance: glCash });
-                      const SC = { good:{c:"var(--sc-success)",bg:"var(--sc-success-soft)",b:"var(--sc-success-soft)",lbl:"Healthy"}, warn:{c:"var(--sc-warning)",bg:"var(--sc-warning-soft)",b:"#FEDF89",lbl:"Watch"}, bad:{c:"var(--sc-error)",bg:"var(--sc-error-soft)",b:"var(--sc-error-soft)",lbl:"Action needed"}, na:{c:"var(--sc-text-mut)",bg:"var(--sc-bg)",b:"var(--sc-border)",lbl:"—"} };
+                      const SC = { good:{c:"var(--sc-success)",bg:"var(--sc-success-soft)",b:"var(--sc-success-soft)",lbl:"Healthy"}, warn:{c:"var(--sc-warning)",bg:"var(--sc-warning-soft)",b:"var(--sc-warning-soft)",lbl:"Watch"}, bad:{c:"var(--sc-error)",bg:"var(--sc-error-soft)",b:"var(--sc-error-soft)",lbl:"Action needed"}, na:{c:"var(--sc-text-mut)",bg:"var(--sc-bg)",b:"var(--sc-border)",lbl:"—"} };
                       const trendIcon = { up:"↑", down:"↓", flat:"→" };
                       return (
                         <div className="sc-rise" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(290px,1fr))", gap:14 }}>

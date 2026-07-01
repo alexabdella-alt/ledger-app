@@ -62,7 +62,7 @@ export default function OpeningBalancesView() {
                     {hasEntry ? <>✓ Auto-balanced{Math.abs(obePlug)>=0.01 ? <span style={{color:"var(--sc-text-2)",fontWeight:400}}> — {fmt(obePlug)} to Opening Balance Equity</span> : null}</> : "Enter your day-one balances"}
                   </div>
                 </div>
-                {!cutoffDate && <div style={{background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12.5,color:"var(--sc-warning)"}}>Set your cutoff date first — it's the day your books begin. No transactions may be dated before it; everything before it is captured here as opening balances.</div>}
+                {!cutoffDate && <div style={{background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize: 13,color:"var(--sc-warning)"}}>Set your cutoff date first — it's the day your books begin. No transactions may be dated before it; everything before it is captured here as opening balances.</div>}
 
                 {/* Balance sheet input by category. OBE (3400) is excluded from inputs — it's the
                     auto-plug, shown as a computed line under Equity so the user SEES where the

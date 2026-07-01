@@ -9,17 +9,17 @@ function EclipseMark({ size = 40 }) {
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden>
       <defs>
         <linearGradient id={`g${id}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#f6cb5b" />
-          <stop offset="100%" stopColor="#e8b53d" />
+          <stop offset="0%" stopColor="var(--sc-gold-bright)" />
+          <stop offset="100%" stopColor="var(--sc-gold)" />
         </linearGradient>
         <radialGradient id={`r${id}`} cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#e8b53d" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#e8b53d" stopOpacity="0" />
+          <stop offset="0%" stopColor="var(--sc-gold)" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="var(--sc-gold)" stopOpacity="0" />
         </radialGradient>
       </defs>
       <circle cx="24" cy="24" r="22" fill={`url(#r${id})`} />
       <circle cx="24" cy="24" r="13" fill={`url(#g${id})`} />
-      <circle cx="30.5" cy="20.5" r="11" fill="#223040" />
+      <circle cx="30.5" cy="20.5" r="11" fill="var(--sc-surface-2)" />
     </svg>
   );
 }

@@ -66,7 +66,7 @@ export default function ContractsView() {
                           <div key={c.id}
                             style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:22, transition:"border-color 0.15s", position:"relative" }}
                             onMouseEnter={e=>e.currentTarget.style.borderColor=ct.color}
-                            onMouseLeave={e=>e.currentTarget.style.borderColor="#E4E7EC"}>
+                            onMouseLeave={e=>e.currentTarget.style.borderColor="var(--sc-border)"}>
                             {/* Delete button on card */}
                             <button
                               onClick={e=>{ e.stopPropagation(); setDeleteConfirm({
@@ -199,7 +199,7 @@ export default function ContractsView() {
                           <div style={{ marginTop:14 }}>
                             <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:8 }}>KEY TERMS</div>
                             {selectedContract.key_terms.map((t,i)=>(
-                              <div key={i} style={{ fontSize:12, color:"var(--sc-text-2)", padding:"4px 0", borderBottom:"1px solid #E4E7EC11" }}>· {t}</div>
+                              <div key={i} style={{ fontSize:12, color:"var(--sc-text-2)", padding:"4px 0", borderBottom:"1px solid var(--sc-border)" }}>· {t}</div>
                             ))}
                           </div>
                         )}

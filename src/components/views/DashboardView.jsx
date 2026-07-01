@@ -93,7 +93,7 @@ export default function DashboardView() {
 
     // Breadcrumb + forward/back now come from the shared drill stack (drill.crumbs / drill.canBack…).
 
-    const txnRows = (arr, color="#f3f6f9") => arr.length===0
+    const txnRows = (arr, color="var(--sc-text)") => arr.length===0
       ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>No transactions here.</div>
       : [...arr].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(inv=>(
           <div key={inv.id} onClick={()=>drill.push({ type:"txn", id: inv.id, label: inv.vendor||"Transaction" })}
@@ -313,8 +313,8 @@ export default function DashboardView() {
                   <div key={s.key} onClick={()=>{ if(!s.done) s.go && s.go(); }} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid var(--sc-surface-2)", cursor:s.done?"default":"pointer" }}>
                     <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, background:s.done?"var(--sc-success)":"var(--sc-surface)", color:s.done?"var(--sc-surface)":"var(--sc-text-mut)", border:s.done?"none":"2px solid var(--sc-border-2)" }}>{s.done?"✓":""}</span>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:13.5, fontWeight:500, color:s.done?"var(--sc-text-mut)":"var(--sc-text)", textDecoration:s.done?"line-through":"none" }}>{s.label}{s.optional?" (optional)":""}</div>
-                      <div style={{ fontSize:11.5, color:"var(--sc-text-mut)", marginTop:1 }}>{s.hint}</div>
+                      <div style={{ fontSize: 13, fontWeight:500, color:s.done?"var(--sc-text-mut)":"var(--sc-text)", textDecoration:s.done?"line-through":"none" }}>{s.label}{s.optional?" (optional)":""}</div>
+                      <div style={{ fontSize: 12, color:"var(--sc-text-mut)", marginTop:1 }}>{s.hint}</div>
                     </div>
                     {!s.done && <span style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:600 }}>{s.optional?"Dismiss":"Set up →"}</span>}
                   </div>
@@ -327,7 +327,7 @@ export default function DashboardView() {
                     {(accountantNotice || accountantDismissed) ? (
                       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid var(--sc-surface-2)" }}>
                         <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, background:"var(--sc-gold-soft)", color:"var(--sc-gold)" }}>✦</span>
-                        <div style={{ fontSize:12.5, color:"var(--sc-text-2)", lineHeight:1.4 }}>Team invites are coming soon — we'll notify you when this feature is available.</div>
+                        <div style={{ fontSize: 13, color:"var(--sc-text-2)", lineHeight:1.4 }}>Team invites are coming soon — we'll notify you when this feature is available.</div>
                       </div>
                     ) : renderStep(optional)}
                   </div>
@@ -413,7 +413,7 @@ export default function DashboardView() {
                         <div key={s.id} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-gold)", borderRadius:12, padding:"14px 16px", display:"flex", alignItems:"center", gap:14 }}>
                           <div style={{ width:34, height:34, borderRadius:9, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, color:"var(--sc-on-accent)", flexShrink:0 }}>↻</div>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13.5, color:"var(--sc-text)", lineHeight:1.5 }}>
+                            <div style={{ fontSize: 13, color:"var(--sc-text)", lineHeight:1.5 }}>
                               I noticed <strong>{s.vendor}</strong> has charged you {range} every month for the last {s.count} months. Want me to set up a recurring rule so it's always expected and auto-coded to {s.gl_name || s.gl_code}?
                             </div>
                           </div>
@@ -573,13 +573,13 @@ export default function DashboardView() {
                 return (
                   <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
                     {unpaid.length>0 && (
-                      <div onClick={()=>setDashDrill({type:"ap"})} style={{ flex:"1 1 280px", cursor:"pointer", background:"var(--sc-surface)", border:"1px solid var(--sc-border)", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#4F46E5"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E4E7EC"}>
+                      <div onClick={()=>setDashDrill({type:"ap"})} style={{ flex:"1 1 280px", cursor:"pointer", background:"var(--sc-surface)", border:"1px solid var(--sc-border)", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="var(--sc-gold)"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--sc-border)"}>
                         <div><div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>🧾 {unpaid.length} unpaid bill{unpaid.length!==1?"s":""} · ${total.toLocaleString("en-US",{maximumFractionDigits:0})} payable</div><div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{overdue.length>0?`⚠ ${overdue.length} overdue · `:""}Drill into open payables</div></div>
                         <span style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:600 }}>Open AP →</span>
                       </div>
                     )}
                     {openAR.length>0 && (
-                      <div onClick={()=>setDashDrill({type:"ar"})} style={{ flex:"1 1 280px", cursor:"pointer", background:"var(--sc-surface)", border:"1px solid var(--sc-border)", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="#039855"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E4E7EC"}>
+                      <div onClick={()=>setDashDrill({type:"ar"})} style={{ flex:"1 1 280px", cursor:"pointer", background:"var(--sc-surface)", border:"1px solid var(--sc-border)", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="var(--sc-success)"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--sc-border)"}>
                         <div><div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>💰 {openAR.length} open receivable{openAR.length!==1?"s":""} · ${arTotal.toLocaleString("en-US",{maximumFractionDigits:0})} due in</div><div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>Drill into money owed to you</div></div>
                         <span style={{ fontSize:12, color:"var(--sc-success)", fontWeight:600 }}>Open AR →</span>
                       </div>
@@ -605,7 +605,7 @@ export default function DashboardView() {
                     <div style={{ width:42, height:42, borderRadius:11, background:dl.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:"var(--sc-on-accent)", flexShrink:0 }}>⚠</div>
                     <div style={{ flex:"1 1 280px", minWidth:0 }}>
                       <div style={{ fontSize:15, fontWeight:700, color:dl.color, letterSpacing:-0.2 }}>{dl.plain} {dl.days===0?"due today":`in ${dl.days} day${dl.days!==1?"s":""}`}{amt}</div>
-                      <div style={{ fontSize:12.5, color:"var(--sc-text-mut)", marginTop:4 }}>Pay or file at <a href={dl.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ color:dl.color, fontWeight:600 }}>{dl.est?"irs.gov/payments":"irs.gov"} ↗</a> · click for your full tax picture</div>
+                      <div style={{ fontSize: 13, color:"var(--sc-text-mut)", marginTop:4 }}>Pay or file at <a href={dl.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ color:dl.color, fontWeight:600 }}>{dl.est?"irs.gov/payments":"irs.gov"} ↗</a> · click for your full tax picture</div>
                     </div>
                     <span style={{ fontSize:13, color:"var(--sc-on-accent)", fontWeight:600, background:dl.color, borderRadius:8, padding:"8px 14px", whiteSpace:"nowrap" }}>Open Taxes →</span>
                   </div>
@@ -622,7 +622,7 @@ export default function DashboardView() {
                 if (!overdue) return null;
                 return (
                   <div onClick={()=>setView("home")} style={{ ...{}, cursor:"pointer", background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, padding:"16px 20px", marginBottom:24, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}
-                    onMouseEnter={e=>e.currentTarget.style.borderColor="#DC6803"} onMouseLeave={e=>e.currentTarget.style.borderColor="#DC680344"}>
+                    onMouseEnter={e=>e.currentTarget.style.borderColor="var(--sc-warning)"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--sc-warning-soft)"}>
                     <div>
                       <div style={{ fontSize:14, fontWeight:600, color:"var(--sc-warning)" }}>⚠ {days===null ? "Your books haven't been matched to your bank yet." : `Your books haven't been matched to your bank in ${days} days.`}</div>
                       <div style={{ fontSize:12, color:"var(--sc-warning)", opacity:0.8, marginTop:3 }}>Upload your latest bank statement above — we'll match it and mark paid items automatically.</div>
@@ -650,7 +650,7 @@ export default function DashboardView() {
                       <span style={{ fontSize:15, fontWeight:700, color:"var(--sc-text)" }}>How your business is doing</span>
                       <span style={{ fontSize:11, fontWeight:700, color:toneColor, background:toneSoft, border:`1px solid ${toneColor}33`, borderRadius:6, padding:"2px 9px" }}>{toneLabel}</span>
                     </div>
-                    <div style={{ fontSize:13.5, color:"var(--sc-text)", lineHeight:1.55 }}>{bh.headline}</div>
+                    <div style={{ fontSize: 13, color:"var(--sc-text)", lineHeight:1.55 }}>{bh.headline}</div>
                     {/* The four key numbers — clickable to drill, tone-colored, once (no metric-card row anymore). */}
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:14, marginTop:16, paddingTop:14, borderTop:"1px solid var(--sc-surface-2)" }}>
                       {bh.facts.map(f => (
@@ -668,7 +668,7 @@ export default function DashboardView() {
                         {bh.concerns.map(c => (
                           <div key={c.key} style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
                             <span style={{ width:6, height:6, borderRadius:"50%", background: c.severity==="high"?"var(--sc-error)":"var(--sc-warning)", flexShrink:0 }} />
-                            <span style={{ fontSize:12.5, color:"var(--sc-text-2)", flex:1, minWidth:120 }}>{c.text}</span>
+                            <span style={{ fontSize: 13, color:"var(--sc-text-2)", flex:1, minWidth:120 }}>{c.text}</span>
                             {c.actionView && <button onClick={()=>setDashDrill({ type:c.actionView })} style={{ padding:"5px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer", flexShrink:0 }}>{c.actionLabel} →</button>}
                           </div>
                         ))}
@@ -680,16 +680,16 @@ export default function DashboardView() {
 
               {/* ── ANOMALY DETECTION (Item 32) — below the metric cards ── */}
               {Array.isArray(anomalies) && anomalies.length > 0 && (() => {
-                const SEV = { high:{ c:"var(--sc-error)", bg:"var(--sc-error-soft)", b:"var(--sc-error-soft)" }, medium:{ c:"var(--sc-warning)", bg:"var(--sc-warning-soft)", b:"#FEDF89" }, low:{ c:"#2E90FA", bg:"#EFF8FF", b:"#B2DDFF" } };
+                const SEV = { high:{ c:"var(--sc-error)", bg:"var(--sc-error-soft)", b:"var(--sc-error-soft)" }, medium:{ c:"var(--sc-warning)", bg:"var(--sc-warning-soft)", b:"var(--sc-warning-soft)" }, low:{ c:"var(--sc-info)", bg:"var(--sc-info-soft)", b:"var(--sc-info-soft)" } };
                 const openTxn = (a) => { const inv=(invoices||[]).find(i=>String(i.id)===String((a.invoice_ids||[])[0])); if(inv){ setReturnTo && setReturnTo({view:"home"}); setSelectedInvoice(inv); setView("detail"); } else { setView("books"); } };
                 return (
-                  <div style={{ background:"var(--sc-warning-soft)", border:"1px solid #FEDF89", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
+                  <div style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
                     <div onClick={()=>setAnomExpanded(v=>!v)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-                      <div style={{ fontSize:13.5, fontWeight:600, color:"var(--sc-warning)" }}>⚠ {anomalies.length} unusual {anomalies.length===1?"pattern":"patterns"} detected</div>
+                      <div style={{ fontSize: 13, fontWeight:600, color:"var(--sc-warning)" }}>⚠ {anomalies.length} unusual {anomalies.length===1?"pattern":"patterns"} detected</div>
                       <span style={{ fontSize:12, color:"var(--sc-warning)", fontWeight:600 }}>{anomExpanded?"Hide ▲":"Review ▼"}</span>
                     </div>
                     {anomExpanded && (
-                      <div style={{ borderTop:"1px solid #FEDF89", background:"var(--sc-surface)" }}>
+                      <div style={{ borderTop:"1px solid var(--sc-warning-soft)", background:"var(--sc-surface)" }}>
                         {anomalies.map(a => {
                           const sev = SEV[a.severity] || SEV.low;
                           return (
@@ -773,10 +773,10 @@ export default function DashboardView() {
                           style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 24px", borderTop: idx?"1px solid var(--sc-surface-2)":"none", cursor: it.inv?"pointer":"default", transition:"background 0.1s" }}>
                           <div style={{ width:36, height:36, borderRadius:10, background: it.amount!=null?(it.rev?"var(--sc-success-soft)":"var(--sc-error-soft)"):"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{it.icon}</div>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13.5, fontWeight:500, color:"var(--sc-text)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{it.text}</div>
+                            <div style={{ fontSize: 13, fontWeight:500, color:"var(--sc-text)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{it.text}</div>
                             <div style={{ fontSize:12, color:"var(--sc-text-mut)", marginTop:2 }}>{ago(it.ts)}</div>
                           </div>
-                          {it.amount!=null && <div style={{ fontSize:13.5, fontWeight:600, fontFamily:"'DM Mono',monospace", color: it.rev?"var(--sc-success)":"var(--sc-error)", flexShrink:0 }}>{it.rev?"+":"−"}${Math.abs(it.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</div>}
+                          {it.amount!=null && <div style={{ fontSize: 13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: it.rev?"var(--sc-success)":"var(--sc-error)", flexShrink:0 }}>{it.rev?"+":"−"}${Math.abs(it.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</div>}
                         </div>
                       ))
                     }
