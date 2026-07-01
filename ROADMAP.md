@@ -6,7 +6,8 @@ ids are never reused. Keep the two sections separate. Mark an item DONE only whe
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
 - **Last updated:** 2026-06-28
-- **Test suite:** 772 passing (`npm test`, 54 files; incl. `noUndefinedRefs` scope-scan over all 95 src files; incl. **fault-injection** suites that deliberately break the pipeline to prove the O60/O49 trust nets catch it — C115). **Build:** clean (`npm run build`).
+- **Test suite:** 777 passing (`npm test`, 54 files; incl. `noUndefinedRefs` scope-scan over all 95 src files; incl. **fault-injection** suites that deliberately break the pipeline to prove the O60/O49 trust nets catch it — C115). **Build:** clean (`npm run build`).
+- **Owner-dashboard automation (C124):** depreciation now **auto-posts** when due (GL-truth idempotent) — removed the "run depreciation" owner nudge. **Sibling flagged:** the "Contract journal entries ready to post" dashboard prompt is the same deterministic-machinery class → auto-post/move to CPA side next (not yet done; has an extraction/confirm step).
 - **Pending migrations to apply:** `047_document_intake_ledger.sql` (O60 intake ledger). *(`048_rls_exposed_tables.sql` ✅ applied 2026-06-30 — RLS exposure closed.)*
 - **Live verification:** `VERIFICATION.md` (repo root) is the manual click-through checklist for built-but-not-live-verified work — worked under **O83** (pre-launch gate). Unit-test green ≠ live-verified.
 - **Migrations:** `000`–`045` applied (numbering non-contiguous; `045_drop_ap_invoices.sql` applied 2026-06-26 — dropped the orphaned `ap_invoices` table + dead `ap_aging` view, confirmed 0 rows). `046_company_aliases.sql` written (optional — adds `companies.aliases` for O75 self-identity; name-based direction works without it).
