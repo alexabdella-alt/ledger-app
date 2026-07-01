@@ -203,7 +203,7 @@
 ## M7. Depreciation auto-posts (no owner nudge) — idempotent (C124)
 
 **Risk: MED** (auto-posting entries — a double-post would overstate expense). **Prereq:** a capitalized fixed asset with a schedule where a month is now due.
-- ⬜ **M7a · nudge GONE** — the owner dashboard shows **no** "N months of depreciation due · Run depreciation now" prompt.
+- ⬜ **M7a · manual trigger GONE everywhere** — the **Reports** tab has **no** "Post all entries due through [date] · Run depreciation" control (its real home — C126), and the dashboard has no depreciation nudge. The only depreciation UI left in Reports is the owner/admin "Attach to existing asset" maintenance tool + a note that it "posts automatically."
 - ⬜ **M7b · auto-posts when due** — open the company (with a due schedule month) → the monthly **Dr Depreciation Expense / Cr Accumulated Depreciation** entry posts automatically (check Books / the P&L), no click.
 - ⬜ **M7c · idempotent (GL-truth) — no double-post** — reload / re-open the company several times.
   *Expected:* the same period is **never posted twice** (the guard checks whether a depreciation JE already exists for that asset+period, not the schedule flag). P&L depreciation for the month = one entry, not two.
