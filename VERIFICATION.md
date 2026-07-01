@@ -231,6 +231,16 @@
 - ⬜ **M9d · non-Jan-1 fiscal year respected** — for a company whose fiscal year end ≠ 12-31 (Settings), the YTD range starts at the correct fiscal-year start (e.g. FY end 06-30 → YTD begins the prior **July 1**), not Jan 1.
 - ⬜ **M9e · CSV / Print follow the toggle** — with YTD selected, **Download CSV** and **Print / PDF** export the YTD figures with YTD/Prior-Year column labels; with This month selected, they export the month.
 
+## M10. Transactions sub-tabs classify by GL truth, not the `type` flag (C130)
+
+*Was: the Revenue/Expenses/Unpaid sub-tab filters OR-ed in the denormalized `type` flag (`glIsExpense(gl_code) || i.type==="expense"`). That flag LIES on settlement entries — an A/R collection (`Dr Cash / Cr A/R`) flattens to `gl_code=Cash, type="expense"` — so money-IN collections landed in **Expenses** and (unpaid) in **Unpaid** with a green **`+`**, contradicting the row's own GL-truth sign. Fix: tab filters now read the flattened `gl_code` (fall back to `type` only when there's no code), and **Unpaid** uses the same `classifyTxn().settleAction==="pay"` GL-truth signal that drives the row's sign / status / Mark-Paid button — so tab and row can never disagree.*
+
+- ⬜ **M10a · Revenue tab = money-in only** — every row in **Revenue** is a revenue item (credits a 4xxx account), shows a green **`+`**, and none of them appear in Expenses. **Risk: MED (was misclassified).**
+- ⬜ **M10b · Expenses tab = money-out only** — every row in **Expenses** debits a 5–8xxx account and shows a **`−`**; no revenue item or money-IN collection appears here.
+- ⬜ **M10c · Unpaid = open bills you owe, all `−`** — the **Unpaid** tab contains only genuinely open **bills** (booked to A/P, not yet paid); **no `+` / money-in** rows, no already-paid bills, no receivables, no direct-cash expenses. Every amount shows **`−`**.
+- ⬜ **M10d · settlements sit only in All** — a bank-matched collection/payment (a settlement) appears in **All** with the correct sign (collection `+`, payment `−`) but is absent from Revenue, Expenses, and Unpaid (it's a cash movement, not P&L, and not an open item).
+- ⬜ **M10e · sign matches tab** — spot-check that no row's sign contradicts its tab (no `+` in Expenses/Unpaid, no `−` in Revenue).
+
 ---
 
 # 🟢 LOW RISK — cosmetic / nav

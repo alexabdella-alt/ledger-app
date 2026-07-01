@@ -32,15 +32,25 @@ export default function BooksView() {
   const methodOpts = [["ach","ACH / Bank Transfer"],["check","Check"],["wire","Wire Transfer"],["card","Credit Card"],["zelle","Zelle"],["venmo","Venmo"],["paypal","PayPal"],["other","Other"]];
   const methodLabel = m => (methodOpts.find(([v])=>v===m)?.[1]) || (m?String(m).toUpperCase():"—");
   const needsReview = i => i.approval_status==="pending_approval" || i.approval_status==="flagged" || i.approval_status==="info_requested" || (i.confidence!=null && i.confidence<70);
-  const isExpense = i => glIsExpense(i.gl_code) || i.type==="expense";
-  const isRevenue = i => glIsRevenue(i.gl_code) || i.type==="revenue";
+  // GL-truth classification (CLAUDE.md §9): the account the entry hits IS the truth. Revenue =
+  // credits a revenue (4xxx) account; expense = debits an expense (5–8xxx) account — read from
+  // the flattened primary `gl_code`, NOT the denormalized `type` flag. The flag LIES on
+  // settlement entries: an A/R collection (Dr Cash / Cr A/R) flattens to gl_code=Cash +
+  // type="expense", so the old `|| i.type===…` override dropped a money-IN collection into
+  // Expenses/Unpaid. Fall back to `type` ONLY for legacy rows that have no gl_code at all.
+  const isExpense = i => i.gl_code ? glIsExpense(i.gl_code) : i.type==="expense";
+  const isRevenue = i => i.gl_code ? glIsRevenue(i.gl_code) : i.type==="revenue";
 
   // Filter + search
   const base = invoices.filter(i => glPLType(i.gl_code) || i.type==="expense" || i.type==="revenue");
   const byFilter = base.filter(i => {
     if (filter==="revenue") return isRevenue(i);
     if (filter==="expenses") return isExpense(i);
-    if (filter==="unpaid") return isExpense(i) && i.payment_status!=="paid" && i.status!=="voided";
+    // Unpaid = genuinely OPEN BILLS you owe. Use the same GL-truth classifier as the row's
+    // sign/status/Mark-Paid button (classifyTxn.settleAction==="pay" ⇒ booked to A/P, not a
+    // settlement, not voided, not yet paid) so the tab and the row never disagree — no money-IN
+    // collection can leak in, and direct-to-cash expenses (never payables) are excluded.
+    if (filter==="unpaid") return classifyTxn(i, { apCode, arCode }).settleAction === "pay";
     if (filter==="review") return needsReview(i) && i.status!=="voided";
     return true;
   });
