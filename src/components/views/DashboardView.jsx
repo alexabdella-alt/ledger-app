@@ -9,12 +9,28 @@ import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, comp
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
 import ClarificationFlow from "../ClarificationFlow";
 import { t } from "../../lib/theme";
+import { useDrillStack } from "../../lib/useDrillStack";
+import DrillNav from "../ui/DrillNav";
+import TransactionDetailPanel from "../TransactionDetailPanel";
+
+// Breadcrumb label for a dashboard drill layer (used by the shared onion-nav stack).
+const drillLabel = (l) => {
+  if (!l) return "";
+  if (l.type === "txn") return l.label || "Transaction";
+  if (l.type === "expenses") return l.vendor || l.cat || "Expenses";
+  if (l.type === "burn") return l.month ? (l.monthLabel || l.month) : "Burn Rate";
+  return ({ revenue: "Revenue", net: "Net Income", cash: "Cash & Bank", runway: "Runway", ap: "Accounts Payable", ar: "Accounts Receivable", expenses: "Expenses" })[l.type] || l.type;
+};
 
 export default function DashboardView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, glCash, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, companyDataLoaded, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, runDepreciationThrough, depreciationDueInfo, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
-  const [dashDrill, setDashDrill] = React.useState(null); // unified dashboard drill-down
+  // Shared onion-layer drill navigation (drillStack) — drilling pushes a layer, Back pops
+  // exactly one, Forward re-advances, the breadcrumb jumps to any level. setDashDrill is kept
+  // as a thin push/reset shim so every existing "drill here" call site works unchanged.
+  const drill = useDrillStack({ rootLabel: "Dashboard", labelOf: drillLabel });
+  const setDashDrill = (layer) => { if (layer == null) drill.reset(); else drill.push(layer); };
   const [anomExpanded, setAnomExpanded] = React.useState(false); // anomaly card expand/collapse
   const [bizType, setBizType] = React.useState(""); // business-type modal draft
   const [bizFye, setBizFye] = React.useState("12-31");
@@ -45,9 +61,14 @@ export default function DashboardView() {
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
   const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "var(--sc-gold)" : "var(--sc-border)"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
 
-  // ── UNIFIED DASHBOARD DRILL-DOWN (breadcrumbed, in-place) ──
-  if (dashDrill) {
-    const d = dashDrill;
+  // ── UNIFIED DASHBOARD DRILL-DOWN (shared onion-nav stack, in-place) ──
+  if (drill.current) {
+    // A transaction is the deepest onion layer; it renders as a slide-in over its PARENT list
+    // (so Back pops the txn → the exact list it came from, never home). `d` = the list layer.
+    const cur = drill.current;
+    const _stack = drill.state.stack;
+    const isTxn = cur.type === "txn";
+    const d = isTxn ? (_stack[_stack.length - 2] || cur) : cur;
     const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
     const today = new Date();
     const exp = invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided");
@@ -70,21 +91,12 @@ export default function DashboardView() {
     const openAP = openPayablesGL(invoices, getAccountByRole?.("accounts_payable")?.code);
     const openAR = openReceivablesGL(invoices, getAccountByRole?.("accounts_receivable")?.code);
 
-    const crumbs = [{ label:"Dashboard", to:null }];
-    if (d.type==="revenue") crumbs.push({ label:"Revenue", to:{type:"revenue"} });
-    if (d.type==="net")     crumbs.push({ label:"Net Income", to:{type:"net"} });
-    if (d.type==="cash")    crumbs.push({ label:"Cash & Bank", to:{type:"cash"} });
-    if (d.type==="runway")  crumbs.push({ label:"Runway", to:{type:"runway"} });
-    if (d.type==="ap")      crumbs.push({ label:"Accounts Payable", to:{type:"ap"} });
-    if (d.type==="ar")      crumbs.push({ label:"Accounts Receivable", to:{type:"ar"} });
-    if (d.type==="burn")    { crumbs.push({ label:"Burn Rate", to:{type:"burn"} }); if (d.month) crumbs.push({ label:d.monthLabel||d.month, to:d }); }
-    if (d.type==="expenses"){ crumbs.push({ label:"Expenses", to:{type:"expenses"} }); if (d.cat) crumbs.push({ label:d.cat, to:{type:"expenses",cat:d.cat} }); if (d.vendor) crumbs.push({ label:d.vendor, to:d }); }
-    const back = crumbs.length>1 ? crumbs[crumbs.length-2].to : null;
+    // Breadcrumb + forward/back now come from the shared drill stack (drill.crumbs / drill.canBack…).
 
     const txnRows = (arr, color="#f3f6f9") => arr.length===0
       ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>No transactions here.</div>
       : [...arr].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(inv=>(
-          <div key={inv.id} onClick={()=>{ setReturnTo({view:"home",label:"Home"}); setSelectedInvoice(inv); setView("detail"); }}
+          <div key={inv.id} onClick={()=>drill.push({ type:"txn", id: inv.id, label: inv.vendor||"Transaction" })}
             onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
             style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, padding:"11px 18px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)" }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
@@ -246,16 +258,10 @@ export default function DashboardView() {
 
     return (
       <div className="sc-rise">
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16, flexWrap:"wrap" }}>
-          <button onClick={()=>setDashDrill(back)} style={{ padding:"7px 14px", borderRadius:9, fontSize:13, fontWeight:600, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", boxShadow:"0 1px 3px rgba(0,0,0,.08)" }}>← Back</button>
-          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", fontSize:13 }}>
-            {crumbs.map((c,i)=>(
-              <span key={i} style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <span onClick={()=>setDashDrill(c.to)} style={{ cursor:"pointer", color: i===crumbs.length-1?"var(--sc-text)":"var(--sc-text-2)", fontWeight: i===crumbs.length-1?600:400 }}>{c.label}</span>
-                {i<crumbs.length-1 && <span style={{ color:"var(--sc-text-mut)" }}>›</span>}
-              </span>
-            ))}
-          </div>
+        {/* Shared onion-nav: ‹ back / › forward + breadcrumb, identical to every other drill. */}
+        <div style={{ marginBottom:16 }}>
+          <DrillNav crumbs={drill.crumbs} canBack={drill.canBack} canForward={drill.canForward}
+            onBack={drill.back} onForward={drill.forward} onJump={drill.jumpTo} />
         </div>
         <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"hidden" }}>
           <div style={{ padding:"16px 18px", borderBottom:"1px solid var(--sc-surface-2)" }}>
@@ -264,6 +270,13 @@ export default function DashboardView() {
           </div>
           {body}
         </div>
+        {/* Transaction = the deepest onion layer: a slide-in over its parent list. onClose/onNavigate
+            step the SAME stack, so Back returns to the exact list (never home). */}
+        {isTxn && (
+          <TransactionDetailPanel invoiceId={cur.id} onClose={drill.back}
+            onNavigate={(id)=>{ const nx = invoices.find(x=>x.id===id); drill.push({ type:"txn", id, label: nx?.vendor||"Transaction" }); }}
+            returnContext={{ view:"home", label:"Dashboard" }} />
+        )}
       </div>
     );
   }

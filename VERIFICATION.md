@@ -144,6 +144,20 @@
 
 # 🟠 MEDIUM RISK
 
+## M0. Onion-layer drill navigation — shared back/forward/breadcrumb (C122)
+
+**Risk: MED** (navigation correctness — the "Back jumps to the top" class). Shared `drillStack` mechanism, applied to the **Dashboard** drills first. On the dashboard:
+- ⬜ **M0a · drill IN one layer at a time** — click a fact number (Cash / Runway / Net income) or an AP/AR nudge → a metric view → (where it has sub-levels: Expenses → a category → a vendor) → click a **transaction**.
+  *Expected:* each click goes one layer deeper; a breadcrumb shows the path (e.g. *Dashboard › Cash & Bank › [transaction]*).
+- ⬜ **M0b · BACK steps exactly ONE layer, never to the top** — from the transaction, click **‹** (back).
+  *Expected:* returns to the **list it came from** (one level up), not the dashboard home. Back again → the metric, again → the dashboard. It never skips straight to the top. (This was the bug: opening a txn from a dashboard drill used to jump back to Home.)
+- ⬜ **M0c · FORWARD re-advances** — after going back a level, click **›** (forward).
+  *Expected:* re-advances one layer (browser-style). Forward is hidden when there's no history; Back is hidden at the top level.
+- ⬜ **M0d · breadcrumb jumps** — click a middle crumb (e.g. the metric name).
+  *Expected:* jumps directly to that level; deeper levels drop off.
+- ⬜ **M0e · settlement link inside a drilled txn** — if the drilled transaction is a settlement, its "View →" pushes the linked entry as a new layer; Back returns to it.
+  *Flag:* **Reports** drill-downs still use their own (working) back-one-level (`reportNav.js`) — not yet migrated onto the shared stack; unify next. Books/Transactions list→detail is a slide-in whose close = one level (already consistent).
+
 ## M1. Runway drill-in ties to the card (C108)
 
 **Risk: MED.**
