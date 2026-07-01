@@ -241,6 +241,15 @@
 - ⬜ **M10d · settlements sit only in All** — a bank-matched collection/payment (a settlement) appears in **All** with the correct sign (collection `+`, payment `−`) but is absent from Revenue, Expenses, and Unpaid (it's a cash movement, not P&L, and not an open item).
 - ⬜ **M10e · sign matches tab** — spot-check that no row's sign contradicts its tab (no `+` in Expenses/Unpaid, no `−` in Revenue).
 
+## M11. Denormalized-flag (§9) audit — remaining sites derive from GL truth (C131 · O88)
+
+*Proactive sweep of every site that classifies/signs/counts from a stored flag (`type`, `payment_status`, `matched`) instead of the flattened GL. The recurring lie is a SETTLEMENT (a bank-matched A/R collection flattens to `gl_code=Cash, type="expense"`). Four leak sites fixed to derive from GL truth (via `classifyTxn` / the `gl_code ? glIsX : type` fallback pattern); the rest confirmed clean (revenue-direction can't lie; matching engine is offset-based/O73-remediated; pre-booking bank lines legitimately use `type`).*
+
+- ⬜ **M11a · Transaction detail panel — settlement shows correctly** — open a **bank-matched collection** (money received) from any list → the big amount is **green `+`** (not red `−`), the **Type** row reads **"Collection (money in)"**, and there is **NO "Mark as Paid"** button. Open an **open bill** → red `−`, Type "Expense", **"Mark as Paid"** shows. **Risk: MED.**
+- ⬜ **M11b · Invoices list sign** — in the Invoices list, a collection/deposit row shows **`+` green**, a bill/payment shows **`−` red** — the sign matches the money direction, not the stale `type`.
+- ⬜ **M11c · Vendor spend excludes settlements** — a vendor's **spend / open-AP totals** count only real bills (debits to 5–8xxx), **not** the A/P payment settlement that cleared them (no double-count); the vendor's transaction list shows no money-in rows.
+- ⬜ **M11d · Reconciliation difference is settlement-aware** — in Reconcile, a period containing a **collection** contributes it as **money-IN** on the books side (previously signed negative, inflating the difference); the books-vs-bank difference reflects true cash direction. *(Deeper note: whether an accrual bill AND its payment should both appear in the recon books set is a separate inclusion question logged under O88 — this fix corrects the SIGN only.)*
+
 ---
 
 # 🟢 LOW RISK — cosmetic / nav

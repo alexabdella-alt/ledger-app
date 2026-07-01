@@ -1,6 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
+import { classifyTxn } from "../../lib/txnPresent";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
@@ -117,7 +118,11 @@ export default function ReconView() {
   };
 
   const booksRows = invoices.filter(i => i.status!=="voided" && i.date && i.date>=periodStart && i.date<=periodEnd && (glIsRevenue(i.gl_code)||glIsExpense(i.gl_code)||i.type==="expense"||i.type==="revenue"));
-  const bookSigned = i => (glIsRevenue(i.gl_code)||i.type==="revenue") ? Math.abs(i.amount) : -Math.abs(i.amount);
+  // Settlement-aware sign (§9): a bank-matched A/R COLLECTION flattens to gl_code=Cash+
+  // type="expense" but is money IN — the old `glIsRevenue||type==="revenue"` signed it negative,
+  // corrupting the reconciliation difference. classifyTxn reads the settlement kind (GL truth).
+  const _apCode = getAccountByRole?.("accounts_payable")?.code, _arCode = getAccountByRole?.("accounts_receivable")?.code;
+  const bookSigned = i => classifyTxn(i, { apCode: _apCode, arCode: _arCode }).inflow ? Math.abs(i.amount) : -Math.abs(i.amount);
   const matchedBookIds = new Set(bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook));
   const unmatchedBank = bankTxns.filter(t=>!t._matchBook && !t._ignored);
   const unmatchedBooks = booksRows.filter(b=>!matchedBookIds.has(b.id) && !outstanding[b.id]);

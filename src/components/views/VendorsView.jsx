@@ -13,8 +13,11 @@ export default function VendorsView() {
             const selectedContact = vendorsSelectedContact; const setSelectedContact = setVendorsSelectedContact;
             const editingId = vendorsEditingId; const setEditingId = setVendorsEditingId; const editDraft = vendorsEditDraft; const setEditDraft = setVendorsEditDraft;
             const yr = new Date().getFullYear();
+            // GL-truth (§9): an expense DEBITS a 5–8xxx account. `type` is fallback-only for
+            // legacy no-gl_code rows — it LIES on A/P payment settlements (gl_code=A/P, type=
+            // "expense"), which would otherwise double-count as vendor spend on top of the bill.
             const txnsForVendor = name => invoices
-              .filter(i => i.vendor?.toLowerCase()===(name||"").toLowerCase() && (glIsExpense(i.gl_code)||i.type==="expense") && i.status!=="voided")
+              .filter(i => i.vendor?.toLowerCase()===(name||"").toLowerCase() && (i.gl_code ? glIsExpense(i.gl_code) : i.type==="expense") && i.status!=="voided")
               .sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
             const paidYTDfor = txns => txns.filter(i=>i.payment_status==="paid" && String(i.date||"").startsWith(String(yr))).reduce((s,i)=>s+(i.amount||0),0);
             const openAPfor = txns => txns.filter(i=>i.payment_status!=="paid").reduce((s,i)=>s+(i.amount||0),0);
@@ -111,10 +114,13 @@ export default function VendorsView() {
               );
             }
 
-            // Merge ledger-derived vendors with contact book
-            const ledgerVendors = vendorSummary.filter(v => glIsExpense(
-              invoices.filter(i=>i.vendor?.toLowerCase()===v.name?.toLowerCase())[0]?.gl_code||"5000"
-            ) || invoices.filter(i=>i.vendor?.toLowerCase()===v.name?.toLowerCase())[0]?.type==="expense");
+            // Merge ledger-derived vendors with contact book — GL-truth membership (§9): is this
+            // vendor's first ledger row an expense (debits 5–8xxx)? `type` fallback only when the
+            // row has no gl_code, so a settlement's stale type="expense" can't force-add a vendor.
+            const ledgerVendors = vendorSummary.filter(v => {
+              const ft = invoices.filter(i=>i.vendor?.toLowerCase()===v.name?.toLowerCase())[0];
+              return ft?.gl_code ? glIsExpense(ft.gl_code) : ft?.type==="expense";
+            });
 
             // Build unified vendor list: contacts take priority, ledger fills in the rest
             const contactVendors = contacts.filter(c => c.type==="vendor");

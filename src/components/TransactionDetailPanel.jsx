@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
 import { initials, vendorColor, fmtDate } from "../lib/format";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
+import { classifyTxn, settlementKind } from "../lib/txnPresent";
 import { classifyBankReason } from "../lib/bankMatch";
 import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
@@ -21,8 +22,11 @@ const METHOD_OPTS = [["ach", "ACH / Bank Transfer"], ["check", "Check"], ["wire"
 const methodLabel = m => (METHOD_OPTS.find(([v]) => v === m)?.[1]) || (m ? String(m).toUpperCase() : "—");
 const needsReview = i => i.approval_status === "pending_approval" || i.approval_status === "flagged" || i.approval_status === "info_requested" || (i.confidence != null && i.confidence < 70);
 const fmtM = n => "$" + Math.abs(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
-const isRevenue = i => glIsRevenue(i.gl_code) || i.type === "revenue";
-const isExpense = i => glIsExpense(i.gl_code) || i.type === "expense";
+// GL-truth (CLAUDE.md §9): the account decides. `type` is a fallback ONLY for legacy rows
+// with no gl_code — it LIES on settlements (a collection flattens to gl_code=Cash+type="expense").
+// Money direction / open-ness come from classifyTxn (settlement-aware), never these predicates.
+const isRevenue = i => (i.gl_code ? glIsRevenue(i.gl_code) : i.type === "revenue");
+const isExpense = i => (i.gl_code ? glIsExpense(i.gl_code) : i.type === "expense");
 
 function pill(c) { return { display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 600, color: c, background: c + "14", border: `1px solid ${c}29`, borderRadius: 6, padding: "3px 9px", whiteSpace: "nowrap", lineHeight: 1.2 }; }
 
@@ -96,7 +100,7 @@ function SourceDocPreview({ doc, onExpand }) {
 
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
-    invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit,
+    invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
     setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
   } = useERP();
 
@@ -112,6 +116,13 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
 
   const sel = invoices.find(i => i.id === invoiceId) || null;
   if (!sel) return null;
+  // Settlement-aware GL truth for money direction + open-ness (same source as the Books list):
+  // a bank-matched collection is money IN and has no "Mark Paid" action, no matter what the
+  // stale `type` flag says.
+  const apCode = getAccountByRole?.("accounts_payable")?.code;
+  const arCode = getAccountByRole?.("accounts_receivable")?.code;
+  const cls = classifyTxn(sel, { apCode, arCode });
+  const settle = settlementKind(sel);
 
   const close = () => { setRecodeOpen(false); setPayOpen(false); onClose(); };
 
@@ -180,7 +191,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
             <button onClick={close} style={{ background: "none", border: "none", color: "var(--sc-text-2)", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-            <div style={{ fontSize: 30, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: isRevenue(sel) ? "var(--sc-success)" : "var(--sc-error)", marginBottom: 6 }}>{isRevenue(sel) ? "+" : "-"}{fmtM(sel.amount)}</div>
+            <div style={{ fontSize: 30, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: cls.inflow ? "var(--sc-success)" : "var(--sc-error)", marginBottom: 6 }}>{cls.inflow ? "+" : "-"}{fmtM(sel.amount)}</div>
             <div style={{ marginBottom: 18 }}>{txnStatusBadge(sel)}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 28, alignItems: "start" }}>
               <div>
@@ -188,7 +199,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   ["Description", sel.description || "—"],
                   ["GL account", `${sel.gl_code || ""} ${sel.gl_name || ""}`],
                   ["Offset account", sel.secondary_gl_code ? `${sel.secondary_gl_code} ${sel.secondary_gl_name || ""}` : "—"],
-                  ["Type", isRevenue(sel) ? "Revenue" : "Expense"],
+                  ["Type", settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? "Revenue" : "Expense"],
                   ["AI confidence", sel.confidence != null ? `${sel.confidence}%` : "—"],
                   sel.payment_status === "paid" ? ["Payment", `${methodLabel(sel.payment_method_used)}${sel.paid_at ? ` · ${fmtDate(sel.paid_at)}` : ""}${sel.payment_reference ? ` · ${sel.payment_reference}` : ""}`] : null,
                   (sel.payment_status === "paid" || sel.payment_status === "collected") ? ["How paid", (sel.auto_matched || sel.payment_method_used === "bank_transfer") ? `Auto-matched from bank statement${sel.matched_bank_date ? ` (${sel.matched_bank_date})` : ""}` : "Manually marked paid"] : null,
@@ -280,7 +291,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               </>
             ) : (
               <>
-                {isExpense(sel) && sel.payment_status !== "paid" && sel.status !== "voided" && (
+                {cls.settleAction === "pay" && (
                   <button onClick={() => setPayOpen(true)} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Mark as Paid</button>
                 )}
                 <button onClick={() => { setReturnTo && setReturnTo(returnContext || null); setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Full entry →</button>
