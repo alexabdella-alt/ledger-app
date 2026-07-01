@@ -36,7 +36,7 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 
 ## Index of passes
 
-- **Pass 1 — Correctness & money math (GAAP/ledger)** — 2026-07-01 — 7 findings (1 🔴, 3 🟠, 3 🟡/🔵).
+- **Pass 1 — Correctness & money math (GAAP/ledger)** — 2026-07-01 — 7 findings (1 🔴, 3 🟠, 3 🟡/🔵). **CR-1/CR-2/CR-3 fixed in C134**; CR-4 open; CR-5→O86, CR-6→O87, CR-7 note-only.
 
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
@@ -51,6 +51,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-1 · 🔴 fix-before-launch · `computeRevenue`/`computeExpenses` ignore debit/credit direction → a void/reversal DOUBLES the P&L instead of netting to zero
+> **✅ FIXED — C134.** `computeRevenue`/`computeExpenses` now derive from the signed GL legs via a shared `plMovement`/`legSigned` root, so a live reversal subtracts and the P&L nets to zero. The same signing was extended to every sibling that had its *own* `amount` sum — `computeCategoryTotals`, `computeVendorTotals`, `computeKPIs` (its private `rev`/`exp`), `fiscalYearSplit` (the RE split, so the Balance Sheet ties to the Income Statement), and the burn/top-vendor sums in `businessHealth`/`financialHealthScore`/`buildMonthlyReport`. New `tests/reversalLifecycle.test.js` runs booking+reversal through the **real** `flattenJournalEntries → every report surface` and asserts nets-to-zero and the accounting equation holds. **Surfaces whose numbers change (only when a reversal/void/contra row is live):** P&L, monthly report, By Vendor/Category/Project, KPIs, RE split/Balance Sheet, tax estimate, AI snapshot — all now net correctly; cash-basis data with no reversals is unchanged to the penny.
 
 **Location:** `src/lib/reports.js:55–62` (`computeRevenue`, `computeExpenses`, `computeNetIncome`); same pattern in `computeCategoryTotals:123` and `computeVendorTotals:141`. Interacts with `src/App.jsx:1935–1990` (`reverseJournalEntry`/`voidInvoiceWithUndo`).
 
@@ -63,6 +64,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-2 · 🟠 should-fix · `glAccountBalance` hard-codes every revenue-account row as a credit — contra-revenue / refunds / revenue reversals are added instead of subtracted
+> **✅ FIXED — C134.** Removed the `isRev(i) ? false :` override; `glAccountBalance` now signs the primary leg via the shared `legPrimaryIsDebit` (uses the flattened `debit_credit`, `isRev` only as a legacy fallback), so a `Dr Revenue` row subtracts on **every** account class. Verified via the lifecycle suite (full/partial refund reduces revenue; `computeRevenue === glAccountBalance(REV)`). Surfaces changed: trial balance / Balance Sheet revenue for companies that issue **refunds / credit memos** or reverse a revenue entry.
 
 **Location:** `src/lib/reports.js:205` — `const primaryIsDebit = isRev(i) ? false : i.debit_credit !== "credit";`
 
@@ -75,6 +77,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-3 · 🟠 should-fix · The Cash Flow report is built on P&L membership + `payment_status`, not cash-leg participation (the generalized O88 error, third instance)
+> **✅ FIXED — C134.** The Cash Flow report now buckets **actual cash-leg movements** via the `reconcile.js` primitives (`reconBooksSet` + `cashLegSigned` over the company's cash codes), dated at the cash date, at the cash-leg amount, signed by direction — the exact same basis as bank reconciliation, so the two can never disagree. Inter-account transfers (both legs cash) are skipped (net-zero to total cash). Surfaces changed: the Reports → Cash Flow statement now reflects real cash for **accrual** and **taxed-invoice** companies (previously it proxied cash from P&L rows flagged paid/collected at the recognition date).
 
 **Location:** `src/components/views/ReportsView.jsx:122–135` (the `byMonth` inflow/outflow build).
 
@@ -87,6 +90,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-4 · 🟠 should-fix · Depreciation & prepaid schedule dates: JS month-overflow for day-29–31 in-service dates, plus a `toISOString` day-shift
+> **Open — not addressed in C134** (this task fixed the CR-1/2/3 direction/basis cluster). Tracked for a date-handling pass alongside O86.
 
 **Location:** `src/lib/depreciation.js:135` and `src/lib/prepaid.js:63` — `new Date(start.getFullYear(), start.getMonth() + k, start.getDate())` then `.toISOString().slice(0,10)`.
 
@@ -99,6 +103,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-5 · 🟡 improvement · Residual `toISOString().slice()` month/date keys in the AI + insights layer (same class as the C129 KPI bug)
+> **Folds into O86** (the `toISOString` date-keying sweep). Not a separate item.
 
 **Location:** `src/lib/ai.js:18–20` (`today`/`thisMonth`/`lastMonth`), `src/lib/aiTools.js:31–32,96` (range boundaries), `src/lib/insights.js:182`, `src/lib/clientProfile.js:81`.
 
@@ -109,6 +114,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-6 · 🟡 improvement · `fiscalYearStart` Jan-1 UTC edge (already tracked as O87)
+> **Tracked as O87** (address in the coordinated date-handling pass with O86). No change here.
 
 **Location:** `src/lib/reports.js:70–76`.
 
@@ -119,6 +125,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-7 · 🔵 suggestion · `cashLegSigned` (reconcile.js) assumes `debit_credit` is present
+> **Note-only** — safe today (flatten always sets `debit_credit`); no action taken.
 
 **Location:** `src/lib/reconcile.js:44–52`.
 

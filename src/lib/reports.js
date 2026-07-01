@@ -29,6 +29,37 @@ const apUnpaid = i => isExp(i) && i.payment_status !== "paid";
 export const owedAmount = i => num(i && i.ar_amount != null ? i.ar_amount : i && i.amount);
 const daysOverdue = (dueDate, now) => dueDate ? Math.floor((now - new Date(String(dueDate) + "T12:00:00")) / 86400000) : 0;
 
+// ── SHARED LEG-SIGN PRIMITIVES (the one place debit/credit → sign lives) ──────
+// Normal-balance by code first digit: assets(1) & expenses(5–8) are debit-normal
+// (+ on debit); liabilities(2), equity(3), revenue(4) are credit-normal.
+const isDebitNormalCode = c => { const d = String(c || "")[0]; return d === "1" || d === "5" || d === "6" || d === "7" || d === "8"; };
+// The primary leg's debit/credit, from the flattened row. `debit_credit` is authoritative
+// (flatten always sets it); isRev is a fallback ONLY for legacy rows that predate that field.
+// It is NEVER an override — force-crediting revenue rows mis-signs contra-revenue / refunds /
+// reversal legs (the CR-2 bug). A Dr-Revenue row must sign as a debit and SUBTRACT.
+const legPrimaryIsDebit = i => (i && i.debit_credit) ? i.debit_credit === "debit" : !(i && isRev(i));
+// A leg's contribution to its account's NORMAL-POSITIVE balance: revenue and expense both
+// come back positive for ordinary activity; a contra / reversal leg comes back negative, so
+// summing these nets a void/reversal to zero instead of double-counting (the CR-1 root).
+const legSigned = (code, isDebit, amt) => isDebitNormalCode(code) ? (isDebit ? amt : -amt) : (isDebit ? -amt : amt);
+
+// Signed movement into the accounts matched by `match(code)`, over a period, as a
+// normal-positive total. Walks each LIVE row's legs — the primary always; the offset leg too
+// for simple 2-line rows (multi-line rows are already one leg each) — signing by debit/credit.
+// This is the SINGLE basis for revenue/expense: reversals, refunds, and intra-P&L reclasses
+// net correctly, and it ties to glAccountBalance (same walk, same sign) by construction.
+function plMovement(invoices, range, match) {
+  let total = 0;
+  for (const i of liveEntries(invoices, range)) {
+    const amt = num(i.amount);
+    if (amt === 0) continue;
+    const pDebit = legPrimaryIsDebit(i);
+    if (match(i.gl_code)) total += legSigned(i.gl_code, pDebit, amt);
+    if (!String(i.id).includes("_") && match(i.secondary_gl_code)) total += legSigned(i.secondary_gl_code, !pDebit, amt);
+  }
+  return r2(total);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL CALCULATION LAYER (full reconciliation audit)
 // EVERY surface — dashboard, P&L, balance sheet, vendor/category reports, the
@@ -52,12 +83,12 @@ export function liveEntries(invoices, { from = null, to = null } = {}) {
   return (invoices || []).filter(i => isLiveEntry(i) && inDateRange(i.date, from, to));
 }
 
-export function computeRevenue(invoices, range = {}) {
-  return r2(liveEntries(invoices, range).filter(i => isRev(i)).reduce((s, i) => s + num(i.amount), 0));
-}
-export function computeExpenses(invoices, range = {}) {
-  return r2(liveEntries(invoices, range).filter(i => isExp(i)).reduce((s, i) => s + num(i.amount), 0));
-}
+// Revenue / expense = the SIGNED movement into the 4xxx / 5xxx–8xxx accounts (not a raw
+// `amount` sum). A live reversing/void entry posts the opposite legs, so it subtracts and the
+// P&L nets to zero instead of doubling (CR-1). Every consumer — P&L, monthly report, By
+// Vendor/Category/Project, KPIs, businessHealth, the RE split, the AI snapshot, tax — inherits it.
+export function computeRevenue(invoices, range = {}) { return plMovement(invoices, range, glIsRevenue); }
+export function computeExpenses(invoices, range = {}) { return plMovement(invoices, range, glIsExpense); }
 export function computeNetIncome(invoices, range = {}) {
   return r2(computeRevenue(invoices, range) - computeExpenses(invoices, range));
 }
@@ -105,7 +136,11 @@ export function fiscalYearSplit(invoices, { asOf, fiscalYearEnd = "12-31", cutof
   const fyStart = (cutoffDate && fyStartRaw && String(cutoffDate) > fyStartRaw) ? String(cutoffDate) : fyStartRaw;
   let priorNet = 0, currentNet = 0;
   for (const i of liveEntries(invoices, { to: asOf })) {
-    const signed = isRev(i) ? num(i.amount) : isExp(i) ? -num(i.amount) : 0;
+    // Net-income contribution of this row's P&L leg, signed by debit/credit so a reversal/void
+    // nets to zero — keeps the RE split (Balance Sheet) tied to computeNetIncome (Income Statement).
+    const amt = num(i.amount); if (amt === 0) continue;
+    const leg = legSigned(i.gl_code, legPrimaryIsDebit(i), amt);
+    const signed = isRev(i) ? leg : isExp(i) ? -leg : 0;
     if (signed === 0) continue;
     if (fyStart && String(i.date || "") < fyStart) priorNet += signed; else currentNet += signed;
   }
@@ -116,13 +151,20 @@ export function fiscalYearSplit(invoices, { asOf, fiscalYearEnd = "12-31", cutof
 // totals === computeExpenses(...) exactly (same gate, same rounding boundary).
 export function computeCategoryTotals(invoices, range = {}) {
   const map = {};
-  for (const i of liveEntries(invoices, range)) {
-    if (!isExp(i)) continue;
-    const k = String(i.gl_code || "");
-    const c = map[k] || (map[k] = { gl_code: k, category: i.gl_name || k, total: 0, count: 0 });
-    c.total += num(i.amount); c.count++;
+  const add = (code, name, signed) => {
+    if (!glIsExpense(code)) return;                       // expense accounts only, by GL class
+    const k = String(code);
+    const c = map[k] || (map[k] = { gl_code: k, category: name || k, total: 0, count: 0 });
+    c.total += signed; c.count++;
+  };
+  for (const i of liveEntries(invoices, range)) {         // signed legs → reversals net; Σ === computeExpenses
+    const amt = num(i.amount); if (amt === 0) continue;
+    const pDebit = legPrimaryIsDebit(i);
+    add(i.gl_code, i.gl_name, legSigned(i.gl_code, pDebit, amt));
+    if (!String(i.id).includes("_")) add(i.secondary_gl_code, i.secondary_gl_name, legSigned(i.secondary_gl_code, !pDebit, amt));
   }
-  return Object.values(map).map(c => ({ ...c, total: r2(c.total) })).sort((a, b) => b.total - a.total || String(a.gl_code).localeCompare(String(b.gl_code)));
+  return Object.values(map).map(c => ({ ...c, total: r2(c.total) })).filter(c => Math.abs(c.total) >= 0.005)
+    .sort((a, b) => b.total - a.total || String(a.gl_code).localeCompare(String(b.gl_code)));
 }
 
 // Per-vendor totals over P&L accounts only (income-statement scope) — the figure
@@ -136,9 +178,10 @@ export function computeVendorTotals(invoices, range = {}, { side = "expense" } =
   const map = {};
   for (const i of liveEntries(invoices, range)) {
     if (!include(i)) continue;                            // expense (or revenue) accounts only — by GL class
+    const signed = legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount));  // signed → a reversal leg subtracts
     const name = i.vendor || "Unknown";
     const v = map[name] || (map[name] = { vendor: name, total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name });
-    v.total += num(i.amount); v.count++;
+    v.total += signed; v.count++;
     if (String(i.date || "") > v.last_date) { v.last_date = String(i.date || ""); v.gl_code = i.gl_code; v.gl_name = i.gl_name; }
   }
   return Object.values(map).map(v => ({ ...v, total: r2(v.total) })).sort((a, b) => b.total - a.total);
@@ -159,7 +202,7 @@ export function computeBurnRate(invoices, { asOf = null, months = 3 } = {}) {
   const monthExp = {};
   for (const i of liveEntries(invoices, { to: asOf })) {
     if (!isExp(i)) continue;
-    const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + num(i.amount);
+    const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount));
   }
   const recent = Object.keys(monthExp).sort().slice(-months);
   return r2(recent.length ? recent.reduce((s, m) => s + monthExp[m], 0) / recent.length : 0);
@@ -181,10 +224,9 @@ export function computeAR(invoices, { now = new Date() } = {}) { return arApTota
 export function computeAP(invoices, { now = new Date() } = {}) { return arApTotals(invoices, apUnpaid, now); }
 
 // ── CANONICAL GL ACCOUNT BALANCE (single source of truth for any account) ────
-// Normal-balance sign by code first digit: assets(1) & expenses(5–8) are
-// debit-normal (+ on debit); liabilities(2), equity(3), revenue(4) credit-normal.
-const isDebitNormalCode = c => { const d = String(c || "")[0]; return d === "1" || d === "5" || d === "6" || d === "7" || d === "8"; };
-
+// (Normal-balance sign + leg helpers are defined once, up top — isDebitNormalCode /
+// legPrimaryIsDebit / legSigned — so this walk and the P&L walk sign identically.)
+//
 // The true GL balance of an account = the sum of its journal-entry-line movements,
 // signed to the account's normal balance. Walks the flattened ledger: each row's
 // primary leg (gl_code) plus, for simple (non-expanded) entries, its offset leg
@@ -202,7 +244,7 @@ export function glAccountBalance(code, invoices, { asOf = null } = {}) {
     if (asOf && String(i.date || "") > asOf) continue;
     const amt = num(i.amount);
     if (amt === 0) continue;
-    const primaryIsDebit = isRev(i) ? false : i.debit_credit !== "credit";
+    const primaryIsDebit = legPrimaryIsDebit(i);   // no revenue force-credit — Dr Revenue subtracts (CR-2)
     if (i.gl_code === code) bal += signed(primaryIsDebit, amt);
     // Offset leg only for simple 2-line entries (multi-line rows are pre-expanded).
     if (!String(i.id).includes("_") && i.secondary_gl_code === code) bal += signed(!primaryIsDebit, amt);
@@ -321,8 +363,9 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
   const thisMonth = ymLocal(now);
   const lastMonth = ymLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1));
   const inMonth = m => live.filter(i => ymOf(i.date) === m);
-  const sum = (set, pred) => set.filter(pred).reduce((s, i) => s + num(i.amount), 0);
-  const rev = set => sum(set, isRev), cogs = set => sum(set, i => isCOGS(i.gl_code)), opex = set => sum(set, i => isOpEx(i.gl_code)), exp = set => sum(set, isExp);
+  const sum = (set, pred) => set.filter(pred).reduce((s, i) => s + num(i.amount), 0);                                  // raw (AR/AP owed)
+  const sumPL = (set, pred) => set.filter(pred).reduce((s, i) => s + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount)), 0);  // signed P&L → reversals net (CR-1)
+  const rev = set => sumPL(set, isRev), cogs = set => sumPL(set, i => isCOGS(i.gl_code)), opex = set => sumPL(set, i => isOpEx(i.gl_code)), exp = set => sumPL(set, isExp);
   const arOut = sum(live, arUnpaid);
   const cash = num(cashBalance);
   const apOut = sum(live, apUnpaid);
@@ -373,7 +416,7 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
 export function financialHealthScore({ invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false, now = new Date() } = {}) {
   const live = (invoices || []).filter(isLiveEntry);
   const monthExp = {};
-  for (const i of live) if (isExp(i)) { const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + num(i.amount); }
+  for (const i of live) if (isExp(i)) { const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount)); }
   const recentMonths = Object.keys(monthExp).sort();
   const burn = recentMonths.slice(-3).length ? recentMonths.slice(-3).reduce((s, m) => s + monthExp[m], 0) / recentMonths.slice(-3).length : 0;
   const cash = num(cashBalance);
@@ -450,7 +493,7 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {
 
   // burn trend — this month vs the previous month that has data
   const monthExp = {};
-  for (const i of liveEntries(invoices, { to: today })) if (isExp(i)) { const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + num(i.amount); }
+  for (const i of liveEntries(invoices, { to: today })) if (isExp(i)) { const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount)); }
   const ms = Object.keys(monthExp).sort();
   const curM = ms.length ? monthExp[ms[ms.length - 1]] : 0;
   const prevM = ms.length > 1 ? monthExp[ms[ms.length - 2]] : null;
@@ -562,7 +605,7 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   // Top 5 vendors by expense spend this month (canonical live gate + GL classification).
   const cur = liveEntries(live, curRange);
   const vmap = {};
-  for (const i of cur) { if (!isExp(i)) continue; const k = i.vendor || "Unknown"; vmap[k] = (vmap[k] || 0) + num(i.amount); }
+  for (const i of cur) { if (!isExp(i)) continue; const k = i.vendor || "Unknown"; vmap[k] = (vmap[k] || 0) + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount)); }
   const topVendors = Object.entries(vmap).map(([vendor, total]) => ({ vendor, total: r2(total) })).sort((a, b) => b.total - a.total).slice(0, 5);
 
   // Anomalies active during the month — those referencing this month's txns; else high-severity.
