@@ -200,6 +200,17 @@
 **Risk: MED** (broken = no production error visibility). **Prereq:** `VITE_SENTRY_DSN` set in Vercel; test on the **deployed** app.
 - ⬜ **M6a** — trigger a known error in the deployed app → the event appears in the Sentry dashboard within ~1 min; financial fields scrubbed; "our team has been notified" only shows when Sentry is actually enabled.
 
+## M7. Depreciation auto-posts (no owner nudge) — idempotent (C124)
+
+**Risk: MED** (auto-posting entries — a double-post would overstate expense). **Prereq:** a capitalized fixed asset with a schedule where a month is now due.
+- ⬜ **M7a · nudge GONE** — the owner dashboard shows **no** "N months of depreciation due · Run depreciation now" prompt.
+- ⬜ **M7b · auto-posts when due** — open the company (with a due schedule month) → the monthly **Dr Depreciation Expense / Cr Accumulated Depreciation** entry posts automatically (check Books / the P&L), no click.
+- ⬜ **M7c · idempotent (GL-truth) — no double-post** — reload / re-open the company several times.
+  *Expected:* the same period is **never posted twice** (the guard checks whether a depreciation JE already exists for that asset+period, not the schedule flag). P&L depreciation for the month = one entry, not two.
+- ⬜ **M7d · not-yet-due doesn't post early** — a future month's row stays unposted until its period date.
+- ⬜ **M7e · incomplete schedule → review, not a guess** — if a due row is malformed (no amount), it is **not** auto-posted; a "depreciation needs a look" notification appears (→ Review), instead of posting a wrong entry.
+  *Note:* no migration. The Reports "run depreciation through a date" control remains as a CPA override; the manual owner nudge is what's removed. *(Sibling flagged, not fixed: the dashboard "Contract journal entries ready to post → Review Contracts" prompt is the same class — see the audit in the commit report.)*
+
 ---
 
 # 🟢 LOW RISK — cosmetic / nav

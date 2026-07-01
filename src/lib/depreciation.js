@@ -63,6 +63,47 @@ export function depreciableBase(cost, salvage = 0) {
   return Math.max(0, r2(r2(cost) - r2(salvage)));
 }
 
+// GL-TRUTH idempotency: has this asset+period ALREADY been posted? A depreciation entry stamps
+// import_metadata { kind:"depreciation", asset_id, period }. We derive "posted" from a LIVE JE
+// in the ledger, NOT the schedule's status flag (which can drift) — so auto-post can never
+// double-post a period even if the flag is wrong.
+export function depreciationAlreadyPosted(ledger, assetId, periodIndex) {
+  return (ledger || []).some(i => {
+    const m = i && i.import_metadata;
+    return m && m.kind === "depreciation"
+      && String(m.asset_id) === String(assetId)
+      && Number(m.period) === Number(periodIndex)
+      && i.status !== "voided" && i.status !== "deleted";
+  });
+}
+
+// AUTO-POST planner. Depreciation is deterministic (cost·life·method·start fix the amount), so
+// due periods post themselves — no human nudge. Partition schedule rows (as-of throughDate):
+//   post       → DUE (period_date ≤ throughDate), COMPLETE (amount>0), and NOT already in the GL
+//   skipped    → DUE but a live depreciation JE already exists (GL-truth) → idempotent no-op
+//   incomplete → DUE but ambiguous/malformed (no amount, no asset/period) → DO NOT guess; flag
+// `assetsToFlip` = assets whose EVERY input row will be posted this run (→ fully_depreciated).
+export function planDepreciationAutoPost(scheduleRows, ledger, throughDate) {
+  const cutoff = String(throughDate || new Date().toISOString().slice(0, 10));
+  const post = [], skipped = [], incomplete = [];
+  for (const r of (scheduleRows || [])) {
+    if (!r) continue;
+    if (String(r.period_date || "") > cutoff) continue;                 // not due yet — never post early
+    if (r.asset_id == null || r.period_index == null) { incomplete.push(r); continue; }
+    if (depreciationAlreadyPosted(ledger, r.asset_id, r.period_index)) { skipped.push(r); continue; }
+    if (!(Number(r.amount) > 0)) { incomplete.push(r); continue; }      // ambiguous amount → don't guess
+    post.push(r);
+  }
+  // Flip an asset only if ALL of its (input) rows are being posted this run — an incomplete
+  // row for that asset blocks the flip (we didn't finish it).
+  const totalByAsset = {}, postByAsset = {}, incByAsset = {};
+  (scheduleRows || []).forEach(r => { if (r && r.asset_id != null) totalByAsset[r.asset_id] = (totalByAsset[r.asset_id] || 0) + 1; });
+  post.forEach(r => { postByAsset[r.asset_id] = (postByAsset[r.asset_id] || 0) + 1; });
+  incomplete.forEach(r => { if (r.asset_id != null) incByAsset[r.asset_id] = (incByAsset[r.asset_id] || 0) + 1; });
+  const assetsToFlip = Object.keys(postByAsset).filter(a => !incByAsset[a] && postByAsset[a] === totalByAsset[a]);
+  return { post, skipped, incomplete, assetsToFlip };
+}
+
 // One period's depreciation entry (Dr Dep Exp / Cr Accum Dep), as a buildJournalEntry
 // result routed through persistMultiLineEntry. Null if the amount/accounts are invalid.
 export function buildDepreciationEntry({ amount, depExpCode, accumDepCode, date = null, description = "Depreciation", memo = null, meta = null } = {}) {

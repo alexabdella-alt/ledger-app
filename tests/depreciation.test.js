@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { depreciableBase, buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue } from "../src/lib/depreciation.js";
+import { depreciableBase, buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue, planDepreciationAutoPost, depreciationAlreadyPosted } from "../src/lib/depreciation.js";
 
 const DEP = "6900", ACC = "1510";
 const sumD = ls => ls.reduce((s, l) => s + (l.debit || 0), 0);
@@ -174,5 +174,66 @@ describe("depreciationDue — counts pending rows due on/before today", () => {
     expect(depreciationDue(rows, "2026-01-01")).toEqual({ count: 0, throughDate: "", assets: 0 });
     expect(depreciationDue([], "2026-03-31")).toEqual({ count: 0, throughDate: "", assets: 0 });
     expect(depreciationDue(null, "2026-03-31")).toEqual({ count: 0, throughDate: "", assets: 0 });
+  });
+});
+
+// ── O10/C124: auto-post due depreciation, GL-truth idempotency, flag incomplete ──
+describe("planDepreciationAutoPost — auto-post due, never double-post, flag incomplete", () => {
+  const row = (over = {}) => ({ id: `s${Math.random()}`, asset_id: "A1", period_index: 1, period_date: "2026-06-30", amount: 100, status: "pending", ...over });
+  // A posted depreciation JE flattens to rows carrying import_metadata { kind, asset_id, period }.
+  const jeRow = (assetId, period, over = {}) => ({ id: `je${Math.random()}`, import_metadata: { kind: "depreciation", asset_id: assetId, period }, status: "posted", ...over });
+
+  it("(a) a DUE + COMPLETE row is queued to auto-post (and builds the correct Dr 6900 / Cr 1510)", () => {
+    const plan = planDepreciationAutoPost([row()], [], "2026-07-01");
+    expect(plan.post).toHaveLength(1);
+    expect(plan.skipped).toHaveLength(0);
+    expect(plan.incomplete).toHaveLength(0);
+    const je = buildDepreciationEntry({ amount: 100, depExpCode: "6900", accumDepCode: "1510", meta: { kind: "depreciation", asset_id: "A1", period: 1 } });
+    expect(je.lines).toEqual([
+      { code: "6900", name: null, debit: 100, credit: 0, memo: null },
+      { code: "1510", name: null, debit: 0, credit: 100, memo: null },
+    ]);
+  });
+
+  it("(b) GL-TRUTH idempotency: a period already in the ledger is SKIPPED, not re-posted — even if the flag says pending", () => {
+    const led = [jeRow("A1", 1)];   // asset A1 / period 1 already posted (a real JE exists)
+    const plan = planDepreciationAutoPost([row({ status: "pending" })], led, "2026-07-01");
+    expect(plan.post).toHaveLength(0);      // NOT re-posted
+    expect(plan.skipped).toHaveLength(1);   // GL-derived skip (flag drift doesn't matter)
+    expect(depreciationAlreadyPosted(led, "A1", 1)).toBe(true);
+    expect(depreciationAlreadyPosted(led, "A1", 2)).toBe(false);   // different period
+    // running the plan twice (feed back the would-be posted period) still posts once
+    const led2 = [...led, jeRow("A1", 2)];
+    expect(planDepreciationAutoPost([row(), row({ period_index: 2 })], led2, "2026-07-01").post).toHaveLength(0);
+  });
+
+  it("(c) a NOT-YET-DUE period does not post early", () => {
+    const plan = planDepreciationAutoPost([row({ period_date: "2026-09-30" })], [], "2026-07-01");
+    expect(plan.post).toHaveLength(0);
+    expect(plan.skipped).toHaveLength(0);
+    expect(plan.incomplete).toHaveLength(0);   // simply not due — not an error
+  });
+
+  it("(d) an INCOMPLETE/ambiguous due row is flagged, NOT auto-posted (don't guess)", () => {
+    const noAmt = row({ amount: 0 });
+    const nullAmt = row({ id: "s2", amount: null });
+    const noAsset = row({ id: "s3", asset_id: null });
+    const plan = planDepreciationAutoPost([noAmt, nullAmt, noAsset], [], "2026-07-01");
+    expect(plan.post).toHaveLength(0);
+    expect(plan.incomplete).toHaveLength(3);   // all held for review
+  });
+
+  it("assetsToFlip: an asset flips only when ALL its rows post; an incomplete row blocks the flip", () => {
+    // A1: both rows due+complete → flips. A2: one complete + one incomplete → does NOT flip.
+    const rows = [
+      row({ id: "a1p1", asset_id: "A1", period_index: 1 }),
+      row({ id: "a1p2", asset_id: "A1", period_index: 2 }),
+      row({ id: "a2p1", asset_id: "A2", period_index: 1 }),
+      row({ id: "a2p2", asset_id: "A2", period_index: 2, amount: 0 }),   // incomplete
+    ];
+    const plan = planDepreciationAutoPost(rows, [], "2026-07-01");
+    expect(plan.assetsToFlip).toEqual(["A1"]);
+    expect(plan.post.map(r => r.id).sort()).toEqual(["a1p1", "a1p2", "a2p1"]);
+    expect(plan.incomplete.map(r => r.id)).toEqual(["a2p2"]);
   });
 });

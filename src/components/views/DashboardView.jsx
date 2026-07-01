@@ -283,25 +283,9 @@ export default function DashboardView() {
 
   return (
             <div>
-              {/* ── O10: DEPRECIATION-DUE NUDGE — surfaces unposted months, one click to run ── */}
-              {(depreciationDueInfo?.count > 0) && (
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", background:"var(--sc-warning-soft)", border:"1px solid #FEDF89", borderRadius:12, padding:"14px 18px", marginBottom:20 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                    <span style={{ fontSize:20 }}>📅</span>
-                    <div>
-                      <div style={{ fontSize:14, fontWeight:600, color:"var(--sc-warning)" }}>
-                        {depreciationDueInfo.count} month{depreciationDueInfo.count===1?"":"s"} of depreciation {depreciationDueInfo.count===1?"is":"are"} due
-                        {depreciationDueInfo.assets>1?` across ${depreciationDueInfo.assets} assets`:""}
-                      </div>
-                      <div style={{ fontSize:12, color:"var(--sc-warning)", opacity:0.85 }}>Through {depreciationDueInfo.throughDate} · nothing is posted until you run it.</div>
-                    </div>
-                  </div>
-                  <button onClick={()=>runDepreciationThrough && runDepreciationThrough(new Date().toISOString().slice(0,10))}
-                    style={{ flexShrink:0, background:"var(--sc-warning)", color:"var(--sc-on-accent)", border:"none", borderRadius:8, padding:"9px 18px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
-                    Run depreciation now
-                  </button>
-                </div>
-              )}
+              {/* Depreciation is deterministic → it AUTO-POSTS when due (App.jsx autoPostDepreciation),
+                  no owner nudge. (Removed the "N months due · Run depreciation now" prompt — accounting
+                  machinery is Shadow's job, not the owner's; incomplete schedules flag to CPA review.) */}
               {/* ── ONBOARDING CHECKLIST (Item 54) ── */}
               {/* Gate on companyDataLoaded so the checklist never flashes its "0 of 4 done"
                   welcome card on refresh before companySettings/bankAccounts/invoices arrive

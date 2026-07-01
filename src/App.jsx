@@ -23,7 +23,7 @@ import { pickActiveCompany } from "./lib/companies";
 import { companyIdentityNames, classifyDocDirection } from "./lib/docDirection";
 import { composeAssistantReply } from "./lib/chatReply";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
-import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue } from "./lib/depreciation";
+import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue, planDepreciationAutoPost } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
@@ -870,6 +870,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     resetCompanyState();   // clear the previous company's state before loading the new one
     loadAllData();
   }, [currentCompany?.id]);
+
+  // AUTO-POST due depreciation once the ledger has loaded (so the GL-truth idempotency guard can
+  // see existing entries). Once per company session — the ref guard keeps re-renders from re-running.
+  useEffect(() => {
+    if (!companyDataLoaded || !currentCompany?.id) return;
+    if (autoDepRunRef.current === currentCompany.id) return;
+    autoDepRunRef.current = currentCompany.id;
+    autoPostDepreciation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyDataLoaded, currentCompany?.id]);
 
   // Surface the team-invite welcome / error toast set by AppWrapper after accept.
   useEffect(() => {
@@ -2584,6 +2594,59 @@ Reply with ONLY the summary text.`;
       showNotification(`Posted ${posted} depreciation ${posted === 1 ? "entry" : "entries"} ✓`);
     }
     return { posted };
+  };
+
+  // AUTO-POST due depreciation — depreciation is deterministic, so there's no decision to nudge
+  // a human about: due periods post themselves silently on company open. Idempotency is
+  // GL-DERIVED (a live depreciation JE for asset+period), not the schedule flag, so it can never
+  // double-post. Incomplete/ambiguous rows are NOT guessed — they're flagged to review. Runs
+  // once per company session (autoDepRunRef guard) so re-renders don't re-trigger.
+  const autoDepRunRef = useRef(null);
+  const autoPostDepreciation = async () => {
+    if (!currentCompany?.id) return { posted: 0, flagged: 0 };
+    let rows;
+    try {
+      const { data, error } = await supabase.from("depreciation_schedule")
+        .select("id, asset_id, period_index, period_date, amount, status, fixed_assets!inner(vendor, description, dep_expense_code, accum_dep_code, useful_life_months)")
+        .eq("company_id", currentCompany.id).eq("status", "pending");   // status is a fast prefilter; the GL is the real guard
+      if (error) throw error;
+      rows = data || [];
+    } catch (e) { console.warn("[depreciation] auto-post load skipped:", e?.message || e); return { posted: 0, flagged: 0 }; }
+    if (!rows.length) return { posted: 0, flagged: 0 };
+
+    const ledger = invoicesRef.current || invoices;
+    const today = new Date().toISOString().slice(0, 10);
+    const { post, incomplete, assetsToFlip } = planDepreciationAutoPost(rows, ledger, today);
+
+    let posted = 0;
+    for (const row of post) {
+      const a = row.fixed_assets || {};
+      const je = buildDepreciationEntry({
+        amount: row.amount, depExpCode: a.dep_expense_code || rc("depreciation_amortization") || "6900", accumDepCode: a.accum_dep_code || "1510",
+        date: row.period_date, description: `Depreciation — ${a.vendor || a.description || "asset"} (${row.period_index}/${a.useful_life_months || "?"})`,
+        meta: { kind: "depreciation", asset_id: row.asset_id, period: row.period_index },
+      });
+      if (!je) { incomplete.push(row); continue; }   // couldn't build → treat as incomplete, don't guess
+      const jeId = await persistMultiLineEntry(je);
+      if (!jeId) continue;
+      try { await supabase.from("depreciation_schedule").update({ status: "posted", journal_entry_id: jeId, posted_at: new Date().toISOString() }).eq("id", row.id).eq("company_id", currentCompany.id); }
+      catch (e) { console.warn("[depreciation] schedule flag update failed (GL still correct):", e?.message || e); }
+      posted++;
+    }
+    for (const assetId of assetsToFlip) {
+      try { await supabase.from("fixed_assets").update({ status: "fully_depreciated" }).eq("id", assetId).eq("company_id", currentCompany.id); }
+      catch (e) { console.warn("fully_depreciated flip failed:", e?.message || e); }
+    }
+    if (incomplete.length) {
+      // Don't auto-post something wrong — surface it to the CPA review side (O49/O50).
+      logAudit("depreciation_incomplete", `${incomplete.length} due depreciation row(s) are incomplete/ambiguous — NOT auto-posted; needs review`);
+      try { createNotification?.({ type: "needs_review", title: `${incomplete.length} depreciation ${incomplete.length === 1 ? "entry" : "entries"} need a look`, description: "A scheduled depreciation is due but its schedule is incomplete — review the asset before it posts.", link_view: "review" }); } catch {}
+    }
+    if (posted > 0) {
+      logAudit("depreciation_autoposted", `Auto-posted ${posted} due depreciation ${posted === 1 ? "entry" : "entries"}${assetsToFlip.length ? ` · ${assetsToFlip.length} asset(s) fully depreciated` : ""}`);
+      try { await loadAllData(); } catch {}
+    }
+    return { posted, flagged: incomplete.length };
   };
 
   // Attach depreciation to an ALREADY-capitalized asset whose Dr Fixed Asset / Cr AP
