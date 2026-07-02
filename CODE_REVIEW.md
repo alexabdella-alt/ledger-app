@@ -38,6 +38,7 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 
 - **Pass 1 — Correctness & money math (GAAP/ledger)** — 2026-07-01 — 7 findings (1 🔴, 3 🟠, 3 🟡/🔵). **CR-1/CR-2/CR-3 fixed in C134**; CR-4 open; CR-5→O86, CR-6→O87, CR-7 note-only.
 - **Pass 2 — Security & multi-tenancy** — 2026-07-01 — 6 findings (0 🔴, 3 🟠, 2 🟡, 1 🔵). No cross-tenant read/corruption path found; risks are cost-abuse + own-tenant AI mutation + policy drift.
+- **Pass 3 — Failure modes & data integrity** — 2026-07-01 — 6 findings (1 🔴, 3 🟠, 2 🟡). Headline: the app ledger is silently capped at 500 entries.
 
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
@@ -227,3 +228,81 @@ Positives worth stating up front, because they shape the severities: **RLS is a 
 **Top 3 risks:** (1) **CR-10** — document→ledger-context→chat-brain prompt injection with no data/instruction boundary; the live embodiment of the O81 threat. (2) **CR-9** — destructive actions execute with no code-level confirmation, so CR-10 (or a model slip) lands directly on the books. (3) **CR-8** — the proxy is a bare pass-through, so the "sandbox" isn't server-enforced and tokens are cost-abusable.
 
 **Does O81 need re-scoping?** Yes — expand it, don't just run it. O81 was framed around *direct chat* adversarial prompts; this pass shows the higher-value vector is **indirect injection through stored document text** (a doc poisons the ledger context that every future chat inherits), and that the **real missing control is structural, not promptual** — a server-side proxy payload boundary (CR-8) plus a code-level confirmation gate (CR-9) plus data/instruction delimiting (CR-10). O81 should explicitly cover: the doc→context→action chain end-to-end; whether the bulk/ambiguity/role guards hold under injected phrasing; and the proxy as the enforcement point (can the client bypass the sandbox by calling it directly?). The bot-safety battery is necessary but, on its own, tests the client-side guards it should be trying to bypass.
+
+---
+
+## Pass 3 — Failure modes & data integrity · 2026-07-01
+
+Scope: partial-failure states in multi-step operations, unverified writes, swallowed errors, concurrency/re-entry, load/sync integrity, and idempotency. Lens: **"what does the user's ledger look like after this failure?"** — an error that leaves inconsistent books outranks a crash. Findings only.
+
+Positives worth stating first, because they set the bar the weak paths fall short of: **`markBillPaid` is a genuinely rigorous path** — optimistic apply → post the GL payment (with a GL-truth idempotency probe) → flip the flag → on any failure, revert the optimistic change *and* reverse the already-posted GL entry (atomic-by-compensation), then log to both the audit log and Sentry. `post_journal_entry` is atomic per entry; multi-line events post as one balanced RPC; depreciation auto-post is GL-truth idempotent (`import_metadata.kind` probe + once-per-session ref); the monthly report has a unique `(company_id, period)` constraint; upload/bank/match/payroll have `…Processing` re-entry flags; chat actions verify-or-fail. The problem is that this discipline is **not applied uniformly** — the paths below don't follow it.
+
+---
+
+### CR-14 · 🔴 fix-before-launch · `loadAllData` silently caps the entire ledger at 500 entries — every total is wrong above that, and opening balances drop out first
+
+**Location:** `src/App.jsx:892–899` (`loadAllData`: `journal_entries … .order("entry_date", { ascending: false }).limit(500)`).
+
+**Explanation:** The app's canonical `invoices` array — the single input to *every* `reports.js` computation (dashboard, P&L, Balance Sheet, KPIs, monthly report, tax, By Vendor/Category) — is built from only the **500 most-recent posted journal entries**. There is no paging and no truncation signal. Any company that has posted more than 500 entries silently computes its financials on a partial ledger: revenue/expense/net totals are understated, and because the fetch is ordered `entry_date DESC`, the **oldest** entries fall out of the window first — starting with the **opening-balance entry** (dated at the cutoff, the oldest row), so the Balance Sheet loses its entire starting position (cash/AR/AP/equity) and the RE split drifts, on top of the truncated activity. 500 entries is very modest — an SMB booking ~40–50 transactions/month crosses it inside a year — so this bites normal customers, not just outliers, and it bites **silently** (no error, the numbers just quietly go wrong). This is the worst outcome under the pass's lens: inconsistent books presented as authoritative.
+
+**What does the ledger look like after this?** Understated totals + a vanished opening position, with no indication anything is missing. **Profile:** any company past ~500 posted entries (accrual or cash-basis; higher-volume = worse). **Recommended fix:** page the fetch to load the full ledger (loop on `.range()` until exhausted), or move aggregate reads server-side; never cap the set that feeds the compute layer. Add a guard/test that flags when the returned count hits the limit.
+
+---
+
+### CR-15 · 🟠 should-fix · The app (500) and the AI (5000) read different-sized ledgers — their numbers diverge above 500 entries
+
+**Location:** `src/App.jsx:899` (`loadAllData`, `.limit(500)`) vs `src/lib/ledger.js` `fetchLedger` (`.limit(5000)`), used for the AI snapshot (`src/App.jsx:1768`).
+
+**Explanation:** The reports layer is deliberately built so a number shown in two places is computed by one function and is "identical to the penny" — but that guarantee is broken *below* the compute layer, at the fetch. The interactive app derives `invoices` from a **500-cap** fetch; the AI's financial snapshot and tools derive from a separate **5000-cap** `fetchLedger`. For any company between 500 and 5000 entries the two operate on different datasets, so the AI's "your revenue is $X" will disagree with the dashboard's $X — and above 5000 even the AI truncates. Same root cause as CR-14 (an unpaged, capped fetch); worth its own entry because it also breaks the app-vs-AI parity the product leans on for trust.
+
+**What does the ledger look like?** Two internally-consistent-but-mutually-contradictory views of the same books. **Recommended fix:** one paged ledger loader shared by both `loadAllData` and the AI path (remove the divergent caps together).
+
+---
+
+### CR-16 · 🟠 should-fix · Opening-balance edit deletes the prior opening entry before posting the new one — a repost failure leaves the company with no opening position
+
+**Location:** `src/App.jsx:1325–1345` (`postOpeningBalances`: the "reverse/replace" cleanup at 1326–1332 runs *before* the `post_journal_entry` RPC at 1341; the pre-delete is a swallowed `catch`, and the rows insert at 1349–1360 is another swallowed `catch`).
+
+**Explanation:** Editing opening balances is destructive-first with no transaction boundary and no rollback. Step 1 soft-deletes any prior `opening_balance` journal entry **and** `delete()`s the `opening_balances` rows; step 2 then posts the replacement entry. If step 2 fails for any reason — network blip, RLS, an unresolvable account code (it early-returns `false` at 1338) — the prior opening entry is **already gone** and nothing replaces it, so the company is left with **no opening position at all** (the entire day-one cash/AR/AP/equity foundation), which every downstream balance depends on. The user does see "Couldn't post opening balances," so it's not fully silent, but the destruction has happened and there is no auto-recovery. Separately, because the `opening_balances` rows insert (1349–1360) is a swallowed catch, a success there can silently diverge from the posted JE (the JE exists but the grid the user edits reads back empty).
+
+**What does the ledger look like?** After a mid-edit failure: an empty opening position under a company that had one — inconsistent books from a transient error. Setup-time and recoverable by re-entering, so 🟠, but the highest ledger-state severity of the "partial write" findings. **Recommended fix:** post the replacement first, then soft-delete the prior entry only after the new one is confirmed (fail-safe ordering), or wrap the swap in a single server-side transaction; mirror `markBillPaid`'s compensation discipline.
+
+---
+
+### CR-17 · 🟠 should-fix · Reversal posts, then writes its link metadata in a separate swallowed write — if that write fails, the once-only guard breaks and a repeat reverse double-negates the entry
+
+**Location:** `src/App.jsx:1953–1964` (`reverseJournalEntry`: posts via `post_journal_entry` with `p_meta: {}`, then a *separate* `update(import_metadata = {kind:"reversal", reverses})` in a swallowed `catch`), against the idempotency probe at `1940–1943` (which queries `import_metadata->>reverses`).
+
+**Explanation:** The reversal is posted with empty metadata and then linked in a second, unverified write whose failure is swallowed (`console.warn` only). If that link write fails: (1) the display index (`reversalIndex`, keyed on `import_metadata.reverses`) can't mark the original as reversed, so the UI shows it un-struck; and, more seriously, (2) the **idempotency probe that prevents a double-reversal keys on exactly that metadata** — so a second `reverse_entry`/void (a user re-clicking, or the AI re-invoked) won't find the first reversal and will post **another** one, leaving the original negated *twice* (`original − reversal − reversal`), which corrupts the P&L and Balance Sheet. So an unverified write (item 2) + a swallowed error (item 3) together defeat the once-only guarantee (item 6).
+
+**What does the ledger look like?** Best case: a correct-but-unlinked reversal (display only). Worst case (link write fails, then re-reversed): an entry double-negated → wrong net income and balances. **Recommended fix:** post the reversal *with* its `import_metadata` in the single RPC call (no second write), or verify the link write and fail loudly; the idempotency guard must not depend on a swallowed follow-up.
+
+---
+
+### CR-18 · 🟡 improvement · A failed/partial `loadAllData` still flips `companyDataLoaded = true`, so empty views read as authoritative truth
+
+**Location:** `src/App.jsx:890–1057` (`loadAllData` wrapped in one `try`; `finally { setCompanyDataLoaded(true) }` at 1057).
+
+**Explanation:** The whole loader is one try block, and `companyDataLoaded` is set `true` in `finally` regardless of whether the body threw. Its own comment — "data has arrived (even on partial error) — views may now trust empties" — is the hazard: a transient failure that throws mid-load (before `setInvoices`) is indistinguishable from a genuinely empty company. The dashboard and reports then render zeros/blank as fact. The concrete risk is compounding: a user who sees a falsely-empty ledger (or falsely-missing opening balances) may re-enter data or re-run setup — feeding directly into CR-16's destructive edit or a duplicate booking. There is no "load failed — retry" state.
+
+**What does the ledger look like?** The stored ledger is fine, but the user is shown a false empty and may act on it. **Recommended fix:** track load success per critical fetch; if a required fetch fails, surface a retry state instead of presenting empty-as-loaded.
+
+---
+
+### CR-19 · 🟡 improvement · Company-switch load race — a slow load for the previous company can overwrite the newly-selected company's data
+
+**Location:** `src/App.jsx:889` (`const cid = currentCompany.id` captured at load start) → `905` (`setInvoices(mapped)` is unconditional; no check that `currentCompany.id` is still `cid`).
+
+**Explanation:** `loadAllData` snapshots `cid` at the top but writes results with no staleness check. If a user switches A→B while `loadAllData(A)` is in flight and A resolves after B, `setInvoices` installs **A's** ledger under selected company **B**. It's the user's own company (not cross-tenant), and *writes* fail safe — a subsequent void/mark-paid resolves the row from A's data but issues the DB write with `.eq("company_id", B)`, which won't match A's entry, so it no-ops rather than corrupting B — so this is a **display-integrity** race, not a corruption. But the user can be looking at the wrong company's numbers with no signal. `resetCompanyState` clears state on switch but does not cancel the in-flight load.
+
+**What does the ledger look like?** Correct in the DB; briefly wrong on screen (A shown under B). **Recommended fix:** guard `setInvoices` (and siblings) with `if (currentCompany.id !== cid) return`, or use a per-load token/AbortController.
+
+---
+
+### Verdict — Pass 3
+
+**Top 3 torn-state risks:** (1) **CR-14** — the 500-entry ledger cap silently produces wrong totals and drops the opening position for any company past modest volume; it's the single most consequential integrity issue found in any pass so far because it needs no failure at all, just growth. (2) **CR-16** — the opening-balance edit destroys the old foundation before securing the new one, so a transient repost failure wipes the day-one position with no rollback. (3) **CR-17** — a swallowed link-write can break the reversal idempotency guard and let a repeat void double-negate an entry.
+
+**Is the failure-handling philosophy consistent or ad-hoc? Ad-hoc.** The codebase *contains* an excellent template — `markBillPaid`'s optimistic-apply + compensation-reverse + audit + Sentry — and the per-entry RPC atomicity is sound. But that discipline was applied where it was hard-won (the payment/settlement saga) and not generalized: opening-balance edits delete-first with no rollback, `reverseJournalEntry` links via an unverified swallowed write, and `loadAllData` treats "failed" and "empty" identically. The result is a codebase that is rigorous in the places that bled and casual elsewhere — safe writes are a pattern that exists but isn't a *standard*.
+
+**Pass-3-adjacent concern that most needs its own look: load & compute at volume.** CR-14/CR-15 expose that everything upstream of the (well-tested) compute layer — the fetch — is unpaged and capped, and the app and AI cap differently. A dedicated **"scale / paging" pass** (one shared paged ledger loader; remove the 500/5000 caps together; a fixture at 600+ and 5000+ entries that asserts dashboard === AI === full-ledger totals and that the opening entry is always present) would close the highest-severity finding and re-establish the "identical to the penny" guarantee at the layer where it currently breaks. It also ties O47 (volume/scale check) and the O80-scalability note (answer-by-query, not ingestion).
