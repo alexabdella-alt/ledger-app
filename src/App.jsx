@@ -1632,22 +1632,23 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const generateExecSummary = async (period, payload) => {
     try {
       const pl = payload.pl;
-      const prompt = `Write a 3-5 sentence executive summary of this small business's ${formatPeriod(period)} financials, addressed to the owner. Plain English, specific numbers, warm but direct CFO tone. No markdown, no bullet points, no headings — just sentences.
-
-Revenue: $${pl.revenue.current} (prior month $${pl.revenue.prior})
-Total expenses: $${pl.expenses_total.current} (prior $${pl.expenses_total.prior})
-Net income: $${pl.net_income.current} (prior $${pl.net_income.prior})
-Cash on hand: $${payload.cash.cash_on_hand}; monthly burn: $${payload.cash.burn_rate}; runway: ${payload.cash.runway_months ?? "n/a"} months
-Receivables: $${payload.receivables.total} ($${payload.receivables.overdue} overdue); Payables: $${payload.payables.total} ($${payload.payables.overdue} overdue)
-Top vendors: ${payload.top_vendors.map(v => `${v.vendor} $${v.total}`).join(", ") || "none"}
-Business health (plain-language, do NOT invent a numeric score): ${payload.health.headline || payload.health.tone || "n/a"}
-${payload.anomalies.length ? "Flags: " + payload.anomalies.map(a => a.title).join("; ") : "No anomalies flagged."}
-
-Reply with ONLY the summary text.`;
+      // The INSTRUCTIONS live server-side (profile "exec-summary"); the client sends only the
+      // figures as DATA slots (PERIOD, FIGURES). The server wraps FIGURES in untrusted-data
+      // delimiters, so even a hostile vendor name in the figures can't act as an instruction.
+      const figures = [
+        `Revenue: $${pl.revenue.current} (prior month $${pl.revenue.prior})`,
+        `Total expenses: $${pl.expenses_total.current} (prior $${pl.expenses_total.prior})`,
+        `Net income: $${pl.net_income.current} (prior $${pl.net_income.prior})`,
+        `Cash on hand: $${payload.cash.cash_on_hand}; monthly burn: $${payload.cash.burn_rate}; runway: ${payload.cash.runway_months ?? "n/a"} months`,
+        `Receivables: $${payload.receivables.total} ($${payload.receivables.overdue} overdue); Payables: $${payload.payables.total} ($${payload.payables.overdue} overdue)`,
+        `Top vendors: ${payload.top_vendors.map(v => `${v.vendor} $${v.total}`).join(", ") || "none"}`,
+        `Business health: ${payload.health.headline || payload.health.tone || "n/a"}`,
+        payload.anomalies.length ? "Flags: " + payload.anomalies.map(a => a.title).join("; ") : "No anomalies flagged.",
+      ].join("\n");
       const data = await callAIProxy({
-        model: AI_MODEL, max_tokens: 400,
-        system: "You are a CFO writing a brief, plain-English monthly summary for a small-business owner. No markdown.",
-        messages: [{ role: "user", content: prompt }],
+        profile: "exec-summary",
+        slots: { PERIOD: formatPeriod(period), FIGURES: figures },
+        messages: [{ role: "user", content: "Write the executive summary from the figures in the instructions." }],
       });
       const text = data?.content?.find(b => b.type === "text")?.text?.trim();
       return text || null;

@@ -8,6 +8,7 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildAnthropicPayload } from "./aiProfiles.js";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -52,7 +53,34 @@ serve(async (req) => {
     //    pass-through, so it already supports function calling: a `tools` array in
     //    the request body is forwarded to Anthropic, and any `tool_use` content
     //    blocks (and the `stop_reason`) come straight back to the client unmodified.
-    const body = await req.text();
+    //
+    //    PAYLOAD BOUNDARY (CR-8): a request carrying a `profile` is built SERVER-SIDE
+    //    from the registry — model/max_tokens/system/tools are owned here, and any
+    //    client-supplied model/system/tools/max_tokens are ignored (breadcrumbed).
+    //    Unknown profile → 400. Requests with NO profile are LEGACY un-migrated call
+    //    sites: passed through unchanged for now, but breadcrumbed so they're visible
+    //    and the boundary can be made mandatory once every call site is migrated.
+    let clientBody: Record<string, unknown> = {};
+    try { clientBody = JSON.parse(await req.text() || "{}"); } catch { clientBody = {}; }
+
+    let outbound: unknown;
+    const profileKey = typeof clientBody.profile === "string" ? clientBody.profile : null;
+    if (profileKey) {
+      const built = buildAnthropicPayload(profileKey, clientBody);
+      if ((built as { error?: string }).error) {
+        return json({ error: (built as { error: string }).error }, 400);   // unknown profile
+      }
+      outbound = (built as { payload: unknown }).payload;
+      const stripped = (built as { stripped?: string[] }).stripped || [];
+      const passthrough = (built as { passthrough?: boolean }).passthrough;
+      if (stripped.length) console.warn(`[ai-proxy] profile=${profileKey} ignored client-supplied: ${stripped.join(", ")}`);
+      if (passthrough) console.warn(`[ai-proxy] profile=${profileKey} is a FLAGGED passthrough (system/tools still client-authored — migration pending)`);
+    } else {
+      // LEGACY: no profile → un-migrated call site. Pass the client payload through.
+      console.warn("[ai-proxy] LEGACY passthrough (no profile) — un-migrated call site; boundary not enforced for this request");
+      outbound = clientBody;
+    }
+
     const upstream = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -60,7 +88,7 @@ serve(async (req) => {
         "x-api-key": ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
       },
-      body,
+      body: JSON.stringify(outbound),
     });
     return new Response(await upstream.text(), {
       status: upstream.status,
