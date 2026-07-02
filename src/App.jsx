@@ -28,7 +28,7 @@ import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/rev
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
-import { fetchLedger, resolveEntryDbId } from "./lib/ledger";
+import { fetchLedger, resolveEntryDbId, alreadyReversed } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser, isSentryEnabled } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
@@ -1327,42 +1327,63 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const { lines } = buildOpeningBalanceEntry(merged, { cutoffDate: cutoff, obeCode: OBE_CODE, accounts: CHART_OF_ACCOUNTS });
     if (!lines.length) { showNotification("Enter at least one opening balance first", "error"); return false; }
 
-    // Edit = reverse/replace: soft-delete any prior opening JE + clear prior rows.
-    try {
-      const { data: priorJEs } = await supabase.from("journal_entries").select("id")
-        .eq("company_id", currentCompany.id).eq("source", "opening_balance").is("deleted_at", null).eq("status", "posted");
-      for (const je of (priorJEs || []))
-        await supabase.from("journal_entries").update({ deleted_at: new Date().toISOString(), deleted_by: session.user.id }).eq("id", je.id).eq("company_id", currentCompany.id);
-      await supabase.from("opening_balances").delete().eq("company_id", currentCompany.id);
-    } catch (e) { console.warn("[opening] prior cleanup:", e?.message || e); }
+    // Edit = reverse/replace, done FAIL-SAFE (CR-16): POST THE NEW ENTRY FIRST, verify it,
+    // and only THEN supersede the prior one. The old delete-first order meant a repost
+    // failure left the company with NO opening position (the entire day-one foundation) —
+    // a torn ledger from a transient error. Now a failure at any step leaves a VALID opening
+    // position (worst case: briefly doubled, which the next successful edit reconciles;
+    // never none). Mirrors markBillPaid's post-then-reconcile discipline.
+    const cid = currentCompany.id;
 
-    // Resolve account ids and post the one balanced entry through the canonical RPC.
+    // 1) Resolve account ids and POST the new balanced entry.
     const rpcLines = [];
     for (const l of lines) {
       const aid = await ensureAccountIdForCode(l.code);
-      if (!aid) { showNotification(`Couldn't resolve account ${l.code}`, "error"); return false; }
+      if (!aid) { showNotification(`Couldn't resolve account ${l.code}`, "error"); return false; }  // prior untouched → still valid
       rpcLines.push({ account_id: aid, debit: l.debit, credit: l.credit, memo: "Opening balance" });
     }
     const { data: rpcData, error } = await supabase.rpc("post_journal_entry", {
-      p_company_id: currentCompany.id, p_entry_date: cutoff, p_description: `Opening balances as of ${cutoff}`,
+      p_company_id: cid, p_entry_date: cutoff, p_description: `Opening balances as of ${cutoff}`,
       p_source: "opening_balance", p_created_by: session.user.id, p_lines: rpcLines, p_meta: {},
     });
     if (error) { showNotification("Couldn't post opening balances — " + error.message, "error"); return false; }
     const jeId = rpcData?.id || rpcData?.entry?.id || null;
 
-    // Write opening_balances rows (one per account, natural balance) linked to the JE.
+    // 2) VERIFY the new entry actually committed before we touch the old one.
+    if (!jeId) {
+      try { Sentry.captureMessage("opening_post_no_id", { level: "error", tags: { kind: "opening_post_no_id" }, extra: { company_id: String(cid), cutoff } }); } catch {}
+      showNotification("Couldn't confirm the opening entry saved — your previous opening balances are unchanged. Please try again.", "error");
+      return false;   // prior opening entry NOT superseded → the company still has its old position
+    }
+
+    // 3) Write opening_balances rows for the NEW entry (natural balance, linked to the JE).
     try {
       const rows = [];
       for (const [code, val] of Object.entries(merged)) {
         const bal = Math.round((Number(val) || 0) * 100) / 100;
         if (bal === 0) continue;
         const aid = await ensureAccountIdForCode(code);
-        if (aid) rows.push({ company_id: currentCompany.id, account_id: aid, balance: bal, as_of_date: cutoff, journal_entry_id: jeId, posted: true });
+        if (aid) rows.push({ company_id: cid, account_id: aid, balance: bal, as_of_date: cutoff, journal_entry_id: jeId, posted: true });
       }
       const obe = lines.find(l => l.code === OBE_CODE);
-      if (obe) { const aid = await ensureAccountIdForCode(OBE_CODE); if (aid) rows.push({ company_id: currentCompany.id, account_id: aid, balance: (obe.credit || 0) - (obe.debit || 0), as_of_date: cutoff, journal_entry_id: jeId, posted: true }); }
+      if (obe) { const aid = await ensureAccountIdForCode(OBE_CODE); if (aid) rows.push({ company_id: cid, account_id: aid, balance: (obe.credit || 0) - (obe.debit || 0), as_of_date: cutoff, journal_entry_id: jeId, posted: true }); }
       if (rows.length) await supabase.from("opening_balances").insert(rows);
     } catch (e) { console.warn("[opening] rows insert:", e?.message || e); }
+
+    // 4) NOW supersede the OLD opening entry(ies) — everything except the one just posted.
+    // A failure here leaves the new position live (never none); log loudly for cleanup.
+    try {
+      const { data: priorJEs } = await supabase.from("journal_entries").select("id")
+        .eq("company_id", cid).eq("source", "opening_balance").is("deleted_at", null).eq("status", "posted").neq("id", jeId);
+      for (const je of (priorJEs || []))
+        await supabase.from("journal_entries").update({ deleted_at: new Date().toISOString(), deleted_by: session.user.id }).eq("id", je.id).eq("company_id", cid);
+      await supabase.from("opening_balances").delete().eq("company_id", cid).neq("journal_entry_id", jeId);
+      await supabase.from("opening_balances").delete().eq("company_id", cid).is("journal_entry_id", null);  // legacy rows w/o a JE link
+    } catch (e) {
+      console.warn("[opening] supersede prior failed:", e?.message || e);
+      try { Sentry.captureException(e, { tags: { kind: "opening_supersede_failure" }, extra: { company_id: String(cid), new_je: String(jeId) } }); } catch {}
+      logAudit("opening_supersede_failure", `New opening entry ${jeId} posted, but couldn't remove the prior one — opening position may be doubled until re-saved`, null, { cutoff, je: String(jeId) });
+    }
 
     logAudit("opening_balances_posted", `Opening balances posted as of ${cutoff} (${lines.length} lines)`, null, { cutoff, je: jeId ? String(jeId) : null });
     try { await loadAllData(); } catch {}
@@ -1941,12 +1962,21 @@ Reply with ONLY the summary text.`;
     if (!invoice || !currentCompany?.id || !session?.user?.id) return null;
     const origId = resolveEntryDbId(invoice) || invoice.db_entry_id || null;
     if (!origId) { showNotification("Can't reverse — entry isn't saved yet", "error"); return null; }
+    // Idempotency (CR-17). GL-TRUTH first: a live reversing entry already in the loaded
+    // ledger makes a repeat provably inert (no double-negation), and it can't depend on a
+    // post-write that might have failed. The DB probe is a belt-and-suspenders backstop for
+    // entries outside the loaded window.
+    if (alreadyReversed(invoicesRef.current, origId)) {
+      showNotification("Already reversed", "error");
+      const ex = (invoicesRef.current || []).find(r => r.import_metadata && String(r.import_metadata.reverses) === String(origId));
+      return ex ? resolveEntryDbId(ex) : true;
+    }
     try {
       const { data: existing } = await supabase.from("journal_entries").select("id")
         .eq("company_id", currentCompany.id).eq("import_metadata->>reverses", String(origId))
         .is("deleted_at", null).eq("status", "posted").limit(1);
       if (Array.isArray(existing) && existing.length) { showNotification("Already reversed", "error"); return existing[0].id; }
-    } catch { /* probe failed — proceed (post is still idempotent enough for the UI) */ }
+    } catch { /* probe failed — GL-truth guard above already covers the common repeat */ }
 
     const { data: orig, error: loadErr } = await supabase.from("journal_entries")
       .select("entry_date, description, journal_entry_lines(account_id, debit, credit, memo)")
@@ -1955,19 +1985,17 @@ Reply with ONLY the summary text.`;
     const lines = buildReversalLines(orig.journal_entry_lines);
     if (!lines.length) { showNotification("Nothing to reverse on that entry", "error"); return null; }
 
+    // Post the reversal WITH its link metadata in the SAME atomic RPC (p_meta persists to
+    // import_metadata — the depreciation guard relies on the same contract). No separate,
+    // swallowable update: the idempotency marker is written iff the entry is posted.
     const { data: rpcData, error: rpcErr } = await supabase.rpc("post_journal_entry", {
       p_company_id: currentCompany.id, p_entry_date: new Date().toISOString().slice(0, 10),
       p_description: `REVERSAL: ${orig.description || invoice.vendor || "entry"}${reason ? ` — ${reason}` : ""}`,
-      p_source: "manual", p_created_by: session.user.id, p_lines: lines, p_meta: {},
+      p_source: "manual", p_created_by: session.user.id, p_lines: lines,
+      p_meta: { kind: "reversal", reverses: String(origId) },
     });
     if (rpcErr) { console.error("[reverse] post failed:", rpcErr.message); showNotification("Couldn't post the reversal — " + rpcErr.message, "error"); return null; }
     const revId = rpcData?.id || rpcData?.entry?.id || null;
-    if (revId) {
-      try {
-        await supabase.from("journal_entries").update({ import_metadata: { kind: "reversal", reverses: String(origId) } })
-          .eq("id", revId).eq("company_id", currentCompany.id);
-      } catch (e) { console.warn("[reverse] link write failed:", e?.message || e); }
-    }
     logAudit("entry_reversed", `Reversed ${invoice.vendor || orig.description || "entry"} · $${(invoice.amount || 0).toFixed(2)}${reason ? ` — ${reason}` : ""}`,
       null, { reverses: String(origId), reversal_id: revId ? String(revId) : null }, byAI ? "AI Chat" : "owner");
     return revId;

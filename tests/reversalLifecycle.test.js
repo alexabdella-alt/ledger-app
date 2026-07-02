@@ -145,3 +145,38 @@ describe("KPIs inherit the fix (no double-count after a void)", () => {
     expect(gm.status).toBe("na");   // no revenue after the wash → margin N/A, not computed off a phantom 1000
   });
 });
+
+// ── CR-17: reversal idempotency is GL-truth (a repeat void is provably inert) ──
+import { alreadyReversed } from "../src/lib/ledger.js";
+
+describe("reversal idempotency guard (CR-17) — GL-truth, no double-negation", () => {
+  const sale = [{ code: CASH, debit: 1000 }, { code: REV, credit: 1000 }];
+  // The live reversal carries import_metadata.reverses = the original's id (written
+  // atomically with the entry now, so this marker exists iff the reversal was posted).
+  const reversalRow = { id: "revX", db_entry_id: "revX", date: "2026-04-10", amount: 1000,
+    gl_code: REV, secondary_gl_code: CASH, debit_credit: "debit", type: "revenue",
+    import_metadata: { kind: "reversal", reverses: "saleX" } };
+
+  it("detects an existing LIVE reversal → a repeat reverse is blocked", () => {
+    const ledger = [
+      { id: "saleX", db_entry_id: "saleX", date: "2026-04-02", amount: 1000, gl_code: REV, secondary_gl_code: CASH, debit_credit: "credit", type: "revenue" },
+      reversalRow,
+    ];
+    expect(alreadyReversed(ledger, "saleX")).toBe(true);   // guard fires → reverseJournalEntry returns early, no 2nd reversal
+  });
+
+  it("a not-yet-reversed entry is reversible; a voided/deleted reversal does NOT count", () => {
+    expect(alreadyReversed([{ id: "saleX" }], "saleX")).toBe(false);
+    expect(alreadyReversed([{ ...reversalRow, status: "voided" }], "saleX")).toBe(false);
+    expect(alreadyReversed([{ ...reversalRow, deleted_at: "2026-04-11T00:00:00Z" }], "saleX")).toBe(false);
+  });
+
+  it("net income after ONE reversal is 0, and the guard prevents a 2nd (which would double-negate to −1000)", () => {
+    const oneReversal = flattenJournalEntries([
+      dbEntry("saleX", "2026-04-02", sale),
+      dbEntry("revX", "2026-04-10", reversed(sale), { import_metadata: { kind: "reversal", reverses: "saleX" } }),
+    ]);
+    expect(computeNetIncome(oneReversal, YTD)).toBe(0);        // sale + its reversal net to zero
+    expect(alreadyReversed(oneReversal, "saleX")).toBe(true);  // a repeat void is refused → never becomes −1000
+  });
+});

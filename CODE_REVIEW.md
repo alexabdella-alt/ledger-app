@@ -38,7 +38,7 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 
 - **Pass 1 — Correctness & money math (GAAP/ledger)** — 2026-07-01 — 7 findings (1 🔴, 3 🟠, 3 🟡/🔵). **CR-1/CR-2/CR-3 fixed in C134**; CR-4 open; CR-5→O86, CR-6→O87, CR-7 note-only.
 - **Pass 2 — Security & multi-tenancy** — 2026-07-01 — 6 findings (0 🔴, 3 🟠, 2 🟡, 1 🔵). No cross-tenant read/corruption path found; risks are cost-abuse + own-tenant AI mutation + policy drift.
-- **Pass 3 — Failure modes & data integrity** — 2026-07-01 — 6 findings (1 🔴, 3 🟠, 2 🟡). **CR-14/CR-15 fixed in C135**; CR-16/17/18 in C136; CR-19 noted.
+- **Pass 3 — Failure modes & data integrity** — 2026-07-01 — 6 findings (1 🔴, 3 🟠, 2 🟡). **CR-14/CR-15/CR-18/CR-19 fixed in C135; CR-16/CR-17 in C136.**
 
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
@@ -262,6 +262,7 @@ Positives worth stating first, because they set the bar the weak paths fall shor
 ---
 
 ### CR-16 · 🟠 should-fix · Opening-balance edit deletes the prior opening entry before posting the new one — a repost failure leaves the company with no opening position
+> **✅ FIXED — C136.** Reordered to **post-new-first, verify, then supersede old**: resolve ids → post the new opening entry → confirm it committed (`jeId`; Sentry + "previous unchanged" message if not) → write its `opening_balances` rows → only then soft-delete the prior opening JE(s) (`neq id`) and prior rows. A failure at any step now leaves a **valid** opening position (worst case briefly doubled, which the next save reconciles) — never none. Supersede failure logs loudly (Sentry + audit `opening_supersede_failure`).
 
 **Location:** `src/App.jsx:1325–1345` (`postOpeningBalances`: the "reverse/replace" cleanup at 1326–1332 runs *before* the `post_journal_entry` RPC at 1341; the pre-delete is a swallowed `catch`, and the rows insert at 1349–1360 is another swallowed `catch`).
 
@@ -272,6 +273,7 @@ Positives worth stating first, because they set the bar the weak paths fall shor
 ---
 
 ### CR-17 · 🟠 should-fix · Reversal posts, then writes its link metadata in a separate swallowed write — if that write fails, the once-only guard breaks and a repeat reverse double-negates the entry
+> **✅ FIXED — C136.** The reversal now posts **with** its link metadata in the single RPC (`p_meta: {kind:"reversal", reverses}` — the same contract depreciation relies on), so the marker exists iff the entry is posted (no separate swallowable write). Idempotency is now **GL-truth**: new `alreadyReversed(ledger, origId)` (lib/ledger) checks for a live reversing entry referencing this one — a repeat void is provably inert without depending on a post-write. Test (`reversalLifecycle.test.js`): one reversal nets to 0; the guard detects it and refuses a second (never double-negates to −1000); voided/deleted reversals don't count.
 
 **Location:** `src/App.jsx:1953–1964` (`reverseJournalEntry`: posts via `post_journal_entry` with `p_meta: {}`, then a *separate* `update(import_metadata = {kind:"reversal", reverses})` in a swallowed `catch`), against the idempotency probe at `1940–1943` (which queries `import_metadata->>reverses`).
 
@@ -282,6 +284,7 @@ Positives worth stating first, because they set the bar the weak paths fall shor
 ---
 
 ### CR-18 · 🟡 improvement · A failed/partial `loadAllData` still flips `companyDataLoaded = true`, so empty views read as authoritative truth
+> **✅ FIXED — C135.** `loadAllData` now treats the ledger fetch as CRITICAL: on error it surfaces a notification + Sentry (`ledger_load_failure`) and returns **without** setting `companyDataLoaded`, so a failed load can't render as an empty company. `companyDataLoaded=true` is reached only after the ledger loaded (secondary fetches still degrade gracefully).
 
 **Location:** `src/App.jsx:890–1057` (`loadAllData` wrapped in one `try`; `finally { setCompanyDataLoaded(true) }` at 1057).
 
@@ -292,6 +295,7 @@ Positives worth stating first, because they set the bar the weak paths fall shor
 ---
 
 ### CR-19 · 🟡 improvement · Company-switch load race — a slow load for the previous company can overwrite the newly-selected company's data
+> **✅ FIXED — C135.** `loadAllData` now drops a stale result: `if (currentCompany.id !== cid) return;` before `setInvoices`, so a late-resolving load for the previous company can't overwrite the newly-selected one.
 
 **Location:** `src/App.jsx:889` (`const cid = currentCompany.id` captured at load start) → `905` (`setInvoices(mapped)` is unconditional; no check that `currentCompany.id` is still `cid`).
 

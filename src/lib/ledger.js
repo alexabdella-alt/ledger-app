@@ -191,3 +191,17 @@ export function reversalFor(idx, row) {
   if (!idx || !row) return null;
   return idx.get(String(row.db_entry_id || row.id)) || null;
 }
+
+// GL-TRUTH idempotency guard for reversal/void (CR-17): is there ALREADY a LIVE
+// reversing entry for `origId` in the loaded ledger? Mirrors the depreciation
+// auto-post guard — derive "already reversed" from a live JE that references this
+// entry, NOT from a flag/metadata write that could silently fail. A repeat void
+// must be provably inert, so this must not depend on anything written after the post.
+export function alreadyReversed(ledger, origId) {
+  const target = String(origId ?? "");
+  if (!target) return false;
+  return (ledger || []).some(r =>
+    r && r.status !== "voided" && !r.deleted_at &&
+    r.import_metadata && String(r.import_metadata.reverses ?? "") === target
+  );
+}
