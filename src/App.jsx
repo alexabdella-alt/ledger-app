@@ -28,7 +28,7 @@ import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/rev
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
-import { flattenJournalEntries, fetchLedger, resolveEntryDbId } from "./lib/ledger";
+import { fetchLedger, resolveEntryDbId } from "./lib/ledger";
 import { Sentry, setSentryUser, clearSentryUser, isSentryEnabled } from "./lib/sentry";
 import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
@@ -887,23 +887,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const loadAllData = async () => {
     const cid = currentCompany.id;
-    try {
-      // Load journal entries — expand each line individually for correct balance sheet mapping
-      const { data: entries } = await supabase
-        .from("journal_entries")
-        .select("*, journal_entry_lines(*, accounts(code,name))")
-        .eq("company_id", cid)
-        .eq("status", "posted")
-        .is("deleted_at", null)
-        .order("entry_date", { ascending: false })
-        .limit(500);
 
-      if (entries) {
-        // Flatten via the shared single-source-of-truth mapper (src/lib/ledger.js),
-        // the same one the AI tool layer uses, so the two can never diverge.
-        const mapped = flattenJournalEntries(entries, CHART_OF_ACCOUNTS);
-        setInvoices(mapped);
-      }
+    // ── CRITICAL FETCH: the FULL ledger, paged + uncapped (CR-14/CR-15) ──────────
+    // The whole posted ledger via the ONE shared loader (fetchLedger) — the same
+    // dataset the AI path uses, so dashboard === AI === reports by construction.
+    // A failure here must NOT masquerade as an empty company (CR-18): surface it +
+    // Sentry and bail WITHOUT marking data loaded, so no view renders false
+    // emptiness and no one books against a truncated/absent ledger.
+    let mapped;
+    try {
+      mapped = await fetchLedger(supabase, cid, CHART_OF_ACCOUNTS);
+    } catch (e) {
+      console.error("[loadAllData] ledger load failed:", e?.message || e);
+      try { Sentry.captureException(e, { tags: { kind: "ledger_load_failure" }, extra: { company_id: String(cid) } }); } catch {}
+      showNotification("Couldn't load your books — please refresh. Your data is safe on the server.", "error");
+      return;   // do NOT setCompanyDataLoaded(true) over a throw — failed ≠ empty
+    }
+    if (currentCompany.id !== cid) return;   // company switched mid-load (CR-19) — drop the stale result
+
+    try {
+      setInvoices(mapped);
 
       // Load contacts
       const { data: contactsData } = await supabase
@@ -1053,8 +1056,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // generation are driven by effects below (so they read fresh state, not stale refs).
       await loadNotifications(cid);
 
-    } catch(e) { console.error("loadAllData error:", e); }
-    finally { setCompanyDataLoaded(true); }   // data has arrived (even on partial error) — views may now trust empties
+    } catch(e) { console.error("loadAllData (secondary) error:", e); }
+    // The critical ledger loaded (we returned early otherwise), so views may now trust
+    // the data. A secondary fetch failing (contacts/docs/etc.) degrades gracefully.
+    finally { setCompanyDataLoaded(true); }
   };
 
   // ── SUPABASE PERSISTENCE ──────────────────────────────────────

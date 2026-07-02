@@ -38,7 +38,7 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 
 - **Pass 1 — Correctness & money math (GAAP/ledger)** — 2026-07-01 — 7 findings (1 🔴, 3 🟠, 3 🟡/🔵). **CR-1/CR-2/CR-3 fixed in C134**; CR-4 open; CR-5→O86, CR-6→O87, CR-7 note-only.
 - **Pass 2 — Security & multi-tenancy** — 2026-07-01 — 6 findings (0 🔴, 3 🟠, 2 🟡, 1 🔵). No cross-tenant read/corruption path found; risks are cost-abuse + own-tenant AI mutation + policy drift.
-- **Pass 3 — Failure modes & data integrity** — 2026-07-01 — 6 findings (1 🔴, 3 🟠, 2 🟡). Headline: the app ledger is silently capped at 500 entries.
+- **Pass 3 — Failure modes & data integrity** — 2026-07-01 — 6 findings (1 🔴, 3 🟠, 2 🟡). **CR-14/CR-15 fixed in C135**; CR-16/17/18 in C136; CR-19 noted.
 
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
@@ -240,6 +240,7 @@ Positives worth stating first, because they set the bar the weak paths fall shor
 ---
 
 ### CR-14 · 🔴 fix-before-launch · `loadAllData` silently caps the entire ledger at 500 entries — every total is wrong above that, and opening balances drop out first
+> **✅ FIXED — C135.** New paged loader `fetchLedgerEntries` (lib/ledger) pages posted entries via `.range()` in 1000-row batches until exhausted (stable `entry_date desc, id desc` order), throwing on any page error so a partial ledger is never returned as complete. `loadAllData` now builds `invoices` from the uncapped `fetchLedger` — the whole ledger, opening entry included. Tests (`tests/ledgerPaging.test.js`): loads 5201 entries, opening entry present, boundary sizes 1000/1001 terminate correctly, a mid-load page error rejects. **At <500 entries: identical to before. At >500: totals are now whole and the Balance Sheet keeps its opening position (previously silently truncated).**
 
 **Location:** `src/App.jsx:892–899` (`loadAllData`: `journal_entries … .order("entry_date", { ascending: false }).limit(500)`).
 
@@ -250,6 +251,7 @@ Positives worth stating first, because they set the bar the weak paths fall shor
 ---
 
 ### CR-15 · 🟠 should-fix · The app (500) and the AI (5000) read different-sized ledgers — their numbers diverge above 500 entries
+> **✅ FIXED — C135.** `fetchLedger` and `loadAllData` now share the ONE paged loader (the separate 5000-cap path is gone), so the app and the AI read the same dataset by construction. Test asserts app-side === AI-side computes at 1500 entries (between the old caps). **At >500 entries the two no longer diverge.**
 
 **Location:** `src/App.jsx:899` (`loadAllData`, `.limit(500)`) vs `src/lib/ledger.js` `fetchLedger` (`.limit(5000)`), used for the AI snapshot (`src/App.jsx:1768`).
 

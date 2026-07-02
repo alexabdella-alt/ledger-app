@@ -134,18 +134,36 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
 // and flatten it. Used by the AI tools so they always see complete, current data
 // regardless of how many transactions exist. Never throws to the caller's flow
 // other than via the awaited promise (callers wrap in try/catch).
+// Page through ALL posted entries for a company — no cap. Batched via .range()
+// with a STABLE order (entry_date desc, then id desc as a unique tiebreaker) so
+// pages never overlap or skip. Throws on any page error: a partial ledger must
+// never be silently returned as if complete (that's "false emptiness" at scale).
+// This is THE ledger fetch — both the app (loadAllData) and the AI path use it,
+// so dashboard === AI === reports by construction (no divergent caps).
+export async function fetchLedgerEntries(supabase, companyId, { pageSize = 1000 } = {}) {
+  if (!supabase || !companyId) return [];
+  const all = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("journal_entries")
+      .select("*, journal_entry_lines(*, accounts(code,name))")
+      .eq("company_id", companyId)        // tenant scope (also enforced by RLS)
+      .eq("status", "posted")
+      .is("deleted_at", null)
+      .order("entry_date", { ascending: false })
+      .order("id", { ascending: false })  // unique tiebreaker → stable pagination
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data || [];
+    all.push(...page);
+    if (page.length < pageSize) break;    // short/empty page → last page reached
+  }
+  return all;
+}
+
 export async function fetchLedger(supabase, companyId, chartOfAccounts = []) {
   if (!supabase || !companyId) return [];
-  const { data: entries, error } = await supabase
-    .from("journal_entries")
-    .select("*, journal_entry_lines(*, accounts(code,name))")
-    .eq("company_id", companyId)        // tenant scope (also enforced by RLS)
-    .eq("status", "posted")
-    .is("deleted_at", null)
-    .order("entry_date", { ascending: false })
-    .limit(5000);
-  if (error) throw error;
-  return flattenJournalEntries(entries, chartOfAccounts);
+  return flattenJournalEntries(await fetchLedgerEntries(supabase, companyId), chartOfAccounts);
 }
 
 // O8 — reversal display index. A GAAP reversal (#14) posts a SEPARATE offsetting entry
