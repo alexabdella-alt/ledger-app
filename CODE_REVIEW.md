@@ -42,6 +42,8 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 - **Pass 4 — Architecture, state & React** — 2026-07-02 — 5 findings (0 🔴, 2 🟠, 3 🟡). **CR-21 + CR-24 fixed in C137**; CR-20/CR-23 → ROADMAP LedgerProvider item; CR-22 → standing audit surface.
 - **Pass 5 — Product-principle conformance** — 2026-07-02 — 3 findings (0 🔴, 2 🟠, 1 🟡). **CR-25 + CR-26 fixed in C138**; CR-27 → ROADMAP owner-proof-panel.
 
+- **Synthesis & triage** (review close-out) — root-cause families, top-10, four-bucket triage, tracking map.
+
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
 ---
@@ -427,6 +429,7 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 ---
 
 ### CR-27 · 🟠 should-fix · The app is not yet the owner's PROOF surface — completeness/reviewed/backed status exists only for the CPA, so an owner can't *see* their books are right
+> **→ TRACKED: ROADMAP O90** (owner-facing trust panel — the owner-readable projection of O60/O49/O50, translated per the Cardinal Principle; P1-adjacent / pre-first-client). A build, not a fix; not done here.
 
 **Location:** owner surfaces (`DashboardView`) show real balanced numbers + business health + task prompts, but **no** completeness/reviewed indicator; the trust-layer proof lives in `ReviewView` (CPA cockpit — `reconcileDroppedDocs`/`flagsForReview`), with no owner-facing counterpart (grep for owner "documents received / reviewed through / nothing missing" ⇒ none).
 
@@ -443,3 +446,68 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 **Top 3 gaps:** (1) **CR-27** — the owner cannot *see* their books are complete/reviewed, so the "app earns trust" pillar of the thesis is CPA-only; this is the one that most contradicts the stated model of an owner who's given up oversight. (2) **CR-25** — the booking flow shows the owner "ASC 360 … capitalized … depreciated … balance sheet," breaking the Cardinal Principle at the moment of highest intent. (3) **CR-26** — untranslated machinery (a GL code, "reversing entry", "journal entries") on the two most owner-facing surfaces, plus a prompt that requests plain English rather than enforcing it.
 
 **What the previous four passes structurally missed:** Passes 1–4 measured the code against **accounting and engineering truth** — is the math right, the tenancy safe, the state consistent, the architecture sound — and a codebase can pass all four while still breaking its product promise by showing the owner "ASC 360" or leaving them no way to see their books are right. Those passes had no lens for **"is the accounting successfully *hidden and translated*, and can the owner *trust what they can't see*"** — which is the entire wedge. This pass is the one that checks whether Shadow is doing the thing it says makes it different from QBO (removing the operating, earning trust in the invisible), and it's the axis where the most-correct parts of the system are the least surfaced to the person the product is for.
+
+---
+
+## Synthesis & triage (review close-out) · 2026-07-02
+
+27 findings across 5 passes. Two 🔴 and the load/safe-write/perf/copy clusters are fixed (C134–C138); the rest are tracked to roadmap items. This section dedupes by root cause, ranks by severity × silence, buckets every open finding, and confirms nothing is orphaned.
+
+### (a) Root-cause families — the review found four recurring roots, not 27 unrelated bugs
+
+- **The §9 / "derive from GL truth, not a flag" family.** `CR-1`, `CR-2`, `CR-3` (Pass 1) are the reporting-layer faces of the same anti-pattern the project already chased through matching (O73), report-source (C127), the transaction tabs (C130), and reconciliation (C133): *sign the GL legs; never sum `amount` + a `type`/`payment_status` flag.* All three **fixed C134** — and the pattern is now guarded by `reversalLifecycle`/`reconcile`/`denormFlagAudit`/`booksTabFilter` tests. **This is the codebase's signature bug; it's now well-fenced.**
+- **The date/timezone-keying family.** `CR-4` (depreciation/prepaid schedule dates), `CR-5` (AI/insights `toISOString` month keys), `CR-6` (`fiscalYearStart` UTC edge) — all are `Date`→UTC calendar-keying that shifts for non-UTC users, the same root as the C129 KPI bug. **All open → O86/O87.**
+- **The AI-action-surface family.** `CR-8` (proxy is a bare pass-through), `CR-9` (no code-level confirm gate), `CR-10` (doc→ledger-context→chat injection) — the sandbox is client-side, so the real controls are structural. Plus the owner-*output* twins `CR-25`/`CR-26` (jargon leaking to the owner), **fixed C138.** The structural three **→ O81** (re-scoped to those exact controls).
+- **The load / failure-mode family.** `CR-14`/`CR-15` (unpaged capped ledger), `CR-16`/`CR-17`/`CR-18`/`CR-19` (delete-before-post, unverified writes, failed≡empty, load races) — all "a partial/failed operation left a torn or truncated ledger." **All fixed C135/C136**, and the `markBillPaid` compensation pattern was generalized.
+- **The architecture family.** `CR-20`/`CR-21`/`CR-22`/`CR-23`/`CR-24` — the App.jsx God-component and its consequences. `CR-21`/`CR-24` **fixed C137**; the rest **→ O89**.
+- **The product-thesis family.** `CR-27` (owner can't see trust) — its own root: the trust layer was built CPA-first. **→ O90.**
+
+### (b) Top 10 by severity × how silently it fails (✅ = already fixed)
+
+| # | Finding | Why it ranks | Status |
+|---|---|---|---|
+| 1 | **CR-1** P&L doubles on any void/reversal | 🔴, dead-silent, every profile, common action | ✅ C134 |
+| 2 | **CR-14** ledger silently capped at 500 | 🔴, needs no failure — just growth | ✅ C135 |
+| 3 | **CR-10** doc→chat prompt injection | 🟠, silent, adversarial, hits the primary interface | ○ O81 |
+| 4 | **CR-16** opening position wiped on repost failure | 🟠, semi-silent, destroys the day-one foundation | ✅ C136 |
+| 5 | **CR-3** cash-flow report on wrong (P&L+flag) basis | 🟠, silent, wrong for accrual/taxed clients | ✅ C134 |
+| 6 | **CR-17** double-reversal via swallowed link write | 🟠, silent, corrupts P&L | ✅ C136 |
+| 7 | **CR-2** refunds/credit-memos overstate revenue | 🟠, silent, BS reads high | ✅ C134 |
+| 8 | **CR-27** owner can't see books are complete/reviewed | 🟠, silent (product), the thesis's own trust pillar | ○ O90 |
+| 9 | **CR-8** proxy pass-through (cost + client-only sandbox) | 🟠, semi-silent, cost-abusable, sandbox not server-enforced | ○ O81 |
+| 10 | **CR-4** depreciation/prepaid schedule dates drift | 🟠, silent, wrong-period postings for late-month assets | ○ O86 |
+
+(`CR-21` perf and `CR-25`/`CR-26` jargon are high-impact but **not silent** — visible jank / visible words — and `CR-25/26` are fixed, so they sit just below.)
+
+### (c) Four-bucket triage of every OPEN finding
+
+- **Fix now (before any real use):** *none.* Every 🔴 is fixed (C134/C135). The remaining opens don't corrupt existing data on contact.
+- **Fix before the first real client:** **CR-8 / CR-9 / CR-10** (O81 — the bot reads and acts on books; a client trusting it is exactly when injection/cost/no-confirm bite), **CR-27** (O90 — an owner deciding to rely on Shadow needs to *see* it's working; the thesis calls this load-bearing), **CR-4** (O86 — the first client who depreciates an asset placed in service on the 29th–31st gets wrong-period books).
+- **Post-launch (schedule, not gating):** **CR-5 / CR-6** (date hygiene; low real-world reach), **CR-11 / CR-12** (RLS policy drift — spam/spoofing, *not* cross-tenant, per Pass 2), **CR-13** (committed anon-key — public by design), **CR-20 / CR-23** (God-component + context split — velocity tax; **CR-23 becomes mandatory only when O82/channels is scheduled**).
+- **Disagree / de-scope (pushing back on my own findings):**
+  - **CR-22** (nine `eslint-disable` sites) — I'd **downgrade to 🔵 / monitoring, not a fix.** There is no active bug; the crash subclass already has scanners. The right action is "re-verify on edit," which is vigilance, not work. Filing it as an improvement over-weights a latent-only risk.
+  - **CR-6** (`fiscalYearStart` UTC edge) — severity is arguably **overstated at 🟡.** It's consistent-by-construction with the Balance Sheet (both use the same function), so it can only bite a transaction dated *exactly* on the fiscal boundary day in a behind-UTC browser — a near-null population. Real impact ≈ 🔵.
+  - **CR-11** (`companies_insert WITH CHECK(true)`) — correctly 🟡 for hygiene, but I'll note the *abuse ceiling is genuinely low* (create junk companies you already own); it is **not** a security hole, and shouldn't be read as one when O21 is scheduled.
+
+### (d) Tracking map — complete, no orphans
+
+| Finding(s) | Tracked in | Status |
+|---|---|---|
+| CR-1, CR-2, CR-3 | — | ✅ fixed C134 |
+| CR-14, CR-15, CR-18, CR-19 | — | ✅ fixed C135 |
+| CR-16, CR-17 | — | ✅ fixed C136 |
+| CR-21, CR-24 | — | ✅ fixed C137 |
+| CR-25, CR-26 | — | ✅ fixed C138 |
+| CR-8, CR-9, CR-10 | **O81** (AI action-surface hardening) | ○ open, P1 |
+| CR-4, CR-5 | **O86** (toISOString date-keying sweep) | ○ open, P3 |
+| CR-6 | **O87** (fiscalYearStart edge) | ○ open, P3 |
+| CR-11, CR-12, CR-13 | **O21** (RLS/security-hygiene pass) | ○ open, P1 |
+| CR-20, CR-22, CR-23 | **O89** (LedgerProvider extraction) | ○ open, P1-adjacent |
+| CR-27 | **O90** (owner trust panel) + O84 / O50-v2 sign-off | ○ open, P1-adjacent |
+| CR-7 | — (note-only; bounded, safe today) | ○ no action needed |
+
+Every finding is either fixed or has a home; the only untracked entry (`CR-7`) is a deliberate note-only. **The review is closed.**
+
+### One-paragraph verdict on the whole review
+
+The codebase's **core is genuinely strong** — a single-source, pure, well-tested GL/compute engine, real tenant isolation, and (now) a paged ledger, safe writes, memoized reads, and translated owner copy. Its **weaknesses clustered into four roots**, and the two that could silently produce wrong books or wrong totals (the §9 direction family and the 500-cap) were the two 🔴s and are fixed. What remains is honest and bounded: **harden the AI surface the thesis makes the front door (O81), let the owner see the trust the CPA already sees (O90), pay down the God-component before it blocks channels (O89), and finish date-hygiene + RLS drift (O86/O87/O21).** The most important thing the review surfaced is not any single bug but the **shape**: the system is most correct in its libs and least finished at its owner-facing and AI-facing edges — which is exactly backwards from where a conversation-first, trust-first product needs to be strongest, and is the through-line the roadmap should optimize against.
