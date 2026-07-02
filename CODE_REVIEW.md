@@ -39,6 +39,7 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 - **Pass 1 — Correctness & money math (GAAP/ledger)** — 2026-07-01 — 7 findings (1 🔴, 3 🟠, 3 🟡/🔵). **CR-1/CR-2/CR-3 fixed in C134**; CR-4 open; CR-5→O86, CR-6→O87, CR-7 note-only.
 - **Pass 2 — Security & multi-tenancy** — 2026-07-01 — 6 findings (0 🔴, 3 🟠, 2 🟡, 1 🔵). No cross-tenant read/corruption path found; risks are cost-abuse + own-tenant AI mutation + policy drift.
 - **Pass 3 — Failure modes & data integrity** — 2026-07-01 — 6 findings (1 🔴, 3 🟠, 2 🟡). **CR-14/CR-15/CR-18/CR-19 fixed in C135; CR-16/CR-17 in C136.**
+- **Pass 4 — Architecture, state & React** — 2026-07-02 — 5 findings (0 🔴, 2 🟠, 3 🟡). Core libs are load-bearing; the App.jsx shell is the liability. Headline: unmemoized full-ledger computes now bite at the volume C135 made correct.
 
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
@@ -312,3 +313,80 @@ Positives worth stating first, because they set the bar the weak paths fall shor
 **Is the failure-handling philosophy consistent or ad-hoc? Ad-hoc.** The codebase *contains* an excellent template — `markBillPaid`'s optimistic-apply + compensation-reverse + audit + Sentry — and the per-entry RPC atomicity is sound. But that discipline was applied where it was hard-won (the payment/settlement saga) and not generalized: opening-balance edits delete-first with no rollback, `reverseJournalEntry` links via an unverified swallowed write, and `loadAllData` treats "failed" and "empty" identically. The result is a codebase that is rigorous in the places that bled and casual elsewhere — safe writes are a pattern that exists but isn't a *standard*.
 
 **Pass-3-adjacent concern that most needs its own look: load & compute at volume.** CR-14/CR-15 expose that everything upstream of the (well-tested) compute layer — the fetch — is unpaged and capped, and the app and AI cap differently. A dedicated **"scale / paging" pass** (one shared paged ledger loader; remove the 500/5000 caps together; a fixture at 600+ and 5000+ entries that asserts dashboard === AI === full-ledger totals and that the opening entry is always present) would close the highest-severity finding and re-establish the "identical to the penny" guarantee at the layer where it currently breaks. It also ties O47 (volume/scale check) and the O80-scalability note (answer-by-query, not ingestion).
+
+---
+
+## Pass 4 — Architecture, state & React · 2026-07-02
+
+Scope: `App.jsx` size/responsibility + a concrete extraction map, the fresh-closure hazard class, derived-vs-stored state, the ERP context surface, re-render/perf hotspots (now that the ledger is uncapped, C135), and dead code/drift. Severity here = *how much each item raises the cost or risk of every future change*, with a pre-launch (compounds now) vs post-launch call. Findings only.
+
+Measured baseline: `App.jsx` is **6,162 lines** (36% of all app code) with **130 `useState`, 22 `useRef`, 23 `useEffect`, 3 `useMemo`, 0 `useCallback`**, and it builds a **~300-key `erpCtx`** passed to one `ERPContext.Provider`. Positive to state up front, because it reframes several items: the **`src/lib` layer is genuinely well-factored and load-bearing** — `reports.js`/`ledger.js`/`reconcile.js` are pure, single-source, and heavily tested, and (Pass 4's derived-state check) the money figures are **computed, never mirrored into state** — there is no stale-`setState`-of-a-derived-value (§9-at-the-React-layer) problem. The architecture's value lives in the libs; its liability lives in the `App.jsx` shell.
+
+---
+
+### CR-20 · 🟠 should-fix · `App.jsx` is a 6,162-line God component — the single biggest tax on every future change
+
+**Location:** `src/App.jsx` (whole file); the `ERP` component owns ~130 state atoms + nearly every handler.
+
+**Explanation:** One component holds the entire authenticated app: upload, bank import, QBO import, payroll import, contracts, matching, reconciliation session state, chat, reports UI, notifications, anomalies, recurring, settings drafts, *and* the ledger core + all persist/booking handlers. Severity is not aesthetic — it's that **every change pays a compounding tax**: merge-conflict surface is enormous, nothing in it is unit-testable (there's no render harness — O14), and the file is exactly where the project's worst incidents originated (the `refreshDropped` per-render re-run C118, the TDZ-in-deps crash C125 — both are *symptoms* of 130 interleaved hooks in one scope). It is not a correctness bug and not itself a launch blocker, but it raises the cost and risk of everything the roadmap wants to add. **Concrete, sequenced extraction map** (risk ascending — self-contained wizards first, load-bearing core last):
+
+| # | Cluster (state + handlers) | Extract to | Risk | Payoff | Why this order |
+|---|---|---|---|---|---|
+| 1 | **Import wizards** — QBO (`qbo*`), Payroll (`payroll*`), Bank (`bank*`), Contracts (`contract*`), Universal upload (`upload*`, drag flags) | one hook/provider per wizard (`useQboImport`, …) co-located with its view | **low** | high (~60+ state atoms leave App) | state is used only by its own view + the shared `bookToDb`/`persistJournalEntry`; nothing else reads it |
+| 2 | **Chat** (`chatInput/History/Open/Loading`, `handleChatSend`, `loadChatHistory`) | `ChatProvider`/`useChat` | med | high | removes the keystroke↔full-App-render coupling (CR-21); feeds AI + persistence so test its seams |
+| 3 | **Reports UI** (`reportDate*`, `reportRange`, `reportType`, `plDrill`/`drill`/`drillSel`, `basisMode`, aging-narration flags) | `ReportsUIProvider` | low-med | med | pure UI state, no ledger writes |
+| 4 | **Notifications / anomalies / recurring-suggestions** | `NotificationsProvider` | low-med | med | self-contained; effect-driven |
+| 5 | **Matching + recon session** (`match*`, `activeRecon`, `recon*`) | controllers | med | med | touches settlements — extract after wizards prove the pattern |
+| 6 | **Ledger CORE** — `invoices`, `contacts`, accounts, `companySettings`, `loadAllData`, the `persist*`/`bookToDb`/`markBillPaid`/void/reverse family, and the compute derivations | `LedgerProvider` (memoized data + stable actions) | **high** | very high | everything depends on it — do LAST, and land the CR-21 memoization here |
+
+**Honest "leave it" verdicts:** the `AppWrapper` auth/session state machine is already separate — leave it; `session`/`supabase` are stable singletons — fine to keep in context; the drag-state booleans are trivial and should move *with* their wizard, not on their own. **Pre/post:** the extraction is post-launch-acceptable (a velocity/risk tax, not a user bug), **except** the memoization slice of step 6, which is CR-21 and is pre-launch.
+
+---
+
+### CR-21 · 🟠 should-fix · Unmemoized full-ledger computes + a per-render context object → ~6 ledger walks on every keystroke, now over the uncapped 5000-row ledger
+
+**Location:** `src/App.jsx` render body (~5520–5536): `totalExpenses = computeExpenses(invoices)`, `totalRevenue = computeRevenue(invoices)`, `netIncome = computeNetIncome(invoices)` (which calls both again), `glCash = glCashOnHand(invoices, …)`, `glBreakdown = liveEntries(invoices).reduce(…)` — none memoized; and `const erpCtx = { …300 keys… }` (5546) rebuilt every render, passed to `<ERPContext.Provider value={erpCtx}>` (5552).
+
+**Explanation:** Because `chatInput` (and form/search fields) are **App-level state**, every keystroke calls `setChatInput` → App re-renders → all of the above recompute. `computeNetIncome` internally re-runs `computeRevenue`+`computeExpenses`, so a single render walks the full ledger roughly **six times**, and then `erpCtx` is recreated (a new object) so *every* `useERP()` consumer re-renders too. At the old 500-entry cap this was tolerable; **C135 (correctly) uncapped the ledger, so this is now ~6 × 5000 ≈ 30k row iterations per keystroke** for any company at real volume — typing in the chat box janks the whole app. It's the direct perf consequence of the correctness fix, at exactly the volume the fix was for. No stale-data risk (the values are correctly derived) — purely wasted work.
+
+**Recommended fix (small, high-leverage):** wrap the derived figures in `useMemo(() => …, [invoices, cashGlCodes])`, memoize `erpCtx` (`useMemo`, or split per CR-23), and lift `chatInput` out of App (CR-20 step 2) so chat typing doesn't touch the ledger derivations at all. **Pre-launch** — it degrades UX for normal-volume customers and the fix is a few `useMemo`s.
+
+---
+
+### CR-22 · 🟡 improvement · The fresh-closure class is only half-guarded — the crash subclass has scanners, the silent-stale subclass rides on 9 manual `eslint-disable`s
+
+**Location:** `src/App.jsx` — `eslint-disable*` at lines 321, 488, 774, 885, 1736, 1750, 2688, 3153, 5111 (deps deliberately omitted).
+
+**Explanation:** The project built real guards for the *crash* subclass of the fresh-closure family — `noUndefinedRefs` (use-before-declaration) and `noTdzInHookDeps` (the C125 TDZ) scanners. But the *silent* subclass — an effect that reads a stale value or handler because a dep was omitted — has no automated guard; it relies on each of these nine suppressions being hand-verified correct. None are active bugs today (suite green, app runs), but each is a standing site where a future edit can reintroduce the C118-class stale-closure silently (no crash, just wrong/rerun behavior). Most are benign (ref-sync, view persistence); the data-touching ones (1736 recurring/anomaly detection, 2688 depreciation auto-post, 3153 upload queue) are the ones to re-verify whenever their bodies change.
+
+**Recommended fix:** treat the suppression list as a standing audit surface (re-check on edit); where feasible, wrap handlers referenced by effects in `useCallback` so deps can be honest, removing the suppression rather than trusting it. Post-launch.
+
+---
+
+### CR-23 · 🟡 improvement · One ~300-key un-memoized mega-context forces app-wide re-renders — worth splitting, but only alongside CR-21
+
+**Location:** `src/App.jsx:5546` (`erpCtx`), `5552` (single `ERPContext.Provider`).
+
+**Explanation:** `useERP()` is a single context carrying ~300 values/functions, rebuilt every render, so any state change anywhere re-renders every consumer view. Mitigating fact found in the audit: **no view puts a context *function* in an effect dependency array**, so this causes wasteful *re-renders*, not effect *storms* or correctness bugs — React reconciling already-correct subtrees is far cheaper than CR-21's ledger recomputes, which is why CR-21 outranks this. Splitting into `data` / `actions` / `ui-state` contexts is worthwhile **but only in concert with memoization and state extraction** — splitting a still-rebuilt-every-render object buys little on its own. There's also a forward-looking reason to split: **O82 (channels) needs the action layer callable from outside the React tree** (a Slack handler can't reach through `useERP()`), so factoring a plain "actions" module out of the context is load-bearing for the roadmap, not just perf.
+
+**Recommended fix:** as part of CR-20 step 6, split into a memoized `LedgerDataContext` (values) + a stable `LedgerActionsContext` (handlers, ideally a plain module the context merely surfaces). Post-launch, paired with CR-20/21.
+
+---
+
+### CR-24 · 🟡 improvement · Dead code & doc drift add a confusion tax to an already-large surface
+
+**Location:** `src/App.jsx.backup` (7,886 lines, committed); dead exports — `financialHealthScore` (`reports.js`, **zero call sites**), `runDepreciationThrough` + `getOpenAP`/`getOpenAR`/`getUnpaidInvoices`/`getUnpaidReceivables` (in `erpCtx`, **destructured by views but never invoked**); `CLAUDE.md` says "next migration is 037" while the tree has up to `048` + a dated file (doc drift); the `WITH CHECK(true)` policy drift from Pass 2 (CR-11/12) is the live-vs-repo variant.
+
+**Explanation:** Individually trivial, collectively a tax: `App.jsx.backup` is *larger than App.jsx itself* and is the reason half the review greps carry `grep -v .backup`; the dead context keys inflate the 300-key surface CR-23 is about (they read as capability that isn't there — e.g. `runDepreciationThrough` survived the C126 button removal, `getOpen*` the Pass-2 note); the migration-count drift makes the schema history harder to trust (compounds the O22 rebuild caveat). None affect runtime.
+
+**Recommended fix:** delete `App.jsx.backup`; drop the dead exports from `reports.js` and `erpCtx`; reconcile the `CLAUDE.md` migration pointer. Post-launch hygiene, cheap.
+
+---
+
+### Verdict — Pass 4
+
+**Is the architecture load-bearing for the roadmap ahead? The core yes, the shell no.** The `src/lib` layer — the GL-truth compute engine, `flattenJournalEntries`, `reconcile.js`, the tested invariants — is exactly the foundation O80 (a proactive assistant that reads and acts on the ledger continuously), O82 (channels), and multi-client CPA use all need, and it's in good shape. The `App.jsx` shell is what will bottleneck them: O80 will hammer the unmemoized computes (CR-21) and the mega-context (CR-23) with constant reads; O82 can't reach the action layer because it's welded to a React context (CR-23); and multi-client/CPA team velocity is throttled by the 6,000-line God component's merge and regression surface (CR-20). The value is portable; the shell is not.
+
+**Top 3 structural risks:** (1) **CR-21** — unmemoized full-ledger computes + per-render context = a perf cliff at exactly the volume C135 just made correct (and the only pre-launch item here). (2) **CR-20** — the 6,162-line God component makes every change high-friction and high-risk; the C118/C125 incidents were symptoms, not one-offs. (3) **CR-23** — the action layer is inseparable from the React tree, which directly blocks the O82/channels direction.
+
+**Single highest-leverage refactor:** extract the **ledger core into a memoized `LedgerProvider` with a plain, stable actions module** (CR-20 step 6 + CR-21 memoization + CR-23 split, done as one move). It simultaneously kills the perf cliff, creates the non-React-bound action surface O80/O82 require, and gives the highest-value code a testable seam — the one refactor that pays down all three top risks. **Cheap first step that ships now:** the CR-21 `useMemo`s (a few lines, no extraction risk) to stop the keystroke jank while the larger extraction is sequenced per the CR-20 map.
