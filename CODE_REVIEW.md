@@ -40,7 +40,7 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 - **Pass 2 — Security & multi-tenancy** — 2026-07-01 — 6 findings (0 🔴, 3 🟠, 2 🟡, 1 🔵). No cross-tenant read/corruption path found; risks are cost-abuse + own-tenant AI mutation + policy drift.
 - **Pass 3 — Failure modes & data integrity** — 2026-07-01 — 6 findings (1 🔴, 3 🟠, 2 🟡). **CR-14/CR-15/CR-18/CR-19 fixed in C135; CR-16/CR-17 in C136.**
 - **Pass 4 — Architecture, state & React** — 2026-07-02 — 5 findings (0 🔴, 2 🟠, 3 🟡). **CR-21 + CR-24 fixed in C137**; CR-20/CR-23 → ROADMAP LedgerProvider item; CR-22 → standing audit surface.
-- **Pass 5 — Product-principle conformance** — 2026-07-02 — 3 findings (0 🔴, 2 🟠, 1 🟡). The correctness trust layer is real but CPA-facing; the owner-facing *translation* and *reassurance* the thesis promises are the gaps.
+- **Pass 5 — Product-principle conformance** — 2026-07-02 — 3 findings (0 🔴, 2 🟠, 1 🟡). **CR-25 + CR-26 fixed in C138**; CR-27 → ROADMAP owner-proof-panel.
 
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
@@ -405,6 +405,7 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 ---
 
 ### CR-25 · 🟠 should-fix · The GAAP clarification's owner-facing **explanations** violate the Cardinal Principle — the owner is shown GAAP/ASC-360/"capitalize"/"depreciate"/"liability" at the moment of booking
+> **✅ FIXED — C138.** All GAAP-clarification `explanation` strings rewritten to plain business language (no GAAP/ASC/capitalize/depreciate/deferred-revenue/balance-sheet) — e.g. capital → "Bigger equipment you'll use for years gets spread across those years… so we just need to know how you'll use it and for how long"; deferred rev → "that money isn't income yet — it becomes income as you deliver"; a few option labels softened too. The CPA-facing `reasoning` field keeps the GAAP/ASC detail (exempt). Guarded by `tests/cardinalPrinciple.test.js` (scans every `explanation:` for jargon + GL codes).
 
 **Location:** `src/App.jsx:2287–2340` (`buildGaapClarification` — the `explanation` field), rendered to the owner by `src/components/ClarificationFlow.jsx:26` (`explanation: item.explanation`).
 
@@ -415,6 +416,7 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 ---
 
 ### CR-26 · 🟡 improvement · Cardinal leaks on the chat + dashboard (the primary owner surfaces): a raw GL code, "reversing entry", "journal entries ready to post"; and the prompt enforces plain-English only softly
+> **✅ FIXED — C138.** Chat action summaries translated (no GL code — "Added a new category: <name>"; "Undid the entry for <vendor>" instead of "Reversing entry created"; "Updated the category for N transaction(s)" instead of "Recoded"; "entry"→"transaction"). Dashboard: "Contract journal entries ready to post"→"A contract is ready to record", "N journal entries generated"→"N records created", "before clearing"→"before they're added". System prompt (`ai.js`) hardened: a **HARD RULE** now forbids ever showing the owner a GL code, debit/credit, or journal/ledger/GAAP terms (was a soft "if you must use a term, explain it"). Guarded by `tests/cardinalPrinciple.test.js` (action-summary templates + dashboard scanned).
 
 **Location:** chat action summaries `src/App.jsx:5228` (`Added account: ${code} ${name}` — shows the GL **code**, e.g. "6500"), `5283` ("**Reversing entry** created for …"), `5207`/`5265` ("**Recoded** …", "**Voided entry**"); dashboard `src/components/views/DashboardView.jsx:540` ("**Contract journal entries** ready to post") and `534` ("…before **clearing**"); the system prompt `src/lib/ai.js:271+` says "plain English" (soft, tone-level) but has **no hard rule** against emitting GL codes/debits/journal terms in replies, while its deductions/1099 instructions (`ai.js:400`) hand the model the actual codes ("Salaries & Wages (6000), Rent (6100)…"), so the model can echo "your 6500 account" back to the owner.
 

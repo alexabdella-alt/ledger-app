@@ -2292,11 +2292,11 @@ Reply with ONLY the summary text.`;
       if (GAAP_DEFERRED_REV_RE.test(rtext)) {
         return { gaap: true, invoice, gaapType: "deferred_revenue",
           question: `Is this payment for work you've already delivered, or paid in advance?`,
-          explanation: `Money received before you deliver the goods or service is a liability (Deferred Revenue) under GAAP — not revenue yet. You recognize it as revenue when it's earned.`,
+          explanation: `When a customer pays before you've done the work, that money isn't income yet — it becomes income as you deliver. If this was paid ahead, we'll count it as you earn it.`,
           options: [
-            { label: "Already delivered — recognize as revenue now", bookAsIs: true,
+            { label: "I've already done the work — count it as income now", bookAsIs: true,
               reasoning: `Recognized as revenue now — the performance obligation was already satisfied.` },
-            { label: "Paid in advance — defer it", deferredRevenueReceipt: true,
+            { label: "They paid ahead of the work — count it as I deliver", deferredRevenueReceipt: true,
               reasoning: `Recorded as Deferred Revenue (2300): cash received before the service is delivered; recognize as revenue when earned.` },
           ] };
       }
@@ -2311,7 +2311,7 @@ Reply with ONLY the summary text.`;
       const capitalize = amt >= CAPITALIZE_THRESHOLD;
       return { ...base, gaapType:"capital",
         question:`This looks like a larger purchase — how will you use it?`,
-        explanation:`Under GAAP (ASC 360), purchases over $2,500 with a useful life greater than one year must be capitalized as fixed assets and depreciated over their useful life rather than expensed immediately. This affects both your balance sheet and your taxes.`,
+        explanation:`Bigger equipment you'll use for years gets spread across those years instead of counting all at once — that keeps your monthly profit accurate and matters for your taxes. So we just need to know how you'll use it and for how long.`,
         options:[
           { label: capitalize ? "Business use, and I'll use it more than a year" : "Business use, more than a year",
             gl_code: capitalize?rc("fixed_assets"):rc("office_supplies"), gl_name: capitalize?rn("fixed_assets"):rn("office_supplies"), depreciate: capitalize,
@@ -2330,9 +2330,9 @@ Reply with ONLY the summary text.`;
     if (GAAP_PREPAID_RE.test(text)) {
       return { ...base, gaapType:"prepaid",
         question:`How many months does this cover? If it's more than a few, we'll spread it out so your monthly profit stays accurate.`,
-        explanation:`When an invoice pays for several months of service up front, GAAP records it as a prepaid asset and recognizes the expense evenly over the coverage period.`,
+        explanation:`When you pay for several months up front, we spread the cost evenly across those months so a single month doesn't look artificially expensive.`,
         options:[
-          { label:"3 months or less — expense it now", gl_code: invoice.gl_code, gl_name: invoice.gl_name,
+          { label:"3 months or less — just count it now", gl_code: invoice.gl_code, gl_name: invoice.gl_name,
             reasoning:`Expensed immediately — coverage is 3 months or less, so prepaid treatment isn't needed.` },
           { label:"6 months", prepaidMonths:6, reasoning:`Recorded as Prepaid Expenses (1300) and amortized evenly over 6 months from ${invoice.date} to ${invoice.gl_name}.` },
           { label:"12 months (annual)", prepaidMonths:12, reasoning:`Recorded as Prepaid Expenses (1300) and amortized evenly over 12 months from ${invoice.date} to ${invoice.gl_name}.` },
@@ -2343,7 +2343,7 @@ Reply with ONLY the summary text.`;
     if (amt >= 1000 && GAAP_LEASEHOLD_RE.test(text)) {
       return { ...base, gaapType:"leasehold",
         question:`Is this a permanent improvement, and to a space you lease or own?`,
-        explanation:`Permanent improvements to a leased space are capitalized as leasehold improvements and amortized over the lease term. Improvements to property you own are capitalized and depreciated. Routine repairs are expensed right away.`,
+        explanation:`Permanent upgrades to your space get spread over the years you'll benefit from them; routine repairs just count right away. Is this a lasting improvement, and is the space rented or owned?`,
         options:[
           { label:"Permanent improvement to a space I LEASE", gl_code:rc("intangible_assets"), gl_name:rn("intangible_assets"), depreciate:false,
             reasoning:`Capitalized as a leasehold improvement (1600) per GAAP — permanent improvement to leased space, amortize over the remaining lease term.` },
@@ -5204,7 +5204,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           const ok = await persistRecode(toRecode, action.gl_code, action.gl_name);
           if (ok) {
             logAudit("ai_recode", `AI recoded ${toRecode.length} invoice(s) → ${action.gl_name}`, beforeState, { gl_code: action.gl_code, gl_name: action.gl_name });
-            actionSummary.push(`Recoded ${toRecode.length} invoice(s) → ${action.gl_name}`);
+            actionSummary.push(`Updated the category for ${toRecode.length} transaction(s) → ${action.gl_name}`);
           } else {
             // Write didn't commit → revert the optimistic change and record the failure so
             // the reply can't claim "✓ reclassed" (the reported false-success bug).
@@ -5225,7 +5225,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           if (action.code && action.name && action.category) {
             const ok = await addCustomAccount({ code: action.code, name: action.name, category: action.category });
             if (ok === false) actionFailures.push(`add account ${action.code} ${action.name}`);
-            else actionSummary.push(`Added account: ${action.code} ${action.name} (${action.category})`);
+            else actionSummary.push(`Added a new category: ${action.name}`);
           }
         }
         if (action.type === "delete_invoice") {
@@ -5236,10 +5236,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             if (target) {
               // VERIFY the soft-delete committed (returns the deleted JE ids) before claiming success.
               const ids = await softDeleteInvoice(target, true);
-              if (ids && ids.length) actionSummary.push(`Deleted entry: ${target.vendor} $${target.amount}`);
+              if (ids && ids.length) actionSummary.push(`Deleted the transaction: ${target.vendor} $${target.amount}`);
               else actionFailures.push(`delete ${target.vendor}`);
             } else {
-              actionSummary.push(`Entry ${action.invoice_id} not found`);
+              actionSummary.push(`Couldn't find that transaction`);
             }
           } else if (action.vendor) {
             const toDelete = invoices.filter(i =>
@@ -5249,10 +5249,10 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             );
             if (toDelete.length > 0) {
               const ids = await softDeleteInvoices(toDelete, true);
-              if (ids && ids.length) actionSummary.push(`Deleted ${toDelete.length} entr${toDelete.length===1?"y":"ies"} for ${action.vendor}`);
+              if (ids && ids.length) actionSummary.push(`Deleted ${toDelete.length} transaction${toDelete.length===1?"":"s"} for ${action.vendor}`);
               else actionFailures.push(`delete ${action.vendor}`);
             } else {
-              actionSummary.push(`No matching entries found for ${action.vendor}`);
+              actionSummary.push(`Couldn't find any transactions for ${action.vendor}`);
             }
           }
         }
@@ -5262,14 +5262,14 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
             const target = invoices.find(i => String(i.id) === String(action.invoice_id));
             if (target) {
               const revId = await voidInvoiceWithUndo(target, action.reason || "Voided via AI", true);  // VERIFY the reversal posted
-              if (revId) actionSummary.push(`Voided entry: ${target.vendor}`);
+              if (revId) actionSummary.push(`Undid the entry for ${target.vendor}`);
               else actionFailures.push(`void ${target.vendor}`);
-            } else { actionSummary.push(`Entry ${action.invoice_id} not found`); }
+            } else { actionSummary.push(`Couldn't find that transaction`); }
           } else if (action.vendor) {
             const toVoid = invoices.filter(i => i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) && i.status!=="voided");
             let voided = 0;
             for (const t of toVoid) { const revId = await voidInvoiceWithUndo(t, action.reason || "Voided via AI", true); if (revId) voided++; }
-            if (voided) actionSummary.push(`Voided ${voided} entr${voided===1?"y":"ies"} for ${action.vendor}`);
+            if (voided) actionSummary.push(`Undid ${voided} transaction${voided===1?"":"s"} for ${action.vendor}`);
             if (voided < toVoid.length) actionFailures.push(`void ${toVoid.length - voided} entr${(toVoid.length-voided)===1?"y":"ies"} for ${action.vendor}`);
           }
         }
@@ -5280,7 +5280,7 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
           const toReverse = invoices.find(i => String(i.id) === String(action.invoice_id));
           if (toReverse) {
             const revId = await reverseJournalEntry(toReverse, action.reason || "Reversed via AI", true);
-            if (revId) { await loadAllData().catch(() => {}); actionSummary.push(`Reversing entry created for ${toReverse.vendor} $${toReverse.amount}`); }
+            if (revId) { await loadAllData().catch(() => {}); actionSummary.push(`Undid the entry for ${toReverse.vendor} ($${toReverse.amount})`); }
             else actionFailures.push(`reverse ${toReverse.vendor}`);   // didn't post → don't claim success
           }
         }

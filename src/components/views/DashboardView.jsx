@@ -492,7 +492,7 @@ export default function DashboardView() {
                                   </span>
                                 )
                               )}
-                              {item.status==="done" && item.type==="contract" && item.result && `✓ ${tc.label} · ${item.result.counterparty} · ${item.result.entries} journal entries generated`}
+                              {item.status==="done" && item.type==="contract" && item.result && `✓ ${tc.label} · ${item.result.counterparty} · ${item.result.entries} record${item.result.entries===1?"":"s"} created`}
                               {item.status==="done" && item.type==="unknown" && item.result && `⚠ ${item.result.document_type||"Unknown"} · ${item.result.entry_needed?"Entry proposed — needs review":"No entry needed — flagged for review"}`}
                               {item.docError && (
                                 <div style={{ marginTop:5, fontSize:11, color:"var(--sc-error)", background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:7, padding:"6px 9px", lineHeight:1.45, whiteSpace:"normal" }}>
@@ -531,14 +531,14 @@ export default function DashboardView() {
                   {/* Bank reconciliation review prompt — opens the matching detail */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="bank_statement"&&q.result?.needsReview>0) && (
                     <div style={{ marginTop:12, background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ Some bank transactions need your review before clearing</div>
+                      <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ Some bank transactions need your review before they're added</div>
                       <button onClick={()=>setView("matching")} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Matches →</button>
                     </div>
                   )}
                   {/* Contract review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="contract") && (
                     <div style={{ marginTop:8, background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"var(--sc-gold)" }}>📋 Contract journal entries ready to post</div>
+                      <div style={{ fontSize:13, color:"var(--sc-gold)" }}>📋 A contract is ready to record</div>
                       <button onClick={()=>{ setView("contracts"); setContractView("list"); }} style={{ background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Contracts →</button>
                     </div>
                   )}
