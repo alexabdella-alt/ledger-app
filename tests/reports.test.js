@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeKPIs, financialHealthScore, businessHealth, trialBalance, agingReport, openReceivablesGL, openPayablesGL, glAccountBalance } from "../src/lib/reports.js";
+import { computeKPIs, businessHealth, trialBalance, agingReport, openReceivablesGL, openPayablesGL, glAccountBalance } from "../src/lib/reports.js";
 
 const NOW = new Date("2026-06-15");
 const kpi = (ledger, key, opts = {}) => computeKPIs(ledger, { now: NOW, ...opts }).find(k => k.key === key);
@@ -109,94 +109,6 @@ describe("computeKPIs", () => {
     const k = kpi([rev(5000, "2026-06-01"), rev(5000, "2026-05-01")], "burn_multiple");
     expect(k.value).toBeNull();
     expect(k.status).toBe("na");
-  });
-});
-
-// ── Item 63: financial health score ─────────────────────────────────────────
-describe("financialHealthScore", () => {
-  const healthyLedger = [exp(1000, "6100", "2026-06-01"), exp(1000, "6100", "2026-05-01"), exp(1000, "6100", "2026-04-01")];
-
-  it("perfect books → 100 / grade A / green / Strong", () => {
-    const h = financialHealthScore({
-      invoices: healthyLedger, cashBalance: 20000,
-      reconciliations: [{ completed_at: "2026-06-10" }],
-      anomalies: [], onboardingComplete: true, now: NOW,
-    });
-    expect(h.score).toBe(100);
-    expect(h.grade).toBe("A");
-    expect(h.color).toBe("#039855");
-    expect(h.tier).toBe("Strong");
-    expect(h.items.reduce((s, i) => s + i.max, 0)).toBe(100); // weights sum to 100
-  });
-
-  it("subtracts points and names the main concern (60+ day overdue AR)", () => {
-    const h = financialHealthScore({
-      invoices: [...healthyLedger, { id: 9, vendor: "Globex", amount: 1847, date: "2026-03-01", due_date: "2026-03-01", gl_code: "4000", gl_name: "Revenue", type: "revenue", status: "posted", payment_status: "unpaid" }],
-      cashBalance: 20000, reconciliations: [{ completed_at: "2026-06-10" }],
-      anomalies: [], onboardingComplete: true, now: NOW,
-    });
-    expect(h.score).toBe(85); // lost the 15-pt AR item
-    expect(h.grade).toBe("B");
-    expect(h.summary).toContain("60+ days overdue");
-    expect(h.summary).toContain("$1,847");
-  });
-
-  it("incomplete onboarding costs exactly 10 points", () => {
-    const base = { invoices: healthyLedger, cashBalance: 20000, reconciliations: [{ completed_at: "2026-06-10" }], anomalies: [], now: NOW };
-    const done = financialHealthScore({ ...base, onboardingComplete: true });
-    const not = financialHealthScore({ ...base, onboardingComplete: false });
-    expect(done.score - not.score).toBe(10);
-  });
-
-  it("never produces NaN even with empty inputs", () => {
-    const h = financialHealthScore({});
-    expect(Number.isFinite(h.score)).toBe(true);
-    expect(h.score).toBeGreaterThanOrEqual(0);
-  });
-
-  it("grade and its word-label NEVER contradict (single source) — incl. the D-band bug", () => {
-    // grade↔tier↔color all derive from one map keyed on grade.
-    const AGREE = { A: "Strong", B: "Good", C: "Fair", D: "Needs attention", F: "At risk" };
-    // exercise every score band by seeding N met items (each ~ its weight); assert agreement.
-    for (const now of [NOW]) {
-      for (let anoms = 0; anoms <= 6; anoms++) {
-        const h = financialHealthScore({ invoices: [exp(1000, "6100", "2026-06-01")], cashBalance: anoms * 3000, reconciliations: anoms % 2 ? [{ status: "complete", completed_at: "2026-06-10" }] : [], anomalies: Array.from({ length: anoms }, () => ({ severity: "high" })), onboardingComplete: anoms > 2, now });
-        expect(AGREE[h.grade]).toBe(h.tier);                    // never "D · Good"
-        // color agrees with the grade tier (green for A/B, amber for C/D, red for F)
-        if (h.grade === "A" || h.grade === "B") expect(h.color).toBe("#039855");
-        if (h.grade === "C" || h.grade === "D") expect(h.color).toBe("#DC6803");
-        if (h.grade === "F") expect(h.color).toBe("#D92D20");
-        expect(h.summary).toContain(h.tier);                    // summary uses the same word
-      }
-    }
-    // the specific reported case: a D-band score is "Needs attention", not "Good"
-    const AGREE2 = { A: "Strong", B: "Good", C: "Fair", D: "Needs attention", F: "At risk" };
-    expect(AGREE2.D).toBe("Needs attention");
-  });
-
-  // O79: only a COMPLETED reconciliation counts. import/matching ≠ reconcile, and an
-  // in-progress draft must not register either.
-  const reconItem = (h) => h.items.find((i) => i.id === "reconciled");
-
-  it("no reconciliations → 'Never reconciled to bank', 0 pts", () => {
-    const r = reconItem(financialHealthScore({ invoices: healthyLedger, cashBalance: 20000, reconciliations: [], now: NOW }));
-    expect(r.met).toBe(false);
-    expect(r.points).toBe(0);
-    expect(r.detail).toBe("Never reconciled to bank");
-  });
-
-  it("an in-progress draft (no completed_at) does NOT count as reconciled", () => {
-    const draft = [{ status: "in_progress", period_end: "2026-06-10", created_at: "2026-06-10" }];
-    const r = reconItem(financialHealthScore({ invoices: healthyLedger, cashBalance: 20000, reconciliations: draft, now: NOW }));
-    expect(r.met).toBe(false);
-    expect(r.detail).toBe("Never reconciled to bank");
-  });
-
-  it("a completed reconciliation flips it → 'Last reconciled X days ago' + 20 pts", () => {
-    const r = reconItem(financialHealthScore({ invoices: healthyLedger, cashBalance: 20000, reconciliations: [{ status: "complete", completed_at: "2026-06-10" }], now: NOW }));
-    expect(r.met).toBe(true);
-    expect(r.points).toBe(20);
-    expect(r.detail).toMatch(/^Last reconciled \d+ days ago$/);
   });
 });
 

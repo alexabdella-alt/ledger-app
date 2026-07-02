@@ -39,7 +39,7 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 - **Pass 1 — Correctness & money math (GAAP/ledger)** — 2026-07-01 — 7 findings (1 🔴, 3 🟠, 3 🟡/🔵). **CR-1/CR-2/CR-3 fixed in C134**; CR-4 open; CR-5→O86, CR-6→O87, CR-7 note-only.
 - **Pass 2 — Security & multi-tenancy** — 2026-07-01 — 6 findings (0 🔴, 3 🟠, 2 🟡, 1 🔵). No cross-tenant read/corruption path found; risks are cost-abuse + own-tenant AI mutation + policy drift.
 - **Pass 3 — Failure modes & data integrity** — 2026-07-01 — 6 findings (1 🔴, 3 🟠, 2 🟡). **CR-14/CR-15/CR-18/CR-19 fixed in C135; CR-16/CR-17 in C136.**
-- **Pass 4 — Architecture, state & React** — 2026-07-02 — 5 findings (0 🔴, 2 🟠, 3 🟡). Core libs are load-bearing; the App.jsx shell is the liability. Headline: unmemoized full-ledger computes now bite at the volume C135 made correct.
+- **Pass 4 — Architecture, state & React** — 2026-07-02 — 5 findings (0 🔴, 2 🟠, 3 🟡). **CR-21 + CR-24 fixed in C137**; CR-20/CR-23 → ROADMAP LedgerProvider item; CR-22 → standing audit surface.
 
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
@@ -344,6 +344,7 @@ Measured baseline: `App.jsx` is **6,162 lines** (36% of all app code) with **130
 ---
 
 ### CR-21 · 🟠 should-fix · Unmemoized full-ledger computes + a per-render context object → ~6 ledger walks on every keystroke, now over the uncapped 5000-row ledger
+> **✅ FIXED — C137 (surgical memoization only).** `totalExpenses`/`totalRevenue`/`glCash`/`glBreakdown` are now `useMemo(…, [invoices])`; `cashGlCodes` is memoized (stable ref so `glCash`'s memo holds); and `netIncome` is derived from the rev/exp memos (`r2(rev − exp)`) instead of calling `computeNetIncome` — killing the double-walk (a lock test in `reversalLifecycle.test.js` asserts the substitution is numerically identical to `computeNetIncome`, incl. under reversals). Result: a re-render that doesn't change `invoices` (typing in chat, opening a menu) re-walks the ledger **zero** times. Per scope, `erpCtx` was **not** memoized/split here (that's CR-23, scheduled in the ROADMAP LedgerProvider item) — the expensive ledger walks are cached; the remaining per-render `erpCtx` object is cheap object-spread + React reconciliation.
 
 **Location:** `src/App.jsx` render body (~5520–5536): `totalExpenses = computeExpenses(invoices)`, `totalRevenue = computeRevenue(invoices)`, `netIncome = computeNetIncome(invoices)` (which calls both again), `glCash = glCashOnHand(invoices, …)`, `glBreakdown = liveEntries(invoices).reduce(…)` — none memoized; and `const erpCtx = { …300 keys… }` (5546) rebuilt every render, passed to `<ERPContext.Provider value={erpCtx}>` (5552).
 
@@ -374,6 +375,7 @@ Measured baseline: `App.jsx` is **6,162 lines** (36% of all app code) with **130
 ---
 
 ### CR-24 · 🟡 improvement · Dead code & doc drift add a confusion tax to an already-large surface
+> **✅ FIXED — C137.** Deleted `src/App.jsx.backup` (7,886 lines); removed the dead `financialHealthScore` export + its test block (`reports.test.js`); removed `runDepreciationThrough` and `getOpenAP`/`getOpenAR`/`getUnpaidInvoices`/`getUnpaidReceivables` (definitions + `erpCtx` keys — all provably never invoked); trimmed the now-unused `computeNetIncome` import; and corrected the `CLAUDE.md` migration pointer (037 → 049). *(Views still destructure the removed `getOpen*` names from `useERP()` — now harmlessly `undefined`, never called; they'll drop out with the CR-20 extraction.)*
 
 **Location:** `src/App.jsx.backup` (7,886 lines, committed); dead exports — `financialHealthScore` (`reports.js`, **zero call sites**), `runDepreciationThrough` + `getOpenAP`/`getOpenAR`/`getUnpaidInvoices`/`getUnpaidReceivables` (in `erpCtx`, **destructured by views but never invoked**); `CLAUDE.md` says "next migration is 037" while the tree has up to `048` + a dated file (doc drift); the `WITH CHECK(true)` policy drift from Pass 2 (CR-11/12) is the live-vs-repo variant.
 

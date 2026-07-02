@@ -5,7 +5,7 @@ import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
-import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, computeNetIncome, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
+import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
 import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
@@ -2497,8 +2497,8 @@ Reply with ONLY the summary text.`;
   // (pending rows). ATOMIC: builds the schedule first (so we never create an asset we
   // can't schedule), and if the schedule insert fails it deletes the asset row it just
   // created. Returns { ok, assetId?, error? } — NEVER throws a false success; the caller
-  // compensates the capitalization JE when ok is false. Posting happens later via
-  // runDepreciationThrough. Also the reusable path for back-filling an existing JE
+  // compensates the capitalization JE when ok is false. Posting happens later via the
+  // silent auto-post effect (autoPostDepreciation). Also the reusable path for back-filling an existing JE
   // (pass sourceJournalEntryId; this posts NO capitalization entry of its own).
   const createFixedAssetWithSchedule = async ({ invoice, sourceJournalEntryId, usefulLifeMonths, salvageValue = 0, inServiceDate }) => {
     if (!currentCompany?.id) return { ok: false, error: "no active company" };
@@ -2573,54 +2573,6 @@ Reply with ONLY the summary text.`;
       if (error) throw error;
       setDepreciationDueInfo(depreciationDue(data || [], today));
     } catch { setDepreciationDueInfo({ count: 0, throughDate: "", assets: 0 }); }
-  };
-
-  const runDepreciationThrough = async (throughDate) => {
-    if (!currentCompany?.id) return { posted: 0 };
-    const cutoff = throughDate || new Date().toISOString().slice(0,10);
-    let rows;
-    try {
-      const { data, error } = await supabase.from("depreciation_schedule")
-        .select("id, asset_id, period_index, period_date, amount, status, fixed_assets!inner(vendor, description, dep_expense_code, accum_dep_code, useful_life_months)")
-        .eq("company_id", currentCompany.id).eq("status", "pending");
-      if (error) throw error;
-      rows = data || [];
-    } catch (e) { console.error("runDepreciation load:", e?.message || e); showNotification("Couldn't load the depreciation schedule", "error"); return { posted: 0 }; }
-
-    const { due, assetsToFlip } = planDepreciationRun(rows, cutoff);
-    if (due.length === 0) { showNotification("No depreciation due in that period"); return { posted: 0 }; }
-
-    let posted = 0;
-    for (const row of due) {
-      const a = row.fixed_assets || {};
-      const je = buildDepreciationEntry({
-        amount: row.amount, depExpCode: a.dep_expense_code || "6900", accumDepCode: a.accum_dep_code || "1510",
-        date: row.period_date,
-        description: `Depreciation — ${a.vendor || a.description || "asset"} (${row.period_index}/${a.useful_life_months || "?"})`,
-        meta: { kind: "depreciation", asset_id: row.asset_id, period: row.period_index },
-      });
-      if (!je) continue;
-      const jeId = await persistMultiLineEntry(je);
-      if (!jeId) continue;
-      const { error: upErr } = await supabase.from("depreciation_schedule")
-        .update({ status: "posted", journal_entry_id: jeId, posted_at: new Date().toISOString() })
-        .eq("id", row.id).eq("company_id", currentCompany.id);
-      if (upErr) { console.error("depreciation_schedule update:", upErr.message); continue; }
-      posted++;
-    }
-    // Auto-flip assets whose entire remaining pending schedule was just posted.
-    for (const assetId of assetsToFlip) {
-      try {
-        await supabase.from("fixed_assets").update({ status: "fully_depreciated" })
-          .eq("id", assetId).eq("company_id", currentCompany.id);
-      } catch (e) { console.warn("fully_depreciated flip failed:", e?.message || e); }
-    }
-    if (posted > 0) {
-      try { await loadAllData(); } catch {}
-      logAudit("depreciation_run", `Posted ${posted} depreciation ${posted === 1 ? "entry" : "entries"} through ${cutoff}${assetsToFlip.length ? ` · ${assetsToFlip.length} asset(s) fully depreciated` : ""}`);
-      showNotification(`Posted ${posted} depreciation ${posted === 1 ? "entry" : "entries"} ✓`);
-    }
-    return { posted };
   };
 
   // AUTO-POST due depreciation — depreciation is deterministic, so there's no decision to nudge
@@ -4476,26 +4428,6 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
   };
 
   // ── MATCHING ENGINE ───────────────────────────────────────────────────────────
-  // Open items = invoices that are unmatched AP (expenses not yet paid) or AR (revenue not yet collected)
-  const getOpenAP = (invList) => invList.filter(inv =>
-    inv.type === "expense" &&
-    !inv.matched &&
-    (inv.source === "contract" || inv.gl_code === rc("accounts_payable") || inv.gl_code === rc("accrued_liabilities")) // Accounts Payable / Accrued
-  );
-
-  const getOpenAR = (invList) => invList.filter(inv =>
-    inv.type === "revenue" &&
-    !inv.matched &&
-    inv.gl_code === rc("accounts_receivable") // Accounts Receivable
-  );
-
-  const getUnpaidInvoices = (invList) => invList.filter(inv =>
-    inv.type === "expense" && !inv.matched && (inv.payment_status !== "paid")
-  );
-
-  const getUnpaidReceivables = (invList) => invList.filter(inv =>
-    inv.type === "revenue" && !inv.matched && (inv.payment_status !== "collected")
-  );
 
   // Run matching engine against a set of new bank transactions
   const runMatchingEngine = async (newBankTxns, currentInvoices) => {
@@ -5513,37 +5445,46 @@ ${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>(
     return Object.values(map).sort((a,b) => b.total-a.total);
   }, [invoices]);
 
-  const allVendorNames = vendorSummary.map(v => v.name);
+  const allVendorNames = useMemo(() => vendorSummary.map(v => v.name), [vendorSummary]);
   const filteredInvoices = useMemo(() => invoices.filter(inv => vendorFilter==="all" || inv.vendor===vendorFilter), [invoices, vendorFilter]);
-  // Canonical layer (reports.js) — all-time, live (voided/deleted excluded). The
-  // single source for these figures everywhere they appear.
-  const totalExpenses = computeExpenses(invoices);
-  const totalRevenue  = computeRevenue(invoices);
-  const netIncome = computeNetIncome(invoices);
+  // Canonical layer (reports.js) — all-time, live (voided/deleted excluded). The single
+  // source for these figures everywhere they appear. MEMOIZED on `invoices` (CR-21): each
+  // walks the FULL (uncapped since C135) ledger, and App re-renders on every keystroke
+  // (chatInput/search/form are App state) — so unmemoized, typing re-walked the whole ledger
+  // ~6× per keystroke at volume. With these memos, a re-render that doesn't change `invoices`
+  // re-walks nothing.
+  const totalExpenses = useMemo(() => computeExpenses(invoices), [invoices]);
+  const totalRevenue  = useMemo(() => computeRevenue(invoices), [invoices]);
+  // Net income from the rev/exp memos — never re-walk the ledger (computeNetIncome would
+  // recompute BOTH again). r2 to match computeNetIncome exactly (locked in reports.test.js).
+  const netIncome = useMemo(() => Math.round((totalRevenue - totalExpenses) * 100) / 100, [totalRevenue, totalExpenses]);
   // Canonical CASH ON HAND, derived from the GL (single source of truth). Sums the
   // GL balance of the cash / cash-equivalent accounts (roles cash + savings + any
   // bank-linked GL account). This is what every cash surface reads — NOT the bank
   // statement balance (that's the reconciliation target, kept on bank_accounts).
-  const cashGlCodes = (() => {
+  // Memoized so its array ref is stable → glCash's memo below actually holds.
+  const cashGlCodes = useMemo(() => {
     const s = new Set();
     const c = getAccountByRole("cash")?.code; if (c) s.add(c);
     const sv = getAccountByRole("savings")?.code; if (sv) s.add(sv);
     (bankAccounts || []).forEach(b => { if (b.gl_code) s.add(b.gl_code); });
     return [...s];
-  })();
-  const glCash = glCashOnHand(invoices, cashGlCodes);
+    // getAccountByRole resolves from CHART_OF_ACCOUNTS (a dep) — safe to omit the fn ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankAccounts, CHART_OF_ACCOUNTS]);
+  const glCash = useMemo(() => glCashOnHand(invoices, cashGlCodes), [invoices, cashGlCodes]);
   // GL breakdown — only income statement accounts, live entries only.
-  const glBreakdown = liveEntries(invoices).reduce((acc,inv)=>{
+  const glBreakdown = useMemo(() => liveEntries(invoices).reduce((acc,inv)=>{
     if (!glPLType(inv.gl_code)) return acc; // skip balance sheet accounts
     acc[inv.gl_name||"Uncoded"]=(acc[inv.gl_name||"Uncoded"]||0)+inv.amount;
     return acc;
-  },{});
+  },{}), [invoices]);
 
   const inputStyle = { width:"100%", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"10px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" };
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, runDepreciationThrough, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.

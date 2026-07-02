@@ -412,64 +412,6 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
   return out;
 }
 
-// ── FINANCIAL HEALTH SCORE (Item 63) ────────────────────────────────────────
-export function financialHealthScore({ invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false, now = new Date() } = {}) {
-  const live = (invoices || []).filter(isLiveEntry);
-  const monthExp = {};
-  for (const i of live) if (isExp(i)) { const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount)); }
-  const recentMonths = Object.keys(monthExp).sort();
-  const burn = recentMonths.slice(-3).length ? recentMonths.slice(-3).reduce((s, m) => s + monthExp[m], 0) / recentMonths.slice(-3).length : 0;
-  const cash = num(cashBalance);
-  const runway = burn > 0 ? cash / burn : (cash > 0 ? Infinity : 0);
-
-  // Only a COMPLETED reconciliation counts. `completed_at` is written solely when ReconView's
-  // "complete" runs; in-progress drafts (and the dead import-side row) have no completed_at, so
-  // merely starting a reconcile — or importing/matching — must NOT register as "reconciled".
-  const lastRecon = (reconciliations || []).map(r => r.completed_at).filter(Boolean).sort().pop();
-  const reconAge = lastRecon ? (now - new Date(lastRecon)) / 86400000 : Infinity;
-
-  const overdueAR = live.filter(i => arUnpaid(i) && i.due_date && daysOverdue(i.due_date, now) > 60);
-  const overdueARtotal = r2(overdueAR.reduce((s, i) => s + num(i.amount), 0));
-
-  const curM = recentMonths.length ? monthExp[recentMonths[recentMonths.length - 1]] : 0;
-  const prevM = recentMonths.length > 1 ? monthExp[recentMonths[recentMonths.length - 2]] : null;
-  const burnOk = prevM == null || curM <= prevM * 1.05;
-
-  const highAnoms = (anomalies || []).filter(a => a.severity === "high");
-
-  const items = [
-    { label: "Runway over 6 months", max: 25, points: runway >= 6 ? 25 : (runway >= 3 ? 12 : 0), met: runway >= 6, detail: burn > 0 ? `~${runway === Infinity ? "∞" : runway.toFixed(1)} months at ${fmtMoney(burn)}/mo burn` : "No recent burn / cash not set" },
-    { id: "reconciled", label: "Reconciled within 35 days", max: 20, points: reconAge <= 35 ? 20 : 0, met: reconAge <= 35, detail: lastRecon ? `Last reconciled ${Math.round(reconAge)} days ago` : "Never reconciled to bank" },
-    { label: "No receivables 60+ days overdue", max: 15, points: overdueAR.length === 0 ? 15 : 0, met: overdueAR.length === 0, detail: overdueAR.length ? `${overdueAR.length} invoice${overdueAR.length > 1 ? "s" : ""} 60+ days late totaling ${fmtMoney(overdueARtotal)}` : "None 60+ days overdue" },
-    { label: "Burn flat or declining", max: 15, points: burnOk ? 15 : 0, met: burnOk, detail: prevM == null ? "Not enough history yet" : (burnOk ? "Burn is steady or down month-over-month" : `Burn up ${Math.round((curM / prevM - 1) * 100)}% vs last month`) },
-    { label: "No high-severity anomalies", max: 15, points: highAnoms.length === 0 ? 15 : 0, met: highAnoms.length === 0, detail: highAnoms.length ? `${highAnoms.length} high-severity flag${highAnoms.length > 1 ? "s" : ""}` : "Nothing unusual flagged" },
-    { label: "Setup complete", max: 10, points: onboardingComplete ? 10 : 0, met: !!onboardingComplete, detail: onboardingComplete ? "Books fully set up" : "Finish onboarding to lock this in" },
-  ];
-
-  const score = Math.round(items.reduce((s, i) => s + i.points, 0));
-  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F";
-  // Grade, word-label, and color ALL derive from ONE map keyed on `grade`, so they can never
-  // disagree. (Bug: they were three independent score-band computations with MISALIGNED
-  // thresholds — grade used 10-pt bands (D=60–69) while tier used ≥80/≥60/<60 — so a score of
-  // 60–69 rendered "Grade D · Good" at once. Single source ⇒ always consistent.)
-  const GRADE_META = {
-    A: { tier: "Strong",          color: "#039855" },
-    B: { tier: "Good",            color: "#039855" },
-    C: { tier: "Fair",            color: "#DC6803" },
-    D: { tier: "Needs attention", color: "#DC6803" },
-    F: { tier: "At risk",         color: "#D92D20" },
-  };
-  const { tier, color } = GRADE_META[grade];
-  const concern = items.filter(i => !i.met).sort((a, b) => b.max - a.max)[0];
-  let summary = `Your financial health is ${tier}.`;
-  if (concern) {
-    if (concern.label.startsWith("No receivables") && overdueAR.length) summary += ` Main concern: ${overdueAR.length} invoice${overdueAR.length > 1 ? "s are" : " is"} 60+ days overdue totaling ${fmtMoney(overdueARtotal)}.`;
-    else summary += ` Main concern: ${concern.label.toLowerCase()} — ${concern.detail.toLowerCase()}.`;
-  } else summary += " Everything looks healthy across the board.";
-
-  return { score, grade, color, tier, items, summary };
-}
-
 // ── OWNER-FACING BUSINESS HEALTH (plain-language, actionable) ────────────────
 // The "am I okay, and what do I do?" read for the business owner — built ONLY from things
 // the owner cares about and can act on: profitability, runway, cash, overdue AR, burn trend.

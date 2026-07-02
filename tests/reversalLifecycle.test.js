@@ -180,3 +180,25 @@ describe("reversal idempotency guard (CR-17) — GL-truth, no double-negation", 
     expect(alreadyReversed(oneReversal, "saleX")).toBe(true);  // a repeat void is refused → never becomes −1000
   });
 });
+
+// ── CR-21: the App memo substitution (netIncome = r2(rev − exp), no double-walk) ──
+// is numerically identical to the canonical computeNetIncome — even under reversals.
+// (App.jsx computes netIncome from the memoized totalRevenue/totalExpenses instead of
+//  calling computeNetIncome, which would re-walk the ledger twice more. Locks equivalence.)
+describe("CR-21 memo equivalence — net income from rev/exp memos === computeNetIncome", () => {
+  const r2 = n => Math.round(n * 100) / 100;
+  const cases = {
+    "normal": [dbEntry("s", "2026-03-01", [{ code: CASH, debit: 1000 }, { code: REV, credit: 1000 }]),
+               dbEntry("e", "2026-03-02", [{ code: EXP, debit: 400 }, { code: CASH, credit: 400 }])],
+    "with a reversal": [dbEntry("s2", "2026-03-01", [{ code: EXP, debit: 500 }, { code: CASH, credit: 500 }]),
+               dbEntry("s2r", "2026-03-10", reversed([{ code: EXP, debit: 500 }, { code: CASH, credit: 500 }]), { import_metadata: { kind: "reversal", reverses: "s2" } })],
+    "empty": [],
+  };
+  for (const [name, entries] of Object.entries(cases)) {
+    it(`matches for: ${name}`, () => {
+      const flat = flattenJournalEntries(entries);
+      const memoNet = r2(computeRevenue(flat, YTD) - computeExpenses(flat, YTD));  // the App substitution
+      expect(memoNet).toBe(computeNetIncome(flat, YTD));                            // the canonical path
+    });
+  }
+});

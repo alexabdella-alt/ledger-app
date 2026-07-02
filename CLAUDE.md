@@ -122,7 +122,7 @@ Two-stage pipeline, both calls through the **`ai-proxy`** Edge Function (`supaba
 
 - Files live in `supabase/migrations/NNN_description.sql`, applied in numeric order. Wrap in `begin; … commit;`.
 - **Idempotent**: `create table if not exists`, `drop policy if exists` before `create policy`, `add column if not exists`.
-- Some numbers are intentionally absent from the repo (e.g. 016/017/020/024/025 were applied directly during development) — numbering is monotonic, not necessarily contiguous. New migrations take the next free number (currently next is `037`).
+- Some numbers are intentionally absent from the repo (e.g. 016/017/020/024/025 were applied directly during development) — numbering is monotonic, not necessarily contiguous. New migrations take the next free number (the tree currently runs through `048` plus a dated `20260605_*` file, so the next free number is `049`).
 - Migrations are **not auto-run**; the user applies them in the Supabase SQL editor. Code that depends on a new table must degrade gracefully (try/catch, "table may not exist yet") so the app keeps working pre-migration.
 - Show the SQL and get confirmation before writing code that depends on a new table.
 - **`000_baseline_schema.sql` is the schema baseline** (a schema-only `pg_dump` of live). The chain is now reproducible: empty DB → `000` → `001…036` recreates the live schema (see §11). `000` uses bare `CREATE TABLE` (no `IF NOT EXISTS`) — **never run it against the existing production database; it is for an EMPTY database only.** Migrations `001…036` are idempotent (create-or-replace functions; if-not-exists tables/columns/indexes; drop-if-exists+create policies/triggers; drop+add constraints), so they re-apply cleanly on top of `000`.
