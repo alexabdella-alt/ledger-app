@@ -3,7 +3,7 @@ import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_MODEL, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, AP_AUTO_APPROVE_THRESHOLD, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
-import { initials, vendorColor, deriveDueDate } from "./lib/format";
+import { initials, vendorColor, deriveDueDate, todayLocal } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
@@ -1136,7 +1136,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
       const amt = Number(invoice.amount) || 0;
       const memo = invoice.description;
-      const entryDate   = invoice.date || new Date().toISOString().slice(0,10);
+      const entryDate   = invoice.date || todayLocal();
       // Balanced lines (no journal_entry_id — the RPC assigns it atomically).
       let lines = [];
 
@@ -1252,7 +1252,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         if (!acct) { console.error("persistMultiLineEntry: no account for code", l.code); showNotification(`Couldn't resolve account ${l.code}`, "error"); return null; }
         resolved.push({ account_id: acct.id, debit: l.debit, credit: l.credit, memo: l.memo || entry.description });
       }
-      const entryDate = entry.date || new Date().toISOString().slice(0,10);
+      const entryDate = entry.date || todayLocal();
       const description = entry.description || "";
       const source = normalizeSource(entry.source);
       const { data, error } = await supabase.rpc("post_journal_entry", {
@@ -1989,7 +1989,7 @@ Reply with ONLY the summary text.`;
     // import_metadata — the depreciation guard relies on the same contract). No separate,
     // swallowable update: the idempotency marker is written iff the entry is posted.
     const { data: rpcData, error: rpcErr } = await supabase.rpc("post_journal_entry", {
-      p_company_id: currentCompany.id, p_entry_date: new Date().toISOString().slice(0, 10),
+      p_company_id: currentCompany.id, p_entry_date: todayLocal(),
       p_description: `REVERSAL: ${orig.description || invoice.vendor || "entry"}${reason ? ` — ${reason}` : ""}`,
       p_source: "manual", p_created_by: session.user.id, p_lines: lines,
       p_meta: { kind: "reversal", reverses: String(origId) },
@@ -2376,7 +2376,7 @@ Reply with ONLY the summary text.`;
   const bookPrepaid = async (inv, months, opt = {}) => {
     const amt = Number(inv.amount) || 0;
     const prepaidCode = rc("prepaid_expenses"), prepaidName = rn("prepaid_expenses");
-    const startDate = inv.date || new Date().toISOString().slice(0, 10);
+    const startDate = inv.date || todayLocal();
 
     const capEntry = buildPrepaidCapitalizeEntry({
       amount: amt, prepaidCode, offsetCode: rc("accounts_payable"),
@@ -2505,7 +2505,7 @@ Reply with ONLY the summary text.`;
     const cost = Number(invoice.amount) || 0;
     const depExpCode = rc("depreciation_amortization") || "6900";
     const accumCode = rc("accumulated_depreciation") || "1510";
-    const inService = inServiceDate || invoice.date || new Date().toISOString().slice(0,10);
+    const inService = inServiceDate || invoice.date || todayLocal();
     const lifeMonths = Math.max(1, Math.round(Number(usefulLifeMonths) || 60));
     const salvage = Math.max(0, Number(salvageValue) || 0);
 
@@ -2567,7 +2567,7 @@ Reply with ONLY the summary text.`;
   const loadDepreciationDue = async () => {
     if (!currentCompany?.id) { setDepreciationDueInfo({ count: 0, throughDate: "", assets: 0 }); return; }
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocal();
       const { data, error } = await supabase.from("depreciation_schedule")
         .select("asset_id, period_date, status").eq("company_id", currentCompany.id).eq("status", "pending");
       if (error) throw error;
@@ -2594,7 +2594,7 @@ Reply with ONLY the summary text.`;
     if (!rows.length) return { posted: 0, flagged: 0 };
 
     const ledger = invoicesRef.current || invoices;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     const { post, incomplete, assetsToFlip } = planDepreciationAutoPost(rows, ledger, today);
 
     let posted = 0;
@@ -3303,7 +3303,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               // Sales tax pulled from the invoice → split to Sales Tax Payable (2350) at
               // booking for revenue invoices (persistJournalEntry), never lumped into revenue.
               tax_amount: parseFloat(extracted.tax_amount) || 0,
-              date: extracted.date || new Date().toISOString().slice(0,10),
+              date: extracted.date || todayLocal(),
               // Classify `type` from the GL code (same basis as flattenJournalEntries +
               // the canonical layer) so the in-session row is never mis-slotted by an odd
               // AI `type` and always shows in the transactions tab the moment it's booked.
@@ -3314,7 +3314,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               // Due on receipt → date). Shown on the row immediately and persisted by
               // persistJournalEntry; AR/AP aging then ages from the real due date.
               payment_terms: extracted.payment_terms || "",
-              due_date: deriveDueDate(extracted.date || new Date().toISOString().slice(0,10), extracted.payment_terms) || null,
+              due_date: deriveDueDate(extracted.date || todayLocal(), extracted.payment_terms) || null,
               project: rule?.project || "General",
               gl_code: finalCode,
               gl_name: finalName,
@@ -4257,7 +4257,7 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
             contract.journal_entries[0].memo = `ASC 842-20-30: PV of ${leaseTermMonths} × $${monthlyPayment} @ ${(ibr*100).toFixed(2)}% IBR (monthly compounding). Current = principal reduction months 1-12 ($${asc842.currentPortion.toLocaleString()}), NOT gross cash.`;
           } else {
             contract.journal_entries = [{
-              date: contract.start_date || new Date().toISOString().slice(0,10),
+              date: contract.start_date || todayLocal(),
               description: "Lease commencement — ASC 842 initial recognition",
               memo: `ASC 842-20-30: PV of ${leaseTermMonths} × $${monthlyPayment} @ ${(ibr*100).toFixed(2)}% IBR`,
               lines: [

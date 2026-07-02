@@ -62,4 +62,13 @@ function deriveDueDate(issueDate, terms) {
   return d.toISOString().slice(0, 10);
 }
 
-export { initials, vendorColor, fmtDate, fmtSignedMoney, termsToDays, deriveDueDate };
+// Today's calendar date as YYYY-MM-DD from LOCAL components — NEVER toISOString() (UTC),
+// which for a user behind UTC can roll into the next day (and, on a month boundary, the next
+// PERIOD). Every WRITE-PATH entry-date fallback uses this so an evening booking/void doesn't
+// silently land in the wrong month. (Local-component twin of C129's ymLocal.)
+const todayLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+export { initials, vendorColor, fmtDate, fmtSignedMoney, termsToDays, deriveDueDate, todayLocal };

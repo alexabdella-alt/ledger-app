@@ -51,13 +51,25 @@ const legSigned = (code, isDebit, amt) => isDebitNormalCode(code) ? (isDebit ? a
 function plMovement(invoices, range, match) {
   let total = 0;
   for (const i of liveEntries(invoices, range)) {
-    const amt = num(i.amount);
-    if (amt === 0) continue;
-    const pDebit = legPrimaryIsDebit(i);
-    if (match(i.gl_code)) total += legSigned(i.gl_code, pDebit, amt);
-    if (!String(i.id).includes("_") && match(i.secondary_gl_code)) total += legSigned(i.secondary_gl_code, !pDebit, amt);
+    for (const leg of plLegs(i, match)) total += leg.signed;
   }
   return r2(total);
+}
+
+// The matching P&L legs of one flattened row: primary always; the offset leg too for simple
+// 2-line rows (multi-line rows are already one leg each). Each leg signed to its account's
+// normal balance; both legs of a simple row share the row's vendor/date. This is the SHARED
+// two-leg walk behind computeRevenue/Expenses, computeCategoryTotals, computeVendorTotals, and
+// computeBurnRate — so an intra-P&L RECLASS (Dr 6200 / Cr 6100) nets in ALL of them (no
+// primary-only double-count) and they stay divergent-twin-free (Σvendors === Σcategories === total).
+function plLegs(i, match) {
+  const out = [];
+  const amt = num(i && i.amount);
+  if (!i || amt === 0) return out;
+  const pDebit = legPrimaryIsDebit(i);
+  if (match(i.gl_code)) out.push({ code: i.gl_code, name: i.gl_name, signed: legSigned(i.gl_code, pDebit, amt) });
+  if (!String(i.id).includes("_") && match(i.secondary_gl_code)) out.push({ code: i.secondary_gl_code, name: i.secondary_gl_name, signed: legSigned(i.secondary_gl_code, !pDebit, amt) });
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -157,11 +169,8 @@ export function computeCategoryTotals(invoices, range = {}) {
     const c = map[k] || (map[k] = { gl_code: k, category: name || k, total: 0, count: 0 });
     c.total += signed; c.count++;
   };
-  for (const i of liveEntries(invoices, range)) {         // signed legs → reversals net; Σ === computeExpenses
-    const amt = num(i.amount); if (amt === 0) continue;
-    const pDebit = legPrimaryIsDebit(i);
-    add(i.gl_code, i.gl_name, legSigned(i.gl_code, pDebit, amt));
-    if (!String(i.id).includes("_")) add(i.secondary_gl_code, i.secondary_gl_name, legSigned(i.secondary_gl_code, !pDebit, amt));
+  for (const i of liveEntries(invoices, range)) {         // both legs (plLegs) → reversals + reclasses net; Σ === computeExpenses
+    for (const leg of plLegs(i, glIsExpense)) add(leg.code, leg.name, leg.signed);
   }
   return Object.values(map).map(c => ({ ...c, total: r2(c.total) })).filter(c => Math.abs(c.total) >= 0.005)
     .sort((a, b) => b.total - a.total || String(a.gl_code).localeCompare(String(b.gl_code)));
@@ -174,11 +183,14 @@ export function computeCategoryTotals(invoices, range = {}) {
 // happens to carry a customer name (e.g. an AR collection) is NOT a vendor expense and
 // must be excluded. `side:"revenue"` gives the symmetric by-customer view if ever needed.
 export function computeVendorTotals(invoices, range = {}, { side = "expense" } = {}) {
-  const include = side === "revenue" ? isRev : isExp;
+  const match = side === "revenue" ? glIsRevenue : glIsExpense;
   const map = {};
   for (const i of liveEntries(invoices, range)) {
-    if (!include(i)) continue;                            // expense (or revenue) accounts only — by GL class
-    const signed = legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount));  // signed → a reversal leg subtracts
+    // BOTH legs (plLegs) so an intra-P&L reclass (Dr 6200 / Cr 6100, one vendor) nets to the
+    // real spend instead of double-counting the primary leg. Σvendors === Σcategories === total.
+    const legs = plLegs(i, match);
+    if (!legs.length) continue;
+    const signed = legs.reduce((s, l) => s + l.signed, 0);
     const name = i.vendor || "Unknown";
     const v = map[name] || (map[name] = { vendor: name, total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name });
     v.total += signed; v.count++;
@@ -201,8 +213,8 @@ export function glCashOnHand(invoices, cashCodes, { asOf = null } = {}) {
 export function computeBurnRate(invoices, { asOf = null, months = 3 } = {}) {
   const monthExp = {};
   for (const i of liveEntries(invoices, { to: asOf })) {
-    if (!isExp(i)) continue;
-    const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount));
+    const m = ymOf(i.date); if (!m) continue;
+    for (const leg of plLegs(i, glIsExpense)) monthExp[m] = (monthExp[m] || 0) + leg.signed;  // both legs → reclass nets
   }
   const recent = Object.keys(monthExp).sort().slice(-months);
   return r2(recent.length ? recent.reduce((s, m) => s + monthExp[m], 0) / recent.length : 0);
@@ -364,8 +376,9 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
   const lastMonth = ymLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1));
   const inMonth = m => live.filter(i => ymOf(i.date) === m);
   const sum = (set, pred) => set.filter(pred).reduce((s, i) => s + num(i.amount), 0);                                  // raw (AR/AP owed)
-  const sumPL = (set, pred) => set.filter(pred).reduce((s, i) => s + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount)), 0);  // signed P&L → reversals net (CR-1)
-  const rev = set => sumPL(set, isRev), cogs = set => sumPL(set, i => isCOGS(i.gl_code)), opex = set => sumPL(set, i => isOpEx(i.gl_code)), exp = set => sumPL(set, isExp);
+  // Signed, BOTH-leg P&L sum (plLegs) → reversals AND intra-P&L reclasses net (CR-1 + F-3).
+  const sumPL = (set, codeMatch) => set.reduce((s, i) => s + plLegs(i, codeMatch).reduce((a, l) => a + l.signed, 0), 0);
+  const rev = set => sumPL(set, glIsRevenue), cogs = set => sumPL(set, isCOGS), opex = set => sumPL(set, isOpEx), exp = set => sumPL(set, glIsExpense);
   const arOut = sum(live, arUnpaid);
   const cash = num(cashBalance);
   const apOut = sum(live, apUnpaid);
@@ -435,7 +448,7 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {
 
   // burn trend — this month vs the previous month that has data
   const monthExp = {};
-  for (const i of liveEntries(invoices, { to: today })) if (isExp(i)) { const m = ymOf(i.date); if (m) monthExp[m] = (monthExp[m] || 0) + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount)); }
+  for (const i of liveEntries(invoices, { to: today })) { const m = ymOf(i.date); if (!m) continue; for (const leg of plLegs(i, glIsExpense)) monthExp[m] = (monthExp[m] || 0) + leg.signed; }
   const ms = Object.keys(monthExp).sort();
   const curM = ms.length ? monthExp[ms[ms.length - 1]] : 0;
   const prevM = ms.length > 1 ? monthExp[ms[ms.length - 2]] : null;
@@ -547,7 +560,7 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   // Top 5 vendors by expense spend this month (canonical live gate + GL classification).
   const cur = liveEntries(live, curRange);
   const vmap = {};
-  for (const i of cur) { if (!isExp(i)) continue; const k = i.vendor || "Unknown"; vmap[k] = (vmap[k] || 0) + legSigned(i.gl_code, legPrimaryIsDebit(i), num(i.amount)); }
+  for (const i of cur) { const k = i.vendor || "Unknown"; for (const leg of plLegs(i, glIsExpense)) vmap[k] = (vmap[k] || 0) + leg.signed; }
   const topVendors = Object.entries(vmap).map(([vendor, total]) => ({ vendor, total: r2(total) })).sort((a, b) => b.total - a.total).slice(0, 5);
 
   // Anomalies active during the month — those referencing this month's txns; else high-severity.

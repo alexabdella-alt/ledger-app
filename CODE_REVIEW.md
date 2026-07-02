@@ -43,6 +43,7 @@ Each pass section ends with a **Verdict** paragraph — the reviewer's overall r
 - **Pass 5 — Product-principle conformance** — 2026-07-02 — 3 findings (0 🔴, 2 🟠, 1 🟡). **CR-25 + CR-26 fixed in C138**; CR-27 → ROADMAP owner-proof-panel.
 
 - **Synthesis & triage** (review close-out) — root-cause families, top-10, four-bucket triage, tracking map.
+- **External review (mutation-tested)** — 2026-07-02 — 3 findings (CR-28/29/30). **CR-28 + CR-29 fixed C139**; CR-30 → O47.
 
 <!-- Each pass appended below as:  ## Pass N — <focus>  (date) ... findings ... Verdict -->
 
@@ -511,3 +512,27 @@ Every finding is either fixed or has a home; the only untracked entry (`CR-7`) i
 ### One-paragraph verdict on the whole review
 
 The codebase's **core is genuinely strong** — a single-source, pure, well-tested GL/compute engine, real tenant isolation, and (now) a paged ledger, safe writes, memoized reads, and translated owner copy. Its **weaknesses clustered into four roots**, and the two that could silently produce wrong books or wrong totals (the §9 direction family and the 500-cap) were the two 🔴s and are fixed. What remains is honest and bounded: **harden the AI surface the thesis makes the front door (O81), let the owner see the trust the CPA already sees (O90), pay down the God-component before it blocks channels (O89), and finish date-hygiene + RLS drift (O86/O87/O21).** The most important thing the review surfaced is not any single bug but the **shape**: the system is most correct in its libs and least finished at its owner-facing and AI-facing edges — which is exactly backwards from where a conversation-first, trust-first product needs to be strongest, and is the through-line the roadmap should optimize against.
+
+---
+
+## External review (independent, with mutation testing) · 2026-07-02
+
+An independent second review — running **mutation testing** — verified the C134–C137 fixes hold and the critical nets are real (mutants in the compute/reversal/reconcile paths are caught). It surfaced three items the internal passes missed, all in the same two families this review already named (date/TZ and §9-leg-walk).
+
+### CR-28 · 🟠 should-fix · Reversal (and other write-path entry dates) are stamped in UTC → an evening void behind UTC lands in the NEXT period
+
+> **✅ FIXED — C139.** New `todayLocal()` (`src/lib/format.js`) returns today from LOCAL calendar components (the write-path twin of C129's `ymLocal`). `reverseJournalEntry`'s date now uses it, and the sweep put it on every period-determining write-path fallback: the entry-date fallbacks in `persistJournalEntry`/`persistMultiLineEntry`, the prepaid start date, the depreciation in-service fallback, the depreciation auto-post "due through today", the extraction date fallback (+ its derived due-date base), and the contract-entry date. UI/form/schedule defaults (report range, opening-balance as-of, recurring `next_date`, recon period bounds) left as-is (user-editable / display). Test `tests/writePathDates.test.js`: a mocked UTC-6 evening clock (2026-05-31 20:00 local = 06-01 02:00 UTC) → `todayLocal()` = **2026-05-31** (original month), while the old `toISOString().slice(0,10)` = 2026-06-01.
+
+**Location (was):** `src/App.jsx` `reverseJournalEntry` (`new Date().toISOString().slice(0,10)`) + the entry-date fallbacks. **Why it matters:** `reverseJournalEntry` is dated "today" by design; if "today" rolls to the next month in UTC, the reversal leaves the voided month, so that month's P&L keeps the un-netted original — a silent re-appearance of the CR-1 symptom for behind-UTC users on month-end evenings. Member of the **date/TZ family** (CR-4/5/6); O86 is re-scoped to cover write-path dating, not just read-path keys.
+
+### CR-29 · 🟡 improvement · `computeVendorTotals` and `computeBurnRate` walked PRIMARY legs only → an intra-P&L reclass double-counts the vendor and inflates burn
+
+> **✅ FIXED — C139.** Extracted the shared two-leg walk `plLegs(row, match)` (primary always; the offset leg too for simple rows) and routed `computeVendorTotals`, `computeBurnRate`, `computeCategoryTotals`, the KPI `sumPL`, `businessHealth`'s burn, and `buildMonthlyReport`'s top-vendors all through it — so an intra-P&L reclass (`Dr 6200 / Cr 6100`, one vendor) nets everywhere. Test `tests/reclassLegWalk.test.js`: the reclass fixture → vendor total **500** (was 1000), Σ(vendors) === Σ(categories) === `computeExpenses` === 500, burn = 500.
+
+**Location (was):** `src/lib/reports.js` `computeVendorTotals`/`computeBurnRate` (primary-leg `legSigned` only), while `computeCategoryTotals` already walked both legs — **divergent twins.** **Why it matters:** empirically demonstrated ($1000 shown vs $500 truth). Unreachable via `persistRecode` (updates the line in place), but **QBO-imported books contain reclass JEs**, so it must hold before **O85** (the QBO/import surface) leans on vendor/burn. Member of the **§9 / GL-leg family** (CR-1/2/3) — the last primary-only stragglers in the reporting layer.
+
+### CR-30 · 🟡 improvement · Offset `.range()` pagination isn't insert-safe — a concurrent insert during paging can duplicate a boundary row
+
+> **→ TRACKED: ROADMAP O47** (scale/volume). Not fixed here.
+
+**Location:** `src/lib/ledger.js` `fetchLedgerEntries` (the C135 paged loader) uses OFFSET pagination (`.range(from, from+size)`). **Why it matters:** if a row is inserted while paging (two tabs open, or CPA + owner working the same company concurrently), offsets shift and a boundary row can be returned on two pages → that entry is **double-counted in every report until the next reload**. Low-probability, self-healing on refresh, and only during active concurrent writes — hence 🟡, deferred. **Fix later:** keyset pagination (page by `WHERE (entry_date, id) < (last_seen_entry_date, last_seen_id)` instead of offset), which is insert-stable. Logged on **O47** (volume/scale) alongside the server-side-aggregation follow-up from C135.
