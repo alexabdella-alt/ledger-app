@@ -67,8 +67,8 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
 const PROJECTS = ["General", "Marketing Campaign", "Office Renovation", "Product Launch", "Cloud Infrastructure", "R&D", "Sales Ops"];
 
 // ── AI / infrastructure ──────────────────────────────────────────────────────
-const AI_MODEL = "claude-sonnet-4-6";              // main reasoning model
-const AI_MODEL_FAST = "claude-haiku-4-5-20251001"; // cheap/fast classifier
+// NOTE: the AI model + max_tokens are SERVER-OWNED (ai-proxy/aiProfiles.js). The
+// client never chooses them — it sends only { profile, messages, slots }.
 const AI_PROXY_URL = "https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy";
 
 // ── Business logic constants (single source of truth) ────────────────────────
@@ -88,7 +88,7 @@ const PLATFORM_ADMIN_EMAILS = ["alexabdella@gmail.com"];
 
 export {
   DEFAULT_CHART_OF_ACCOUNTS, PROJECTS,
-  AI_MODEL, AI_MODEL_FAST, AI_PROXY_URL,
+  AI_PROXY_URL,
   CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE,
   IRS_1099_THRESHOLD, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW,
   AP_AUTO_APPROVE_THRESHOLD, FED_TAX_RATE, SE_TAX_RATE,

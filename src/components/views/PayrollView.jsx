@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
+import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
 import { buildPayrollEntry } from "../../lib/payroll";
 
@@ -20,31 +20,9 @@ export default function PayrollView() {
                 const res = await fetch(AI_PROXY_URL, {
                   method:"POST", headers:getAuthHeaders(),
                   body: JSON.stringify({
-                    model:AI_MODEL, max_tokens:2000,
-                    system:`You are a payroll accountant. Parse this payroll export (Gusto, ADP, or generic CSV) and return ONLY valid JSON:
-{
-  "source": "Gusto|ADP|Other",
-  "period_start": "YYYY-MM-DD",
-  "period_end": "YYYY-MM-DD",
-  "pay_date": "YYYY-MM-DD",
-  "total_gross": 0,
-  "total_net": 0,
-  "total_employer_taxes": 0,
-  "total_deductions": 0,
-  "journal_entries": [
-    { "account_code": "6000", "account_name": "Salaries & Wages", "debit": 0, "credit": 0, "memo": "..." }
-  ],
-  "employees": [
-    { "name": "...", "gross": 0, "net": 0, "taxes": 0 }
-  ]
-}
-Journal entry rules:
-- Debit 6000 Salaries & Wages for gross payroll
-- Debit 6010 Payroll Tax Expense for employer taxes
-- Credit 2100 Accrued Liabilities for net pay
-- Credit 2100 Accrued Liabilities for all payroll taxes payable
-- Entries must balance. Use today's date if pay_date unclear.`,
-                    messages:[{role:"user", content:`Parse this payroll file:\n\n${text.slice(0,8000)}`}]
+                    profile: "parse-payroll",   // model/max_tokens/system server-owned; payroll text via untrusted slot
+                    slots: { PAYROLL: text.slice(0,8000) },
+                    messages:[{role:"user", content:"Parse the payroll export text in the instructions."}]
                   })
                 });
                 const d = await okAIResponse(res);

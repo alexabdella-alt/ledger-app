@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
+import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
 
 // ── CSV helpers (Chase / Bank of America / generic 3-column) ──
@@ -269,9 +269,9 @@ export default function ReconView() {
         const base64 = await fileToB64(file);
         const res = await fetch(AI_PROXY_URL, {
           method:"POST", headers:getAuthHeaders(),
-          body: JSON.stringify({ model:AI_MODEL, max_tokens:4000, messages:[{ role:"user", content:[
+          body: JSON.stringify({ profile:"parse-bank-pdf", messages:[{ role:"user", content:[
             { type:"document", source:{ type:"base64", media_type:"application/pdf", data:base64 } },
-            { type:"text", text:'Extract EVERY transaction from this bank statement. Respond ONLY with a JSON array, no markdown, no prose: [{"date":"YYYY-MM-DD","description":"...","amount":-12.34}]. Use NEGATIVE amounts for money out (debits/withdrawals/payments) and POSITIVE for money in (deposits/credits). Include every single row.' },
+            { type:"text", text:'Extract EVERY transaction from this bank statement. Use NEGATIVE amounts for money out (debits/withdrawals/payments) and POSITIVE for money in (deposits/credits). Include every single row.' },
           ] }] }),
         });
         const data = await okAIResponse(res);

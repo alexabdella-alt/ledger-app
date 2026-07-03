@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { supabase, getAuthHeaders } from "./lib/supabase";
-import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_MODEL, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, AP_AUTO_APPROVE_THRESHOLD, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
+import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, AP_AUTO_APPROVE_THRESHOLD, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal } from "./lib/format";
@@ -2829,8 +2829,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const extractRes = await fetch(AI_PROXY_URL, {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: AI_MODEL, max_tokens: 1000,
-          system: `Extract invoice fields. "vendor" = exact legal name of the company issuing the invoice. Respond ONLY with valid JSON: {"vendor":"...","description":"...","amount":"123.45","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details"}`,
+          profile: "extract-invoice",   // model/max_tokens/system server-owned (ai-proxy/aiProfiles.js)
           messages: [{ role:"user", content:[
             { type: mediaType==="application/pdf"?"document":"image", source:{ type:"base64", media_type:mediaType, data:base64 }},
             { type:"text", text:"Extract all invoice fields. Capture exact vendor name." }
@@ -2856,14 +2855,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const codeRes = await fetch(AI_PROXY_URL, {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: AI_MODEL, max_tokens: 1000,
-          system: `Expert accountant. Suggest GL coding for this transaction. Respond ONLY with valid JSON: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"brief","debit_credit":"debit or credit","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
-
-CRITICAL RULES:
-- For EXPENSES: gl_code must be 5xxx, 6xxx, 7xxx or 8xxx (income statement expense accounts: 5xxx COGS, 6xxx operating, 7xxx bad debt/misc, 8xxx interest/tax). secondary_gl_code = 2000 (Accounts Payable) or 1000 (Cash).
-- For REVENUE: gl_code must be 4xxx (income statement revenue accounts). secondary_gl_code = 1100 (Accounts Receivable) or 1000 (Cash).
-- NEVER use 1xxx/2xxx/3xxx (balance sheet accounts) as the PRIMARY gl_code on an expense or revenue transaction. Those are only ever the offset/secondary account.`,
-          messages: [{ role:"user", content:`Vendor: ${extracted.vendor}\nDescription: ${extracted.description}\nAmount: $${extracted.amount}\nType: ${extracted.type}\n\nChart of Accounts:\n${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}\n\nSuggest best GL coding.` }]
+          profile: "code-transaction",   // model/max_tokens/system server-owned; data via untrusted slots
+          slots: {
+            TXN: `Vendor: ${extracted.vendor}\nDescription: ${extracted.description}\nAmount: $${extracted.amount}\nType: ${extracted.type}`,
+            CHART: CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n"),
+          },
+          messages: [{ role:"user", content:"Suggest the best GL coding for the transaction in the instructions." }]
         })
       });
       const codeData = await okAIResponse(codeRes);
@@ -2934,16 +2931,7 @@ CRITICAL RULES:
       // x-rate-kind:upload — counts this file once against the 20-uploads/hour limit
       method:"POST", headers:{ ...getAuthHeaders(), "x-rate-kind":"upload" },
       body: JSON.stringify({
-        model:AI_MODEL, max_tokens:20,
-        system:`Classify this document. Reply with ONLY one word:
-- invoice    → a bill, invoice, or receipt for goods/services (whether the business is paying OR being paid)
-- bank_statement → a bank or credit card statement listing multiple transactions
-- payroll    → a payroll register, paystub, or paycheck summary (employees, gross/net pay, withholdings)
-- qbo        → a QuickBooks export / general-ledger export (columns like Account, Split, Transaction Type)
-- contract   → any legal agreement: loan, lease, debt, subscription, service contract, guarantee, settlement, line of credit, convertible note, licensing agreement
-- unknown    → anything else that doesn't clearly fit the above
-
-Reply with only the single word.`,
+        profile: "classify-document",   // model/max_tokens/system server-owned
         messages:[{role:"user", content:[
           {type: mediaType==="application/pdf"?"document":"image", source:{type:"base64",media_type:mediaType,data:base64}},
           {type:"text", text:"Classify this document."}
@@ -3184,38 +3172,11 @@ Reply with only the single word.`,
           const extractRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:AI_MODEL, max_tokens:4000,
-              system:`You are an expert at reading invoice documents. This document may contain ONE invoice or MULTIPLE invoices/receipts on separate pages or sections.
-
-Extract EVERY invoice you find. Respond ONLY with a valid JSON array — even if there is only one invoice:
-[
-  {"vendor":"Exact vendor name","issuer":"the party that ISSUED/SENT this invoice — the 'From'/'Bill From'/letterhead company","recipient":"the party being BILLED — the 'Bill To'/'To'/customer","description":"what was purchased","amount":"123.45 — the TOTAL due (incl. any sales tax)","subtotal":"pre-tax subtotal if a tax line is shown, else empty","tax_amount":"the sales tax / VAT amount if a tax line is shown, else empty","date":"YYYY-MM-DD","type":"expense or revenue","invoice_number":"INV-001 or empty string if none","notes":"line items, tax, and other details","vendor_address":"full mailing address if shown, else empty","vendor_email":"email if shown, else empty","vendor_phone":"phone if shown, else empty","vendor_website":"website/domain if shown, else empty","payment_terms":"e.g. Net 30 if shown, else empty","account_number":"our account number with this vendor if shown, else empty","tax_id":"their EIN / tax ID if shown, else empty","confidence_score":0.95,"questions":[]},
-  ...one object per invoice...
-]
-For "type":"revenue" the "vendor" field is the CUSTOMER's name and the address/email/phone/etc. describe that customer. Leave any field you can't find as an empty string — never guess.
-
-CONFIDENCE & CLARIFYING QUESTIONS:
-- "confidence_score": your overall confidence from 0.0 to 1.0 that this invoice is complete and correctly understood.
-- "questions": when something is missing or genuinely uncertain, add up to 3 plain-English questions a friendly bookkeeper would text the business owner. Leave it as [] when everything is clear.
-  Each question is {"field":"...","question":"short friendly question","options":["label","label",...]}. Use these fields:
-  - "business_purpose" — unclear what the purchase was for. options like ["Office/Operations","A specific project","Personal — don't book","Something else"].
-  - "amount" — the total is unreadable. Omit "options" (the app shows a number field).
-  - "date" — no date is visible. Omit "options" (the app shows a date picker).
-  - "vendor" — the vendor name is unclear. Omit "options" (the app shows a text field with your best guess prefilled).
-  - "category" — the expense category is unclear. options = 3–5 likely categories for this kind of vendor plus "Something else".
-  - "personal" — it might be a personal expense. options ["Yes, book it","No, it's personal — skip"].
-  Write every question the way you'd text a client — never use accounting jargon, GL codes, or confidence numbers.
-
-DIRECTION — anchor on WHO THIS BUSINESS IS. This business is: "${companySettings?.name || "(not set)"}"${companySettings?.aliases ? ` (also known as: ${companySettings.aliases})` : ""}.
-- If THIS BUSINESS is the issuer (its name is the From/Bill-From/letterhead party) → type = "revenue" (an invoice they SENT a customer).
-- If THIS BUSINESS is the recipient (its name is the Bill-To/To party) → type = "expense" (a bill they RECEIVED).
-- Always fill "issuer" and "recipient" with the exact names on the document so direction can be verified.
-- If the business identity above is "(not set)" or neither party clearly matches it, default to "expense" (most uploads are vendor bills) and let the reviewer confirm.
-
-Rules:
-- Do NOT merge multiple invoices into one — each distinct invoice gets its own object
-- amount = total due on that specific invoice only (the full amount incl. any sales tax)
-- If the invoice shows a sales-tax / VAT line, ALSO return "subtotal" (pre-tax) and "tax_amount". Sales tax collected is a liability owed to the state, never revenue — capturing it lets the books credit Sales Tax Payable instead of lumping it into revenue. Leave both empty if there's no tax line.`,
+              profile: "extract-invoices-batch",   // model/max_tokens/system server-owned; business identity via untrusted slots
+              slots: {
+                BUSINESS_NAME: companySettings?.name || "",
+                BUSINESS_ALIASES: companySettings?.aliases || "",
+              },
               messages:[{role:"user", content:[
                 {type:mediaType==="application/pdf"?"document":"image", source:{type:"base64",media_type:mediaType,data:base64}},
                 {type:"text", text:"Extract every invoice or receipt in this document. Return one JSON object per invoice."}
@@ -3260,19 +3221,12 @@ Rules:
           const codeRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:AI_MODEL, max_tokens:3000,
-              system:`Expert accountant. Assign GL codes to each invoice. Return a JSON array with one coding object per invoice, in the same order as input.
-Each object: {"gl_code":"XXXX","gl_name":"Name","confidence":95,"reasoning":"ONE specific sentence naming the vendor and what was purchased, and why this account fits","secondary_gl_code":"XXXX","secondary_gl_name":"Name"}
-ALWAYS include a concrete "reasoning" sentence — never leave it blank or generic.
-
-CRITICAL RULES:
-- Expenses (type=expense): gl_code must be 5xxx, 6xxx, 7xxx or 8xxx. secondary_gl_code = 2000 (Accounts Payable).
-- Revenue (type=revenue): gl_code must be 4xxx. secondary_gl_code = 1100 (Accounts Receivable).  
-- NEVER use balance sheet accounts (1xxx/2xxx/3xxx) as primary gl_code.
-
-Chart of Accounts (income statement only):
-${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").map(a=>`${a.code} - ${a.name}`).join("\n")}`,
-              messages:[{role:"user", content:`Code these ${extractedList.length} invoices:\n${JSON.stringify(extractedList.map((inv,i)=>({index:i, vendor:inv.vendor, description:inv.description, amount:inv.amount, type:inv.type})))}`}]
+              profile: "code-invoices-batch",   // model/max_tokens/system server-owned; chart + invoices via untrusted slots
+              slots: {
+                CHART: CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").map(a=>`${a.code} - ${a.name}`).join("\n"),
+                INVOICES: JSON.stringify(extractedList.map((inv,i)=>({index:i, vendor:inv.vendor, description:inv.description, amount:inv.amount, type:inv.type}))),
+              },
+              messages:[{role:"user", content:`Code the ${extractedList.length} invoices provided in the instructions.`}]
             })
           });
           const codeData = await okAIResponse(codeRes);
@@ -3524,9 +3478,9 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
               // x-rate-kind:upload — spreadsheets skip classifyFile, so count the file here
               method:"POST", headers:{ ...getAuthHeaders(), "x-rate-kind":"upload" },
               body: JSON.stringify({
-                model:AI_MODEL, max_tokens:4000,
-                system:`Parse this bank statement CSV/text and extract ALL transactions. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
-                messages:[{role:"user", content:`Parse:\n\n${text.slice(0,8000)}`}]
+                profile: "parse-bank-csv",   // model/max_tokens/system server-owned; statement text via untrusted slot
+                slots: { STATEMENT: text.slice(0,8000) },
+                messages:[{role:"user", content:"Parse the bank statement text in the instructions."}]
               })
             });
             const pd = await okAIResponse(parseRes);
@@ -3535,8 +3489,7 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
             const parseRes = await fetch(AI_PROXY_URL, {
               method:"POST", headers:getAuthHeaders(),
               body: JSON.stringify({
-                model:AI_MODEL, max_tokens:4000,
-                system:`Extract ALL transactions from this bank statement PDF. Respond ONLY with JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":123.45,"type":"debit or credit"}]`,
+                profile: "parse-bank-pdf",   // model/max_tokens/system server-owned
                 messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},{type:"text",text:"Extract all transactions."}]}]
               })
             });
@@ -3548,16 +3501,12 @@ ${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").m
           const catRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:AI_MODEL, max_tokens:6000,
-              system:`Categorize each bank transaction with GL coding. Respond ONLY with JSON array: [{"id":0,"date":"YYYY-MM-DD","vendor":"Clean Name","description":"original","amount":123.45,"type":"expense or revenue","gl_code":"XXXX","gl_name":"Name","confidence":85,"needs_review":false}]
-
-CRITICAL RULES:
-- type "expense" → gl_code must be 5xxx, 6xxx, 7xxx or 8xxx (never 1xxx/2xxx/3xxx)
-- type "revenue" → gl_code must be 4xxx (never 1xxx/2xxx/3xxx)
-- Balance sheet accounts (1xxx assets, 2xxx liabilities, 3xxx equity) are NEVER the primary GL code for a transaction
-- Set needs_review:true when confidence<75
-Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").map(a=>`${a.code} - ${a.name}`).join("\n")}`,
-              messages:[{role:"user", content:`Categorize ${rawTxns.length} transactions:\n${JSON.stringify(rawTxns.slice(0,80))}`}]
+              profile: "categorize-bank",   // model/max_tokens/system server-owned; chart + transactions via untrusted slots
+              slots: {
+                CHART: CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").map(a=>`${a.code} - ${a.name}`).join("\n"),
+                TRANSACTIONS: JSON.stringify(rawTxns.slice(0,80)),
+              },
+              messages:[{role:"user", content:`Categorize the ${rawTxns.length} transactions provided in the instructions.`}]
             })
           });
           const catData = await okAIResponse(catRes);
@@ -3689,10 +3638,8 @@ Chart of Accounts:\n${CHART_OF_ACCOUNTS.filter(a=>a.category==="Revenue"||a.cate
           const res1 = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:AI_MODEL, max_tokens:3000,
-              system:`You are a Big 4 CPA (ASC 842 specialist). Extract contract terms and generate ONLY the Day 1 journal entry.
-For OPERATING LEASE: Day 1: Dr ROU Asset 1800 [PV of payments at IBR] / Cr Lease Liability Current 2400 [next 12mo principal] + Cr Lease Liability LT 2450 [remainder]. NO depreciation entries.
-Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement","counterparty":"...","description":"...","total_value":0,"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","payment_amount":0,"payment_frequency":"monthly","interest_rate":0,"lease_type":"operating|finance|not_applicable","rou_asset_value":0,"lease_liability_current":0,"lease_liability_noncurrent":0,"discount_rate_used":0.05,"lease_term_months":0,"monthly_straight_line_expense":0,"accounting_treatment":"...","key_terms":[],"journal_entries":[{"date":"YYYY-MM-DD","description":"Lease commencement","memo":"ASC 842-20-30","lines":[{"account_code":"1800","account_name":"Right-of-Use Asset","debit":0,"credit":0}]}]}`,
+              profile: "extract-contract",   // model/max_tokens/system server-owned; chart via untrusted slot
+              slots: { CHART: CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n") },
               messages:[{role:"user",content:[
                 {type:mediaType==="application/pdf"?"document":"image", source:{type:"base64",media_type:mediaType,data:base64}},
                 {type:"text",text:"Extract contract terms and generate Day 1 entry only."}
@@ -3748,50 +3695,8 @@ Respond ONLY with JSON: {"contract_type":"lease|loan|revenue_contract|subscripti
           const explainRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
             body: JSON.stringify({
-              model:AI_MODEL, max_tokens:1500,
-              system:`You are an expert CPA reviewing an unusual document. Analyze it and respond ONLY with valid JSON (no markdown):
-{
-  "document_type": "Short name for what this document is (e.g. Personal Guarantee, Settlement Agreement, Line of Credit)",
-  "explanation": "2-3 sentences in plain English: what this document is, what it means for the business, and what action is recommended.",
-  "entry_needed": true or false,
-  "entry_summary": "One sentence describing what the journal entry does (only if entry_needed is true)",
-  "journal_entry": {
-    "date": "YYYY-MM-DD (use today if unclear)",
-    "description": "Brief memo for the entry",
-    "lines": [
-      { "account_code": "XXXX", "account_name": "Account Name", "debit": 0, "credit": 0 }
-    ]
-  },
-  "no_entry_reason": "Why no entry is needed now (only if entry_needed is false)",
-  "watch_for": [
-    {
-      "trigger_description": "Plain English description of what future event would require an entry — e.g. 'If the personal guarantee is called by First National Bank'",
-      "trigger_vendor_keywords": ["first national", "fnb"],
-      "trigger_amount_min": 0,
-      "trigger_amount_max": 250000,
-      "suggested_entry_description": "What entry to make when this triggers — e.g. 'Debit Loan Payable, Credit Cash for the guarantee amount called'",
-      "suggested_gl_code": "XXXX",
-      "suggested_gl_name": "Account Name"
-    }
-  ]
-}
-
-Chart of Accounts:
-${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}
-
-Rules:
-- If the document creates a financial obligation or records a financial event → entry_needed: true
-- If it's a contingent liability, disclosure item, or purely legal document with no immediate accounting impact → entry_needed: false
-- watch_for: always populate this array with 1-3 future conditions that would require accounting action, even if entry_needed is true. Examples:
-  * Personal guarantee → watch for lender demanding payment
-  * LOC agreement → watch for actual draws from the lender
-  * Lawsuit → watch for settlement payments or judgments
-  * Deferred payment agreement → watch for each installment due date
-  * Insurance claim → watch for claim payment received
-- trigger_vendor_keywords: lowercase keywords that might appear in a vendor/payee name on a future transaction
-- trigger_amount_min/max: expected dollar range for the triggering transaction (0 if unknown)
-- journal_entry lines must balance (total debits = total credits)
-- Use real account codes from the chart of accounts above`,
+              profile: "explain-unknown-doc",   // model/max_tokens/system server-owned; chart via untrusted slot
+              slots: { CHART: CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n") },
               messages:[{role:"user", content:[
                 {type:mediaType==="application/pdf"?"document":"image", source:{type:"base64",media_type:mediaType,data:base64}},
                 {type:"text", text:"Analyze this document and propose accounting treatment."}
@@ -3906,10 +3811,7 @@ Rules:
         const res = await fetch(AI_PROXY_URL, {
           method:"POST", headers:getAuthHeaders(),
           body: JSON.stringify({
-            model:AI_MODEL, max_tokens:4000,
-            system:`You are an expert at reading bank statements. Extract ALL transactions from this bank statement. Respond ONLY with valid JSON array, no markdown:
-[{"date":"YYYY-MM-DD","description":"raw bank description","amount":123.45,"type":"debit or credit","balance":1000.00}]
-Extract every single transaction row. Use negative amounts for debits/expenses if shown that way in the statement.`,
+            profile: "parse-bank-pdf",   // model/max_tokens/system server-owned
             messages:[{role:"user",content:[
               {type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},
               {type:"text",text:"Extract all transactions from this bank statement as JSON."}
@@ -3931,11 +3833,9 @@ Extract every single transaction row. Use negative amounts for debits/expenses i
         const res = await fetch(AI_PROXY_URL, {
           method:"POST", headers:getAuthHeaders(),
           body: JSON.stringify({
-            model:AI_MODEL, max_tokens:4000,
-            system:`You are an expert at parsing bank statement exports. Parse this CSV/Excel text and extract ALL transactions. Respond ONLY with valid JSON array, no markdown:
-[{"date":"YYYY-MM-DD","description":"raw bank description","amount":123.45,"type":"debit or credit","balance":1000.00}]
-Handle any column format — the file might have columns in different orders. Parse every transaction row.`,
-            messages:[{role:"user",content:`Parse this bank statement file and extract all transactions:\n\n${fileContent.slice(0,8000)}`}]
+            profile: "parse-bank-csv",   // model/max_tokens/system server-owned; statement text via untrusted slot
+            slots: { STATEMENT: fileContent.slice(0,8000) },
+            messages:[{role:"user",content:"Parse the bank statement text in the instructions and extract all transactions."}]
           })
         });
         const d = await okAIResponse(res);
@@ -3952,19 +3852,12 @@ Handle any column format — the file might have columns in different orders. Pa
       const categorizeRes = await fetch(AI_PROXY_URL, {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:AI_MODEL, max_tokens:6000,
-          system:`You are an expert accountant. For each bank transaction, extract the vendor name and suggest the best GL account coding. Use your knowledge of common merchants (e.g. "AMZN" = Amazon, "SQ *" = Square merchant, "ACH" = bank transfer, etc).
-
-Chart of Accounts:
-${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}
-
-Respond ONLY with a valid JSON array, no markdown. For each transaction:
-{"id":0,"date":"YYYY-MM-DD","vendor":"Clean Vendor Name","description":"original description","amount":123.45,"type":"expense or revenue","gl_code":"XXXX","gl_name":"Account Name","confidence":85,"needs_review":false,"reasoning":"one short sentence justifying the GL CHOICE — vendor + signal → account, e.g. 'AWS = cloud infrastructure → 6500 Technology & Software'"}
-
-The "reasoning" must explain WHY this GL account (the classification rationale an accountant can verify/correct) — NOT the source. Never write 'imported from bank statement'.
-Set needs_review:true when confidence < 75 or you cannot clearly identify the vendor/purpose.
-Keep the same array order and index as input.`,
-          messages:[{role:"user",content:`Categorize these ${rawTxns.length} bank transactions:\n${JSON.stringify(rawTxns.slice(0,80))}`}]
+          profile: "categorize-bank",   // model/max_tokens/system server-owned; chart + transactions via untrusted slots
+          slots: {
+            CHART: CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n"),
+            TRANSACTIONS: JSON.stringify(rawTxns.slice(0,80)),
+          },
+          messages:[{role:"user",content:`Categorize the ${rawTxns.length} bank transactions provided in the instructions.`}]
         })
       });
 
@@ -4152,51 +4045,8 @@ Keep the same array order and index as input.`,
       const res1 = await fetch(AI_PROXY_URL, {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:AI_MODEL, max_tokens:3000,
-          system:`You are a Big 4 CPA specializing in ASC 842. Extract contract terms and generate ONLY the Day 1 commencement journal entry.
-
-For OPERATING LEASE (ASC 842):
-Day 1: Dr Right-of-Use Asset 1800 [PV of payments] / Cr Lease Liability Current 2400 [next 12mo principal] + Cr Lease Liability LT 2450 [remainder]
-ROU Asset = PV of all lease payments discounted at IBR (use 5% if not stated)
-Current portion = first 12 months of principal reduction
-Non-current = total PV minus current
-
-Respond ONLY with JSON (no markdown):
-{
-  "contract_type": "lease|loan|revenue_contract|subscription_paid|subscription_received|equipment_financing|service_agreement",
-  "counterparty": "string",
-  "description": "string",
-  "total_value": 0,
-  "start_date": "YYYY-MM-DD",
-  "end_date": "YYYY-MM-DD",
-  "payment_amount": 0,
-  "payment_frequency": "monthly",
-  "interest_rate": 0,
-  "lease_type": "operating|finance|not_applicable",
-  "rou_asset_value": 0,
-  "lease_liability_current": 0,
-  "lease_liability_noncurrent": 0,
-  "discount_rate_used": 0.05,
-  "lease_term_months": 0,
-  "monthly_straight_line_expense": 0,
-  "accounting_treatment": "Cite ASC 842. State IBR used. Explain classification.",
-  "key_terms": [],
-  "journal_entries": [
-    {
-      "date": "YYYY-MM-DD",
-      "description": "Lease commencement — recognize ROU asset and lease liability",
-      "memo": "ASC 842-20-30: Initial measurement at commencement date",
-      "lines": [
-        {"account_code": "1800", "account_name": "Right-of-Use Asset", "debit": 0, "credit": 0},
-        {"account_code": "2400", "account_name": "Lease Liability - Current", "debit": 0, "credit": 0},
-        {"account_code": "2450", "account_name": "Lease Liability - Non-Current", "debit": 0, "credit": 0}
-      ]
-    }
-  ]
-}
-
-Chart of Accounts:
-${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`,
+          profile: "extract-contract",   // model/max_tokens/system server-owned; chart via untrusted slot
+          slots: { CHART: CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n") },
           messages:[{role:"user", content:[
             {type: ext===".pdf"?"document":"image", source:{type:"base64", media_type:mediaType, data:base64}},
             {type:"text", text:"Extract all contract terms and generate the Day 1 journal entry only."}
@@ -4470,61 +4320,17 @@ ${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}`
       const res = await fetch(AI_PROXY_URL, {
         method: "POST", headers: getAuthHeaders(),
         body: JSON.stringify({
-          model: AI_MODEL, max_tokens: 4000,
-          system: `You are an expert bookkeeper running a matching engine. Your job is to match bank transactions against open invoices/accruals and determine if they clear each other.
-
-For each bank transaction, check if it matches one or more open payables/receivables based on:
-- Vendor/counterparty name similarity (fuzzy — "AMZN" matches "Amazon", "SQ *COFFEE" matches "Coffee Shop")  
-- Amount proximity (exact match = high confidence; within 2% = probable; within 10% = possible partial)
-- Date reasonableness (payment 0-60 days after invoice = normal; 60-120 days = possible; >120 days = flag)
-- One bank payment can match MULTIPLE invoices if amounts add up
-
-Match types:
-- "ap_clear": bank debit clears an open payable/accrued expense
-- "ar_clear": bank credit clears an open receivable
-- "partial_ap": bank payment partially covers a payable (track remaining balance)
-- "partial_ar": bank deposit partially covers a receivable
-
-Respond ONLY with valid JSON, no markdown:
-{
-  "matches": [
-    {
-      "bank_txn_id": "txn id from input",
-      "match_type": "ap_clear|ar_clear|partial_ap|partial_ar|no_match",
-      "invoice_ids": ["inv id 1", "inv id 2"],
-      "confidence": 92,
-      "amount_matched": 1500.00,
-      "amount_remaining": 0,
-      "reasoning": "Plain English: why this matches",
-      "auto_clear": true,
-      "clearing_entry": {
-        "description": "Journal entry description",
-        "debit_account_code": "1000",
-        "debit_account_name": "Cash & Cash Equivalents",
-        "credit_account_code": "2000",
-        "credit_account_name": "Accounts Payable",
-        "amount": 1500.00
-      }
-    }
-  ]
-}
-
-Set auto_clear: true only when confidence >= 85 AND amount matches within 2%.
-Set auto_clear: false when confidence < 85, amount differs >2%, or it's a partial payment.
-For no_match, return empty invoice_ids and no clearing_entry.`,
-          messages: [{
-            role: "user", content:
-`Match these bank transactions against open items:
-
-BANK TRANSACTIONS (new):
+          profile: "match-transactions",   // model/max_tokens/system server-owned; match data via untrusted slot
+          slots: { MATCH_DATA:
+`BANK TRANSACTIONS (new):
 ${JSON.stringify(remainingTxns.map(t => ({ id: t.id, date: t.date, description: t.description, vendor: t.vendor, amount: t.amount, type: t.type })))}
 
 OPEN PAYABLES (unpaid expenses):
 ${JSON.stringify(remainPayables.map(i => ({ id: i.id, vendor: i.vendor, description: i.description, amount: i.amount, date: i.date, gl_code: i.gl_code, gl_name: i.gl_name, balance_remaining: i.balance_remaining || i.amount })))}
 
 OPEN RECEIVABLES (uncollected revenue):
-${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, description: i.description, amount: i.amount, date: i.date, gl_code: i.gl_code, gl_name: i.gl_name, balance_remaining: i.balance_remaining || i.amount })))}`
-          }]
+${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, description: i.description, amount: i.amount, date: i.date, gl_code: i.gl_code, gl_name: i.gl_name, balance_remaining: i.balance_remaining || i.amount })))}` },
+          messages: [{ role: "user", content: "Match the bank transactions against the open payables and receivables provided in the instructions." }]
         })
       });
 
@@ -4726,35 +4532,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       const res = await fetch(AI_PROXY_URL, {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
-          model:AI_MODEL, max_tokens:3000,
-          system:`You are an AP automation system. Screen each invoice and return enriched data.
-
-For each invoice return:
-{
-  "id": <same id as input>,
-  "due_date": "YYYY-MM-DD",          // estimate from invoice date: net30 default, net15 for utilities, immediate for credit card
-  "payment_method": "ach|check",     // ach for known digital vendors, check for others
-  "duplicate_flag": true|false,      // true if very similar invoice exists (same vendor + similar amount within 5% + within 60 days)
-  "duplicate_reason": "...",         // if flagged, explain why
-  "anomaly_flag": true|false,        // true if amount is unusual vs vendor history
-  "anomaly_reason": "...",           // if flagged, explain
-  "approval_status": "approved|pending_approval|flagged",
-  "approval_reason": "...",          // why auto-approved, or what needs review
-  "payment_priority": 1|2|3,         // 1=urgent (overdue/due<7d), 2=normal (7-30d), 3=low (30d+)
-  "early_pay_discount": false,       // true if invoice mentions early payment discount
-  "notes_for_reviewer": "..."        // plain English summary of anything the approver should know
-}
-
-Auto-approve (approval_status="approved") if: amount < $${500} AND no duplicate flag AND no anomaly flag.
-Flag (approval_status="flagged") if: duplicate OR anomaly.
-Pending (approval_status="pending_approval") if: amount >= $${500}.
-
-Respond ONLY with a JSON array, one object per invoice.`,
-          messages:[{role:"user", content:`Screen these new invoices:
-${JSON.stringify(expenses.map(i=>({id:i.id, vendor:i.vendor, amount:i.amount, date:i.date, description:i.description, gl_name:i.gl_name})))}
-
-Existing AP history for duplicate/anomaly check:
-${JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>({vendor:i.vendor, amount:i.amount, date:i.date})))}`}]
+          profile: "screen-ap",   // model/max_tokens/system server-owned; invoices + history via untrusted slots
+          slots: {
+            INVOICES: JSON.stringify(expenses.map(i=>({id:i.id, vendor:i.vendor, amount:i.amount, date:i.date, description:i.description, gl_name:i.gl_name}))),
+            HISTORY: JSON.stringify(existing.filter(i=>glIsExpense(i.gl_code)).slice(0,40).map(i=>({vendor:i.vendor, amount:i.amount, date:i.date}))),
+          },
+          messages:[{role:"user", content:"Screen the new invoices in the instructions against the AP history."}]
         })
       });
 

@@ -2,7 +2,6 @@ import React from "react";
 import { useERP } from "./ERPContext";
 import { fmtDate } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
-import { AI_MODEL } from "../lib/constants";
 
 const money = n => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
 
@@ -281,12 +280,14 @@ function ClarificationCard({ item }) {
       const vendor = answers.vendor || inv.vendor || "an unknown vendor";
       const amt = (answers.amount != null && answers.amount !== "") ? (parseFloat(answers.amount) || inv.amount) : inv.amount;
       const data = await callAIProxy({
-        model: AI_MODEL,
-        max_tokens: 300,
-        system: 'You are an expert bookkeeper. Choose the single best GL account for a transaction based on the user\'s description. Reply with ONLY a JSON object, no prose: {"gl_code":"XXXX","gl_name":"Account name","reasoning":"one short sentence","is_new":false}. Strongly prefer an existing account. If NONE of the existing accounts is a reasonable fit, set "is_new":true, propose a concise new expense account name in gl_name, and leave gl_code as "".',
+        profile: "interpret-freetext-gl",   // model/max_tokens/system server-owned; vendor + user description + chart via untrusted slots
+        slots: {
+          CONTEXT: `The user uploaded an invoice from ${vendor} for ${money(amt)}. They described it as: "${text}".`,
+          CHART: coa,
+        },
         messages: [{
           role: "user",
-          content: `The user uploaded an invoice from ${vendor} for ${money(amt)}. They described it as: "${text}". Based on this, what GL account should this be booked to from this chart of accounts:\n${coa}\n\nReturn JSON: { gl_code, gl_name, reasoning }`,
+          content: "Choose the best GL account for the transaction described in the instructions. Return JSON: { gl_code, gl_name, reasoning }.",
         }],
       });
       const raw = (data?.content?.find(b => b.type === "text")?.text || "").replace(/```json|```/g, "").trim();

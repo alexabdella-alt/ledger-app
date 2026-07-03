@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
+import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
 import { computeAR, isLiveEntry, glAccountBalance } from "../../lib/reports";
 
@@ -55,19 +55,16 @@ export default function ArView() {
                 const res = await fetch(AI_PROXY_URL, {
                   method:"POST", headers:getAuthHeaders(),
                   body: JSON.stringify({
-                    model:AI_MODEL, max_tokens:700,
-                    system:`You are a CFO advisor reviewing an accounts receivable aging report. Be direct, practical, specific. 3-4 short paragraphs. Flag collection risks. Suggest concrete follow-up actions. No jargon.`,
-                    messages:[{role:"user", content:
-`AR Aging Summary:
-Current (0-30 days): ${aging.current.count} invoices · $${aging.current.total.toLocaleString()}
+                    profile: "narrate-ar-aging",   // model/max_tokens/system server-owned; aging summary via untrusted slot
+                    slots: { AGING:
+`Current (0-30 days): ${aging.current.count} invoices · $${aging.current.total.toLocaleString()}
 31-60 days: ${aging.d60.count} invoices · $${aging.d60.total.toLocaleString()}
 61-90 days: ${aging.d90.count} invoices · $${aging.d90.total.toLocaleString()}
 90+ days: ${aging.d90plus.count} invoices · $${aging.d90plus.total.toLocaleString()}
 Total outstanding: $${totalAR.toLocaleString()}
 Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"}
-90+ day customers: ${[...new Set(aging.d90plus.items.map(i=>i.vendor))].join(", ")||"none"}
-
-What should this business owner know and do?`}]
+90+ day customers: ${[...new Set(aging.d90plus.items.map(i=>i.vendor))].join(", ")||"none"}` },
+                    messages:[{role:"user", content:"What should this business owner know and do about the AR aging in the instructions?"}]
                   })
                 });
                 const d = await okAIResponse(res);

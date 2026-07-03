@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { AI_MODEL, AI_PROXY_URL } from "../../lib/constants";
+import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
 
 export default function OnboardView() {
@@ -16,21 +16,12 @@ export default function OnboardView() {
                 const res = await fetch(AI_PROXY_URL, {
                   method:"POST", headers:getAuthHeaders(),
                   body: JSON.stringify({
-                    model:AI_MODEL, max_tokens:4000,
-                    system:`You are a QBO migration expert. Parse this QuickBooks Online export (CSV, IIF, or tabular format) and return ONLY valid JSON:
-{
-  "source_accounts": [
-    { "qbo_name": "Checking Account", "qbo_code": "1010", "suggested_our_code": "1000", "suggested_our_name": "Cash & Cash Equivalents", "category": "Assets" }
-  ],
-  "transactions": [
-    { "date": "YYYY-MM-DD", "vendor": "Vendor Name", "description": "Description", "amount": 0, "type": "expense|revenue", "qbo_account": "QBO Account Name", "suggested_gl_code": "5XXX", "suggested_gl_name": "GL Name" }
-  ],
-  "summary": { "total_transactions": 0, "date_range_start": "YYYY-MM-DD", "date_range_end": "YYYY-MM-DD", "total_vendors": 0 }
-}
-Our Chart of Accounts:
-${CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n")}
-Map QBO accounts to our closest matching GL code. Parse up to 200 transactions.`,
-                    messages:[{role:"user", content:`Parse this QBO export:\n\n${text.slice(0,12000)}`}]
+                    profile: "parse-qbo",   // model/max_tokens/system server-owned; chart + export via untrusted slots
+                    slots: {
+                      CHART: CHART_OF_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n"),
+                      QBO: text.slice(0,12000),
+                    },
+                    messages:[{role:"user", content:"Parse the QBO export text in the instructions."}]
                   })
                 });
                 const d = await okAIResponse(res);
