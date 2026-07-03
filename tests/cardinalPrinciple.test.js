@@ -26,7 +26,10 @@ function explanations(src) {
 }
 // Pull the argument of every `actionSummary.push(`…`)` template literal.
 function actionSummaries(src) {
-  return [...src.matchAll(/actionSummary\.push\(`([^`]*)`\)/g)].map(m => m[1]);
+  // Owner-facing chat summaries live in the main loop (actionSummary.push) AND in the
+  // destructive-action executor behind the confirm gate (summary.push) — both must be
+  // jargon-free (Cardinal Principle / CR-26).
+  return [...src.matchAll(/(?:actionSummary|summary)\.push\(`([^`]*)`\)/g)].map(m => m[1]);
 }
 
 describe("Cardinal Principle — GAAP clarification explanations are jargon-free (CR-25)", () => {

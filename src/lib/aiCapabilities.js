@@ -38,6 +38,29 @@ export const AI_ALLOWED_ACTIONS_SET = new Set(AI_ALLOWED_ACTIONS);
 const AI_READONLY_ACTIONS = new Set(["none", "navigate", "render_chart", "export_csv", "render_summary"]);
 export const isMutatingAIAction = (type) => !AI_READONLY_ACTIONS.has(String(type || ""));
 
+// ── DESTRUCTIVE actions (CR-9 / O81 part 2) ──────────────────────────────────
+// Actions that DESTROY or ALTER posted financial data (or delete config). These
+// NEVER execute straight from the AI tool loop — the dispatch code STAGES them
+// behind a human confirmation gate (see aiActionGate.js + the chat confirm card);
+// the mutation runs only after the user clicks Confirm, through the verified-write
+// path. This is a CODE gate the model cannot bypass — the backstop for the part-1.5
+// tool_result residual: even a poisoned document/tool_result that steers the model
+// toward a destructive call is stopped at the human gate.
+//
+// SAFE (execute immediately, no friction): everything else — read-only/display
+// (none, navigate, render_*) AND additive/reversible config (add_account, add_rule,
+// add_recurring, pause_recurring, add_contact, update_contact, set_contact_rule).
+export const AI_DESTRUCTIVE_ACTIONS = new Set([
+  "recode",          // alters the booked GL account of a posted entry
+  "retag_project",   // alters the project tag of a posted entry
+  "delete_invoice",  // soft-deletes a posted transaction
+  "void_invoice",    // voids a posted transaction (posts a reversing entry)
+  "reverse_entry",   // posts a GAAP reversing entry against a posted one
+  "delete_contract", // soft-deletes a contract + its generated entries
+  "delete_rule",     // deletes a vendor coding rule
+]);
+export const isDestructiveAIAction = (type) => AI_DESTRUCTIVE_ACTIONS.has(String(type || ""));
+
 export const isAllowedAIAction = (type) => AI_ALLOWED_ACTIONS_SET.has(String(type || ""));
 
 // Max items a single AI request may delete/void at once (bulk-delete protection).

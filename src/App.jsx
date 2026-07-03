@@ -7,7 +7,8 @@ import { initials, vendorColor, deriveDueDate, todayLocal, fmtSignedMoney, fmtAp
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
-import { isAllowedAIAction, isMutatingAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
+import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
+import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
@@ -705,6 +706,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatHistoryView, setChatHistoryView] = useState(false); // History timeline toggle
+  // Destructive AI actions staged behind the human confirmation gate (CR-9). null =
+  // nothing pending; else { actions:[…], items:[{type,description,targets}] }.
+  const [pendingAIActions, setPendingAIActions] = useState(null);
   const [aiInfoOpen, setAiInfoOpen] = useState(false); // "What can the assistant do?" capability panel
   const [legalTab, setLegalTab] = useState("terms"); // which legal page to open (terms | privacy)
   const [hasUnread, setHasUnread] = useState(false);
@@ -4826,6 +4830,142 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // Reload the persisted conversation whenever the company changes.
   useEffect(() => { if (currentCompany?.id) loadChatHistory(currentCompany.id); /* eslint-disable-next-line */ }, [currentCompany?.id]);
 
+  // ── DESTRUCTIVE-ACTION EXECUTOR (CR-9 / O81 part 2) ──────────────────────────
+  // Runs ONE destructive AI action (void / delete / recode / retag / reverse /
+  // delete-rule) through the verified-write path. Called ONLY after the human clicks
+  // Confirm on the staged proposal (confirmAIActions) — NEVER inline from the chat
+  // tool loop, which stages destructive actions instead of executing them. Returns
+  // { summary[], failures[] } so the reply reports what actually committed (never a
+  // false "✓ done"). This is the code-enforced human gate; the model can't bypass it.
+  const executeDestructiveAction = async (action) => {
+    const summary = [], failures = [];
+    if (action.type === "recode" && action.invoiceIds?.length) {
+      const toRecode = invoices.filter(inv => action.invoiceIds.includes(inv.id));
+      const beforeState = toRecode.map(i => ({ id:i.id, gl_code:i.gl_code, gl_name:i.gl_name }));
+      setInvoices(prev => prev.map(inv =>
+        action.invoiceIds.includes(inv.id)
+          ? { ...inv, gl_code: action.gl_code, gl_name: action.gl_name, recode_note: `Recoded by AI assistant` }
+          : inv));
+      const ok = await persistRecode(toRecode, action.gl_code, action.gl_name);
+      if (ok) {
+        logAudit("ai_recode", `AI recoded ${toRecode.length} invoice(s) → ${action.gl_name}`, beforeState, { gl_code: action.gl_code, gl_name: action.gl_name });
+        summary.push(`Updated the category for ${toRecode.length} transaction(s) → ${action.gl_name}`);
+      } else {
+        setInvoices(prev => prev.map(inv => {
+          const b = beforeState.find(x => x.id === inv.id);
+          return b ? { ...inv, gl_code: b.gl_code, gl_name: b.gl_name, recode_note: undefined } : inv;
+        }));
+        failures.push(`recode → ${action.gl_name}`);
+      }
+    }
+    if (action.type === "retag_project" && action.invoiceIds?.length) {
+      const res = await persistChatRetagProject(action.invoiceIds, action.project);
+      if (res.ok) summary.push(`Tagged ${action.invoiceIds.length} invoice(s) → Project: ${action.project}`);
+      else failures.push(`tag → Project: ${action.project}`);
+    }
+    if (action.type === "delete_invoice") {
+      if (action.invoice_id) {
+        const target = invoices.find(i => String(i.id) === String(action.invoice_id));
+        if (target) {
+          const ids = await softDeleteInvoice(target, true);
+          if (ids && ids.length) summary.push(`Deleted the transaction: ${target.vendor} ${fmtMoney(target.amount)}`);
+          else failures.push(`delete ${target.vendor}`);
+        } else summary.push(`Couldn't find that transaction`);
+      } else if (action.vendor) {
+        const toDelete = invoices.filter(i =>
+          i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) &&
+          (!action.amount || Math.abs(i.amount - parseFloat(action.amount)) < 1) &&
+          (!action.date || i.date === action.date));
+        if (toDelete.length > 0) {
+          const ids = await softDeleteInvoices(toDelete, true);
+          if (ids && ids.length) summary.push(`Deleted ${toDelete.length} transaction${toDelete.length===1?"":"s"} for ${action.vendor}`);
+          else failures.push(`delete ${action.vendor}`);
+        } else summary.push(`Couldn't find any transactions for ${action.vendor}`);
+      }
+    }
+    if (action.type === "void_invoice") {
+      if (action.invoice_id) {
+        const target = invoices.find(i => String(i.id) === String(action.invoice_id));
+        if (target) {
+          const revId = await voidInvoiceWithUndo(target, action.reason || "Voided via AI", true);
+          if (revId) summary.push(`Undid the entry for ${target.vendor}`);
+          else failures.push(`void ${target.vendor}`);
+        } else summary.push(`Couldn't find that transaction`);
+      } else if (action.vendor) {
+        const toVoid = invoices.filter(i => i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) && i.status!=="voided");
+        let voided = 0;
+        for (const t of toVoid) { const revId = await voidInvoiceWithUndo(t, action.reason || "Voided via AI", true); if (revId) voided++; }
+        if (voided) summary.push(`Undid ${voided} transaction${voided===1?"":"s"} for ${action.vendor}`);
+        if (voided < toVoid.length) failures.push(`void ${toVoid.length - voided} entr${(toVoid.length-voided)===1?"y":"ies"} for ${action.vendor}`);
+      }
+    }
+    if (action.type === "reverse_entry") {
+      const toReverse = invoices.find(i => String(i.id) === String(action.invoice_id));
+      if (toReverse) {
+        const revId = await reverseJournalEntry(toReverse, action.reason || "Reversed via AI", true);
+        if (revId) { await loadAllData().catch(() => {}); summary.push(`Undid the entry for ${toReverse.vendor} (${fmtMoney(toReverse.amount)})`); }
+        else failures.push(`reverse ${toReverse.vendor}`);
+      }
+    }
+    if (action.type === "delete_contract") {
+      if (action.contract_id || action.counterparty) {
+        const toDelete = contracts.filter(c =>
+          action.contract_id ? String(c.id) === String(action.contract_id)
+          : c.counterparty?.toLowerCase().includes(action.counterparty?.toLowerCase()));
+        if (toDelete.length) {
+          const res = await softDeleteContracts(toDelete, true);
+          if (res?.ok) summary.push(`Contract removed: ${action.counterparty || action.contract_id}`);
+          else failures.push(`remove contract ${action.counterparty || action.contract_id}`);
+        } else summary.push(`No matching contract found for ${action.counterparty || action.contract_id}`);
+      }
+    }
+    if (action.type === "delete_rule") {
+      const res = await deleteChatRule(action.vendor);
+      if (res.ok) summary.push(`Rule removed for ${action.vendor}`);
+      else failures.push(`remove rule for ${action.vendor}`);
+    }
+    // AI audit trail — delete/void/contract log via their own helpers; log the rest here.
+    if (summary.length && !["delete_invoice","void_invoice","delete_contract"].includes(action.type)) {
+      logAI(`ai_${action.type}`, summary.join("; "));
+    }
+    return { summary, failures };
+  };
+
+  // Human clicked CONFIRM on the staged destructive proposal → run them through the
+  // verified path, then append an honest result message. This is the ONLY path that
+  // executes a destructive AI action.
+  const confirmAIActions = async () => {
+    const pending = pendingAIActions;
+    if (!pending) return;
+    setPendingAIActions(null);
+    const summary = [], failures = [];
+    for (const action of pending.actions) {
+      const r = await executeDestructiveAction(action);
+      summary.push(...r.summary); failures.push(...r.failures);
+    }
+    if (failures.length) { try { await loadAllData(); } catch {} }
+    const content = composeAssistantReply({
+      reply: failures.length ? "Here's what happened:" : "Done.",
+      actionFailures: failures, actionSummary: summary,
+    });
+    const doneMsg = { role: "assistant", content, actions: summary, rich: [], id: Date.now() + 3, created_at: new Date().toISOString() };
+    setChatHistory(h => [...h, doneMsg]);
+    persistChatMessage("assistant", doneMsg.content, doneMsg.actions, doneMsg.rich);
+    logAI("ai_actions_confirmed", `User confirmed ${pending.actions.length} destructive action(s): ${pending.items.map(it => it.type).join(", ")}`);
+    if (!chatOpen) setHasUnread(true);
+  };
+
+  // Human clicked CANCEL → discard the staged actions with NO write.
+  const cancelAIActions = () => {
+    const pending = pendingAIActions;
+    if (!pending) return;
+    setPendingAIActions(null);
+    logAI("ai_actions_cancelled", `User cancelled ${pending.actions.length} destructive action(s): ${pending.items.map(it => it.type).join(", ")}`);
+    const msg = { role: "assistant", content: "Okay — I've left everything as it was. Nothing was changed.", actions: [], rich: [], id: Date.now() + 3, created_at: new Date().toISOString() };
+    setChatHistory(h => [...h, msg]);
+    persistChatMessage("assistant", msg.content, msg.actions, msg.rich);
+  };
+
   const handleChatSend = async () => {
     const msg = chatInput.trim();
     if (!msg || chatLoading) return;
@@ -4918,7 +5058,18 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         logAI("role_blocked_action", `Refused a data-changing AI action for member-role user (${result.actions.filter(a=>isMutatingAIAction(a.type)).map(a=>a.type).join(", ")})`);
       }
 
-      for (const action of (result.actions || [])) {
+      // ── CONFIRMATION GATE (CR-9 / O81 part 2) ──
+      // Split the model's actions: SAFE (read-only / additive-reversible) execute in
+      // the loop below; DESTRUCTIVE (void / delete / recode / retag / reverse /
+      // delete-rule) are STAGED behind a human Confirm and NEVER executed inline — so
+      // a poisoned tool_result or a steered model can't mutate the books without a
+      // human clicking Confirm. When the batch is blocked (member / ambiguous / bulk)
+      // nothing stages; the reply handles the refusal. Backstop for the part-1.5
+      // tool_result residual (server owns instructions; tool outputs still flow in).
+      const gateBlocked = memberBlocked || clarifyNeeded || bulkBlocked;
+      const { execute: safeActions, stage: destructiveActions } = routeAIActions(result.actions || [], { blocked: gateBlocked });
+
+      for (const action of safeActions) {
         // Member tried to change data — don't touch anything; the reply explains.
         if (memberBlocked && isMutatingAIAction(action.type)) continue;
         // Ambiguous modify request — don't touch anything; the reply asks which one.
@@ -4976,35 +5127,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           if (target === "contracts") setContractView("list");
           actionSummary.push(`Opened ${target}`);
         }
-        if (action.type === "recode" && action.invoiceIds?.length) {
-          const toRecode = invoices.filter(inv => action.invoiceIds.includes(inv.id));
-          const beforeState = toRecode.map(i => ({ id:i.id, gl_code:i.gl_code, gl_name:i.gl_name }));
-          // Optimistic update, then VERIFY the DB write committed before reporting success.
-          setInvoices(prev => prev.map(inv =>
-            action.invoiceIds.includes(inv.id)
-              ? { ...inv, gl_code: action.gl_code, gl_name: action.gl_name, recode_note: `Recoded by AI assistant` }
-              : inv
-          ));
-          const ok = await persistRecode(toRecode, action.gl_code, action.gl_name);
-          if (ok) {
-            logAudit("ai_recode", `AI recoded ${toRecode.length} invoice(s) → ${action.gl_name}`, beforeState, { gl_code: action.gl_code, gl_name: action.gl_name });
-            actionSummary.push(`Updated the category for ${toRecode.length} transaction(s) → ${action.gl_name}`);
-          } else {
-            // Write didn't commit → revert the optimistic change and record the failure so
-            // the reply can't claim "✓ reclassed" (the reported false-success bug).
-            setInvoices(prev => prev.map(inv => {
-              const b = beforeState.find(x => x.id === inv.id);
-              return b ? { ...inv, gl_code: b.gl_code, gl_name: b.gl_name, recode_note: undefined } : inv;
-            }));
-            actionFailures.push(`recode → ${action.gl_name}`);
-          }
-        }
-        if (action.type === "retag_project" && action.invoiceIds?.length) {
-          // Persist the project onto the journal_entries + verify (was setState-only → lost on refresh).
-          const res = await persistChatRetagProject(action.invoiceIds, action.project);
-          if (res.ok) actionSummary.push(`Tagged ${action.invoiceIds.length} invoice(s) → Project: ${action.project}`);
-          else actionFailures.push(`tag → Project: ${action.project}`);
-        }
+        // recode / retag_project are DESTRUCTIVE — never executed inline here; they are
+        // staged behind the confirm gate and run by executeDestructiveAction on Confirm.
         if (action.type === "add_account") {
           if (action.code && action.name && action.category) {
             const ok = await addCustomAccount({ code: action.code, name: action.name, category: action.category });
@@ -5012,89 +5136,16 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             else actionSummary.push(`Added a new category: ${action.name}`);
           }
         }
-        if (action.type === "delete_invoice") {
-          if (bulkBlocked) continue; // refused above — handled in the reply
-          // Soft delete (reversible) by ID or by vendor+amount match. Logged as "AI Chat".
-          if (action.invoice_id) {
-            const target = invoices.find(i => String(i.id) === String(action.invoice_id));
-            if (target) {
-              // VERIFY the soft-delete committed (returns the deleted JE ids) before claiming success.
-              const ids = await softDeleteInvoice(target, true);
-              if (ids && ids.length) actionSummary.push(`Deleted the transaction: ${target.vendor} $${target.amount}`);
-              else actionFailures.push(`delete ${target.vendor}`);
-            } else {
-              actionSummary.push(`Couldn't find that transaction`);
-            }
-          } else if (action.vendor) {
-            const toDelete = invoices.filter(i =>
-              i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) &&
-              (!action.amount || Math.abs(i.amount - parseFloat(action.amount)) < 1) &&
-              (!action.date || i.date === action.date)
-            );
-            if (toDelete.length > 0) {
-              const ids = await softDeleteInvoices(toDelete, true);
-              if (ids && ids.length) actionSummary.push(`Deleted ${toDelete.length} transaction${toDelete.length===1?"":"s"} for ${action.vendor}`);
-              else actionFailures.push(`delete ${action.vendor}`);
-            } else {
-              actionSummary.push(`Couldn't find any transactions for ${action.vendor}`);
-            }
-          }
-        }
-        if (action.type === "void_invoice") {
-          // Void = mark as voided but keep for audit trail (reversible via Undo).
-          if (action.invoice_id) {
-            const target = invoices.find(i => String(i.id) === String(action.invoice_id));
-            if (target) {
-              const revId = await voidInvoiceWithUndo(target, action.reason || "Voided via AI", true);  // VERIFY the reversal posted
-              if (revId) actionSummary.push(`Undid the entry for ${target.vendor}`);
-              else actionFailures.push(`void ${target.vendor}`);
-            } else { actionSummary.push(`Couldn't find that transaction`); }
-          } else if (action.vendor) {
-            const toVoid = invoices.filter(i => i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) && i.status!=="voided");
-            let voided = 0;
-            for (const t of toVoid) { const revId = await voidInvoiceWithUndo(t, action.reason || "Voided via AI", true); if (revId) voided++; }
-            if (voided) actionSummary.push(`Undid ${voided} transaction${voided===1?"":"s"} for ${action.vendor}`);
-            if (voided < toVoid.length) actionFailures.push(`void ${toVoid.length - voided} entr${(toVoid.length-voided)===1?"y":"ies"} for ${action.vendor}`);
-          }
-        }
-        if (action.type === "reverse_entry") {
-          // Post a true reversing entry through the shared, tested path (mirrors every
-          // line of the original). Replaces the old inline swap+flip, which double-
-          // negated and re-booked an identical entry instead of reversing it.
-          const toReverse = invoices.find(i => String(i.id) === String(action.invoice_id));
-          if (toReverse) {
-            const revId = await reverseJournalEntry(toReverse, action.reason || "Reversed via AI", true);
-            if (revId) { await loadAllData().catch(() => {}); actionSummary.push(`Undid the entry for ${toReverse.vendor} ($${toReverse.amount})`); }
-            else actionFailures.push(`reverse ${toReverse.vendor}`);   // didn't post → don't claim success
-          }
-        }
-        if (action.type === "delete_contract") {
-          if (bulkBlocked) continue; // refused above — handled in the reply
-          if (action.contract_id || action.counterparty) {
-            const toDelete = contracts.filter(c =>
-              action.contract_id ? String(c.id) === String(action.contract_id)
-              : c.counterparty?.toLowerCase().includes(action.counterparty?.toLowerCase())
-            );
-            if (toDelete.length) {
-              const res = await softDeleteContracts(toDelete, true);   // VERIFY the DB delete committed
-              if (res?.ok) actionSummary.push(`Contract removed: ${action.counterparty || action.contract_id}`);
-              else actionFailures.push(`remove contract ${action.counterparty || action.contract_id}`);
-            } else {
-              actionSummary.push(`No matching contract found for ${action.counterparty || action.contract_id}`);
-            }
-          }
-        }
+        // delete_invoice / void_invoice / reverse_entry / delete_contract are
+        // DESTRUCTIVE — staged behind the confirm gate; executeDestructiveAction runs
+        // them on Confirm (bulk-cap of 3 + ambiguity guard applied before staging).
         if (action.type === "add_rule") {
           // Persist to vendor_rules (contact→account) + verify; was setState-only (lost on refresh).
           const res = await persistChatRule({ vendor: action.vendor, gl_code: action.gl_code, gl_name: action.gl_name, project: action.project });
           if (res.ok) actionSummary.push(`Rule saved: ${action.vendor} → ${action.gl_name}${action.project ? ` / ${action.project}` : ""}`);
           else actionFailures.push(`rule ${action.vendor} → ${action.gl_name}`);
         }
-        if (action.type === "delete_rule") {
-          const res = await deleteChatRule(action.vendor);    // scoped delete (O51), verified gone
-          if (res.ok) actionSummary.push(`Rule removed for ${action.vendor}`);
-          else actionFailures.push(`remove rule for ${action.vendor}`);
-        }
+        // delete_rule is DESTRUCTIVE — staged behind the confirm gate (executeDestructiveAction).
         if (action.type === "add_recurring") {
           // Persist to recurring_transactions + verify; was setState-only (lost on refresh).
           const res = await persistChatRecurring({ name: action.name, vendor: action.vendor, amount: action.amount, gl_code: action.gl_code, gl_name: action.gl_name, frequency: action.frequency, next_date: action.next_date, project: action.project });
@@ -5182,6 +5233,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // state) before we render the (honest) reply.
       if (actionFailures.length) { try { await loadAllData(); } catch {} }
 
+      // ── STAGE destructive actions behind the confirmation card (CR-9) ──
+      // Nothing has mutated for these — they run only when the user clicks Confirm
+      // (confirmAIActions). Not staged when the batch was blocked (member/ambiguous/bulk).
+      const staged = (!gateBlocked && destructiveActions.length)
+        ? buildPendingConfirmation(destructiveActions, { invoices, contracts })
+        : null;
+      if (staged) { setPendingAIActions({ ...staged, id: Date.now() + 2 }); logAI("ai_actions_staged", `Staged ${staged.actions.length} destructive action(s) for confirmation: ${staged.items.map(it => it.type).join(", ")}`); }
+
       const assistantMsg = {
         role: "assistant",
         content: memberBlocked
@@ -5190,8 +5249,11 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             ? clarifyText()
             : bulkBlocked
               ? "I can delete items one at a time for safety. Which specific entry would you like me to remove first?"
-              // NEVER claim success on a write that didn't commit — surface failures.
-              : composeAssistantReply({ reply: result.reply, actionFailures, actionSummary }),
+              : staged
+                // Destructive change proposed but NOT executed — ask for confirmation.
+                ? `${[(result.reply || "").trim(), ...actionSummary].filter(Boolean).join("\n\n")}\n\nBefore I make ${staged.items.length === 1 ? "that change" : "those changes"}, I need you to confirm below.`.trim()
+                // NEVER claim success on a write that didn't commit — surface failures.
+                : composeAssistantReply({ reply: result.reply, actionFailures, actionSummary }),
         actions: (memberBlocked || clarifyNeeded || bulkBlocked) ? [] : actionSummary,
         rich: (memberBlocked || clarifyNeeded || bulkBlocked) ? [] : richOutputs,
         id: Date.now() + 1,
@@ -5268,7 +5330,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
@@ -5850,6 +5912,30 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                   <div style={{ display:"flex", gap:4 }}>
                     {[0,1,2].map(i=><div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"var(--sc-text-2)", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
                   </div>
+                </div>
+              </div>
+            )}
+            {/* ── DESTRUCTIVE-ACTION CONFIRMATION GATE (CR-9) ── the mutation runs only
+                 when the user clicks Confirm; Cancel discards it with no write. ── */}
+            {pendingAIActions && (
+              <div style={{ margin:"0 0 14px", border:"1px solid var(--sc-warning)", background:"var(--sc-warning-soft)", borderRadius:12, padding:"12px 14px" }}>
+                <div style={{ fontSize:12, fontWeight:700, color:"var(--sc-warning)", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
+                  <span>⚠</span> Confirm before I make {pendingAIActions.items.length===1?"this change":"these changes"}
+                </div>
+                {pendingAIActions.items.map((it, i) => (
+                  <div key={i} style={{ fontSize:13, color:"var(--sc-text)", marginBottom:8 }}>
+                    <div style={{ fontWeight:600 }}>{it.description}</div>
+                    {it.targets?.length > 0 && (
+                      <ul style={{ margin:"3px 0 0", paddingLeft:18 }}>
+                        {it.targets.slice(0,10).map((t,j)=>(<li key={j} style={{ fontSize:12, color:"var(--sc-text-2)", lineHeight:1.5 }}>{t.label}</li>))}
+                        {it.targets.length>10 && <li style={{ fontSize:12, color:"var(--sc-text-2)" }}>…and {it.targets.length-10} more</li>}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+                <div style={{ display:"flex", gap:8, marginTop:4 }}>
+                  <button onClick={confirmAIActions} style={{ padding:"7px 16px", borderRadius:8, fontSize:13, fontWeight:600, background:"var(--sc-error)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Confirm</button>
+                  <button onClick={cancelAIActions} style={{ padding:"7px 16px", borderRadius:8, fontSize:13, fontWeight:600, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>Cancel</button>
                 </div>
               </div>
             )}

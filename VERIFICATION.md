@@ -298,6 +298,17 @@
 
 ---
 
+## L5. AI destructive-action confirmation gate (CR-9 / O81 part 2)
+
+The chatbot must NOT execute a destructive action (void / delete / recode / retag / reverse / delete-rule) without a human clicking **Confirm** on a card that lists the exact entries. This is a CODE gate — not a prompt promise.
+
+- ⬜ **L5a · modal appears, nothing changes yet** — ask the bot "delete the [vendor] $[amount] charge" (pick a real one). Expected: the bot replies with what it's about to do, and a **Confirm / Cancel** card appears listing that entry (vendor · amount · date). The transaction is **still there** — nothing was deleted. **Risk: HIGH** (silent mutation = trust breach).
+- ⬜ **L5b · Confirm executes via the verified path** — click **Confirm**. Expected: the entry is deleted/voided (a follow-up "Done — …" message; the row is gone/struck-through in Books), and it lands in the audit trail. Refresh → the change persisted. **Risk: HIGH.**
+- ⬜ **L5c · Cancel discards, no write** — repeat L5a, click **Cancel**. Expected: "I've left everything as it was"; the entry is **unchanged**; refresh confirms nothing was written. **Risk: HIGH.**
+- ⬜ **L5d · bulk shows the full list before commit** — ask to "void all [vendor] charges" (a vendor with 2–3). Expected: the card lists **every** affected entry (not just one) before Confirm; confirming acts on all shown; >3 is still refused (bulk cap). **Risk: HIGH** (confirm-one-do-many).
+- ⬜ **L5e · safe actions still run with no friction** — ask a read-only question ("what's my burn?") or an additive one ("add a rule: Acme → Software"). Expected: it just happens — no confirm card for safe/reversible actions. **Risk: LOW.**
+- ⬜ **L5f · recode/reverse gated too** — ask "recategorize the Acme charge to Marketing" and "reverse that lease entry". Expected: each surfaces the Confirm card before anything changes. **Risk: HIGH.**
+
 ## Not-yet-built placeholders (add steps + risk when shipped)
 
 - ⬜ **O60 Phase 2 · bank-line completeness** *(not built)* — every imported statement line resolves to an entry or explicit categorization; unresolved lines surfaced. **Risk: HIGH.**
