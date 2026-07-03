@@ -14,6 +14,7 @@
 
 import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
+import { fmtSignedMoney } from "./format.js";
 import {
   isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
   computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP,
@@ -24,6 +25,13 @@ const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s
 const isRevenueCode = c => String(c || "")[0] === "4";
 const normV = s => String(s || "").toLowerCase().trim();
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+// CANONICAL money display for the AI surface: the SAME formatter the dashboard/
+// Balance Sheet use (fmtSignedMoney, exact 2 decimals, signed). Every current
+// balance/total is returned to the model as a pre-formatted `*_display` string it
+// copies VERBATIM — so "AI numbers == dashboard to the penny" is deterministic,
+// not dependent on the model formatting a raw float. Forward-looking estimates
+// (runway months, projected taxes) intentionally stay numeric/approximate.
+const money = v => fmtSignedMoney(v);
 const unpaid = i => i.payment_status !== "paid" && i.payment_status !== "collected";
 
 function periodRange(period, dateFrom, dateTo, now = new Date()) {
@@ -59,7 +67,7 @@ async function searchTransactions(input, ctx) {
   rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   const cap = Math.min(input.limit || 50, 200);
   const listed = rows.slice(0, cap).map(i => ({
-    id: i.id, date: i.date, vendor: i.vendor, amount: i.amount, gl_code: i.gl_code, gl_name: i.gl_name,
+    id: i.id, date: i.date, vendor: i.vendor, amount: i.amount, amount_display: money(i.amount), gl_code: i.gl_code, gl_name: i.gl_name,
     type: i.type, payment_status: i.payment_status, due_date: i.due_date, description: i.description,
   }));
   // The listed rows can be a TRUNCATED slice while total_amount/total_count reflect ALL
@@ -70,6 +78,7 @@ async function searchTransactions(input, ctx) {
     count: listed.length,                               // rows actually listed
     total_count: matchCount,                            // total matches (may exceed count)
     total_amount: r2(total),                            // sum over ALL matches, not just listed
+    total_amount_display: money(total),                 // exact string to quote (matches dashboard)
     truncated,
     ...(truncated ? { note: `Showing the ${listed.length} most recent of ${matchCount} total matches. total_amount reflects all ${matchCount}. Tell the user the list is truncated and that the total covers everything; offer to narrow by date/amount to see specific ones.` } : {}),
     transactions: listed,
@@ -80,7 +89,8 @@ async function searchTransactions(input, ctx) {
 // equal the dashboard, the reports, and the monthly report to the penny.
 async function getCategoryTotals(input, ctx) {
   const { from, to } = periodRange(input.period || "all_time", input.date_from, input.date_to);
-  const categories = computeCategoryTotals(await ctx.getLedger(), { from, to });
+  const categories = computeCategoryTotals(await ctx.getLedger(), { from, to })
+    .map(c => ({ ...c, total_display: money(c.total) }));
   return { period: input.period || "all_time", categories };
 }
 
@@ -88,7 +98,7 @@ async function getVendorSummary(input, ctx) {
   const { from, to } = periodRange(input.period || "all_time", input.date_from, input.date_to);
   let vendors = computeVendorTotals(await ctx.getLedger(), { from, to });
   if (input.vendor) { const q = normV(input.vendor); vendors = vendors.filter(v => normV(v.vendor).includes(q)); }
-  return { vendors: vendors.slice(0, 50) };
+  return { vendors: vendors.slice(0, 50).map(v => ({ ...v, total_display: money(v.total) })) };
 }
 
 async function getFinancialSummary(input, ctx) {
@@ -99,15 +109,22 @@ async function getFinancialSummary(input, ctx) {
   const cash = Number(ctx.cashBalance) || 0;   // GL cash on hand, provided by the app
   const burn = computeBurnRate(led, { asOf: today });
   const ar = computeAR(led, { now }), ap = computeAP(led, { now });
+  const revenue = computeRevenue(led, { from, to });
+  const expenses = computeExpenses(led, { from, to });
+  const netIncome = computeNetIncome(led, { from, to });
   return {
     period: input.period || "this_year",
-    total_revenue: computeRevenue(led, { from, to }),
-    total_expenses: computeExpenses(led, { from, to }),
-    net_income: computeNetIncome(led, { from, to }),
-    burn_rate: burn, runway_months: computeRunway(cash, burn),
-    cash_balance: cash,
-    top_expense_categories: computeCategoryTotals(led, { from, to }).slice(0, 5).map(c => ({ category: c.category, total: c.total })),
-    overdue_ar_total: ar.overdue, unpaid_ap_total: ap.overdue,
+    // For every CURRENT ACTUAL, `*_display` is the exact string to quote (matches
+    // the dashboard to the penny). The raw numbers stay for any reasoning/math.
+    total_revenue: revenue, total_revenue_display: money(revenue),
+    total_expenses: expenses, total_expenses_display: money(expenses),
+    net_income: netIncome, net_income_display: money(netIncome),
+    burn_rate: burn, burn_rate_display: money(burn),
+    runway_months: computeRunway(cash, burn),   // estimate — stays numeric/approximate
+    cash_balance: cash, cash_balance_display: money(cash),
+    top_expense_categories: computeCategoryTotals(led, { from, to }).slice(0, 5).map(c => ({ category: c.category, total: c.total, total_display: money(c.total) })),
+    overdue_ar_total: ar.overdue, overdue_ar_total_display: money(ar.overdue),
+    unpaid_ap_total: ap.overdue, unpaid_ap_total_display: money(ap.overdue),
   };
 }
 
@@ -125,10 +142,11 @@ async function getOverdueInvoices(input, ctx) {
     if (type === "ap" && !isAP) continue;
     const days = Math.floor((now - new Date(i.due_date)) / 86400000);
     if (days < minDays) continue;
-    rows.push({ kind: isAR ? "ar" : "ap", vendor: i.vendor, amount: r2(i.amount), due_date: i.due_date, days_overdue: days, gl_name: i.gl_name });
+    rows.push({ kind: isAR ? "ar" : "ap", vendor: i.vendor, amount: r2(i.amount), amount_display: money(i.amount), due_date: i.due_date, days_overdue: days, gl_name: i.gl_name });
   }
   rows.sort((a, b) => b.days_overdue - a.days_overdue);
-  return { count: rows.length, total: r2(rows.reduce((s, r) => s + r.amount, 0)), invoices: rows };
+  const total = r2(rows.reduce((s, r) => s + r.amount, 0));
+  return { count: rows.length, total, total_display: money(total), invoices: rows };
 }
 
 async function getAnomalies(_input, ctx) {
