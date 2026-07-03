@@ -6,7 +6,7 @@
 // not applied) or a query fails, we degrade gracefully and the app keeps working.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { fmtSignedMoney } from "./format";
+import { fmtSignedMoney, todayLocal } from "./format";
 
 const MAX_MONTHS = 18;    // bound JSON growth per spending category
 const MAX_VENDORS = 200;  // bound common_vendors size
@@ -68,7 +68,7 @@ export function learnFromBooking(profile, invoice) {
     gl_code: code,
     gl_name: name,
     count: (prevV.count || 0) + 1,
-    last_seen: (invoice?.date || new Date().toISOString().slice(0, 10)),
+    last_seen: (invoice?.date || todayLocal()),
   };
   // Bound size: keep the most-seen vendors if we ever exceed the cap.
   const vEntries = Object.entries(next.common_vendors);
@@ -80,7 +80,7 @@ export function learnFromBooking(profile, invoice) {
 
   // ── Spending pattern by category (month buckets) ──
   const cat = name;
-  const month = String(invoice?.date || new Date().toISOString().slice(0, 10)).slice(0, 7);
+  const month = String(invoice?.date || todayLocal()).slice(0, 7);   // spending-month bucket — local default
   const prevC = next.spending_patterns[cat] || { total: 0, count: 0, months: {} };
   const months = { ...(prevC.months || {}) };
   months[month] = (months[month] || 0) + amount;

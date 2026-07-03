@@ -97,7 +97,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-4 · 🟠 should-fix · Depreciation & prepaid schedule dates: JS month-overflow for day-29–31 in-service dates, plus a `toISOString` day-shift
-> **Open — not addressed in C134** (this task fixed the CR-1/2/3 direction/basis cluster). Tracked for a date-handling pass alongside O86.
+> **✅ FIXED — C149.** New `addMonthsClampedYMD(startYMD, k)` (`lib/format`) clamps the day to the target month's last day (Jan 31 +1mo → Feb 28/29, never overflow to Mar 3) and formats from LOCAL components (no UTC day-shift). `buildDepreciationSchedule` + `buildPrepaidSchedule` now use it. Test `tests/scheduleDates.test.js` pins the Jan-31 → Feb boundary (+ leap year, 30-day clamp, year roll, sum-to-base).
 
 **Location:** `src/lib/depreciation.js:135` and `src/lib/prepaid.js:63` — `new Date(start.getFullYear(), start.getMonth() + k, start.getDate())` then `.toISOString().slice(0,10)`.
 
@@ -110,7 +110,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-5 · 🟡 improvement · Residual `toISOString().slice()` month/date keys in the AI + insights layer (same class as the C129 KPI bug)
-> **Folds into O86** (the `toISOString` date-keying sweep). Not a separate item.
+> **✅ FIXED — C149.** Two new local helpers (`ymdLocal`, and the existing `todayLocal`) now key every period-determining read-path date locally: `ai.js` buildFinancials (today/thisMonth/lastMonth), `aiTools.js` (periodRange boundaries + getFinancialSummary today), `reports.js` (currentPeriodRange `to`, businessHealth `today`), `depreciation.js` (run/due defaults), `clientProfile.js` (spending-month bucket), `invoiceDraft.js` (issue-date default), `qboParser.js` (imported-date normalization). **Server-side:** `aiProfiles.js` `applyTrustedSubs` is UTC (edge fn) — the client now passes a strictly-validated `clientToday` (YYYY-MM-DD only, else falls back to UTC) so the AI's current-year framing can't mis-key at the New-Year boundary. **Requires ai-proxy redeploy** (aiProfiles.js changed). Left as-is (genuinely appropriate): `insights.js` last-seen (display of an existing date). Tests: `aiProfiles.test.js` clientToday block.
 
 **Location:** `src/lib/ai.js:18–20` (`today`/`thisMonth`/`lastMonth`), `src/lib/aiTools.js:31–32,96` (range boundaries), `src/lib/insights.js:182`, `src/lib/clientProfile.js:81`.
 
@@ -121,7 +121,7 @@ Positives worth recording up front: money is handled with real discipline in the
 ---
 
 ### CR-6 · 🟡 improvement · `fiscalYearStart` Jan-1 UTC edge (already tracked as O87)
-> **Tracked as O87** (address in the coordinated date-handling pass with O86). No change here.
+> **✅ FIXED — C149 (as part of the date pass).** `fiscalYearStart` now returns `ymdLocal(start)` instead of `toISOString().slice(0,10)`. **The O87 desync concern doesn't apply:** both the Balance-Sheet RE split (`fiscalYearSplit`) and the monthly-report YTD call the SAME `fiscalYearStart`, so changing the shared function moves both surfaces together — consistency is preserved by construction (the very property O87 relied on), now on the *correct* local boundary. Verified by the full suite (gaapInvariants RE-split + monthly-report tests still tie). Closes O87.
 
 **Location:** `src/lib/reports.js:70–76`.
 
@@ -616,6 +616,8 @@ commit;
 ```
 
 ### CR-34 · 🟠 should-fix · File uploads have no size or real type enforcement (only the logo is capped) · client-only
+
+> **✅ FIXED (client first-line) — C149.** New shared guard `src/lib/uploadGuard.js` `validateUpload(file, kind)` — a **15 MB** cap + per-kind extension allowlist + real content-type check (a renamed exe → .pdf that still reports its true MIME is rejected; empty types tolerated for csv/xlsx). Wired into all 9 intake paths: `handleFileSelect`, `handleUniversalUpload`, `handleBankFile`, `handleContractFile` (App.jsx) + `PayrollView`, `OnboardView`, `ReconView`, `QBOImportView`, `TransactionDetailPanel` — rejects oversized/wrong-type **before** any processing/base64/Storage write. Tests: `tests/uploadGuard.test.js` (size cap, per-kind allowlist, renamed-file MIME, edge cases). **⚠ MUST ALSO SET (authoritative — the client check is bypassable): on the Supabase Storage `documents` bucket, set a file-size-limit (≈15 MB) + allowed-MIME-types list.** That's the real boundary; flagged for you to set in the dashboard.
 
 > **Not fixed here — spans ~9 intake sites; enforcement belongs at the edge, not scattered.** Every document/invoice/bank-statement/contract/QBO/payroll upload uses an `accept="..."` attribute, which is a **client hint only** (trivially bypassed) and has **no size cap** — the only sized path is the Settings **logo** (768 KB). Combined with the 20-uploads/hr limit, a hostile authed user can push large blobs into Storage and huge base64 payloads through the AI proxy (Storage bloat + AI cost). **Fix (batch, medium):** a single shared guard in the common intake path (`handleUniversalUpload` / `fileToBase64` / `classifyFile`) that rejects files over a cap (e.g. 15 MB) and validates the real MIME, **plus** a Storage bucket file-size limit + allowed-MIME list as the actual boundary (the client check is UX only). Log for a dedicated pass; do **not** scatter nine one-off checks.
 

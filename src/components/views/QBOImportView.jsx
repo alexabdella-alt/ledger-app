@@ -3,6 +3,7 @@ import { useERP } from "../ERPContext";
 import { parseQbo, normalizeQbo, matchAccount, isQboBankFile } from "../../lib/qboParser";
 import { findDuplicate, downloadCSV } from "../../lib/insights";
 import { fmtSignedMoney } from "../../lib/format";
+import { validateUpload } from "../../lib/uploadGuard";
 
 const ROW_CAP = 10000;
 const FIELDS = [["date", "Date"], ["type", "Type"], ["num", "Num"], ["name", "Vendor / Name"], ["account", "Account"], ["split", "Split"], ["amount", "Amount"], ["debit", "Debit"], ["credit", "Credit"], ["memo", "Memo / Description"]];
@@ -46,6 +47,8 @@ export default function QBOImportView() {
   // ── File → 2D grid → parse ──
   const handleFile = async (file) => {
     if (!file) return;
+    const v = validateUpload(file, "spreadsheet");   // size + type guard (CR-34)
+    if (!v.ok) { showNotification(v.error, "error"); return; }
     setFileName(file.name);
     if (isQboBankFile(file.name)) {
       showNotification("That's a .qbo bank statement, not QuickBooks company data — opening the bank import instead.", "info");

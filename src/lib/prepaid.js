@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildJournalEntry } from "./journalEntries.js";
+import { addMonthsClampedYMD } from "./format.js";
 
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -56,17 +57,16 @@ export function buildPrepaidSchedule({ total, months, startDate, expenseCode, pr
     return { entries: [], total: 0, monthly: 0, months: 0 };
   }
   const per = r2(base / n);
-  const start = new Date(String(startDate) + "T12:00:00");
   const entries = [];
   let posted = 0;
   for (let k = 0; k < n; k++) {
-    const dt = new Date(start.getFullYear(), start.getMonth() + k, start.getDate());
+    // Month k from the start date, day clamped + LOCAL-formatted (CR-4).
     const isLast = k === n - 1;
     const amt = isLast ? r2(base - posted) : per;   // last month absorbs rounding
     posted = r2(posted + amt);
     entries.push(buildPrepaidAmortizeEntry({
       amount: amt, expenseCode, prepaidCode,
-      date: dt.toISOString().slice(0, 10),
+      date: addMonthsClampedYMD(startDate, k),
       description: `${label} — amortization ${k + 1}/${n}`,
       meta: { kind: "prepaid_amortize", period: k + 1, of: n },
     }));

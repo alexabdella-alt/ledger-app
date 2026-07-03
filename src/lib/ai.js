@@ -1,7 +1,7 @@
 import { getAuthHeaders } from "./supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL } from "./constants";
 import { formatProfileForPrompt } from "./clientProfile";
-import { fmtSignedMoney } from "./format";
+import { fmtSignedMoney, todayLocal } from "./format";
 import { fetchLedger } from "./ledger";
 import { executeAITool } from "./aiTools";
 import {
@@ -15,9 +15,10 @@ import {
 // AI sees is identical to the dashboard and the reports. cashBalance from the app.
 function buildFinancials(invoices, cashBalance) {
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const thisMonth = now.toISOString().slice(0, 7);
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
+  const today = todayLocal();            // local period boundaries (were toISOString UTC)
+  const thisMonth = today.slice(0, 7);
+  const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, "0")}`;   // local month key
   const year = String(now.getFullYear());
   const money = n => fmtSignedMoney(n);   // canonical cents (was ad-hoc whole-dollar)
   const monthRange = ym => ({ from: `${ym}-01`, to: `${ym}-31` });
@@ -299,7 +300,7 @@ ${ledgerSection}`;
       // (profile "chat-brain"); the client sends only the live-data context as the
       // {{LEDGER_CONTEXT}} untrusted slot + the conversation messages.
       for (let turn = 0; turn < 6; turn++) {
-        const data = await callAIProxy({ profile: "chat-brain", slots: { LEDGER_CONTEXT: ledgerContext }, messages });
+        const data = await callAIProxy({ profile: "chat-brain", clientToday: todayLocal(), slots: { LEDGER_CONTEXT: ledgerContext }, messages });
         const blocks = Array.isArray(data.content) ? data.content : [];
         const tb = [...blocks].reverse().find(b => b.type === "text");
         if (tb?.text) lastText = tb.text;
@@ -328,7 +329,7 @@ ${ledgerSection}`;
   }
 
   // ── 5b. Legacy single-call path (no tools; ledger + financial snapshot in prompt) ──
-  const data = await callAIProxy({ profile: "chat-brain-fallback", slots: { LEDGER_CONTEXT: buildContext(false) }, messages: baseMessages });
+  const data = await callAIProxy({ profile: "chat-brain-fallback", clientToday: todayLocal(), slots: { LEDGER_CONTEXT: buildContext(false) }, messages: baseMessages });
   const text = data.content?.find(b => b.type === "text")?.text;
   if (!text) throw new Error("AI returned an empty response. Check that the ai-proxy edge function and model are configured.");
   return parseAIReply(text);

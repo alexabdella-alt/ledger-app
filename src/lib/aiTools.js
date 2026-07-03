@@ -14,7 +14,7 @@
 
 import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
-import { fmtSignedMoney } from "./format.js";
+import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
 import {
   isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
   computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP,
@@ -37,7 +37,7 @@ const unpaid = i => i.payment_status !== "paid" && i.payment_status !== "collect
 function periodRange(period, dateFrom, dateTo, now = new Date()) {
   if (dateFrom || dateTo) return { from: dateFrom || null, to: dateTo || null };
   const y = now.getFullYear(), m = now.getMonth();
-  const iso = d => d.toISOString().slice(0, 10);
+  const iso = ymdLocal;   // period from/to boundaries — local, not toISOString (UTC day-shift)
   switch (period) {
     case "this_month": return { from: iso(new Date(y, m, 1)), to: iso(new Date(y, m + 1, 0)) };
     case "last_month": return { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) };
@@ -103,7 +103,7 @@ async function getVendorSummary(input, ctx) {
 
 async function getFinancialSummary(input, ctx) {
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
+  const today = todayLocal();   // burn "as of today" — local period boundary
   const { from, to } = periodRange(input.period || "this_year", input.date_from, input.date_to);
   const led = await ctx.getLedger();
   const cash = Number(ctx.cashBalance) || 0;   // GL cash on hand, provided by the app

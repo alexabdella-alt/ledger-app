@@ -757,6 +757,22 @@ Chart of Accounts (choose from these):
 // { payload } on success, { error } for an unknown profile. `stripped` lists any
 // client-supplied fields the server ignored (a caller sending them is a signal —
 // worth a Sentry breadcrumb). There is NO passthrough: every profile is owned.
+// The server is UTC, so its "today" can mis-key the AI's CURRENT-YEAR framing at the
+// UTC/local year boundary for a non-UTC client (Dec 31 evening in the US = Jan 1 UTC →
+// the AI would reason about next year's deductions). The client may pass its own local
+// date as `clientToday` (YYYY-MM-DD). It's used ONLY for the date/year substitution in
+// the prompt — NOT a security or cost lever (it scopes the client's OWN deduction/tax
+// reasoning), so accepting it is safe. STRICTLY validated (exact YYYY-MM-DD, plausible
+// year) so it can't inject into the prompt; anything else falls back to server UTC.
+function resolveNow(clientToday, serverNow) {
+  if (typeof clientToday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(clientToday)) {
+    const y = Number(clientToday.slice(0, 4));
+    const d = new Date(clientToday + "T12:00:00Z");   // UTC noon → toISOString()/getUTCFullYear() give back clientToday
+    if (!isNaN(d.getTime()) && y >= 2000 && y <= 2100) return d;
+  }
+  return serverNow;
+}
+
 export function buildAnthropicPayload(profileKey, body = {}, now = new Date()) {
   const p = PROFILES[profileKey];
   if (!p) return { error: `Unknown AI profile: ${String(profileKey)}` };
@@ -767,12 +783,13 @@ export function buildAnthropicPayload(profileKey, body = {}, now = new Date()) {
   if (body.system != null) stripped.push("system");
   if (body.tools != null) stripped.push("tools");
 
+  const effNow = resolveNow(body.clientToday, now);   // client's local date if valid, else server UTC
   const payload = {
     model: p.model,                                       // server-owned, always
     max_tokens: p.max_tokens,                             // server ceiling — client value ignored
     messages: Array.isArray(body.messages) ? body.messages : [],
     // system: trusted date/year subs first, THEN untrusted client data via slots.
-    system: fillSlots(applyTrustedSubs(p.system, now), body.slots || {}),
+    system: fillSlots(applyTrustedSubs(p.system, effNow), body.slots || {}),
   };
   if (Array.isArray(p.tools)) payload.tools = p.tools;    // server tool defs, or none
 

@@ -4,6 +4,7 @@ import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal, fmtSignedMoney, fmtApprox } from "./lib/format";
+import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
@@ -2818,8 +2819,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const handleFileSelect = async (file) => {
     if (!file) return;
-    const allowed = ["application/pdf","image/jpeg","image/png","image/webp"];
-    if (!allowed.includes(file.type)) { showNotification("Please upload a PDF, JPG, PNG, or WEBP.", "error"); return; }
+    const v = validateUpload(file, "document");   // size + type guard (CR-34) before any processing
+    if (!v.ok) { showNotification(v.error, "error"); return; }
     const base64 = await fileToBase64(file);
     setUploadedFile({ base64, mediaType: file.type, name: file.name });
     setAiSuggestion(null);
@@ -3056,9 +3057,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const handleUniversalUpload = (files) => {
     if (!files?.length) return;
-    const allowed = [".pdf",".jpg",".jpeg",".png",".webp",".csv",".xlsx",".xls"];
-    const validFiles = Array.from(files).filter(f => allowed.some(ext => f.name.toLowerCase().endsWith(ext)));
-    if (!validFiles.length) { showNotification("Please upload PDF, image, CSV, or Excel files.", "error"); return; }
+    // Size + type guard per file (CR-34); reject oversized/wrong-type before queueing.
+    const checked = Array.from(files).map(f => ({ f, v: validateUpload(f, "universal") }));
+    const validFiles = checked.filter(c => c.v.ok).map(c => c.f);
+    const rejected = checked.filter(c => !c.v.ok);
+    if (rejected.length) showNotification(rejected[0].v.error, "error");
+    if (!validFiles.length) return;
 
     // Store File objects in ref (survives view changes), add to queue with status "pending"
     const queueItems = validFiles.map(f => {
@@ -3790,6 +3794,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const handleBankFile = async (file, account = null) => {
     if (!file) return;
+    const v = validateUpload(file, "bank");   // size + type guard (CR-34)
+    if (!v.ok) { showNotification(v.error, "error"); return; }
     if (!(await guardImport(file, "bank_statement"))) return;   // misroute guard
     // The statement belongs to a specific account — its GL is the offset for direct
     // bookings (Cr 1000 for a bank account, Cr 2200 for a credit card), not hardcoded
@@ -4035,11 +4041,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const handleContractFile = async (file) => {
     if (!file) return;
+    const v = validateUpload(file, "document");   // size + type guard (CR-34)
+    if (!v.ok) { showNotification(v.error, "error"); return; }
     if (!(await guardImport(file, "contract"))) return;   // misroute guard
-    const ext = "." + file.name.split(".").pop().toLowerCase();
-    if (![".pdf",".jpg",".jpeg",".png",".webp"].includes(ext)) {
-      showNotification("Please upload a PDF or image of the contract.", "error"); return;
-    }
+    const ext = "." + file.name.split(".").pop().toLowerCase();   // used below for mediaType
     setContractProcessing(true);
     try {
       const base64 = await fileToBase64(file);

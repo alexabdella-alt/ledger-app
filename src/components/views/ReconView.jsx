@@ -5,6 +5,7 @@ import { initials, vendorColor, fmtDate , fmtSignedMoney } from "../../lib/forma
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
+import { validateUpload } from "../../lib/uploadGuard";
 
 // ── CSV helpers (Chase / Bank of America / generic 3-column) ──
 const splitRow = (l) => { const out=[]; let cur="",q=false; for (const ch of l){ if(ch==='"'){q=!q;} else if(ch===","&&!q){out.push(cur);cur="";} else cur+=ch; } out.push(cur); return out.map(s=>s.trim().replace(/^"|"$/g,"")); };
@@ -257,6 +258,8 @@ export default function ReconView() {
   // The only way to start: upload a bank statement (PDF via AI vision, or CSV parsed locally).
   const processFile = async (file) => {
     if (!file) return;
+    const v = validateUpload(file, "bank");   // size + type guard (CR-34)
+    if (!v.ok) { showNotification && showNotification(v.error, "error"); return; }
     if (/\.csv$/i.test(file.name)) {
       const r=new FileReader();
       r.onload=e=>{ const rows=parseBankCSV(String(e.target.result||"")); if(!rows.length){ showNotification && showNotification("Couldn't read that CSV — it needs date, description and amount columns.","error"); return;} setBankTxns(rows.map(x=>({...x,_matchBook:null}))); showNotification && showNotification(`Imported ${rows.length} transactions ✓`); };

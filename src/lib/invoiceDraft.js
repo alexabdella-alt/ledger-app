@@ -8,6 +8,8 @@
 // sales-tax prefill on one complete shape.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { todayLocal } from "./format";
+
 export function emptyInvoiceLine() {
   return { id: Date.now() + Math.random(), description: "", qty: 1, rate: "", amount: 0 };
 }
@@ -18,7 +20,7 @@ export function newInvoiceDraft({ invoiceNumber = "", salesTaxRate = 0, issueDat
   return {
     invoice_number: invoiceNumber,
     customer: "", customer_email: "",
-    issue_date: issueDate || new Date().toISOString().slice(0, 10),
+    issue_date: issueDate || todayLocal(),   // a new invoice's date defaults to today — local, not UTC
     due_date: "", notes: "", terms: "Net 30",
     line_items: [emptyInvoiceLine()],
     tax_rate: salesTaxRate ? String(salesTaxRate) : "",

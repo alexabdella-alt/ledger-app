@@ -81,8 +81,25 @@ function deriveDueDate(issueDate, terms) {
   const d = new Date(s.length <= 10 ? s + "T12:00:00" : s);
   if (isNaN(d.getTime())) return null;
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return ymdLocal(d);
 }
+
+// Format any Date to a LOCAL calendar YYYY-MM-DD. Use for any date key that
+// determines a PERIOD (which month/day a figure lands in) — NEVER toISOString(),
+// which is UTC and day-shifts near midnight for non-UTC users (the C129/F-1 class).
+const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+// Add k whole months to a YYYY-MM-DD, keeping the day-of-month but CLAMPING to the
+// target month's last day (Jan 31 +1mo → Feb 28/29, never overflow to Mar 3), and
+// formatting from LOCAL components (no UTC day-shift). For amortization / depreciation
+// schedules where each period is one calendar month from the in-service date (CR-4).
+const addMonthsClampedYMD = (startYMD, k) => {
+  const m = String(startYMD || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(startYMD || "");
+  const y = +m[1], mo = +m[2] - 1, day = +m[3];
+  const lastDay = new Date(y, mo + k + 1, 0).getDate();   // 0th of next month = last day of target month
+  return ymdLocal(new Date(y, mo + k, Math.min(day, lastDay)));
+};
 
 // Today's calendar date as YYYY-MM-DD from LOCAL components — NEVER toISOString() (UTC),
 // which for a user behind UTC can roll into the next day (and, on a month boundary, the next
@@ -93,4 +110,4 @@ const todayLocal = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal };
+export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD };

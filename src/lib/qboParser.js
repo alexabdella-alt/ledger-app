@@ -9,6 +9,8 @@
 // thrown. Fuzzy account matching maps QB account names to our chart by role.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { ymdLocal } from "./format.js";
+
 const HEADER_ALIASES = {
   date:    ["date", "transaction date"],
   type:    ["transaction type", "type"],
@@ -72,7 +74,7 @@ export function parseDate(v) {
     return null;
   }
   const dt = new Date(s);                                          // "January 5, 2026"
-  return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+  return isNaN(dt.getTime()) ? null : ymdLocal(dt);   // preserve the parsed calendar day (no UTC shift)
 }
 
 export function parseAmount(v) {

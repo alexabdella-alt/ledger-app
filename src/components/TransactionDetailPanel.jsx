@@ -2,6 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
 import { initials, vendorColor, fmtDate, fmtMoney } from "../lib/format";
+import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind } from "../lib/txnPresent";
 import { badge } from "../lib/ui";
@@ -141,6 +142,8 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   };
   const handleSourceUpload = async (file, inv) => {
     if (!file || !inv) return;
+    const v = validateUpload(file, "document");   // size + type guard (CR-34)
+    if (!v.ok) { showNotification(v.error, "error"); return; }
     setSrcUploading(true);
     try {
       const base64 = await fileToBase64(file);

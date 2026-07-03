@@ -320,6 +320,14 @@ The in-process battery (`tests/adversarialBattery.test.js`) proves the determini
 - ⬜ **L6e · deployed payload boundary** — from a logged-in session, hit the deployed `ai-proxy` with (i) no `profile`, (ii) an unknown `profile`, (iii) a client-supplied `model`/`system`/`tools`. Expected: (i)/(ii) → **400**; (iii) → ignored (server model/system/tools used). Needs a real user JWT (the profile check is behind auth). **Risk: MED.**
 - ⬜ **L6f · gate is the only destructive path** — cross-ref **L5a–L5f**: confirm no chat flow deletes/voids/recodes/reverses without the human Confirm. **Risk: HIGH.**
 
+## L7. Config gates you must set in the Supabase dashboard (not code)
+
+These are the authoritative boundaries the client-side guards only approximate.
+
+- ⬜ **L7a · Storage upload limits (CR-34)** — on the `documents` Storage bucket, set a **file-size-limit (~15 MB)** + an **allowed-MIME-types** list (pdf/images/csv/xlsx/text). The `validateUpload` client guard (C149) is first-line UX only — a scripted client bypasses it; the bucket policy is the real cap. **Risk: MED** (abuse/cost).
+- ⬜ **L7b · Auth toggles (CR-31/37)** — Auth → confirm **email-verification ON** + **signup rate-limit/CAPTCHA ON**. **Risk: MED.**
+- ⬜ **L7c · Migration 049 (CR-33)** — apply the invite email-binding + dup-pending migration before inviting teammates. **Risk: MED.**
+
 ## Not-yet-built placeholders (add steps + risk when shipped)
 
 - ⬜ **O60 Phase 2 · bank-line completeness** *(not built)* — every imported statement line resolves to an entry or explicit categorization; unresolved lines surfaced. **Risk: HIGH.**

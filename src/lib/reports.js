@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { glIsRevenue, glIsExpense } from "./gl";
-import { fmtSignedMoney } from "./format";
+import { fmtSignedMoney, ymdLocal, todayLocal } from "./format";
 
 const num = n => Number(n) || 0;
 const r2 = n => Math.round(num(n) * 100) / 100;
@@ -123,7 +123,7 @@ export function fiscalYearStart(asOf, fiscalYearEnd = "12-31") {
   const start = new Date(fyEnd);                                     // start = day after the previous FYE
   start.setFullYear(start.getFullYear() - 1);
   start.setDate(start.getDate() + 1);
-  return start.toISOString().slice(0, 10);
+  return ymdLocal(start);   // fiscal-year start is a PERIOD boundary — local, not UTC (closes CR-6)
 }
 
 // The default reporting window for a freshly-opened Reports page (O70). It ALWAYS
@@ -134,7 +134,7 @@ export function fiscalYearStart(asOf, fiscalYearEnd = "12-31") {
 //   period "all"      → unbounded ("" / "")
 // Pure (takes `today`), so the "to == today, from == period start" contract is tested.
 export function currentPeriodRange(period = "fy", { today = null, fiscalYearEnd = "12-31", cutoffDate = null } = {}) {
-  const to = today || new Date().toISOString().slice(0, 10);
+  const to = today || todayLocal();   // report window ends "today" — local period boundary
   if (period === "all") return { from: "", to: "" };
   if (period === "mtd") return { from: to.slice(0, 7) + "-01", to };
   const fyStart = fiscalYearStart(to, fiscalYearEnd);
@@ -437,7 +437,7 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
 // with its number and a next step. Returns { tone, headline, facts[], concerns[] }.
 export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {}) {
   const year = now.getFullYear();
-  const today = now.toISOString().slice(0, 10);
+  const today = ymdLocal(now);   // was toISOString (UTC) while `year` used local — now consistent, local
   // CANONICAL money display: the SAME exact-cents formatter the chatbot's tools
   // (aiTools.money → fmtSignedMoney) and the Balance Sheet use. Previously this
   // rounded to WHOLE dollars (Math.round), which round-half-up'd a $49,213.50 cash
