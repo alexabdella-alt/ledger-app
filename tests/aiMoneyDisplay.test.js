@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { executeAITool } from "../src/lib/aiTools.js";
 import { fmtSignedMoney } from "../src/lib/format.js";
-import { glCashOnHand } from "../src/lib/reports.js";
+import { glCashOnHand, businessHealth } from "../src/lib/reports.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // "AI numbers == dashboard to the penny" — made DETERMINISTIC (not prompt-hoped).
@@ -75,6 +75,32 @@ describe("the reported bug is now deterministic — GL-derived cash, tool == das
     const r = await executeAITool("get_financial_summary", {}, mockCtx(glCash, ledger));
     expect(r.cash_balance_display).toBe(fmtSignedMoney(glCash));
     expect(r.cash_balance_display).toBe(dashboardCashFmt(glCash));   // the guarantee, penny-exact
+  });
+});
+
+describe("dashboard === chatbot: ONE canonical cash string (the $49,213.50 case)", () => {
+  // The exact bug the user hit: glCash = 49213.50. The dashboard's key-numbers card
+  // used to round-half-up to "$49,214" while the chatbot showed the exact/floored
+  // figure → a $1 gap that could never reconcile. Now both derive from the same
+  // sum-then-round-once value and the same formatter, so they're byte-identical.
+  const ledger = [
+    { id: "o",  date: "2026-01-01", gl_code: "1000", debit: 49213.50, credit: 0, amount: 49213.50, secondary_gl_code: "3400" },
+    { id: "o2", date: "2026-01-01", gl_code: "3400", debit: 0, credit: 49213.50, amount: 49213.50 },
+  ];
+
+  it("glCashOnHand sums-then-rounds ONCE to the exact cents value", () => {
+    expect(glCashOnHand(ledger, ["1000"])).toBe(49213.5);
+  });
+
+  it("businessHealth cash fact === tool cash_balance_display === fmtSignedMoney(glCash)", async () => {
+    const glCash = glCashOnHand(ledger, ["1000"]);
+    const dashCash = businessHealth(ledger, { cash: glCash }).facts.find(f => f.key === "cash").value;
+    const tool = await executeAITool("get_financial_summary", {}, mockCtx(glCash, ledger));
+
+    expect(dashCash).toBe("$49,213.50");                // exact cents (was "$49,214" round-half-up)
+    expect(dashCash).not.toBe("$49,214");               // the whole-dollar divergence is gone
+    expect(dashCash).toBe(fmtSignedMoney(glCash));      // dashboard uses the canonical formatter
+    expect(tool.cash_balance_display).toBe(dashCash);   // chatbot copies the identical string
   });
 });
 

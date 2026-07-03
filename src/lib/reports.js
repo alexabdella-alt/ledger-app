@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { glIsRevenue, glIsExpense } from "./gl";
+import { fmtSignedMoney } from "./format";
 
 const num = n => Number(n) || 0;
 const r2 = n => Math.round(num(n) * 100) / 100;
@@ -435,7 +436,13 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
 export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {}) {
   const year = now.getFullYear();
   const today = now.toISOString().slice(0, 10);
-  const money = (n) => (num(n) < 0 ? "−" : "") + "$" + Math.abs(Math.round(num(n))).toLocaleString("en-US");
+  // CANONICAL money display: the SAME exact-cents formatter the chatbot's tools
+  // (aiTools.money → fmtSignedMoney) and the Balance Sheet use. Previously this
+  // rounded to WHOLE dollars (Math.round), which round-half-up'd a $49,213.50 cash
+  // balance to "$49,214" while the chatbot showed the exact cents → a $1 disagreement
+  // that could never reconcile. One canonical value (glCash, sum-then-round-once to
+  // cents) + one formatter here = dashboard === chatbot to the penny, by construction.
+  const money = (n) => fmtSignedMoney(n);
 
   const net = computeNetIncome(invoices, { from: `${year}-01-01`, to: `${year}-12-31` });
   const burn = computeBurnRate(invoices, { asOf: today });
