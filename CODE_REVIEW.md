@@ -537,3 +537,107 @@ An independent second review — running **mutation testing** — verified the C
 > **→ TRACKED: ROADMAP O47** (scale/volume). Not fixed here.
 
 **Location:** `src/lib/ledger.js` `fetchLedgerEntries` (the C135 paged loader) uses OFFSET pagination (`.range(from, from+size)`). **Why it matters:** if a row is inserted while paging (two tabs open, or CPA + owner working the same company concurrently), offsets shift and a boundary row can be returned on two pages → that entry is **double-counted in every report until the next reload**. Low-probability, self-healing on refresh, and only during active concurrent writes — hence 🟡, deferred. **Fix later:** keyset pagination (page by `WHERE (entry_date, id) < (last_seen_entry_date, last_seen_id)` instead of offset), which is insert-stable. Logged on **O47** (volume/scale) alongside the server-side-aggregation follow-up from C135.
+
+---
+
+## Pass 6 — Standard-SaaS hygiene / table stakes · 2026-07-02
+
+The "every mature product does this" basics nobody writes a spec for. Enumerated across the six requested categories (+ a few standard ones they implied). Format per finding: **exists ✓ / missing (severity) / client-only→needs-DB**. Where a DB constraint is the fix, the migration SQL is written **for review, not applied**.
+
+### What's already covered (table stakes that ARE in place)
+- **Duplicate email at signup** — Supabase Auth enforces unique `auth.users.email`; `handle_new_user` mirrors to `public.users` keyed on `id` (PK) with `ON CONFLICT (id) DO UPDATE`, so nothing bypasses it. ✓
+- **Password reset** — exists, safe: generic "if an account exists…" wording (no account-enumeration), reset screen enforces min-6 + confirm-match. ✓
+- **Journal money integrity at the DB** — `journal_entry_lines` has `debit_or_credit` (exactly one side positive), `debit >= 0`, `credit >= 0` CHECKs; `post_journal_entry` rejects unbalanced entries to the cent server-side. Negative/one-sided/unbalanced entries are structurally impossible. ✓
+- **Uniqueness that IS DB-enforced** — contacts `(company_id, name_key)` partial-unique (012, dedup on create via `ignoreDuplicates` upsert); accounts `(company_id, code)` + `(company_id, system_role)`; `company_users (company_id, user_id)` (no double-membership); tax_settings `(company_id, tax_year)`; monthly_reports `(company_id, period)`; subscriptions/client_ai_profile `(company_id)`; opening_balances `(company_id, account_id)`. ✓
+- **Invite acceptance is idempotent** — `accept_invite` checks status=pending, not-expired, and no-ops the membership insert if the user is already a member, so a double-click / invite-to-existing-member can't duplicate. ✓
+- **Audit actor is not spoofable** — `audit_log.performed_by` is the server-verified `session.user.email` (or "AI Chat"/"Platform Admin — <email>"), never the user-set display name. ✓
+- **Destructive confirms outside the AI path** — manual JE delete goes through a `deleteConfirm` modal; QBO undo-import uses an explicit confirm. ✓
+
+### CR-31 · 🟡 improvement · Signup skipped the min-length + email-trim the other auth paths apply
+
+> **✅ FIXED — C141.** `AuthScreen` signup now enforces `password.length >= 6` (matching the reset screen's existing rule and Supabase's default) and `.trim()`s the email on both login and signup (login/signup previously passed the raw field while reset already trimmed — a trailing space could create/point-at a mismatched identity). One-file, clearly-correct. **Note (config, not code):** whether **email verification** is required on signup is a Supabase Auth dashboard setting — the code handles both (`data.session` present → auto-login; absent → "check your email"). **Action before first client: confirm email-confirmation is ON in the Supabase Auth settings** (can't be asserted from the repo).
+
+### CR-32 · 🟢 note · Display name (`full_name`) is user-controlled and shown in the Team list
+
+> **Cosmetic spoofing only.** `full_name` comes from `raw_user_meta_data` (set by the user at signup) and surfaces in `list_company_members` (Team tab). A user could set it to "Owner" etc., but the **email and the server-assigned role are shown alongside it**, and every audit entry attributes to the verified email — so impact is a misleading display string, not privilege or attribution. Low; log-only. (This is the item the Pass-6 brief called "CR-12 display-name spoofing" — confirmed low-impact because the trust-bearing fields are server-owned.)
+
+### CR-33 · 🟠 should-fix · Invite acceptance is bound to the token only, not the invited email; no dup-pending-invite constraint · **needs-DB**
+
+> **→ Migration written for review (below), not applied.** `accept_invite(token)` validates status/expiry but **never checks that the logged-in user's email matches the invited `email`** — any authenticated user holding a valid token can accept an invite meant for someone else. The token is an unguessable uuid delivered to the invited inbox (bearer-link security), so this is a hardening, not an open door — but binding acceptance to the email is the standard control. Separately, there's **no constraint preventing many duplicate `pending` invites** for the same `(company, email)`. Both fixed by migration `049` (review only):
+
+```sql
+-- 049_invite_hardening.sql  — REVIEW ONLY, not applied
+begin;
+
+-- 1. At most one PENDING invite per email per company.
+create unique index if not exists company_invites_pending_email_uq
+  on public.company_invites (company_id, lower(email))
+  where status = 'pending';
+
+-- 2. Bind acceptance to the invited email (a valid token is no longer enough).
+create or replace function public.accept_invite(p_token uuid)
+returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  inv public.company_invites; v_user uuid := auth.uid(); v_email text; v_role text;
+begin
+  if v_user is null then raise exception 'not authenticated'; end if;
+  select email into v_email from auth.users where id = v_user;
+
+  select * into inv from public.company_invites where token = p_token;
+  if inv.id is null          then raise exception 'invalid invite';      end if;
+  if inv.status <> 'pending' then raise exception 'invite already used'; end if;
+  if inv.expires_at < now()  then raise exception 'invite expired';      end if;
+  if lower(inv.email) <> lower(coalesce(v_email,'')) then
+    raise exception 'this invite was sent to a different email address'; end if;
+
+  v_role := lower(coalesce(inv.role, 'member'));
+  if v_role not in ('admin','member') then v_role := 'member'; end if;
+
+  if not exists (select 1 from public.company_users
+                 where company_id = inv.company_id and user_id = v_user) then
+    insert into public.company_users (company_id, user_id, role, accepted_at)
+    values (inv.company_id, v_user, v_role, now());
+  end if;
+
+  update public.company_invites set status = 'accepted' where id = inv.id;
+  return inv.company_id;
+end;
+$$;
+revoke all on function public.accept_invite(uuid) from public;
+grant execute on function public.accept_invite(uuid) to authenticated;
+
+commit;
+```
+
+### CR-34 · 🟠 should-fix · File uploads have no size or real type enforcement (only the logo is capped) · client-only
+
+> **Not fixed here — spans ~9 intake sites; enforcement belongs at the edge, not scattered.** Every document/invoice/bank-statement/contract/QBO/payroll upload uses an `accept="..."` attribute, which is a **client hint only** (trivially bypassed) and has **no size cap** — the only sized path is the Settings **logo** (768 KB). Combined with the 20-uploads/hr limit, a hostile authed user can push large blobs into Storage and huge base64 payloads through the AI proxy (Storage bloat + AI cost). **Fix (batch, medium):** a single shared guard in the common intake path (`handleUniversalUpload` / `fileToBase64` / `classifyFile`) that rejects files over a cap (e.g. 15 MB) and validates the real MIME, **plus** a Storage bucket file-size limit + allowed-MIME list as the actual boundary (the client check is UX only). Log for a dedicated pass; do **not** scatter nine one-off checks.
+
+### CR-35 · 🟢 note · No upper/sanity bounds on amounts or entry dates · client-only
+
+> **Low; log-only.** `numeric` amounts are unbounded (a $999-trillion invoice or a year-3000 entry passes) and there's no future-date sanity on `entry_date` (pre-cutoff dating IS already hard-blocked by the cutoff model, §12). The DB already enforces the correctness-critical guards (non-negative, one-sided, balanced), so this is data-quality, not integrity. A light client guard (reject absurd magnitudes / dates > a few years out) is a nice-to-have, not a gate.
+
+### CR-36 · 🟠 should-fix · No way to remove a member or change a role; no company deletion
+
+> **Not fixed here — feature, not a one-liner.** `TeamView` lists members and can create/revoke **pending invites**, but there is **no client path that deletes or updates `company_users`** — once a teammate accepts, the owner can't offboard them or change their role. Multi-user offboarding is table stakes before the first multi-seat client. (`company_users` has no owner-scoped delete/update RLS + no `remove_member`/`set_role` RPC — both needed.) Related: **no company-deletion flow** exists (companies only accumulate) — lower priority, and it sidesteps orphaning since nothing can be deleted. **Guardrail to include when built:** block removing / demoting the **last owner**. Log as a real item.
+
+### CR-37 · 🟡 improvement · Abuse basics beyond the AI proxy · partly config
+
+> **Log/flag.** (a) **Signup rate-limiting / CAPTCHA** is a Supabase Auth dashboard setting, not in the repo — **confirm it's enabled** before launch to prevent signup floods. (b) **Upload quota is per-user-hourly only** (20/hr in `ai-proxy`); there's **no per-company storage quota or lifetime cap**, so Storage can grow unbounded over the account's life. (c) `notifications` and `audit_log` grow **unbounded per company** with no retention/pruning (audit immutability is intentional; notifications are prunable). None are emergencies; (a) is a 2-minute config check, (b)/(c) are capacity items.
+
+### CR-38 · 🟢 note · UX table stakes (log-only, not building)
+
+> **Notable gap: no unsaved-changes guard.** Edit-heavy views (Settings, opening-balances, COA edit drafts) navigate away or switch company **without warning on unsaved edits** — the one broadly-missing UX basic. Destructive confirms ✓ (CR "covered" list). Loading/empty/error states are present on the main views (spot-checked: members empty-state, upload progress, AI loading) but were **not** exhaustively audited — a dedicated empty/error-state polish pass is worth scheduling, not blocking.
+
+### Verdict — what's actually missing vs already covered
+
+The **integrity-critical** table stakes are genuinely covered by the DB (unique email, balanced/non-negative journal lines, the whole uniqueness family, idempotent invites, non-spoofable audit actor). What's missing is the **operational multi-user + abuse-surface** layer that only bites once real customers and teammates arrive.
+
+**Top 5 to fix pre-first-client:**
+1. **Upload size + MIME enforcement (CR-34)** — the one real abuse hole (Storage bloat + AI-proxy cost); enforce at Storage/edge, plus a shared client cap.
+2. **Member removal + role change, with last-owner guard (CR-36)** — offboarding is non-negotiable the moment a second seat exists.
+3. **Invite email binding + dup-pending constraint (CR-33)** — apply migration `049` (written above).
+4. **Confirm Supabase Auth config: email-verification ON + signup rate-limit/CAPTCHA ON (CR-31/CR-37a)** — two dashboard toggles, high leverage, 5 minutes.
+5. **Unsaved-changes guard on edit-heavy views (CR-38)** — cheapest of the five and the most visible "mature product" cue to an owner touching their own books.
+
+**Fixed in this pass:** CR-31 (auth input hardening, C141). **Migration written for review:** `049` (CR-33). **Everything else logged** with a home above.

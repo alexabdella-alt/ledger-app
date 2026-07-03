@@ -42,7 +42,7 @@ function AuthScreen({ onAuth, invite }) {
     setLoading(true); setError(null); setMessage(null);
     try {
       if (mode === "login") {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
         onAuth(data.session);
       } else if (mode === "reset") {
@@ -52,8 +52,11 @@ function AuthScreen({ onAuth, invite }) {
         // Generic wording avoids confirming whether an account exists.
         setMessage("If an account exists for that email, a password reset link is on its way. Check your inbox (and spam).");
       } else {
+        // Match the reset-screen rule (Supabase default min is 6) so signup fails
+        // fast with a clear message instead of a raw API error.
+        if (password.length < 6) throw new Error("Password must be at least 6 characters.");
         const { data, error } = await supabase.auth.signUp({
-          email, password,
+          email: email.trim(), password,
           options: { data: { full_name: name } }
         });
         if (error) throw error;
