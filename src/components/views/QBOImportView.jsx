@@ -2,10 +2,11 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { parseQbo, normalizeQbo, matchAccount, isQboBankFile } from "../../lib/qboParser";
 import { findDuplicate, downloadCSV } from "../../lib/insights";
+import { fmtSignedMoney } from "../../lib/format";
 
 const ROW_CAP = 10000;
 const FIELDS = [["date", "Date"], ["type", "Type"], ["num", "Num"], ["name", "Vendor / Name"], ["account", "Account"], ["split", "Split"], ["amount", "Amount"], ["debit", "Debit"], ["credit", "Credit"], ["memo", "Memo / Description"]];
-const money = n => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
+const money = fmtSignedMoney;
 
 export default function QBOImportView() {
   const {

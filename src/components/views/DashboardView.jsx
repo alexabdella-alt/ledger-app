@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
@@ -69,7 +69,7 @@ export default function DashboardView() {
     const _stack = drill.state.stack;
     const isTxn = cur.type === "txn";
     const d = isTxn ? (_stack[_stack.length - 2] || cur) : cur;
-    const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
+    const fmt = fmtMoney;
     const today = new Date();
     const exp = invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided");
     const rev = invoices.filter(i => glIsRevenue(i.gl_code) && i.status!=="voided");
@@ -407,7 +407,7 @@ export default function DashboardView() {
                   <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:2, marginBottom:12 }}>RECURRING SUGGESTIONS</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                     {recurringSuggestions.map(s => {
-                      const m = n => "$" + (Number(n)||0).toLocaleString("en-US", { minimumFractionDigits:2 });
+                      const m = fmtMoney;
                       const range = Math.abs((s.maxAmount||0)-(s.minAmount||0)) < 0.5 ? m(s.avgAmount) : `${m(s.minAmount)}–${m(s.maxAmount)}`;
                       return (
                         <div key={s.id} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-gold)", borderRadius:12, padding:"14px 16px", display:"flex", alignItems:"center", gap:14 }}>
@@ -463,7 +463,7 @@ export default function DashboardView() {
                               {item.status==="error" && item.error}
                               {item.status==="done" && item.type==="invoice" && item.result && (() => {
                                 const r = item.result;
-                                const money = n => `$${(Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2})}`;
+                                const money = fmtMoney;
                                 // Nothing booked at upload time, only items needing review.
                                 if (!(r.invoiceCount > 0) && r.needsClarification > 0) {
                                   // Once the clarification has been answered & booked, flip to ✓ Booked.
@@ -574,13 +574,13 @@ export default function DashboardView() {
                   <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
                     {unpaid.length>0 && (
                       <div onClick={()=>setDashDrill({type:"ap"})} style={{ flex:"1 1 280px", cursor:"pointer", background:"var(--sc-surface)", border:"1px solid var(--sc-border)", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="var(--sc-gold)"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--sc-border)"}>
-                        <div><div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>🧾 {unpaid.length} unpaid bill{unpaid.length!==1?"s":""} · ${total.toLocaleString("en-US",{maximumFractionDigits:0})} payable</div><div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{overdue.length>0?`⚠ ${overdue.length} overdue · `:""}Drill into open payables</div></div>
+                        <div><div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>🧾 {unpaid.length} unpaid bill{unpaid.length!==1?"s":""} · {fmtMoney(total)} payable</div><div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{overdue.length>0?`⚠ ${overdue.length} overdue · `:""}Drill into open payables</div></div>
                         <span style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:600 }}>Open AP →</span>
                       </div>
                     )}
                     {openAR.length>0 && (
                       <div onClick={()=>setDashDrill({type:"ar"})} style={{ flex:"1 1 280px", cursor:"pointer", background:"var(--sc-surface)", border:"1px solid var(--sc-border)", boxShadow:"0 1px 3px rgba(0,0,0,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"border-color .2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="var(--sc-success)"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--sc-border)"}>
-                        <div><div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>💰 {openAR.length} open receivable{openAR.length!==1?"s":""} · ${arTotal.toLocaleString("en-US",{maximumFractionDigits:0})} due in</div><div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>Drill into money owed to you</div></div>
+                        <div><div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>💰 {openAR.length} open receivable{openAR.length!==1?"s":""} · {fmtMoney(arTotal)} due in</div><div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>Drill into money owed to you</div></div>
                         <span style={{ fontSize:12, color:"var(--sc-success)", fontWeight:600 }}>Open AR →</span>
                       </div>
                     )}
@@ -596,7 +596,7 @@ export default function DashboardView() {
                 const dl = nextUrgentDeadline(new Date(), 30);
                 if (!dl) return null;
                 const est = taxEstimate(invoices, new Date().getFullYear());
-                const amt = dl.est && est.total > 0 ? ` — estimated amount $${Math.round(est.quarterly).toLocaleString("en-US")}` : "";
+                const amt = dl.est && est.total > 0 ? ` — estimated amount ${fmtApprox(est.quarterly)}` : "";
                 const urgent = dl.days<=14;
                 const bg = urgent?"var(--sc-error-soft)":"var(--sc-warning-soft)";
                 return (
@@ -725,7 +725,7 @@ export default function DashboardView() {
                   <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
                     <div onClick={()=>setShowCommit(s=>!s)} style={{ padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
                       <div>
-                        <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>📋 {active.length} active {active.length===1?"commitment":"commitments"} · ${monthly.toLocaleString("en-US",{maximumFractionDigits:0})}/mo total</div>
+                        <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>📋 {active.length} active {active.length===1?"commitment":"commitments"} · {fmtMoney(monthly)}/mo total</div>
                         <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>Leases &amp; recurring contracts (ASC 842)</div>
                       </div>
                       <span style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:600 }}>{showCommit?"Hide":"Show"} {showCommit?"▲":"▼"}</span>
@@ -743,7 +743,7 @@ export default function DashboardView() {
                                 <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{c.contract_type||"contract"}{ml!=null?` · ${ml} mo remaining`:""}</div>
                               </div>
                               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                                <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>${(c.payment_amount||0).toLocaleString("en-US",{maximumFractionDigits:0})}/mo</span>
+                                <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmtMoney(c.payment_amount||0)}/mo</span>
                                 <span style={{ color:"var(--sc-text-mut)" }}>›</span>
                               </div>
                             </div>

@@ -12,6 +12,8 @@
 // (mirrors the GL-truth "derive, don't store a stale flag" principle, CLAUDE.md §9).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { fmtMoney } from "./format";
+
 // Tunable thresholds. Confidence is 0–100 (the model's scale; rule-applied = 99).
 export const FLAG_DEFAULTS = {
   reviewThreshold: 75,    // below this = "uncertain"
@@ -22,7 +24,7 @@ export const FLAG_DEFAULTS = {
 };
 
 const num = (n) => Number(n) || 0;
-const money = (n) => "$" + Math.abs(Math.round(num(n))).toLocaleString("en-US");
+const money = (n) => fmtMoney(n);   // canonical magnitude cents (was ad-hoc whole-dollar)
 const sevRank = (s) => (s === "high" ? 2 : s === "medium" ? 1 : 0);
 
 // THE FLAG RULE (pure, deterministic, tunable). Returns { flagged, reason, severity, confidence }.

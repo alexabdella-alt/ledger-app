@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtSignedMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
@@ -68,7 +68,7 @@ export default function ReconView() {
     CHART_OF_ACCOUNTS, setView, getAccountByRole, cashGlCodes,
   } = useERP();
 
-  const fmt = n => (n<0?"-":"")+"$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
+  const fmt = fmtSignedMoney;
   const today = new Date();
   const lastMonthStart = new Date(today.getFullYear(), today.getMonth()-1, 1).toISOString().slice(0,10);
   const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().slice(0,10);

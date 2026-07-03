@@ -1,9 +1,9 @@
 import React from "react";
 import { useERP } from "./ERPContext";
-import { fmtDate } from "../lib/format";
+import { fmtDate , fmtSignedMoney } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
 
-const money = n => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
+const money = fmtSignedMoney;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Conversational clarification flow.

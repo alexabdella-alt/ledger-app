@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsExpense } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor , fmtMoney } from "../../lib/format";
 
 const TYPE_OPTIONS = [
   { v:"individual",  label:"Individual / Sole Proprietor", exempt:false },
@@ -18,7 +18,7 @@ export default function Tax1099View() {
 
   const taxYear = new Date().getFullYear() - 1; // always the previous calendar year
   const month = new Date().getMonth(); // 0=Jan
-  const fmt = n => "$"+(Math.abs(n)||0).toLocaleString("en-US",{minimumFractionDigits:2});
+  const fmt = fmtMoney;
   const yourEIN = companySettings?.taxId || companySettings?.ein || companySettings?.tax_id || "";
 
   const [editing, setEditing] = React.useState(null); // {name, contact, business_type, ein_ssn, mailing_address}

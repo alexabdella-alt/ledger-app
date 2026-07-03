@@ -1,6 +1,7 @@
 import { getAuthHeaders } from "./supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL } from "./constants";
 import { formatProfileForPrompt } from "./clientProfile";
+import { fmtSignedMoney } from "./format";
 import { fetchLedger } from "./ledger";
 import { executeAITool } from "./aiTools";
 import {
@@ -18,7 +19,7 @@ function buildFinancials(invoices, cashBalance) {
   const thisMonth = now.toISOString().slice(0, 7);
   const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
   const year = String(now.getFullYear());
-  const money = n => "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
+  const money = n => fmtSignedMoney(n);   // canonical cents (was ad-hoc whole-dollar)
   const monthRange = ym => ({ from: `${ym}-01`, to: `${ym}-31` });
 
   const yearRange = { from: `${year}-01-01`, to: `${year}-12-31` };

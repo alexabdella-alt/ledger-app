@@ -4,6 +4,8 @@
 // array (no extra DB calls) so they're cheap to call after every booking.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { fmtSignedMoney } from "./format";
+
 // Normalize a vendor/contact name for fuzzy matching (lowercase, drop legal
 // suffixes and punctuation). Same spirit as the contacts unique-name handling.
 export function normVendor(name) {
@@ -124,7 +126,7 @@ export function downloadCSV(filename, headers, rows) {
 //   { id, type, severity: "high"|"medium"|"low", title, description, invoice_ids, detected_at }
 // ─────────────────────────────────────────────────────────────────────────────
 export function runAnomalyDetection(invoices, recurring = [], now = new Date()) {
-  const money = n => "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
+  const money = n => fmtSignedMoney(n);   // canonical cents (was ad-hoc whole-dollar)
   const daysAgo = d => (now - new Date(d)) / 86400000;
   const within = (d, days) => { const x = daysAgo(d); return x >= 0 && x <= days; };
   const out = [];

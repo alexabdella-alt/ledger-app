@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { classifyTxn, txnStatus } from "../../lib/txnPresent";
 import { pill } from "../../lib/ui";
@@ -28,7 +28,7 @@ export default function BooksView() {
   const [payDate, setPayDate] = React.useState(new Date().toISOString().slice(0,10));
   const [sort, setSort] = React.useState({ col: null, dir: null }); // col=null → default (Date desc)
 
-  const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
+  const fmt = fmtMoney;
   const filter = booksFilter || "all";
   const methodOpts = [["ach","ACH / Bank Transfer"],["check","Check"],["wire","Wire Transfer"],["card","Credit Card"],["zelle","Zelle"],["venmo","Venmo"],["paypal","PayPal"],["other","Other"]];
   const methodLabel = m => (methodOpts.find(([v])=>v===m)?.[1]) || (m?String(m).toUpperCase():"—");

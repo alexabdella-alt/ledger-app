@@ -12,7 +12,9 @@ import { fmtSignedMoney } from "./format";
 const num = n => Number(n) || 0;
 const r2 = n => Math.round(num(n) * 100) / 100;
 const r1 = n => Math.round(num(n) * 10) / 10;
-const fmtMoney = n => "$" + Math.round(num(n)).toLocaleString("en-US");
+// Canonical cents (was ad-hoc whole-dollar Math.round — a cross-surface divergence
+// with the dashboard/chatbot/Balance Sheet). Prose + KPI explanations + monthly report.
+const fmtMoney = n => fmtSignedMoney(n);
 export const isLiveEntry = i => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at;
 const isCOGS = c => String(c || "")[0] === "5";
 const isOpEx = c => { const s = String(c || "")[0]; return s === "6" || s === "7" || s === "8"; };

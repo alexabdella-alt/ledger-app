@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate, fmtSignedMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate, fmtSignedMoney , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
@@ -149,7 +149,7 @@ export default function ReportsView() {
             });
             const projectRows = Object.values(byProject).sort((a,b)=>b.expenses-a.expenses);
 
-            const fmt = (n) => "$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2});
+            const fmt = fmtMoney;
             const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${reportDateFrom} → ${reportDateTo}` : "Custom Range" };
             // Friendly report name for the transaction detail back button.
             const reportName = { pl:"Income Statement", balance:"Balance Sheet", trial:"Trial Balance", araging:"AR Aging", apaging:"AP Aging", kpis:"KPIs", vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project" }[reportType] || "Reports";

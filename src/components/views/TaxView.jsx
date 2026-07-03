@@ -1,10 +1,11 @@
 import React from "react";
+import { fmtMoney } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE } from "../../lib/tax";
 
 export default function TaxView() {
   const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, supabase } = useERP();
-  const fmt = n => "$" + Math.round(Math.abs(n || 0)).toLocaleString("en-US");
+  const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const lsKey = `cfai_tax_${currentCompany?.id || "x"}`;
 

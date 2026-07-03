@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { computeAP, openPayables, paidPayables, glAccountBalance } from "../../lib/reports";
 
@@ -13,7 +13,7 @@ export default function ApView() {
   const [payRef, setPayRef] = React.useState("");
   const [payNotes, setPayNotes] = React.useState("");
 
-  const fmt = n => "$"+Math.abs(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
+  const fmt = fmtMoney;
   const today = new Date().toISOString().slice(0,10);
 
   // Canonical AP lists — the rows behind computeAP, so the bills shown reconcile

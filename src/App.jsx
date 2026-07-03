@@ -3,7 +3,7 @@ import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, AP_AUTO_APPROVE_THRESHOLD, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
-import { initials, vendorColor, deriveDueDate, todayLocal } from "./lib/format";
+import { initials, vendorColor, deriveDueDate, todayLocal, fmtSignedMoney, fmtApprox } from "./lib/format";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
@@ -1444,12 +1444,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setRecurring(prev => [newRec, ...prev]);
     logAudit("recurring_created", `Recurring set up from detected pattern: ${s.vendor} ~$${s.avgAmount}/mo → ${s.gl_name || s.gl_code}`, null, { vendor: s.vendor, amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name, frequency: "monthly" });
     try {
-      clientProfileRef.current = addCustomRule(clientProfileRef.current, `Recurring pattern detected: ${s.vendor} ~$${Math.round(s.avgAmount)}/mo → ${s.gl_name || s.gl_code}`);
+      clientProfileRef.current = addCustomRule(clientProfileRef.current, `Recurring pattern detected: ${s.vendor} ~${fmtApprox(s.avgAmount)}/mo → ${s.gl_name || s.gl_code}`);
       persistClientProfile(supabase, currentCompany?.id, clientProfileRef.current);
     } catch {}
     dismissedRecurringRef.current.add(s.vendorKey);
     setRecurringSuggestions(prev => prev.filter(x => x.vendorKey !== s.vendorKey));
-    showNotification(`Recurring set up: ${s.vendor} ~$${Math.round(s.avgAmount)}/mo ✓`);
+    showNotification(`Recurring set up: ${s.vendor} ~${fmtApprox(s.avgAmount)}/mo ✓`);
   };
   // "No thanks" → never suggest this vendor again. "Remind me later" → just hide for now.
   const dismissRecurringSuggestion = (s, remindLater = false) => {
@@ -1599,7 +1599,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const nextDue = getTaxDeadlines(new Date()).find(d => d.days >= 0 && d.days <= 30);
       if (nextDue) {
         const est = taxEstimate(invoicesRef.current, new Date().getFullYear());
-        const amt = nextDue.est && est.quarterly > 0 ? ` — est. $${Math.round(est.quarterly).toLocaleString("en-US")}` : "";
+        const amt = nextDue.est && est.quarterly > 0 ? ` — est. ${fmtApprox(est.quarterly)}` : "";
         createNotification({ type: "tax_deadline", title: `${nextDue.label} due in ${nextDue.days} day${nextDue.days === 1 ? "" : "s"}${amt}`, description: nextDue.plain, link_view: "tax" });
       }
       // Reconciliation overdue (> 35 days since the last, or never).
@@ -1636,12 +1636,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // figures as DATA slots (PERIOD, FIGURES). The server wraps FIGURES in untrusted-data
       // delimiters, so even a hostile vendor name in the figures can't act as an instruction.
       const figures = [
-        `Revenue: $${pl.revenue.current} (prior month $${pl.revenue.prior})`,
-        `Total expenses: $${pl.expenses_total.current} (prior $${pl.expenses_total.prior})`,
-        `Net income: $${pl.net_income.current} (prior $${pl.net_income.prior})`,
-        `Cash on hand: $${payload.cash.cash_on_hand}; monthly burn: $${payload.cash.burn_rate}; runway: ${payload.cash.runway_months ?? "n/a"} months`,
-        `Receivables: $${payload.receivables.total} ($${payload.receivables.overdue} overdue); Payables: $${payload.payables.total} ($${payload.payables.overdue} overdue)`,
-        `Top vendors: ${payload.top_vendors.map(v => `${v.vendor} $${v.total}`).join(", ") || "none"}`,
+        `Revenue: ${fmtMoney(pl.revenue.current)} (prior month ${fmtMoney(pl.revenue.prior)})`,
+        `Total expenses: ${fmtMoney(pl.expenses_total.current)} (prior ${fmtMoney(pl.expenses_total.prior)})`,
+        `Net income: ${fmtSignedMoney(pl.net_income.current)} (prior ${fmtSignedMoney(pl.net_income.prior)})`,
+        `Cash on hand: ${fmtMoney(payload.cash.cash_on_hand)}; monthly burn: ${fmtMoney(payload.cash.burn_rate)}; runway: ${payload.cash.runway_months ?? "n/a"} months`,
+        `Receivables: ${fmtMoney(payload.receivables.total)} (${fmtMoney(payload.receivables.overdue)} overdue); Payables: ${fmtMoney(payload.payables.total)} (${fmtMoney(payload.payables.overdue)} overdue)`,
+        `Top vendors: ${payload.top_vendors.map(v => `${v.vendor} ${fmtMoney(v.total)}`).join(", ") || "none"}`,
         `Business health: ${payload.health.headline || payload.health.tone || "n/a"}`,
         payload.anomalies.length ? "Flags: " + payload.anomalies.map(a => a.title).join("; ") : "No anomalies flagged.",
       ].join("\n");
@@ -2271,7 +2271,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // ── SMART GAAP CLASSIFICATION ──────────────────────────────────────────────
   // Detects expenses that need a clarifying question before they can be booked
   // correctly under GAAP, and books the answer (incl. prepaid amortization).
-  const fmtMoney = n => "$"+(Math.round((Number(n)||0)*100)/100).toLocaleString("en-US",{minimumFractionDigits:2});
+  const fmtMoney = fmtSignedMoney;
   // Resolve a GL name from the company's actual chart of accounts (falls back to a label).
   const glName = (code, fallback="") => (CHART_OF_ACCOUNTS.find(a=>a.code===code)?.name) || fallback;
   // Tight, specific asset keywords — the capital check requires BOTH amount >= $2,000 AND

@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtSignedMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function ContractsView() {
@@ -118,7 +118,7 @@ export default function ContractsView() {
               {/* CONTRACT DETAIL */}
               {contractView==="detail" && selectedContract && (() => {
                 const ct = CONTRACT_TYPES[selectedContract.contract_type] || { label:selectedContract.contract_type, color:"var(--sc-text-2)", icon:"📄" };
-                const fmt = n => "$"+(n||0).toLocaleString("en-US",{minimumFractionDigits:2});
+                const fmt = fmtSignedMoney;
                 return (
                   <div>
                     <button onClick={()=>setContractView("list")} style={{ background:"none", border:"none", color:"var(--sc-text-2)", cursor:"pointer", fontSize:14, marginBottom:24, padding:0 }}>← Back to contracts</button>

@@ -6,6 +6,8 @@
 // not applied) or a query fails, we degrade gracefully and the app keeps working.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { fmtSignedMoney } from "./format";
+
 const MAX_MONTHS = 18;    // bound JSON growth per spending category
 const MAX_VENDORS = 200;  // bound common_vendors size
 
@@ -155,7 +157,7 @@ export function formatProfileForPrompt(profile) {
   const hasAnything = p.business_type || vendors.length || patterns.length || rules.length || p.ai_notes;
   if (!hasAnything) return "";
 
-  const money = n => "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
+  const money = n => fmtSignedMoney(n);   // canonical cents (was ad-hoc whole-dollar)
   const lines = [];
   lines.push("BUSINESS PROFILE FOR THIS CLIENT (learned from their own history — use it to code smarter and personalize answers):");
   lines.push(`Business type: ${p.business_type || "not yet identified"}`);

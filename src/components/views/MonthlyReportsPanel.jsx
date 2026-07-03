@@ -2,12 +2,13 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { formatPeriod, buildMonthlyReport, glCashOnHand } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
+import { fmtMoney } from "../../lib/format";
 import { card as cardStyle, sectionTitle as sectionTitleStyle } from "../../lib/ui";
 
 const money = (n, sign) => {
   const v = Number(n) || 0;
-  const s = "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return v < 0 ? (sign ? "−" + s : "(" + s + ")") : s;
+  const s = fmtMoney(v);   // canonical magnitude cents
+  return v < 0 ? (sign ? "-" + s : "(" + s + ")") : s;
 };
 const pct = (p) => (p == null ? "—" : `${p > 0 ? "+" : ""}${p}%`);
 const pctColor = (p, goodUp = true) => (p == null || p === 0 ? "var(--sc-text-mut)" : (p > 0) === goodUp ? "var(--sc-success)" : "var(--sc-error)");

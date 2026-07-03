@@ -1,7 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
-import { initials, vendorColor, fmtDate } from "../lib/format";
+import { initials, vendorColor, fmtDate, fmtMoney } from "../lib/format";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind } from "../lib/txnPresent";
 import { badge } from "../lib/ui";
@@ -22,7 +22,7 @@ const displayReasoning = (sel) => (sel && sel.reasoning ? classifyBankReason(sel
 const METHOD_OPTS = [["ach", "ACH / Bank Transfer"], ["check", "Check"], ["wire", "Wire Transfer"], ["card", "Credit Card"], ["zelle", "Zelle"], ["venmo", "Venmo"], ["paypal", "PayPal"], ["other", "Other"]];
 const methodLabel = m => (METHOD_OPTS.find(([v]) => v === m)?.[1]) || (m ? String(m).toUpperCase() : "—");
 const needsReview = i => i.approval_status === "pending_approval" || i.approval_status === "flagged" || i.approval_status === "info_requested" || (i.confidence != null && i.confidence < 70);
-const fmtM = n => "$" + Math.abs(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
+const fmtM = fmtMoney;
 // GL-truth (CLAUDE.md §9): the account decides. `type` is a fallback ONLY for legacy rows
 // with no gl_code — it LIES on settlements (a collection flattens to gl_code=Cash+type="expense").
 // Money direction / open-ness come from classifyTxn (settlement-aware), never these predicates.
@@ -170,7 +170,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   // the Books-list void. setDeleteConfirm opens the app's confirm modal.
   const doVoid = (inv) => {
     setDeleteConfirm({
-      label: `Void the entry for ${inv.vendor || "this transaction"}${inv.amount!=null ? ` · $${Math.abs(inv.amount).toLocaleString()}` : ""}? It stays in the audit trail and posts a reversing entry. You'll have a moment to undo.`,
+      label: `Void the entry for ${inv.vendor || "this transaction"}${inv.amount!=null ? ` · ${fmtMoney(inv.amount)}` : ""}? It stays in the audit trail and posts a reversing entry. You'll have a moment to undo.`,
       onConfirm: () => { voidInvoiceWithUndo(inv, "Voided from detail panel"); onClose(); },
     });
   };

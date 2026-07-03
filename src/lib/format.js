@@ -26,14 +26,36 @@ function fmtDate(d, opts) {
   return date.toLocaleDateString("en-US", opts || { month: "short", day: "numeric", year: "numeric" });
 }
 
-// Signed money: "$1,234.50" / "-$786.50". A negative balance (e.g. an overdrawn
-// cash account) MUST render with its sign — never as a positive magnitude, which
-// would mask an overdraft and overstate assets (the Balance Sheet sign-flip bug).
-function fmtSignedMoney(n, { decimals = 2 } = {}) {
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ONE canonical money formatter. Every monetary value displayed anywhere in
+// the app (dashboard cards, chatbot tool figures, reports, books, exec summary,
+// notifications) must go through this — never an ad-hoc `"$"+Math.round(n)` or
+// `toLocaleString({maximumFractionDigits:0})`. Ad-hoc formatters were the root of
+// the "$1 off" class of bugs: one canonical VALUE (glCash etc.) rendered by two
+// different formatters (round-half-up whole dollars vs exact cents) disagreed by
+// $1 and could never reconcile. One value + one formatter = every surface matches
+// to the penny, by construction. (Guarded by tests/moneyFormatterCanonical.test.js.)
+//
+//   fmtSignedMoney(n)                       → "$1,234.50" / "-$786.50"  (default: cents, signed)
+//   fmtSignedMoney(n, { signed: false })    → "$1,234.50" / "$786.50"   (magnitude — for
+//                                             surfaces that convey sign via color/parens)
+//   fmtSignedMoney(n, { decimals: 0 })      → "$1,235" / "-$787"        (documented WHOLE-DOLLAR
+//                                             variant — ONLY for forward-looking estimates, e.g.
+//                                             "est. ~$1,235 quarterly tax", never a real balance)
+//
+// A negative balance (overdrawn cash) MUST render with its sign in the default —
+// never as a positive magnitude, which would mask an overdraft and overstate
+// assets (the Balance Sheet sign-flip bug).
+function fmtSignedMoney(n, { decimals = 2, signed = true } = {}) {
   const v = Number(n) || 0;
   const body = "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  return v < 0 ? "-" + body : body;
+  return (signed && v < 0) ? "-" + body : body;
 }
+// Magnitude cents (drops sign — the dominant view-table convention, sign via color).
+const fmtMoney = (n) => fmtSignedMoney(n, { signed: false });
+// Whole-dollar, for forward-looking ESTIMATES only (a documented variant, not a
+// second formatter). Signed so a projected loss still reads with its sign.
+const fmtApprox = (n) => fmtSignedMoney(n, { decimals: 0 });
 
 // Payment terms → net days (O11). "Net 30" → 30, "Due on receipt"/"COD" → 0, "45 days" → 45,
 // "2/10 Net 30" (early-pay discount) → the net term (30). Returns null when unparseable so the
@@ -71,4 +93,4 @@ const todayLocal = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export { initials, vendorColor, fmtDate, fmtSignedMoney, termsToDays, deriveDueDate, todayLocal };
+export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal };

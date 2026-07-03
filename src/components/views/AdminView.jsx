@@ -1,7 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
-import { fmtDate } from "../../lib/format";
+import { fmtDate , fmtSignedMoney } from "../../lib/format";
 import SecurityView from "./SecurityView";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ import SecurityView from "./SecurityView";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const A = { amber: "var(--sc-warning)", amberBg: "var(--sc-warning-soft)", amberBorder: "var(--sc-warning-soft)", red: "var(--sc-error)", green: "var(--sc-success)", muted: "var(--sc-text-mut)" };
-const fmtMoney = n => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
+const fmtMoney = fmtSignedMoney;
 const fmtBytes = n => {
   const b = Number(n) || 0;
   if (b < 1024) return b + " B";

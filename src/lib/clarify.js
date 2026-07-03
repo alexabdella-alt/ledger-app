@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { glIsRevenue } from "./gl.js";
+import { fmtMoney } from "./format.js";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -25,7 +26,7 @@ function friendlyDate(d) {
 function moneyPhrase(n) {
   const v = Math.abs(Number(n) || 0);
   if (!v) return "";
-  return "$" + (Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  return fmtMoney(v);   // canonical magnitude cents
 }
 const isRevenueish = (txn) => (txn && (txn.gl_code ? glIsRevenue(txn.gl_code) : txn.type === "revenue" || txn.inflow === true));
 

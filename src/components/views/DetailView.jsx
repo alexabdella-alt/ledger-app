@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function DetailView() {
@@ -23,7 +23,7 @@ export default function DetailView() {
                   ["Date", fmtDate(selectedInvoice.date)],
                   ["Type", selectedInvoice.type],
                   ["Project", selectedInvoice.project||"General"],
-                  ["Amount", `$${selectedInvoice.amount.toLocaleString("en-US",{minimumFractionDigits:2})}`],
+                  ["Amount", fmtMoney(selectedInvoice.amount)],
                   ["GL Account", `${selectedInvoice.gl_code} — ${selectedInvoice.gl_name}`],
                   ["Offset Account", `${selectedInvoice.secondary_gl_code} — ${selectedInvoice.secondary_gl_name}`],
                   ["AI Confidence", `${selectedInvoice.confidence}%`],

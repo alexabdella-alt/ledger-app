@@ -1,5 +1,6 @@
 import React from "react";
 import { downloadCSV } from "../lib/insights";
+import { fmtMoney } from "../lib/format";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline AI outputs rendered inside a chat bubble: bar/pie/line charts, a metric
@@ -7,7 +8,7 @@ import { downloadCSV } from "../lib/insights";
 // adds no bundle weight and matches the app's design system.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const money = n => "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
+const money = n => fmtMoney(n);   // canonical magnitude cents (was ad-hoc whole-dollar)
 const SLICE_COLORS = ["var(--sc-gold)", "var(--sc-gold)", "var(--sc-gold)", "var(--sc-gold)", "var(--sc-gold)", "var(--sc-gold-soft)"];
 const OTHER_COLOR = "var(--sc-text-mut)";
 
