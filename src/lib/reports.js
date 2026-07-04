@@ -211,16 +211,80 @@ export function glCashOnHand(invoices, cashCodes, { asOf = null } = {}) {
   return r2((cashCodes || []).reduce((s, code) => s + glAccountBalance(code, invoices, { asOf }), 0));
 }
 
-// Trailing-N-month average expense burn (default 3), counting only months up to
-// `asOf` (inclusive). Same window everywhere → burn/runway never drift.
-export function computeBurnRate(invoices, { asOf = null, months = 3 } = {}) {
+// The month key immediately before `ym` ("2026-01" → "2025-12").
+const prevYm = (ym) => {
+  const [y, m] = String(ym).split("-").map(Number);
+  const d = new Date(y, (m || 1) - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+const median = (arr) => {
+  const s = [...arr].sort((a, b) => a - b);
+  if (!s.length) return 0;
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+};
+
+// Monthly burn = average expense over a `months`-wide (default 3) CONTIGUOUS calendar
+// window anchored to the last month that actually has activity, and NOTHING about the
+// definition should surprise the reader:
+//   • the window ANCHORS on the most recent ACTIVE month (not on "today") — so sporadic
+//     or late-entered books don't read $0 just because the last few calendar months are
+//     empty (the failure the old months-with-data code was working around);
+//   • on the live dashboard the CURRENT partial month is excluded from being that anchor
+//     (`excludePartialMonth`), so a single fresh transaction can't become the whole
+//     figure; a monthly report of a CLOSED month passes false so its subject month counts;
+//   • inside the window it's a FIXED contiguous span — an empty month counts as $0 and we
+//     divide by the span length, not by "months that happen to have data", so it can't
+//     reach back and skip empties to inflate;
+//   • one-off SPIKE months (total > 3× the window median) are dropped when there are ≥3
+//     months to judge against, so an annual payment or a setup-import month doesn't
+//     distort the average (and the runway that divides by it);
+//   • <`months` months of history divides by what it has.
+// Returns { value, window:[{ym,total,dropped}], asOfMonth, anchor }. `computeBurnRate` is
+// the scalar; the dashboard drill renders `window` so the breakdown reconciles to it.
+export function burnRateDetail(invoices, { asOf = null, months = 3, dropOutliers = true, excludePartialMonth = true } = {}) {
   const monthExp = {};
   for (const i of liveEntries(invoices, { to: asOf })) {
     const m = ymOf(i.date); if (!m) continue;
     for (const leg of plLegs(i, glIsExpense)) monthExp[m] = (monthExp[m] || 0) + leg.signed;  // both legs → reclass nets
   }
-  const recent = Object.keys(monthExp).sort().slice(-months);
-  return r2(recent.length ? recent.reduce((s, m) => s + monthExp[m], 0) / recent.length : 0);
+  const dataMonths = Object.keys(monthExp).sort();
+  const curYm = ymOf(asOf || ymdLocal(new Date()));
+  const firstData = dataMonths[0];
+  if (!firstData) return { value: 0, window: [], asOfMonth: curYm, anchor: null };
+
+  // Anchor = the most recent ACTIVE month at or before the ceiling. On the dashboard the
+  // ceiling is the last COMPLETE month (current partial month excluded); for a closed-
+  // month report it's the report month itself. Fall back to the latest active month ≤ asOf
+  // (a brand-new company whose only activity is the current partial month still shows it).
+  const ceiling = excludePartialMonth ? prevYm(curYm) : curYm;
+  const atOrBefore = (lim) => { let a = null; for (const m of dataMonths) if (m <= lim) a = m; return a; };
+  const anchor = atOrBefore(ceiling) || atOrBefore(curYm) || dataMonths[dataMonths.length - 1];
+
+  const window = [];
+  for (let cur = anchor; window.length < months && cur >= firstData; cur = prevYm(cur)) {
+    window.push({ ym: cur, total: r2(monthExp[cur] || 0), dropped: false });
+  }
+  window.reverse();  // chronological
+
+  if (dropOutliers && window.length >= 3) {
+    const med = median(window.map((w) => w.total));
+    if (med > 0) {
+      const flagged = window.filter((w) => w.total > 3 * med);
+      if (flagged.length && window.length - flagged.length >= 1) {
+        for (const w of window) if (w.total > 3 * med) w.dropped = true;
+      }
+    }
+  }
+  const kept = window.filter((w) => !w.dropped);
+  const value = r2(kept.length ? kept.reduce((s, w) => s + w.total, 0) / kept.length : 0);
+  return { value, window, asOfMonth: curYm, anchor };
+}
+
+// Scalar burn — THE figure the card, runway, and AI snapshot all share (same window
+// everywhere → they never drift). See burnRateDetail for the definition.
+export function computeBurnRate(invoices, opts = {}) {
+  return burnRateDetail(invoices, opts).value;
 }
 export function computeRunway(cash, burn) { const b = num(burn); return b > 0 ? r1(num(cash) / b) : null; }
 
@@ -556,7 +620,8 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
     .sort((a, b) => b.current - a.current);
 
   const cash = r2(num(cashBalance));   // GL cash, passed in by the caller (glCashOnHand)
-  const burn = computeBurnRate(live, { asOf: curRange.to });
+  // The report's subject month is CLOSED, so it counts (excludePartialMonth:false).
+  const burn = computeBurnRate(live, { asOf: curRange.to, excludePartialMonth: false });
   const runway = computeRunway(cash, burn);
 
   const arT = computeAR(live, { now: monthEnd }), apT = computeAP(live, { now: monthEnd });

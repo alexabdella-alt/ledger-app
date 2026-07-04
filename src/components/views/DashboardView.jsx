@@ -5,7 +5,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
-import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
+import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
 import ClarificationFlow from "../ClarificationFlow";
 import { t } from "../../lib/theme";
@@ -178,17 +178,32 @@ export default function DashboardView() {
         {txnRows(cashTxns.slice(0,40))}
       </div>);
     } else if (d.type==="burn" && !d.month) {
-      const months = Array.from({length:6},(_,k)=>{ const dd=new Date(today.getFullYear(), today.getMonth()-k, 1); const key=dd.toISOString().slice(0,7); const total=exp.filter(i=>i.date?.startsWith(key)).reduce((s,i)=>s+i.amount,0); return { key, label: dd.toLocaleDateString("en-US",{month:"long",year:"numeric"}), total }; });
-      const max = Math.max(1,...months.map(m=>m.total));
-      title = "Monthly burn"; subtitle = "Last 6 months — click a month to see its transactions";
-      body = months.map(m=>(
+      // Drive the breakdown from the SAME source as the card/runway headline
+      // (burnRateDetail): the "counted" months average EXACTLY to the value shown, and
+      // the excluded ones (current partial month + one-off spikes) are shown struck-out
+      // with the reason — so the list always reconciles to the number above it.
+      const detail = burnRateDetail(invoices, { asOf: today.toISOString().slice(0,10) });
+      const mLabel = (key)=>{ const [y,m]=key.split("-").map(Number); return new Date(y,m-1,1).toLocaleDateString("en-US",{month:"long",year:"numeric"}); };
+      const curKey = detail.asOfMonth;
+      const curTotal = exp.filter(i=>i.date?.startsWith(curKey)).reduce((s,i)=>s+i.amount,0);
+      const winKeys = new Set(detail.window.map(w=>w.ym));
+      // The counted/dropped window, most-recent first, plus the current partial month.
+      const rows = [];
+      if (!winKeys.has(curKey)) rows.push({ key:curKey, label:mLabel(curKey), total:curTotal, excluded:true, note:"this month so far — not counted yet" });
+      for (const w of [...detail.window].reverse()) rows.push({ key:w.ym, label:mLabel(w.ym), total:w.total, excluded:w.dropped, note:w.dropped?"one-off spike — excluded from the average":"counted in the average" });
+      // A few earlier months for trend context (not part of the average).
+      for (let cur=detail.window[0]?.ym, n=0; cur && n<3; n++){ const [y,m]=cur.split("-").map(Number); const dd=new Date(y,m-2,1); cur=`${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,"0")}`; const t=exp.filter(i=>i.date?.startsWith(cur)).reduce((s,i)=>s+i.amount,0); if(t>0) rows.push({ key:cur, label:mLabel(cur), total:t, excluded:true, note:"earlier — outside the 3-month window" }); }
+      const max = Math.max(1,...rows.map(m=>m.total));
+      title = "Monthly burn"; subtitle = `Average ${fmt(detail.value)}/mo · trailing ${detail.window.length} complete month${detail.window.length===1?"":"s"} — one-off & current months excluded`;
+      body = rows.map(m=>(
         <div key={m.key} onClick={()=>setDashDrill({type:"burn",month:m.key,monthLabel:m.label})} onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-          style={{ padding:"12px 18px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+          style={{ padding:"12px 18px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)", opacity:m.excluded?0.55:1 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
             <span style={{ fontSize:13, color:"var(--sc-text-2)" }}>{m.label}</span>
-            <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmt(m.total)} ›</span>
+            <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)", textDecoration:m.excluded?"line-through":"none" }}>{fmt(m.total)} ›</span>
           </div>
-          <div style={{ height:5, background:"var(--sc-surface-2)", borderRadius:3 }}><div className="sc-bar" style={{ height:"100%", width:`${Math.min(100,m.total/max*100)}%`, background:"linear-gradient(90deg,var(--sc-error),var(--sc-warning))", borderRadius:3 }} /></div>
+          <div style={{ fontSize:10, color:"var(--sc-text-2)", marginBottom:6 }}>{m.note}</div>
+          <div style={{ height:5, background:"var(--sc-surface-2)", borderRadius:3 }}><div className="sc-bar" style={{ height:"100%", width:`${Math.min(100,m.total/max*100)}%`, background:m.excluded?"var(--sc-surface-2)":"linear-gradient(90deg,var(--sc-error),var(--sc-warning))", borderRadius:3 }} /></div>
         </div>
       ));
     } else if (d.type==="burn" && d.month) {
@@ -210,7 +225,7 @@ export default function DashboardView() {
       title="Runway"; subtitle="How long your cash lasts at the current burn rate";
       body=(<div style={{ padding:"18px 20px" }}>
         <div style={{ fontSize:30, fontWeight:700, fontFamily:"'DM Mono',monospace", color: runway===null?"var(--sc-text-2)":runway<6?"var(--sc-error)":runway<=12?"var(--sc-warning)":"var(--sc-success)", marginBottom:14 }}>{runway===null?"∞":`${runway} months`}</div>
-        {[["Cash on hand", fmt(cash)],["Average monthly burn (trailing 3-mo)", fmt(avgBurn)],["Runway = cash ÷ monthly burn", runway===null?"—":`${fmt(cash)} ÷ ${fmt(avgBurn)} ≈ ${runway} mo`]].map(([k,v])=>(
+        {[["Cash on hand", fmt(cash)],["Average monthly burn (trailing 3 complete mo, one-offs excluded)", fmt(avgBurn)],["Runway = cash ÷ monthly burn", runway===null?"—":`${fmt(cash)} ÷ ${fmt(avgBurn)} ≈ ${runway} mo`]].map(([k,v])=>(
           <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:"1px solid var(--sc-surface-2)", fontSize:13 }}><span style={{ color:"var(--sc-text-2)" }}>{k}</span><span style={{ fontFamily:"'DM Mono',monospace" }}>{v}</span></div>
         ))}
         <div style={{ marginTop:14, display:"flex", gap:10 }}>
