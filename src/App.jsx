@@ -1564,18 +1564,32 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data } = await supabase.from("notifications")
         .select("*").eq("company_id", cid).eq("dismissed", false)
         .order("created_at", { ascending: false }).limit(50);
-      if (Array.isArray(data)) setNotifications(data);
+      if (!Array.isArray(data)) return;
+      // Heal any pre-existing duplicates: keep the newest per type, dismiss the rest in
+      // the DB so the 4×-same-alert backlog clears on first load.
+      const seen = new Set(), keep = [], dupIds = [];
+      for (const n of data) { if (seen.has(n.type)) dupIds.push(n.id); else { seen.add(n.type); keep.push(n); } }
+      setNotifications(keep);
+      if (dupIds.length) { try { await supabase.from("notifications").update({ dismissed: true }).in("id", dupIds); } catch { /* best-effort */ } }
     } catch { /* table may be absent */ }
   };
-  // Insert a notification unless a same-type one already exists in the last 24h.
+  // One ACTIVE notification per type. If a non-dismissed one already exists, refresh its
+  // content in place instead of stacking a duplicate — several alert titles embed a
+  // changing value (e.g. reconciliation "…in 36 days" → "37 days"), so a per-day/per-title
+  // insert produced 3–4 near-identical copies. Dismissing/clearing lets a fresh one appear.
   const createNotification = async ({ type, title, description = null, link_view = null }) => {
     const cid = currentCompany?.id;
     if (!cid || !type || !title) return;
     try {
-      const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-      const { data: recent } = await supabase.from("notifications")
-        .select("id").eq("company_id", cid).eq("type", type).gte("created_at", since).limit(1);
-      if (Array.isArray(recent) && recent.length) return; // dedup within 24h
+      const { data: existing } = await supabase.from("notifications")
+        .select("id").eq("company_id", cid).eq("type", type).eq("dismissed", false)
+        .order("created_at", { ascending: false }).limit(1);
+      if (Array.isArray(existing) && existing.length) {
+        const id = existing[0].id;
+        await supabase.from("notifications").update({ title, description, link_view }).eq("id", id);
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, title, description, link_view } : n));
+        return;
+      }
       const { data, error } = await supabase.from("notifications")
         .insert({ company_id: cid, type, title, description, link_view }).select("*").single();
       if (!error && data) setNotifications(prev => [data, ...prev]);
@@ -5816,7 +5830,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                   const m = META[n.type] || { icon:"•", color:"var(--sc-text-2)" };
                   return (
                     <div key={n.id} onClick={()=>openNotification(n)} style={{ display:"flex", gap:12, padding:"14px 18px", borderBottom:"1px solid var(--sc-surface-2)", cursor:"pointer", background:n.read?"var(--sc-surface)":"var(--sc-gold-soft)", transition:"background .12s" }}
-                      onMouseEnter={e=>e.currentTarget.style.background="#F2F4F7"} onMouseLeave={e=>e.currentTarget.style.background=n.read?"var(--sc-surface)":"var(--sc-gold-soft)"}>
+                      onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=n.read?"var(--sc-surface)":"var(--sc-gold-soft)"}>
                       <div style={{ width:34, height:34, borderRadius:9, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, background:m.color+"18", color:m.color }}>{m.icon}</div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)", lineHeight:1.4 }}>{n.title}</div>
