@@ -465,12 +465,13 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {
 
   // The FOUR key numbers live here (once) as the facts under the headline — they replaced the
   // separate metric-card row so the owner never sees the same figures twice. `drill` opens the
-  // same dashboard drill the old cards did. Monthly burn = THIS month's spend (matches the old
-  // "Monthly Burn" card); runway uses trailing-3-mo avg burn (stability), same as before.
-  const monthBurn = computeBurnRate(invoices, { asOf: `${today.slice(0, 7)}-31`, months: 1 });
+  // same dashboard drill the old cards did. Monthly burn = the TRAILING-3-MONTH AVERAGE spend
+  // (the same `burn` runway divides by, and what the runway drill shows as "average monthly
+  // burn") — NOT the current partial month, which collapsed to the single most-recent expense
+  // early in a month and disagreed with the runway math shown right beside it.
   const facts = [
     { key: "cash",   label: "Cash on hand",         value: money(cash),                                    tone: "neutral",                                                                     drill: "cash" },
-    { key: "burn",   label: "Monthly burn",         value: money(monthBurn),                               tone: "neutral",                                                                     drill: "burn" },
+    { key: "burn",   label: "Monthly burn",         value: money(burn),                                    tone: "neutral",                                                                     drill: "burn" },
     { key: "runway", label: "Runway",               value: runwayInfinite ? "No burn" : `~${runway} mo`,   tone: (runwayInfinite || runway >= 6) ? "good" : runway >= 3 ? "watch" : "concern",  drill: "runway" },
     { key: "profit", label: `Net income · ${year}`, value: money(net),                                     tone: net >= 0 ? "good" : "concern",                                                 drill: "net" },
   ];
