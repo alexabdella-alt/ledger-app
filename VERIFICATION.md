@@ -327,6 +327,14 @@ These are the authoritative boundaries the client-side guards only approximate.
 - ⬜ **L7a · Storage upload limits (CR-34)** — on the `documents` Storage bucket, set a **file-size-limit (~15 MB)** + an **allowed-MIME-types** list (pdf/images/csv/xlsx/text). The `validateUpload` client guard (C149) is first-line UX only — a scripted client bypasses it; the bucket policy is the real cap. **Risk: MED** (abuse/cost).
 - ⬜ **L7b · Auth toggles (CR-31/37)** — Auth → confirm **email-verification ON** + **signup rate-limit/CAPTCHA ON**. **Risk: MED.**
 - ⬜ **L7c · Migration 049 (CR-33)** — apply the invite email-binding + dup-pending migration before inviting teammates. **Risk: MED.**
+- ⬜ **L7d · Migration 050 (period_signoffs)** — apply before using CPA sign-off; without it, sign-off writes fail (surfaced, non-silent). **Risk: MED** (sign-off is a launch gate).
+
+## L8. Trust-layer third net + CPA sign-off (O59/O50)
+
+- ⬜ **L8a · a mis-booked entry surfaces as an accuracy flag** — book a taxed invoice with the sales tax mis-coded to revenue (or otherwise break a control total). Expected: the Review dashboard shows an ACCURACY item ("these should match but don't — [figures]") and the sign-off button is disabled. **Risk: HIGH** (this is the confidently-wrong-booking net).
+- ⬜ **L8b · sign-off blocked while any net is open** — with an incomplete doc OR an open confidence flag OR a non-tying control total, the sign-off button is disabled / clicking explains the blocker. **Risk: HIGH.**
+- ⬜ **L8c · sign-off succeeds + persists when all clear** — clear all three nets → "Mark reviewed through [month]" works, shows "Reviewed through [month]", and survives a refresh (verified write). **Risk: MED.**
+- ⬜ **L8d · non-upload docs are accounted for** — import a bank statement / contract / payroll file → it appears in the intake ledger (not just universal uploads); the completeness net would surface it if it stalled. **Risk: MED.**
 
 ## Not-yet-built placeholders (add steps + risk when shipped)
 

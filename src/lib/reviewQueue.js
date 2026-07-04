@@ -13,23 +13,26 @@
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-export function buildReviewQueue({ droppedDocs = [], flaggedTxns = [], unknownDocs = [] } = {}) {
+export function buildReviewQueue({ droppedDocs = [], flaggedTxns = [], unknownDocs = [], accuracyFlags = [] } = {}) {
   const completeness = droppedDocs || [];
   const needsReview = flaggedTxns || [];
   const unknown = (unknownDocs || []).filter((d) => !d.posted);   // posted ones are resolved
+  const accuracy = accuracyFlags || [];   // O59 third net — control totals that don't tie
 
   const totalExposure = r2(needsReview.reduce((s, f) => s + Math.abs(Number(f.amount) || 0), 0));
-  const highCount = needsReview.filter((f) => f.severity === "high").length;
+  const highCount = needsReview.filter((f) => f.severity === "high").length + accuracy.filter((f) => f.severity === "high").length;
 
   const summary = {
     incompleteCount: completeness.length,
     flaggedCount: needsReview.length,
     unknownCount: unknown.length,
+    accuracyCount: accuracy.length,
     highCount,
     totalExposure,
-    totalItems: completeness.length + needsReview.length + unknown.length,
-    allClear: completeness.length === 0 && needsReview.length === 0 && unknown.length === 0,
+    totalItems: completeness.length + needsReview.length + unknown.length + accuracy.length,
+    // ALL three nets clear (completeness + confidence + accuracy) → eligible for sign-off.
+    allClear: completeness.length === 0 && needsReview.length === 0 && unknown.length === 0 && accuracy.length === 0,
   };
 
-  return { completeness, needsReview, unknown, summary };
+  return { completeness, needsReview, unknown, accuracy, summary };
 }

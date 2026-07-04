@@ -104,6 +104,19 @@ export async function fetchDroppedIntake(db, companyId, { now, stuckMinutes } = 
   } catch (e) { return { ok: false, error: String(e?.message || e), dropped: [] }; }
 }
 
+// All intake rows for a company (for the docs-recorded control total — recorded rows
+// vs recorded-with-an-entry). Degrades gracefully pre-migration / on error.
+export async function fetchIntakeRows(db, companyId) {
+  if (!db || !companyId) return { ok: false, rows: [] };
+  try {
+    const { data, error } = await db.from("document_intake")
+      .select("id, status, source, journal_entry_ids, created_at")
+      .eq("company_id", companyId);
+    if (error) return { ok: false, rows: [], error: error.message };
+    return { ok: true, rows: data || [] };
+  } catch (e) { return { ok: false, rows: [], error: String(e?.message || e) }; }
+}
+
 // sha-256 of a File's bytes (browser) — identity + dupe detection. Best-effort: returns null
 // if the platform lacks SubtleCrypto, so intake logging never blocks on it.
 export async function hashFile(file) {

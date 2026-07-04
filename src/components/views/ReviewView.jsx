@@ -13,7 +13,8 @@ const _m0 = fmtMoney;
 
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
-    reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded } = useERP();
+    reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded,
+    controlTotals, signOffPeriod, reviewedThrough, isOwner, isAdmin } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -39,7 +40,18 @@ export default function ReviewView() {
   React.useEffect(() => { setDroppedLoaded(false); refreshDropped(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [currentCompany?.id]);
 
   const flagged = flagsForReview ? flagsForReview() : [];
-  const { completeness, needsReview, unknown, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs });
+  const accuracyFlags = (controlTotals && controlTotals.flags) || [];   // O59 third net
+  const { completeness, needsReview, unknown, accuracy, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags });
+  const canSignOff = (isOwner || isAdmin);   // the reviewer (CPA/admin/owner) attests
+  const [signingOff, setSigningOff] = React.useState(false);
+  const signOffMonth = new Date().toISOString().slice(0, 7);   // "reviewed through" = current month
+  const onSignOff = async () => {
+    if (!signOffPeriod) return;
+    setSigningOff(true);
+    const r = await signOffPeriod(signOffMonth);
+    setSigningOff(false);
+    if (!r.ok && r.blockers) showNotification(`Can't sign off yet — ${r.blockers.map(b => b.reason).join("; ")}`, "error");
+  };
   // STABLE LOAD GATE: hold a single loading state until BOTH the company data (invoices — the
   // flag source) AND the first dropped-docs reconcile have loaded. "not loaded" is distinct
   // from "empty/all-clear", so we never flash the all-clear or a partial mid-load state.
@@ -106,8 +118,40 @@ export default function ReviewView() {
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 8 }}>
         {statCard("INCOMPLETE DOCS", summary.incompleteCount + summary.unknownCount, (summary.incompleteCount + summary.unknownCount) > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
         {statCard("FLAGGED TXNS", summary.flaggedCount, summary.flaggedCount > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
+        {statCard("ACCURACY CHECKS OFF", summary.accuracyCount, summary.accuracyCount > 0 ? "var(--sc-error)" : "var(--sc-success)")}
         {statCard("$ FLAGGED FOR REVIEW", _m0(summary.totalExposure), summary.totalExposure > 0 ? "var(--sc-gold)" : "var(--sc-success)")}
       </div>
+
+      {/* ── ACCURACY (O59 THIRD NET) — control totals that should tie and don't ── */}
+      {accuracy.length > 0 && (
+        <div style={{ border: "1px solid var(--sc-error)", background: "var(--sc-error-soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-error)", marginBottom: 8 }}>⚠ {accuracy.length} figure{accuracy.length === 1 ? "" : "s"} that should match but don't</div>
+          {accuracy.map((f, i) => (
+            <div key={f.key || i} style={{ fontSize: 13, color: "var(--sc-text)", marginBottom: i < accuracy.length - 1 ? 8 : 0 }}>
+              <div style={{ fontWeight: 600 }}>{f.title}</div>
+              <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>{f.description}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── CPA SIGN-OFF (O50) — attest a period only when all three nets are clear ── */}
+      {canSignOff && (
+        <div style={{ border: "1px solid var(--sc-border)", background: "var(--sc-surface)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text)" }}>CPA sign-off</div>
+            <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
+              {reviewedThrough ? `Reviewed through ${reviewedThrough}. ` : "Not yet reviewed. "}
+              {summary.allClear ? `Ready to sign off ${signOffMonth}.` : "Clear every item above to enable sign-off."}
+            </div>
+          </div>
+          <button onClick={onSignOff} disabled={!summary.allClear || signingOff}
+            style={{ padding: "9px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", cursor: (summary.allClear && !signingOff) ? "pointer" : "not-allowed",
+              background: (summary.allClear && !signingOff) ? "var(--sc-success)" : "var(--sc-border)", color: (summary.allClear && !signingOff) ? "var(--sc-on-accent)" : "var(--sc-text-mut)" }}>
+            {signingOff ? "Signing off…" : `Mark reviewed through ${signOffMonth}`}
+          </button>
+        </div>
+      )}
 
       {/* COMPLETENESS — O60 dropped/stuck/errored intake docs */}
       {completeness.length > 0 && (
