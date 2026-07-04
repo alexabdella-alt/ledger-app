@@ -212,8 +212,11 @@ Not all P1 items block the FIRST paying client. Most are "P1 — do soon," but a
 - **② O59 — full-year end-to-end simulation.** Prove the books hold across a full fiscal year incl. year-end close before a real client's year runs on them. Capstone gate.
 - **③ O83 — live-verification pass** (`VERIFICATION.md`, incl. **L5** confirm-gate + **L6** injection probes). Green tests ≠ works live — run the checklist against a real setup.
 - **④ O21 (scoped) — confirm RLS tenant isolation holds + fix CR-11/12.** Real financial data sits behind the public anon key; RLS is the ONLY boundary. *Not* the full audit — the confirm-sound + the two `WITH CHECK(true)` `companies_insert`/`users_insert` policy fixes.
-- **⑤ Auth/config toggles (Code-Review Pass 6 — dashboard + migration, not O-items):** Supabase Auth **email-verification ON** + **signup rate-limit/CAPTCHA** (CR-31/37); apply **migration `049`** (invite email-binding + dup-pending, CR-33) before inviting anyone.
+- **⑤ Auth/config toggles (Code-Review Pass 6 — dashboard + migration, not O-items):** ✅ **migration `051`** (invite email-binding + dup-pending, CR-33) **applied** — invites are now email-bound. Supabase Auth **email-verification ON** (CR-31/37) before inviting anyone. **CAPTCHA / bot-protection + signup rate-limit → deferred to pre-PUBLIC-launch (not pre-first-client) — see the 🔓 note below.**
 - **⑥ Upload + account hardening (Pass 6):** **upload size + MIME limits at the edge** (CR-34 — real users, real files, AI cost); **member offboarding + last-owner guard** (CR-36) — *only if the first client has >1 seat*; single-seat → can follow.
+
+**🔓 PRE-PUBLIC-LAUNCH (NOT pre-first-client) — enable the day self-serve signup opens:**
+- **CAPTCHA / bot-protection on Supabase Auth** — turn **ON before** opening public/self-serve signup. Left **OFF on purpose now:** first clients are **invite-only / hand-held**, so there's no bot threat, and CAPTCHA adds signup friction not worth it for a handful of known users. **Signup rate limits left at Supabase defaults** (fine for launch). **Trigger: the day public/self-serve signup opens** — flip CAPTCHA on then.
 
 **🟢 P1 but CAN FOLLOW the first client (do soon; not launch-blocking for one hand-held client):**
 - **O74** (source-doc storage) — basic `storeDocument` exists; the full linked audit-trail can follow.
