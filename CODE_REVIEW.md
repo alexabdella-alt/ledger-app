@@ -567,12 +567,12 @@ The "every mature product does this" basics nobody writes a spec for. Enumerated
 
 > **Cosmetic spoofing only.** `full_name` comes from `raw_user_meta_data` (set by the user at signup) and surfaces in `list_company_members` (Team tab). A user could set it to "Owner" etc., but the **email and the server-assigned role are shown alongside it**, and every audit entry attributes to the verified email — so impact is a misleading display string, not privilege or attribution. Low; log-only. (This is the item the Pass-6 brief called "CR-12 display-name spoofing" — confirmed low-impact because the trust-bearing fields are server-owned.)
 
-### CR-33 · 🟠 should-fix · Invite acceptance is bound to the token only, not the invited email; no dup-pending-invite constraint · **needs-DB**
+### CR-33 · ✅ FIXED · Invite acceptance is bound to the token only, not the invited email; no dup-pending-invite constraint · **DB — applied (051)**
 
-> **→ Migration written for review (below), not applied.** `accept_invite(token)` validates status/expiry but **never checks that the logged-in user's email matches the invited `email`** — any authenticated user holding a valid token can accept an invite meant for someone else. The token is an unguessable uuid delivered to the invited inbox (bearer-link security), so this is a hardening, not an open door — but binding acceptance to the email is the standard control. Separately, there's **no constraint preventing many duplicate `pending` invites** for the same `(company, email)`. Both fixed by migration `049` (review only):
+> **✅ FIXED — applied as migration `051_invite_hardening.sql`** (Supabase, verified success). `accept_invite(token)` validates status/expiry but **never checks that the logged-in user's email matches the invited `email`** — any authenticated user holding a valid token can accept an invite meant for someone else. The token is an unguessable uuid delivered to the invited inbox (bearer-link security), so this is a hardening, not an open door — but binding acceptance to the email is the standard control. Separately, there's **no constraint preventing many duplicate `pending` invites** for the same `(company, email)`. Both fixed by migration `051` (applied). The committed `supabase/migrations/051_invite_hardening.sql` adds a **step-0 dedupe** (revoke duplicate pendings, keep newest) so the unique index can't fail on pre-existing dups; the reviewed core is below:
 
 ```sql
--- 049_invite_hardening.sql  — REVIEW ONLY, not applied
+-- 051_invite_hardening.sql  — APPLIED (committed file also has the step-0 dedupe)
 begin;
 
 -- 1. At most one PENDING invite per email per company.
@@ -644,8 +644,8 @@ The **integrity-critical** table stakes are genuinely covered by the DB (unique 
 **Top 5 to fix pre-first-client:**
 1. **Upload size + MIME enforcement (CR-34)** — the one real abuse hole (Storage bloat + AI-proxy cost); enforce at Storage/edge, plus a shared client cap.
 2. **Member removal + role change, with last-owner guard (CR-36)** — offboarding is non-negotiable the moment a second seat exists.
-3. **Invite email binding + dup-pending constraint (CR-33)** — apply migration `049` (written above).
+3. **Invite email binding + dup-pending constraint (CR-33)** — ✅ DONE: migration `051` applied.
 4. **Confirm Supabase Auth config: email-verification ON + signup rate-limit/CAPTCHA ON (CR-31/CR-37a)** — two dashboard toggles, high leverage, 5 minutes.
 5. **Unsaved-changes guard on edit-heavy views (CR-38)** — cheapest of the five and the most visible "mature product" cue to an owner touching their own books.
 
-**Fixed in this pass:** CR-31 (auth input hardening, C141). **Migration written for review:** `049` (CR-33). **Everything else logged** with a home above.
+**Fixed in this pass:** CR-31 (auth input hardening, C141); CR-33 (invite email-binding + dup-pending constraint — migration `051`, applied to Supabase). **Everything else logged** with a home above.
