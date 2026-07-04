@@ -217,6 +217,7 @@ Not all P1 items block the FIRST paying client. Most are "P1 — do soon," but a
 
 **🔓 PRE-PUBLIC-LAUNCH (NOT pre-first-client) — enable the day self-serve signup opens:**
 - **CAPTCHA / bot-protection on Supabase Auth** — turn **ON before** opening public/self-serve signup. Left **OFF on purpose now:** first clients are **invite-only / hand-held**, so there's no bot threat, and CAPTCHA adds signup friction not worth it for a handful of known users. **Signup rate limits left at Supabase defaults** (fine for launch). **Trigger: the day public/self-serve signup opens** — flip CAPTCHA on then.
+- **Uploads (CR-34) — storage-layer cap IS in place now:** the **Documents Storage bucket** is configured with a **50 MB file-size limit + a MIME allowlist**, so the bucket-level ceiling holds today (the client-side `uploadGuard` 15 MB + MIME check, C149, is the stricter first line in front of it).
 
 **🟢 P1 but CAN FOLLOW the first client (do soon; not launch-blocking for one hand-held client):**
 - **O74** (source-doc storage) — basic `storeDocument` exists; the full linked audit-trail can follow.
