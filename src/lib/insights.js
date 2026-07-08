@@ -4,7 +4,7 @@
 // array (no extra DB calls) so they're cheap to call after every booking.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { fmtSignedMoney } from "./format";
+import { fmtSignedMoney, ymdLocal } from "./format";
 
 // Normalize a vendor/contact name for fuzzy matching (lowercase, drop legal
 // suffixes and punctuation). Same spirit as the contacts unique-name handling.
@@ -60,7 +60,7 @@ export function detectRecurringPatterns(invoices, recurring, now = new Date()) {
     if (isNaN(d) || d < cutoff || d > now) continue;
     const key = normVendor(i.vendor);
     if (!key) continue;
-    (byVendor[key] = byVendor[key] || []).push({ vendor: i.vendor, amount: Number(i.amount) || 0, date: d, gl_code: i.gl_code, gl_name: i.gl_name });
+    (byVendor[key] = byVendor[key] || []).push({ vendor: i.vendor, amount: Number(i.amount) || 0, date: d, ymd: String(i.date), gl_code: i.gl_code, gl_name: i.gl_name });
   }
 
   const suggestions = [];
@@ -86,7 +86,7 @@ export function detectRecurringPatterns(invoices, recurring, now = new Date()) {
       maxAmount: Math.max(...amounts),
       gl_code: last.gl_code,
       gl_name: last.gl_name,
-      lastDate: last.date.toISOString().slice(0, 10),
+      lastDate: last.ymd,   // the stored YYYY-MM-DD (local), not a UTC toISOString round-trip
     });
   }
   return suggestions;
@@ -181,7 +181,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
     catMonth[cat] = catMonth[cat] || {};
     catMonth[cat][m] = (catMonth[cat][m] || 0) + (Number(i.amount) || 0);
   }
-  const thisMonth = now.toISOString().slice(0, 7);
+  const thisMonth = ymdLocal(now).slice(0, 7);   // local month key — matches the String(i.date) buckets above (CR-5)
   for (const [cat, months] of Object.entries(catMonth)) {
     const cur = months[thisMonth] || 0;
     const priors = Object.entries(months).filter(([m]) => m < thisMonth).map(([, v]) => v);

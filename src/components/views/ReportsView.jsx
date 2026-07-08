@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate, fmtSignedMoney , fmtMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate, fmtSignedMoney , fmtMoney, todayLocal, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
@@ -167,7 +167,7 @@ export default function ReportsView() {
               if (drill.scope==="cashflow") return filtered.filter(i=>i.date && i.date.slice(0,7)===drill.value).sort(byDate);
               if (drill.scope==="project")  return filtered.filter(i=>glPLType(i.gl_code) && (i.project||"General")===drill.value).sort(byDate);
               if (drill.scope==="bsacct") {
-                const asOf = reportDateTo || new Date().toISOString().slice(0,10);
+                const asOf = reportDateTo || todayLocal();
                 return invoices.filter(i => i.status!=="voided" && (!i.date || i.date<=asOf) &&
                   (i.gl_code===drill.value || (!String(i.id).includes("_") && i.secondary_gl_code===drill.value))).sort(byDate);
               }
@@ -249,7 +249,7 @@ export default function ReportsView() {
                   <input type="date" value={reportDateFrom} onChange={e=>{ setReportDateFrom(e.target.value); setReportRange("custom"); }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"7px 10px", color:"var(--sc-text)", fontSize:13, outline:"none" }} />
                   <span style={{ color:"var(--sc-text-2)", fontSize:13 }}>to</span>
                   <input type="date" value={reportDateTo} onChange={e=>{ setReportDateTo(e.target.value); setReportRange("custom"); }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"7px 10px", color:"var(--sc-text)", fontSize:13, outline:"none" }} />
-                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const now=new Date(); if(e.target.value==="thismonth"){setReportDateFrom(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-01");setReportDateTo(now.toISOString().slice(0,10));} else if(e.target.value==="ytd"){setReportDateFrom(now.getFullYear()+"-01-01");setReportDateTo(now.toISOString().slice(0,10));} else if(e.target.value==="all"){setReportDateFrom("");setReportDateTo("");} }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", cursor:"pointer" }}>
+                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const now=new Date(); if(e.target.value==="thismonth"){setReportDateFrom(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-01");setReportDateTo(ymdLocal(now));} else if(e.target.value==="ytd"){setReportDateFrom(now.getFullYear()+"-01-01");setReportDateTo(ymdLocal(now));} else if(e.target.value==="all"){setReportDateFrom("");setReportDateTo("");} }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", cursor:"pointer" }}>
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
@@ -475,7 +475,7 @@ export default function ReportsView() {
                       const bsFmt = fmtSignedMoney;
 
                       // "As of" date — accumulate all transactions through reportDateTo
-                      const asOf = reportDateTo || new Date().toISOString().slice(0,10);
+                      const asOf = reportDateTo || todayLocal();
                       const bsInvoices = invoices.filter(i => i.status !== "voided" && (!i.date || i.date <= asOf));
 
                       // Every balance-sheet figure (incl. Accounts Payable) reads the ONE canonical
@@ -782,7 +782,7 @@ export default function ReportsView() {
                       // Sheet, Dashboard, and Payables/Receivables). The age buckets remain a
                       // due-date view; in clean books they sum to this total.
                       const agingTotal = glAccountBalance(getAccountByRole(side==="ar"?"accounts_receivable":"accounts_payable")?.code, invoices);
-                      const today = new Date().toISOString().slice(0,10);
+                      const today = todayLocal();
                       const sevColor = d => d>90?"var(--sc-error)":d>60?"var(--sc-warning)":d>30?"var(--sc-gold-deep)":d>0?"var(--sc-text-2)":"var(--sc-success)";
                       const csvBtn = { background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:9, padding:"8px 14px", fontSize:12, color:"var(--sc-text-2)", cursor:"pointer", fontWeight:600 };
                       const exportCsv = () => { const rows=[]; rep.buckets.forEach(b=>b.rows.forEach(r=>rows.push([b.label,r.party,r.date||"",r.due_date||"",r.days_overdue,r.amount]))); downloadCSV(`${side}-aging-${today}.csv`, ["Bucket", side==="ar"?"Customer":"Vendor","Invoice Date","Due Date","Days Overdue","Amount"], rows); };
@@ -848,7 +848,7 @@ export default function ReportsView() {
                     {reportType==="trial" && (() => {
                       const tb = trialBalance(invoices, { includeVoided: !tbAdjusted });
                       const csvBtn = { background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:9, padding:"8px 14px", fontSize:12, color:"var(--sc-text-2)", cursor:"pointer", fontWeight:600 };
-                      const exportCsv = () => downloadCSV(`trial-balance-${new Date().toISOString().slice(0,10)}.csv`, ["Code","Account","Debit","Credit"], [...tb.accounts.map(a=>[a.code,a.name,a.debit||"",a.credit||""]), ["","TOTAL",tb.totalDebit,tb.totalCredit]]);
+                      const exportCsv = () => downloadCSV(`trial-balance-${todayLocal()}.csv`, ["Code","Account","Debit","Credit"], [...tb.accounts.map(a=>[a.code,a.name,a.debit||"",a.credit||""]), ["","TOTAL",tb.totalDebit,tb.totalCredit]]);
                       return (
                         <div className="sc-rise">
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, gap:12, flexWrap:"wrap" }}>

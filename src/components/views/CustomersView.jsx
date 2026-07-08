@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function CustomersView() {
@@ -134,7 +134,7 @@ export default function CustomersView() {
                       const billedYTD = billedYTDfor(custInvoices);
                       const openAR = openARfor(custInvoices);
                       const lastDate = custInvoices[0]?.date || null;
-                      const overdueAR = custInvoices.filter(i=>i.payment_status!=="collected"&&i.payment_status!=="paid"&&i.due_date&&i.due_date<new Date().toISOString().slice(0,10)).reduce((s,i)=>s+i.amount,0);
+                      const overdueAR = custInvoices.filter(i=>i.payment_status!=="collected"&&i.payment_status!=="paid"&&i.due_date&&i.due_date<todayLocal()).reduce((s,i)=>s+i.amount,0);
                       return (
                         <div key={c.id||c.name} style={{ background:"var(--sc-surface)", border:`1px solid ${overdueAR>0?"var(--sc-error-soft)":"var(--sc-border)"}`, borderRadius:14, overflow:"hidden" }}>
                           <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>

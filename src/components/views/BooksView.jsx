@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { classifyTxn, txnStatus } from "../../lib/txnPresent";
 import { pill } from "../../lib/ui";
@@ -25,7 +25,7 @@ export default function BooksView() {
   const [selContract, setSelContract] = React.useState(null);
   const [payRowId, setPayRowId] = React.useState(null);
   const [payMethod, setPayMethod] = React.useState("ach");
-  const [payDate, setPayDate] = React.useState(new Date().toISOString().slice(0,10));
+  const [payDate, setPayDate] = React.useState(todayLocal());
   const [sort, setSort] = React.useState({ col: null, dir: null }); // col=null → default (Date desc)
 
   const fmt = fmtMoney;
@@ -217,7 +217,7 @@ export default function BooksView() {
                     <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
                       {/* Settle action ONLY on a genuinely open item — never on a settlement/clearing entry. */}
                       {cls.settleAction==="pay" && (
-                        <button onClick={e=>{ e.stopPropagation(); setPayRowId(payRowId===inv.id?null:inv.id); setPayMethod("ach"); setPayDate(new Date().toISOString().slice(0,10)); }}
+                        <button onClick={e=>{ e.stopPropagation(); setPayRowId(payRowId===inv.id?null:inv.id); setPayMethod("ach"); setPayDate(todayLocal()); }}
                           style={{ padding:"5px 11px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>Mark Paid</button>
                       )}
                       {cls.settleAction==="collect" && (

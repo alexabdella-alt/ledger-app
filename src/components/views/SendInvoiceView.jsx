@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
 import { newInvoiceDraft, emptyInvoiceLine, draftBase } from "../../lib/invoiceDraft";
@@ -39,7 +39,7 @@ export default function SendInvoiceView() {
             const taxAmount = Math.round(subtotal * taxRate * 100) / 100;
             const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
-            const today = new Date().toISOString().slice(0,10);
+            const today = todayLocal();
 
             // Persist (insert or update) into the sent-invoices list.
             const persistSent = (inv) => setSentInvoices(prev => {
@@ -182,7 +182,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                 const rev = getAccountByRole("product_revenue"); const cash = getAccountByRole("cash");
                 const entry = {
                   id:Date.now()+Math.random(), vendor:inv.customer, description:`Payment received – ${inv.invoice_number}`,
-                  amount:amt, date:new Date().toISOString().slice(0,10),
+                  amount:amt, date:todayLocal(),
                   type:"revenue", gl_code:rev?.code, gl_name:rev?.name,
                   secondary_gl_code:cash?.code, secondary_gl_name:cash?.name,
                   debit_credit:"credit", confidence:100, reasoning:`Invoice ${inv.invoice_number} paid`,

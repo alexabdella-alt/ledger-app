@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
-import { initials, vendorColor, fmtDate , fmtSignedMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
@@ -71,8 +71,9 @@ export default function ReconView() {
 
   const fmt = fmtSignedMoney;
   const today = new Date();
-  const lastMonthStart = new Date(today.getFullYear(), today.getMonth()-1, 1).toISOString().slice(0,10);
-  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().slice(0,10);
+  // Local month boundaries (period keys) — ymdLocal, not toISOString (which UTC-shifts the day).
+  const lastMonthStart = ymdLocal(new Date(today.getFullYear(), today.getMonth()-1, 1));
+  const lastMonthEnd = ymdLocal(new Date(today.getFullYear(), today.getMonth(), 0));
 
   const [step, setStep] = React.useState("landing"); // landing | setup | match | summary | done
   const [accountId, setAccountId] = React.useState((bankAccounts||[])[0]?.id || "manual");

@@ -2,7 +2,7 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { classifyTxn } from "../../lib/txnPresent";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function InvoicesView() {
@@ -57,7 +57,7 @@ export default function InvoicesView() {
                             <div>{fmtDate(inv.date)}</div>
                             {inv.due_date && (() => {
                               const unpaid = inv.payment_status !== "paid" && inv.payment_status !== "collected";
-                              const overdue = unpaid && String(inv.due_date) < new Date().toISOString().slice(0,10);
+                              const overdue = unpaid && String(inv.due_date) < todayLocal();
                               return <div style={{ fontSize:11, marginTop:2, color: overdue ? "var(--sc-error)" : "var(--sc-text-mut)" }}>Due {fmtDate(inv.due_date)}{overdue ? " · overdue" : ""}</div>;
                             })()}
                           </td>

@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildReviewQueue } from "../../lib/reviewQueue";
 import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
@@ -44,7 +44,7 @@ export default function ReviewView() {
   const { completeness, needsReview, unknown, accuracy, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags });
   const canSignOff = (isOwner || isAdmin);   // the reviewer (CPA/admin/owner) attests
   const [signingOff, setSigningOff] = React.useState(false);
-  const signOffMonth = new Date().toISOString().slice(0, 7);   // "reviewed through" = current month
+  const signOffMonth = todayLocal().slice(0, 7);   // "reviewed through" = current month
   const onSignOff = async () => {
     if (!signOffPeriod) return;
     setSigningOff(true);
@@ -288,7 +288,7 @@ export default function ReviewView() {
                         vendor: doc.document_type,
                         description: doc.journal_entry.description,
                         amount: debitLine.debit,
-                        date: doc.journal_entry.date || new Date().toISOString().slice(0,10),
+                        date: doc.journal_entry.date || todayLocal(),
                         type: "expense",
                         gl_code: debitLine.account_code,
                         gl_name: debitLine.account_name,
@@ -391,7 +391,7 @@ export default function ReviewView() {
                                           vendor: doc.document_type,
                                           description: match.suggested_entry_description || match.trigger_description,
                                           amount: match.amount,
-                                          date: match.date || new Date().toISOString().slice(0,10),
+                                          date: match.date || todayLocal(),
                                           type: "expense",
                                           gl_code: match.suggested_gl_code || getAccountByRole("miscellaneous_expense")?.code,
                                           gl_name: match.suggested_gl_name || getAccountByRole("miscellaneous_expense")?.name,

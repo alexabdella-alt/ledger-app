@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildCompanyUpdate } from "../../lib/writeShapes";
 import { glCodeForAccountType } from "../../lib/bankAccounts";
@@ -59,7 +59,7 @@ export default function SettingsView() {
               URL.revokeObjectURL(url);
             };
             const exportAllData = () => {
-              const stamp = new Date().toISOString().slice(0,10);
+              const stamp = todayLocal();
               const co = (currentCompany?.name || "company").replace(/[^a-z0-9]+/gi, "_");
               const txnRows = [["Date","Vendor","Description","GL Code","GL Account","Type","Amount","Status","Payment Status","Project"]];
               (invoices||[]).forEach(i => txnRows.push([i.date, i.vendor, i.description, i.gl_code, i.gl_name, i.type, i.amount, i.status, i.payment_status, i.project]));

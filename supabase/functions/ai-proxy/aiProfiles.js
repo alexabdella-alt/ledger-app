@@ -48,11 +48,18 @@ export function fillSlots(template, slots = {}) {
   });
 }
 
-// TRUSTED server-side substitutions (NOT untrusted slots): today's date + the
-// calendar year, computed here so the client can't influence period logic. Uses
-// UTC (matches the prior client behavior of new Date().toISOString().slice(0,10)).
+// TRUSTED server-side substitutions (NOT untrusted slots): today's date + the calendar year,
+// computed here so the client can't influence period logic.
+//
+// DATE-HANDLING (O86/CR-5): `now` here is the effNow from resolveNow() — for a date-sensitive
+// call it is the client's local date ANCHORED AT UTC-NOON (`clientToday + "T12:00:00Z"`), so
+// reading it back with UTC methods (`.toISOString().slice(0,10)` / `getUTCFullYear`) reproduces
+// the client's LOCAL calendar day and year EXACTLY. So these MUST stay UTC reads — switching to
+// local getters would break the UTC-noon contract and re-introduce the day-shift. The only case
+// that falls back to raw server-UTC is when clientToday is absent, which the date-reasoning
+// profiles (chat-brain / chat-brain-fallback) never do — they always send clientToday.
 function applyTrustedSubs(template, now = new Date()) {
-  const today = now.toISOString().slice(0, 10);
+  const today = now.toISOString().slice(0, 10);   // effNow is UTC-noon of clientToday → this IS the client's local day
   const year = now.getUTCFullYear();
   return String(template)
     .split("%%TODAY%%").join(today)

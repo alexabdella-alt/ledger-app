@@ -1,6 +1,6 @@
 import React from "react";
 import { useERP } from "./ERPContext";
-import { fmtDate , fmtSignedMoney } from "../lib/format";
+import { fmtDate , fmtSignedMoney, todayLocal } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
 import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
 
@@ -67,7 +67,7 @@ function deriveSession(item) {
   if (!(Number(inv.amount) > 0))
     pre.push({ field: "amount", type: "number", prompt: "I couldn't read the total clearly — what was the amount?", default: inv.amount || "" });
   if (!inv.date)
-    pre.push({ field: "date", type: "date", prompt: "What date was this from?", default: new Date().toISOString().slice(0, 10) });
+    pre.push({ field: "date", type: "date", prompt: "What date was this from?", default: todayLocal() });
   if (!inv.vendor || inv.vendor === "Unknown")
     pre.push({ field: "vendor", type: "text", prompt: "Who is this receipt from?", default: inv.vendor === "Unknown" ? "" : (inv.vendor || "") });
 
@@ -152,7 +152,7 @@ function ClarificationCard({ item }) {
   React.useEffect(() => {
     if (depOpt) {
       setDepLifeYears(String(Math.max(1, Math.round((depOpt.usefulLifeMonths || 60) / 12))));   // AI-suggested default, overridable
-      setDepInService(inv.date || new Date().toISOString().slice(0, 10));
+      setDepInService(inv.date || todayLocal());
       setDepSalvage("0");
     }
   }, [depOpt]);

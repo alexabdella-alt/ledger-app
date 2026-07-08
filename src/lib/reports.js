@@ -113,6 +113,14 @@ export function computeNetIncome(invoices, range = {}) {
 // END of "MM-DD" (default 12-31). e.g. FYE 12-31 → Jan 1; FYE 06-30, asOf in Mar →
 // prior Jul 1. Used to separate prior-years' (closed) earnings from current-period
 // net income on an interim balance sheet without posting closing entries.
+//
+// O87 DECISION (date-handling family): this is FIXED onto local dates, NOT left UTC.
+// It parses `asOf` as LOCAL midnight (`+"T00:00:00"`, not `Z`) and returns `ymdLocal`, so
+// the Jan-1 boundary can't day-shift for a non-UTC user. This does NOT desync the Balance
+// Sheet — the reason the edge was watched — because fiscalYearStart is the SINGLE shared
+// boundary function used by BOTH `currentPeriodRange` (report windows) AND `fiscalYearSplit`
+// (the BS retained-earnings split). One function → they move together by construction; there
+// is no separate UTC copy to drift. (Both callers also pass a LOCAL `asOf`/today.)
 export function fiscalYearStart(asOf, fiscalYearEnd = "12-31") {
   const D = new Date(String(asOf) + "T00:00:00");
   if (isNaN(D)) return null;

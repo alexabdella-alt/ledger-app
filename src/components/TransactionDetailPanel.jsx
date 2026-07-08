@@ -1,7 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
-import { initials, vendorColor, fmtDate, fmtMoney } from "../lib/format";
+import { initials, vendorColor, fmtDate, fmtMoney, todayLocal } from "../lib/format";
 import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind } from "../lib/txnPresent";
@@ -110,7 +110,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   const [srcUploading, setSrcUploading] = React.useState(false);
   const [payOpen, setPayOpen] = React.useState(false);
   const [payMethod, setPayMethod] = React.useState("ach");
-  const [payDate, setPayDate] = React.useState(new Date().toISOString().slice(0, 10));
+  const [payDate, setPayDate] = React.useState(todayLocal());
   const srcFileRef = React.useRef(null);
 
   React.useEffect(() => { setRecodeOpen(false); setPayOpen(false); }, [invoiceId]);

@@ -3,7 +3,7 @@ import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, AP_AUTO_APPROVE_THRESHOLD, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
-import { initials, vendorColor, deriveDueDate, todayLocal, fmtSignedMoney, fmtApprox } from "./lib/format";
+import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, fmtSignedMoney, fmtApprox } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
@@ -383,7 +383,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [drillSel, setDrillSel] = useState(null);
   const [reportRange, setReportRange] = useState(() => ss("cfai_reportRange", "custom"));
   const [reportDateFrom, setReportDateFrom] = useState(() => ss("cfai_reportDateFrom", new Date().getFullYear() + "-01-01"));
-  const [reportDateTo, setReportDateTo] = useState(() => ss("cfai_reportDateTo", new Date().toISOString().slice(0,10)));
+  const [reportDateTo, setReportDateTo] = useState(() => ss("cfai_reportDateTo", todayLocal()));
   // Persist filter/report UI state whenever it changes.
   useEffect(() => { try {
     sessionStorage.setItem("cfai_booksFilter", booksFilter);
@@ -747,11 +747,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [coaEditDraft, setCoaEditDraft] = useState({});
   const [coaAddDraft, setCoaAddDraft] = useState({code:"",name:"",category:"Expenses"});
   const [coaShowAdd, setCoaShowAdd] = useState(false);
-  const [openingBalAsOfDate, setOpeningBalAsOfDate] = useState(new Date().toISOString().slice(0,10));
+  const [openingBalAsOfDate, setOpeningBalAsOfDate] = useState(todayLocal());
   const [openingBalBalances, setOpeningBalBalances] = useState({});
   const [sendInvoiceDraftState, setSendInvoiceDraftState] = useState(null);
   const [sendInvoiceShowPreview, setSendInvoiceShowPreview] = useState(false);
-  const [recurringNewRec, setRecurringNewRec] = useState({name:"",vendor:"",amount:"",gl_code:rc("rent_occupancy"),gl_name:rn("rent_occupancy"),frequency:"monthly",next_date:new Date().toISOString().slice(0,10),project:"General"});
+  const [recurringNewRec, setRecurringNewRec] = useState({name:"",vendor:"",amount:"",gl_code:rc("rent_occupancy"),gl_name:rn("rent_occupancy"),frequency:"monthly",next_date:todayLocal(),project:"General"});
   const [docsPreview, setDocsPreview] = useState(null);
   const [docsFilterType, setDocsFilterType] = useState("all");
   const [auditSearch, setAuditSearch] = useState("");
@@ -847,9 +847,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setCustomersEditingId(null); setCustomersEditDraft({});
     setSettingsDraft(null); setSettingsSaved(false); setSettingsLogoPreview(null);
     setCoaEditingCode(null); setCoaEditDraft({}); setCoaAddDraft({ code:"", name:"", category:"Expenses" }); setCoaShowAdd(false);
-    setOpeningBalAsOfDate(new Date().toISOString().slice(0,10)); setOpeningBalBalances({});
+    setOpeningBalAsOfDate(todayLocal()); setOpeningBalBalances({});
     setSendInvoiceDraftState(null); setSendInvoiceShowPreview(false); setSentInvoiceDraft(null);
-    setRecurringNewRec({ name:"", vendor:"", amount:"", gl_code:rc("rent_occupancy"), gl_name:rn("rent_occupancy"), frequency:"monthly", next_date:new Date().toISOString().slice(0,10), project:"General" });
+    setRecurringNewRec({ name:"", vendor:"", amount:"", gl_code:rc("rent_occupancy"), gl_name:rn("rent_occupancy"), frequency:"monthly", next_date:todayLocal(), project:"General" });
 
     // Notifications / toasts
     if (notifTimerRef.current) { clearTimeout(notifTimerRef.current); notifTimerRef.current = null; }
@@ -1455,7 +1455,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const newRec = {
       id: Date.now() + Math.random(), name: s.vendor, vendor: s.vendor,
       amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name,
-      frequency: "monthly", next_date: new Date().toISOString().slice(0, 10),
+      frequency: "monthly", next_date: todayLocal(),
       project: "General", active: true, created_at: new Date().toISOString(), last_run: null,
     };
     setRecurring(prev => [newRec, ...prev]);
@@ -2154,7 +2154,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const contactId = vendor ? await resolveContactId(vendor, "vendor", true) : null;
     const res = await insertVerified(supabase, "recurring_transactions", buildRecurringRow({
       companyId: currentCompany.id, name, contactId, amount, debitAccountId, creditAccountId,
-      frequency, nextDate: next_date || new Date().toISOString().slice(0, 10), project,
+      frequency, nextDate: next_date || todayLocal(), project,
     }));
     if (res.ok) setRecurring(prev => [{ id: res.row.id, name, vendor: vendor || "", amount: parseFloat(amount) || 0, gl_code, gl_name, frequency: res.row.frequency, next_date: res.row.next_date, last_run: null, active: true, created_at: res.row.created_at }, ...prev]);
     return res;
@@ -3700,8 +3700,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const txnDates = withRules.map(t=>t.date).filter(Boolean).sort();
           const reconRecord = {
             company_id: currentCompany.id, account_name: (account && account.name) || "Bank statement upload",
-            period_start: txnDates[0] || new Date().toISOString().slice(0,10),
-            period_end: txnDates[txnDates.length-1] || new Date().toISOString().slice(0,10),
+            period_start: txnDates[0] || todayLocal(),
+            period_end: txnDates[txnDates.length-1] || todayLocal(),
             statement_balance: 0, books_balance: 0, difference: 0,
             status: reconRecordStatus(plan.review.length),   // CHECK allows only open|complete ("needs_review" violated it; review count lives in bankResult.needsReview)
             matched_transactions: autoCleared.map(m => ({ bank_txn: m.bank_txn, invoice_ids: m.invoice_ids, confidence: m.confidence })),
@@ -3766,10 +3766,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             const sl = contract.monthly_straight_line_expense || pmt;
             let liab = (parseFloat(contract.lease_liability_current)||0) + (parseFloat(contract.lease_liability_noncurrent)||0);
             if (liab === 0 && pmt > 0) liab = ibrM > 0 ? pmt * (1 - Math.pow(1+ibrM,-calcLeaseTermMonths)) / ibrM : pmt * calcLeaseTermMonths;
-            const start = new Date(contract.start_date || new Date());
+            const leaseStartYMD = contract.start_date || todayLocal();
             for (let i = 0; i < calcLeaseTermMonths; i++) {
-              const d = new Date(start); d.setMonth(d.getMonth() + i + 1);
-              const ds = d.toISOString().slice(0,10);
+              // Local-safe schedule date (CR-4/CR-5): month-add on the YMD string, never a
+              // UTC toISOString() of a Date (which day-shifts the period for non-UTC users).
+              const ds = addMonthsClampedYMD(leaseStartYMD, i + 1);
               const interest = liab * ibrM;
               const principal = Math.min(pmt - interest, liab);
               liab = Math.max(0, liab - principal);
@@ -4236,13 +4237,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           }
         }
 
-        const startDate = new Date(contract.start_date || new Date());
-
         // Use pre-computed amortization schedule from calcASC842
         if (asc842) asc842.schedule.forEach((row, i) => {
-          const entryDate = new Date(startDate);
-          entryDate.setMonth(entryDate.getMonth() + i + 1);
-          const dateStr = entryDate.toISOString().slice(0, 10);
+          // Local-safe schedule date (CR-4/CR-5) — month-add on the YMD string, not UTC toISOString.
+          const dateStr = addMonthsClampedYMD(contract.start_date || todayLocal(), i + 1);
           const principal = Math.round(row.principal * 100) / 100;
           const interest = Math.round(row.interest * 100) / 100;
 
@@ -4299,9 +4297,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         const end = new Date(contract.end_date);
         const months = Math.round((end - start) / (1000 * 60 * 60 * 24 * 30.44));
         for (let i = 0; i < Math.min(months, 60); i++) {
-          const d = new Date(start);
-          d.setMonth(d.getMonth() + i + 1);
-          const dateStr = d.toISOString().slice(0, 10);
+          // Local-safe schedule date (CR-4/CR-5) — month-add on the YMD string, not UTC toISOString.
+          const dateStr = addMonthsClampedYMD(contract.start_date || todayLocal(), i + 1);
           if (contract.contract_type === "subscription_paid") {
             monthlyEntries.push({ date: dateStr, description: `Subscription expense — Month ${i+1}`, memo: "Monthly amortization of prepaid",
               lines: [{ account_code:rc("technology_software"), account_name:rn("technology_software"), debit:parseFloat(contract.payment_amount), credit:0 }, { account_code:rc("prepaid_expenses"), account_name:rn("prepaid_expenses"), debit:0, credit:parseFloat(contract.payment_amount) }]});

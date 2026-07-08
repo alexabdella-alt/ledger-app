@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtSignedMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtSignedMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function ContractsView() {
@@ -230,7 +230,7 @@ export default function ContractsView() {
                       </div>
                       {(selectedContract.journal_entries||[]).map((entry, idx) => {
                         const isPosted = selectedContract.posted_entries?.includes(idx);
-                        const isFuture = entry.date > new Date().toISOString().slice(0,10);
+                        const isFuture = entry.date > todayLocal();
                         return (
                           <div key={idx} style={{ borderBottom:"1px solid var(--sc-border)", background:isPosted?"var(--sc-success-soft)":isFuture?"var(--sc-bg)":idx%2===0?"transparent":"var(--sc-bg)" }}>
                             <div style={{ padding:"14px 22px", display:"flex", alignItems:"center", gap:14 }}>

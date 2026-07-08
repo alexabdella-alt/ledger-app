@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
@@ -57,7 +57,7 @@ export default function DashboardView() {
   const [showCommit, setShowCommit] = React.useState(false); // active commitments expander
   const [apPayId, setApPayId] = React.useState(null); // inline "mark paid" row in the AP drill
   const [apPayMethod, setApPayMethod] = React.useState("ach");
-  const [apPayDate, setApPayDate] = React.useState(new Date().toISOString().slice(0,10));
+  const [apPayDate, setApPayDate] = React.useState(todayLocal());
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
   const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "var(--sc-gold)" : "var(--sc-border)"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
 
@@ -182,7 +182,7 @@ export default function DashboardView() {
       // (burnRateDetail): the "counted" months average EXACTLY to the value shown, and
       // the excluded ones (current partial month + one-off spikes) are shown struck-out
       // with the reason — so the list always reconciles to the number above it.
-      const detail = burnRateDetail(invoices, { asOf: today.toISOString().slice(0,10) });
+      const detail = burnRateDetail(invoices, { asOf: ymdLocal(today) });
       const mLabel = (key)=>{ const [y,m]=key.split("-").map(Number); return new Date(y,m-1,1).toLocaleDateString("en-US",{month:"long",year:"numeric"}); };
       const curKey = detail.asOfMonth;
       const curTotal = exp.filter(i=>i.date?.startsWith(curKey)).reduce((s,i)=>s+i.amount,0);
@@ -217,7 +217,7 @@ export default function DashboardView() {
       // (e.g. June/May/Apr); when activity sat in an earlier month (a Feb statement viewed in
       // June) that window was empty → avgBurn 0 → the drill showed "∞ / —" while the card
       // showed a real finite runway (same summary-vs-detail divergence as the report drill).
-      const today=new Date().toISOString().slice(0,10);
+      const today=todayLocal();
       const avgBurn=computeBurnRate(invoices, { asOf: today });   // trailing 3-mo, canonical
       const cash=glCash;   // GL cash on hand — the one canonical source (no ad-hoc cash math)
       const runwayExact=computeRunway(cash, avgBurn);
@@ -251,7 +251,7 @@ export default function DashboardView() {
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
                   <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)", width:96, textAlign:"right" }}>{fmt(inv.amount)}</span>
-                  {apPayId!==inv.id && <button onClick={()=>{ setApPayId(inv.id); setApPayMethod("ach"); setApPayDate(new Date().toISOString().slice(0,10)); }} style={{ padding:"6px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer", whiteSpace:"nowrap" }}>Mark Paid</button>}
+                  {apPayId!==inv.id && <button onClick={()=>{ setApPayId(inv.id); setApPayMethod("ach"); setApPayDate(todayLocal()); }} style={{ padding:"6px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer", whiteSpace:"nowrap" }}>Mark Paid</button>}
                 </div>
               </div>
               {apPayId===inv.id && (
@@ -581,7 +581,7 @@ export default function DashboardView() {
                 const unpaid = openPayablesGL(invoices, apCode);
                 const openAR = openReceivablesGL(invoices, arCode);
                 if (unpaid.length===0 && openAR.length===0) return null;
-                const today = new Date().toISOString().slice(0,10);
+                const today = todayLocal();
                 // AP/AR totals = the canonical GL balance of the A/P / A/R accounts (same source
                 // as the Balance Sheet + Payables), so card total, count, and drill list reconcile.
                 const total = glAccountBalance(apCode, invoices);

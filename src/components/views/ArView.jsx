@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
@@ -13,7 +13,7 @@ export default function ArView() {
             // Amount OWED on a receivable: incl-tax A/R (ar_amount) for taxed invoices,
             // else the ex-tax amount. Ties the lists to GL A/R.
             const arAmt = i => (i && i.ar_amount != null) ? i.ar_amount : (i ? i.amount : 0);
-            const today = new Date().toISOString().slice(0,10);
+            const today = todayLocal();
             // arAgingNarration moved to top-level state
             // arAgingLoading moved to top-level state
             // arView moved to top-level state
