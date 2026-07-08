@@ -4,7 +4,8 @@ import {
   answerToAccount, containsOwnerJargon,
 } from "../src/lib/clarify.js";
 import { recallVendor, learnFromBooking, emptyProfile } from "../src/lib/clientProfile.js";
-import { shouldFlagForReview } from "../src/lib/confidenceFlag.js";
+import { shouldFlagForReview, autoBookDecision } from "../src/lib/confidenceFlag.js";
+import { AI_CONFIDENCE_ASK_FLOOR } from "../src/lib/constants.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Clarification-flow redesign — confidence-gated, transparent, plain-language.
@@ -90,15 +91,37 @@ describe("(3) clarificationChips — a plain guess chip, only when confident, th
   });
 });
 
-describe("(1) confidence gate — the trigger asks only when O49 would flag it", () => {
-  // The trigger books unless shouldFlagForReview says a human would genuinely pause.
-  it("an 80%-confident SMALL item auto-books (no interruption)", () => {
-    expect(shouldFlagForReview({ amount: 120, confidence: 80 }).flagged).toBe(false);
+describe("(1) confidence gate — ask below the floor, else materiality-gated by O49", () => {
+  // The floor is a single, clearly-named, easily-tunable constant (adjustable from real-use data).
+  it("exposes AI_CONFIDENCE_ASK_FLOOR as a locatable constant (~70, the starting value)", () => {
+    expect(typeof AI_CONFIDENCE_ASK_FLOOR).toBe("number");
+    expect(AI_CONFIDENCE_ASK_FLOOR).toBe(70);
   });
-  it("a low-confidence MATERIAL item is flagged → the flow asks", () => {
-    expect(shouldFlagForReview({ amount: 2400, confidence: 55 }).flagged).toBe(true);
+
+  it("a 65%-confident item ASKS even though it's small (below the floor = near coin-flip)", () => {
+    const d = autoBookDecision({ amount: 40, confidence: 65 });
+    expect(d.autoBook).toBe(false);
+    expect(d.reason).toBe("below_confidence_floor");
   });
-  it("a tiny uncertain item is immaterial → still auto-books (book it, don't chase $40)", () => {
+  it("an 80%-confident SMALL item auto-books (above floor, immaterial → no interruption)", () => {
+    const d = autoBookDecision({ amount: 120, confidence: 80 });
+    expect(d.autoBook).toBe(true);
+    expect(d.reason).toBe("confident");
+  });
+  it("just below the floor asks; at the floor books (boundary is exact)", () => {
+    expect(autoBookDecision({ amount: 500, confidence: AI_CONFIDENCE_ASK_FLOOR - 1 }).autoBook).toBe(false);
+    expect(autoBookDecision({ amount: 500, confidence: AI_CONFIDENCE_ASK_FLOOR }).autoBook).toBe(true);
+  });
+  it("above the floor still defers to O49: uncertain AND material → asks", () => {
+    const d = autoBookDecision({ amount: 4000, confidence: 72 });   // 72 ≥ floor, but material + <75
+    expect(d.autoBook).toBe(false);
+    expect(d.reason).toBe("flagged_uncertain_material");
+  });
+  it("no amount → can't book, so it asks", () => {
+    expect(autoBookDecision({ amount: 0, confidence: 99 })).toMatchObject({ autoBook: false, reason: "missing_amount" });
+  });
+  // O49 itself is unchanged — the floor is layered ON TOP in the trigger, not inside O49.
+  it("O49 still treats a tiny uncertain item as immaterial (the floor is the added guard)", () => {
     expect(shouldFlagForReview({ amount: 40, confidence: 20 }).flagged).toBe(false);
   });
 });

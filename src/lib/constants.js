@@ -79,6 +79,14 @@ const IRS_1099_THRESHOLD = 600;           // 1099-NEC reporting threshold
 const DEFAULT_IBR = 0.05;                 // default incremental borrowing rate for ASC 842
 const AI_CONFIDENCE_AUTO_BOOK = 85;       // >= this auto-books without review
 const AI_CONFIDENCE_REVIEW = 75;          // < this flags for review
+// Hard "ask, don't guess" floor for the clarification flow. BELOW this, the AI is too close to
+// a coin-flip to book silently — a real accountant that unsure would ask, and auto-booking a
+// coin-flip both erodes trust and feeds the learning layer bad training data. So <FLOOR always
+// ASKS regardless of materiality; the FLOOR+ zone stays materiality-gated by O49. This is a
+// STARTING VALUE tuned from intuition, meant to be adjusted from real-use data — not permanent.
+// (The learning layer's vendor decay lifts confidence over time, so a 70 floor gets quieter per
+// business as it's used; it does NOT make the app permanently chatty.)
+const AI_CONFIDENCE_ASK_FLOOR = 70;       // < this: clarification ASKS even if immaterial
 const AP_AUTO_APPROVE_THRESHOLD = 500;    // AP bills under this can auto-approve
 const FED_TAX_RATE = 0.25;                // simplified flat federal planning rate
 const SE_TAX_RATE = 0.153;                // self-employment tax rate
@@ -91,6 +99,7 @@ export {
   AI_PROXY_URL,
   CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE,
   IRS_1099_THRESHOLD, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW,
+  AI_CONFIDENCE_ASK_FLOOR,
   AP_AUTO_APPROVE_THRESHOLD, FED_TAX_RATE, SE_TAX_RATE,
   PLATFORM_ADMIN_EMAILS,
 };

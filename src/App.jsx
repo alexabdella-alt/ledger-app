@@ -16,7 +16,7 @@ import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
-import { flaggedForReview, reviewSummary, shouldFlagForReview } from "./lib/confidenceFlag";
+import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
 import { computeControlTotals, evaluateSignOff } from "./lib/controlTotals";
 import { persistSignoff, fetchSignoffs, latestReviewedThrough } from "./lib/signoff";
 import { buildPaymentEntry } from "./lib/payments";
@@ -3462,12 +3462,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               // Needs a GAAP clarifying question before it can be booked correctly.
               needsClarification.push({ id: Date.now() + Math.random(), queueItemId: item.id, ...gaapItem });
             } else {
-              // ── CONFIDENCE-GATED booking (O49) ──────────────────────────────────────────
+              // ── CONFIDENCE-GATED booking (autoBookDecision) ─────────────────────────────
               // A real bookkeeper who KNOWS what something is just books it — no question. So
-              // we auto-book unless the O49 signal says a human would genuinely pause (unsure
-              // AND material), or we literally can't (no amount). The threshold is O49's
-              // shouldFlagForReview — the single "does this need a human?" source of truth —
-              // NOT a blunt confidence cutoff, so 80%-confident small items just book.
+              // we auto-book unless (a) confidence is below the "ask, don't guess" floor
+              // (AI_CONFIDENCE_ASK_FLOOR — a near-coin-flip is asked even if immaterial), (b) the
+              // O49 signal says a human would pause (unsure AND material), or (c) there's no
+              // amount to book. So an 80%-confident small item just books; a 65% one asks.
               //
               // Learned-vendor decay (O64): if this business has booked this vendor the same
               // way before, trust it like a soft rule and book straight through — this is what
@@ -3479,9 +3479,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
                 invoice.confidence = Math.max(Number(invoice.confidence) || 0, AI_CONFIDENCE_AUTO_BOOK);
                 invoice.reasoning = `${invoice.reasoning || ""} Recognized ${invoice.vendor} from past bookings — booked the way you've categorized it before.`.trim();
               }
-              const flag = shouldFlagForReview(invoice);
-              const canBook = Number(invoice.amount) > 0;
-              if (rule || (!flag.flagged && canBook)) {
+              // Book unless we're below the "ask, don't guess" floor (AI_CONFIDENCE_ASK_FLOOR)
+              // OR O49 says a human would pause on a material amount. A vendor rule (and the
+              // learned-vendor boost above, which lifts confidence to the auto-book level) books
+              // straight through — that's how the questions decay as this business is learned.
+              const decision = autoBookDecision(invoice);
+              if (rule || decision.autoBook) {
                 highConfidence.push(invoice);
               } else {
                 // Genuinely unsure (or missing the amount) → ask ONE plain-language question and

@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { fmtMoney } from "./format";
+import { AI_CONFIDENCE_ASK_FLOOR } from "./constants";
 
 // Tunable thresholds. Confidence is 0–100 (the model's scale; rule-applied = 99).
 export const FLAG_DEFAULTS = {
@@ -56,6 +57,24 @@ export function shouldFlagForReview(txn = {}, opts = {}) {
   }
   // Confident, or immaterial-enough uncertainty → no flag (this is what keeps it SELECTIVE).
   return none;
+}
+
+// THE CLARIFICATION GATE (pure) — "book it, or ask?" for the upload flow. A real bookkeeper
+// books what they're confident about and asks about the rest. Two reasons to ASK:
+//   1) BELOW the hard confidence floor (askFloor) — too close to a coin-flip to book silently,
+//      regardless of materiality. Auto-booking a coin-flip erodes trust and poisons the
+//      learning layer, so this is a floor, not a suggestion.
+//   2) O49 flags it (genuinely uncertain AND material) — the materiality-gated zone above the
+//      floor, delegated to shouldFlagForReview.
+// Missing amount → can't book, so ask. Returns { autoBook, reason }.
+// NOTE: an explicit vendor RULE and the learned-vendor confidence boost are applied by the
+// caller BEFORE this (they raise confidence / short-circuit), so a known vendor books through.
+export function autoBookDecision(txn = {}, { askFloor = AI_CONFIDENCE_ASK_FLOOR, ...opts } = {}) {
+  const conf = txn.confidence == null ? 100 : num(txn.confidence);
+  if (!(Math.abs(num(txn.amount)) > 0)) return { autoBook: false, reason: "missing_amount" };
+  if (conf < askFloor) return { autoBook: false, reason: "below_confidence_floor" };
+  if (shouldFlagForReview(txn, opts).flagged) return { autoBook: false, reason: "flagged_uncertain_material" };
+  return { autoBook: true, reason: "confident" };
 }
 
 // The queryable "needs review" SET (what O50's CPA surface will consume). Each item carries
