@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
-import { draftClientQuestion } from "../src/lib/clarify.js";
+import { draftClientQuestion, describeBooking, clarificationChips, plainCategoryPhrase, containsOwnerJargon } from "../src/lib/clarify.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // CARDINAL-PRINCIPLE GUARD (CR-25 / CR-26). The owner NEVER sees accounting
@@ -72,5 +72,49 @@ describe("Cardinal Principle — the clarification loop question stays plain (re
     const text = `${q?.question || ""} ${q?.subtext || q?.detail || ""}`;
     expect(text).not.toMatch(JARGON);
     expect(text).not.toMatch(GL_CODE);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Guard EXTENSION (this pass): the leak that got through — clarification ANSWER
+// OPTIONS / CHIPS and AUTO-BOOKING CONFIRMATION strings — the previous guard only
+// scanned question stems. These are the owner-facing strings the redesign produces,
+// so they must be jargon- and GL-code-free for EVERY account, not just a sample.
+// ════════════════════════════════════════════════════════════════════════════
+describe("Cardinal Principle — auto-booking confirmations + answer chips are jargon-free", () => {
+  // A fixture spanning every default expense account + revenue + meals + a renumbered
+  // account + a genuinely-unknown one (the phrase must still be plain).
+  const FIXTURE = [
+    { vendor: "Bella Vita Catering", amount: 477.38, gl_code: "6400", gl_name: "Travel & Entertainment" },
+    { vendor: "WeWork", amount: 3200, gl_code: "6100", gl_name: "Rent & Occupancy" },
+    { vendor: "AWS", amount: 812.5, gl_code: "6500", gl_name: "Technology & Software" },
+    { vendor: "The Hartford", amount: 1400, gl_code: "6700", gl_name: "Insurance" },
+    { vendor: "Comcast", amount: 210, gl_code: "6200", gl_name: "Utilities" },
+    { vendor: "Staples", amount: 96, gl_code: "6600", gl_name: "Office Supplies" },
+    { vendor: "A Lawyer LLP", amount: 2500, gl_code: "6800", gl_name: "Professional Services" },
+    { vendor: "Meta Ads", amount: 640, gl_code: "6300", gl_name: "Marketing & Advertising" },
+    { vendor: "Payroll Co", amount: 9000, gl_code: "6000", gl_name: "Salaries & Wages" },
+    { vendor: "A Customer", amount: 5000, gl_code: "4000", gl_name: "Service Revenue", type: "revenue" },
+    { vendor: "Renamed Vendor", amount: 300, gl_code: "9123", gl_name: "Software Subscriptions" },
+    { vendor: "Mystery Vendor", amount: 88, gl_code: "7100", gl_name: "Miscellaneous" },
+  ];
+
+  it.each(FIXTURE.map((f, i) => [i, f]))("auto-booking confirmation #%i is plain, no jargon / GL code", (_i, inv) => {
+    const s = describeBooking(inv);
+    expect(s, `confirmation leaked jargon: "${s}"`).not.toMatch(JARGON);
+    expect(s, `confirmation leaked a GL code: "${s}"`).not.toMatch(GL_CODE);
+    expect(containsOwnerJargon(s), `containsOwnerJargon flagged: "${s}"`).toBe(false);
+  });
+
+  it.each(FIXTURE.map((f, i) => [i, f]))("answer chips for #%i carry no jargon / account name / GL code", (_i, inv) => {
+    for (const chip of clarificationChips({ ...inv, confidence: 80 })) {
+      expect(chip.label, `chip leaked jargon: "${chip.label}"`).not.toMatch(JARGON);
+      expect(chip.label, `chip leaked a GL code: "${chip.label}"`).not.toMatch(GL_CODE);
+      // A chip must never be the formal account LABEL (e.g. "Travel & Entertainment") — plain
+      // phrases that happen to coincide with an account name ("insurance") are fine; the tell
+      // of a leaked account name is the "&" conjunction or the verbatim label.
+      expect(chip.label, `chip is the formal account label: "${chip.label}"`).not.toContain("&");
+      expect(chip.label, `chip echoed the verbatim account name: "${chip.label}"`).not.toBe(String(inv.gl_name));
+    }
   });
 });

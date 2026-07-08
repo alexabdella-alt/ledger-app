@@ -486,9 +486,11 @@ export default function DashboardView() {
                                     return `✓ Booked${r.reviewVendor ? `: ${r.reviewVendor}` : ""}${r.reviewAmount!=null ? ` · ${money(r.reviewAmount)}` : ""}`;
                                   return `⚠ Needs your input · ${r.reviewVendor || "this entry"}${r.reviewAmount!=null ? ` · ${money(r.reviewAmount)}` : ""}${r.needsClarification > 1 ? ` (+${r.needsClarification-1} more)` : ""}`;
                                 }
+                                // Plain-language trail (Cardinal Principle): "as a client meal",
+                                // never "→ 6420 Meals & Entertainment" or a confidence score.
                                 let txt = r.invoiceCount === 1
-                                  ? `✓ Booked: ${r.vendor || "entry"} · ${money(r.amount)}${r.gl_name ? ` → ${r.gl_name}` : ""}${r.confidence!=null ? ` (${r.confidence}% confidence)` : ""}`
-                                  : `✓ ${r.invoiceCount} invoices booked · ${money(r.amount)} total${r.confidence!=null ? ` · ${r.confidence}% avg confidence` : ""}`;
+                                  ? `✓ Booked: ${r.vendor || "entry"} · ${money(r.amount)}${r.bookedAs ? ` as ${r.bookedAs}` : ""}`
+                                  : `✓ ${r.invoiceCount} invoices booked · ${money(r.amount)} total`;
                                 // Only show the outstanding-review suffix while items are still pending.
                                 if (r.needsClarification > 0 && pendingReview) txt += ` · ${r.needsClarification} need${r.needsClarification===1 ? "s" : ""} your review`;
                                 return txt;

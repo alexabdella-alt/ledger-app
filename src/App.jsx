@@ -7,7 +7,8 @@ import { initials, vendorColor, deriveDueDate, todayLocal, fmtSignedMoney, fmtAp
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
-import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule } from "./lib/clientProfile";
+import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
+import { draftClientQuestion, plainCategoryPhrase, describeBooking } from "./lib/clarify";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
@@ -15,7 +16,7 @@ import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
-import { flaggedForReview, reviewSummary } from "./lib/confidenceFlag";
+import { flaggedForReview, reviewSummary, shouldFlagForReview } from "./lib/confidenceFlag";
 import { computeControlTotals, evaluateSignOff } from "./lib/controlTotals";
 import { persistSignoff, fetchSignoffs, latestReviewedThrough } from "./lib/signoff";
 import { buildPaymentEntry } from "./lib/payments";
@@ -3437,22 +3438,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // revenue without identity confirmation → ask direction FIRST, offering both a
             // revenue and an expense category (a type/direction correction, not a sub-detail).
             } else if (extracted._direction === "ambiguous" || (!rule && isRevenue)) {
-              const revenueAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Revenue").slice(0, 2);
-              const expenseAccts = CHART_OF_ACCOUNTS.filter(a => a.category === "Expenses")
-                .filter(a => [rc("cogs"),rc("professional_services"),rc("technology_software")].includes(a.code));
+              // Direction is genuinely unclear — ask the ONE plain-language question a person
+              // would ask. Options are plain choices (Cardinal Principle — NO account names /
+              // GL codes): "we sent it" books as revenue; "we received it" re-routes to the
+              // plain "what was this for?" expense question.
+              const primaryRev = CHART_OF_ACCOUNTS.find(a => a.category === "Revenue") || {};
               needsClarification.push({
                 id: Date.now() + Math.random(),
                 invoice,
                 queueItemId: item.id,
                 directionFirst: true,
-                question: `Did your business SEND this invoice to a customer (revenue), or is it a bill you RECEIVED (expense)?`,
+                question: `Quick check — did your business send this out to get paid, or is it a bill you received?`,
                 options: [
-                  ...revenueAccts.map(a => ({ code: a.code, name: a.name,
-                    typeOverride: { type: "revenue", secondary_gl_code: rc("accounts_receivable"), secondary_gl_name: rn("accounts_receivable") } })),
-                  ...expenseAccts.map(a => ({
-                    code: a.code, name: a.name,
-                    typeOverride: { type: "expense", secondary_gl_code: rc("accounts_payable"), secondary_gl_name: rn("accounts_payable") }
-                  })),
+                  { label: "We sent it — a customer paid us or owes us",
+                    code: isRevenue ? finalCode : primaryRev.code, name: isRevenue ? finalName : primaryRev.name,
+                    typeOverride: { type: "revenue", secondary_gl_code: rc("accounts_receivable"), secondary_gl_name: rn("accounts_receivable") } },
+                  { label: "We received it — it's a bill we need to record", reroute: "expense" },
                 ],
                 suggestedCode: finalCode,
                 suggestedName: finalName,
@@ -3460,31 +3461,40 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             } else if (gaapItem) {
               // Needs a GAAP clarifying question before it can be booked correctly.
               needsClarification.push({ id: Date.now() + Math.random(), queueItemId: item.id, ...gaapItem });
-            } else if (rule || (confidence >= AI_CONFIDENCE_AUTO_BOOK && !(invoice.questions && invoice.questions.length > 0))) {
-              highConfidence.push(invoice);
             } else {
-              // Low GL confidence OR the AI raised plain-English questions — ask the user.
-              // Build targeted clarification question for low GL confidence
-              const topAlternatives = CHART_OF_ACCOUNTS
-                .filter(a => a.category === "Expenses")
-                .sort((a,b) => {
-                  if (a.code === finalCode) return -1;
-                  if (b.code === finalCode) return 1;
-                  return 0;
-                })
-                .slice(0, 4);
-
-              needsClarification.push({
-                id: Date.now() + Math.random(),
-                invoice,
-                queueItemId: item.id,
-                question: confidence < 60
-                  ? `I'm not sure how to code this from ${extracted.vendor} for $${parseFloat(extracted.amount).toFixed(2)}. ${coding.reasoning || "Which category fits best?"}:`
-                  : `I coded this to "${finalName}" (${confidence}% confident). Does that look right?`,
-                options: topAlternatives.map(a => ({ code: a.code, name: a.name })),
-                suggestedCode: finalCode,
-                suggestedName: finalName,
-              });
+              // ── CONFIDENCE-GATED booking (O49) ──────────────────────────────────────────
+              // A real bookkeeper who KNOWS what something is just books it — no question. So
+              // we auto-book unless the O49 signal says a human would genuinely pause (unsure
+              // AND material), or we literally can't (no amount). The threshold is O49's
+              // shouldFlagForReview — the single "does this need a human?" source of truth —
+              // NOT a blunt confidence cutoff, so 80%-confident small items just book.
+              //
+              // Learned-vendor decay (O64): if this business has booked this vendor the same
+              // way before, trust it like a soft rule and book straight through — this is what
+              // makes the questions taper off over time.
+              const learned = recallVendor(clientProfileRef.current, invoice.vendor);
+              if (learned && (!invoice.gl_code || invoice.gl_code === learned.gl_code)) {
+                invoice.gl_code = invoice.gl_code || learned.gl_code;
+                invoice.gl_name = invoice.gl_name || learned.gl_name;
+                invoice.confidence = Math.max(Number(invoice.confidence) || 0, AI_CONFIDENCE_AUTO_BOOK);
+                invoice.reasoning = `${invoice.reasoning || ""} Recognized ${invoice.vendor} from past bookings — booked the way you've categorized it before.`.trim();
+              }
+              const flag = shouldFlagForReview(invoice);
+              const canBook = Number(invoice.amount) > 0;
+              if (rule || (!flag.flagged && canBook)) {
+                highConfidence.push(invoice);
+              } else {
+                // Genuinely unsure (or missing the amount) → ask ONE plain-language question and
+                // let the free-text answer map to an account (answerToAccount). No GL buttons.
+                needsClarification.push({
+                  id: Date.now() + Math.random(),
+                  invoice,
+                  queueItemId: item.id,
+                  question: draftClientQuestion(invoice).question,
+                  suggestedCode: finalCode,
+                  suggestedName: finalName,
+                });
+              }
             }
           });
 
@@ -3538,6 +3548,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             amount: totalAmt,
             vendor: firstBooked?.vendor ?? null,
             gl_name: firstBooked?.gl_name ?? null,
+            // (2) Plain-language trail for the owner — "as a client meal", never an account name.
+            bookedAs: firstBooked ? plainCategoryPhrase(firstBooked) : null,
             confidence: highConfidence.length > 0 ? Math.round(highConfidence.reduce((s,i)=>s+(i.confidence||0),0)/highConfidence.length) : null,
             reviewVendor: firstReview?.vendor ?? null,
             reviewAmount: firstReview?.amount ?? null,

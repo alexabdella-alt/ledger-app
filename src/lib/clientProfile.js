@@ -97,6 +97,22 @@ export function learnFromBooking(profile, invoice) {
   return next;
 }
 
+// ── Learned-vendor recall (O64 decay) ──
+// The bookkeeper who has seen "Bella Vita Catering → a client meal" twice stops asking about
+// it. Given a vendor, return the learned GL mapping ONCE it's been booked at least `minCount`
+// times (so a single early mistake never hardens into an auto-book). This is what makes the
+// clarification questions DECAY: the 2nd/3rd time a known vendor appears, the caller can book
+// it straight through instead of interrupting. Returns { gl_code, gl_name, count } or null.
+export function recallVendor(profile, vendor, { minCount = 2 } = {}) {
+  const p = profile || emptyProfile();
+  const v = String(vendor || "").trim().toLowerCase();
+  if (!v) return null;
+  const hit = (p.common_vendors || {})[v];
+  if (!hit || !hit.gl_code) return null;
+  if ((hit.count || 0) < minCount) return null;
+  return { gl_code: hit.gl_code, gl_name: hit.gl_name || hit.gl_code, count: hit.count || 0 };
+}
+
 // Add a free-form learned fact (deduped, capped). Returns a NEW profile.
 export function addCustomRule(profile, fact) {
   const p = profile || emptyProfile();

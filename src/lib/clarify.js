@@ -99,3 +99,109 @@ export function answerToAccount(answer, { getAccountByRole, rules = [], vendor =
   if (!acct || !(acct.code || acct.gl_code)) return { gl_code: null, gl_name: null, role, confidence: 90, via: "category" };
   return { gl_code: acct.code || acct.gl_code, gl_name: acct.name || acct.gl_name || role, role, confidence: 90, via: "category" };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLAIN-LANGUAGE BOOKING VOICE (Cardinal Principle — the owner never sees a GL code
+// or an account name). A booked entry is described to the owner in the words a person
+// would use ("a client meal", "software", "rent") — NEVER "6420 Meals & Entertainment".
+// These power (2) the transparent auto-booking record and (3) the ask-path chips, and are
+// linted jargon-free by the Cardinal-Principle guard (5).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// role → plain owner phrase. Deliberately avoids accounting words (no "depreciation",
+// "amortization", "accrual") so the output always passes the jargon lint below.
+const ROLE_PHRASE = {
+  salaries_wages: "payroll",
+  rent_occupancy: "rent",
+  utilities: "a utility bill",
+  marketing_advertising: "marketing",
+  travel_entertainment: "a meal or travel expense",
+  technology_software: "software",
+  office_supplies: "office supplies",
+  insurance: "insurance",
+  professional_services: "professional services",
+  depreciation: "equipment",
+  interest_expense: "interest",
+  miscellaneous_expense: "a general business expense",
+  cogs: "cost of goods",
+  repairs_maintenance: "repairs and upkeep",
+  fixed_assets: "equipment",
+  intangible_assets: "an improvement",
+};
+// A keyword the owner might type that round-trips back through answerToCategory to the
+// same role (so a chip built from a role resolves deterministically when clicked).
+const ROLE_KEYWORD = {
+  salaries_wages: "payroll",
+  rent_occupancy: "rent",
+  utilities: "utilities",
+  marketing_advertising: "marketing",
+  travel_entertainment: "a meal",
+  technology_software: "software",
+  office_supplies: "office supplies",
+  insurance: "insurance",
+  professional_services: "professional services",
+  interest_expense: "interest",
+};
+// Default-COA code → role (matches DEFAULT_CHART_OF_ACCOUNTS). A rename/renumber falls back
+// to keyword-matching the account name, so this is a fast-path, not the only path.
+const DEFAULT_CODE_ROLE = {
+  "6000": "salaries_wages", "6100": "rent_occupancy", "6200": "utilities",
+  "6300": "marketing_advertising", "6400": "travel_entertainment", "6500": "technology_software",
+  "6600": "office_supplies", "6700": "insurance", "6800": "professional_services",
+  "6900": "depreciation", "7100": "miscellaneous_expense", "8000": "interest_expense",
+};
+
+const MEALS_RE = /\b(restaurant|meal|meals|dining|cafe|café|coffee|catering|caterer|lunch|dinner|bar|grill)\b|grubhub|doordash|uber eats|seamless/i;
+
+// Best-effort role for an already-coded entry, without needing the live COA: try the default
+// code map, then keyword-match the account name, then the description. Returns null if unknown.
+export function inferRole(invoice = {}) {
+  const code = String(invoice.gl_code || "").trim();
+  if (DEFAULT_CODE_ROLE[code]) return DEFAULT_CODE_ROLE[code];
+  return answerToCategory(invoice.gl_name || "") || answerToCategory(invoice.description || "") || null;
+}
+
+// The plain-language phrase for how an entry was booked. Never an account name / GL code.
+export function plainCategoryPhrase(invoice = {}) {
+  if (isRevenueish(invoice)) return "income";
+  const text = `${invoice.description || ""} ${invoice.vendor || ""} ${invoice.notes || ""} ${invoice.gl_name || ""}`;
+  if (invoice.meals_pct != null || MEALS_RE.test(text)) return "a client meal";
+  const role = inferRole(invoice);
+  if (role && ROLE_PHRASE[role]) return ROLE_PHRASE[role];
+  return "a general business expense";
+}
+
+// (2) The transparent auto-booking record: a non-interrupting, plain-language sentence the
+// owner CAN see but never has to act on. "Booked Bella Vita Catering ($477.38) as a client meal."
+export function describeBooking(invoice = {}) {
+  const who = (invoice.vendor && String(invoice.vendor).trim()) || (invoice.description && String(invoice.description).trim()) || "this";
+  const amt = moneyPhrase(invoice.amount);
+  const amtPart = amt ? ` (${amt})` : "";
+  return `Booked ${who}${amtPart} as ${plainCategoryPhrase(invoice)}.`;
+}
+
+// (3) Optional plain-language quick-chips — offered ONLY when the AI already has a strong,
+// human-phrased guess (a known role and enough confidence). Never account names. Each chip's
+// `answer` round-trips through answerToCategory so clicking it resolves deterministically.
+export function clarificationChips(invoice = {}, { minConfidence = 55 } = {}) {
+  if (isRevenueish(invoice)) return [];
+  const conf = invoice.confidence == null ? 0 : Number(invoice.confidence);
+  if (conf < minConfidence) return [];                     // not a strong-enough guess → no chip
+  const role = inferRole(invoice);
+  const keyword = role && ROLE_KEYWORD[role];
+  const phrase = plainCategoryPhrase(invoice);
+  if (!keyword && phrase === "a general business expense") return [];   // nothing specific to suggest
+  const answer = keyword || phrase;
+  return [{ label: `It was ${phrase}`, answer }];
+}
+
+// ── Cardinal-Principle jargon lint (shared by the guard tests) ──
+// Accounting machinery the owner must never see: GAAP/ASC terms, debit/credit, journal/ledger,
+// payable/receivable, capitalize/depreciate/amortize/accrue, "chart of accounts", and any bare
+// 4-digit GL code (1000–8999).
+export const OWNER_JARGON_RE = /\bGAAP\b|\bASC\b|\bdebit(ed|s)?\b|\bcredit(ed|s)?\b|journal entr|\bledger\b|\bpayable\b|\breceivable\b|deferred revenue|balance sheet|capitaliz|depreciat|amortiz|\baccru|chart of accounts|\bgeneral ledger\b|\bGL code\b/i;
+export const OWNER_GLCODE_RE = /\b[1-8][0-9]{3}\b/;
+export function containsOwnerJargon(text) {
+  const s = String(text || "");
+  return OWNER_JARGON_RE.test(s) || OWNER_GLCODE_RE.test(s);
+}

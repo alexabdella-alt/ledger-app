@@ -2,6 +2,7 @@ import React from "react";
 import { useERP } from "./ERPContext";
 import { fmtDate , fmtSignedMoney } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
+import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
 
 const money = fmtSignedMoney;
 
@@ -45,9 +46,23 @@ function deriveSession(item) {
     };
   }
 
-  // ── Normal GL clarification (also handles revenue confirmation) ──
-  // Missing-field questions first, then any plain-English AI questions, then the
-  // category question that actually books the entry. Hard cap at 3 questions.
+  // ── DIRECTION-FIRST (revenue vs expense) — a single plain-language question with plain
+  // choices (NO account names). Picking "we received it" re-routes to the expense ask. ──
+  if (item.directionFirst) {
+    return {
+      kind: "direction",
+      questions: [{
+        field: "direction", type: "buttons", prompt: item.question,
+        options: (item.options || []).map(o => ({ label: o.label, value: o })),
+      }],
+    };
+  }
+
+  // ── Normal clarification — the AI wasn't confident, so we ask like a person would:
+  // one plain-language "what was this for?" question, answered in free text (which maps to an
+  // account via answerToAccount) or a plain quick-chip. NO GL-account-category buttons —
+  // that's the Cardinal violation this flow removes. Missing hard facts (amount/date/vendor)
+  // are asked first. Hard cap at 3 questions. ──
   const pre = [];
   if (!(Number(inv.amount) > 0))
     pre.push({ field: "amount", type: "number", prompt: "I couldn't read the total clearly — what was the amount?", default: inv.amount || "" });
@@ -63,11 +78,9 @@ function deriveSession(item) {
   const aiCat = aiQs.find(q => q.field === "category");
   // Never surface raw confidence numbers in the conversational UI.
   const cleanedItemQ = item.question ? item.question.replace(/\(\s*\d+%\s*confident\s*\)/gi, "").replace(/\s{2,}/g, " ").trim() : null;
-  const catPrompt = aiCat?.question || cleanedItemQ || `How would you categorize this ${inv.vendor || "expense"}?`;
-  const catOptions = (item.options || []).map(o => ({
-    label: (o.code === item.suggestedCode ? "★ " : "") + o.name, value: o,
-  }));
-  const catQ = { field: "category", type: "buttons", prompt: catPrompt, options: catOptions };
+  const catPrompt = aiCat?.question || cleanedItemQ || draftClientQuestion(inv).question;
+  // The booking question is free-text (+ optional plain chips), NOT account buttons.
+  const catQ = { field: "category", type: "freetext", prompt: catPrompt };
 
   let questions = [...pre, ...aiMapped, catQ].slice(0, 3);
   // The category question books the entry, so it must always survive the cap.
@@ -80,7 +93,7 @@ function ClarificationCard({ item }) {
   const {
     setClarificationQueue, setInvoices, bookToDb, createOrUpdateContact,
     logAudit, showNotification, applyGaapAnswer,
-    CHART_OF_ACCOUNTS, addCustomAccount,
+    CHART_OF_ACCOUNTS, addCustomAccount, getAccountByRole, rules,
   } = useERP();
   // O75 correction UX — let the user override the fundamental type/direction on ANY
   // clarification (not just the sub-detail), and re-route to type-appropriate questions
@@ -89,7 +102,11 @@ function ClarificationCard({ item }) {
   const baseInv = item.invoice || {};
   const effType = correctedType || baseInv.type;
   const effItem = React.useMemo(() => {
-    if (!correctedType || correctedType === baseInv.type) return item;
+    // A direction card always re-derives once a direction is picked (even if it matches the
+    // AI's guessed type) so "we received it" leaves the direction question and shows the plain
+    // expense ask — never loops back on itself.
+    if (!correctedType) return item;
+    if (correctedType === baseInv.type && !item.directionFirst) return item;
     const isRev = correctedType === "revenue";
     const acct = (CHART_OF_ACCOUNTS || []).find(a => a.category === (isRev ? "Revenue" : "Expenses")) || {};
     const effInv = {
@@ -104,8 +121,8 @@ function ClarificationCard({ item }) {
     // type-correct category question.
     return {
       ...item, invoice: effInv, gaap: undefined, isDuplicate: undefined, existingInvoice: undefined,
-      question: `How would you categorize this ${isRev ? "revenue" : "expense"}?`,
-      options: (CHART_OF_ACCOUNTS || []).filter(a => a.category === (isRev ? "Revenue" : "Expenses")).slice(0, 6).map(a => ({ code: a.code, name: a.name })),
+      directionFirst: undefined, options: undefined,
+      question: draftClientQuestion(effInv).question,
       suggestedCode: effInv.gl_code, suggestedName: effInv.gl_name,
     };
   }, [correctedType, item, baseInv, CHART_OF_ACCOUNTS]);
@@ -164,7 +181,7 @@ function ClarificationCard({ item }) {
     const a = answers[field];
     if (a == null) return false;
     if (field === "category") return a?.code === opt.value?.code;
-    if (field === "gaap") return a?.label === opt.value?.label;
+    if (field === "gaap" || field === "direction") return a?.label === opt.value?.label;
     return a === opt.value;
   };
 
@@ -189,6 +206,13 @@ function ClarificationCard({ item }) {
     if (done) return; // already booking
     if (kind === "gaap") { answerAndAdvance(field, value); return; }       // → summary
     if (kind === "duplicate") { setAnswer(field, value); bookDuplicate(value); return; }
+    // Direction choice: "we sent it" books as revenue; "we received it" re-routes to the
+    // plain expense question (reuses the O75 type-correction machinery).
+    if (field === "direction") {
+      setAnswer(field, value);
+      if (value?.reroute) { setCorrectedType(value.reroute); return; }
+      doBookGl(value); return;
+    }
     // gl kind
     if (field === "category") { setAnswer(field, value); doBookGl(value); return; }
     if (field === "business_purpose" || field === "personal") {
@@ -222,20 +246,22 @@ function ClarificationCard({ item }) {
       logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (flagged: possible duplicate — needs review)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
       setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
       if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      finishWithSuccess("Booked — flagged as possible duplicate");
+      finishWithSuccess(`${describeBooking(finalInv)} Flagged as a possible duplicate.`);
     } else {
       // New charge — book it normally.
       const finalInv = { ...inv, confidence: 100, status: "booked" };
       logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — different charge)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
       setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
       if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      finishWithSuccess(`Booked to ${finalInv.gl_name}`);
+      finishWithSuccess(describeBooking(finalInv));
     }
   };
 
-  // Book a GL-categorized entry. Shared by the pill-selected path and the
-  // free-text → AI interpretation path.
-  const doBookGl = (chosen, { reasoning, audit = "user confirmed" } = {}) => {
+  // Book a GL-categorized entry. Shared by the chip/free-text answer path and the
+  // AI-interpretation path. When `answer` is given (the owner's own words), we log the
+  // structured answer→account learning signal (O64-68) — vendor→GL is folded into the
+  // client profile by bookToDb; this captures the plain-language answer that produced it.
+  const doBookGl = (chosen, { reasoning, audit = "user confirmed", answer = null } = {}) => {
     const bp = answers.business_purpose;
     const amt = (answers.amount != null && answers.amount !== "") ? (parseFloat(answers.amount) || inv.amount) : inv.amount;
     const finalInv = {
@@ -247,13 +273,17 @@ function ClarificationCard({ item }) {
       confidence: 100, status: "booked", booked_at: new Date().toISOString(),
       ...(chosen.typeOverride || {}),
       ...(reasoning ? { reasoning } : {}),
+      ...(answer ? { clarified: true, learned_from_answer: answer } : {}),
     };
     if (bp && /project/i.test(bp)) finalInv.notes = (finalInv.notes ? finalInv.notes + " · " : "") + "Project expense";
     if (answers.vendor) finalInv._contact = { ...(inv._contact || {}), name: answers.vendor };
     logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${chosen.name} (${audit})`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: chosen.code, gl_name: chosen.name });
+    // Structured learning signal, keyed to the company (O64-68). Captured now; the full
+    // learning store (decay curve, cross-vendor generalization) is the O64-68 build.
+    if (answer) logAudit("ai_clarification_learned", `Learned for this business: "${answer}" → ${finalInv.vendor || "vendor"} booked as ${finalInv.gl_name}`, null, { vendor: finalInv.vendor, answer, gl_code: chosen.code, gl_name: chosen.name });
     setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
     if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-    finishWithSuccess(`Booked to ${chosen.name}`);
+    finishWithSuccess(describeBooking(finalInv));
   };
 
   // ── Free-text booking ("describe it in your own words") ──
@@ -267,10 +297,27 @@ function ClarificationCard({ item }) {
     return "6999";
   };
 
+  // The answer path. Try the deterministic map FIRST (answerToAccount — a plain answer like
+  // "a client meal" or "monthly software" resolves to an account with no AI call), and only
+  // fall back to the AI interpreter for answers the keyword map can't place. Chips and the
+  // free-text box both route here.
+  const submitAnswer = (rawText) => {
+    const text = String(rawText != null ? rawText : freeText).trim();
+    if (!text || interpreting || done) return;
+    const mapped = answerToAccount(text, { getAccountByRole, rules, vendor: answers.vendor || inv.vendor });
+    if (mapped && mapped.gl_code) {
+      doBookGl({ code: mapped.gl_code, name: mapped.gl_name }, {
+        reasoning: `From what you told us: "${text}".`, audit: "user described", answer: text,
+      });
+      return;
+    }
+    interpretFreeText(text);   // keyword map couldn't place it → let the AI read it
+  };
+
   // Send the user's free-text description to the AI, map it to a GL account
   // (creating a new one if nothing fits), then book immediately — no confirm step.
-  const interpretFreeText = async () => {
-    const text = freeText.trim();
+  const interpretFreeText = async (overrideText) => {
+    const text = String(overrideText != null ? overrideText : freeText).trim();
     if (!text || interpreting || done) return;
     setFreeError(null); setInterpreting(true);
     try {
@@ -306,11 +353,11 @@ function ClarificationCard({ item }) {
       }
       doBookGl({ code, name }, {
         reasoning: parsed.reasoning || `Booked from description: "${text}"`,
-        audit: "user described",
+        audit: "user described", answer: text,
       });
       // doBookGl switches the card to its success state; no further updates needed.
     } catch (e) {
-      setFreeError("I couldn't read that — try rephrasing, or pick an option above.");
+      setFreeError("I couldn't read that — try saying it a different way (like “office rent” or “a client lunch”).");
       setInterpreting(false);
     }
   };
@@ -418,22 +465,35 @@ function ClarificationCard({ item }) {
               </div>
             )}
 
-            {/* Free-text: describe it in your own words → AI maps to a GL account
-                and books immediately (no confirmation step). */}
-            {q.type === "buttons" && kind === "gl" && q.field === "category" && (
-              <div style={{ marginTop: 14 }}>
+            {/* The ask-path answer: optional plain-language quick-chips (only when the AI has a
+                strong human-phrased guess — NEVER account names) + a free-text box. Both route
+                through submitAnswer, which maps the answer to an account (answerToAccount) and
+                books immediately. No GL-account-category buttons (Cardinal Principle). */}
+            {q.type === "freetext" && (
+              <div>
+                {clarificationChips(inv).length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                    {clarificationChips(inv).map((chip, ci) => (
+                      <button key={ci} onClick={() => submitAnswer(chip.answer)} disabled={interpreting} style={pill(false)}
+                        onMouseEnter={e => { e.currentTarget.style.background = "var(--sc-gold-soft)"; e.currentTarget.style.borderColor = "var(--sc-gold)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "var(--sc-surface)"; e.currentTarget.style.borderColor = "var(--sc-border-2)"; }}>
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <input
-                    type="text" value={freeText}
+                    type="text" value={freeText} autoFocus
                     onChange={e => setFreeText(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); interpretFreeText(); } }}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitAnswer(); } }}
                     disabled={interpreting}
-                    placeholder="Or describe it in your own words..."
+                    placeholder="Tell me in your own words — e.g. “lunch with a client”"
                     style={{ flex: "1 1 260px", minWidth: 0, height: 42, boxSizing: "border-box", background: interpreting ? "var(--sc-bg)" : "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "var(--sc-text)", outline: "none" }} />
-                  <button onClick={interpretFreeText} disabled={interpreting || !freeText.trim()}
-                    style={{ height: 42, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: (interpreting || !freeText.trim()) ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: (interpreting || !freeText.trim()) ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                  <button onClick={() => submitAnswer()} disabled={interpreting || !freeText.trim()}
+                    style={{ height: 42, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: "var(--sc-gold)", border: "none", cursor: (interpreting || !freeText.trim()) ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
                     {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "var(--sc-surface)", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
-                    {interpreting ? "Booking…" : "Use this →"}
+                    {interpreting ? "Booking…" : "Book it →"}
                   </button>
                 </div>
                 {freeError && <div style={{ fontSize: 13, color: "var(--sc-error)", marginTop: 8 }}>{freeError}</div>}
