@@ -203,7 +203,9 @@ Positives worth stating up front, because they shape the severities: **RLS is a 
 
 ---
 
-### CR-11 · 🟡 improvement · `companies_insert WITH CHECK (true)` is still live — direct company inserts bypass `create_company()`
+### CR-11 · ✅ RESOLVED (migration 052, applied live 2026-07-09) · `companies_insert WITH CHECK (true)` is still live — direct company inserts bypass `create_company()`
+
+**✅ Fix:** `052_insert_policy_scoping.sql` **drops** `companies_insert` (no replacement — a scoped `WITH CHECK` is impossible pre-membership: the owner's `company_users` row doesn't exist at companies-INSERT time, which is exactly why creation goes through the atomic SECURITY DEFINER `create_company()`). With no INSERT policy, direct client inserts are RLS default-denied while the RPC still works — restoring `001`'s documented intent. Verified: the client only ever `.select()`/`.update()`s `companies` (CompanySetup calls `rpc('create_company')`). SecurityView's companies-INSERT "expected exception" special-case removed (dead code once the policy is gone).
 
 **Location:** `supabase/migrations/000_baseline_schema.sql:3411` (a dump of live); `001_enable_rls.sql:144` intends "no direct INSERT policy — use create_company()" but never drops the `000` policy (confirmed: no `drop policy … companies_insert` anywhere).
 
@@ -213,7 +215,9 @@ Positives worth stating up front, because they shape the severities: **RLS is a 
 
 ---
 
-### CR-12 · 🟡 improvement · `users_insert WITH CHECK (true)` — arbitrary `public.users` rows enable display-name spoofing (no PII leak, no privesc)
+### CR-12 · ✅ RESOLVED (migration 052, applied live 2026-07-09) · `users_insert WITH CHECK (true)` — arbitrary `public.users` rows enable display-name spoofing (no PII leak, no privesc)
+
+**✅ Fix:** `052_insert_policy_scoping.sql` replaces the permissive policy with `users_insert … FOR INSERT TO authenticated WITH CHECK (id = auth.uid())` — a user may insert ONLY their own row (mirrors `users_select_own`/`users_update_own`), so the not-yet-synced-teammate spoof is closed. The `handle_new_user()` SECURITY DEFINER trigger on `auth.users` is unaffected and remains the real populate path. Verified: the client never `.insert()`s `public.users` (only `.select()` in ReconView).
 
 **Location:** `supabase/migrations/000_baseline_schema.sql:4142`.
 
@@ -491,7 +495,7 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 
 - **Fix now (before any real use):** *none.* Every 🔴 is fixed (C134/C135). The remaining opens don't corrupt existing data on contact.
 - **Fix before the first real client:** **CR-8 / CR-9 / CR-10** (O81 — the bot reads and acts on books; a client trusting it is exactly when injection/cost/no-confirm bite), **CR-27** (O90 — an owner deciding to rely on Shadow needs to *see* it's working; the thesis calls this load-bearing), **CR-4** (O86 — the first client who depreciates an asset placed in service on the 29th–31st gets wrong-period books).
-- **Post-launch (schedule, not gating):** **CR-5 / CR-6** (date hygiene; low real-world reach), **CR-11 / CR-12** (RLS policy drift — spam/spoofing, *not* cross-tenant, per Pass 2), **CR-13** (committed anon-key — public by design), **CR-20 / CR-23** (God-component + context split — velocity tax; **CR-23 becomes mandatory only when O82/channels is scheduled**).
+- **Post-launch (schedule, not gating):** **CR-5 / CR-6** (date hygiene; low real-world reach), **CR-11 / CR-12** (RLS policy drift — spam/spoofing, *not* cross-tenant, per Pass 2 — ✅ fixed, migration 052 applied live 2026-07-09), **CR-13** (committed anon-key — public by design), **CR-20 / CR-23** (God-component + context split — velocity tax; **CR-23 becomes mandatory only when O82/channels is scheduled**).
 - **Disagree / de-scope (pushing back on my own findings):**
   - **CR-22** (nine `eslint-disable` sites) — I'd **downgrade to 🔵 / monitoring, not a fix.** There is no active bug; the crash subclass already has scanners. The right action is "re-verify on edit," which is vigilance, not work. Filing it as an improvement over-weights a latent-only risk.
   - **CR-6** (`fiscalYearStart` UTC edge) — severity is arguably **overstated at 🟡.** It's consistent-by-construction with the Balance Sheet (both use the same function), so it can only bite a transaction dated *exactly* on the fiscal boundary day in a behind-UTC browser — a near-null population. Real impact ≈ 🔵.
@@ -509,7 +513,8 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 | CR-8, CR-9, CR-10 | **O81** (AI action-surface hardening) | ○ open, P1 |
 | CR-4, CR-5 | **O86** (toISOString date-keying sweep) | ○ open, P3 |
 | CR-6 | **O87** (fiscalYearStart edge) | ○ open, P3 |
-| CR-11, CR-12, CR-13 | **O21** (RLS/security-hygiene pass) | ○ open, P1 |
+| CR-11, CR-12 | **O21** (RLS/security-hygiene pass) | ✅ fixed — migration 052 applied live 2026-07-09 |
+| CR-13 | **O21** (RLS/security-hygiene pass) | ○ open (anon-key hygiene note; public by design) |
 | CR-20, CR-22, CR-23 | **O89** (LedgerProvider extraction) | ○ open, P1-adjacent |
 | CR-27 | **O90** (owner trust panel) + O84 / O50-v2 sign-off | ○ open, P1-adjacent |
 | CR-7 | — (note-only; bounded, safe today) | ○ no action needed |
