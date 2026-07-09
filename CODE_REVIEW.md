@@ -511,8 +511,8 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 | CR-21, CR-24 | — | ✅ fixed C137 |
 | CR-25, CR-26 | — | ✅ fixed C138 |
 | CR-8, CR-9, CR-10 | **O81** (AI action-surface hardening) | ○ open, P1 |
-| CR-4, CR-5 | **O86** (toISOString date-keying sweep) | ○ open, P3 |
-| CR-6 | **O87** (fiscalYearStart edge) | ○ open, P3 |
+| CR-4, CR-5 | **O86** (toISOString date-keying sweep) | ✅ fixed — read-path/write-path + guard, C149→**C156** (`dateKeyGuard.test.js` keeps it closed) |
+| CR-6 | **O87** (fiscalYearStart edge) | ✅ fixed — `fiscalYearStart` local + shared with BS RE split, C149/C156 |
 | CR-11, CR-12 | **O21** (RLS/security-hygiene pass) | ✅ fixed — migration 052 applied live 2026-07-09 |
 | CR-13 | **O21** (RLS/security-hygiene pass) | ○ open (anon-key hygiene note; public by design) |
 | CR-20, CR-22, CR-23 | **O89** (LedgerProvider extraction) | ○ open, P1-adjacent |
