@@ -151,3 +151,26 @@ export function evaluateSignOff({ controlTotals = { failed: [], allTie: true }, 
   }
   return { ok: blockers.length === 0, blockers };
 }
+
+// ── BANK-MATCH FRESHNESS (the SINGLE source for "are the books matched to the bank?") ────
+// The control-totals `cash_recon` check only compares reconciliations that EXIST and are
+// complete — so a company that has NEVER reconciled (or hasn't in a long time) produces no
+// FAILED check and reads as "clear." That's a blind spot: absent reconciliation ≠ reconciled.
+// This derives the SAME "matched / not matched" signal the dashboard bank-match reminder uses,
+// as ONE pure function both surfaces call — so the owner panel and the dashboard alert can
+// never contradict. "Matched" = a completed reconciliation exists AND is recent (≤ staleDays);
+// never-reconciled (days === null) or stale counts as NOT matched. Only relevant once there are
+// real books (a non-voided entry), so a brand-new empty company isn't nagged.
+export function bankMatchStatus({ reconciliations = [], invoices = [], now = new Date(), staleDays = 35 } = {}) {
+  const completed = (reconciliations || []).filter((r) => r && r.status === "complete");
+  let lastCompletedAt = null;
+  for (const r of completed) {
+    const t = r.completed_at;
+    if (t && (lastCompletedAt === null || String(t) > String(lastCompletedAt))) lastCompletedAt = t;
+  }
+  const days = lastCompletedAt ? Math.floor((+new Date(now) - +new Date(lastCompletedAt)) / 86400000) : null;
+  const hasBooks = (invoices || []).some((i) => i && i.status !== "voided");
+  const everReconciled = completed.length > 0;
+  const overdue = hasBooks && (days === null || days > staleDays);   // == the dashboard reminder's condition
+  return { overdue, days, hasBooks, everReconciled, lastCompletedAt };
+}

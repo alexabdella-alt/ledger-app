@@ -140,6 +140,8 @@ describe("Cardinal Principle — O90 owner trust panel strings are jargon-free",
     { controlTotals: { failed: [{ id: "ar_tie", label: "Money owed to you (receivables)" }, { id: "tb", label: "Books balance (every entry has two equal sides)" }], allTie: false }, openConfidenceFlags: [], intakeRows: recorded(1), unknownDocs: [], reviewedThrough: "2026-04", now: NOW },
     { controlTotals: { failed: [], allTie: true }, openConfidenceFlags: [], intakeRows: [...recorded(1), { id: "d", status: "failed", filename: "x.pdf", received_at: "2026-06-01T09:00:00" }], unknownDocs: [], reviewedThrough: null, now: NOW },
     { controlTotals: { failed: [], allTie: true }, openConfidenceFlags: [], intakeRows: [], unknownDocs: [], reviewedThrough: null, now: NOW },
+    // bank not matched — the "still matching your books to your bank" line must stay jargon-free
+    { controlTotals: { failed: [], allTie: true }, openConfidenceFlags: [], intakeRows: recorded(2), unknownDocs: [], reviewedThrough: "2026-05", bankMatch: { overdue: true, days: null }, now: NOW },
   ];
 
   it.each(STATES.map((s, i) => [i, s]))("trust state #%i — headline + all 3 lines + nudge are plain", (_i, input) => {

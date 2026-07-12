@@ -59,13 +59,13 @@ export default function TrustPanel() {
         )}
       </div>
 
-      {/* The three nets, in plain language */}
+      {/* The three nets, in plain language (tri-state markers: ok / info / attention) */}
       <div style={{ marginTop: 14, borderTop: "1px solid var(--sc-border)", paddingTop: 4 }}>
-        <Line state={lines.captured.ok ? "ok" : "attention"} title="Captured" text={lines.captured.text} />
+        <Line state={lines.captured.state} title="Captured" text={lines.captured.text} />
         <div style={{ borderTop: "1px solid var(--sc-border)" }} />
-        <Line state={lines.reviewed.signed ? "ok" : "info"} title="Reviewed" text={lines.reviewed.text} />
+        <Line state={lines.reviewed.state} title="Reviewed" text={lines.reviewed.text} />
         <div style={{ borderTop: "1px solid var(--sc-border)" }} />
-        <Line state={lines.correct.ok ? "ok" : "attention"} title="Nothing wrong" text={lines.correct.text} />
+        <Line state={lines.correct.state} title="Nothing wrong" text={lines.correct.text} />
       </div>
 
       {/* At most ONE gentle nudge (owner-actionable — a clarification to answer) */}

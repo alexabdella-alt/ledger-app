@@ -38,6 +38,7 @@ export function ownerTrustState({
   intakeRows = [],
   unknownDocs = [],
   reviewedThrough = null,
+  bankMatch = { overdue: false, days: null },   // from bankMatchStatus() — the SAME source as the dashboard alert
   now = new Date(),
 } = {}) {
   // ── Completeness (O60): the SAME dropped set the sign-off gate uses. ──
@@ -59,15 +60,19 @@ export function ownerTrustState({
 
   // ── CAPTURED (from completeness). Honest "still processing"; never a false all-clear. ──
   const capturedOk = outstanding === 0;
-  let capturedText;
+  let capturedText, capturedStateVal;
   if (outstanding > 0) {
     capturedText = `${outstanding} ${plural(outstanding, "document", "documents")} still ${plural(outstanding, "needs", "need")} attention — we couldn't file ${plural(outstanding, "it", "them")} automatically yet.`;
+    capturedStateVal = "attention";
   } else if (pendingCount > 0) {
     capturedText = `Filing the ${pendingCount} ${plural(pendingCount, "document", "documents")} you just sent — almost done.`;
+    capturedStateVal = "info";
   } else if (totalDocs > 0) {
     capturedText = `Everything you sent is accounted for — ${totalDocs} ${plural(totalDocs, "document", "documents")}, nothing missing.`;
+    capturedStateVal = "ok";
   } else {
     capturedText = "Nothing to file yet — send a receipt or bill and it'll be handled here.";
+    capturedStateVal = "ok";
   }
 
   // ── REVIEWED (from O50 sign-off). Factual: what's signed off; honest when nothing is. ──
@@ -76,30 +81,44 @@ export function ownerTrustState({
     ? `Reviewed and signed off through ${signedLabel}.`
     : "Awaiting your accountant's sign-off.";
 
-  // ── NOTHING WRONG (from confidence + accuracy). The ONE owner nudge is a confidence
-  //    flag (owner can answer it); an accuracy mismatch is honest-but-not-owner-actionable. ──
+  // ── NOTHING WRONG (from confidence + accuracy + bank-match). The ONE owner nudge is a
+  //    confidence flag (owner can answer it). An accuracy mismatch is honest-but-not-owner-
+  //    actionable. "Bank not yet matched" is a real, honest in-progress state — NOT green, NOT
+  //    alarming, and NO competing nudge (the dashboard's own bank-match reminder carries the
+  //    "upload a statement" action, from the SAME bankMatchStatus source). ──
+  const bankOverdue = !!(bankMatch && bankMatch.overdue);
   let nudge = null;
-  let correctText;
+  let correctText, correctStateVal;
   if (!confidenceOk) {
     correctText = `${confidenceCount === 1 ? "One transaction needs" : `${confidenceCount} transactions need`} a quick answer from you.`;
+    correctStateVal = "attention";
     nudge = { kind: "confidence", count: confidenceCount, text: `${confidenceCount === 1 ? "Answer 1 quick question" : `Answer ${confidenceCount} quick questions`}` };
   } else if (!accuracyOk) {
     // A control-total mismatch is a system/accountant concern, not an owner task — say so
     // plainly (no "control total" / "reconcile"), and DON'T fake green.
     correctText = "We're double-checking a couple of figures to make sure everything's right.";
+    correctStateVal = "attention";
+  } else if (bankOverdue) {
+    // The false-green this fix closes: books can be internally consistent yet UNVERIFIED against
+    // the bank. Say it plainly (no "reconcile" jargon) and don't claim "up to date".
+    correctText = "We're still matching your books to your bank.";
+    correctStateVal = "info";
   } else {
     correctText = "Nothing needs your attention — your books are correct and up to date.";
+    correctStateVal = "ok";
   }
-  const correctOk = confidenceOk && accuracyOk;
+  const correctOk = confidenceOk && accuracyOk && !bankOverdue;
 
-  // ── Overall — mirrors the sign-off gate; in_progress only for benign in-flight docs. ──
+  // ── Overall — never all_clear unless the three sign-off nets clear AND the books are matched
+  //    to the bank AND nothing's mid-flight. Bank-not-matched / in-flight docs → in_progress
+  //    (honest "wrapping up"), a short net → attention. ──
   let overall, headline;
   if (!evalr.ok) {
     overall = "attention";
     headline = "A couple of things need a look.";
-  } else if (pendingCount > 0) {
+  } else if (bankOverdue || pendingCount > 0) {
     overall = "in_progress";
-    headline = "Your books are handled — just finishing up a couple of documents.";
+    headline = "Your books are handled — a couple of things are still finishing up.";
   } else {
     overall = "all_clear";
     headline = "Your books are handled and up to date.";
@@ -110,11 +129,11 @@ export function ownerTrustState({
     headline,
     reviewedThrough: reviewedThrough || null,
     lines: {
-      captured: { ok: capturedOk, pending: pendingCount > 0, text: capturedText },
-      reviewed: { signed: !!signedLabel, text: reviewedText },
-      correct: { ok: correctOk, text: correctText },
+      captured: { ok: capturedOk, pending: pendingCount > 0, state: capturedStateVal, text: capturedText },
+      reviewed: { signed: !!signedLabel, state: signedLabel ? "ok" : "info", text: reviewedText },
+      correct: { ok: correctOk, state: correctStateVal, text: correctText },
     },
     nudge,                         // at most one gentle "needs you" | null
-    nets: { completeness: capturedOk, confidence: confidenceOk, accuracy: accuracyOk, signOffOk: evalr.ok },
+    nets: { completeness: capturedOk, confidence: confidenceOk, accuracy: accuracyOk, bankMatched: !bankOverdue, signOffOk: evalr.ok },
   };
 }
