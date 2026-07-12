@@ -14,7 +14,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded,
-    controlTotals, signOffPeriod, reviewedThrough, isOwner, isAdmin } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, reviewedThrough, bankMatch, isOwner, isAdmin } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -42,15 +42,30 @@ export default function ReviewView() {
   const flagged = flagsForReview ? flagsForReview() : [];
   const accuracyFlags = (controlTotals && controlTotals.flags) || [];   // O59 third net
   const { completeness, needsReview, unknown, accuracy, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags });
-  const canSignOff = (isOwner || isAdmin);   // the reviewer (CPA/admin/owner) attests
+  const canSignOff = (isOwner || isAdmin);   // reviewer = owner/admin (is_company_admin); members can't attest
   const [signingOff, setSigningOff] = React.useState(false);
   const signOffMonth = todayLocal().slice(0, 7);   // "reviewed through" = current month
+  // The FOUR nets that gate attestation — the SAME set signOffPeriod re-checks at write time.
+  // This is the CPA surface, so accounting terms are fine here (unlike the owner TrustPanel).
+  const bankBlocked = !!(bankMatch && bankMatch.overdue);
+  const signOffBlockers = [
+    (summary.incompleteCount + summary.unknownCount) > 0 && `${summary.incompleteCount + summary.unknownCount} document(s) not yet accounted for`,
+    summary.flaggedCount > 0 && `${summary.flaggedCount} transaction(s) still flagged for review`,
+    summary.accuracyCount > 0 && `${summary.accuracyCount} control-total check(s) don't tie`,
+    bankBlocked && `bank not reconciled${bankMatch.days != null ? ` in ${bankMatch.days} days` : " yet"}`,
+  ].filter(Boolean);
+  const canAttest = signOffBlockers.length === 0;
   const onSignOff = async () => {
-    if (!signOffPeriod) return;
+    if (!signOffPeriod || !canAttest) return;
     setSigningOff(true);
     const r = await signOffPeriod(signOffMonth);
     setSigningOff(false);
     if (!r.ok && r.blockers) showNotification(`Can't sign off yet — ${r.blockers.map(b => b.reason).join("; ")}`, "error");
+  };
+  const onReopen = async () => {
+    if (!reopenPeriod || !reviewedThrough) return;
+    const r = await reopenPeriod(reviewedThrough);
+    if (!r.ok) showNotification(`Couldn't reopen — ${r.error}`, "error");
   };
   // STABLE LOAD GATE: hold a single loading state until BOTH the company data (invoices — the
   // flag source) AND the first dropped-docs reconcile have loaded. "not loaded" is distinct
@@ -135,23 +150,9 @@ export default function ReviewView() {
         </div>
       )}
 
-      {/* ── CPA SIGN-OFF (O50) — attest a period only when all three nets are clear ── */}
-      {canSignOff && (
-        <div style={{ border: "1px solid var(--sc-border)", background: "var(--sc-surface)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text)" }}>CPA sign-off</div>
-            <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
-              {reviewedThrough ? `Reviewed through ${reviewedThrough}. ` : "Not yet reviewed. "}
-              {summary.allClear ? `Ready to sign off ${signOffMonth}.` : "Clear every item above to enable sign-off."}
-            </div>
-          </div>
-          <button onClick={onSignOff} disabled={!summary.allClear || signingOff}
-            style={{ padding: "9px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", cursor: (summary.allClear && !signingOff) ? "pointer" : "not-allowed",
-              background: (summary.allClear && !signingOff) ? "var(--sc-success)" : "var(--sc-border)", color: (summary.allClear && !signingOff) ? "var(--sc-on-accent)" : "var(--sc-text-mut)" }}>
-            {signingOff ? "Signing off…" : `Mark reviewed through ${signOffMonth}`}
-          </button>
-        </div>
-      )}
+      {/* CPA sign-off card moved OUT of this fragment — it now renders ABOVE the all-clear /
+          queue branch (see signOffCard) so it's reachable when all clear (the state in which
+          it's actually enabled), not hidden by the empty-state. */}
 
       {/* COMPLETENESS — O60 dropped/stuck/errored intake docs */}
       {completeness.length > 0 && (
@@ -252,6 +253,49 @@ export default function ReviewView() {
     </>
   );
 
+  // ── CPA SIGN-OFF (O50) — attest the current period. Renders ABOVE the branch so it's present
+  // in BOTH the all-clear state (enabled) and the has-work state (disabled + the specific
+  // blockers). Gated to owner/admin (is_company_admin); a member sees a read-only status. ──
+  const signOffCard = (
+    <div style={{ border: "1px solid var(--sc-border)", background: "var(--sc-surface)", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text)" }}>CPA sign-off</div>
+          <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
+            {reviewedThrough ? `Reviewed through ${reviewedThrough}. ` : "Not yet signed off. "}
+            {canSignOff ? (canAttest ? `Ready to sign off ${signOffMonth}.` : "Resolve the blockers below, then sign off.") : "Your accountant attests each period."}
+          </div>
+        </div>
+        {canSignOff && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {reviewedThrough && (
+              <button onClick={onReopen}
+                style={{ padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>
+                Reopen {reviewedThrough}
+              </button>
+            )}
+            <button onClick={onSignOff} disabled={!canAttest || signingOff}
+              style={{ padding: "9px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", cursor: (canAttest && !signingOff) ? "pointer" : "not-allowed",
+                background: (canAttest && !signingOff) ? "var(--sc-success)" : "var(--sc-border)", color: (canAttest && !signingOff) ? "var(--sc-on-accent)" : "var(--sc-text-mut)" }}>
+              {signingOff ? "Signing off…" : `Mark reviewed through ${signOffMonth}`}
+            </button>
+          </div>
+        )}
+      </div>
+      {/* WHY it's blocked — CPA-side, the specific unresolved nets (accounting terms OK here). */}
+      {canSignOff && !canAttest && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--sc-border)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "var(--sc-text-mut)", textTransform: "uppercase", marginBottom: 6 }}>Can't sign off yet</div>
+          {signOffBlockers.map((b, i) => (
+            <div key={i} style={{ fontSize: 12.5, color: "var(--sc-text)", display: "flex", gap: 7, alignItems: "flex-start", marginBottom: 3 }}>
+              <span style={{ color: "var(--sc-warning)", fontWeight: 800, flexShrink: 0 }}>•</span><span>{b}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   return (
             <div>
               <div style={{ marginBottom:24 }}>
@@ -259,6 +303,10 @@ export default function ReviewView() {
                 <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Review</h1>
                 <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Everything the trust layer flagged for a human: documents that didn't fully record, and transactions the AI wasn't sure about. Approve, override, or resolve — an empty screen means the books are clean.</div>
               </div>
+              {/* Sign-off card is ALWAYS present once loaded — reachable when all-clear (enabled)
+                  AND when there's work (disabled + the specific blockers). This is the fix for the
+                  card being hidden by the all-clear empty state. */}
+              {ready && signOffCard}
               {!ready ? (
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>Loading your review queue…</div>
               ) : summary.allClear ? (

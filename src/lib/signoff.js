@@ -61,6 +61,13 @@ export async function fetchSignoffs(supabase, companyId) {
   }
 }
 
+// Who may ATTEST (sign off / reopen) a period: the reviewer role = owner or admin, which is
+// exactly the DB's `is_company_admin` (migration 050's period_signoffs insert/delete policy).
+// A plain member cannot. Pure — used by both the UI gate and the client write guard.
+export function canAttestPeriod(role) {
+  return role === "owner" || role === "admin";
+}
+
 // The latest CONTIGUOUS "reviewed through" period, given the set of sign-offs. Pure.
 // (Just the max period string — YYYY-MM sorts lexicographically = chronologically.)
 export function latestReviewedThrough(signoffs = []) {

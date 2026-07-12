@@ -174,3 +174,17 @@ export function bankMatchStatus({ reconciliations = [], invoices = [], now = new
   const overdue = hasBooks && (days === null || days > staleDays);   // == the dashboard reminder's condition
   return { overdue, days, hasBooks, everReconciled, lastCompletedAt };
 }
+
+// ── SIGN-OFF READINESS — the authoritative "can this period be attested?" gate ────────────
+// The FOUR nets: the three from evaluateSignOff (completeness / confidence / accuracy) PLUS
+// bank-match (C159 — don't attest a period whose cash isn't matched to the bank). One pure
+// function so the write path (signOffPeriod) and the CPA UI can't gate differently. Returns
+// { ok, blockers:[{net, reason}] }. CPA-side, so blocker reasons may use accounting terms.
+export function signOffReadiness({ controlTotals = { failed: [], allTie: true }, openConfidenceFlags = [], droppedDocs = [], unknownDocs = [], bankMatch = { overdue: false, days: null } } = {}) {
+  const evalr = evaluateSignOff({ controlTotals, openConfidenceFlags, droppedDocs, unknownDocs });
+  const blockers = [...evalr.blockers];
+  if (bankMatch && bankMatch.overdue) {
+    blockers.push({ net: "bank", reason: `the bank isn't reconciled yet${bankMatch.days != null ? ` (${bankMatch.days} days)` : ""} — match the latest statement first` });
+  }
+  return { ok: blockers.length === 0, blockers };
+}

@@ -1,0 +1,94 @@
+import { describe, it, expect } from "vitest";
+import { signOffReadiness } from "../src/lib/controlTotals.js";
+import { canAttestPeriod } from "../src/lib/signoff.js";
+import { ownerTrustState } from "../src/lib/ownerTrust.js";
+
+// ════════════════════════════════════════════════════════════════════════════
+// O50 SIGN-OFF GATE (closes the trust loop end-to-end with O90). The reviewer can
+// attest a period ONLY when the FOUR nets clear — completeness (O60) + confidence
+// (O49) + accuracy/control-totals (O59) + bank-match (C159). One pure function
+// (signOffReadiness) that BOTH the CPA UI and the write path (signOffPeriod) use,
+// so the button, the write, and the owner panel can't disagree. Plus the role gate
+// (owner/admin attest, members can't) and the loop tie to the owner TrustPanel.
+// ════════════════════════════════════════════════════════════════════════════
+
+const GREEN_CT = { failed: [], allTie: true };
+const FAILED_CT = { failed: [{ id: "ar_tie", label: "Money owed to you (receivables)" }], allTie: false };
+const MATCHED = { overdue: false, days: 4 };
+const UNMATCHED = { overdue: true, days: null };
+const clear = { controlTotals: GREEN_CT, openConfidenceFlags: [], droppedDocs: [], unknownDocs: [], bankMatch: MATCHED };
+
+describe("signOffReadiness — blocked when ANY net is short, with a reason", () => {
+  it("all four nets clear → ok, no blockers", () => {
+    const r = signOffReadiness(clear);
+    expect(r.ok).toBe(true);
+    expect(r.blockers).toEqual([]);
+  });
+
+  it("completeness short (a dropped doc) → blocked, net=completeness", () => {
+    const r = signOffReadiness({ ...clear, droppedDocs: [{ id: "d", reason: "stuck" }] });
+    expect(r.ok).toBe(false);
+    expect(r.blockers.some(b => b.net === "completeness")).toBe(true);
+  });
+
+  it("confidence short (an open flag) → blocked, net=confidence", () => {
+    const r = signOffReadiness({ ...clear, openConfidenceFlags: [{ id: "f", amount: 2400 }] });
+    expect(r.ok).toBe(false);
+    expect(r.blockers.some(b => b.net === "confidence")).toBe(true);
+  });
+
+  it("accuracy short (a control total doesn't tie) → blocked, net=accuracy", () => {
+    const r = signOffReadiness({ ...clear, controlTotals: FAILED_CT });
+    expect(r.ok).toBe(false);
+    expect(r.blockers.some(b => b.net === "accuracy")).toBe(true);
+  });
+
+  it("bank not reconciled → blocked, net=bank, reason names the bank", () => {
+    const r = signOffReadiness({ ...clear, bankMatch: UNMATCHED });
+    expect(r.ok).toBe(false);
+    const bank = r.blockers.find(b => b.net === "bank");
+    expect(bank).toBeTruthy();
+    expect(bank.reason).toMatch(/bank|reconcil/i);
+  });
+
+  it("several nets short → every reason is listed", () => {
+    const r = signOffReadiness({ controlTotals: FAILED_CT, openConfidenceFlags: [{ id: "f" }], droppedDocs: [{ id: "d" }], unknownDocs: [], bankMatch: UNMATCHED });
+    expect(r.ok).toBe(false);
+    expect(r.blockers.map(b => b.net).sort()).toEqual(["accuracy", "bank", "completeness", "confidence"]);
+  });
+});
+
+describe("role gate — owner/admin attest; a member cannot", () => {
+  it("owner and admin may attest", () => {
+    expect(canAttestPeriod("owner")).toBe(true);
+    expect(canAttestPeriod("admin")).toBe(true);
+  });
+  it("a member (or unknown role) may NOT attest", () => {
+    expect(canAttestPeriod("member")).toBe(false);
+    expect(canAttestPeriod(undefined)).toBe(false);
+    expect(canAttestPeriod(null)).toBe(false);
+  });
+});
+
+describe("loop tie — the write gate and the owner TrustPanel can't disagree", () => {
+  const NOW = new Date("2026-07-12T12:00:00");
+  const ownerBase = { controlTotals: GREEN_CT, openConfidenceFlags: [], intakeRows: [{ id: "r", status: "recorded", received_at: "2026-07-05T00:00:00" }], unknownDocs: [], now: NOW };
+
+  it("bank not matched → write gate BLOCKS and the owner panel is NOT all_clear (same source)", () => {
+    expect(signOffReadiness({ ...clear, bankMatch: UNMATCHED }).ok).toBe(false);
+    const panel = ownerTrustState({ ...ownerBase, bankMatch: UNMATCHED, reviewedThrough: null });
+    expect(panel.overall).not.toBe("all_clear");
+  });
+
+  it("everything clear → write gate PASSES and (once signed) the owner 'Reviewed' line flips", () => {
+    expect(signOffReadiness({ ...clear, bankMatch: MATCHED }).ok).toBe(true);
+    // before sign-off: awaiting
+    const before = ownerTrustState({ ...ownerBase, bankMatch: MATCHED, reviewedThrough: null });
+    expect(before.lines.reviewed.signed).toBe(false);
+    expect(before.lines.reviewed.text).toMatch(/awaiting/i);
+    // after sign-off through 2026-07 (what signOffPeriod persists) → owner panel reflects it
+    const after = ownerTrustState({ ...ownerBase, bankMatch: MATCHED, reviewedThrough: "2026-07" });
+    expect(after.lines.reviewed.signed).toBe(true);
+    expect(after.lines.reviewed.text).toBe("Reviewed and signed off through July 2026.");
+  });
+});
