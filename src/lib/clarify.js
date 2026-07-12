@@ -199,8 +199,10 @@ export function clarificationChips(invoice = {}, { minConfidence = 55 } = {}) {
 // Accounting machinery the owner must never see: GAAP/ASC terms, debit/credit, journal/ledger,
 // payable/receivable, capitalize/depreciate/amortize/accrue, "chart of accounts", and any bare
 // 4-digit GL code (1000–8999).
-export const OWNER_JARGON_RE = /\bGAAP\b|\bASC\b|\bdebit(ed|s)?\b|\bcredit(ed|s)?\b|journal entr|\bledger\b|\bpayable\b|\breceivable\b|deferred revenue|balance sheet|capitaliz|depreciat|amortiz|\baccru|chart of accounts|\bgeneral ledger\b|\bGL code\b/i;
-export const OWNER_GLCODE_RE = /\b[1-8][0-9]{3}\b/;
+export const OWNER_JARGON_RE = /\bGAAP\b|\bASC\b|\bdebit(ed|s)?\b|\bcredit(ed|s)?\b|journal entr|\bledger\b|\bpayable\b|\breceivable\b|deferred revenue|balance sheet|capitaliz|depreciat|amortiz|\baccru|chart of accounts|\bgeneral ledger\b|\bGL code\b|\bcontrol total|\breconcil|\btrial balance\b|\bconfidence\b/i;
+// A bare 4-digit GL account code (1000–8999) — EXCEPT a plausible calendar year (1900–2199),
+// which legitimately appears in owner copy ("Reviewed through May 2026") and is not a GL code.
+export const OWNER_GLCODE_RE = /\b(?!(?:19|20|21)\d{2}\b)[1-8][0-9]{3}\b/;
 export function containsOwnerJargon(text) {
   const s = String(text || "");
   return OWNER_JARGON_RE.test(s) || OWNER_GLCODE_RE.test(s);

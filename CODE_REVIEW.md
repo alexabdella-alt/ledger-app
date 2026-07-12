@@ -440,8 +440,8 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 
 ---
 
-### CR-27 · 🟠 should-fix · The app is not yet the owner's PROOF surface — completeness/reviewed/backed status exists only for the CPA, so an owner can't *see* their books are right
-> **→ TRACKED: ROADMAP O90** (owner-facing trust panel — the owner-readable projection of O60/O49/O50, translated per the Cardinal Principle; P1-adjacent / pre-first-client). A build, not a fix; not done here.
+### CR-27 · ✅ RESOLVED (C158, O90) · The app is not yet the owner's PROOF surface — completeness/reviewed/backed status exists only for the CPA, so an owner can't *see* their books are right
+> **✅ RESOLVED — ROADMAP O90 shipped (C158).** `TrustPanel` on the owner home projects the SAME trust data the CPA reviews (via pure `ownerTrustState`, which runs the SAME `evaluateSignOff` three-net gate — the owner view can never disagree with `ReviewView`). Three plain-language lines (CAPTURED/REVIEWED/NOTHING WRONG) from O60 intake completeness + O50 sign-off + O49 flags + O59 control totals; green ONLY when all three nets clear, honest otherwise, at most one gentle nudge. Cardinal-Principle guard extended to scan the panel's strings. Tests: `ownerTrust.test.js` + O90 block in `cardinalPrinciple.test.js`.
 
 **Location:** owner surfaces (`DashboardView`) show real balanced numbers + business health + task prompts, but **no** completeness/reviewed indicator; the trust-layer proof lives in `ReviewView` (CPA cockpit — `reconcileDroppedDocs`/`flagsForReview`), with no owner-facing counterpart (grep for owner "documents received / reviewed through / nothing missing" ⇒ none).
 
@@ -485,7 +485,7 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 | 5 | **CR-3** cash-flow report on wrong (P&L+flag) basis | 🟠, silent, wrong for accrual/taxed clients | ✅ C134 |
 | 6 | **CR-17** double-reversal via swallowed link write | 🟠, silent, corrupts P&L | ✅ C136 |
 | 7 | **CR-2** refunds/credit-memos overstate revenue | 🟠, silent, BS reads high | ✅ C134 |
-| 8 | **CR-27** owner can't see books are complete/reviewed | 🟠, silent (product), the thesis's own trust pillar | ○ O90 |
+| 8 | **CR-27** owner can't see books are complete/reviewed | 🟠, silent (product), the thesis's own trust pillar | ✅ O90 shipped C158 |
 | 9 | **CR-8** proxy pass-through (cost + client-only sandbox) | 🟠, semi-silent, cost-abusable, sandbox not server-enforced | ○ O81 |
 | 10 | **CR-4** depreciation/prepaid schedule dates drift | 🟠, silent, wrong-period postings for late-month assets | ○ O86 |
 
@@ -516,7 +516,7 @@ Positives to bank first, because they narrow the gaps: **audit-log coverage on m
 | CR-11, CR-12 | **O21** (RLS/security-hygiene pass) | ✅ fixed — migration 052 applied live 2026-07-09 |
 | CR-13 | **O21** (RLS/security-hygiene pass) | ○ open (anon-key hygiene note; public by design) |
 | CR-20, CR-22, CR-23 | **O89** (LedgerProvider extraction) | ○ open, P1-adjacent |
-| CR-27 | **O90** (owner trust panel) + O84 / O50-v2 sign-off | ○ open, P1-adjacent |
+| CR-27 | **O90** (owner trust panel) | ✅ fixed C158 (`ownerTrust.js` + `TrustPanel.jsx`; guard-extended) |
 | CR-7 | — (note-only; bounded, safe today) | ○ no action needed |
 
 Every finding is either fixed or has a home; the only untracked entry (`CR-7`) is a deliberate note-only. **The review is closed.**

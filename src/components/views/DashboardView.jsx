@@ -8,6 +8,7 @@ import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
 import ClarificationFlow from "../ClarificationFlow";
+import TrustPanel from "./TrustPanel";
 import { t } from "../../lib/theme";
 import { useDrillStack } from "../../lib/useDrillStack";
 import DrillNav from "../ui/DrillNav";
@@ -298,6 +299,10 @@ export default function DashboardView() {
 
   return (
             <div>
+              {/* O90 — owner trust panel (CR-27): the owner's at-a-glance "my books are handled
+                  and correct," a plain-language projection of the same trust data the CPA reviews.
+                  Gated on companyDataLoaded so it doesn't flash a pre-load state. */}
+              {companyDataLoaded && <TrustPanel />}
               {/* Depreciation is deterministic → it AUTO-POSTS when due (App.jsx autoPostDepreciation),
                   no owner nudge. (Removed the "N months due · Run depreciation now" prompt — accounting
                   machinery is Shadow's job, not the owner's; incomplete schedules flag to CPA review.) */}

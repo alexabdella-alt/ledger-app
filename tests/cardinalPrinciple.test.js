@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { draftClientQuestion, describeBooking, clarificationChips, plainCategoryPhrase, containsOwnerJargon } from "../src/lib/clarify.js";
+import { ownerTrustState } from "../src/lib/ownerTrust.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // CARDINAL-PRINCIPLE GUARD (CR-25 / CR-26). The owner NEVER sees accounting
@@ -115,6 +116,41 @@ describe("Cardinal Principle — auto-booking confirmations + answer chips are j
       // of a leaked account name is the "&" conjunction or the verbatim label.
       expect(chip.label, `chip is the formal account label: "${chip.label}"`).not.toContain("&");
       expect(chip.label, `chip echoed the verbatim account name: "${chip.label}"`).not.toBe(String(inv.gl_name));
+    }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Guard EXTENSION (O90): the OWNER TRUST PANEL strings. This is the owner's
+// primary trust surface, so its projection of the CPA's data must stay plain —
+// no GL codes, no confidence %, and (specific to this panel's inputs) no
+// "control total / reconcile / trial balance" jargon leaking from the underlying
+// control-total labels. Scans every string across every trust state.
+// ════════════════════════════════════════════════════════════════════════════
+describe("Cardinal Principle — O90 owner trust panel strings are jargon-free", () => {
+  const NOW = new Date("2026-06-15T12:00:00");
+  const recorded = (n) => Array.from({ length: n }, (_, i) => ({ id: `r${i}`, status: "recorded", received_at: "2026-06-10T09:00:00" }));
+  const OWNER_TERMS = /\bcontrol total|\breconcil|\btrial balance\b|\bconfidence\b|\bdebit\b|\bcredit\b|\bpayable\b|\breceivable\b|\bledger\b|journal entr/i;
+
+  // Every owner-facing trust state, including ones fed jargon-y control-total labels
+  // (the owner line must NOT echo them).
+  const STATES = [
+    { controlTotals: { failed: [], allTie: true }, openConfidenceFlags: [], intakeRows: recorded(3), unknownDocs: [], reviewedThrough: "2026-05", now: NOW },
+    { controlTotals: { failed: [], allTie: true }, openConfidenceFlags: [{ id: "f", amount: 2400, confidence: 55 }], intakeRows: recorded(1), unknownDocs: [], reviewedThrough: null, now: NOW },
+    { controlTotals: { failed: [{ id: "ar_tie", label: "Money owed to you (receivables)" }, { id: "tb", label: "Books balance (every entry has two equal sides)" }], allTie: false }, openConfidenceFlags: [], intakeRows: recorded(1), unknownDocs: [], reviewedThrough: "2026-04", now: NOW },
+    { controlTotals: { failed: [], allTie: true }, openConfidenceFlags: [], intakeRows: [...recorded(1), { id: "d", status: "failed", filename: "x.pdf", received_at: "2026-06-01T09:00:00" }], unknownDocs: [], reviewedThrough: null, now: NOW },
+    { controlTotals: { failed: [], allTie: true }, openConfidenceFlags: [], intakeRows: [], unknownDocs: [], reviewedThrough: null, now: NOW },
+  ];
+
+  it.each(STATES.map((s, i) => [i, s]))("trust state #%i — headline + all 3 lines + nudge are plain", (_i, input) => {
+    const s = ownerTrustState(input);
+    const strings = [s.headline, s.lines.captured.text, s.lines.reviewed.text, s.lines.correct.text, s.nudge?.text].filter(Boolean);
+    for (const str of strings) {
+      expect(str, `O90 string leaked jargon: "${str}"`).not.toMatch(JARGON);
+      expect(str, `O90 string leaked owner-forbidden term: "${str}"`).not.toMatch(OWNER_TERMS);
+      expect(str, `O90 string leaked a confidence %: "${str}"`).not.toMatch(/\d+\s*%/);
+      // GL-code check via the year-aware owner lint (a 4-digit YEAR in the reviewed line is fine).
+      expect(containsOwnerJargon(str), `O90 string leaked jargon / GL code: "${str}"`).toBe(false);
     }
   });
 });
