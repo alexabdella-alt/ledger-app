@@ -99,6 +99,17 @@ describe("(1) green ONLY when all three nets clear", () => {
     expect(s.lines.correct.text).toMatch(/correct and up to date/i);
     expect(s.nets.bankMatched).toBe(true);
   });
+
+  // ── The "Documents" reframe: a bank-fed / seeded company has a full ledger but no uploaded
+  //    docs — the line must read NEUTRAL, never "nothing to file"/a gap next to real books. ──
+  it("no uploaded documents → Documents line is neutral (not a gap), overall still green", () => {
+    const s = ownerTrustState({ ...base, intakeRows: [] });
+    expect(s.lines.captured.ok).toBe(true);                 // no dropped docs → completeness net satisfied
+    expect(s.lines.captured.state).toBe("info");            // neutral marker, not green-triumphant, not attention
+    expect(s.lines.captured.text).toMatch(/no documents waiting/i);
+    expect(s.lines.captured.text).not.toMatch(/nothing to file|missing|accounted for/i);
+    expect(s.overall).toBe("all_clear");                    // the empty doc-ledger doesn't drag the panel down
+  });
 });
 
 describe("(2) penny-guarantee — never diverges from the CPA sign-off gate", () => {

@@ -58,7 +58,9 @@ export function ownerTrustState({
   const confidenceCount = (openConfidenceFlags || []).length;
   const confidenceOk = confidenceCount === 0;
 
-  // ── CAPTURED (from completeness). Honest "still processing"; never a false all-clear. ──
+  // ── DOCUMENTS (document-UPLOAD completeness — O60 intake ledger, NOT the whole books). Did
+  //    any file the owner uploaded fall through before becoming an entry? Honest "still
+  //    processing"; never a false all-clear; neutral (not a gap) when nothing was uploaded. ──
   const capturedOk = outstanding === 0;
   let capturedText, capturedStateVal;
   if (outstanding > 0) {
@@ -71,8 +73,11 @@ export function ownerTrustState({
     capturedText = `Everything you sent is accounted for — ${totalDocs} ${plural(totalDocs, "document", "documents")}, nothing missing.`;
     capturedStateVal = "ok";
   } else {
-    capturedText = "Nothing to file yet — send a receipt or bill and it'll be handled here.";
-    capturedStateVal = "ok";
+    // NEUTRAL, not a gap: this line is document-UPLOAD completeness, not "all your activity".
+    // A bank-fed or seeded company has a full ledger but no uploaded docs — never imply
+    // something's missing. (See the O94 "all-activity-captured" signal for the broader idea.)
+    capturedText = "No documents waiting — drop a receipt or bill here anytime.";
+    capturedStateVal = "info";
   }
 
   // ── REVIEWED (from O50 sign-off). Factual: what's signed off; honest when nothing is. ──
