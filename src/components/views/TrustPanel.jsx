@@ -33,8 +33,46 @@ function Line({ state, title, text }) {
   );
 }
 
-export default function TrustPanel() {
+// Loading state — the panel's FRAME, painted instantly on load so there's never a blank
+// gap where the reassurance should be (a void reads as "something's wrong"). Neutral gray
+// shimmer, NO green ✓ and NO headline text, so it can never be mistaken for a real
+// all-clear while the ledger/intake data is still arriving. Fills in once `loading` clears.
+function TrustPanelSkeleton() {
+  const bar = (w) => (
+    <div className="sc-skeleton" style={{ height: 12, width: w, borderRadius: 6 }} />
+  );
+  return (
+    <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 16, padding: "20px 22px", marginBottom: 20 }} className="sc-card" aria-busy="true" aria-label="Loading your books status">
+      {/* Headline placeholder (matches the real header's 40px badge + two text lines) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+        <div className="sc-skeleton" style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 7 }}>
+          {bar("62%")}
+          {bar("38%")}
+        </div>
+      </div>
+      {/* Three line placeholders (one per net) */}
+      <div style={{ marginTop: 14, borderTop: "1px solid var(--sc-border)", paddingTop: 4 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "11px 0", borderTop: i ? "1px solid var(--sc-border)" : "none" }}>
+            <div className="sc-skeleton" style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, marginTop: 1 }} />
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+              {bar("30%")}
+              {bar(["70%", "84%", "55%"][i])}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function TrustPanel({ loading = false }) {
   const { ownerTrust, onViewChange, setView } = useERP();
+  // Paint the frame instantly: a shimmer skeleton while the panel's data is still loading,
+  // so the reassurance card is present from first paint and its lines resolve in place —
+  // never a blank gap, and never a false green while loading.
+  if (loading) return <TrustPanelSkeleton />;
   if (!ownerTrust) return null;
 
   const { overall, headline, reviewedThrough, lines, nudge } = ownerTrust;

@@ -301,8 +301,11 @@ export default function DashboardView() {
             <div>
               {/* O90 — owner trust panel (CR-27): the owner's at-a-glance "my books are handled
                   and correct," a plain-language projection of the same trust data the CPA reviews.
-                  Gated on companyDataLoaded so it doesn't flash a pre-load state. */}
-              {companyDataLoaded && <TrustPanel />}
+                  Frame paints INSTANTLY: TrustPanel renders a shimmer skeleton while data loads
+                  (never a blank gap, never a false all-clear), then fills in once companyDataLoaded.
+                  companyDataLoaded is the safe readiness signal — it guarantees the ledger +
+                  reconciliations (the panel's inputs) are loaded, so no green flashes prematurely. */}
+              <TrustPanel loading={!companyDataLoaded} />
               {/* Depreciation is deterministic → it AUTO-POSTS when due (App.jsx autoPostDepreciation),
                   no owner nudge. (Removed the "N months due · Run depreciation now" prompt — accounting
                   machinery is Shadow's job, not the owner's; incomplete schedules flag to CPA review.) */}
