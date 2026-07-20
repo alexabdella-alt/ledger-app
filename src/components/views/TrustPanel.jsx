@@ -67,6 +67,26 @@ function TrustPanelSkeleton() {
   );
 }
 
+// NEUTRAL state — a brand-new company with no journal entries and no completed setup
+// has NOTHING to evaluate, so the panel must not fake a green "all handled" (zero
+// failures out of zero checks = the O90 false-green bug class). Plain "let's get set
+// up" copy, a MUTED (non-green, non-red) badge, and NO per-net lines / no "awaiting
+// sign-off" line — implying a pending human review on zero data is false reassurance.
+function TrustPanelNeutral({ headline, subtext }) {
+  return (
+    <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 16, padding: "20px 22px", marginBottom: 20 }} className="sc-card">
+      <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+        {/* Muted, hollow badge — deliberately NOT the green ✓ (nothing is confirmed yet). */}
+        <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "var(--sc-text-mut)", background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)" }}>○</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "var(--sc-text)", lineHeight: 1.3 }}>{headline}</div>
+          <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginTop: 3, lineHeight: 1.45 }}>{subtext}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TrustPanel({ loading = false }) {
   const { ownerTrust, onViewChange, setView } = useERP();
   // Paint the frame instantly: a shimmer skeleton while the panel's data is still loading,
@@ -74,6 +94,8 @@ export default function TrustPanel({ loading = false }) {
   // never a blank gap, and never a false green while loading.
   if (loading) return <TrustPanelSkeleton />;
   if (!ownerTrust) return null;
+  // Nothing to evaluate yet → neutral "let's get set up", never a false all-clear.
+  if (ownerTrust.neutral) return <TrustPanelNeutral headline={ownerTrust.headline} subtext={ownerTrust.subtext} />;
 
   const { overall, headline, reviewedThrough, lines, nudge } = ownerTrust;
   const tone = TONE[overall] || TONE.attention;

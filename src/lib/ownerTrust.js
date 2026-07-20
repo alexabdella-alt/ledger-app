@@ -39,8 +39,37 @@ export function ownerTrustState({
   unknownDocs = [],
   reviewedThrough = null,
   bankMatch = { overdue: false, days: null },   // from bankMatchStatus() — the SAME source as the dashboard alert
+  // ── "Is there anything to evaluate yet?" signals (the false-green-on-empty fix). ──
+  // A brand-new company with NO journal entries and NO completed setup has nothing to
+  // evaluate — every net trivially "clears" (zero failures out of zero checks), which is
+  // the SAME bug class as the O90 false-green: an empty gate reading as success. So before
+  // any green/attention state, we branch to a NEUTRAL "let's get set up" state. These come
+  // from the SAME data the home setup checklist counts (journal entries + onboardingSteps),
+  // so the panel and the "0 of 4 done" checklist can never contradict each other.
+  //   hasBooks       — at least one live journal entry exists (first entry booked).
+  //   setupComplete  — onboarding's required steps are all done (obAllDone / onboardingComplete).
+  // Default hasBooks=true so callers that don't pass the signal keep the prior behaviour
+  // (evaluate, don't hide) — the app always passes the real signal.
+  hasBooks = true,
+  setupComplete = false,
   now = new Date(),
 } = {}) {
+  // ── NEUTRAL: nothing to evaluate yet. No green, no red, no "awaiting sign-off" — a
+  //    plain "let's get set up" state. Exits the moment there's real data (first entry
+  //    booked OR setup complete), which is when the status checks actually have substance. ──
+  if (!hasBooks && !setupComplete) {
+    return {
+      overall: "neutral",
+      neutral: true,
+      headline: "Let's get you set up first",
+      subtext: "Your books status will appear here once your business info and first transactions are in.",
+      reviewedThrough: null,
+      lines: null,                 // no per-net breakdown — there's nothing to break down
+      nudge: null,
+      nets: { completeness: false, confidence: false, accuracy: false, bankMatched: false, signOffOk: false },
+    };
+  }
+
   // ── Completeness (O60): the SAME dropped set the sign-off gate uses. ──
   const dropped = reconcileIntake(intakeRows, { now });
   const unknownOutstanding = (unknownDocs || []).filter((d) => d && !d.posted).length;

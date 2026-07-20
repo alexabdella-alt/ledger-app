@@ -28,6 +28,65 @@ const base = { controlTotals: GREEN_CT, openConfidenceFlags: [], intakeRows: rec
 // Collect every owner-facing string a scenario would render.
 const strings = (s) => [s.headline, s.lines.captured.text, s.lines.reviewed.text, s.lines.correct.text, s.nudge?.text].filter(Boolean);
 
+// ── (0) NEUTRAL — no false green on a brand-new company (zero data to evaluate) ──
+// The bug: a new company with no entries, no bank, no opening balances, no fiscal
+// year set rendered fully green ("Your books are handled and up to date") — zero
+// failures out of zero checks reading as success. The fix: an explicit neutral state
+// keyed on the SAME signals the home setup checklist counts (hasBooks / setupComplete),
+// so the panel and the "0 of 4 done" card can never contradict.
+describe("(0) neutral on a brand-new company — never a false green on zero data", () => {
+  const ZERO = { controlTotals: GREEN_CT, openConfidenceFlags: [], intakeRows: [], unknownDocs: [], reviewedThrough: null, bankMatch: { overdue: false, days: null }, hasBooks: false, setupComplete: false, now: NOW };
+
+  it("no entries AND no completed setup → neutral (NOT all_clear), even though every check trivially 'passes'", () => {
+    const s = ownerTrustState(ZERO);
+    expect(s.overall).toBe("neutral");
+    expect(s.neutral).toBe(true);
+    // The exact false-green being closed: with zero checks, evaluateSignOff would say ok=true.
+    expect(s.overall).not.toBe("all_clear");
+  });
+
+  it("neutral state shows NO success indicators and NO 'awaiting sign-off' line", () => {
+    const s = ownerTrustState(ZERO);
+    expect(s.lines).toBeNull();                 // no per-net breakdown (so no green ✓, no "Reviewed" line)
+    expect(s.nudge).toBeNull();
+    expect(s.reviewedThrough).toBeNull();
+    expect(Object.values(s.nets).every(v => v === false)).toBe(true);
+  });
+
+  it("neutral copy is plain 'let's get set up' language", () => {
+    const s = ownerTrustState(ZERO);
+    expect(s.headline).toMatch(/let's get you set up/i);
+    expect(s.subtext).toMatch(/once your business info and first transactions are in/i);
+    expect(s.headline).not.toMatch(/handled|up to date|clear/i);   // no reassurance wording
+  });
+
+  it("TRANSITION: the first booked entry exits neutral → real (green) status resumes", () => {
+    const s = ownerTrustState({ ...ZERO, hasBooks: true });
+    expect(s.neutral).toBeUndefined();
+    expect(s.overall).toBe("all_clear");        // now there ARE books to evaluate, and they're clean
+    expect(s.lines).not.toBeNull();
+  });
+
+  it("TRANSITION: completing setup exits neutral even before the first entry", () => {
+    const s = ownerTrustState({ ...ZERO, setupComplete: true });
+    expect(s.neutral).toBeUndefined();
+    expect(s.overall).not.toBe("neutral");
+  });
+
+  it("a short net still wins even on a near-empty company (neutral is ONLY for truly nothing-to-evaluate)", () => {
+    // Setup complete but a document fell through → NOT neutral, and NOT green.
+    const s = ownerTrustState({ ...ZERO, setupComplete: true, intakeRows: [droppedRow] });
+    expect(s.neutral).toBeUndefined();
+    expect(s.overall).toBe("attention");
+  });
+
+  it("BACKWARD-COMPAT: callers that don't pass hasBooks default to live status (not neutral)", () => {
+    const s = ownerTrustState(base);            // base sets no hasBooks/setupComplete
+    expect(s.neutral).toBeUndefined();
+    expect(s.overall).toBe("all_clear");
+  });
+});
+
 describe("(1) green ONLY when all three nets clear", () => {
   it("all nets clear → all_clear, all lines ok, no nudge", () => {
     const s = ownerTrustState(base);

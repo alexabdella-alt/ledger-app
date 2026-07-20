@@ -20,6 +20,7 @@ import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confide
 import { computeControlTotals, bankMatchStatus, signOffReadiness } from "./lib/controlTotals";
 import { persistSignoff, removeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod } from "./lib/signoff";
 import { ownerTrustState } from "./lib/ownerTrust";
+import { onboardingSteps } from "./lib/onboarding";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
@@ -3069,14 +3070,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // A plain-language projection of completeness (O60) + confidence (O49) + accuracy (O59)
   // + bank-match + sign-off (O50), run through the SAME evaluateSignOff gate so the owner panel
   // can never disagree with the CPA's ReviewView. Pure + memoized off the live trust sources.
-  const ownerTrust = useMemo(() => ownerTrustState({
-    controlTotals,
-    openConfidenceFlags: flaggedForReview(invoices),
-    intakeRows,
-    unknownDocs,
-    reviewedThrough,
-    bankMatch,
-  }), [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch]);
+  const ownerTrust = useMemo(() => {
+    // "Is there anything to evaluate yet?" — the SAME signals the home setup checklist
+    // uses, so the panel and the "0 of 4 done" card can never contradict. hasBooks =
+    // at least one live journal entry (first entry booked); setupComplete = onboarding's
+    // required steps all done. Empty on both → the panel shows a neutral "let's get set
+    // up" state instead of a false green (zero failures out of zero checks).
+    const hasBooks = liveEntries(invoices).length > 0;
+    const ob = onboardingSteps({ companySettings, bankAccounts, openingBalances, invoices, onboardingUploadDone });
+    const setupComplete = ob.obAllDone || !!companySettings.onboardingComplete;
+    return ownerTrustState({
+      controlTotals,
+      openConfidenceFlags: flaggedForReview(invoices),
+      intakeRows,
+      unknownDocs,
+      reviewedThrough,
+      bankMatch,
+      hasBooks,
+      setupComplete,
+    });
+  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone]);
 
   // ── O50 SIGN-OFF — a CPA marks a period "reviewed" ONLY when all three nets are clear ──
   // Re-verifies live at sign-off time; BLOCKS with the reason if any net is unresolved.
