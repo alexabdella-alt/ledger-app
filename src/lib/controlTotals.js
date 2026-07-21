@@ -175,14 +175,58 @@ export function bankMatchStatus({ reconciliations = [], invoices = [], now = new
   return { overdue, days, hasBooks, everReconciled, lastCompletedAt };
 }
 
+// ── NON-VACUOUS READINESS PRECONDITIONS (O83) ─────────────────────────────────
+// The four nets are all "zero failures" checks — on a period with NOTHING in it they
+// trivially pass (zero-of-zero reads as "clean"), which is the same false-green bug
+// class the owner TrustPanel fixed. Attestation must therefore ALSO require that there
+// is something to attest. These are checked BEFORE the nets; each is only enforced when
+// the caller supplies the signal (null/undefined = "not evaluated" → skipped, so the
+// existing four-net callers/tests are unaffected). Blockers carry net:"readiness".
+//   • setupComplete           — the company's required setup is done (same signal as the
+//                               home checklist / TrustPanel neutral guard: onboardingSteps).
+//   • openingEntered          — opening balances have been posted (a real starting position).
+//   • entriesInPeriodCount     — ≥1 booked transaction dated within the sign-off period.
+//   • hasReconForPeriod        — a bank reconciliation record covers the period.
+function readinessBlockers({ setupComplete, openingEntered, entriesInPeriodCount, hasReconForPeriod }) {
+  const out = [];
+  if (setupComplete === false) out.push({ net: "readiness", reason: "company setup isn't finished yet — complete the setup checklist first" });
+  if (openingEntered === false) out.push({ net: "readiness", reason: "opening balances haven't been entered — there's no starting position to review" });
+  if (entriesInPeriodCount != null && Number(entriesInPeriodCount) <= 0) out.push({ net: "readiness", reason: "no transactions are booked in this period — nothing to review" });
+  if (hasReconForPeriod === false) out.push({ net: "readiness", reason: "this period hasn't been reconciled to the bank yet" });
+  return out;
+}
+
+// Count of LIVE booked entries dated within a YYYY-MM period. Pure.
+export function bookedEntriesInPeriod(invoices = [], period = "") {
+  const p = String(period || "");
+  if (!/^\d{4}-\d{2}$/.test(p)) return 0;
+  return (invoices || []).filter((i) => isLiveEntry(i) && String(i.date || "").slice(0, 7) === p).length;
+}
+
+// Does any reconciliation record cover the sign-off period (its [period_start, period_end]
+// span overlaps the YYYY-MM month)? Pure. Absent bounds → doesn't count.
+export function reconciliationCoversPeriod(reconciliations = [], period = "") {
+  const p = String(period || "");
+  if (!/^\d{4}-\d{2}$/.test(p)) return false;
+  return (reconciliations || []).some((r) => {
+    if (!r) return false;
+    const s = String(r.period_start || "").slice(0, 7);
+    const e = String(r.period_end || "").slice(0, 7);
+    if (!s && !e) return false;
+    return (!s || s <= p) && (!e || e >= p);   // the span brackets the month
+  });
+}
+
 // ── SIGN-OFF READINESS — the authoritative "can this period be attested?" gate ────────────
-// The FOUR nets: the three from evaluateSignOff (completeness / confidence / accuracy) PLUS
-// bank-match (C159 — don't attest a period whose cash isn't matched to the bank). One pure
-// function so the write path (signOffPeriod) and the CPA UI can't gate differently. Returns
-// { ok, blockers:[{net, reason}] }. CPA-side, so blocker reasons may use accounting terms.
-export function signOffReadiness({ controlTotals = { failed: [], allTie: true }, openConfidenceFlags = [], droppedDocs = [], unknownDocs = [], bankMatch = { overdue: false, days: null } } = {}) {
+// The FOUR nets (completeness / confidence / accuracy / bank-match), PLUS the non-vacuous
+// preconditions above so a period with nothing to check reads as "not ready", not "clean".
+// One pure function so the write path (signOffPeriod) and the CPA UI can't gate differently.
+// Returns { ok, blockers:[{net, reason}] }. CPA-side, so blocker reasons may use accounting terms.
+export function signOffReadiness({ controlTotals = { failed: [], allTie: true }, openConfidenceFlags = [], droppedDocs = [], unknownDocs = [], bankMatch = { overdue: false, days: null }, setupComplete = null, openingEntered = null, entriesInPeriodCount = null, hasReconForPeriod = null } = {}) {
+  // Preconditions FIRST — the non-vacuous gate.
+  const blockers = readinessBlockers({ setupComplete, openingEntered, entriesInPeriodCount, hasReconForPeriod });
   const evalr = evaluateSignOff({ controlTotals, openConfidenceFlags, droppedDocs, unknownDocs });
-  const blockers = [...evalr.blockers];
+  blockers.push(...evalr.blockers);
   if (bankMatch && bankMatch.overdue) {
     blockers.push({ net: "bank", reason: `the bank isn't reconciled yet${bankMatch.days != null ? ` (${bankMatch.days} days)` : ""} — match the latest statement first` });
   }

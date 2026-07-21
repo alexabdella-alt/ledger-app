@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { signOffReadiness } from "../src/lib/controlTotals.js";
-import { canAttestPeriod } from "../src/lib/signoff.js";
+import { signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "../src/lib/controlTotals.js";
+import { canAttestPeriod, latestReviewedThrough } from "../src/lib/signoff.js";
 import { ownerTrustState } from "../src/lib/ownerTrust.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -58,15 +58,78 @@ describe("signOffReadiness — blocked when ANY net is short, with a reason", ()
   });
 });
 
-describe("role gate — owner/admin attest; a member cannot", () => {
-  it("owner and admin may attest", () => {
-    expect(canAttestPeriod("owner")).toBe(true);
+describe("role gate (O83) — reviewer (accountant/admin) attests; the client-owner cannot", () => {
+  it("accountant and admin may attest (the reviewer/CPA roles)", () => {
+    expect(canAttestPeriod("accountant")).toBe(true);
     expect(canAttestPeriod("admin")).toBe(true);
+  });
+  it("the OWNER (client) may NOT self-attest their own books — the separation-of-duties fix", () => {
+    expect(canAttestPeriod("owner")).toBe(false);
   });
   it("a member (or unknown role) may NOT attest", () => {
     expect(canAttestPeriod("member")).toBe(false);
     expect(canAttestPeriod(undefined)).toBe(false);
     expect(canAttestPeriod(null)).toBe(false);
+  });
+});
+
+// ── Non-vacuous preconditions (O83): zero-of-zero must read "not ready", not "clean" ──
+describe("signOffReadiness preconditions — a period with nothing to check is NOT ready", () => {
+  it("setup incomplete → blocked (net=readiness)", () => {
+    const r = signOffReadiness({ ...clear, setupComplete: false });
+    expect(r.ok).toBe(false);
+    expect(r.blockers.some(b => b.net === "readiness" && /setup/i.test(b.reason))).toBe(true);
+  });
+  it("no opening balances → blocked (net=readiness)", () => {
+    const r = signOffReadiness({ ...clear, openingEntered: false });
+    expect(r.blockers.some(b => b.net === "readiness" && /opening/i.test(b.reason))).toBe(true);
+  });
+  it("no booked entries in the period → blocked (the vacuous-pass this fixes)", () => {
+    const r = signOffReadiness({ ...clear, entriesInPeriodCount: 0 });
+    expect(r.ok).toBe(false);
+    expect(r.blockers.some(b => b.net === "readiness" && /nothing to review/i.test(b.reason))).toBe(true);
+  });
+  it("no reconciliation for the period → blocked (net=readiness)", () => {
+    const r = signOffReadiness({ ...clear, hasReconForPeriod: false });
+    expect(r.blockers.some(b => b.net === "readiness" && /reconciled/i.test(b.reason))).toBe(true);
+  });
+  it("all preconditions satisfied + nets clear → ready", () => {
+    const r = signOffReadiness({ ...clear, setupComplete: true, openingEntered: true, entriesInPeriodCount: 42, hasReconForPeriod: true });
+    expect(r.ok).toBe(true);
+  });
+  it("BACKWARD-COMPAT: preconditions omitted (null) are skipped — the four-net gate is unchanged", () => {
+    expect(signOffReadiness(clear).ok).toBe(true);   // no precondition signals → not enforced
+  });
+});
+
+describe("period helpers", () => {
+  const inv = [
+    { id: "a", date: "2026-07-03", status: "booked" },
+    { id: "b", date: "2026-07-28", status: "booked" },
+    { id: "c", date: "2026-06-30", status: "booked" },
+    { id: "d", date: "2026-07-10", status: "voided" },   // not live → not counted
+  ];
+  it("bookedEntriesInPeriod counts live entries dated within the YYYY-MM", () => {
+    expect(bookedEntriesInPeriod(inv, "2026-07")).toBe(2);   // a, b (not c=June, not d=voided)
+    expect(bookedEntriesInPeriod(inv, "2026-06")).toBe(1);
+    expect(bookedEntriesInPeriod(inv, "bad")).toBe(0);
+  });
+  it("reconciliationCoversPeriod: a recon span brackets the month", () => {
+    const recs = [{ period_start: "2026-07-01", period_end: "2026-07-31" }];
+    expect(reconciliationCoversPeriod(recs, "2026-07")).toBe(true);
+    expect(reconciliationCoversPeriod(recs, "2026-08")).toBe(false);
+    expect(reconciliationCoversPeriod([{ period_start: "2026-06-01", period_end: "2026-08-31" }], "2026-07")).toBe(true);
+    expect(reconciliationCoversPeriod([], "2026-07")).toBe(false);
+  });
+});
+
+describe("latestReviewedThrough — revoked sign-offs don't drive the badge", () => {
+  it("ignores a revoked row, takes the max active period", () => {
+    const signoffs = [
+      { period: "2026-07", revoked_at: "2026-08-01T00:00:00Z" },   // revoked → ignored
+      { period: "2026-06", revoked_at: null },
+    ];
+    expect(latestReviewedThrough(signoffs)).toBe("2026-06");
   });
 });
 

@@ -14,7 +14,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded,
-    controlTotals, signOffPeriod, reopenPeriod, reviewedThrough, bankMatch, isOwner, isAdmin } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, bankMatch, isOwner, isAdmin, isReviewer } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -42,25 +42,36 @@ export default function ReviewView() {
   const flagged = flagsForReview ? flagsForReview() : [];
   const accuracyFlags = (controlTotals && controlTotals.flags) || [];   // O59 third net
   const { completeness, needsReview, unknown, accuracy, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags });
-  const canSignOff = (isOwner || isAdmin);   // reviewer = owner/admin (is_company_admin); members can't attest
+  // O83: attestation is a REVIEWER action (accountant/admin), NOT the client-owner.
+  const canSignOff = !!isReviewer;
   const [signingOff, setSigningOff] = React.useState(false);
-  const signOffMonth = todayLocal().slice(0, 7);   // "reviewed through" = current month
-  // The FOUR nets that gate attestation — the SAME set signOffPeriod re-checks at write time.
-  // This is the CPA surface, so accounting terms are fine here (unlike the owner TrustPanel).
-  const bankBlocked = !!(bankMatch && bankMatch.overdue);
-  const signOffBlockers = [
-    (summary.incompleteCount + summary.unknownCount) > 0 && `${summary.incompleteCount + summary.unknownCount} document(s) not yet accounted for`,
-    summary.flaggedCount > 0 && `${summary.flaggedCount} transaction(s) still flagged for review`,
-    summary.accuracyCount > 0 && `${summary.accuracyCount} control-total check(s) don't tie`,
-    bankBlocked && `bank not reconciled${bankMatch.days != null ? ` in ${bankMatch.days} days` : " yet"}`,
-  ].filter(Boolean);
-  const canAttest = signOffBlockers.length === 0;
+  // The reviewer chooses the period explicitly (defaults to the current month, NOT forced).
+  const [signOffMonth, setSignOffMonth] = React.useState(todayLocal().slice(0, 7));
+  const [overrideOpen, setOverrideOpen] = React.useState(false);
+  const [overrideReason, setOverrideReason] = React.useState("");
+  // SINGLE-SOURCE readiness for the chosen period (preconditions + the four nets) — the SAME
+  // pure gate signOffPeriod re-checks at write time, fed the dropped set this view already
+  // loaded. This is the CPA surface, so accounting terms are fine (unlike the owner TrustPanel).
+  const readiness = (signOffReadinessFor ? signOffReadinessFor(signOffMonth, dropped) : { ok: true, blockers: [] });
+  const signOffBlockers = readiness.blockers.map(b => b.reason);
+  const canAttest = readiness.ok;
   const onSignOff = async () => {
     if (!signOffPeriod || !canAttest) return;
     setSigningOff(true);
     const r = await signOffPeriod(signOffMonth);
     setSigningOff(false);
     if (!r.ok && r.blockers) showNotification(`Can't sign off yet — ${r.blockers.map(b => b.reason).join("; ")}`, "error");
+  };
+  // Explicit override: sign off DESPITE open blockers, with a required reason that is
+  // recorded on the sign-off record (override_ack + reason + the blockers overridden).
+  const onSignOffOverride = async () => {
+    if (!signOffPeriod) return;
+    if (!overrideReason.trim()) { showNotification("Add a reason to sign off over the open items.", "error"); return; }
+    setSigningOff(true);
+    const r = await signOffPeriod(signOffMonth, { override: { acknowledged: true, reason: overrideReason.trim() } });
+    setSigningOff(false);
+    if (r.ok) { setOverrideOpen(false); setOverrideReason(""); }
+    else showNotification(`Couldn't sign off — ${r.error || (r.blockers || []).map(b => b.reason).join("; ")}`, "error");
   };
   const onReopen = async () => {
     if (!reopenPeriod || !reviewedThrough) return;
@@ -253,44 +264,73 @@ export default function ReviewView() {
     </>
   );
 
-  // ── CPA SIGN-OFF (O50) — attest the current period. Renders ABOVE the branch so it's present
-  // in BOTH the all-clear state (enabled) and the has-work state (disabled + the specific
-  // blockers). Gated to owner/admin (is_company_admin); a member sees a read-only status. ──
+  // ── SIGN-OFF (O50/O83) — a REVIEWER attests an EXPLICIT period. Renders ABOVE the branch so
+  // it's present in BOTH the all-clear state (enabled) and the has-work state (disabled + the
+  // specific blockers + an explicit override). Gated to accountant/admin (is_company_reviewer);
+  // the client-owner and members see a read-only status — they cannot self-attest. ──
   const signOffCard = (
     <div style={{ border: "1px solid var(--sc-border)", background: "var(--sc-surface)", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text)" }}>CPA sign-off</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text)" }}>Reviewer sign-off</div>
           <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
             {reviewedThrough ? `Reviewed through ${reviewedThrough}. ` : "Not yet signed off. "}
-            {canSignOff ? (canAttest ? `Ready to sign off ${signOffMonth}.` : "Resolve the blockers below, then sign off.") : "Your accountant attests each period."}
+            {canSignOff ? (canAttest ? `Ready to sign off ${signOffMonth}.` : "Resolve the items below (or sign off with an override).") : "Only your accountant/reviewer attests a period."}
           </div>
         </div>
         {canSignOff && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {/* Explicit period picker — the reviewer chooses which month to attest (not forced to today). */}
+            <input type="month" value={signOffMonth} max={todayLocal().slice(0, 7)}
+              onChange={e => { setSignOffMonth(e.target.value || todayLocal().slice(0, 7)); setOverrideOpen(false); }}
+              style={{ padding: "8px 10px", borderRadius: 9, fontSize: 13, border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", background: "var(--sc-surface)" }} />
             {reviewedThrough && (
               <button onClick={onReopen}
                 style={{ padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>
                 Reopen {reviewedThrough}
               </button>
             )}
-            <button onClick={onSignOff} disabled={!canAttest || signingOff}
-              style={{ padding: "9px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", cursor: (canAttest && !signingOff) ? "pointer" : "not-allowed",
-                background: (canAttest && !signingOff) ? "var(--sc-success)" : "var(--sc-border)", color: (canAttest && !signingOff) ? "var(--sc-on-accent)" : "var(--sc-text-mut)" }}>
-              {signingOff ? "Signing off…" : `Mark reviewed through ${signOffMonth}`}
-            </button>
+            {canAttest ? (
+              <button onClick={onSignOff} disabled={signingOff}
+                style={{ padding: "9px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", cursor: signingOff ? "not-allowed" : "pointer",
+                  background: signingOff ? "var(--sc-border)" : "var(--sc-success)", color: signingOff ? "var(--sc-text-mut)" : "var(--sc-on-accent)" }}>
+                {signingOff ? "Signing off…" : `Mark reviewed through ${signOffMonth}`}
+              </button>
+            ) : (
+              <button onClick={() => setOverrideOpen(o => !o)} disabled={signingOff}
+                style={{ padding: "9px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "1px solid var(--sc-warning)", cursor: "pointer",
+                  background: "var(--sc-warning-soft)", color: "var(--sc-warning)" }}>
+                Sign off anyway…
+              </button>
+            )}
           </div>
         )}
       </div>
-      {/* WHY it's blocked — CPA-side, the specific unresolved nets (accounting terms OK here). */}
+      {/* WHY it's blocked — CPA-side, the specific unresolved preconditions + nets. */}
       {canSignOff && !canAttest && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--sc-border)" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "var(--sc-text-mut)", textTransform: "uppercase", marginBottom: 6 }}>Can't sign off yet</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "var(--sc-text-mut)", textTransform: "uppercase", marginBottom: 6 }}>Not ready to sign off {signOffMonth}</div>
           {signOffBlockers.map((b, i) => (
             <div key={i} style={{ fontSize: 12.5, color: "var(--sc-text)", display: "flex", gap: 7, alignItems: "flex-start", marginBottom: 3 }}>
               <span style={{ color: "var(--sc-warning)", fontWeight: 800, flexShrink: 0 }}>•</span><span>{b}</span>
             </div>
           ))}
+          {/* Explicit override — sign off despite the open items, with a REQUIRED reason recorded on the record. */}
+          {overrideOpen && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--sc-border-2)" }}>
+              <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginBottom: 6 }}>You're signing off with {signOffBlockers.length} open item{signOffBlockers.length === 1 ? "" : "s"}. This is recorded on the sign-off with your reason.</div>
+              <textarea value={overrideReason} onChange={e => setOverrideReason(e.target.value)} rows={2}
+                placeholder="Reason for signing off despite the open items (required)…"
+                style={{ width: "100%", padding: "9px 11px", borderRadius: 9, fontSize: 13, border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", background: "var(--sc-surface)", resize: "vertical", boxSizing: "border-box" }} />
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                <button onClick={onSignOffOverride} disabled={signingOff || !overrideReason.trim()}
+                  style={{ padding: "9px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", cursor: (signingOff || !overrideReason.trim()) ? "not-allowed" : "pointer",
+                    background: (signingOff || !overrideReason.trim()) ? "var(--sc-border)" : "var(--sc-warning)", color: (signingOff || !overrideReason.trim()) ? "var(--sc-text-mut)" : "var(--sc-on-accent)" }}>
+                  {signingOff ? "Signing off…" : `Sign off ${signOffMonth} with override`}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

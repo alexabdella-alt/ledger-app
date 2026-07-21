@@ -17,8 +17,8 @@ import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompany
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
 import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
-import { computeControlTotals, bankMatchStatus, signOffReadiness } from "./lib/controlTotals";
-import { persistSignoff, removeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod } from "./lib/signoff";
+import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "./lib/controlTotals";
+import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod } from "./lib/signoff";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
 import { buildPaymentEntry } from "./lib/payments";
@@ -308,8 +308,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // isn't present (single-user / legacy) so existing accounts keep full access.
   const userRole = currentCompany?.role || "owner";
   const isOwner = userRole === "owner";
-  const isAdmin = userRole === "owner" || userRole === "admin";
+  // `accountant` (the invited reviewer/CPA) is a write-capable role — treat it as admin
+  // for UI write access (book/recode/review), same as an admin. (O83: separation of duties
+  // is enforced only at ATTESTATION via canAttestPeriod, not by starving the CPA of access.)
+  const isAdmin = userRole === "owner" || userRole === "admin" || userRole === "accountant";
   const isMember = userRole === "member";
+  // ATTESTER: admin or accountant (reviewer roles) — NOT the plain client-owner. The write
+  // path AND the CPA UI share this so the button, the write, and the DB policy can't disagree.
+  const isReviewer = canAttestPeriod(userRole);
 
   const [invoices, setInvoices] = useState([]);
   const invoicesRef = useRef([]); // always-current invoices for async lookups (e.g. doc relinking)
@@ -3091,44 +3097,66 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     });
   }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone]);
 
-  // ── O50 SIGN-OFF — a CPA marks a period "reviewed" ONLY when all three nets are clear ──
-  // Re-verifies live at sign-off time; BLOCKS with the reason if any net is unresolved.
-  // Returns { ok, row } or { ok:false, blockers?/error? }. Verified write (row read back).
-  const signOffPeriod = async (period, note = null) => {
-    if (!currentCompany?.id || !session?.user?.id || !period) return { ok: false, error: "missing company/user/period" };
-    if (!canAttestPeriod(userRole)) return { ok: false, error: "only an admin/accountant can sign off a period" };   // owner+admin (is_company_admin); members can't
-    const dropped = await reconcileDroppedDocs();
-    // Authoritative four-net gate (completeness + confidence + accuracy + bank-match), re-checked
-    // live at write time with the freshest dropped-docs set.
-    const gate = signOffReadiness({
+  // ── O83 SIGN-OFF READINESS (single source) — "can THIS period be attested?" ──
+  // Preconditions (non-vacuous: a period with nothing to check is NOT ready) + the four
+  // nets, for an EXPLICIT period. Both the CPA UI (ReviewView) and the write path below
+  // call this so the button, the blocker list, and the write can't disagree. `droppedDocs`
+  // lets the UI pass the set it already loaded; the write path passes the freshest set.
+  // (setupComplete reuses onboardingSteps — the SAME signal the home checklist / TrustPanel
+  // neutral guard use — so the surfaces stay consistent rather than re-deriving "readiness".)
+  const signOffReadinessFor = (period, droppedDocs = []) => {
+    const setupComplete = onboardingSteps({ companySettings, bankAccounts, openingBalances, invoices, onboardingUploadDone }).obAllDone || !!companySettings.onboardingComplete;
+    const openingEntered = openingPosted || (invoices || []).some(i => i.source === "opening_balance");
+    return signOffReadiness({
       controlTotals,
       openConfidenceFlags: flagsForReview(),
-      droppedDocs: dropped,
+      droppedDocs,
       unknownDocs: unknownDocs || [],
       bankMatch,
+      setupComplete,
+      openingEntered,
+      entriesInPeriodCount: bookedEntriesInPeriod(invoices, period),
+      hasReconForPeriod: reconciliationCoversPeriod(reconciliations, period),
     });
-    if (!gate.ok) return { ok: false, blockers: gate.blockers };
-    const res = await persistSignoff(supabase, { companyId: currentCompany.id, period, signedBy: session.user.id, note });
+  };
+
+  // ── O50/O83 SIGN-OFF — a REVIEWER attests an EXPLICIT period. Blocks unless the gate is
+  // clear OR the reviewer explicitly OVERRIDES (acknowledgment + reason RECORDED on the row,
+  // with the exact blockers). Re-verified live at write time with the freshest dropped-docs.
+  // Returns { ok, row } or { ok:false, blockers?/error? }. Verified write (row read back).
+  const signOffPeriod = async (period, { note = null, override = null } = {}) => {
+    if (!currentCompany?.id || !session?.user?.id || !period) return { ok: false, error: "missing company/user/period" };
+    if (!isReviewer) return { ok: false, error: "only a reviewer (accountant/admin) can sign off — the account owner can't attest their own books" };
+    const dropped = await reconcileDroppedDocs();
+    const gate = signOffReadinessFor(period, dropped);   // authoritative re-check
+    // Blocked and NOT explicitly overridden → refuse, hand back the plain-language blockers.
+    if (!gate.ok && !(override && override.acknowledged)) return { ok: false, blockers: gate.blockers };
+    // Overriding requires a reason; record the acknowledgment + the exact blockers overridden.
+    const overrideRec = (!gate.ok && override && override.acknowledged)
+      ? { acknowledged: true, reason: override.reason || null, blockers: gate.blockers }
+      : null;
+    const res = await persistSignoff(supabase, { companyId: currentCompany.id, period, signedBy: session.user.id, note, override: overrideRec });
     if (res.ok) {
       setSignoffs(prev => [res.row, ...prev.filter(s => s.period !== period)]);
-      logAudit("period_signed_off", `Reviewed through ${period}`, null, { period });
-      showNotification(`Signed off — reviewed through ${period} ✓`);
+      logAudit("period_signed_off", overrideRec ? `Reviewed through ${period} (override: ${overrideRec.reason || "no reason given"})` : `Reviewed through ${period}`, null, { period, override: !!overrideRec, blockers: overrideRec?.blockers || null });
+      showNotification(overrideRec ? `Signed off ${period} with an override ✓` : `Signed off — reviewed through ${period} ✓`);
     } else {
       showNotification(`Couldn't record the sign-off — ${res.error}`, "error");
     }
     return res.ok ? { ok: true, row: res.row } : { ok: false, error: res.error };
   };
 
-  // Reopen (un-sign) a period — an admin action (migration 050 allows the delete). Verified via
-  // removeSignoff; updates local state so the owner "Reviewed through" line reverts immediately.
+  // Reopen (un-sign) a period — a REVIEWER action. SOFT revoke (migration 051): the row +
+  // history survive; the active-signoffs read excludes it so the "Reviewed through" line
+  // reverts immediately. Verified via revokeSignoff.
   const reopenPeriod = async (period) => {
     if (!currentCompany?.id || !period) return { ok: false, error: "missing company/period" };
-    if (!canAttestPeriod(userRole)) return { ok: false, error: "only an admin/accountant can reopen a period" };
-    const res = await removeSignoff(supabase, { companyId: currentCompany.id, period });
+    if (!isReviewer) return { ok: false, error: "only a reviewer (accountant/admin) can reopen a period" };
+    const res = await revokeSignoff(supabase, { companyId: currentCompany.id, period, revokedBy: session?.user?.id || null });
     if (res.ok) {
       setSignoffs(prev => prev.filter(s => s.period !== period));
-      logAudit("period_reopened", `Reopened ${period} (removed sign-off)`, { period }, null);
-      showNotification(`Reopened ${period} — sign-off removed`);
+      logAudit("period_reopened", `Reopened ${period} (sign-off revoked)`, { period }, null);
+      showNotification(`Reopened ${period} — sign-off revoked`);
     } else {
       showNotification(`Couldn't reopen the period — ${res.error}`, "error");
     }
@@ -5493,7 +5521,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signoffs, logIntake, markIntake };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, logIntake, markIntake };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
