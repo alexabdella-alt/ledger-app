@@ -1,5 +1,9 @@
 -- =====================================================================
--- 051_signoff_reviewer_and_override.sql  (O83 Issue 1)
+-- 053_signoff_reviewer_and_override.sql  (O83 Issue 1)
+-- (Renumbered from 051 — that number collided with 051_invite_hardening,
+--  which caused the migration tracker to skip this file. Applied to
+--  production hhhuvoycumjzcjbawwff on 2026-07-21 via the Management API;
+--  idempotent, so a future `db push` re-applies it as a safe no-op.)
 --
 -- Hardens period sign-off (attestation):
 --   1. Override acknowledgment + revocation columns on period_signoffs
