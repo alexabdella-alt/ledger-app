@@ -1,9 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   deriveStatementOpening, shouldProposeOpening, openingDiscrepancy,
-  markAlreadyBooked, bankTxnKey, openingProposalCopy, periodMonthLabel,
+  markAlreadyBooked, bankTxnKey, bankLineDirection, bookedLineDirection,
+  openingProposalCopy, periodMonthLabel,
 } from "../src/lib/openingBalanceProposal.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
+import { buildBankLineEntry } from "../src/lib/bankMatch.js";
+import { flattenJournalEntries } from "../src/lib/ledger.js";
+import { DEFAULT_CHART_OF_ACCOUNTS } from "../src/lib/constants.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // O83 — derive the CASH opening balance from an uploaded bank statement (clients
@@ -78,32 +82,84 @@ describe("openingDiscrepancy — existing opening vs statement (never auto-adjus
   });
 });
 
-describe("markAlreadyBooked — idempotent re-upload (no duplicate bookings)", () => {
-  // The 3 lines already booked to Cash (1000): each flattened row's offset (secondary) is 1000.
-  const existing = JAN.transactions.map((t, i) => ({
-    id: `je${i}`, date: t.date, amount: Math.abs(t.amount), vendor: t.description,
-    gl_code: t.amount < 0 ? "6500" : "4000", secondary_gl_code: "1000", status: "booked",
-  }));
-  it("re-uploading the SAME statement flags every line already-booked → nothing re-books", () => {
-    const marked = markAlreadyBooked(JAN.transactions, existing, { offsetCode: "1000" });
-    expect(marked.every(t => t.already_booked)).toBe(true);
-    expect(marked.filter(t => !t.already_booked).length).toBe(0);   // none would book
+// ── INTEGRATION: book through the REAL path shape, then re-parse (O83 regression) ──
+// The unit tests that passed in production fed synthetic invoices shaped to the OLD key.
+// This books lines through the ACTUAL builder (buildBankLineEntry) + the ACTUAL flatten
+// (flattenJournalEntries) — the exact fields bookBankTransactions/loadAllData write —
+// then re-parses the SAME statement and asserts EVERY line is flagged already-booked.
+// It reproduces the live failure: cleaned vendor + rewritten memo + GL re-categorization.
+describe("markAlreadyBooked — INTEGRATION against the real booking path (O83 double-book fix)", () => {
+  const nameOf = (code) => (DEFAULT_CHART_OF_ACCOUNTS.find(a => a.code === code)?.name) || code;
+  // The Franklin Ave January statement lines (raw bank memos, as re-parsed). Signed amounts.
+  const STATEMENT = [
+    { date: "2026-01-02", description: "TOAST POS DEPOSIT 010226", vendor: "Toast POS", amount: 1842.66, type: "revenue", gl_code: "4000" },
+    { date: "2026-01-13", description: "TOAST POS DEPOSIT 011326", vendor: "Toast POS", amount: 2286.90, type: "revenue", gl_code: "4000" },
+    { date: "2026-01-15", description: "GUSTO PAYROLL 011526", vendor: "Gusto Payroll", amount: -3150.00, type: "expense", gl_code: "6000" },
+    { date: "2026-01-22", description: "ACH DEBIT - THE HARTLINE INSURANCE GROUP", vendor: "The Hartline Insurance Group", amount: -264.50, type: "expense", gl_code: "6700" },
+    { date: "2026-01-21", description: "ACH DEBIT - LONE STAR RESTAURANT SUPPLY", vendor: "Lone Star Restaurant Supply", amount: -1102.88, type: "expense", gl_code: "5000" },
+    { date: "2026-01-31", description: "MONTHLY SERVICE FEE", vendor: "Bank", amount: -15.00, type: "expense", gl_code: "8000" },   // note: GL 8000 on first run
+  ];
+
+  // Book each line the way bookBankTransactions does, then persist+reload shape: the DB
+  // description becomes `${vendor} – ${rawMemo}` (App.jsx:1206) and the ledger is flattened.
+  const bookAndFlatten = (lines) => {
+    const dbEntries = lines.map((t, i) => {
+      const e = buildBankLineEntry(
+        { id: `b${i}`, date: t.date, description: t.description, vendor: t.vendor, amount: t.amount, type: t.type, gl_code: t.gl_code, gl_name: nameOf(t.gl_code) },
+        { offsetCode: "1000", offsetName: "Cash & Cash Equivalents" }
+      );
+      const amt = Math.abs(Number(t.amount));
+      const isDebit = e.debit_credit !== "credit";   // primary(gl_code) debited?
+      const line = (code, dr, cr) => ({ debit: dr, credit: cr, accounts: { code, name: nameOf(code) } });
+      const lines2 = isDebit
+        ? [line(e.gl_code, amt, 0), line(e.secondary_gl_code, 0, amt)]
+        : [line(e.gl_code, 0, amt), line(e.secondary_gl_code, amt, 0)];
+      return { id: `je${i}`, entry_date: t.date, description: `${t.vendor} – ${t.description}`, source: "bank_import", status: "posted", journal_entry_lines: lines2 };
+    });
+    return flattenJournalEntries(dbEntries, DEFAULT_CHART_OF_ACCOUNTS);
+  };
+
+  it("re-uploading the SAME statement flags ALL lines already-booked (was: 0 of them)", () => {
+    const existing = bookAndFlatten(STATEMENT);
+    // sanity: the booked rows really are cleaned/rewritten (vendor ≠ raw memo)
+    expect(existing.find(r => r.vendor === "Toast POS")).toBeTruthy();
+    const reparsed = markAlreadyBooked(STATEMENT, existing, { offsetCode: "1000" });
+    expect(reparsed.every(t => t.already_booked)).toBe(true);
+    expect(reparsed.filter(t => !t.already_booked).length).toBe(0);   // NONE re-books
   });
-  it("a genuinely NEW line (not yet booked) is not flagged", () => {
-    const withNew = [...JAN.transactions, { date: "2026-01-25", description: "NEW CHARGE", amount: -50, balance: 15607.60 }];
+
+  it("survives GL re-categorization run-to-run (bank fee 8000 → 7100) — key is GL-free", () => {
+    const existing = bookAndFlatten(STATEMENT);                         // booked with 8000
+    const reparsed = STATEMENT.map(t => t.gl_code === "8000" ? { ...t, gl_code: "7100" } : t);   // re-parse says 7100
+    const marked = markAlreadyBooked(reparsed, existing, { offsetCode: "1000" });
+    expect(marked.every(t => t.already_booked)).toBe(true);            // still flagged despite the GL flip
+  });
+
+  it("a genuinely NEW line still books; multiset caps flags at the count that exist", () => {
+    const existing = bookAndFlatten(STATEMENT);
+    const withNew = [...STATEMENT, { date: "2026-01-25", description: "SQ *NEW VENDOR", vendor: "New Vendor", amount: -50, type: "expense", gl_code: "6600" }];
     const marked = markAlreadyBooked(withNew, existing, { offsetCode: "1000" });
     expect(marked.filter(t => !t.already_booked).length).toBe(1);
-    expect(marked.find(t => t.description === "NEW CHARGE").already_booked).toBe(false);
+    expect(marked.find(t => t.vendor === "New Vendor").already_booked).toBe(false);
   });
-  it("multiset: two identical charges need two existing bookings to both be flagged", () => {
-    const dup = [{ date: "2026-02-01", description: "COFFEE", amount: -5, balance: 100 }, { date: "2026-02-01", description: "COFFEE", amount: -5, balance: 95 }];
-    const oneExisting = [{ id: "x", date: "2026-02-01", amount: 5, vendor: "COFFEE", secondary_gl_code: "1000", status: "booked" }];
-    const marked = markAlreadyBooked(dup, oneExisting, { offsetCode: "1000" });
-    expect(marked.filter(t => t.already_booked).length).toBe(1);   // only ONE matched
+
+  it("direction: a deposit is NOT deduped against an equal-amount, same-day withdrawal", () => {
+    const dep = { date: "2026-03-01", description: "DEPOSIT", vendor: "X", amount: 100, type: "revenue", gl_code: "4000" };
+    const wd = { date: "2026-03-01", description: "WITHDRAWAL", vendor: "Y", amount: -100, type: "expense", gl_code: "6600" };
+    const existing = bookAndFlatten([dep]);                            // only the deposit is booked
+    const marked = markAlreadyBooked([dep, wd], existing, { offsetCode: "1000" });
+    expect(marked.find(t => t.description === "DEPOSIT").already_booked).toBe(true);
+    expect(marked.find(t => t.description === "WITHDRAWAL").already_booked).toBe(false);   // different direction
   });
-  it("bankTxnKey is content-based (date + magnitude + normalized description)", () => {
-    expect(bankTxnKey({ date: "2026-01-03", amount: -100, description: "ACH  DEBIT  RENT" }))
-      .toBe(bankTxnKey({ date: "2026-01-03", amount: 100, description: "ach debit rent" }));
+
+  it("direction helpers agree on both sides", () => {
+    expect(bankLineDirection({ type: "revenue" })).toBe("in");
+    expect(bankLineDirection({ type: "expense" })).toBe("out");
+    expect(bankLineDirection({ amount: -5 })).toBe("out");
+    // flattened expense (Dr 6xxx / Cr 1000): cash on offset → out
+    expect(bookedLineDirection({ gl_code: "6700", secondary_gl_code: "1000", debit_credit: "debit" }, "1000")).toBe("out");
+    // flattened revenue (Dr 1000 / Cr 4000 → flatten primary = revenue credit): cash on offset debit → in
+    expect(bookedLineDirection({ gl_code: "4000", secondary_gl_code: "1000", debit_credit: "credit" }, "1000")).toBe("in");
   });
 });
 
