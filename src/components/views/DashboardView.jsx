@@ -318,7 +318,7 @@ export default function DashboardView() {
                 const steps = [
                   { key:"biz",     done: obHasBiz,     label:"Tell us about your business", hint:"Business type & fiscal year", go:()=>setBusinessModalOpen(true) },
                   { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Bank Accounts",   go:()=>goToSection("settings","bank-accounts-section") },
-                  { key:"opening", done: obHasOpening, label:"Set your opening balances",   hint:"Settings → Opening Balances", go:()=>goToSection("opening-balances","opening-balances-section") },
+                  { key:"opening", done: obHasOpening, label:"Confirm your opening balances",   hint:"We'll pull your starting cash from a bank statement — or set it in Settings", go:()=>goToSection("opening-balances","opening-balances-section") },
                   { key:"upload",  done: obHasUpload,  label:"Upload your first document",  hint:"Drag a doc onto the zone below", go:()=>document.getElementById("universal-upload")?.scrollIntoView({behavior:"smooth"}) },
                 ];
                 const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Optional", go:()=>{ setAccountantNotice(true); dismissAccountantStep(); }, optional:true };

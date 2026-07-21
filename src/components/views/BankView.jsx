@@ -1,12 +1,16 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate } from "../../lib/format";
+import { initials, vendorColor, fmtDate, fmtSignedMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { autoMatchBankLines, matchableOpenItems, planBankImport, bankLineFates, shouldRunApMatching } from "../../lib/bankMatch";
 
 export default function BankView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, rc, rn, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, rc, rn, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
+    pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy } = useERP();
+  // O83 opening-balance proposal — confirm/adjust the statement-derived starting balance.
+  const [obAdjust, setObAdjust] = React.useState(null);   // null = use proposed amount; else the adjusted value
+  const [obBusy, setObBusy] = React.useState(false);
   // Which account this statement belongs to — its GL is the offset for direct
   // bookings (Cr 1000 bank / Cr 2200 credit card). Defaults to the first account.
   const [importAccountId, setImportAccountId] = React.useState(null);
@@ -125,6 +129,66 @@ export default function BankView() {
                 <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Import Bank Transactions</h1>
                 <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Upload a CSV, Excel, or PDF bank statement — AI reads every transaction, auto-categorizes, and flags anything it's unsure about.</div>
               </div>
+
+              {/* O83 — STARTING-BALANCE PROPOSAL (derived from the statement; never silently booked).
+                   Plain language, confirm/adjust — the client never types a number the statement prints. */}
+              {pendingOpeningProposal && (() => {
+                const p = pendingOpeningProposal;
+                const amt = obAdjust != null ? obAdjust : p.openingBalance;
+                const copy = openingProposalCopy ? openingProposalCopy({ openingBalance: p.openingBalance, periodStart: p.periodStart, accountName: p.accountName }) : "";
+                return (
+                  <div style={{ border:"1px solid var(--sc-gold)", background:"var(--sc-gold-soft)", borderRadius:16, padding:"20px 22px", marginBottom:24 }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+                      <span style={{ fontSize:22, flexShrink:0 }}>🏦</span>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:15, fontWeight:700, color:"var(--sc-text)", marginBottom:4 }}>Starting balance from your statement</div>
+                        <div style={{ fontSize:13.5, color:"var(--sc-text)", lineHeight:1.5 }}>{copy}</div>
+                        {p.mismatch && (
+                          <div style={{ fontSize:12, color:"var(--sc-warning)", marginTop:8 }}>
+                            Heads up: the printed figure ({fmtSignedMoney(p.stated)}) and the running total ({fmtSignedMoney(p.derived)}) don't match — we used the printed one. Adjust if needed.
+                          </div>
+                        )}
+                        <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:14, flexWrap:"wrap" }}>
+                          <button disabled={obBusy} onClick={async()=>{ setObBusy(true); await confirmOpeningFromStatement(obAdjust != null ? { openingBalance: Number(obAdjust) } : {}); setObBusy(false); setObAdjust(null); }}
+                            style={{ background:"var(--sc-gold)", color:"var(--sc-on-accent)", border:"none", borderRadius:9, padding:"10px 20px", fontSize:14, fontWeight:600, cursor:obBusy?"wait":"pointer", opacity:obBusy?0.6:1 }}>
+                            {obBusy ? "Recording…" : `Yes, record ${fmtSignedMoney(amt)}`}
+                          </button>
+                          <label style={{ fontSize:12.5, color:"var(--sc-text-2)", display:"flex", alignItems:"center", gap:6 }}>
+                            Adjust
+                            <input type="number" step="0.01" defaultValue={p.openingBalance}
+                              onChange={e=>setObAdjust(e.target.value === "" ? null : e.target.value)}
+                              style={{ width:130, padding:"7px 10px", borderRadius:8, border:"1px solid var(--sc-border-2)", fontSize:13, fontFamily:"'DM Mono',monospace", background:"var(--sc-surface)", color:"var(--sc-text)" }} />
+                          </label>
+                          <button disabled={obBusy} onClick={()=>{ dismissOpeningProposal && dismissOpeningProposal(); setObAdjust(null); }}
+                            style={{ background:"transparent", color:"var(--sc-text-2)", border:"1px solid var(--sc-border-2)", borderRadius:9, padding:"10px 16px", fontSize:13, cursor:"pointer" }}>
+                            Not now
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* O83 — DISCREPANCY: an opening balance already exists and disagrees with this
+                   statement. We never auto-adjust; this is a "something's wrong" signal. */}
+              {openingDiscrepancyFlag && (
+                <div style={{ border:"1px solid var(--sc-warning)", background:"var(--sc-warning-soft)", borderRadius:16, padding:"18px 22px", marginBottom:24 }}>
+                  <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+                    <span style={{ fontSize:20, flexShrink:0 }}>⚠️</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:14.5, fontWeight:700, color:"var(--sc-text)", marginBottom:4 }}>This statement's starting balance doesn't match your books</div>
+                      <div style={{ fontSize:13, color:"var(--sc-text)", lineHeight:1.5 }}>
+                        Your {openingDiscrepancyFlag.accountName} shows {fmtSignedMoney(openingDiscrepancyFlag.recordedOpening)} on your books, but this statement starts with {fmtSignedMoney(openingDiscrepancyFlag.statedOpening)} — a difference of {fmtSignedMoney(Math.abs(openingDiscrepancyFlag.diff))}. We haven't changed anything; your accountant should take a look.
+                      </div>
+                      <button onClick={()=>dismissOpeningDiscrepancy && dismissOpeningDiscrepancy()}
+                        style={{ marginTop:12, background:"transparent", color:"var(--sc-text-2)", border:"1px solid var(--sc-border-2)", borderRadius:9, padding:"8px 14px", fontSize:12.5, cursor:"pointer" }}>
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Upload zone */}
               {!bankProcessing && bankTransactions.length === 0 && (

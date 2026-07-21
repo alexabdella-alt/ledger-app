@@ -21,6 +21,7 @@ import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesI
 import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod } from "./lib/signoff";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
+import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel } from "./lib/openingBalanceProposal";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
@@ -377,6 +378,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [bankStep, setBankStep] = useState(null);
   const [bankProgress, setBankProgress] = useState(0);
   const [bankFileName, setBankFileName] = useState("");
+  // O83 — the cash opening-balance PROPOSAL derived from an uploaded statement (never
+  // silently booked): { openingBalance, periodStart, accountCode, accountName, mismatch,
+  // stated, derived }. And a DISCREPANCY flag when an opening already exists and disagrees.
+  const [pendingOpeningProposal, setPendingOpeningProposal] = useState(null);
+  const [openingDiscrepancyFlag, setOpeningDiscrepancyFlag] = useState(null);
 
   // Reports state — reportType (P&L / Balance Sheet / Cash Flow / …) persists across refresh
   // so the chosen report sub-tab survives a reload (same pattern as booksFilter/reportRange).
@@ -809,6 +815,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setRules([]); setContacts([]); setCustomProjects([]);
     setContracts([]); setRecurring([]); setAuditLog([]); setDocLibrary([]);
     setBankTransactions([]); setUnknownDocs([]); setUploadQueue([]);
+    setPendingOpeningProposal(null); setOpeningDiscrepancyFlag(null);
     setMatchQueue([]); setMatchHistory([]); setPayrollImports([]);
     setReconSessions([]); setReconciliations([]); setOpeningBalances([]);
     setSentInvoices([]); setClarificationQueue([]);
@@ -1323,9 +1330,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   // Post (or re-post) opening balances. `gridBalancesByCode` = { code: natural balance }
   // for the user-entered accounts; bank-linked cash is overridden from bank balances.
-  const postOpeningBalances = async (gridBalancesByCode) => {
+  const postOpeningBalances = async (gridBalancesByCode, { asOf = null } = {}) => {
     if (!currentCompany?.id || !session?.user?.id) { showNotification("No active company", "error"); return false; }
-    const cutoff = cutoffDate;
+    // `asOf` (the statement-derived flow) overrides the company cutoff so the write isn't
+    // blocked by not-yet-persisted cutoff state; the manual grid passes none and uses cutoffDate.
+    const cutoff = asOf || cutoffDate;
     if (!cutoff) { showNotification("Set your cutoff (Day One) date first", "error"); return false; }
     // Footgun guard: live, non-opening transactions dated before the cutoff would
     // double-count retained earnings. Hard-block.
@@ -1415,6 +1424,28 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     showNotification(`Opening balances posted as of ${cutoff} ✓`);
     return true;
   };
+
+  // O83 — CONFIRM the statement-derived opening balance (client confirmed the proposal).
+  // Books it through the SAME canonical, verified-write path (postOpeningBalances →
+  // post_journal_entry, source 'opening_balance', + opening_balances rows). `override` lets
+  // the confirm UI adjust the amount. HARD double-booking guard: refuse if an opening already
+  // exists for the account (or any opening is posted). Sets the cutoff to the period start.
+  const confirmOpeningFromStatement = async (override = {}) => {
+    const p = { ...(pendingOpeningProposal || {}), ...override };
+    if (p.openingBalance == null || !p.accountCode || !p.periodStart) { showNotification("Nothing to confirm.", "error"); return false; }
+    const obRow = (openingBalances || []).find(b => String(b.account_code) === String(p.accountCode) && b.posted);
+    if (obRow || openingPosted) { showNotification("An opening balance is already recorded — not adding a second.", "error"); setPendingOpeningProposal(null); return false; }
+    // Set the company cutoff (Day One) to the statement period start if not already set.
+    if (!cutoffDate) { const okc = await saveCutoffDate(p.periodStart); if (!okc) return false; }
+    const ok = await postOpeningBalances({ [p.accountCode]: Number(p.openingBalance) }, { asOf: p.periodStart });
+    if (ok) {
+      logAudit("opening_balance_from_statement", `Confirmed opening balance ${fmtSignedMoney(p.openingBalance)} for ${p.accountName || p.accountCode} as of ${p.periodStart} (from bank statement)`, null, { accountCode: p.accountCode, periodStart: p.periodStart, amount: Number(p.openingBalance) });
+      setPendingOpeningProposal(null);
+    }
+    return ok;
+  };
+  const dismissOpeningProposal = () => setPendingOpeningProposal(null);
+  const dismissOpeningDiscrepancy = () => setOpeningDiscrepancyFlag(null);
 
   // ── CLIENT AI PROFILE (adaptive learning) ──────────────────────────────────
   // A per-company business profile the AI grows over time (table: client_ai_profile).
@@ -4035,7 +4066,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         fileContent = JSON.parse((d.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
       }
 
-      const rawTxns = Array.isArray(fileContent) ? fileContent : [];
+      // The parse profile returns the new object shape { opening_balance, period_start,
+      // transactions } OR (legacy) a bare transactions array — normalize both. The stated
+      // opening + period start feed the O83 opening-balance proposal below.
+      const parsed = fileContent;
+      const rawTxns = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.transactions) ? parsed.transactions : []);
+      const statedOpening = (parsed && !Array.isArray(parsed) && parsed.opening_balance != null) ? parsed.opening_balance : null;
+      const statedPeriodStart = (parsed && !Array.isArray(parsed) && parsed.period_start) ? parsed.period_start : null;
       setBankProgress(60);
 
       // Now batch-categorize all transactions with GL coding + vendor extraction
@@ -4070,8 +4107,39 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // (once as the clearing entry, once as a mis-coded bank_import entry). A short, string,
       // underscore-tagged id echoes back verbatim (never falsy id:0) and is the matching key.
       const idStamp = Date.now();
-      const withIds = withRules.map((t,i) => ({ ...t, id: `bank_${idStamp}_${i}`, checked: !t.needs_review }));
+      // O83 idempotent re-upload: mark lines already booked to THIS account (content dedup)
+      // so re-uploading a statement never double-books; already-booked lines default UNCHECKED.
+      const dedupOffset = (account && account.gl_code) || rc("cash");
+      const deduped = markAlreadyBooked(withRules, invoicesRef.current, { offsetCode: dedupOffset });
+      const withIds = deduped.map((t,i) => ({ ...t, id: `bank_${idStamp}_${i}`, checked: !t.needs_review && !t.already_booked }));
       setBankTransactions(withIds);
+      // O83 — derive the STATED (or running-balance-implied) opening balance and, when this
+      // account has none yet, PROPOSE it (never silently book). If an opening already exists
+      // and disagrees, raise a DISCREPANCY for the trust layer (never auto-adjust).
+      try {
+        const cashCode = (account && account.gl_code) || rc("cash");
+        const acctName = (account && account.name) || "checking";
+        const der = deriveStatementOpening({ transactions: rawTxns, statedOpening, statedPeriodStart });
+        if (der.ok) {
+          const obRow = (openingBalances || []).find(b => String(b.account_code) === String(cashCode) && b.posted);
+          const recorded = obRow ? Number(obRow.balance) : null;
+          const hasOpeningForAccount = recorded != null || openingPosted;
+          const live = (invoicesRef.current || []).filter(i => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && i.source !== "opening_balance");
+          const earliestBookedDate = live.reduce((min, i) => (min == null || String(i.date) < min ? String(i.date) : min), null);
+          if (!hasOpeningForAccount && shouldProposeOpening({ hasOpeningForAccount, earliestBookedDate, periodStart: der.periodStart })) {
+            setPendingOpeningProposal({ openingBalance: der.openingBalance, periodStart: der.periodStart, accountCode: cashCode, accountName: acctName, mismatch: der.mismatch, stated: der.stated, derived: der.derived });
+            setOpeningDiscrepancyFlag(null);
+          } else if (hasOpeningForAccount) {
+            const recordedForDisc = recorded != null ? recorded : glAccountBalance(cashCode, invoicesRef.current, { asOf: der.periodStart });
+            const disc = openingDiscrepancy({ statedOpening: der.openingBalance, recordedOpening: recordedForDisc });
+            if (disc.mismatch) {
+              setOpeningDiscrepancyFlag({ ...disc, periodStart: der.periodStart, accountCode: cashCode, accountName: acctName });
+              logAudit("opening_balance_discrepancy", `Statement opening ${fmtSignedMoney(disc.statedOpening)} disagrees with recorded ${fmtSignedMoney(disc.recordedOpening)} for ${acctName} (off by ${fmtSignedMoney(disc.diff)})`, null, { accountCode: cashCode, diff: disc.diff });
+              try { createNotification?.({ type: "reconciliation", title: "Opening balance doesn't match your statement", description: `Your books show a different starting balance than this statement for ${acctName}. Open Review to resolve.`, link_view: "review" }); } catch {}
+            }
+          }
+        }
+      } catch (e) { console.warn("[opening proposal] skipped:", e?.message || e); }
       setBankProgress(100);
       markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: `bank statement parsed — ${withIds.length} line(s) in Bank Import review` });   // terminal: accounted for
       showNotification(`${withRules.length} transactions imported — ${withRules.filter(t=>t.needs_review).length} need review`);
@@ -5521,7 +5589,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, logIntake, markIntake };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, logIntake, markIntake };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
