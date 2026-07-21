@@ -28,6 +28,18 @@ describe("isPlaceholderBank — the seeded 'Primary Checking' doesn't count", ()
     expect(isPlaceholderBank({ name: "Primary Checking", institution: "Chase" })).toBe(false);
     expect(isPlaceholderBank({ name: "Business Checking" })).toBe(false);
   });
+
+  // O83 Issue 2: adopting the seeded account by entering a BALANCE (the natural
+  // "set up my bank account" action) must clear the placeholder flag — a real
+  // account is no longer misclassified as the empty seed.
+  it("entering a balance on the seeded 'Primary Checking' makes it a real account", () => {
+    expect(isPlaceholderBank({ name: "Primary Checking", current_balance: 5000 })).toBe(false);
+    expect(isPlaceholderBank({ name: "Primary Checking", current_balance: "5000" })).toBe(false);   // Settings sends a string
+    // still a placeholder while pristine (default name, no details, no/zero balance)
+    expect(isPlaceholderBank({ name: "Primary Checking", current_balance: 0 })).toBe(true);
+    expect(isPlaceholderBank({ name: "Primary Checking", current_balance: "" })).toBe(true);
+    expect(isPlaceholderBank({ name: "Primary Checking" })).toBe(true);
+  });
 });
 
 describe("onboardingSteps — per-step completion + all-done roll-up", () => {
@@ -45,6 +57,10 @@ describe("onboardingSteps — per-step completion + all-done roll-up", () => {
     expect(onboardingSteps({ bankAccounts: [{ id: "default", name: "Primary Checking" }] }).obHasBank).toBe(false);
     expect(onboardingSteps({ bankAccounts: [{ id: "x", name: "Primary Checking" }] }).obHasBank).toBe(false); // placeholder shape
     expect(onboardingSteps({ bankAccounts: [{ id: "x", name: "Chase", institution: "Chase", last4: "9999" }] }).obHasBank).toBe(true);
+  });
+
+  it("bank step ticks when the user enters a balance on the seeded account (O83 Issue 2)", () => {
+    expect(onboardingSteps({ bankAccounts: [{ id: "x", name: "Primary Checking", current_balance: 12000 }] }).obHasBank).toBe(true);
   });
 
   it("opening step is durable: opening_balances rows OR an opening_balance journal entry", () => {
