@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   deriveStatementOpening, shouldProposeOpening, openingDiscrepancy,
   markAlreadyBooked, bankTxnKey, bankLineDirection, bookedLineDirection,
-  openingProposalCopy, periodMonthLabel,
+  openingProposalCopy, periodMonthLabel, resolveAdoptedBalance,
 } from "../src/lib/openingBalanceProposal.js";
+import { isPlaceholderBank, onboardingSteps } from "../src/lib/onboarding.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
 import { buildBankLineEntry } from "../src/lib/bankMatch.js";
 import { flattenJournalEntries } from "../src/lib/ledger.js";
@@ -56,6 +57,55 @@ describe("deriveStatementOpening — stated + derived, cross-checked", () => {
 
   it("returns not-ok when there's nothing to derive from", () => {
     expect(deriveStatementOpening({ transactions: [] }).ok).toBe(false);
+  });
+
+  it("returns the statement ENDING balance (last running balance)", () => {
+    expect(deriveStatementOpening(JAN).endingBalance).toBe(15657.60);   // last txn's running balance
+  });
+  it("derives the ending from opening + net when there's no running-balance column", () => {
+    const noRunning = { statedOpening: 1000, statedPeriodStart: "2026-01-01",
+      transactions: [{ date: "2026-01-05", amount: -100 }, { date: "2026-01-10", amount: 250 }] };
+    expect(deriveStatementOpening(noRunning).endingBalance).toBe(1150);   // 1000 − 100 + 250
+  });
+});
+
+// ── O83 checklist residual: confirming an opening ADOPTS the account (current_balance = ending) ──
+describe("resolveAdoptedBalance — statement ending balance marks the account adopted", () => {
+  it("SET: a seeded $0 account adopts the statement ending balance", () => {
+    expect(resolveAdoptedBalance({ existingBalance: 0, endingBalance: 15657.60 })).toEqual({ action: "set", value: 15657.60 });
+    expect(resolveAdoptedBalance({ existingBalance: "", endingBalance: 15657.60 }).action).toBe("set");
+  });
+  it("KEEP: a user balance that already matches the ending → no-op", () => {
+    expect(resolveAdoptedBalance({ existingBalance: 15657.60, endingBalance: 15657.60 }).action).toBe("keep");
+  });
+  it("MISMATCH: a DIFFERENT user-typed balance is left untouched, difference surfaced", () => {
+    const d = resolveAdoptedBalance({ existingBalance: 9000, endingBalance: 15657.60 });
+    expect(d.action).toBe("mismatch");
+    expect(d.value).toBe(9000);          // kept
+    expect(d.ending).toBe(15657.60);
+    expect(d.diff).toBe(-6657.60);
+  });
+  it("NONE: no usable ending balance → no change", () => {
+    expect(resolveAdoptedBalance({ existingBalance: 0, endingBalance: null }).action).toBe("none");
+  });
+});
+
+describe("checklist effect: adopted account clears the placeholder + ticks obHasBank", () => {
+  const seeded = { id: "acc1", name: "Primary Checking", institution: "", last4: "", current_balance: 0 };
+  it("CONFIRM → current_balance = statement ending → not a placeholder → obHasBank true", () => {
+    const decision = resolveAdoptedBalance({ existingBalance: seeded.current_balance, endingBalance: 15657.60 });
+    const adopted = { ...seeded, current_balance: decision.value };   // what confirm writes
+    expect(isPlaceholderBank(adopted)).toBe(false);
+    expect(onboardingSteps({ bankAccounts: [adopted] }).obHasBank).toBe(true);
+  });
+  it("NOT NOW → account untouched ($0) → still a placeholder → obHasBank false", () => {
+    expect(isPlaceholderBank(seeded)).toBe(true);
+    expect(onboardingSteps({ bankAccounts: [seeded] }).obHasBank).toBe(false);
+  });
+  it("pre-existing non-zero balance → untouched (kept), account already real", () => {
+    const typed = { ...seeded, current_balance: 9000 };
+    expect(resolveAdoptedBalance({ existingBalance: typed.current_balance, endingBalance: 15657.60 }).action).toBe("mismatch");
+    expect(onboardingSteps({ bankAccounts: [typed] }).obHasBank).toBe(true);   // non-zero → already non-placeholder
   });
 });
 

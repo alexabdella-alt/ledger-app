@@ -32,8 +32,10 @@ export function periodMonthLabel(ymd, { withYear = true } = {}) {
 //   • DERIVED  — the first transaction's running balance MINUS that transaction's signed
 //                amount (balance_before = balance_after − amount).
 // When BOTH exist they're cross-checked: a disagreement beyond tolerance sets `mismatch`
-// (we surface the stated figure but flag it — we never silently guess). Returns
-// { ok, openingBalance, periodStart, stated, derived, mismatch, source }.
+// (we surface the stated figure but flag it — we never silently guess). Also returns the
+// statement ENDING balance (last running balance, else opening + net) — the reconciliation
+// target for the period, written to the account's current_balance on confirm (O83). Returns
+// { ok, openingBalance, endingBalance, periodStart, stated, derived, mismatch, source }.
 export function deriveStatementOpening({ transactions = [], statedOpening = null, statedPeriodStart = null, tolerance = 0.02 } = {}) {
   const txns = (transactions || [])
     .filter((t) => t && t.date)
@@ -54,8 +56,16 @@ export function deriveStatementOpening({ transactions = [], statedOpening = null
     mismatch = Math.abs(stated - derived) > tolerance;
     openingBalance = stated; // prefer the printed figure; `mismatch` flags disagreement
   }
+  // Statement ENDING balance = the last row's running balance; else opening + net change.
+  const last = txns[txns.length - 1] || null;
+  let endingBalance = null;
+  if (last && isNum(last.balance)) endingBalance = r2(Number(last.balance));
+  else if (openingBalance != null) {
+    const net = txns.reduce((s, t) => s + (isNum(t.amount) ? Number(t.amount) : 0), 0);
+    endingBalance = r2(openingBalance + net);
+  }
   const source = stated != null && derived != null ? "both" : stated != null ? "stated" : derived != null ? "derived" : "none";
-  return { ok: openingBalance != null && !!periodStart, openingBalance, periodStart, stated, derived, mismatch, source };
+  return { ok: openingBalance != null && !!periodStart, openingBalance, endingBalance, periodStart, stated, derived, mismatch, source };
 }
 
 // Should we PROPOSE an opening balance for this account? Only when:
@@ -67,6 +77,23 @@ export function shouldProposeOpening({ hasOpeningForAccount = false, earliestBoo
   if (!periodStart) return false;
   if (earliestBookedDate && String(earliestBookedDate) < String(periodStart)) return false;
   return true;
+}
+
+// On confirming a statement opening for an account, decide how its current_balance (the
+// reconciliation target, CLAUDE.md §12) should move — writing the statement ENDING balance
+// marks the seeded account as adopted so the checklist ticks. Guards:
+//   • "set"      — current balance is 0/blank (the pristine seed) → adopt the ending balance.
+//   • "keep"     — user already typed a balance that matches the ending → no-op.
+//   • "mismatch" — user typed a DIFFERENT non-zero balance → LEAVE it (a reconciliation
+//                  question, never a silent auto-adjust); carries the diff to surface.
+//   • "none"     — no usable ending balance.
+export function resolveAdoptedBalance({ existingBalance = 0, endingBalance = null } = {}, { tolerance = 0.02 } = {}) {
+  if (!isNum(endingBalance)) return { action: "none", value: Number(existingBalance) || 0 };
+  const existing = Number(existingBalance) || 0;
+  const ending = r2(endingBalance);
+  if (existing === 0) return { action: "set", value: ending };
+  if (Math.abs(existing - ending) > tolerance) return { action: "mismatch", value: existing, ending, diff: r2(existing - ending) };
+  return { action: "keep", value: existing };
 }
 
 // A DISCREPANCY: an opening already exists and the statement disagrees with it. We never

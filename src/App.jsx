@@ -21,7 +21,7 @@ import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesI
 import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod } from "./lib/signoff";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
-import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel } from "./lib/openingBalanceProposal";
+import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance } from "./lib/openingBalanceProposal";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
@@ -1440,6 +1440,27 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const ok = await postOpeningBalances({ [p.accountCode]: Number(p.openingBalance) }, { asOf: p.periodStart });
     if (ok) {
       logAudit("opening_balance_from_statement", `Confirmed opening balance ${fmtSignedMoney(p.openingBalance)} for ${p.accountName || p.accountCode} as of ${p.periodStart} (from bank statement)`, null, { accountCode: p.accountCode, periodStart: p.periodStart, amount: Number(p.openingBalance) });
+      // O83 — mark the account ADOPTED: write the statement's ENDING balance to the matched
+      // account's current_balance (the period's reconciliation target, CLAUDE.md §12). This
+      // clears the pristine-seed classification (isPlaceholderBank) so the "Add your bank
+      // account" checklist step ticks. Guards: only the MATCHED account; NEVER overwrite a
+      // non-zero balance the user already typed (a mismatch there is a discrepancy to review).
+      const acct = (bankAccounts || []).find(b => (p.accountId && String(b.id) === String(p.accountId)) || String(b.gl_code) === String(p.accountCode));
+      if (acct) {
+        const decision = resolveAdoptedBalance({ existingBalance: acct.current_balance, endingBalance: p.endingBalance });
+        if (decision.action === "set") {
+          try {
+            await supabase.from("bank_accounts").update({ current_balance: decision.value }).eq("id", acct.id).eq("company_id", currentCompany.id);
+            setBankAccounts(prev => prev.map(b => b.id === acct.id ? { ...b, current_balance: decision.value } : b));
+            logAudit("bank_balance_from_statement", `Set ${acct.name || p.accountName} balance to ${fmtSignedMoney(decision.value)} (statement ending balance) on opening confirm`, null, { accountId: acct.id, balance: decision.value });
+          } catch (e) { console.warn("[bank_accounts] current_balance update failed:", e?.message || e); }
+        } else if (decision.action === "mismatch") {
+          // User already typed a DIFFERENT non-zero balance → LEAVE it; surface the difference
+          // (a reconciliation question), never a silent auto-adjust.
+          logAudit("bank_balance_statement_mismatch", `Kept existing ${acct.name || p.accountName} balance ${fmtSignedMoney(decision.value)}; statement ending is ${fmtSignedMoney(decision.ending)} (off by ${fmtSignedMoney(decision.diff)}) — not overwritten`, null, { accountId: acct.id, existing: decision.value, ending: decision.ending });
+          showNotification(`Kept your ${acct.name || "account"} balance (${fmtSignedMoney(decision.value)}); the statement ends at ${fmtSignedMoney(decision.ending)} — worth a look.`, "info");
+        }
+      }
       setPendingOpeningProposal(null);
     }
     return ok;
@@ -4127,7 +4148,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const live = (invoicesRef.current || []).filter(i => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && i.source !== "opening_balance");
           const earliestBookedDate = live.reduce((min, i) => (min == null || String(i.date) < min ? String(i.date) : min), null);
           if (!hasOpeningForAccount && shouldProposeOpening({ hasOpeningForAccount, earliestBookedDate, periodStart: der.periodStart })) {
-            setPendingOpeningProposal({ openingBalance: der.openingBalance, periodStart: der.periodStart, accountCode: cashCode, accountName: acctName, mismatch: der.mismatch, stated: der.stated, derived: der.derived });
+            setPendingOpeningProposal({ openingBalance: der.openingBalance, endingBalance: der.endingBalance, periodStart: der.periodStart, accountCode: cashCode, accountId: (account && account.id) || null, accountName: acctName, mismatch: der.mismatch, stated: der.stated, derived: der.derived });
             setOpeningDiscrepancyFlag(null);
           } else if (hasOpeningForAccount) {
             const recordedForDisc = recorded != null ? recorded : glAccountBalance(cashCode, invoicesRef.current, { asOf: der.periodStart });
