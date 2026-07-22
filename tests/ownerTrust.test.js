@@ -194,12 +194,21 @@ describe("(2) penny-guarantee — never diverges from the CPA sign-off gate", ()
 
 describe("(2b) bank-match is the SAME source as the dashboard alert — the two can't contradict", () => {
   const withBooks = [{ id: "je1", status: "posted" }];
-  const recentRecon = [{ status: "complete", completed_at: "2026-06-10T00:00:00" }];   // 5 days before NOW
-  const staleRecon = [{ status: "complete", completed_at: "2026-04-01T00:00:00" }];     // >35 days
+  // A real reconciliation carries a VERIFIED bank ending balance (non-zero or confirmed-$0).
+  const recentRecon = [{ status: "complete", completed_at: "2026-06-10T00:00:00", statement_balance: 5000 }];   // 5 days before NOW
+  const staleRecon = [{ status: "complete", completed_at: "2026-04-01T00:00:00", statement_balance: 5000 }];     // >35 days
 
   it("bankMatchStatus: never-reconciled with real books → overdue (the blind spot)", () => {
     const st = bankMatchStatus({ reconciliations: [], invoices: withBooks, now: NOW });
     expect(st).toMatchObject({ overdue: true, days: null, everReconciled: false });
+  });
+  it("bankMatchStatus: a $0 UNVERIFIED 'complete' phantom does NOT count as matched (O83)", () => {
+    const phantom = [{ status: "complete", completed_at: "2026-06-10T00:00:00", statement_balance: 0 }];
+    const st = bankMatchStatus({ reconciliations: phantom, invoices: withBooks, now: NOW });
+    expect(st).toMatchObject({ overdue: true, everReconciled: false });   // phantom ignored → reads not-matched
+    // but a VERIFIED $0 (confirmed empty/closed account) DOES count
+    const verifiedZero = [{ status: "complete", completed_at: "2026-06-10T00:00:00", statement_balance: 0, statement_balance_verified: true }];
+    expect(bankMatchStatus({ reconciliations: verifiedZero, invoices: withBooks, now: NOW }).overdue).toBe(false);
   });
   it("bankMatchStatus: recent completed reconciliation → NOT overdue", () => {
     expect(bankMatchStatus({ reconciliations: recentRecon, invoices: withBooks, now: NOW }).overdue).toBe(false);

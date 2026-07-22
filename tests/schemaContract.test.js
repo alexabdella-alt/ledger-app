@@ -56,6 +56,7 @@ const SCHEMA = {
     period_start:                { type: "date" },
     period_end:                  { type: "date" },
     statement_balance:           { type: "numeric" },
+    statement_balance_verified:  { type: "boolean", hasDefault: true },   // migration 055
     books_balance:               { type: "numeric" },
     difference:                  { type: "numeric" },
     matched_transactions:        { type: "jsonb", hasDefault: true },
@@ -184,6 +185,7 @@ describe("reconciliations — denormalized record write + read-back, completed_b
     company_id: CO, account_id: randomUUID(), account_name: "Checking ••1234",
     period_start: "2026-05-01", period_end: "2026-05-31",
     statement_balance: 5000, books_balance: 4800, difference: 200,
+    statement_balance_verified: true,
     status: "complete",
     matched_transactions: [{ bank: { id: "t1" }, bookId: "b1", conf: 0.9 }],
     unmatched_bank: [{ id: "t2", amount: 50 }], unmatched_books: ["b3"],

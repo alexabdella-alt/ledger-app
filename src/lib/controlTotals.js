@@ -105,9 +105,10 @@ export function computeControlTotals({
     checks.push(check("sales_tax_tie", "Sales tax set aside", taxCharged, "tax charged on invoices", taxGl, "sales tax owed (liability)"));
   }
 
-  // 5. Cash cleared === bank-reconciled cleared total (for each completed reconciliation).
+  // 5. Cash cleared === bank-reconciled cleared total (for each REAL, verified reconciliation
+  //    — a $0-unverified phantom must not feed a vacuous 0===0 tie into the trust layer).
   for (const rec of reconciliations || []) {
-    if (!rec || rec.status !== "complete") continue;
+    if (!isVerifiedReconciliation(rec)) continue;
     const books = Number(rec.books_balance) || 0;
     const stmt = Number(rec.statement_balance) || 0;
     const label = `Bank match — ${rec.account_name || "account"}${rec.period_end ? ` (through ${rec.period_end})` : ""}`;
@@ -161,8 +162,19 @@ export function evaluateSignOff({ controlTotals = { failed: [], allTie: true }, 
 // never contradict. "Matched" = a completed reconciliation exists AND is recent (≤ staleDays);
 // never-reconciled (days === null) or stale counts as NOT matched. Only relevant once there are
 // real books (a non-voided entry), so a brand-new empty company isn't nagged.
+// A REAL, human-completed reconciliation with a VERIFIED bank ending balance — the ONE
+// predicate every "is this period actually reconciled?" surface shares (the sign-off gate,
+// bank-match freshness, and the cash-recon control) so a phantom can't feed any of them.
+// Verified = status 'complete' AND (a non-zero statement balance OR an explicitly-confirmed
+// $0, `statement_balance_verified`). Excludes 'open' (in-progress), 'import_snapshot' (the
+// upload auto-record), and unverified-$0 mis-completes (O83).
+export function isVerifiedReconciliation(rec) {
+  if (!rec || String(rec.status) !== "complete") return false;
+  return Math.abs(Number(rec.statement_balance) || 0) > 0 || rec.statement_balance_verified === true;
+}
+
 export function bankMatchStatus({ reconciliations = [], invoices = [], now = new Date(), staleDays = 35 } = {}) {
-  const completed = (reconciliations || []).filter((r) => r && r.status === "complete");
+  const completed = (reconciliations || []).filter(isVerifiedReconciliation);
   let lastCompletedAt = null;
   for (const r of completed) {
     const t = r.completed_at;
@@ -215,10 +227,7 @@ export function reconciliationCoversPeriod(reconciliations = [], period = "") {
   const p = String(period || "");
   if (!/^\d{4}-\d{2}$/.test(p)) return false;
   return (reconciliations || []).some((r) => {
-    if (!r) return false;
-    if (String(r.status) !== "complete") return false;             // real completion only
-    const verifiedBalance = Math.abs(Number(r.statement_balance) || 0) > 0 || r.statement_balance_verified === true;
-    if (!verifiedBalance) return false;                            // unverified-$0 phantom → doesn't count
+    if (!isVerifiedReconciliation(r)) return false;                // real completion + verified balance only
     const s = String(r.period_start || "").slice(0, 7);
     const e = String(r.period_end || "").slice(0, 7);
     if (!s && !e) return false;

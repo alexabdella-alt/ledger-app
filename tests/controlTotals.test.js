@@ -99,6 +99,16 @@ describe("AR / AP / docs-recorded / cash-recon control totals", () => {
     expect(c.ties).toBe(false);
     expect(Math.abs(c.diff)).toBe(0.75);
   });
+  it("cash-recon does NOT emit a (vacuous 0===0) check for a $0 UNVERIFIED phantom (O83)", () => {
+    const phantom = [{ id: "p1", status: "complete", account_name: "Checking", period_end: "2026-05-31", books_balance: 0, statement_balance: 0 }];
+    const c = findCheck(computeControlTotals({ invoices: [], reconciliations: phantom, codes: CODES }), "cash_recon");
+    expect(c).toBeUndefined();   // phantom excluded → no cash_recon check at all
+    // an import_snapshot is likewise ignored
+    expect(findCheck(computeControlTotals({ invoices: [], reconciliations: [{ ...phantom[0], status: "import_snapshot" }], codes: CODES }), "cash_recon")).toBeUndefined();
+    // a VERIFIED $0 (confirmed empty/closed) DOES produce a check (and ties 0===0 legitimately)
+    const verified = [{ ...phantom[0], statement_balance_verified: true }];
+    expect(findCheck(computeControlTotals({ invoices: [], reconciliations: verified, codes: CODES }), "cash_recon")).toBeDefined();
+  });
 });
 
 describe("(b)/(c) sign-off gate — clear when all nets clear, BLOCKED otherwise", () => {
