@@ -21,9 +21,9 @@ import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesI
 import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod } from "./lib/signoff";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
-import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance } from "./lib/openingBalanceProposal";
+import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse } from "./lib/openingBalanceProposal";
 import { buildPaymentEntry } from "./lib/payments";
-import { planBankImport, isArMatch, buildBankLineEntry, reconRecordStatus, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
+import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
@@ -3835,7 +3835,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             period_start: txnDates[0] || todayLocal(),
             period_end: txnDates[txnDates.length-1] || todayLocal(),
             statement_balance: 0, books_balance: 0, difference: 0,
-            status: reconRecordStatus(plan.review.length),   // CHECK allows only open|complete ("needs_review" violated it; review count lives in bankResult.needsReview)
+            // O83: this is an IMPORT-TIME auto-match snapshot, NOT a human reconciliation — it
+            // never verified a real bank ending balance (statement_balance: 0). Mark it
+            // 'import_snapshot' (migration 054) so it does NOT count as a completed reconciliation:
+            // reconciliationCoversPeriod, bankMatchStatus, and the cash-recon control all gate on
+            // status='complete', so merely uploading a statement can no longer satisfy them.
+            status: "import_snapshot",   // was reconRecordStatus(...) — review count lives in bankResult.needsReview
             matched_transactions: autoCleared.map(m => ({ bank_txn: m.bank_txn, invoice_ids: m.invoice_ids, confidence: m.confidence })),
             unmatched_bank: newInvoices.map(i => ({ vendor: i.vendor, amount: i.amount, date: i.date, gl_name: i.gl_name })),
             completed_at: new Date().toISOString(), completed_by: session?.user?.id || null,  // uuid column, not email
@@ -4087,13 +4092,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         fileContent = JSON.parse((d.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
       }
 
-      // The parse profile returns the new object shape { opening_balance, period_start,
-      // transactions } OR (legacy) a bare transactions array — normalize both. The stated
-      // opening + period start feed the O83 opening-balance proposal below.
-      const parsed = fileContent;
-      const rawTxns = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.transactions) ? parsed.transactions : []);
-      const statedOpening = (parsed && !Array.isArray(parsed) && parsed.opening_balance != null) ? parsed.opening_balance : null;
-      const statedPeriodStart = (parsed && !Array.isArray(parsed) && parsed.period_start) ? parsed.period_start : null;
+      // The parse profile returns the object shape { opening_balance, period_start,
+      // transactions } OR (legacy) a bare transactions array — the SHARED normalizer handles
+      // both (same one the Reconcile flow uses). Stated opening + period start feed the O83
+      // opening-balance proposal below.
+      const { transactions: rawTxns, statedOpening, statedPeriodStart } = normalizeBankParse(fileContent);
       setBankProgress(60);
 
       // Now batch-categorize all transactions with GL coding + vendor extraction

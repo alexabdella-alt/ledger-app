@@ -203,13 +203,20 @@ export function bookedEntriesInPeriod(invoices = [], period = "") {
   return (invoices || []).filter((i) => isLiveEntry(i) && String(i.date || "").slice(0, 7) === p).length;
 }
 
-// Does any reconciliation record cover the sign-off period (its [period_start, period_end]
-// span overlaps the YYYY-MM month)? Pure. Absent bounds → doesn't count.
+// Does a REAL, human-completed reconciliation cover the sign-off period? (O83) A record
+// counts ONLY when it is (a) status 'complete' — excludes 'open'/'in_progress' and the
+// import-time 'import_snapshot' auto-record; AND (b) has a real, verified statement balance
+// (a non-zero bank ending balance the reviewer entered) — excludes the vacuous
+// `statement_balance: 0` phantoms auto-created at import (and any zero-balance mis-complete).
+// Merely uploading a statement must NOT satisfy the "period reconciled" precondition. Pure;
+// the [period_start, period_end] span must bracket the YYYY-MM month.
 export function reconciliationCoversPeriod(reconciliations = [], period = "") {
   const p = String(period || "");
   if (!/^\d{4}-\d{2}$/.test(p)) return false;
   return (reconciliations || []).some((r) => {
     if (!r) return false;
+    if (String(r.status) !== "complete") return false;             // real completion only
+    if (!(Math.abs(Number(r.statement_balance) || 0) > 0)) return false;   // real, verified bank balance
     const s = String(r.period_start || "").slice(0, 7);
     const e = String(r.period_end || "").slice(0, 7);
     if (!s && !e) return false;

@@ -27,6 +27,24 @@ export function periodMonthLabel(ymd, { withYear = true } = {}) {
   return withYear ? `${name} ${m[1]}` : name;
 }
 
+// Normalize a bank-statement PARSE RESPONSE into a stable shape, tolerant of BOTH the
+// object form `{ opening_balance, period_start, transactions[] }` (current parse-bank-*
+// profiles, since 165b075) AND a bare transactions array (legacy / pre-165b075). ONE
+// normalizer so every consumer — Bank Import AND Reconcile (and any future one) — reads
+// the parse the same way and can't go stale on the shape again (the O83 reconcile-PDF
+// regression: ReconView still did `Array.isArray(arr) ? arr : []` and rejected the object).
+export function normalizeBankParse(parsed) {
+  if (Array.isArray(parsed)) return { transactions: parsed, statedOpening: null, statedPeriodStart: null };
+  if (parsed && typeof parsed === "object") {
+    return {
+      transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
+      statedOpening: parsed.opening_balance != null ? parsed.opening_balance : null,
+      statedPeriodStart: parsed.period_start || null,
+    };
+  }
+  return { transactions: [], statedOpening: null, statedPeriodStart: null };
+}
+
 // Derive the statement's opening balance + period start from parsed data.
 //   • STATED   — the summary figure the statement prints (statedOpening/statedPeriodStart).
 //   • DERIVED  — the first transaction's running balance MINUS that transaction's signed

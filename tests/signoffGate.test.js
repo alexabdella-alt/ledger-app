@@ -114,12 +114,21 @@ describe("period helpers", () => {
     expect(bookedEntriesInPeriod(inv, "2026-06")).toBe(1);
     expect(bookedEntriesInPeriod(inv, "bad")).toBe(0);
   });
-  it("reconciliationCoversPeriod: a recon span brackets the month", () => {
-    const recs = [{ period_start: "2026-07-01", period_end: "2026-07-31" }];
-    expect(reconciliationCoversPeriod(recs, "2026-07")).toBe(true);
-    expect(reconciliationCoversPeriod(recs, "2026-08")).toBe(false);
-    expect(reconciliationCoversPeriod([{ period_start: "2026-06-01", period_end: "2026-08-31" }], "2026-07")).toBe(true);
+  it("reconciliationCoversPeriod: only a REAL completed reconciliation (status + verified balance) counts", () => {
+    const real = { period_start: "2026-07-01", period_end: "2026-07-31", status: "complete", statement_balance: 15657.60 };
+    expect(reconciliationCoversPeriod([real], "2026-07")).toBe(true);
+    expect(reconciliationCoversPeriod([real], "2026-08")).toBe(false);
+    expect(reconciliationCoversPeriod([{ ...real, period_start: "2026-06-01", period_end: "2026-08-31" }], "2026-07")).toBe(true);
     expect(reconciliationCoversPeriod([], "2026-07")).toBe(false);
+  });
+  it("reconciliationCoversPeriod: O83 phantoms do NOT satisfy the gate", () => {
+    const span = { period_start: "2026-07-01", period_end: "2026-07-31" };
+    // import-time auto-snapshot (statement_balance 0, marked import_snapshot)
+    expect(reconciliationCoversPeriod([{ ...span, status: "import_snapshot", statement_balance: 0 }], "2026-07")).toBe(false);
+    // a $0 "complete" (never verified a real bank balance) — the Franklin phantom shape
+    expect(reconciliationCoversPeriod([{ ...span, status: "complete", statement_balance: 0 }], "2026-07")).toBe(false);
+    // still open / in progress
+    expect(reconciliationCoversPeriod([{ ...span, status: "open", statement_balance: 15657.60 }], "2026-07")).toBe(false);
   });
 });
 

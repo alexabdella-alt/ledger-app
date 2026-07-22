@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   deriveStatementOpening, shouldProposeOpening, openingDiscrepancy,
   markAlreadyBooked, bankTxnKey, bankLineDirection, bookedLineDirection,
-  openingProposalCopy, periodMonthLabel, resolveAdoptedBalance,
+  openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse,
 } from "../src/lib/openingBalanceProposal.js";
 import { isPlaceholderBank, onboardingSteps } from "../src/lib/onboarding.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
@@ -210,6 +210,27 @@ describe("markAlreadyBooked — INTEGRATION against the real booking path (O83 d
     expect(bookedLineDirection({ gl_code: "6700", secondary_gl_code: "1000", debit_credit: "debit" }, "1000")).toBe("out");
     // flattened revenue (Dr 1000 / Cr 4000 → flatten primary = revenue credit): cash on offset debit → in
     expect(bookedLineDirection({ gl_code: "4000", secondary_gl_code: "1000", debit_credit: "credit" }, "1000")).toBe("in");
+  });
+});
+
+// ── O83 BUG 1: shared parse normalizer (Bank Import + Reconcile can't go stale) ──
+describe("normalizeBankParse — tolerates object AND legacy-array parse shapes", () => {
+  it("NEW object shape { opening_balance, period_start, transactions[] }", () => {
+    const r = normalizeBankParse({ opening_balance: 12483.27, period_start: "2026-01-01", transactions: [{ date: "2026-01-02", amount: 10 }] });
+    expect(r.transactions).toHaveLength(1);
+    expect(r.statedOpening).toBe(12483.27);
+    expect(r.statedPeriodStart).toBe("2026-01-01");
+  });
+  it("LEGACY bare array → transactions, no stated fields", () => {
+    const r = normalizeBankParse([{ date: "2026-01-02", amount: 10 }]);
+    expect(r.transactions).toHaveLength(1);
+    expect(r.statedOpening).toBeNull();
+    expect(r.statedPeriodStart).toBeNull();
+  });
+  it("object without transactions[] → empty (the regression: was rejected as non-array)", () => {
+    expect(normalizeBankParse({ opening_balance: 100 }).transactions).toEqual([]);
+    expect(normalizeBankParse(null).transactions).toEqual([]);
+    expect(normalizeBankParse("garbage").transactions).toEqual([]);
   });
 });
 
