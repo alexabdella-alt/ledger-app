@@ -106,6 +106,13 @@ export function bookedLineDirection(inv = {}, offsetCode = null) {
 // re-categorized run-to-run — so ANY text/GL-based key is asymmetric and never collides
 // (the O83 production double-book: markAlreadyBooked matched 0 of 20). Direction keeps a
 // deposit from deduping against an equal-amount withdrawal on the same day.
+//
+// KNOWN TRADE-OFF: two GENUINELY DISTINCT transactions with the same date + amount +
+// direction on the same account collide on this key. Failure mode is bounded and safe:
+// a real new line can arrive FLAGGED already-booked (defaulted UNCHECKED in the review —
+// visible and one click to re-check), never a silent double-post. Chosen deliberately as
+// safer than the text-based key that double-booked in production. (Multiset counting means
+// N genuine same-key lines still surface N times across upload + re-upload.)
 export function bankTxnKey({ date, amount, direction } = {}) {
   const d = String(date || "").slice(0, 10);
   const amt = r2(Math.abs(Number(amount) || 0));
