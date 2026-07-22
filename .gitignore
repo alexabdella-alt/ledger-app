@@ -9,3 +9,13 @@ dist/
 
 # Supabase CLI local state
 supabase/.temp/
+
+# One-time verification / diff bundles — transferred out-of-band, never commit
+*-verification-*.zip
+*-verification-*/
+*-diff.zip
+*-diff-bundle*.zip
+
+# Full-source snapshot is redundant inside its own repo (git history IS the snapshot).
+# Rebuild on demand with `git archive` if a full-snapshot upload is ever needed.
+shadow-code.zip
