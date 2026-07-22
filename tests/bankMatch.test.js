@@ -1,6 +1,50 @@
 import { describe, it, expect } from "vitest";
-import { planBankImport, isArMatch, buildBankLineEntry, classifyBankReason, reconRecordStatus, RECON_STATUSES, allClearingsPosted, shouldRunApMatching } from "../src/lib/bankMatch.js";
+import { planBankImport, isArMatch, buildBankLineEntry, classifyBankReason, reconRecordStatus, RECON_STATUSES, allClearingsPosted, shouldRunApMatching, bankReviewBuckets } from "../src/lib/bankMatch.js";
 import { glAccountBalance } from "../src/lib/reports.js";
+
+// ── O83 Item 2: Bank Import review buckets (already-booked lines are read-only, not "new") ──
+describe("bankReviewBuckets — partition parsed lines by booking state", () => {
+  it("a fully-already-booked re-upload → every line already-booked, ZERO checkable, 0 new", () => {
+    const lines = [
+      { id: "a", already_booked: true, needs_review: false },
+      { id: "b", already_booked: true, needs_review: true },   // stale low-confidence flag from the ORIGINAL booking
+      { id: "c", already_booked: true, needs_review: false },
+    ];
+    const r = bankReviewBuckets(lines);
+    expect(r.alreadyBookedCount).toBe(3);
+    expect(r.newCount).toBe(0);            // summary tile "New to add" = 0
+    expect(r.checkable).toEqual([]);       // nothing selectable/bookable
+    expect(r.needsReview).toEqual([]);     // already-booked never re-raised as "needs review"
+    expect(r.newToBook).toEqual([]);
+    expect(r.total).toBe(3);
+  });
+
+  it("mixed statement → only NON-already-booked lines are checkable/countable", () => {
+    const lines = [
+      { id: "a", already_booked: true, needs_review: true },    // already booked (was low-confidence) → read-only
+      { id: "b", already_booked: false, needs_review: false },  // new, auto-categorized
+      { id: "c", already_booked: false, needs_review: true },   // new, needs review
+      { id: "d", already_booked: false, needs_review: false },  // new, auto-categorized
+    ];
+    const r = bankReviewBuckets(lines);
+    expect(r.alreadyBookedCount).toBe(1);
+    expect(r.newCount).toBe(3);
+    expect(r.checkable.map(t => t.id)).toEqual(["b", "c", "d"]);   // the ONLY selectable set
+    expect(r.newToBook.map(t => t.id)).toEqual(["b", "d"]);        // auto-categorized new lines
+    expect(r.needsReview.map(t => t.id)).toEqual(["c"]);           // 'a' excluded despite needs_review
+  });
+
+  it("all-new statement → nothing already-booked", () => {
+    const r = bankReviewBuckets([{ id: "a", needs_review: false }, { id: "b", needs_review: true }]);
+    expect(r.alreadyBookedCount).toBe(0);
+    expect(r.newCount).toBe(2);
+    expect(r.checkable).toHaveLength(2);
+  });
+  it("empty / garbage input is safe", () => {
+    expect(bankReviewBuckets([]).total).toBe(0);
+    expect(bankReviewBuckets([null, undefined]).total).toBe(0);
+  });
+});
 
 // GL codes (defaults).
 const EXP = "6400", AP = "2000", ACCRUED = "2100", AR = "1100", CASH = "1000", REV = "4000";

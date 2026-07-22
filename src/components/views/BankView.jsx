@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate, fmtSignedMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { autoMatchBankLines, matchableOpenItems, planBankImport, bankLineFates, shouldRunApMatching } from "../../lib/bankMatch";
+import { autoMatchBankLines, matchableOpenItems, planBankImport, bankLineFates, shouldRunApMatching, bankReviewBuckets } from "../../lib/bankMatch";
 
 export default function BankView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, rc, rn, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
@@ -45,6 +45,10 @@ export default function BankView() {
     return { fates, clears };
   }, [bankTransactions, importAccount, invoices, rc, rn]);
 
+  // O83 — booking-state partition (already-booked / needs-review / new) — the single source
+  // for the tiles, the sections, and Select All's scope. Already-booked lines are read-only.
+  const reviewBuckets = React.useMemo(() => bankReviewBuckets(bankTransactions), [bankTransactions]);
+
   // A deterministic match is confident — pull those lines OUT of "needs review" and check them
   // so they show the clearing chip in the main table and book by default. Guarded so it settles
   // (only mutates when something actually changes → no render loop).
@@ -55,6 +59,7 @@ export default function BankView() {
     setBankTransactions(prev => {
       let changed = false;
       const next = prev.map(t => {
+        if (t.already_booked) return t;   // O83: an already-booked line is never auto-checked/re-booked
         if (matched.has(String(t.id)) && (t.needs_review || !t.checked)) { changed = true; return { ...t, needs_review: false, checked: true }; }
         return t;
       });
@@ -246,12 +251,13 @@ export default function BankView() {
               {/* Transaction review table */}
               {bankTransactions.length > 0 && (
                 <div>
-                  {/* Summary bar */}
+                  {/* Summary bar — O83: state BOOKING state (already in your books vs new), not
+                      just categorization, so a re-upload reads "20 · 20 already booked · 0 new". */}
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:20 }}>
                     {[
-                      { label:"Total Transactions", value:bankTransactions.length, color:"var(--sc-text)" },
-                      { label:"Auto-Categorized", value:bankTransactions.filter(t=>!t.needs_review).length, color:"var(--sc-success)" },
-                      { label:"Needs Review", value:bankTransactions.filter(t=>t.needs_review).length, color:"var(--sc-warning)" },
+                      { label:"Total Transactions", value:reviewBuckets.total, color:"var(--sc-text)" },
+                      { label:"Already in your books", value:reviewBuckets.alreadyBookedCount, color:"var(--sc-success)" },
+                      { label:"New to add", value:reviewBuckets.newCount, color:"var(--sc-gold)" },
                     ].map(s=>(
                       <div key={s.label} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:"16px 20px" }}>
                         <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 }}>{s.label.toUpperCase()}</div>
@@ -260,13 +266,40 @@ export default function BankView() {
                     ))}
                   </div>
 
-                  {/* Needs review section */}
-                  {bankTransactions.filter(t=>t.needs_review).length > 0 && (
+                  {/* O83 — ALREADY IN YOUR BOOKS: lines the dedup guard matched to entries booked
+                      earlier (re-upload). Read-only, plain-language badge — NO checkbox, NO GL
+                      dropdown, NOT "needs review". There is no legitimate reason to re-book these. */}
+                  {reviewBuckets.alreadyBookedCount > 0 && (
+                    <div style={{ background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", borderRadius:14, padding:20, marginBottom:20 }}>
+                      <div style={{ fontSize:12.5, color:"var(--sc-success)", marginBottom:14, display:"flex", alignItems:"center", gap:8 }}>
+                        <span>✓</span> <span><strong>{reviewBuckets.alreadyBookedCount}</strong> already in your books — from a previous import of this statement. Nothing to do; we won't add them again.</span>
+                      </div>
+                      {reviewBuckets.alreadyBooked.map(t=>(
+                        <div key={t.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, padding:"10px 14px", background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:10, marginBottom:8, opacity:0.9 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+                            <div style={{ width:24, height:24, borderRadius:6, background:vendorColor(t.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"var(--sc-on-accent)", flexShrink:0 }}>{initials(t.vendor)}</div>
+                            <div style={{ minWidth:0 }}>
+                              <div style={{ fontSize:13, fontWeight:500 }}>{t.vendor}</div>
+                              <div style={{ fontSize:11, color:"var(--sc-text-2)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{fmtDate(t.date)} · {t.description}</div>
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+                            <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:t.type==="revenue"?"var(--sc-success)":"var(--sc-error)" }}>{t.type==="revenue"?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+                            <span style={{ fontSize:11, fontWeight:600, color:"var(--sc-success)", background:"var(--sc-success-soft)", border:"1px solid var(--sc-success)", borderRadius:20, padding:"3px 10px", whiteSpace:"nowrap" }}>✓ Already in your books</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Needs review section — O83: exclude already-booked lines (a stale low-confidence
+                      flag from the ORIGINAL booking belongs to that entry in Review, not re-raised here). */}
+                  {reviewBuckets.needsReview.length > 0 && (
                     <div style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, padding:20, marginBottom:20 }}>
                       <div style={{ fontSize:12, color:"var(--sc-warning)", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
                         <span>⚠</span> <span>These transactions need your input — AI wasn't confident enough to auto-categorize</span>
                       </div>
-                      {bankTransactions.filter(t=>t.needs_review).map(t=>(
+                      {reviewBuckets.needsReview.map(t=>(
                         <div key={t.id} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:10, padding:"14px 16px", marginBottom:10 }}>
                           <div style={{ display:"grid", gridTemplateColumns:"1fr 120px 160px 40px", gap:12, alignItems:"center" }}>
                             <div>
@@ -291,8 +324,8 @@ export default function BankView() {
                     </div>
                   )}
 
-                  {/* Auto-categorized table */}
-                  {bankTransactions.filter(t=>!t.needs_review).length > 0 && (
+                  {/* Auto-categorized table — only genuinely NEW lines (already-booked excluded above) */}
+                  {reviewBuckets.newToBook.length > 0 && (
                     <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip", marginBottom:20 }}>
                       <div style={{ padding:"14px 20px", borderBottom:"1px solid var(--sc-border)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         {(() => {
@@ -302,8 +335,8 @@ export default function BankView() {
                           return <div style={{ fontSize:12, color:"var(--sc-success)" }}>✓ Auto-categorized — review & uncheck any you want to skip</div>;
                         })()}
                         <div style={{ display:"flex", gap:8 }}>
-                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>t.needs_review?t:{...t,checked:true}))} style={{ background:"none", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Select all</button>
-                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>t.needs_review?t:{...t,checked:false}))} style={{ background:"none", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Deselect all</button>
+                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>(t.needs_review||t.already_booked)?t:{...t,checked:true}))} style={{ background:"none", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Select all</button>
+                          <button onClick={()=>setBankTransactions(prev=>prev.map(t=>(t.needs_review||t.already_booked)?t:{...t,checked:false}))} style={{ background:"none", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Deselect all</button>
                         </div>
                       </div>
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -315,7 +348,7 @@ export default function BankView() {
                           </tr>
                         </thead>
                         <tbody>
-                          {bankTransactions.filter(t=>!t.needs_review).map((t,i)=>(
+                          {reviewBuckets.newToBook.map((t,i)=>(
                             <tr key={t.id} style={{ borderTop:"1px solid var(--sc-border)", background:i%2===0?"transparent":"var(--sc-bg)", opacity:t.checked?1:0.45 }}>
                               <td style={{ padding:"11px 14px" }}>
                                 <input type="checkbox" checked={t.checked||false} onChange={e=>setBankTransactions(prev=>prev.map(tx=>tx.id===t.id?{...tx,checked:e.target.checked}:tx))}
@@ -369,12 +402,15 @@ export default function BankView() {
 
                   {/* Action bar */}
                   <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                    <button onClick={()=>bookBankTransactions(importAccount)} disabled={bankProcessing} style={{
+                    {(() => { const nChecked = bankTransactions.filter(t=>t.checked).length; const disabled = bankProcessing || nChecked===0;
+                      return (
+                    <button onClick={()=>bookBankTransactions(importAccount)} disabled={disabled} style={{
                       flex:1, padding:"14px", borderRadius:12, fontSize:14, fontWeight:600,
-                      background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:bankProcessing?"wait":"pointer", opacity:bankProcessing?0.6:1
+                      background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:disabled?(bankProcessing?"wait":"not-allowed"):"pointer", opacity:disabled?0.6:1
                     }}>
-                      {bankProcessing ? "Booking…" : `✓ Book ${bankTransactions.filter(t=>t.checked).length} Selected Transaction${bankTransactions.filter(t=>t.checked).length!==1?"s":""} to Ledger`}
+                      {bankProcessing ? "Booking…" : nChecked===0 ? "Nothing new to book" : `✓ Book ${nChecked} Selected Transaction${nChecked!==1?"s":""} to Ledger`}
                     </button>
+                    ); })()}
                     <button onClick={()=>{setBankTransactions([]);setBankFileName("");}} style={{ padding:"14px 20px", borderRadius:12, fontSize:13, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>
                       Clear
                     </button>

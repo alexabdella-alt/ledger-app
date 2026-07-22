@@ -191,6 +191,26 @@ export function isArMatch(matchType) {
   return t.startsWith("ar") || t.endsWith("_ar");
 }
 
+// Partition parsed bank-review lines by BOOKING STATE for the review UI (O83). Lines the
+// dedup guard (markAlreadyBooked) matched to already-booked entries are READ-ONLY — never
+// checkable, never "needs review". The rest split into needs-review vs auto-categorized
+// ("new to add"). `checkable` is the ONLY set the user may select/book. Drives the summary
+// tiles ("N total · A already in your books · B new") and Select All's scope.
+export function bankReviewBuckets(lines = []) {
+  const all = (lines || []).filter(Boolean);
+  const alreadyBooked = all.filter(t => t.already_booked);
+  const rest = all.filter(t => !t.already_booked);
+  const needsReview = rest.filter(t => t.needs_review);
+  const newToBook = rest.filter(t => !t.needs_review);
+  return {
+    alreadyBooked, needsReview, newToBook,
+    checkable: rest,                       // only non-already-booked lines can be selected/booked
+    total: all.length,
+    alreadyBookedCount: alreadyBooked.length,
+    newCount: rest.length,                 // the "New to add" tile (needs-review + auto-categorized)
+  };
+}
+
 // reconciliations.status CHECK allows ONLY these two values. The bank-upload record
 // previously wrote "needs_review" when a proposed match was queued, which VIOLATED the
 // CHECK → the insert failed ("couldn't save the reconciliation record"). The review
