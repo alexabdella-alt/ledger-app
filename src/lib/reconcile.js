@@ -16,9 +16,10 @@
 //     own `gl_code` is cash is the cash leg (a multi-line row's `secondary_gl_code`
 //     points at the entry's primary offset, which is often — but isn't — cash).
 // ─────────────────────────────────────────────────────────────────────────────
-import { isLiveEntry } from "./reports.js";
+import { isLiveEntry, glAccountBalance } from "./reports.js";
 
 const isMultiLegRow = (i) => String(i && i.id != null ? i.id : "").includes("_");
+const r2c = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // ── Completion guard (O83 follow-up 2) — pure, so the UI gate + tests agree ──────
 // A reconciliation may only be COMPLETED with a VERIFIED bank ending balance: a real
@@ -81,4 +82,47 @@ export function reconBooksSet(invoices, { cashCodes, from, to } = {}) {
     i.date && (!from || i.date >= from) && (!to || i.date <= to) &&
     touchesCashAccount(i, codes)
   );
+}
+
+// ── O83 completion-bar math (BUG 1 + BUG 2) ──────────────────────────────────
+// An opening-balance entry dated at/before the period start IS the cleared starting
+// position — the statement's own opening-balance line. It is NEVER an "outstanding" book
+// item and NEVER shown in the sort-out queue (voiding it would destroy the derived opening).
+export function isOpeningPositionRow(row, periodStart) {
+  if (!row || row.source !== "opening_balance") return false;
+  if (!periodStart) return true;
+  return String(row.date || "") <= String(periodStart);
+}
+
+// "What your books show" — the GL cash balance of the reconciled account(s) AS OF the
+// statement period end, straight from the ledger (glAccountBalance, the canonical §12 cash
+// source). Includes the opening position + all cleared/uncleared activity. INDEPENDENT of
+// any user input — this is the comparison target the bank ending balance is checked against
+// (the BUG-1 fix: the old code derived it from the bank input, `stmtNum − diff`).
+export function reconBooksBalance(invoices, cashCodes, { asOf = null } = {}) {
+  const codes = codeSet(cashCodes);
+  let bal = 0;
+  for (const c of codes) bal += glAccountBalance(String(c), invoices, { asOf });
+  return r2c(bal);
+}
+
+// The GENUINELY-OUTSTANDING book items (in the books, not yet cleared the bank): live
+// cash rows that are NOT matched to a bank line, NOT user-hidden, and NOT the opening
+// position. This is exactly what the sort-out queue should show — never the opening entry.
+export function reconOutstandingBooks(booksRows = [], { matchedBookIds = new Set(), hidden = {}, periodStart = null } = {}) {
+  return (booksRows || []).filter((b) =>
+    b && !matchedBookIds.has(b.id) && !hidden[b.id] && !isOpeningPositionRow(b, periodStart)
+  );
+}
+
+// Standard bank-reconciliation difference — RECONCILED when it is $0.00:
+//   difference = bank_ending_balance
+//              + Σ(outstanding book items, cash-leg signed)   [in the books, not yet on the bank]
+//              − Σ(unmatched bank lines, signed)              [on the bank, not yet in the books]
+//              − books_balance (GL cash at period end)
+// Because books_balance already includes every booked cash movement (incl. the opening
+// position + any outstanding items), a clean period where every bank line matched and the
+// only difference is timing nets to 0 once the true bank ending balance is entered.
+export function reconcileDifference({ statementBalance = 0, booksBalance = 0, outstandingSigned = 0, unmatchedBankSigned = 0 } = {}) {
+  return r2c((Number(statementBalance) || 0) + (Number(outstandingSigned) || 0) - (Number(unmatchedBankSigned) || 0) - (Number(booksBalance) || 0));
 }

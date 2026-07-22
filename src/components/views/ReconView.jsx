@@ -1,6 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation } from "../../lib/reconcile";
+import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconcileDifference } from "../../lib/reconcile";
+import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
@@ -90,6 +91,7 @@ export default function ReconView() {
   const [autoBanner, setAutoBanner] = React.useState(null);
   const [viewRecId, setViewRecId] = React.useState(null);
   const [emptyConfirmed, setEmptyConfirmed] = React.useState(false);   // O83: explicit "account is empty/closed" for a real $0 ending balance
+  const [stmtOpening, setStmtOpening] = React.useState(null);          // O83: statement's STATED opening balance (for the books-opening discrepancy flag)
   const [saveError, setSaveError] = React.useState(false);             // autosave persistence failed → surfaced (never silent)
   const saveErrorRef = React.useRef(false);
   const saveTimer = React.useRef(null);
@@ -138,15 +140,28 @@ export default function ReconView() {
     const role = getAccountByRole?.("cash")?.code;
     return role ? [String(role)] : [];
   }, [accountId, bankAccounts, cashGlCodes]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const booksRows = reconBooksSet(invoices, { cashCodes: reconCashCodes, from: periodStart, to: periodEnd });
   const bookSigned = i => cashLegSigned(i, reconCashCodes);
+  // Matchable book rows EXCLUDE the opening-balance entry (the cleared starting position, not a
+  // transaction to match/sort out — BUG 2). It stays reflected in booksBalance below via the GL.
+  const booksRowsAll = reconBooksSet(invoices, { cashCodes: reconCashCodes, from: periodStart, to: periodEnd });
+  const booksRows = booksRowsAll.filter(b => !isOpeningPositionRow(b, periodStart));
   const matchedBookIds = new Set(bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook));
   const unmatchedBank = bankTxns.filter(t=>!t._matchBook && !t._ignored);
-  const unmatchedBooks = booksRows.filter(b=>!matchedBookIds.has(b.id) && !outstanding[b.id]);
-  const diff = Math.round((unmatchedBank.reduce((s,t)=>s+t.amount,0) - unmatchedBooks.reduce((s,b)=>s+bookSigned(b),0))*100)/100;
+  // The sort-out queue = genuinely outstanding book items (never the opening entry).
+  const unmatchedBooks = reconOutstandingBooks(booksRows, { matchedBookIds, hidden: outstanding, periodStart });
   const stmtNum = parseFloat(statementBalance)||0;
-  const booksBalance = Math.round((stmtNum - diff)*100)/100;
+  // BUG 1 FIX: "What your books show" = GL cash for THIS account at period end, from the ledger
+  // — independent of the bank-balance input (the old `stmtNum − diff` mutated it and mis-read
+  // the opening entry as the whole books figure).
+  const booksBalance = reconBooksBalance(invoices, reconCashCodes, { asOf: periodEnd });
+  const outstandingSigned = unmatchedBooks.reduce((s,b)=>s+bookSigned(b),0);
+  const unmatchedBankSigned = unmatchedBank.reduce((s,t)=>s+(Number(t.amount)||0),0);
+  const diff = reconcileDifference({ statementBalance: stmtNum, booksBalance, outstandingSigned, unmatchedBankSigned });
   const matchedCount = bankTxns.filter(t=>t._matchBook).length;
+  // BUG 2 (discrepancy): the statement's stated opening vs the books' opening entry. Auto-resolved
+  // either way (never a sort-out prompt); a real disagreement is a trust-layer flag, not a task.
+  const booksOpening = booksRowsAll.filter(b => isOpeningPositionRow(b, periodStart)).reduce((s,b)=>s+bookSigned(b),0);
+  const openingMismatch = (stmtOpening != null) ? openingDiscrepancy({ statedOpening: stmtOpening, recordedOpening: booksOpening }) : { mismatch:false, diff:0 };
 
   // A statement balance is "verified" when it's a real non-zero ending balance OR the user
   // explicitly confirmed a genuinely-empty/closed account ($0). Distinguishes a real
@@ -231,7 +246,13 @@ export default function ReconView() {
   };
   const ignoreBank = (t) => { setBankTxns(prev=>prev.map(x=>x.id===t.id?{...x,_ignored:true,_matchBook:null}:x)); queueSave(); };
   const markOutstanding = (b) => { setOutstanding(p=>({...p,[b.id]:true})); queueSave(); };
-  const voidBook = (b) => { setInvoices(prev=>prev.map(i=>i.id===b.id?{...i,status:"voided",voided_at:new Date().toISOString(),voided_reason:"Voided during reconciliation"}:i)); logAudit && logAudit("invoice_voided",`Voided ${b.vendor} ${fmt(b.amount)} during reconciliation`,b,null); queueSave(); };
+  const voidBook = (b) => {
+    // Destructive — confirm before removing a booked entry (O83: the void option sits next to
+    // a client-visible sort-out prompt; a mis-click must not silently delete a real entry).
+    if (typeof window !== "undefined" && window.confirm && !window.confirm(`Remove "${b.vendor}" (${fmt(b.amount)}) from your books? This voids the entry.`)) return;
+    setInvoices(prev=>prev.map(i=>i.id===b.id?{...i,status:"voided",voided_at:new Date().toISOString(),voided_reason:"Voided during reconciliation"}:i));
+    logAudit && logAudit("invoice_voided",`Voided ${b.vendor} ${fmt(b.amount)} during reconciliation`,b,null); queueSave();
+  };
 
   const addToBooks = (t, gl) => {
     const isRev = t.amount>0;
@@ -314,7 +335,8 @@ export default function ReconView() {
         // The parse profile now returns { opening_balance, period_start, transactions[] }
         // (165b075) — the SHARED normalizer accepts that OR a legacy bare array, so the
         // Reconcile flow can't go stale on the shape (O83 "can't read PDF" regression).
-        const { transactions: arr } = normalizeBankParse(JSON.parse(text.replace(/```json|```/g,"").trim()));
+        const { transactions: arr, statedOpening } = normalizeBankParse(JSON.parse(text.replace(/```json|```/g,"").trim()));
+        setStmtOpening(statedOpening != null && !isNaN(Number(statedOpening)) ? Number(statedOpening) : null);   // for the books-opening discrepancy flag (O83)
         const rows = (Array.isArray(arr)?arr:[]).map((t,i)=>({ id:"p_"+i+"_"+Math.random().toString(36).slice(2,6), date: normDate(t.date), description:(t.description||"Transaction").slice(0,140), amount: parseFloat(t.amount), _matchBook:null })).filter(r=>!isNaN(r.amount));
         if (!rows.length) showNotification && showNotification("Couldn't read transactions from that PDF — try a CSV export instead.","error");
         else { setBankTxns(rows); showNotification && showNotification(`Extracted ${rows.length} transactions from your statement ✓`); }
@@ -334,7 +356,7 @@ export default function ReconView() {
     const unm=(rec.unmatched_bank||[]).map(b=>({ ...b, _matchBook:null }));
     setBankTxns([...matched, ...unm]); setStep("match");
   };
-  const startFresh = () => { setReconId(null); setBankTxns([]); setOutstanding({}); setStatementBalance(""); setStep("setup"); };
+  const startFresh = () => { setReconId(null); setBankTxns([]); setOutstanding({}); setStatementBalance(""); setEmptyConfirmed(false); setStmtOpening(null); setStep("setup"); };
 
   const card = { background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, boxShadow:"0 1px 3px rgba(0,0,0,.08)" };
   const inp = { width:"100%", boxSizing:"border-box", background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:9, padding:"10px 12px", fontSize:14, color:"var(--sc-text)", outline:"none" };
@@ -495,6 +517,14 @@ export default function ReconView() {
           <button onClick={async()=>{ const ok = await saveNow("open"); if (ok) showNotification && showNotification("Progress saved ✓"); }} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Retry</button>
         </div>
       )}
+      {/* O83 — opening-balance discrepancy: the statement's stated opening ≠ the books' opening
+          entry. The opening is auto-resolved either way (never a sort-out prompt); a genuine
+          disagreement is surfaced here as a trust-layer flag, and the difference below reflects it. */}
+      {openingMismatch.mismatch && (
+        <div style={{ ...card, padding:"12px 16px", marginBottom:14, background:"var(--sc-warning-soft)", borderColor:"var(--sc-warning-soft)" }}>
+          <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ Your books start January at {fmt(booksOpening)}, but this statement's opening balance is {fmt(stmtOpening)} — off by {fmt(Math.abs(openingMismatch.diff))}. We kept your books unchanged; your accountant should reconcile the starting balance.</div>
+        </div>
+      )}
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
         {/* LEFT — bank */}
@@ -575,10 +605,12 @@ export default function ReconView() {
           })}
           {unmatchedBooks.map(b=>(
             <div key={b.id} style={{ padding:"12px 0", borderTop:"1px solid var(--sc-surface-2)" }}>
-              <div style={{ fontSize:13, color:"var(--sc-warning)", marginBottom:6 }}>This is in your books but hasn't cleared the bank — <strong>{b.vendor}</strong> ({fmt(b.amount)}, {fmtDate(b.date)})</div>
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                <button onClick={()=>markOutstanding(b)} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Mark as outstanding</button>
-                <button onClick={()=>voidBook(b)} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", fontSize:12, cursor:"pointer" }}>Entered in error (void)</button>
+              <div style={{ fontSize:13, color:"var(--sc-text)", marginBottom:6 }}>In your books but not on this statement — <strong>{b.vendor}</strong> ({fmt(b.amount)}, {fmtDate(b.date)})</div>
+              <div style={{ display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" }}>
+                {/* Primary, plain-language, safe option. */}
+                <button onClick={()=>markOutstanding(b)} style={{ padding:"6px 14px", borderRadius:8, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Hasn't hit the bank yet</button>
+                {/* Destructive, de-emphasized (muted text link, no fill) + confirm-guarded in voidBook. */}
+                <button onClick={()=>voidBook(b)} style={{ padding:"6px 4px", background:"none", border:"none", color:"var(--sc-text-mut)", fontSize:12, textDecoration:"underline", cursor:"pointer" }}>This shouldn't be here — remove it</button>
               </div>
             </div>
           ))}
@@ -587,7 +619,7 @@ export default function ReconView() {
 
       {/* BOTTOM BAR */}
       <div style={{ position:"fixed", left:0, right:0, bottom:0, background:"var(--sc-surface)", borderTop:"1px solid var(--sc-border)", boxShadow:"0 -4px 20px rgba(0,0,0,.06)", padding:"12px 28px", display:"flex", alignItems:"center", gap:24, zIndex:50, flexWrap:"wrap" }}>
-        <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); setEmptyConfirmed(false); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:`1px solid ${!statementBalance?"var(--sc-warning)":"var(--sc-border-2)"}`, borderRadius:8, padding:"4px 8px", color:"var(--sc-text)", outline:"none" }} /></div>
+        <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); setEmptyConfirmed(false); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:`1px solid ${!statementBalance?"var(--sc-warning)":"var(--sc-border-2)"}`, borderRadius:8, padding:"4px 8px", background:"var(--sc-surface-2)", color:"var(--sc-text)", outline:"none" }} /></div>
         {/* O83: a genuine $0 ending balance (empty/closed account) must be EXPLICITLY confirmed —
             otherwise an unverified $0 completion becomes a phantom the sign-off gate ignores. */}
         {statementBalance!=="" && stmtNum===0 && (
