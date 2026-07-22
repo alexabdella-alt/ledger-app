@@ -20,6 +20,26 @@ import { isLiveEntry } from "./reports.js";
 
 const isMultiLegRow = (i) => String(i && i.id != null ? i.id : "").includes("_");
 
+// ── Completion guard (O83 follow-up 2) — pure, so the UI gate + tests agree ──────
+// A reconciliation may only be COMPLETED with a VERIFIED bank ending balance: a real
+// non-zero balance, OR a genuinely-empty/closed account ($0) the user explicitly
+// confirmed. A blank balance is never verified. This is what gets written to
+// `statement_balance_verified` and what the sign-off gate (reconciliationCoversPeriod)
+// keys on, so an unverified-$0 phantom can't be produced or counted.
+export function statementBalanceVerified(statementBalance, emptyConfirmed = false) {
+  if (statementBalance == null || String(statementBalance).trim() === "") return false;   // nothing entered
+  const n = parseFloat(statementBalance);
+  if (!Number.isFinite(n)) return false;
+  return n !== 0 || emptyConfirmed === true;
+}
+
+// Can this reconciliation be completed? Books must balance to the statement (diff ≈ 0)
+// AND the ending balance must be verified. Pure predicate shared by the button + guard.
+export function canCompleteReconciliation({ statementBalance = "", difference = 0, emptyConfirmed = false } = {}) {
+  const balanced = Math.abs(Number(difference) || 0) < 0.005;
+  return balanced && statementBalanceVerified(statementBalance, emptyConfirmed);
+}
+
 // Normalize the reconciled-account cash code(s) to a string Set. Accepts a single
 // code, an array, or a Set.
 function codeSet(cashCodes) {

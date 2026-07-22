@@ -1,5 +1,40 @@
 import { describe, it, expect } from "vitest";
-import { touchesCashAccount, cashLegSigned, reconBooksSet } from "../src/lib/reconcile.js";
+import { touchesCashAccount, cashLegSigned, reconBooksSet, statementBalanceVerified, canCompleteReconciliation } from "../src/lib/reconcile.js";
+
+// ── O83 follow-up 2: completion guard (block unverified $0; verified-zero path works) ──
+describe("statementBalanceVerified — a real or explicitly-confirmed balance", () => {
+  it("blank balance is NEVER verified (blocks completion at the source)", () => {
+    expect(statementBalanceVerified("", false)).toBe(false);
+    expect(statementBalanceVerified(null, false)).toBe(false);
+    expect(statementBalanceVerified("   ", false)).toBe(false);
+  });
+  it("a non-zero balance is verified", () => {
+    expect(statementBalanceVerified("15657.60", false)).toBe(true);
+    expect(statementBalanceVerified("-42.10", false)).toBe(true);
+  });
+  it("$0 is verified ONLY with the explicit empty/closed confirmation", () => {
+    expect(statementBalanceVerified("0", false)).toBe(false);   // the Franklin phantom shape — blocked
+    expect(statementBalanceVerified("0", true)).toBe(true);     // confirmed empty/closed → verified-zero
+  });
+});
+
+describe("canCompleteReconciliation — balanced AND verified", () => {
+  it("blocked without a statement balance (even when balanced)", () => {
+    expect(canCompleteReconciliation({ statementBalance: "", difference: 0 })).toBe(false);
+  });
+  it("blocked when the difference isn't zero", () => {
+    expect(canCompleteReconciliation({ statementBalance: "15657.60", difference: 12.5 })).toBe(false);
+  });
+  it("blocked on an unconfirmed $0", () => {
+    expect(canCompleteReconciliation({ statementBalance: "0", difference: 0, emptyConfirmed: false })).toBe(false);
+  });
+  it("verified-zero (confirmed empty/closed) + balanced → completes", () => {
+    expect(canCompleteReconciliation({ statementBalance: "0", difference: 0, emptyConfirmed: true })).toBe(true);
+  });
+  it("real balance + balanced → completes", () => {
+    expect(canCompleteReconciliation({ statementBalance: "15657.60", difference: 0 })).toBe(true);
+  });
+});
 
 // Reconciliation books-set = entries that HIT the reconciled cash account, GL-derived.
 // Codes: CASH 1000 (reconciled), CASH2 1010 (a second bank), AP 2000, AR 1100, OBE 3400,

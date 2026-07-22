@@ -125,10 +125,15 @@ describe("period helpers", () => {
     const span = { period_start: "2026-07-01", period_end: "2026-07-31" };
     // import-time auto-snapshot (statement_balance 0, marked import_snapshot)
     expect(reconciliationCoversPeriod([{ ...span, status: "import_snapshot", statement_balance: 0 }], "2026-07")).toBe(false);
-    // a $0 "complete" (never verified a real bank balance) — the Franklin phantom shape
+    // a $0 "complete" that never verified a real bank balance — the Franklin phantom shape
     expect(reconciliationCoversPeriod([{ ...span, status: "complete", statement_balance: 0 }], "2026-07")).toBe(false);
-    // still open / in progress
+    expect(reconciliationCoversPeriod([{ ...span, status: "complete", statement_balance: 0, statement_balance_verified: false }], "2026-07")).toBe(false);
+    // in-progress ('open') never counts
     expect(reconciliationCoversPeriod([{ ...span, status: "open", statement_balance: 15657.60 }], "2026-07")).toBe(false);
+  });
+  it("reconciliationCoversPeriod: a VERIFIED $0 (confirmed empty/closed account) DOES count", () => {
+    const span = { period_start: "2026-07-01", period_end: "2026-07-31" };
+    expect(reconciliationCoversPeriod([{ ...span, status: "complete", statement_balance: 0, statement_balance_verified: true }], "2026-07")).toBe(true);
   });
 });
 

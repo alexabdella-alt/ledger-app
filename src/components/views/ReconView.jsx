@@ -1,6 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
+import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation } from "../../lib/reconcile";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
@@ -89,9 +89,15 @@ export default function ReconView() {
   const [processing, setProcessing] = React.useState(false);
   const [autoBanner, setAutoBanner] = React.useState(null);
   const [viewRecId, setViewRecId] = React.useState(null);
+  const [emptyConfirmed, setEmptyConfirmed] = React.useState(false);   // O83: explicit "account is empty/closed" for a real $0 ending balance
+  const [saveError, setSaveError] = React.useState(false);             // autosave persistence failed → surfaced (never silent)
+  const saveErrorRef = React.useRef(false);
   const saveTimer = React.useRef(null);
 
-  const inProgress = (reconciliations||[]).find(r => r.status==="in_progress");
+  // O83: in-progress reconciliations persist with status 'open' (RECON_STATUSES = open|complete;
+  // 'open' = "not fully reconciled", CHECK-allowed). (Was 'in_progress', which the CHECK rejected
+  // → autosave silently failed and mid-reconciliation work was lost.)
+  const inProgress = (reconciliations||[]).find(r => r.status==="open");
   const completed = (reconciliations||[]).filter(r => r.status==="complete");
 
   // completed_by is a uuid (matches every other actor column). Resolve it to a
@@ -142,13 +148,18 @@ export default function ReconView() {
   const booksBalance = Math.round((stmtNum - diff)*100)/100;
   const matchedCount = bankTxns.filter(t=>t._matchBook).length;
 
+  // A statement balance is "verified" when it's a real non-zero ending balance OR the user
+  // explicitly confirmed a genuinely-empty/closed account ($0). Distinguishes a real
+  // reconciliation from the unverified-$0 phantom the hardened gate ignores (O83).
+  const balanceVerified = statementBalanceVerified(statementBalance, emptyConfirmed);
   const serialize = (status) => ({
     company_id: currentCompany?.id,
     account_id: accountId && accountId!=="manual" ? accountId : null,
     account_name: accountName,
     period_start: periodStart, period_end: periodEnd,
     statement_balance: stmtNum, books_balance: booksBalance, difference: diff,
-    status: status || "in_progress",
+    statement_balance_verified: balanceVerified,
+    status: status || "open",
     matched_transactions: bankTxns.filter(t=>t._matchBook).map(t=>({ bank:t, bookId:t._matchBook, conf:t._conf })),
     unmatched_bank: bankTxns.filter(t=>!t._matchBook),
     unmatched_books: unmatchedBooks.map(b=>b.id),
@@ -156,25 +167,37 @@ export default function ReconView() {
   });
   const reconIdRef = React.useRef(null);   // synchronous mirror of reconId
   const savingRef = React.useRef(false);   // true while an insert is in flight
+  // Persist the session. Surfaces failures — silent failed persistence is never acceptable
+  // (the 'in_progress' CHECK violation that lost work). Notifies once on failure and once on
+  // recovery (deduped via saveErrorRef so autosave retries don't spam).
   const saveNow = async (status) => {
     if (!currentCompany?.id) return;
     const existingId = reconId || reconIdRef.current;
     // Don't fire a second INSERT before the first one has returned an id.
     if (!existingId && savingRef.current) return;
     const payload = serialize(status);
+    let err = null;
     try {
       if (existingId) {
-        await supabase.from("reconciliations").update(payload).eq("id", existingId).eq("company_id", currentCompany.id);
+        const { error } = await supabase.from("reconciliations").update(payload).eq("id", existingId).eq("company_id", currentCompany.id);
+        err = error;
       } else {
         savingRef.current = true;
         const { data, error } = await supabase.from("reconciliations").insert(payload).select("id").single();
-        if (error) console.warn("[reconciliations] save:", error.message);
+        err = error;
         if (data?.id) { reconIdRef.current = data.id; setReconId(data.id); }
       }
-    } catch(e){ console.warn("[reconciliations] save failed:", e.message); }
+    } catch(e){ err = e; }
     finally { savingRef.current = false; }
+    if (err) {
+      console.warn("[reconciliations] save failed:", err.message || err);
+      if (!saveErrorRef.current) { saveErrorRef.current = true; setSaveError(true); showNotification && showNotification("Couldn't save your reconciliation progress — check your connection. Your matches are still on screen; we'll keep trying.", "error"); }
+      return false;
+    }
+    if (saveErrorRef.current) { saveErrorRef.current = false; setSaveError(false); showNotification && showNotification("Progress saved ✓"); }
+    return true;
   };
-  const queueSave = () => { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(()=>saveNow("in_progress"), 2000); };
+  const queueSave = () => { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(()=>saveNow("open"), 2000); };
 
   const runAutoMatch = (txns) => {
     const books = reconBooksSet(invoices, { cashCodes: reconCashCodes, from: periodStart, to: periodEnd });
@@ -229,6 +252,13 @@ export default function ReconView() {
   };
 
   const completeMatch = async () => {
+    // O83 — GUARD AT THE SOURCE: never finish a reconciliation without a real, verified bank
+    // ending balance. A blank balance is blocked; a genuine $0 needs the explicit empty-account
+    // confirmation (which sets statement_balance_verified so the gate treats it as verified-zero).
+    if (!statementBalance || !balanceVerified) {
+      showNotification && showNotification(!statementBalance ? "Enter your bank statement's ending balance to finish." : "Confirm the account is empty/closed (its balance is $0.00) to finish.", "error");
+      return;
+    }
     const at=new Date().toISOString(); const uid=session?.user?.id||null;  // reconciliations.completed_by is a uuid column
     const ids = bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook);
     setInvoices(prev=>prev.map(i=>ids.includes(i.id)?{...i,cleared:true,cleared_at:at}:i));
@@ -449,13 +479,20 @@ export default function ReconView() {
           <h1 style={{ fontSize:22, fontWeight:600, margin:0 }}>Match your bank statement</h1>
           <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:3 }}>{accountName} · {periodStart} → {periodEnd}</div>
         </div>
-        <button onClick={()=>{ saveNow("in_progress"); showNotification && showNotification("Progress saved ✓"); }} style={{ padding:"8px 16px", borderRadius:9, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer" }}>Save Progress</button>
+        <button onClick={async()=>{ const ok = await saveNow("open"); if (ok) showNotification && showNotification("Progress saved ✓"); }} style={{ padding:"8px 16px", borderRadius:9, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer" }}>Save Progress</button>
       </div>
 
       {autoBanner && (
         <div style={{ ...card, padding:"12px 16px", marginBottom:14, background:"var(--sc-gold-soft)", borderColor:"var(--sc-gold-soft)", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
           <div style={{ fontSize:13, color:"var(--sc-gold)" }}>✦ {autoBanner}</div>
           <button onClick={()=>setAutoBanner(null)} style={{ background:"none", border:"none", color:"var(--sc-text-2)", cursor:"pointer", fontSize:16 }}>×</button>
+        </div>
+      )}
+      {/* O83: persistent, honest banner when autosave can't persist — never fail silently. */}
+      {saveError && (
+        <div style={{ ...card, padding:"12px 16px", marginBottom:14, background:"var(--sc-error-soft)", borderColor:"var(--sc-error-soft)", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+          <div style={{ fontSize:13, color:"var(--sc-error)" }}>⚠ We couldn't save your progress. Your matches are still here — check your connection, then <strong>Save Progress</strong>.</div>
+          <button onClick={async()=>{ const ok = await saveNow("open"); if (ok) showNotification && showNotification("Progress saved ✓"); }} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Retry</button>
         </div>
       )}
 
@@ -550,12 +587,24 @@ export default function ReconView() {
 
       {/* BOTTOM BAR */}
       <div style={{ position:"fixed", left:0, right:0, bottom:0, background:"var(--sc-surface)", borderTop:"1px solid var(--sc-border)", boxShadow:"0 -4px 20px rgba(0,0,0,.06)", padding:"12px 28px", display:"flex", alignItems:"center", gap:24, zIndex:50, flexWrap:"wrap" }}>
-        <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"4px 8px", color:"var(--sc-text)", outline:"none" }} /></div>
+        <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); setEmptyConfirmed(false); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:`1px solid ${!statementBalance?"var(--sc-warning)":"var(--sc-border-2)"}`, borderRadius:8, padding:"4px 8px", color:"var(--sc-text)", outline:"none" }} /></div>
+        {/* O83: a genuine $0 ending balance (empty/closed account) must be EXPLICITLY confirmed —
+            otherwise an unverified $0 completion becomes a phantom the sign-off gate ignores. */}
+        {statementBalance!=="" && stmtNum===0 && (
+          <label style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, color:"var(--sc-text-2)", maxWidth:220, cursor:"pointer" }}>
+            <input type="checkbox" checked={emptyConfirmed} onChange={e=>{ setEmptyConfirmed(e.target.checked); queueSave(); }} style={{ width:16, height:16, cursor:"pointer", accentColor:"var(--sc-gold)" }} />
+            This account is empty or closed — its balance really is $0.00.
+          </label>
+        )}
         <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5 }}>WHAT YOUR BOOKS SHOW</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace" }}>{fmt(booksBalance)}</div></div>
         <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5 }}>DIFFERENCE</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color: Math.abs(diff)<0.005?"var(--sc-success)":"var(--sc-error)" }}>{fmt(diff)}</div></div>
         <div style={{ flex:1, minWidth:140, fontSize:11, color:"var(--sc-text-2)" }}>{Math.abs(diff)<0.005?"Balanced — ready to complete.":"Difference must be $0.00 to complete."}</div>
-        <button disabled={Math.abs(diff)>=0.005 || !statementBalance} onClick={()=>setStep("summary")}
-          style={{ padding:"11px 22px", borderRadius:10, border:"none", fontSize:14, fontWeight:600, cursor: Math.abs(diff)<0.005?"pointer":"not-allowed", background: Math.abs(diff)<0.005?"var(--sc-gold)":"var(--sc-border)", color: Math.abs(diff)<0.005?"var(--sc-surface)":"var(--sc-text-mut)" }}>Complete Match</button>
+        {(() => { const ready = canCompleteReconciliation({ statementBalance, difference: diff, emptyConfirmed });
+          return (
+            <button disabled={!ready} onClick={()=>setStep("summary")}
+              style={{ padding:"11px 22px", borderRadius:10, border:"none", fontSize:14, fontWeight:600, cursor: ready?"pointer":"not-allowed", background: ready?"var(--sc-gold)":"var(--sc-border)", color: ready?"var(--sc-surface)":"var(--sc-text-mut)" }}
+              title={!statementBalance?"Enter your bank statement's ending balance to finish":(stmtNum===0&&!emptyConfirmed)?"Confirm the account is empty/closed to finish":(Math.abs(diff)>=0.005?"Difference must be $0.00 to complete":"")}>Complete Match</button>
+          ); })()}
       </div>
     </div>
   );
