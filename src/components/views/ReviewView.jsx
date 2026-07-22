@@ -5,6 +5,7 @@ import { initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal }
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildReviewQueue } from "../../lib/reviewQueue";
 import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
+import { isPeriodSignedOff } from "../../lib/signoff";
 
 // O50 — CPA Review Dashboard. Consumes O60 (dropped/incomplete docs via reconcileDroppedDocs)
 // and O49 (low-confidence-and-material txns via flagsForReview) into one review surface.
@@ -14,7 +15,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded,
-    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, bankMatch, isOwner, isAdmin, isReviewer } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -55,6 +56,12 @@ export default function ReviewView() {
   const readiness = (signOffReadinessFor ? signOffReadinessFor(signOffMonth, dropped) : { ok: true, blockers: [] });
   const signOffBlockers = readiness.blockers.map(b => b.reason);
   const canAttest = readiness.ok;
+  // Does the SELECTED month already have an active (non-revoked) sign-off? `signoffs` is the
+  // active set (fetchSignoffs filters revoked_at IS NULL). When true, the card must show the
+  // signed state ONLY — never "ready to sign off" + the primary button for a month already
+  // attested (the contradictory signed-and-ready-simultaneously bug). Selecting a different
+  // unsigned month re-derives to the normal ready/blocked gate.
+  const monthSignedOff = isPeriodSignedOff(signoffs, signOffMonth);
   const onSignOff = async () => {
     if (!signOffPeriod || !canAttest) return;
     setSigningOff(true);
@@ -73,9 +80,9 @@ export default function ReviewView() {
     if (r.ok) { setOverrideOpen(false); setOverrideReason(""); }
     else showNotification(`Couldn't sign off — ${r.error || (r.blockers || []).map(b => b.reason).join("; ")}`, "error");
   };
-  const onReopen = async () => {
-    if (!reopenPeriod || !reviewedThrough) return;
-    const r = await reopenPeriod(reviewedThrough);
+  const onReopen = async (period = reviewedThrough) => {
+    if (!reopenPeriod || !period) return;
+    const r = await reopenPeriod(period);
     if (!r.ok) showNotification(`Couldn't reopen — ${r.error}`, "error");
   };
   // STABLE LOAD GATE: hold a single loading state until BOTH the company data (invoices — the
@@ -275,7 +282,11 @@ export default function ReviewView() {
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text)" }}>Reviewer sign-off</div>
           <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
             {reviewedThrough ? `Reviewed through ${reviewedThrough}. ` : "Not yet signed off. "}
-            {canSignOff ? (canAttest ? `Ready to sign off ${signOffMonth}.` : "Resolve the items below (or sign off with an override).") : "Only your accountant/reviewer attests a period."}
+            {canSignOff
+              ? (monthSignedOff
+                  ? `${signOffMonth} is signed off.`
+                  : (canAttest ? `Ready to sign off ${signOffMonth}.` : "Resolve the items below (or sign off with an override)."))
+              : "Only your accountant/reviewer attests a period."}
           </div>
         </div>
         {canSignOff && (
@@ -284,30 +295,46 @@ export default function ReviewView() {
             <input type="month" value={signOffMonth} max={todayLocal().slice(0, 7)}
               onChange={e => { setSignOffMonth(e.target.value || todayLocal().slice(0, 7)); setOverrideOpen(false); }}
               style={{ padding: "8px 10px", borderRadius: 9, fontSize: 13, border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", background: "var(--sc-surface)" }} />
-            {reviewedThrough && (
-              <button onClick={onReopen}
-                style={{ padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>
-                Reopen {reviewedThrough}
-              </button>
-            )}
-            {canAttest ? (
-              <button onClick={onSignOff} disabled={signingOff}
-                style={{ padding: "9px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", cursor: signingOff ? "not-allowed" : "pointer",
-                  background: signingOff ? "var(--sc-border)" : "var(--sc-success)", color: signingOff ? "var(--sc-text-mut)" : "var(--sc-on-accent)" }}>
-                {signingOff ? "Signing off…" : `Mark reviewed through ${signOffMonth}`}
-              </button>
+            {monthSignedOff ? (
+              // The selected month is already attested — signed state ONLY: a neutral indicator
+              // (no primary sign-off / "sign off anyway" button) + Reopen for THIS month.
+              <>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "var(--sc-success-soft, var(--sc-border))", color: "var(--sc-success)" }}>
+                  ✓ Signed off {signOffMonth}
+                </span>
+                <button onClick={() => onReopen(signOffMonth)}
+                  style={{ padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>
+                  Reopen {signOffMonth}
+                </button>
+              </>
             ) : (
-              <button onClick={() => setOverrideOpen(o => !o)} disabled={signingOff}
-                style={{ padding: "9px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "1px solid var(--sc-warning)", cursor: "pointer",
-                  background: "var(--sc-warning-soft)", color: "var(--sc-warning)" }}>
-                Sign off anyway…
-              </button>
+              <>
+                {reviewedThrough && (
+                  <button onClick={() => onReopen(reviewedThrough)}
+                    style={{ padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>
+                    Reopen {reviewedThrough}
+                  </button>
+                )}
+                {canAttest ? (
+                  <button onClick={onSignOff} disabled={signingOff}
+                    style={{ padding: "9px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", cursor: signingOff ? "not-allowed" : "pointer",
+                      background: signingOff ? "var(--sc-border)" : "var(--sc-success)", color: signingOff ? "var(--sc-text-mut)" : "var(--sc-on-accent)" }}>
+                    {signingOff ? "Signing off…" : `Mark reviewed through ${signOffMonth}`}
+                  </button>
+                ) : (
+                  <button onClick={() => setOverrideOpen(o => !o)} disabled={signingOff}
+                    style={{ padding: "9px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "1px solid var(--sc-warning)", cursor: "pointer",
+                      background: "var(--sc-warning-soft)", color: "var(--sc-warning)" }}>
+                    Sign off anyway…
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
       </div>
       {/* WHY it's blocked — CPA-side, the specific unresolved preconditions + nets. */}
-      {canSignOff && !canAttest && (
+      {canSignOff && !canAttest && !monthSignedOff && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--sc-border)" }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: "var(--sc-text-mut)", textTransform: "uppercase", marginBottom: 6 }}>Not ready to sign off {signOffMonth}</div>
           {signOffBlockers.map((b, i) => (

@@ -90,6 +90,16 @@ export function canAttestPeriod(role) {
   return role === "admin" || role === "accountant";
 }
 
+// Does a SPECIFIC period already have an active (non-revoked) sign-off? Pure. The card
+// keys its signed-vs-ready state on this per SELECTED month, so a month already attested
+// never renders "ready to sign off" + the primary button simultaneously (O83 contradictory
+// signed-and-ready fix). `signoffs` is normally the active set already, but we also skip any
+// revoked row defensively.
+export function isPeriodSignedOff(signoffs = [], period) {
+  if (!period) return false;
+  return (signoffs || []).some(s => s && !s.revoked_at && s.period === period);
+}
+
 // The latest "reviewed through" period, given the set of ACTIVE sign-offs. Pure.
 // (Just the max period string — YYYY-MM sorts lexicographically = chronologically.
 // Revoked rows are already excluded by fetchSignoffs; belt-and-suspenders here too.)
