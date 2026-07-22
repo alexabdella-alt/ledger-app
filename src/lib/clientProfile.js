@@ -14,7 +14,11 @@ const MAX_VENDORS = 200;  // bound common_vendors size
 export function emptyProfile() {
   return {
     business_type: null,
-    common_vendors: {},     // vendorLower -> { name, gl_code, gl_name, count, last_seen }
+    // vendorLower -> { name, gl_code, gl_name, count, last_seen, source }
+    // source: 'human_correction' (a recode/CPA override — authoritative, trusted immediately,
+    // never overwritten by AI) | 'ai_booking' (learned from an AI booking — needs repetition).
+    // Absent source on legacy entries is treated as 'ai_booking'.
+    common_vendors: {},
     spending_patterns: {},  // category   -> { total, count, months: { "YYYY-MM": amount } }
     custom_rules: [],       // ["learned fact", ...]
     ai_notes: null,
@@ -63,13 +67,20 @@ export function learnFromBooking(profile, invoice) {
   // ── Vendor → GL mapping ──
   const vKey = vendor.toLowerCase();
   const prevV = next.common_vendors[vKey] || { name: vendor, count: 0 };
-  next.common_vendors[vKey] = {
-    name: vendor,
-    gl_code: code,
-    gl_name: name,
-    count: (prevV.count || 0) + 1,
-    last_seen: (invoice?.date || todayLocal()),
-  };
+  if (prevV.source === "human_correction") {
+    // A human correction OUTRANKS an AI booking — keep the taught account; only record that
+    // the vendor was seen again. The AI can never silently overwrite a human-taught mapping.
+    next.common_vendors[vKey] = { ...prevV, name: vendor, count: (prevV.count || 0) + 1, last_seen: (invoice?.date || todayLocal()) };
+  } else {
+    next.common_vendors[vKey] = {
+      name: vendor,
+      gl_code: code,
+      gl_name: name,
+      count: (prevV.count || 0) + 1,
+      last_seen: (invoice?.date || todayLocal()),
+      source: "ai_booking",
+    };
+  }
   // Bound size: keep the most-seen vendors if we ever exceed the cap.
   const vEntries = Object.entries(next.common_vendors);
   if (vEntries.length > MAX_VENDORS) {
@@ -97,20 +108,47 @@ export function learnFromBooking(profile, invoice) {
   return next;
 }
 
+// Fold a HUMAN CORRECTION (a recode / CPA override) into the profile — the highest-quality
+// categorization signal there is (O67). OVERWRITES the vendor→GL mapping to the corrected
+// account and marks it source:'human_correction', which (a) OUTRANKS any AI booking —
+// learnFromBooking will not overwrite it — and (b) is trusted IMMEDIATELY by recallVendor
+// (no minCount wait; one human correction should apply to the very next invoice). Pure —
+// returns a NEW profile. This is what stops a corrected vendor from re-applying the mistake.
+export function learnFromCorrection(profile, correction) {
+  const p = profile || emptyProfile();
+  const vendor = (correction?.vendor || "").trim();
+  const code = String(correction?.gl_code || "");
+  const name = correction?.gl_name || code;
+  if (!vendor || !code) return p;
+  const next = { ...p, common_vendors: { ...(p.common_vendors || {}) } };
+  const vKey = vendor.toLowerCase();
+  const prevV = next.common_vendors[vKey] || { name: vendor, count: 0 };
+  next.common_vendors[vKey] = {
+    name: vendor,
+    gl_code: code,
+    gl_name: name,
+    count: Math.max(Number(prevV.count) || 0, 1),   // preserve the seen-count; ≥1
+    last_seen: (correction?.date || todayLocal()),
+    source: "human_correction",
+  };
+  return next;
+}
+
 // ── Learned-vendor recall (O64 decay) ──
 // The bookkeeper who has seen "Bella Vita Catering → a client meal" twice stops asking about
-// it. Given a vendor, return the learned GL mapping ONCE it's been booked at least `minCount`
-// times (so a single early mistake never hardens into an auto-book). This is what makes the
-// clarification questions DECAY: the 2nd/3rd time a known vendor appears, the caller can book
-// it straight through instead of interrupting. Returns { gl_code, gl_name, count } or null.
+// it. Given a vendor, return the learned GL mapping. An AI-learned mapping is trusted only
+// after `minCount` bookings (so a single early AI mistake never hardens into an auto-book);
+// a HUMAN correction is trusted immediately (it doesn't need repetition to be authoritative).
+// Returns { gl_code, gl_name, count, source } or null.
 export function recallVendor(profile, vendor, { minCount = 2 } = {}) {
   const p = profile || emptyProfile();
   const v = String(vendor || "").trim().toLowerCase();
   if (!v) return null;
   const hit = (p.common_vendors || {})[v];
   if (!hit || !hit.gl_code) return null;
-  if ((hit.count || 0) < minCount) return null;
-  return { gl_code: hit.gl_code, gl_name: hit.gl_name || hit.gl_code, count: hit.count || 0 };
+  const source = hit.source || "ai_booking";
+  if (source !== "human_correction" && (hit.count || 0) < minCount) return null;
+  return { gl_code: hit.gl_code, gl_name: hit.gl_name || hit.gl_code, count: hit.count || 0, source };
 }
 
 // Add a free-form learned fact (deduped, capped). Returns a NEW profile.

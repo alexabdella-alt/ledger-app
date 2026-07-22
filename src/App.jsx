@@ -7,7 +7,7 @@ import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsCl
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
-import { loadClientProfile, learnFromBooking, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
+import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking } from "./lib/clarify";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
@@ -1127,6 +1127,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         const { error } = await (isDebit ? q.gt("debit", 0) : q.gt("credit", 0));
         if (error) { console.error("[persistRecode] line update:", error.message); return false; }
       }
+      // O67 — TEACH THE LEARNING LAYER. A human correction (this recode, and the CPA override
+      // that routes through here) is the highest-quality signal: overwrite the vendor→GL
+      // mapping to the corrected account, marked source:'human_correction' so it outranks any
+      // AI booking and is trusted immediately by recallVendor. Best-effort; never fails the recode.
+      try {
+        let taught = false;
+        for (const inv of withDbId) {
+          if (!inv.vendor) continue;
+          clientProfileRef.current = learnFromCorrection(clientProfileRef.current, { vendor: inv.vendor, gl_code: newGlCode, gl_name: newGlName, date: inv.date });
+          taught = true;
+        }
+        if (taught) persistClientProfile(supabase, currentCompany.id, clientProfileRef.current);
+      } catch (e) { console.warn("[persistRecode] learning update failed (non-fatal):", e?.message || e); }
       return true;
     } catch(e) { console.error("persistRecode error:", e); return false; }
   };
@@ -3605,11 +3618,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               // way before, trust it like a soft rule and book straight through — this is what
               // makes the questions taper off over time.
               const learned = recallVendor(clientProfileRef.current, invoice.vendor);
-              if (learned && (!invoice.gl_code || invoice.gl_code === learned.gl_code)) {
-                invoice.gl_code = invoice.gl_code || learned.gl_code;
-                invoice.gl_name = invoice.gl_name || learned.gl_name;
-                invoice.confidence = Math.max(Number(invoice.confidence) || 0, AI_CONFIDENCE_AUTO_BOOK);
-                invoice.reasoning = `${invoice.reasoning || ""} Recognized ${invoice.vendor} from past bookings — booked the way you've categorized it before.`.trim();
+              if (learned) {
+                // A HUMAN correction OVERRIDES the AI's guess even when they disagree (that's the
+                // whole point — it stops the corrected mistake from re-applying). An AI-learned
+                // mapping only fills a blank or confirms a matching guess (never overrides).
+                const isHuman = learned.source === "human_correction";
+                if (isHuman || !invoice.gl_code || String(invoice.gl_code) === String(learned.gl_code)) {
+                  invoice.gl_code = isHuman ? learned.gl_code : (invoice.gl_code || learned.gl_code);
+                  invoice.gl_name = isHuman ? learned.gl_name : (invoice.gl_name || learned.gl_name);
+                  invoice.confidence = Math.max(Number(invoice.confidence) || 0, AI_CONFIDENCE_AUTO_BOOK);
+                  invoice.reasoning = isHuman
+                    ? `Coded ${invoice.vendor} to ${learned.gl_name} — you corrected this vendor before, so we apply your categorization.`
+                    : `${invoice.reasoning || ""} Recognized ${invoice.vendor} from past bookings — booked the way you've categorized it before.`.trim();
+                }
               }
               // Book unless we're below the "ask, don't guess" floor (AI_CONFIDENCE_ASK_FLOOR)
               // OR O49 says a human would pause on a material amount. A vendor rule (and the
