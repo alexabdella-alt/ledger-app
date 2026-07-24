@@ -668,3 +668,66 @@ describe("autoMatchBankLines — robust to currency-string amounts + taxed-invoi
     expect(m[0].invoice_ids).toEqual(["riv"]);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// O83 Feb — the matcher's candidate universe must contain ONLY genuinely open items.
+// January's Dr A/P / Cr Cash PAYMENT entries carry an A/P leg, so the old
+// "anything with an A/P leg" filter offered them as open payables → February bank
+// debits proposed matches against January's already-settled history.
+// ════════════════════════════════════════════════════════════════════════════
+import { matchableOpenItems, isSettlementEntry, resolveMatchedInvoices, autoMatchBankLines } from "../src/lib/bankMatch.js";
+
+const AP_CODE = "2000", AR_CODE = "1100";
+// A settled January Roma bill: the bill (Dr COGS / Cr A/P) + its payment (Dr A/P / Cr Cash,
+// linked via import_metadata.payment_for). Both must be OUT of the candidate universe.
+const janBill    = { id: "billJan", gl_code: "5000", secondary_gl_code: AP_CODE, amount: 487.90, debit_credit: "debit", date: "2026-01-03", vendor: "Roma", status: "posted" };
+const janPayment = { id: "payJan",  gl_code: AP_CODE, secondary_gl_code: "1000", amount: 487.90, debit_credit: "debit", date: "2026-01-06", vendor: "Roma", status: "posted", import_metadata: { payment_for: "billJan" } };
+// An OPEN February Roma bill (no settlement linked).
+const febBill    = { id: "billFeb", gl_code: "5000", secondary_gl_code: AP_CODE, amount: 512.35, debit_credit: "debit", date: "2026-02-04", vendor: "Roma", status: "posted" };
+// A Toast POS deposit (Dr Cash / Cr Revenue) — money already received, no A/R leg.
+const deposit    = { id: "dep", gl_code: "4000", secondary_gl_code: "1000", amount: 900, debit_credit: "credit", date: "2026-02-01", vendor: "Toast", status: "posted" };
+
+describe("matchableOpenItems — only genuinely OPEN items (O83 Feb)", () => {
+  it("a settled clearing/payment entry is NEVER a candidate (it has an A/P leg but pays FOR a bill)", () => {
+    const open = matchableOpenItems([janBill, janPayment, febBill], { arCode: AR_CODE, apCode: AP_CODE });
+    expect(open.map(i => i.id)).toEqual(["billFeb"]);        // Jan bill (settled) + Jan payment both excluded
+    expect(open.some(i => i.id === "payJan")).toBe(false);
+    expect(open.some(i => i.id === "billJan")).toBe(false);
+  });
+  it("a revenue deposit (Dr Cash / Cr Revenue) is never an open item (no A/R leg)", () => {
+    const open = matchableOpenItems([deposit, febBill], { arCode: AR_CODE, apCode: AP_CODE });
+    expect(open.some(i => i.id === "dep")).toBe(false);
+  });
+  it("isSettlementEntry keys on import_metadata.payment_for", () => {
+    expect(isSettlementEntry(janPayment)).toBe(true);
+    expect(isSettlementEntry(janBill)).toBe(false);
+  });
+});
+
+describe("autoMatchBankLines against the fixed universe — Feb debits match FEB bills, never Jan's settled history", () => {
+  const febDebitRoma = (amt) => ({ id: "bk1", vendor: "Roma", description: "Roma", amount: amt, type: "expense", date: "2026-02-05" });
+  it("Feb debit + settled Jan payment same vendor → NO proposal (the exact O83 cross-month bug)", () => {
+    const universe = matchableOpenItems([janBill, janPayment], { arCode: AR_CODE, apCode: AP_CODE });   // → []
+    const m = autoMatchBankLines([febDebitRoma(487.90)], universe, { arCode: AR_CODE, apCode: AP_CODE });
+    expect(m).toEqual([]);
+  });
+  it("Feb debit + OPEN Feb bill exact amount → a proposal (clears A/P)", () => {
+    const universe = matchableOpenItems([janBill, janPayment, febBill], { arCode: AR_CODE, apCode: AP_CODE });
+    const m = autoMatchBankLines([febDebitRoma(512.35)], universe, { arCode: AR_CODE, apCode: AP_CODE });
+    expect(m).toHaveLength(1);
+    expect(m[0].invoice_ids).toEqual(["billFeb"]);
+    expect(m[0].match_type).toBe("ap_clear");
+  });
+});
+
+describe("resolveMatchedInvoices — a proposal must have a renderable counterpart (O83 empty panel)", () => {
+  it("string-normalizes ids so LLM string ids resolve against numeric ledger ids", () => {
+    const r = resolveMatchedInvoices(["123"], [{ id: 123, vendor: "Roma" }]);
+    expect(r).toHaveLength(1);
+    expect(r[0].vendor).toBe("Roma");
+  });
+  it("returns [] when no counterpart resolves (caller must then REFUSE the proposal)", () => {
+    expect(resolveMatchedInvoices(["999"], [{ id: 123 }])).toEqual([]);
+    expect(resolveMatchedInvoices([], [{ id: 123 }])).toEqual([]);
+  });
+});

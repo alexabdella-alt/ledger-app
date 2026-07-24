@@ -131,22 +131,45 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
 // flag says. This is built BEFORE the current import books anything, so it reflects the
 // pristine pre-import ledger. Returns only clearable (A/R / A/P / accrued) items.
 // ─────────────────────────────────────────────────────────────────────────────
+// A SETTLEMENT/clearing entry pays FOR another entry — a bill payment (Dr A/P / Cr Cash) or
+// a collection (Dr Cash / Cr A/R). It carries an A/P or A/R leg but it is NOT an open item;
+// it's the entry that CLOSES one, linked to its target via import_metadata.payment_for.
+export function isSettlementEntry(i) {
+  return !!(i && i.import_metadata && i.import_metadata.payment_for != null);
+}
+
 export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode } = {}) {
   const eq = (a, b) => a != null && b != null && String(a) === String(b);
   const codeOnLeg = (i, code) => code != null && (eq(i.secondary_gl_code, code) || eq(i.gl_code, code));
   const isClearable = (i) => codeOnLeg(i, arCode) || codeOnLeg(i, apCode) || codeOnLeg(i, accruedCode);
-  // Bills/invoices that a LIVE (non-voided, non-deleted) clearing JE already settled.
+  // Bills/invoices that a LIVE (non-voided, non-deleted) settlement JE already settled.
   const cleared = new Set(
     (invoices || [])
-      .filter(i => i && i.import_metadata && i.import_metadata.payment_for != null && i.status !== "voided" && !i.deleted_at)
+      .filter(i => isSettlementEntry(i) && i.status !== "voided" && !i.deleted_at)
       .map(i => String(i.import_metadata.payment_for))
   );
+  // "Open" is defined POSITIVELY: a bill/invoice that ESTABLISHES a payable/receivable and has
+  // NO settlement linked — NOT "anything carrying an A/P or A/R leg". The O83 Feb bug: January's
+  // Dr A/P / Cr Cash payment entries have an A/P leg, so the old filter offered them as "open
+  // payables" and February bank debits proposed matches against JANUARY's settled history
+  // (Roma Feb ↔ Roma's Jan payment, etc.). A settlement entry is never itself an open item.
   return (invoices || []).filter(i =>
     i &&
     isClearable(i) &&
+    !isSettlementEntry(i) &&                                       // a payment/collection is never "open"
     i.source !== "bank_feed" && i.source !== "bank_statement" &&   // not the bank lines themselves
     !i.matched &&                                                  // session optimistic guard
     !cleared.has(String(i.db_entry_id != null ? i.db_entry_id : i.id)));
+}
+
+// Resolve an LLM/engine proposal's invoice_ids → the actual open-item objects to DISPLAY as the
+// "matching against" counterpart. STRING-normalized: the LLM echoes ids as strings while ledger
+// ids may be numbers, and a type-sensitive `.includes` silently returned [] → an empty counterpart
+// panel on a 99% proposal (O83 Feb — a user asked to confirm a match against something invisible).
+// A proposal whose counterpart can't be resolved must be refused, not shown.
+export function resolveMatchedInvoices(invoiceIds = [], openItems = []) {
+  const want = new Set((invoiceIds || []).map(String));
+  return (openItems || []).filter(i => i && want.has(String(i.id)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

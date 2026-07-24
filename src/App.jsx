@@ -24,7 +24,7 @@ import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse } from "./lib/openingBalanceProposal";
 import { buildPaymentEntry } from "./lib/payments";
-import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems } from "./lib/bankMatch";
+import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems, resolveMatchedInvoices } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
@@ -4690,8 +4690,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // ran, so the flaky LLM was the only matcher → nondeterministic 0/1-of-3 on identical input.)
     const arCodeForMatch = rc("accounts_receivable");
     const apCodeForMatch = rc("accounts_payable");
+    const accruedForMatch = rc("accrued_liabilities");
+    // Candidate universe = ONLY genuinely open items (no settlement linked). Filtering HERE (not
+    // just at the call site) makes BOTH callers safe: one passes matchableOpenItems already
+    // (idempotent), the other passes the raw ledger. Without it, settled clearing entries (Dr A/P
+    // / Cr Cash) carry an A/P leg and get proposed as matches — the O83 Feb cross-month wrong
+    // matches (Feb debits ↔ January's already-settled payments).
+    const openUniverse = matchableOpenItems(currentInvoices, { arCode: arCodeForMatch, apCode: apCodeForMatch, accruedCode: accruedForMatch });
     const matchTrace = [];
-    const deterministic = autoMatchBankLines(newBankTxns, currentInvoices, { arCode: arCodeForMatch, apCode: apCodeForMatch, trace: matchTrace });
+    const deterministic = autoMatchBankLines(newBankTxns, openUniverse, { arCode: arCodeForMatch, apCode: apCodeForMatch, trace: matchTrace });
     try {
       console.info(`[bank-match] DETERMINISTIC matched: ${deterministic.length}/${newBankTxns.length}`, deterministic.map(m => ({ bank: m.bank_txn_id, inv: m.invoice_ids, side: m.match_type })));
       console.info("[bank-match] candidates:", currentInvoices.filter(i => (arCodeForMatch && (String(i.secondary_gl_code)===String(arCodeForMatch)||String(i.gl_code)===String(arCodeForMatch))) || (apCodeForMatch && (String(i.secondary_gl_code)===String(apCodeForMatch)||String(i.gl_code)===String(apCodeForMatch)))).map(i => ({ id: i.id, vendor: i.vendor, amount: i.amount, type: i.type, gl: i.gl_code, off: i.secondary_gl_code })));
@@ -4702,10 +4709,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const handledBankIds = new Set(deterministic.map(m => String(m.bank_txn_id)));
     const handledInvIds  = new Set(deterministic.flatMap(m => (m.invoice_ids || []).map(String)));
     const remainingTxns  = newBankTxns.filter(t => !handledBankIds.has(String(t.id)));
-    // Best-effort side split for the LLM of ONLY what deterministic didn't take. `type` here is
-    // fine — the deterministic (offset-based) result already stands no matter how `type` looks.
-    const remainPayables    = currentInvoices.filter(inv => inv.type === "expense" && !inv.matched && !handledInvIds.has(String(inv.id)));
-    const remainReceivables = currentInvoices.filter(inv => inv.type === "revenue" && !inv.matched && !handledInvIds.has(String(inv.id)));
+    // Side split for the LLM of ONLY what deterministic didn't take — from the OPEN universe
+    // (settled clearing entries are already excluded), split by the A/P vs A/R OFFSET leg (not a
+    // `type` string): payables carry the A/P (or accrued) leg, receivables the A/R leg.
+    const hasLeg = (i, code) => code != null && (String(i.gl_code) === String(code) || String(i.secondary_gl_code) === String(code));
+    const remainPayables    = openUniverse.filter(inv => (hasLeg(inv, apCodeForMatch) || hasLeg(inv, accruedForMatch)) && !handledInvIds.has(String(inv.id)));
+    const remainReceivables = openUniverse.filter(inv => hasLeg(inv, arCodeForMatch) && !handledInvIds.has(String(inv.id)));
 
     // 2) Nothing left for the LLM → return the DETERMINISTIC set (never []).
     if (remainingTxns.length === 0 || (remainPayables.length === 0 && remainReceivables.length === 0)) {
@@ -4745,6 +4754,16 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         match.invoice_ids = match.invoice_ids.filter(id => !handledInvIds.has(String(id)));
         if (!match.invoice_ids.length) continue;
 
+        // Resolve the counterpart open items to DISPLAY (string-normalized against the OPEN
+        // universe). If none resolve, the proposal has no renderable counterpart — REFUSE it
+        // rather than ask the user to confirm a match against an invisible/settled entity (O83
+        // Feb: a 99% exact-amount proposal rendered an empty "MATCHING AGAINST" panel).
+        const matched_invoices = resolveMatchedInvoices(match.invoice_ids, openUniverse);
+        if (!matched_invoices.length) {
+          try { console.warn("[bank-match] dropped proposal — counterpart not in the open universe (unrenderable):", match.bank_txn_id, match.invoice_ids); } catch {}
+          continue;
+        }
+
         const matchRecord = {
           id: Date.now() + Math.random(),
           bank_txn_id: match.bank_txn_id,
@@ -4757,7 +4776,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           clearing_entry: match.clearing_entry,
           auto_clear: match.auto_clear,
           bank_txn: newBankTxns.find(t => String(t.id) === String(match.bank_txn_id)),  // string-tolerant: the LLM may echo the id with a different type
-          matched_invoices: (currentInvoices || []).filter(i => match.invoice_ids.includes(i.id)),
+          matched_invoices,
           status: "pending",
           created_at: new Date().toISOString(),
         };
