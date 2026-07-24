@@ -3,7 +3,7 @@ import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, AP_AUTO_APPROVE_THRESHOLD, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
-import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, fmtSignedMoney, fmtApprox } from "./lib/format";
+import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
@@ -4257,8 +4257,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             setPendingOpeningProposal({ openingBalance: der.openingBalance, endingBalance: der.endingBalance, periodStart: der.periodStart, accountCode: cashCode, accountId: (account && account.id) || null, accountName: acctName, mismatch: der.mismatch, stated: der.stated, derived: der.derived });
             setOpeningDiscrepancyFlag(null);
           } else if (hasOpeningForAccount) {
-            const recordedForDisc = recorded != null ? recorded : glAccountBalance(cashCode, invoicesRef.current, { asOf: der.periodStart });
-            const disc = openingDiscrepancy({ statedOpening: der.openingBalance, recordedOpening: recordedForDisc });
+            // Compare the statement's stated opening against GL CASH AT PERIOD START (the balance
+            // the books CARRY INTO the period = cash as of the day before the first statement date),
+            // NOT the recorded opening-balance ROW. The row is only the FIRST month's starting
+            // position; from month 2 on, books cash at period start = opening + all prior activity,
+            // so comparing to the row false-fires by exactly the prior period's net income (the O83
+            // Feb finding: a $3,174.33 phantom = January's net income). Same canonical glAccountBalance
+            // source the reconcile fix uses. dayBefore(periodStart) excludes the period's own activity.
+            const glCashAtPeriodStart = glAccountBalance(cashCode, invoicesRef.current, { asOf: addDaysYMD(der.periodStart, -1) });
+            const disc = openingDiscrepancy({ statedOpening: der.openingBalance, recordedOpening: glCashAtPeriodStart });
             if (disc.mismatch) {
               setOpeningDiscrepancyFlag({ ...disc, periodStart: der.periodStart, accountCode: cashCode, accountName: acctName });
               logAudit("opening_balance_discrepancy", `Statement opening ${fmtSignedMoney(disc.statedOpening)} disagrees with recorded ${fmtSignedMoney(disc.recordedOpening)} for ${acctName} (off by ${fmtSignedMoney(disc.diff)})`, null, { accountCode: cashCode, diff: disc.diff });

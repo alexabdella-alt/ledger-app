@@ -2,7 +2,7 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconcileDifference } from "../../lib/reconcile";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
-import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal, addDaysYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
@@ -158,10 +158,14 @@ export default function ReconView() {
   const unmatchedBankSigned = unmatchedBank.reduce((s,t)=>s+(Number(t.amount)||0),0);
   const diff = reconcileDifference({ statementBalance: stmtNum, booksBalance, outstandingSigned, unmatchedBankSigned });
   const matchedCount = bankTxns.filter(t=>t._matchBook).length;
-  // BUG 2 (discrepancy): the statement's stated opening vs the books' opening entry. Auto-resolved
-  // either way (never a sort-out prompt); a real disagreement is a trust-layer flag, not a task.
-  const booksOpening = booksRowsAll.filter(b => isOpeningPositionRow(b, periodStart)).reduce((s,b)=>s+bookSigned(b),0);
-  const openingMismatch = (stmtOpening != null) ? openingDiscrepancy({ statedOpening: stmtOpening, recordedOpening: booksOpening }) : { mismatch:false, diff:0 };
+  // BUG 2 (discrepancy): the statement's stated opening vs GL CASH AT PERIOD START — the balance
+  // the books carry INTO the period (cash as of the day before periodStart), NOT the opening ENTRY
+  // alone. The opening entry is only the first month's starting position; from month 2 on, books
+  // cash at period start = opening + all prior activity, so comparing to the opening entry false-
+  // fires by exactly the prior period's net income (O83 Feb). Same reconBooksBalance source as the
+  // "what your books show" figure above. Auto-resolved either way (a real gap is a flag, not a task).
+  const glCashAtPeriodStart = reconBooksBalance(invoices, reconCashCodes, { asOf: addDaysYMD(periodStart, -1) });
+  const openingMismatch = (stmtOpening != null) ? openingDiscrepancy({ statedOpening: stmtOpening, recordedOpening: glCashAtPeriodStart }) : { mismatch:false, diff:0 };
 
   // A statement balance is "verified" when it's a real non-zero ending balance OR the user
   // explicitly confirmed a genuinely-empty/closed account ($0). Distinguishes a real
@@ -522,7 +526,7 @@ export default function ReconView() {
           disagreement is surfaced here as a trust-layer flag, and the difference below reflects it. */}
       {openingMismatch.mismatch && (
         <div style={{ ...card, padding:"12px 16px", marginBottom:14, background:"var(--sc-warning-soft)", borderColor:"var(--sc-warning-soft)" }}>
-          <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ Your books start January at {fmt(booksOpening)}, but this statement's opening balance is {fmt(stmtOpening)} — off by {fmt(Math.abs(openingMismatch.diff))}. We kept your books unchanged; your accountant should reconcile the starting balance.</div>
+          <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ Your books carry {fmt(glCashAtPeriodStart)} into this period, but this statement's opening balance is {fmt(stmtOpening)} — off by {fmt(Math.abs(openingMismatch.diff))}. We kept your books unchanged; your accountant should reconcile the starting balance.</div>
         </div>
       )}
 

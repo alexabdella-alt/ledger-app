@@ -101,6 +101,18 @@ const addMonthsClampedYMD = (startYMD, k) => {
   return ymdLocal(new Date(y, mo + k, Math.min(day, lastDay)));
 };
 
+// Add `days` (may be negative) to a YYYY-MM-DD, from LOCAL components (DST-safe via
+// setDate, which carries month/year boundaries). e.g. addDaysYMD("2026-02-01", -1) →
+// "2026-01-31". Used to get "the day before the statement period start" = the balance the
+// books carry INTO the period (the opening-discrepancy comparand). Null on bad input.
+const addDaysYMD = (ymd, days) => {
+  if (!ymd) return null;
+  const d = new Date(String(ymd) + "T00:00:00");
+  if (isNaN(d)) return null;
+  d.setDate(d.getDate() + Number(days || 0));
+  return ymdLocal(d);
+};
+
 // Today's calendar date as YYYY-MM-DD from LOCAL components — NEVER toISOString() (UTC),
 // which for a user behind UTC can roll into the next day (and, on a month boundary, the next
 // PERIOD). Every WRITE-PATH entry-date fallback uses this so an evening booking/void doesn't
@@ -110,4 +122,4 @@ const todayLocal = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD };
+export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD };
