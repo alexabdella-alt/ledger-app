@@ -20,6 +20,8 @@ import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDrop
 import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
 import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "./lib/controlTotals";
 import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod } from "./lib/signoff";
+import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy } from "./lib/signedPeriod";
+import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse } from "./lib/openingBalanceProposal";
@@ -729,6 +731,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // control total) + persisted period sign-offs ("reviewed through …").
   const [intakeRows, setIntakeRows] = useState([]);
   const [signoffs, setSignoffs] = useState([]);
+  // O83 Trap 2 — a booking held because it dates into a signed-off period: { invoice, period }.
+  // The decision modal (reopen / rebook / CPA) reads this; null when nothing is held.
+  const [pendingSignedPeriodBooking, setPendingSignedPeriodBooking] = useState(null);
   // Destructive AI actions staged behind the human confirmation gate (CR-9). null =
   // nothing pending; else { actions:[…], items:[{type,description,targets}] }.
   const [pendingAIActions, setPendingAIActions] = useState(null);
@@ -1104,6 +1109,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!currentCompany?.id) return false;
     const targets = recodedInvoices || [];
     if (targets.length === 0) return false;
+    // SIGNED-PERIOD guard (O83 Trap 2): a recode changes a signed month's account mix — block
+    // it (reopen first). Any mutation of an attested period must be deliberate, never silent.
+    const recBlocked = targets.find(inv => signedPeriodForDate(inv?.date, signoffs, { source: inv?.source }));
+    if (recBlocked) {
+      const p = signedPeriodForDate(recBlocked.date, signoffs, { source: recBlocked.source });
+      showNotification(`${signedMonthLabel(p) || "That month"} is signed off — reopen it first to recategorize entries in it.`, "error");
+      logAudit("signed_period_mutation_blocked", `Blocked recode of an entry dated ${recBlocked.date} in signed period ${p}`, null, { period: p, date: recBlocked.date, action: "recode" });
+      return false;
+    }
     // Every target must have a DB id; otherwise we can't persist the change (the
     // "worked on retry" race — the entry hadn't finished saving on the first attempt).
     const withDbId = targets.filter(i => i.db_entry_id);
@@ -1159,6 +1173,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (cutoffDate && invoice?.source !== "opening_balance" && isBeforeCutoff(invoice?.date, cutoffDate)) {
       showNotification(PRE_CUTOFF_MESSAGE, "error");
       logAudit("pre_cutoff_booking_blocked", `Blocked booking dated ${invoice?.date} before cutoff ${cutoffDate}`, null, { date: invoice?.date, cutoff: cutoffDate, vendor: invoice?.vendor });
+      return null;
+    }
+    // SIGNED-PERIOD guard (O83 Trap 2): NEVER silently post into a month a reviewer signed off —
+    // the attestation would then vouch for numbers that changed. Hold the entry and route to the
+    // decision surface. The reopen-and-book path re-invokes with _signedPeriodAck (after revoking
+    // the sign-off), so the second pass posts. This is the single chokepoint (§8), so it covers
+    // doc upload, bank import, manual, recurring and contract bookings at once.
+    const heldPeriod = invoice?._signedPeriodAck ? null : signedPeriodForDate(invoice?.date, signoffs, { source: invoice?.source });
+    if (heldPeriod) {
+      setPendingSignedPeriodBooking({ invoice, period: heldPeriod });
+      logAudit("signed_period_booking_held", `Held a booking dated ${invoice?.date} into signed period ${heldPeriod} — awaiting decision`, null, { date: invoice?.date, period: heldPeriod, vendor: invoice?.vendor });
       return null;
     }
     try {
@@ -1282,6 +1307,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (cutoffDate && entry.source !== "opening_balance" && isBeforeCutoff(entry.date, cutoffDate)) {
       showNotification(PRE_CUTOFF_MESSAGE, "error");
       logAudit("pre_cutoff_booking_blocked", `Blocked multi-line entry dated ${entry.date} before cutoff ${cutoffDate}`, null, { date: entry.date, cutoff: cutoffDate });
+      return null;
+    }
+    // SIGNED-PERIOD guard (O83 Trap 2) — same as persistJournalEntry; a multi-line entry
+    // (deferred-revenue recognition, lease, payroll, sales-tax) dated into a signed month is held.
+    const heldPeriodML = entry?._signedPeriodAck ? null : signedPeriodForDate(entry.date, signoffs, { source: entry.source });
+    if (heldPeriodML) {
+      setPendingSignedPeriodBooking({ invoice: entry, period: heldPeriodML, multiLine: true });
+      logAudit("signed_period_booking_held", `Held a multi-line entry dated ${entry.date} into signed period ${heldPeriodML} — awaiting decision`, null, { date: entry.date, period: heldPeriodML });
       return null;
     }
     try {
@@ -2050,6 +2083,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Undo toast can restore them. The audit_log keeps the immutable record.
   const softDeleteJournalEntry = async (invoice) => {
     if (!currentCompany?.id) return [];
+    // SIGNED-PERIOD guard (O83 Trap 2): deleting/voiding an entry inside a signed month removes
+    // value the attestation vouches for — block it (reopen first). Opening entries exempt.
+    const delPeriod = signedPeriodForDate(invoice?.date, signoffs, { source: invoice?.source });
+    if (delPeriod) {
+      showNotification(`${signedMonthLabel(delPeriod) || "That month"} is signed off — reopen it first to remove entries from it.`, "error");
+      logAudit("signed_period_mutation_blocked", `Blocked delete/void of an entry dated ${invoice?.date} in signed period ${delPeriod}`, null, { period: delPeriod, date: invoice?.date, action: "delete" });
+      return [];
+    }
     const uid = session?.user?.id || null;
     const ids = [];
     const mark = async (jeId) => {
@@ -3070,6 +3111,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         debit_credit: aiSuggestion.debit_credit, confidence: aiSuggestion.confidence,
         reasoning: aiSuggestion.reasoning, status: "booked", booked_at: new Date().toISOString(),
       };
+      // Signed-period guard UP FRONT (no false "Booked ✓" toast): a manual entry dated into a
+      // reviewed month opens the decision modal instead of posting. The persistJournalEntry
+      // chokepoint is the backstop for every other path.
+      const spManual = signedPeriodForDate(invoice.date, signoffs, { source: invoice.source });
+      if (spManual) {
+        setPendingSignedPeriodBooking({ invoice, period: spManual });
+        logAudit("signed_period_booking_held", `Held a manual entry dated ${invoice.date} into signed period ${spManual} — awaiting decision`, null, { date: invoice.date, period: spManual, vendor: invoice.vendor });
+        return;
+      }
       setInvoices(prev => [invoice, ...prev]);
       runAPScreen([invoice], [invoice, ...invoices]);
       checkWatchTriggers([invoice], unknownDocs);
@@ -3309,6 +3359,48 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
     return res;
   };
+
+  // ── O83 Trap 2 — decision handlers for a booking held because it dates into a signed period ──
+  // Re-post the held entry (booking OR multi-line) with the ack flag so the guard lets it through.
+  const repostHeldEntry = async (entry, multiLine) => {
+    const acked = { ...entry, _signedPeriodAck: true };
+    if (multiLine) return await persistMultiLineEntry(acked);
+    setInvoices(prev => prev.some(i => i.id === acked.id) ? prev : [acked, ...prev]);
+    const jeId = await persistJournalEntry(acked);
+    if (jeId) setInvoices(prev => prev.map(i => i.id === acked.id ? { ...i, db_entry_id: jeId } : i));
+    else setInvoices(prev => prev.filter(i => i.id !== acked.id));
+    return jeId;
+  };
+  // (a) REVIEWER ONLY: reopen the signed month (revokes the sign-off, audited), then post into it.
+  // The owner can't reopen — that would undo their accountant's attestation (separation of duties).
+  const reopenSignedPeriodAndBook = async () => {
+    const held = pendingSignedPeriodBooking; if (!held) return;
+    if (!isReviewer) { showNotification("Only your accountant can reopen a reviewed month.", "error"); return; }
+    const r = await reopenPeriod(held.period);
+    if (!r.ok) return;   // reopenPeriod already surfaced the error
+    logAudit("signed_period_reopened_for_booking", `Reopened ${held.period} to record ${held.invoice?.vendor || "an entry"} dated ${held.invoice?.date}`, null, { period: held.period, date: held.invoice?.date, vendor: held.invoice?.vendor });
+    setPendingSignedPeriodBooking(null);
+    const jeId = await repostHeldEntry(held.invoice, held.multiLine);
+    if (jeId) { await loadAllData(); showNotification(`Recorded in ${signedMonthLabel(held.period)} — that month is reopened for re-review`); }
+  };
+  // (b) Rebook into the current OPEN month (date-adjust; the original date is kept in metadata).
+  const rebookHeldIntoOpenMonth = async () => {
+    const held = pendingSignedPeriodBooking; if (!held) return;
+    const moved = rebookedIntoOpenMonth(held.invoice, todayLocal(), held.period);
+    logAudit("signed_period_rebooked_open", `Rebooked ${held.invoice?.vendor || "an entry"} out of signed ${held.period} into the open month (original date ${held.invoice?.date} kept)`, null, { period: held.period, original_date: held.invoice?.date, new_date: moved.date });
+    setPendingSignedPeriodBooking(null);
+    const jeId = await repostHeldEntry(moved, held.multiLine);
+    if (jeId) showNotification(`Recorded in the current month — the original date (${held.invoice?.date}) is kept on file.`);
+  };
+  // (c) Send to the CPA review queue to decide — leave it UNBOOKED (never silently posted); notify.
+  const sendHeldToCPA = async () => {
+    const held = pendingSignedPeriodBooking; if (!held) return;
+    logAudit("signed_period_sent_to_cpa", `Sent ${held.invoice?.vendor || "an entry"} dated ${held.invoice?.date} (signed ${held.period}) to accountant review`, null, { period: held.period, date: held.invoice?.date });
+    try { createNotification?.({ type: "needs_review", title: `A ${signedMonthLabel(held.period) || "reviewed-month"} item needs your accountant`, description: `${held.invoice?.vendor || "An entry"} dated ${held.invoice?.date} falls in a reviewed month — your accountant should decide how to record it.`, link_view: "review" }); } catch {}
+    setPendingSignedPeriodBooking(null);
+    showNotification("Sent to your accountant to decide.");
+  };
+  const dismissSignedPeriodBooking = () => setPendingSignedPeriodBooking(null);
 
   // Load intake rows + sign-offs when the company changes (best-effort, pre-migration safe).
   useEffect(() => {
@@ -5067,6 +5159,16 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const markBillPaid = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap" } = {}) => {
     const inv = (invoicesRef.current || []).find(i => String(i.id) === String(entryId) || String(i.db_entry_id) === String(entryId));
     if (!inv) { console.warn("[markBillPaid] no invoice for entryId", String(entryId)); return false; }
+    // SIGNED-PERIOD guard (O83 Trap 2): a payment/collection dated into a signed month posts a
+    // clearing JE that changes that month — block a BACKDATED mark-paid (reopen first). A normal
+    // payment in the open month (incl. bank-import auto-clears dated at the statement line) proceeds.
+    const effPayDate = paidDate || todayLocal();
+    const payPeriod = signedPeriodForDate(effPayDate, signoffs);
+    if (payPeriod) {
+      showNotification(`${signedMonthLabel(payPeriod) || "That month"} is signed off — reopen it first to record a payment dated in it.`, "error");
+      logAudit("signed_period_mutation_blocked", `Blocked mark-paid dated ${effPayDate} in signed period ${payPeriod}`, null, { period: payPeriod, date: effPayDate, action: "mark_paid" });
+      return false;
+    }
     // Always target the PARENT journal_entries.id (multi-line rows carry a synthetic
     // `${parentId}_${line}` id; one bill = one entry = one payment_status).
     const dbId = resolveEntryDbId(inv);
@@ -5742,7 +5844,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, logIntake, markIntake };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, logIntake, markIntake };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.
@@ -5794,6 +5896,41 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           <button onClick={dismissNotification} aria-label="Dismiss" style={{ flexShrink:0, background:"transparent", border:"none", color:"inherit", opacity:0.6, fontSize:18, lineHeight:1, cursor:"pointer", padding:0 }}>×</button>
         </div>
       )}
+
+      {/* O83 Trap 2 — a signed period is guarded. A booking that dates into a reviewed month is
+          HELD here (never silently posted); the owner/reviewer picks how to record it. */}
+      {pendingSignedPeriodBooking && (() => {
+        const held = pendingSignedPeriodBooking;
+        const copy = signedPeriodOwnerCopy(held.period);
+        const inv = held.invoice || {};
+        const optBtn = (onClick, title, sub, accent) => (
+          <button onClick={onClick} style={{ display:"block", width:"100%", textAlign:"left", padding:"13px 15px", marginTop:10, borderRadius:11, border:`1px solid ${accent||"var(--sc-border-2)"}`, background:"var(--sc-surface)", cursor:"pointer" }}>
+            <div style={{ fontSize:13.5, fontWeight:600, color:"var(--sc-text)" }}>{title}</div>
+            <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:2 }}>{sub}</div>
+          </button>
+        );
+        return (
+          <div style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(16,24,40,0.55)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+            <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, padding:"22px 24px", maxWidth:520, width:"100%", boxShadow:"0 24px 64px rgba(16,24,40,0.3)" }}>
+              <div style={{ fontSize:11, letterSpacing:1, textTransform:"uppercase", color:"var(--sc-warning)", fontWeight:700, marginBottom:6 }}>Already reviewed</div>
+              <div style={{ fontSize:18, fontWeight:600, color:"var(--sc-text)", letterSpacing:-0.3 }}>{copy.title}</div>
+              <div style={{ fontSize:13.5, color:"var(--sc-text-2)", marginTop:8, lineHeight:1.5 }}>{copy.body}</div>
+              <div style={{ marginTop:12, padding:"10px 12px", borderRadius:10, background:"var(--sc-surface-2)", fontSize:12.5, color:"var(--sc-text)" }}>
+                <strong>{inv.vendor || "Entry"}</strong>{inv.amount != null ? ` · ${fmtSignedMoney(inv.amount)}` : ""}{inv.date ? ` · dated ${inv.date}` : ""}
+              </div>
+              {/* (a) reopen — REVIEWER ONLY (the client can't undo their accountant's sign-off). */}
+              {isReviewer && optBtn(reopenSignedPeriodAndBook, copy.reopen, "Reopens the month and records it there, for re-review.", "var(--sc-warning)")}
+              {/* (b) rebook to the open month — keeps the original date on file. */}
+              {optBtn(rebookHeldIntoOpenMonth, copy.rebook, "Best for a late bill you just want on the books.")}
+              {/* (c) hand to the accountant — leaves it unbooked until they decide. */}
+              {optBtn(sendHeldToCPA, copy.cpa, "We'll flag it for your accountant; nothing is recorded yet.")}
+              <div style={{ display:"flex", justifyContent:"flex-end", marginTop:14 }}>
+                <button onClick={dismissSignedPeriodBooking} style={{ background:"transparent", border:"none", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer", padding:"6px 4px" }}>Not now</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (
