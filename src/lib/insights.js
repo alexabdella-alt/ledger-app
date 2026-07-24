@@ -20,26 +20,41 @@ const isLive = i => i && i.status !== "voided" && i.status !== "deleted" && !i.d
 const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s[0] === "6" || s[0] === "7" || s[0] === "8"; };
 
 // Find an existing entry that looks like a duplicate of `invoice`:
-//   • exact same amount + same vendor (any date) — catches re-uploads, OR
-//   • same vendor + amount within 1% + entry date within 7 days.
+//   • same vendor + exact amount, OR same vendor + amount within 1%, AND within a date window.
 // Returns the matched existing invoice, or null. Skips the invoice itself by id.
-export function findDuplicate(invoice, invoices) {
+//
+// `windowDays` controls the date gate and DIFFERS BY CALLER (O83 Feb):
+//   • null (default — booking / QBO-import re-upload guard): an EXACT amount is a duplicate at
+//     ANY date (re-uploading the same bill months later must still warn); a NEAR amount needs
+//     the 7-day window.
+//   • a number (the anomaly detector passes 7): BOTH exact and near matches must be within that
+//     tight window. This is the fix for the O83 false positives — the old exact branch returned
+//     "any date", so a legitimate same-amount RECURRING charge (Gusto payroll every 2 weeks,
+//     weekly linen) flagged as a "duplicate within a week" even 14–29 days apart. A true double-
+//     pay is a same-day-to-a-few-days event; the window (and the "within a week" copy) now agree.
+export function findDuplicate(invoice, invoices, { windowDays = null } = {}) {
   const v = normVendor(invoice?.vendor);
   const amt = Number(invoice?.amount) || 0;
   if (!v || !amt) return null;
   const d = invoice?.date ? new Date(invoice.date) : null;
+  const gapDays = (ex) => (d && ex.date) ? Math.abs((d - new Date(ex.date)) / 86400000) : Infinity;
   for (const ex of invoices || []) {
     if (!isLive(ex)) continue;
     if (String(ex.id) === String(invoice?.id)) continue;
     if (normVendor(ex.vendor) !== v) continue;
     const exAmt = Number(ex.amount) || 0;
     if (!exAmt) continue;
-    const exact = Math.abs(exAmt - amt) < 0.005;
-    if (exact) return ex;                                   // re-upload (any date)
-    const within1pct = Math.abs(exAmt - amt) <= Math.max(0.01, amt * 0.01);
-    if (within1pct && d && ex.date) {
-      const days = Math.abs((d - new Date(ex.date)) / 86400000);
-      if (days <= 7) return ex;                             // same charge, near in time
+    const diff = Math.abs(exAmt - amt);
+    const exact = diff < 0.005;
+    const within1pct = diff <= Math.max(0.01, amt * 0.01);
+    if (!exact && !within1pct) continue;
+    if (windowDays == null) {
+      // Re-upload guard: exact = duplicate at any date; near = within a week.
+      if (exact) return ex;
+      if (gapDays(ex) <= 7) return ex;
+    } else {
+      // Anomaly detector: BOTH exact and near must be within the tight window.
+      if (gapDays(ex) <= windowDays) return ex;
     }
   }
   return null;
@@ -164,10 +179,15 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
     }
   }
 
-  // 2. Duplicate payment — reuse findDuplicate (same vendor + amount within 7 days).
+  // 2. Duplicate payment — same vendor + amount within a TIGHT 7-day window (matches the
+  // "within a week" copy). The window is applied to exact matches too, so a legitimate
+  // same-amount recurring charge (biweekly payroll, monthly insurance) is NOT flagged (O83 Feb).
+  // No signed-off-period special-casing: pairs must be within the window regardless of period,
+  // which naturally excludes cross-month noise while still catching a real duplicate that
+  // straddles a month boundary (e.g. Jan 30 + Feb 2).
   const seen = new Set();
   for (const i of expenses) {
-    const dup = findDuplicate(i, expenses.filter(x => String(x.id) !== String(i.id)));
+    const dup = findDuplicate(i, expenses.filter(x => String(x.id) !== String(i.id)), { windowDays: 7 });
     if (!dup) continue;
     const key = [String(i.id), String(dup.id)].sort().join("-");
     if (seen.has(key)) continue;

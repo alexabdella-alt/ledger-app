@@ -127,10 +127,12 @@ describe("executeAITool", () => {
     expect(apOnly.invoices[0].vendor).toBe("Gas Co");
   });
 
-  it("get_anomalies: computes the current list when none passed", async () => {
+  it("get_anomalies: computes the current list; monthly same-amount charges are NOT duplicates (O83)", async () => {
     const out = await executeAITool("get_anomalies", {}, ctx);
     expect(Array.isArray(out.anomalies)).toBe(true);
-    expect(out.count).toBeGreaterThanOrEqual(1); // Adobe charged the same amount twice → duplicate
+    // The two Adobe $52.99 charges are 28 days apart — a MONTHLY subscription, not a double
+    // payment. The tightened 7-day window (O83 Feb) correctly does NOT flag them as a duplicate.
+    expect(out.anomalies.some(a => a.type === "duplicate_payment")).toBe(false);
   });
 
   it("get_tax_summary: returns estimate + deductions for the year", async () => {

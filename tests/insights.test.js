@@ -132,3 +132,67 @@ describe("toCSV", () => {
     expect(csv).toBe('Name,Amount\n"Acme, Inc.","$1,200"\n"He said ""hi""",5');
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// O83 Feb — duplicate_payment must use a TIGHT date window on EXACT matches too.
+// The old exact branch returned "any date", so legitimate same-amount recurring
+// charges (biweekly payroll, monthly insurance) flagged as "duplicate within a
+// week" 14–29 days apart. The window (7 days) now matches the copy.
+// ════════════════════════════════════════════════════════════════════════════
+const NOW_DUP = new Date("2026-03-01T12:00:00Z");
+const exp = (id, vendor, amount, date) => ({ id, vendor, amount, date, gl_code: "6000", gl_name: "Salaries", status: "posted" });
+const dupFlags = (ledger) => runAnomalyDetection(ledger, [], NOW_DUP).filter(a => a.type === "duplicate_payment");
+
+describe("duplicate_payment — tight window excludes legitimate recurring same-amount vendors", () => {
+  it("biweekly payroll (4 × $3,150, 14-day spacing) → ZERO duplicate flags", () => {
+    const ledger = [
+      exp("g1", "Gusto Payroll", 3150, "2026-01-15"),
+      exp("g2", "Gusto Payroll", 3150, "2026-01-30"),
+      exp("g3", "Gusto Payroll", 3150, "2026-02-13"),
+      exp("g4", "Gusto Payroll", 3150, "2026-02-27"),
+    ];
+    expect(dupFlags(ledger)).toHaveLength(0);
+  });
+
+  it("monthly insurance across two months (2 × $264.50, 29 days apart) → ZERO duplicate flags", () => {
+    const ledger = [
+      exp("h1", "Hartline Insurance", 264.50, "2026-01-22"),
+      exp("h2", "Hartline Insurance", 264.50, "2026-02-20"),
+    ];
+    expect(dupFlags(ledger)).toHaveLength(0);
+  });
+
+  it("the linen bait (3 × $145, 7-day spacing) → EXACTLY 2 flags (the adjacent pairs)", () => {
+    const ledger = [
+      exp("b1", "Bluebonnet Linen", 145, "2026-02-01"),
+      exp("b2", "Bluebonnet Linen", 145, "2026-02-08"),
+      exp("b3", "Bluebonnet Linen", 145, "2026-02-15"),
+    ];
+    const flags = dupFlags(ledger);
+    expect(flags).toHaveLength(2);
+    // adjacent pairs only — never the 14-day-apart (b1,b3) pair
+    const keys = flags.map(f => f.fingerprint).sort();
+    expect(keys).toEqual(["dup:b1-b2", "dup:b2-b3"]);
+  });
+
+  it("same-day identical charges → a flag (0 days apart, the genuine double-pay)", () => {
+    const ledger = [
+      exp("s1", "Sysco", 500, "2026-02-10"),
+      exp("s2", "Sysco", 500, "2026-02-10"),
+    ];
+    expect(dupFlags(ledger)).toHaveLength(1);
+  });
+});
+
+describe("findDuplicate windowDays — exact matches respect the window when set", () => {
+  const existing = [{ id: 1, vendor: "Gusto", amount: 3150, date: "2026-01-15", status: "posted" }];
+  it("exact amount 14 days apart with windowDays:7 → null (not a duplicate)", () => {
+    expect(findDuplicate({ vendor: "Gusto", amount: 3150, date: "2026-01-29" }, existing, { windowDays: 7 })).toBeNull();
+  });
+  it("exact amount 5 days apart with windowDays:7 → flagged", () => {
+    expect(findDuplicate({ vendor: "Gusto", amount: 3150, date: "2026-01-20" }, existing, { windowDays: 7 })?.id).toBe(1);
+  });
+  it("default (no window) still flags an exact re-upload at any date (booking/QBO guard preserved)", () => {
+    expect(findDuplicate({ vendor: "Gusto", amount: 3150, date: "2026-09-01" }, existing)?.id).toBe(1);
+  });
+});
