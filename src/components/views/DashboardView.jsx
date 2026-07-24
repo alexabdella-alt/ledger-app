@@ -724,9 +724,12 @@ export default function DashboardView() {
                                   <span style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>{a.title}</span>
                                 </div>
                                 <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:4, lineHeight:1.5 }}>{a.description}</div>
-                                <div style={{ display:"flex", gap:14, marginTop:7 }}>
+                                <div style={{ display:"flex", gap:14, marginTop:7, alignItems:"center" }}>
                                   {(a.invoice_ids||[]).length>0 && <button onClick={()=>openTxn(a)} style={{ fontSize:12, fontWeight:600, color:"var(--sc-gold)", background:"none", border:"none", cursor:"pointer", padding:0 }}>View transaction →</button>}
-                                  <button onClick={()=>dismissAnomaly(a.id)} style={{ fontSize:12, color:"var(--sc-text-mut)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Dismiss</button>
+                                  {/* Dismissal (with a required reason) is a reviewer action in the CPA Review
+                                      queue — not a one-click here. These clear themselves once the underlying
+                                      cause is fixed (auto-resolve). */}
+                                  <button onClick={()=>setView("review")} style={{ fontSize:12, fontWeight:600, color:"var(--sc-warning)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Review →</button>
                                 </div>
                               </div>
                             </div>

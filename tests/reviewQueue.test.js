@@ -63,3 +63,32 @@ describe("RESOLVE re-syncs the completeness queue: a terminal intake row drops o
     expect(reconcileIntake(rows, { stuckMinutes: 30 })).toEqual([]);
   });
 });
+
+describe("open anomalies join the Review queue (O83) — visibility by any severity", () => {
+  const anom = (over = {}) => ({ id: "a1", type: "duplicate_payment", severity: "high", status: "open", fingerprint: "dup:je1-je2", title: "Possible duplicate", detail: "Two charges within a week", ...over });
+
+  it("an open anomaly lands in its own section and counts toward the summary", () => {
+    const q = buildReviewQueue({ anomalies: [anom(), anom({ id: "a2", severity: "low", type: "round_number", fingerprint: "round:je9" })] });
+    expect(q.anomaly).toHaveLength(2);
+    expect(q.summary.anomalyCount).toBe(2);
+    expect(q.summary.highCount).toBe(1);                 // only the high one
+    expect(q.summary.totalItems).toBe(2);
+  });
+
+  it("ANY open anomaly (even low) keeps the screen from 'all clear' — severity ≠ visibility", () => {
+    const q = buildReviewQueue({ anomalies: [anom({ severity: "low", type: "round_number", fingerprint: "round:je9" })] });
+    expect(q.summary.allClear).toBe(false);
+  });
+
+  it("non-open anomalies (resolved/dismissed) are excluded from the section", () => {
+    const q = buildReviewQueue({ anomalies: [anom({ status: "resolved" }), anom({ id: "a2", status: "dismissed" })] });
+    expect(q.anomaly).toHaveLength(0);
+    expect(q.summary.allClear).toBe(true);
+  });
+
+  it("no anomalies + all nets clear → still all clear (regression guard)", () => {
+    const q = buildReviewQueue({});
+    expect(q.summary.allClear).toBe(true);
+    expect(q.anomaly).toEqual([]);
+  });
+});

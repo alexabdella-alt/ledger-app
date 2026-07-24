@@ -15,7 +15,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded,
-    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -28,6 +28,19 @@ export default function ReviewView() {
   const [askDraft, setAskDraft] = React.useState("");          // the drafted plain-language question
   const [askAnswer, setAskAnswer] = React.useState("");        // the client's answer (pre-O82: pasted manually)
   const [copied, setCopied] = React.useState(false);
+  // O83 anomaly dismissal (reviewer-only; resolve is AUTO-only, so the sole human verb is
+  // dismiss-with-reason). `dismissFor` = the anomaly id whose reason box is open.
+  const [dismissFor, setDismissFor] = React.useState(null);
+  const [dismissReason, setDismissReason] = React.useState("");
+  const [dismissBusy, setDismissBusy] = React.useState(false);
+  const onDismissAnomaly = async (id) => {
+    if (!dismissAnomaly || !dismissReason.trim()) return;
+    setDismissBusy(true);
+    const r = await dismissAnomaly(id, dismissReason.trim());
+    setDismissBusy(false);
+    if (r && r.ok) { setDismissFor(null); setDismissReason(""); }
+    else showNotification(`Couldn't dismiss — ${(r && r.error) || "unknown error"}`, "error");
+  };
 
   // Plain function (not useCallback): reconcileDroppedDocs is a fresh closure each ERP render,
   // so depending on it would re-run the effect every render (excess refetching). Run the load
@@ -42,7 +55,7 @@ export default function ReviewView() {
 
   const flagged = flagsForReview ? flagsForReview() : [];
   const accuracyFlags = (controlTotals && controlTotals.flags) || [];   // O59 third net
-  const { completeness, needsReview, unknown, accuracy, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags });
+  const { completeness, needsReview, unknown, accuracy, anomaly, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags, anomalies });
   // O83: attestation is a REVIEWER action (accountant/admin), NOT the client-owner.
   const canSignOff = !!isReviewer;
   const [signingOff, setSigningOff] = React.useState(false);
@@ -152,8 +165,61 @@ export default function ReviewView() {
         {statCard("INCOMPLETE DOCS", summary.incompleteCount + summary.unknownCount, (summary.incompleteCount + summary.unknownCount) > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
         {statCard("FLAGGED TXNS", summary.flaggedCount, summary.flaggedCount > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
         {statCard("ACCURACY CHECKS OFF", summary.accuracyCount, summary.accuracyCount > 0 ? "var(--sc-error)" : "var(--sc-success)")}
+        {statCard("UNUSUAL ACTIVITY", summary.anomalyCount, summary.anomalyCount > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
         {statCard("$ FLAGGED FOR REVIEW", _m0(summary.totalExposure), summary.totalExposure > 0 ? "var(--sc-gold)" : "var(--sc-success)")}
       </div>
+
+      {/* ── UNUSUAL ACTIVITY (O83) — persisted anomaly records. All severities are VISIBLE
+             here (CPA-side, full technical detail is fine); only HIGH-in-period BLOCKS
+             sign-off (handled in signOffReadiness). Resolve is AUTO-only (next scan clears a
+             fixed condition); the reviewer's one verb is dismiss-with-reason. ── */}
+      {anomaly.length > 0 && (
+        <div style={{ border: "1px solid var(--sc-warning)", background: "var(--sc-warning-soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-warning)", marginBottom: 10 }}>⚠ {anomaly.length} unusual {anomaly.length === 1 ? "pattern" : "patterns"} detected · awaiting review</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {anomaly.map((a) => {
+              const sevColor = a.severity === "high" ? "var(--sc-error)" : a.severity === "medium" ? "var(--sc-warning)" : "var(--sc-text-2)";
+              return (
+                <div key={a.id} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--sc-text)" }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, color: sevColor, marginRight: 8 }}>{a.severity}</span>
+                        {a.title}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 3 }}>{a.detail}</div>
+                    </div>
+                    {/* Reviewer-only, PERMANENTLY: dismissing judges a condition acceptable — a
+                        review act. The client sees anomalies reflected in their trust panel but
+                        can't clear them (client-side dismissal = self-attestation per anomaly). */}
+                    {isReviewer && dismissFor !== a.id && (
+                      <button onClick={() => { setDismissFor(a.id); setDismissReason(""); }}
+                        style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer", flexShrink: 0 }}>
+                        Dismiss…
+                      </button>
+                    )}
+                  </div>
+                  {isReviewer && dismissFor === a.id && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--sc-border-2)" }}>
+                      <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginBottom: 6 }}>Dismissing records a reason and stops this flag from reappearing. (If you fix the underlying cause instead, it clears itself on the next check.)</div>
+                      <textarea value={dismissReason} onChange={(e) => setDismissReason(e.target.value)} rows={2}
+                        placeholder="Why is this acceptable? (required)…"
+                        style={{ width: "100%", padding: "9px 11px", borderRadius: 9, fontSize: 13, border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", background: "var(--sc-surface)", resize: "vertical", boxSizing: "border-box" }} />
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                        <button onClick={() => { setDismissFor(null); setDismissReason(""); }} style={{ padding: "8px 14px", borderRadius: 8, fontSize: 12, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
+                        <button onClick={() => onDismissAnomaly(a.id)} disabled={dismissBusy || !dismissReason.trim()}
+                          style={{ padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", cursor: (dismissBusy || !dismissReason.trim()) ? "not-allowed" : "pointer", background: (dismissBusy || !dismissReason.trim()) ? "var(--sc-border)" : "var(--sc-warning)", color: (dismissBusy || !dismissReason.trim()) ? "var(--sc-text-mut)" : "var(--sc-on-accent)" }}>
+                          {dismissBusy ? "Dismissing…" : "Dismiss"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── ACCURACY (O59 THIRD NET) — control totals that should tie and don't ── */}
       {accuracy.length > 0 && (

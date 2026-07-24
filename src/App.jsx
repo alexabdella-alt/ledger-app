@@ -12,6 +12,7 @@ import { draftClientQuestion, plainCategoryPhrase, describeBooking } from "./lib
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
+import { reconcileAnomalies, anomalyInsertRow, openHighAnomaliesInPeriod } from "./lib/anomalies";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
@@ -886,7 +887,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setRecurringSuggestions([]);
     dismissedRecurringRef.current = new Set();
     // Anomalies, notifications, onboarding UI
-    setAnomalies([]);
+    applyAnomalyRows([]); anomaliesLoadedRef.current = false; anomalyScanBusyRef.current = false;
     setNotifications([]); setNotifOpen(false);
     setOnboardingUploadDone(false); setBusinessModalOpen(false);
   };
@@ -1079,9 +1080,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         setOnboardingUploadDone(Array.isArray(ul) && ul.length > 0);
       } catch { /* table may be absent */ }
 
-      // Load persisted notifications (defensive). Anomaly scanning + notification
-      // generation are driven by effects below (so they read fresh state, not stale refs).
+      // Load persisted notifications + anomaly records (defensive). Anomaly SCANNING
+      // (reconcile/insert/auto-resolve) and notification generation are driven by effects
+      // below (so they read fresh state, not stale refs). Loading the rows FIRST lets the
+      // reconcile see existing open/dismissed rows (dedup + dismissal suppression) rather
+      // than re-inserting everything on the first scan.
       await loadNotifications(cid);
+      await loadAnomalies(cid);
 
     } catch(e) { console.error("loadAllData (secondary) error:", e); }
     // The critical ledger loaded (we returned early otherwise), so views may now trust
@@ -1606,25 +1611,95 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
   };
 
-  // ── ANOMALY DETECTION (Item 32) ─────────────────────────────────────────────
-  // Runs on the loaded invoices after load + after every booking. Dismissed ids
-  // persist in localStorage (per company) so they don't keep reappearing.
-  const [anomalies, setAnomalies] = useState([]);
-  const dismissedAnomKey = () => `cfai_dismissed_anomalies_${currentCompany?.id || "x"}`;
-  const getDismissedAnoms = () => { try { return new Set(JSON.parse(localStorage.getItem(dismissedAnomKey()) || "[]")); } catch { return new Set(); } };
-  const runAnomalyScan = () => {
+  // ── ANOMALY DETECTION → PERSISTED RECORDS (Item 32 / O83) ────────────────────
+  // Detection (runAnomalyDetection) is a pure function of the ledger; results are now
+  // RECONCILED against the `anomalies` table (migration 056) by stable fingerprint, so
+  // anomalies persist, dedup, AUTO-RESOLVE when their condition disappears (clearing is
+  // an event, not amnesia — the O83 fix), and feed the trust layer (owner panel + sign-off
+  // gate + Review). localStorage dismissals are retired (device-local; unmigratable).
+  //   anomalyRows — ALL non-resolved rows (open + dismissed): the reconcile source + the
+  //     dismissal-suppression set. `anomalies` (derived) — the OPEN rows in view shape.
+  const [anomalyRows, setAnomalyRows] = useState([]);
+  const anomalyRowsRef = useRef([]);
+  const anomaliesLoadedRef = useRef(false);
+  const anomalyScanBusyRef = useRef(false);
+  const applyAnomalyRows = (rows) => { const r = Array.isArray(rows) ? rows : []; anomalyRowsRef.current = r; setAnomalyRows(r); };
+  const anomalies = useMemo(
+    () => (anomalyRows || []).filter(r => r.status === "open")
+      .map(r => ({ ...r, description: r.detail, invoice_ids: Array.isArray(r.entity_refs) ? r.entity_refs : [] })),
+    [anomalyRows]
+  );
+  const openHighAnomalyCount = useMemo(() => anomalies.filter(a => a.severity === "high").length, [anomalies]);
+
+  const loadAnomalies = async (companyId) => {
+    const cid = companyId || currentCompany?.id;
+    if (!cid) return;
     try {
-      const dismissed = getDismissedAnoms();
-      const found = runAnomalyDetection(invoicesRef.current, recurringRef.current).filter(a => !dismissed.has(a.id));
-      setAnomalies(found);
-    } catch (e) { console.warn("[anomaly] scan failed:", e?.message || e); }
+      const { data } = await supabase.from("anomalies").select("*")
+        .eq("company_id", cid).in("status", ["open", "dismissed"])
+        .order("created_at", { ascending: false });
+      if (Array.isArray(data)) { applyAnomalyRows(data); anomaliesLoadedRef.current = true; }
+    } catch { /* table may not exist yet (pre-056) — degrade gracefully */ }
   };
-  const dismissAnomaly = (id) => {
+
+  // Reconcile the freshly-detected set against the table: INSERT new open rows, AUTO-RESOLVE
+  // open rows whose condition vanished. One read (in-memory rows) + batched writes; writes
+  // ONLY fire on a real delta, so steady-state scans (every ledger change) are free.
+  const runAnomalyScan = async () => {
+    const cid = currentCompany?.id;
+    if (!cid || !anomaliesLoadedRef.current || anomalyScanBusyRef.current) return;
+    anomalyScanBusyRef.current = true;
     try {
-      const d = getDismissedAnoms(); d.add(id);
-      localStorage.setItem(dismissedAnomKey(), JSON.stringify([...d]));
-    } catch {}
-    setAnomalies(prev => prev.filter(a => a.id !== id));
+      const detected = runAnomalyDetection(invoicesRef.current, recurringRef.current);
+      const { toInsert, toResolve } = reconcileAnomalies({ detected, rows: anomalyRowsRef.current });
+      if (!toInsert.length && !toResolve.length) return;   // no delta → no writes
+      let inserted = [];
+      if (toInsert.length) {
+        const { data, error } = await supabase.from("anomalies").insert(toInsert.map(d => anomalyInsertRow(cid, d))).select();
+        if (error) { if (!/duplicate|unique|23505/i.test(error.message || "")) console.warn("[anomaly] insert:", error.message); }
+        else if (Array.isArray(data)) inserted = data;
+      }
+      if (toResolve.length) {
+        const ids = toResolve.map(r => r.id).filter(Boolean);
+        if (ids.length) await supabase.from("anomalies").update({ status: "resolved", resolution: "auto", resolved_at: new Date().toISOString() }).in("id", ids).eq("company_id", cid);
+        logAudit("anomaly_auto_resolved", `${ids.length} anomaly ${ids.length === 1 ? "condition" : "conditions"} cleared`, null, { fingerprints: toResolve.map(r => r.fingerprint) });
+      }
+      await loadAnomalies(cid);
+      // Bell agrees with the table: alert on the newest new HIGH; clear stale anomaly
+      // notifications once no open HIGH remains.
+      const newHigh = inserted.find(r => r.severity === "high");
+      if (newHigh) {
+        const txn = (newHigh.entity_refs || [])[0];
+        createNotification({ type: "anomaly", title: newHigh.title, description: newHigh.detail, link_view: txn != null ? `txn:${txn}` : "home" });
+      }
+      if (!anomalyRowsRef.current.some(a => a.status === "open" && a.severity === "high")) {
+        try { await supabase.from("notifications").update({ dismissed: true }).eq("company_id", cid).eq("type", "anomaly").eq("dismissed", false); } catch { /* best-effort */ }
+      }
+    } catch (e) { console.warn("[anomaly] scan failed:", e?.message || e); }
+    finally { anomalyScanBusyRef.current = false; }
+  };
+
+  // Human dismissal — the ONLY human verb (resolve is auto-only). Requires a reason,
+  // persisted + durable across sessions/devices; the fingerprint is then suppressed from
+  // re-insertion. PERMANENTLY reviewer-gated in the UI (not interim): dismissing is a
+  // judgment that a flagged condition is ACCEPTABLE — a review act — so a client dismissing
+  // their own anomalies would be self-attestation one anomaly at a time (the O83 separation-
+  // of-duties line). The owner sees anomalies honestly in their trust panel but can't clear
+  // them. Verified write (reload after).
+  const dismissAnomaly = async (id, reason) => {
+    const cid = currentCompany?.id;
+    const trimmed = String(reason || "").trim();
+    if (!trimmed) return { ok: false, error: "a reason is required to dismiss an anomaly" };
+    if (!cid || !id) return { ok: false, error: "missing company/anomaly" };
+    try {
+      const { error } = await supabase.from("anomalies")
+        .update({ status: "dismissed", dismissed_reason: trimmed, resolution: "dismissed", resolved_at: new Date().toISOString(), resolved_by: session?.user?.id || null })
+        .eq("id", id).eq("company_id", cid);
+      if (error) return { ok: false, error: error.message };
+      logAudit("anomaly_dismissed", `Anomaly dismissed: ${trimmed}`, null, { anomaly_id: id, reason: trimmed });
+      await loadAnomalies(cid);
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   };
 
   // ── NOTIFICATIONS (Item 55) ─────────────────────────────────────────────────
@@ -1717,15 +1792,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (pendingClar > 0) {
         createNotification({ type: "needs_review", title: `${pendingClar} item${pendingClar === 1 ? "" : "s"} need your input`, description: "Some uploaded documents are waiting for a quick answer before they're booked.", link_view: "home" });
       }
-      // High-severity anomalies.
-      const dismissed = getDismissedAnoms();
-      const topAnom = runAnomalyDetection(invoicesRef.current, recurringRef.current).find(a => a.severity === "high" && !dismissed.has(a.id));
+      // High-severity anomalies — from the PERSISTED open rows (single source, so the bell
+      // agrees with the table + the trust panel). Asserts a notification for an existing open
+      // HIGH loaded from a prior session (runAnomalyScan only fires on NEW inserts).
+      const topAnom = (anomalyRowsRef.current || []).find(a => a.status === "open" && a.severity === "high");
       if (topAnom) {
         // Route the alert straight to the flagged transaction when the anomaly carries
         // one (e.g. "possible duplicate payment") — encode it in link_view as `txn:<id>`,
         // which openNotification opens in the detail panel. Falls back to home otherwise.
-        const anomTxn = (topAnom.invoice_ids || [])[0];
-        createNotification({ type: "anomaly", title: topAnom.title, description: topAnom.description, link_view: anomTxn != null ? `txn:${anomTxn}` : "home" });
+        const anomTxn = (topAnom.entity_refs || [])[0];
+        createNotification({ type: "anomaly", title: topAnom.title, description: topAnom.detail, link_view: anomTxn != null ? `txn:${anomTxn}` : "home" });
       }
     } catch (e) { console.warn("[notifications] generate failed:", e?.message || e); }
   };
@@ -1834,8 +1910,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   useEffect(() => { clarificationQueueRef.current = clarificationQueue; }, [clarificationQueue]);
 
   // Re-run anomaly detection whenever the ledger or recurring rules change (covers
-  // initial load and every booking). Declared after the ref-sync effects above so
-  // it reads fresh data; runAnomalyScan filters out localStorage-dismissed ids.
+  // initial load and every booking). Declared after the ref-sync effects above so it
+  // reads fresh data; runAnomalyScan reconciles against the persisted table and only
+  // writes on a real delta (no-op once loaded + steady-state).
   useEffect(() => {
     if (currentCompany?.id) runAnomalyScan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3159,8 +3236,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       bankMatch,
       hasBooks,
       setupComplete,
+      openHighAnomalies: openHighAnomalyCount,   // O83 — open HIGH anomaly ⇒ "Nothing wrong" can't be green
     });
-  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone]);
+  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount]);
 
   // ── O83 SIGN-OFF READINESS (single source) — "can THIS period be attested?" ──
   // Preconditions (non-vacuous: a period with nothing to check is NOT ready) + the four
@@ -3182,6 +3260,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       openingEntered,
       entriesInPeriodCount: bookedEntriesInPeriod(invoices, period),
       hasReconForPeriod: reconciliationCoversPeriod(reconciliations, period),
+      // O83 — open HIGH anomalies whose entries fall in THIS period block attestation
+      // (overridable). Resolve entity_refs → dates against the live ledger here (App has
+      // invoices); the pure gate just receives the count. Medium/low never block.
+      openHighAnomaliesInPeriod: openHighAnomaliesInPeriod(anomalyRowsRef.current, period, invoices),
     });
   };
 

@@ -253,6 +253,37 @@ describe("(3) reviewed line reflects the sign-off state honestly", () => {
   });
 });
 
+// ── Open HIGH anomaly de-greens the "Nothing wrong" net (the O83 fix) ──
+// The exact O83 bug: 4 HIGH duplicate-payment anomalies were live while the owner
+// panel said "Nothing wrong". An open HIGH anomaly must make the panel NOT green,
+// in plain language ("your accountant is taking a look"), never "duplicate_payment".
+describe("open HIGH anomaly → 'Nothing wrong' cannot be green (O83)", () => {
+  it("all nets clear but an open HIGH anomaly → overall attention, correct net not-ok", () => {
+    const s = ownerTrustState({ ...base, openHighAnomalies: 2 });
+    expect(s.overall).toBe("attention");
+    expect(s.lines.correct.ok).toBe(false);
+    expect(s.lines.correct.state).toBe("attention");
+    expect(s.nets.noAnomalies).toBe(false);
+    expect(s.lines.correct.text).toMatch(/unusual/i);
+    expect(s.lines.correct.text).toMatch(/accountant/i);
+  });
+  it("singular copy for a single anomaly", () => {
+    const s = ownerTrustState({ ...base, openHighAnomalies: 1 });
+    expect(s.lines.correct.text).toMatch(/something looks unusual/i);
+  });
+  it("zero open anomalies → the net is green again (regression guard)", () => {
+    const s = ownerTrustState({ ...base, openHighAnomalies: 0 });
+    expect(s.overall).toBe("all_clear");
+    expect(s.lines.correct.ok).toBe(true);
+    expect(s.nets.noAnomalies).toBe(true);
+  });
+  it("a confidence question still takes priority as the owner NUDGE, but the net stays not-green", () => {
+    const s = ownerTrustState({ ...base, openConfidenceFlags: flag(1), openHighAnomalies: 1 });
+    expect(s.nudge?.kind).toBe("confidence");     // owner-actionable item leads
+    expect(s.lines.correct.ok).toBe(false);       // …but the anomaly still keeps it not-green
+  });
+});
+
 describe("(Cardinal) no owner-facing jargon in any state", () => {
   const cases = [
     base,
@@ -263,6 +294,8 @@ describe("(Cardinal) no owner-facing jargon in any state", () => {
     { ...base, reviewedThrough: null },
     { ...base, intakeRows: [] },
     { ...base, bankMatch: UNMATCHED },
+    { ...base, openHighAnomalies: 2 },
+    { ...base, openHighAnomalies: 1 },
   ];
   it.each(cases.map((c, i) => [i, c]))("scenario #%i: every string is plain business English", (_i, inp) => {
     for (const str of strings(ownerTrustState(inp))) {

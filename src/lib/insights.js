@@ -130,7 +130,12 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
   const daysAgo = d => (now - new Date(d)) / 86400000;
   const within = (d, days) => { const x = daysAgo(d); return x >= 0 && x <= days; };
   const out = [];
-  const push = a => out.push({ detected_at: now.toISOString(), invoice_ids: [], ...a });
+  // `fingerprint` is a STABLE content key (O83 persistence): re-detecting the same
+  // condition yields the same fingerprint, so it dedups to one persisted row and
+  // auto-resolves cleanly when the condition disappears. The deterministic `id` each
+  // rule already builds IS that key — fingerprint mirrors it (kept as a named field so
+  // the persistence layer never has to know each rule's id recipe).
+  const push = a => out.push({ detected_at: now.toISOString(), invoice_ids: [], ...a, fingerprint: a.id });
 
   const expenses = (invoices || []).filter(i => isLive(i) && i.date && isExpenseCode(i.gl_code) && (Number(i.amount) > 0));
 
@@ -174,21 +179,27 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
   }
 
   // 3. Unusual category — this month ≥ 50% above the prior-months average.
+  // Bucket by GL CODE (stable) not gl_name (renameable) — the fingerprint keys on the
+  // code so a renamed account doesn't spawn a duplicate anomaly. `catName` keeps the
+  // human label for display copy.
   const catMonth = {};
+  const catName = {};
   for (const i of expenses.filter(x => within(x.date, 130))) {
-    const cat = i.gl_name || String(i.gl_code || "");
+    const code = String(i.gl_code || i.gl_name || "");
+    catName[code] = i.gl_name || code;
     const m = String(i.date).slice(0, 7);
-    catMonth[cat] = catMonth[cat] || {};
-    catMonth[cat][m] = (catMonth[cat][m] || 0) + (Number(i.amount) || 0);
+    catMonth[code] = catMonth[code] || {};
+    catMonth[code][m] = (catMonth[code][m] || 0) + (Number(i.amount) || 0);
   }
   const thisMonth = ymdLocal(now).slice(0, 7);   // local month key — matches the String(i.date) buckets above (CR-5)
-  for (const [cat, months] of Object.entries(catMonth)) {
+  for (const [code, months] of Object.entries(catMonth)) {
+    const cat = catName[code] || code;
     const cur = months[thisMonth] || 0;
     const priors = Object.entries(months).filter(([m]) => m < thisMonth).map(([, v]) => v);
     if (cur <= 0 || priors.length < 1) continue;
     const avg = priors.reduce((t, v) => t + v, 0) / priors.length;
     if (avg > 0 && cur >= 1.5 * avg) {
-      push({ id: `category_spike:${cat}:${thisMonth}`, type: "category_spike", severity: "medium",
+      push({ id: `category_spike:${code}:${thisMonth}`, type: "category_spike", severity: "medium",
         title: `${cat} is running high this month`,
         description: `${cat} is ${money(cur)} this month vs a ${money(avg)} monthly average — about ${Math.round((cur / avg - 1) * 100)}% higher.`,
         invoice_ids: [] });

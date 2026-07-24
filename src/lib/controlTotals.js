@@ -240,13 +240,21 @@ export function reconciliationCoversPeriod(reconciliations = [], period = "") {
 // preconditions above so a period with nothing to check reads as "not ready", not "clean".
 // One pure function so the write path (signOffPeriod) and the CPA UI can't gate differently.
 // Returns { ok, blockers:[{net, reason}] }. CPA-side, so blocker reasons may use accounting terms.
-export function signOffReadiness({ controlTotals = { failed: [], allTie: true }, openConfidenceFlags = [], droppedDocs = [], unknownDocs = [], bankMatch = { overdue: false, days: null }, setupComplete = null, openingEntered = null, entriesInPeriodCount = null, hasReconForPeriod = null } = {}) {
+export function signOffReadiness({ controlTotals = { failed: [], allTie: true }, openConfidenceFlags = [], droppedDocs = [], unknownDocs = [], bankMatch = { overdue: false, days: null }, setupComplete = null, openingEntered = null, entriesInPeriodCount = null, hasReconForPeriod = null, openHighAnomaliesInPeriod = 0 } = {}) {
   // Preconditions FIRST — the non-vacuous gate.
   const blockers = readinessBlockers({ setupComplete, openingEntered, entriesInPeriodCount, hasReconForPeriod });
   const evalr = evaluateSignOff({ controlTotals, openConfidenceFlags, droppedDocs, unknownDocs });
   blockers.push(...evalr.blockers);
   if (bankMatch && bankMatch.overdue) {
     blockers.push({ net: "bank", reason: `the bank isn't reconciled yet${bankMatch.days != null ? ` (${bankMatch.days} days)` : ""} — match the latest statement first` });
+  }
+  // Open HIGH anomalies whose entries fall in THIS period block attestation (O83) — you can't
+  // honestly attest a period with unusual activity nobody reviewed. Only HIGH-in-period gate;
+  // medium/low anomalies surface in the CPA queue but never block. Overridable via the normal
+  // override flow (the reason + these blockers are recorded in blockers_snapshot).
+  const anomCount = Math.max(0, Number(openHighAnomaliesInPeriod) || 0);
+  if (anomCount > 0) {
+    blockers.push({ net: "anomaly", reason: `unusual activity in this period hasn't been reviewed (${anomCount} flagged) — resolve or dismiss ${anomCount === 1 ? "it" : "them"} first` });
   }
   return { ok: blockers.length === 0, blockers };
 }

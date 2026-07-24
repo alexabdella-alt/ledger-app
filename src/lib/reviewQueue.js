@@ -13,26 +13,34 @@
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-export function buildReviewQueue({ droppedDocs = [], flaggedTxns = [], unknownDocs = [], accuracyFlags = [] } = {}) {
+export function buildReviewQueue({ droppedDocs = [], flaggedTxns = [], unknownDocs = [], accuracyFlags = [], anomalies = [] } = {}) {
   const completeness = droppedDocs || [];
   const needsReview = flaggedTxns || [];
   const unknown = (unknownDocs || []).filter((d) => !d.posted);   // posted ones are resolved
   const accuracy = accuracyFlags || [];   // O59 third net — control totals that don't tie
+  // O83 — open anomaly rows (all severities). Any open anomaly is by definition awaiting
+  // review, so it keeps the screen from "all clear"; severity governs BLOCKING (only
+  // HIGH-in-period blocks sign-off, in signOffReadiness), never VISIBILITY here.
+  const anomaly = (anomalies || []).filter((a) => (a.status ? a.status === "open" : true));
 
   const totalExposure = r2(needsReview.reduce((s, f) => s + Math.abs(Number(f.amount) || 0), 0));
-  const highCount = needsReview.filter((f) => f.severity === "high").length + accuracy.filter((f) => f.severity === "high").length;
+  const highCount = needsReview.filter((f) => f.severity === "high").length
+    + accuracy.filter((f) => f.severity === "high").length
+    + anomaly.filter((a) => a.severity === "high").length;
 
   const summary = {
     incompleteCount: completeness.length,
     flaggedCount: needsReview.length,
     unknownCount: unknown.length,
     accuracyCount: accuracy.length,
+    anomalyCount: anomaly.length,
     highCount,
     totalExposure,
-    totalItems: completeness.length + needsReview.length + unknown.length + accuracy.length,
-    // ALL three nets clear (completeness + confidence + accuracy) → eligible for sign-off.
-    allClear: completeness.length === 0 && needsReview.length === 0 && unknown.length === 0 && accuracy.length === 0,
+    totalItems: completeness.length + needsReview.length + unknown.length + accuracy.length + anomaly.length,
+    // ALL nets clear (completeness + confidence + accuracy) AND no open anomaly → eligible
+    // for the reassuring empty state. (Sign-off itself only BLOCKS on HIGH-in-period.)
+    allClear: completeness.length === 0 && needsReview.length === 0 && unknown.length === 0 && accuracy.length === 0 && anomaly.length === 0,
   };
 
-  return { completeness, needsReview, unknown, accuracy, summary };
+  return { completeness, needsReview, unknown, accuracy, anomaly, summary };
 }

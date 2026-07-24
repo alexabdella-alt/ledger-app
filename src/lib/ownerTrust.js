@@ -39,6 +39,12 @@ export function ownerTrustState({
   unknownDocs = [],
   reviewedThrough = null,
   bankMatch = { overdue: false, days: null },   // from bankMatchStatus() — the SAME source as the dashboard alert
+  // Open HIGH anomalies (O83) — persisted, company-wide. > 0 means the "Nothing wrong"
+  // net can NEVER be green: something unusual is open and awaiting the accountant. This
+  // is the fix for the O83 false "Nothing wrong" while 4 HIGH duplicate-payment anomalies
+  // were live. Medium/low anomalies do NOT affect the owner panel (they carry no urgency
+  // for the owner). Plain-language only — the owner never sees "duplicate_payment HIGH".
+  openHighAnomalies = 0,
   // ── "Is there anything to evaluate yet?" signals (the false-green-on-empty fix). ──
   // A brand-new company with NO journal entries and NO completed setup has nothing to
   // evaluate — every net trivially "clears" (zero failures out of zero checks), which is
@@ -121,12 +127,19 @@ export function ownerTrustState({
   //    alarming, and NO competing nudge (the dashboard's own bank-match reminder carries the
   //    "upload a statement" action, from the SAME bankMatchStatus source). ──
   const bankOverdue = !!(bankMatch && bankMatch.overdue);
+  const anomalyCount = Math.max(0, Number(openHighAnomalies) || 0);
+  const anomaliesOk = anomalyCount === 0;
   let nudge = null;
   let correctText, correctStateVal;
   if (!confidenceOk) {
     correctText = `${confidenceCount === 1 ? "One transaction needs" : `${confidenceCount} transactions need`} a quick answer from you.`;
     correctStateVal = "attention";
     nudge = { kind: "confidence", count: confidenceCount, text: `${confidenceCount === 1 ? "Answer 1 quick question" : `Answer ${confidenceCount} quick questions`}` };
+  } else if (!anomaliesOk) {
+    // Something unusual is open (e.g. a possible duplicate payment). Not an owner task —
+    // the accountant reviews it — so honest, reassuring, and NOT green. No jargon.
+    correctText = `${anomalyCount === 1 ? "Something looks" : `${anomalyCount} things look`} unusual — your accountant is taking a look.`;
+    correctStateVal = "attention";
   } else if (!accuracyOk) {
     // A control-total mismatch is a system/accountant concern, not an owner task — say so
     // plainly (no "control total" / "reconcile"), and DON'T fake green.
@@ -141,13 +154,16 @@ export function ownerTrustState({
     correctText = "Nothing needs your attention — your books are correct and up to date.";
     correctStateVal = "ok";
   }
-  const correctOk = confidenceOk && accuracyOk && !bankOverdue;
+  const correctOk = confidenceOk && accuracyOk && !bankOverdue && anomaliesOk;
 
   // ── Overall — never all_clear unless the three sign-off nets clear AND the books are matched
-  //    to the bank AND nothing's mid-flight. Bank-not-matched / in-flight docs → in_progress
-  //    (honest "wrapping up"), a short net → attention. ──
+  //    to the bank AND no open HIGH anomaly AND nothing's mid-flight. Anomalies are NOT part
+  //    of evaluateSignOff (that's the three doc/confidence/accuracy nets), so gate on them
+  //    explicitly here — otherwise an open duplicate-payment would read as all_clear (the O83
+  //    bug). Bank-not-matched / in-flight docs → in_progress; a short net or open anomaly →
+  //    attention. ──
   let overall, headline;
-  if (!evalr.ok) {
+  if (!evalr.ok || !anomaliesOk) {
     overall = "attention";
     headline = "A couple of things need a look.";
   } else if (bankOverdue || pendingCount > 0) {
@@ -168,6 +184,6 @@ export function ownerTrustState({
       correct: { ok: correctOk, state: correctStateVal, text: correctText },
     },
     nudge,                         // at most one gentle "needs you" | null
-    nets: { completeness: capturedOk, confidence: confidenceOk, accuracy: accuracyOk, bankMatched: !bankOverdue, signOffOk: evalr.ok },
+    nets: { completeness: capturedOk, confidence: confidenceOk, accuracy: accuracyOk, bankMatched: !bankOverdue, noAnomalies: anomaliesOk, signOffOk: evalr.ok },
   };
 }

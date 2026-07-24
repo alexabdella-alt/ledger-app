@@ -58,6 +58,29 @@ describe("signOffReadiness — blocked when ANY net is short, with a reason", ()
   });
 });
 
+describe("signOffReadiness — open HIGH anomaly in the period blocks attestation (O83)", () => {
+  it("an open HIGH anomaly touching the period → blocked, net=anomaly", () => {
+    const r = signOffReadiness({ ...clear, openHighAnomaliesInPeriod: 2 });
+    expect(r.ok).toBe(false);
+    const a = r.blockers.find(b => b.net === "anomaly");
+    expect(a).toBeTruthy();
+    expect(a.reason).toMatch(/unusual activity|reviewed/i);
+    expect(a.reason).toMatch(/2/);
+  });
+  it("NOT blocked when there are no open HIGH anomalies in the period (0)", () => {
+    const r = signOffReadiness({ ...clear, openHighAnomaliesInPeriod: 0 });
+    expect(r.ok).toBe(true);
+    expect(r.blockers.some(b => b.net === "anomaly")).toBe(false);
+  });
+  it("the anomaly blocker is OVERRIDABLE like any other (recorded in blockers, override flow handles it)", () => {
+    // signOffReadiness just REPORTS blockers; the override path in signOffPeriod records them.
+    // Here we assert the blocker is a normal member of the list (not a hard, un-overridable error).
+    const r = signOffReadiness({ ...clear, openHighAnomaliesInPeriod: 1 });
+    expect(r.blockers).toHaveLength(1);
+    expect(r.blockers[0].net).toBe("anomaly");
+  });
+});
+
 describe("role gate (O83) — reviewer (accountant/admin) attests; the client-owner cannot", () => {
   it("accountant and admin may attest (the reviewer/CPA roles)", () => {
     expect(canAttestPeriod("accountant")).toBe(true);
