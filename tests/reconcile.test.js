@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { touchesCashAccount, cashLegSigned, reconBooksSet, statementBalanceVerified, canCompleteReconciliation,
-  isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconcileDifference } from "../src/lib/reconcile.js";
+  isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference } from "../src/lib/reconcile.js";
 import { openingDiscrepancy } from "../src/lib/openingBalanceProposal.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -55,18 +55,74 @@ describe("January scenario end-to-end — 20/20 matched, bank 15657.60 → diffe
     expect(diff).toBe(0);
     expect(canCompleteReconciliation({ statementBalance: "15657.60", difference: diff })).toBe(true);
   });
-  it("a genuinely-outstanding check keeps the rec balanced via the formula", () => {
+  it("an outstanding check nets ONLY once MARKED 'hasn't hit the bank yet' (O83 Feb fix)", () => {
     // A $200 uncashed check (Cr Cash) written Jan 31: GL cash drops 200; bank hasn't seen it.
     const withCheck = [...JAN, { id: "chk", date: "2026-01-31", gl_code: "6100", secondary_gl_code: AC1, debit_credit: "debit", amount: 200, status: "booked", type: "expense" }];
     const booksBalance = reconBooksBalance(withCheck, [AC1], { asOf: "2026-01-31" });   // 15657.60 − 200 = 15457.60
     expect(booksBalance).toBe(15457.60);
     const books = reconBooksSet(withCheck, { cashCodes: [AC1], from: "2026-01-01", to: "2026-01-31" }).filter(b => !isOpeningPositionRow(b, "2026-01-01"));
     const matched = new Set(["d1", "p1"]);                        // the check did NOT clear
-    const outstanding = reconOutstandingBooks(books, { matchedBookIds: matched, hidden: {}, periodStart: "2026-01-01" });
-    const outSigned = outstanding.reduce((s, b) => s + cashLegSigned(b, [AC1]), 0);   // −200
+
+    // UNDECIDED (not yet marked): it sits in the sort-out queue and does NOT net — the gap stands,
+    // so Complete stays disabled until the user decides.
+    const queue = reconOutstandingBooks(books, { matchedBookIds: matched, hidden: {}, periodStart: "2026-01-01" });
+    expect(queue.some(b => b.id === "chk")).toBe(true);
+    const undecidedSigned = reconMarkedOutstanding(books, { matchedBookIds: matched, marked: {}, periodStart: "2026-01-01" }).reduce((s, b) => s + cashLegSigned(b, [AC1]), 0);
+    expect(reconcileDifference({ statementBalance: 15657.60, booksBalance, outstandingSigned: undecidedSigned, unmatchedBankSigned: 0 })).toBe(200);   // gap = the uncashed check
+
+    // MARKED outstanding: leaves the sort-out queue, enters the outstanding set, nets to 0.
+    const marked = { chk: true };
+    expect(reconOutstandingBooks(books, { matchedBookIds: matched, hidden: marked, periodStart: "2026-01-01" }).some(b => b.id === "chk")).toBe(false);
+    const outBooks = reconMarkedOutstanding(books, { matchedBookIds: matched, marked, periodStart: "2026-01-01" });
+    expect(outBooks.map(b => b.id)).toEqual(["chk"]);
+    const outSigned = outBooks.reduce((s, b) => s + cashLegSigned(b, [AC1]), 0);   // −200
     expect(outSigned).toBe(-200);
-    // bank still shows 15657.60 (check uncashed); difference nets to 0.
     expect(reconcileDifference({ statementBalance: 15657.60, booksBalance, outstandingSigned: outSigned, unmatchedBankSigned: 0 })).toBe(0);
+  });
+});
+
+describe("O83 Feb — 'Hasn't hit the bank yet' nets the difference (the exact live scenario)", () => {
+  // 21 matched bank lines + one $275 Atlas check (Feb 26) marked outstanding; bank 20,614.40,
+  // books 20,339.40. Expected: 20,614.40 + (−275.00) − 20,339.40 = 0.00 → Complete enabled.
+  const CASH = "1000";
+  const atlas = { id: "atlas", date: "2026-02-26", gl_code: "6100", secondary_gl_code: CASH, debit_credit: "debit", amount: 275, status: "booked", type: "expense" };
+  const matchedBooks = Array.from({ length: 21 }, (_, i) => ({ id: `m${i}`, date: "2026-02-10", gl_code: "6000", secondary_gl_code: CASH, debit_credit: "debit", amount: 100, status: "booked" }));
+  const booksRows = [...matchedBooks, atlas];
+  const matchedBookIds = new Set(matchedBooks.map(b => b.id));
+
+  const diffFor = (marked) => {
+    const outBooks = reconMarkedOutstanding(booksRows, { matchedBookIds, marked, periodStart: "2026-02-01" });
+    const outstandingSigned = outBooks.reduce((s, b) => s + cashLegSigned(b, [CASH]), 0);
+    return reconcileDifference({ statementBalance: 20614.40, booksBalance: 20339.40, outstandingSigned, unmatchedBankSigned: 0 });
+  };
+
+  it("marked outstanding → difference nets to 0.00, Complete enabled", () => {
+    const diff = diffFor({ atlas: true });
+    expect(diff).toBe(0);
+    expect(canCompleteReconciliation({ statementBalance: "20614.40", difference: diff })).toBe(true);
+  });
+  it("un-marking restores the $275.00 gap (Complete disabled again)", () => {
+    const diff = diffFor({});
+    expect(diff).toBe(275);
+    expect(canCompleteReconciliation({ statementBalance: "20614.40", difference: diff })).toBe(false);
+  });
+  it("the marked item is EXCLUDED from the books 'matched' count and INCLUDED in the outstanding set", () => {
+    const marked = { atlas: true };
+    const matchedBooksCount = booksRows.filter(b => matchedBookIds.has(b.id)).length;
+    const outBooks = reconMarkedOutstanding(booksRows, { matchedBookIds, marked, periodStart: "2026-02-01" });
+    expect(matchedBooksCount).toBe(21);              // NOT 22 — the check isn't "matched"
+    expect(outBooks.map(b => b.id)).toEqual(["atlas"]);
+    // sort-out queue is empty (everything is matched or marked-outstanding) → clean rec
+    expect(reconOutstandingBooks(booksRows, { matchedBookIds, hidden: marked, periodStart: "2026-02-01" })).toEqual([]);
+  });
+  it("save/resume round-trip: persisted outstanding_books rebuilds the marking and still nets to 0", () => {
+    // serialize() stores the marked rows; resume() rebuilds the `marked` map from them.
+    const persisted = reconMarkedOutstanding(booksRows, { matchedBookIds, marked: { atlas: true }, periodStart: "2026-02-01" })
+      .map(b => ({ id: b.id, date: b.date, amount: b.amount, gl_code: b.gl_code }));
+    const rebuilt = {};
+    for (const o of persisted) { const id = (o && typeof o === "object") ? o.id : o; if (id != null) rebuilt[id] = true; }
+    expect(rebuilt).toEqual({ atlas: true });
+    expect(diffFor(rebuilt)).toBe(0);               // marking survived the round-trip
   });
 });
 

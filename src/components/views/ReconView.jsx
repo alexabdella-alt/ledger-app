@@ -1,6 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconcileDifference } from "../../lib/reconcile";
+import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference } from "../../lib/reconcile";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal, addDaysYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -147,17 +147,24 @@ export default function ReconView() {
   const booksRows = booksRowsAll.filter(b => !isOpeningPositionRow(b, periodStart));
   const matchedBookIds = new Set(bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook));
   const unmatchedBank = bankTxns.filter(t=>!t._matchBook && !t._ignored);
-  // The sort-out queue = genuinely outstanding book items (never the opening entry).
-  const unmatchedBooks = reconOutstandingBooks(booksRows, { matchedBookIds, hidden: outstanding, periodStart });
+  // Two DISTINCT sets (O83 Feb fix): the still-UNDECIDED sort-out queue (not matched, not yet
+  // marked) and the DECIDED outstanding items ("hasn't hit the bank yet"). They're exact
+  // complements. Only the DECIDED-outstanding items net the difference; undecided items keep it
+  // open until resolved (so un-marking an item restores the gap). Previously the marking was fed
+  // ONLY to `hidden`, so a marked item vanished from BOTH the queue and the sum — read as
+  // "matched" in the count yet the difference never netted it, blocking completion.
+  const unmatchedBooks   = reconOutstandingBooks(booksRows, { matchedBookIds, hidden: outstanding, periodStart });
+  const outstandingBooks = reconMarkedOutstanding(booksRows, { matchedBookIds, marked: outstanding, periodStart });
   const stmtNum = parseFloat(statementBalance)||0;
   // BUG 1 FIX: "What your books show" = GL cash for THIS account at period end, from the ledger
   // — independent of the bank-balance input (the old `stmtNum − diff` mutated it and mis-read
   // the opening entry as the whole books figure).
   const booksBalance = reconBooksBalance(invoices, reconCashCodes, { asOf: periodEnd });
-  const outstandingSigned = unmatchedBooks.reduce((s,b)=>s+bookSigned(b),0);
+  const outstandingSigned = outstandingBooks.reduce((s,b)=>s+bookSigned(b),0);
   const unmatchedBankSigned = unmatchedBank.reduce((s,t)=>s+(Number(t.amount)||0),0);
   const diff = reconcileDifference({ statementBalance: stmtNum, booksBalance, outstandingSigned, unmatchedBankSigned });
   const matchedCount = bankTxns.filter(t=>t._matchBook).length;
+  const matchedBooksCount = booksRows.filter(b=>matchedBookIds.has(b.id)).length;
   // BUG 2 (discrepancy): the statement's stated opening vs GL CASH AT PERIOD START — the balance
   // the books carry INTO the period (cash as of the day before periodStart), NOT the opening ENTRY
   // alone. The opening entry is only the first month's starting position; from month 2 on, books
@@ -182,6 +189,10 @@ export default function ReconView() {
     matched_transactions: bankTxns.filter(t=>t._matchBook).map(t=>({ bank:t, bookId:t._matchBook, conf:t._conf })),
     unmatched_bank: bankTxns.filter(t=>!t._matchBook),
     unmatched_books: unmatchedBooks.map(b=>b.id),
+    // The DECIDED-outstanding book items ("hasn't hit the bank yet") — persisted so the marking
+    // survives Save Progress/resume AND a completed record's history shows what was outstanding
+    // (migration 057). Stored as the full rows so history renders date+amount without the ledger.
+    outstanding_books: outstandingBooks.map(b=>({ id:b.id, date:b.date, amount:b.amount, gl_code:b.gl_code, description:b.description })),
     added_during_reconciliation: bankTxns.filter(t=>t._added).map(t=>t._added),
   });
   const reconIdRef = React.useRef(null);   // synchronous mirror of reconId
@@ -358,7 +369,14 @@ export default function ReconView() {
     setStatementBalance(String(rec.statement_balance ?? ""));
     const matched=(rec.matched_transactions||[]).map(m=>({ ...m.bank, _matchBook:m.bookId, _auto:false, _conf:m.conf||100 }));
     const unm=(rec.unmatched_bank||[]).map(b=>({ ...b, _matchBook:null }));
-    setBankTxns([...matched, ...unm]); setStep("match");
+    setBankTxns([...matched, ...unm]);
+    // Restore the "hasn't hit the bank yet" markings so the difference stays netted across a
+    // resume (O83 Feb: these were dropped on save, so a resumed rec silently lost its
+    // outstanding items and the gap reappeared). Tolerates the legacy id-array shape too.
+    const outMap = {};
+    for (const o of (rec.outstanding_books || [])) { const id = (o && typeof o === "object") ? o.id : o; if (id != null) outMap[id] = true; }
+    setOutstanding(outMap);
+    setStep("match");
   };
   const startFresh = () => { setReconId(null); setBankTxns([]); setOutstanding({}); setStatementBalance(""); setEmptyConfirmed(false); setStmtOpening(null); setStep("setup"); };
 
@@ -556,7 +574,7 @@ export default function ReconView() {
         <div style={{ ...card, overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid var(--sc-surface-2)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <div style={{ fontSize:13, fontWeight:600 }}>Your books</div>
-            <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{booksRows.length-unmatchedBooks.length}/{booksRows.length} matched</div>
+            <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{matchedBooksCount}/{booksRows.length} matched{outstandingBooks.length?` · ${outstandingBooks.length} outstanding`:""}{unmatchedBooks.length?` · ${unmatchedBooks.length} to sort out`:""}</div>
           </div>
           <div style={{ maxHeight:440, overflowY:"auto" }}>
             {booksRows.length===0 ? <div style={{ padding:24, fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>No book transactions in this period.</div> :

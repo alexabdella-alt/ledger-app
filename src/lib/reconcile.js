@@ -106,12 +106,26 @@ export function reconBooksBalance(invoices, cashCodes, { asOf = null } = {}) {
   return r2c(bal);
 }
 
-// The GENUINELY-OUTSTANDING book items (in the books, not yet cleared the bank): live
-// cash rows that are NOT matched to a bank line, NOT user-hidden, and NOT the opening
-// position. This is exactly what the sort-out queue should show — never the opening entry.
+// The STILL-UNDECIDED book items (the "sort out" queue): live cash rows NOT matched to a
+// bank line, NOT yet marked outstanding, and NOT the opening position. These are unexplained
+// until the user matches them or marks them outstanding — so they do NOT net the difference
+// (they keep it open until resolved). Never the opening entry.
 export function reconOutstandingBooks(booksRows = [], { matchedBookIds = new Set(), hidden = {}, periodStart = null } = {}) {
   return (booksRows || []).filter((b) =>
     b && !matchedBookIds.has(b.id) && !hidden[b.id] && !isOpeningPositionRow(b, periodStart)
+  );
+}
+
+// The book items the user EXPLICITLY marked "hasn't hit the bank yet" — an outstanding check /
+// deposit-in-transit. Unlike the undecided sort-out queue above, THESE are decided and MUST net
+// in reconcileDifference (bank + Σ(outstanding, cash-signed) − books). Keyed on the SAME `marked`
+// map the queue passes as `hidden`, so the sets are exact complements: every book row is either
+// matched, marked-outstanding, or still-to-sort-out — never two of those, never double-counted.
+// (O83 Feb: the marking was fed ONLY to `hidden`, which dropped the item from the sum entirely —
+// it read as "matched" in the count yet the difference never netted it, blocking completion.)
+export function reconMarkedOutstanding(booksRows = [], { matchedBookIds = new Set(), marked = {}, periodStart = null } = {}) {
+  return (booksRows || []).filter((b) =>
+    b && !!marked[b.id] && !matchedBookIds.has(b.id) && !isOpeningPositionRow(b, periodStart)
   );
 }
 
