@@ -24,9 +24,10 @@ import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy } fro
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
-import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse } from "./lib/openingBalanceProposal";
+import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
+import { buildStatementRow, buildStatementLineRows, statementPeriod } from "./lib/bankStatements";
 import { buildPaymentEntry } from "./lib/payments";
-import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems, resolveMatchedInvoices } from "./lib/bankMatch";
+import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems, resolveMatchedInvoices, isSettlementEntry } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
@@ -532,6 +533,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // so we never orphan a blob. Any failure is pinned to the upload-queue item.
   const storeDocument = async (name, base64, mediaType, type, linkedId=null, tags=[], queueItemId=null, file=null) => {
     const doc = { id: Date.now()+Math.random(), name, base64, mediaType, type, uploaded_at: new Date().toISOString(), linked_invoice_id: linkedId, tags, storage_path: null };
+    let savedId = doc.id;   // C185: return the DURABLE documents.id when the insert resolves (both existing callers ignore the return; the bank-statement linkage needs the real id)
     setDocLibrary(prev => [doc, ...prev]);
     if (!currentCompany?.id) {
       console.warn("[documents] storeDocument: no currentCompany.id — NOT persisting", { name, type });
@@ -591,13 +593,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         return doc.id;
       }
       if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
+      if (data?.id) savedId = data.id;
       setDocLibrary(prev => prev.map(d => d.id === doc.id ? { ...d, id: data?.id || d.id, storage_path: storagePath, linked_invoice_id: effLinkedId != null ? String(effLinkedId) : d.linked_invoice_id } : d));
     } catch (e) {
       console.error("[documents] insert threw:", e);
       if (storagePath) { try { await supabase.storage.from("documents").remove([storagePath]); } catch {} }
       reportDocError(queueItemId, e?.message || "network error saving document.");
     }
-    return doc.id;
+    return savedId;
   };
 
   // ── PAYROLL ───────────────────────────────────────────────────────────────────
@@ -4221,6 +4224,46 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     else if (type === "qbo") { setPendingImportFile({ type: "qbo", file }); setView("onboard"); showNotification("Use the QuickBooks import here ✓"); }
   };
 
+  // C185 — persist the parsed statement + its lines as durable records (pipeline foundation).
+  // Additive + best-effort: any failure is swallowed so the existing review flow is unaffected.
+  // Stores the statement FILE in the doc library (document_type 'bank_statement') and links it.
+  // Returns { statementId, lineIds } (lineIds aligned to `lines` order) so the caller can stamp
+  // the in-memory rows and the booking flow can advance their status.
+  const persistBankStatement = async ({ account, file, rawTxns, lines, statedOpening, statedPeriodStart }) => {
+    if (!currentCompany?.id) return { statementId: null, lineIds: [] };
+    try {
+      // Doc-library linkage for the bank path (§11 "Document library misses bank statements" (a)).
+      let documentId = null;
+      try {
+        const base64 = await fileToBase64(file);
+        const mediaType = file?.type || (/\.pdf$/i.test(file?.name || "") ? "application/pdf" : "text/csv");
+        const stored = await storeDocument(file.name, base64, mediaType, "bank_statement", null, ["bank_statement"], null, file);
+        documentId = (typeof stored === "string" && /^[0-9a-f-]{16,}$/i.test(stored)) ? stored : null;   // only a real uuid; the in-session fallback id isn't a documents FK
+      } catch (e) { console.warn("[bank_statements] doc store skipped:", e?.message || e); }
+
+      const der = deriveStatementOpening({ transactions: rawTxns, statedOpening, statedPeriodStart });
+      const { periodStart, periodEnd } = statementPeriod(rawTxns);
+      const stmtRow = buildStatementRow({
+        companyId: currentCompany.id,
+        bankAccountId: (account && account.id) || null,
+        documentId,
+        periodStart: (der.ok && der.periodStart) || periodStart,
+        periodEnd,
+        statedOpening: der.ok ? der.openingBalance : (statedOpening != null ? statedOpening : null),
+        statedEnding: der.ok ? der.endingBalance : null,
+        sourceFilename: file?.name || null,
+        status: "parsed",
+      });
+      const { data: stmt, error: sErr } = await supabase.from("bank_statements").insert(stmtRow).select("id").single();
+      if (sErr || !stmt) { console.warn("[bank_statements] insert failed (apply migration 058?):", sErr?.message); return { statementId: null, lineIds: [] }; }
+
+      const lineRows = buildStatementLineRows(lines, { companyId: currentCompany.id, statementId: stmt.id });
+      const { data: insertedLines, error: lErr } = await supabase.from("bank_statement_lines").insert(lineRows).select("id");
+      if (lErr) console.warn("[bank_statement_lines] insert failed:", lErr.message);
+      return { statementId: stmt.id, lineIds: (insertedLines || []).map(r => r.id) };
+    } catch (e) { console.warn("[bank_statements] persist skipped:", e?.message || e); return { statementId: null, lineIds: [] }; }
+  };
+
   const handleBankFile = async (file, account = null) => {
     if (!file) return;
     const v = validateUpload(file, "bank");   // size + type guard (CR-34)
@@ -4366,6 +4409,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           }
         }
       } catch (e) { console.warn("[opening proposal] skipped:", e?.message || e); }
+      // C185 — PERSIST the statement + lines (additive; review flow above is unchanged). Stamp the
+      // durable statement/line ids onto the in-memory rows so booking can advance their status.
+      try {
+        const { statementId, lineIds } = await persistBankStatement({ account, file, rawTxns, lines: withIds, statedOpening, statedPeriodStart });
+        if (statementId) setBankTransactions(prev => prev.map((t, i) => ({ ...t, _stmtId: statementId, _stmtLineId: lineIds[i] || t._stmtLineId })));
+      } catch (e) { console.warn("[bank_statements] persist call skipped:", e?.message || e); }
       setBankProgress(100);
       markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: `bank statement parsed — ${withIds.length} line(s) in Bank Import review` });   // terminal: accounted for
       showNotification(`${withRules.length} transactions imported — ${withRules.filter(t=>t.needs_review).length} need review`);
@@ -4384,6 +4433,46 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // and its TYPE decides whether AP-matching even applies. Every direct-booked line is
   // PERSISTED through bookToDb (post_journal_entry) — never local state only — so nothing
   // can "succeed" in the UI without a real journal entry behind it.
+  // C185 — after booking, link the statement's lines to the ledger entries they became, and stamp
+  // journal_entries.bank_account_id. GL-TRUTH: match each still-pending line to a live cash-offset
+  // entry by the SAME fingerprint markAlreadyBooked keys on (date | abs(amount) | direction), so a
+  // clearing (settlement → 'matched') and a direct booking ('booked') are handled uniformly and this
+  // runs AFTER the existing booking flow WITHOUT touching it (fully additive; best-effort).
+  const linkStatementLinesAfterBooking = async (stmtId, account) => {
+    if (!stmtId || !currentCompany?.id) return;
+    try {
+      const offsetCode = (account && account.gl_code) || rc("cash");
+      const { data: pend } = await supabase.from("bank_statement_lines")
+        .select("id, fingerprint, status").eq("company_id", currentCompany.id).eq("statement_id", stmtId).eq("status", "pending");
+      if (!pend || !pend.length) return;
+      // Multiset of live ledger entries touching THIS account's cash/offset, keyed by fingerprint,
+      // carrying the DB entry id + whether it's a settlement (→ 'matched') vs a direct book (→ 'booked').
+      const seen = new Map();
+      for (const inv of (invoicesRef.current || [])) {
+        if (!inv || inv.status === "voided" || inv.status === "deleted" || inv.deleted_at) continue;
+        if (String(inv.secondary_gl_code) !== String(offsetCode) && String(inv.gl_code) !== String(offsetCode)) continue;
+        const k = bankTxnKey({ date: inv.date, amount: inv.amount, direction: bookedLineDirection(inv, offsetCode) });
+        const jeId = inv.db_entry_id || String(inv.id).split("_")[0];   // the journal_entries.id (FK target)
+        if (!seen.has(k)) seen.set(k, []);
+        seen.get(k).push({ jeId, matched: isSettlementEntry(inv) });
+      }
+      const jeToStamp = new Set();
+      for (const line of pend) {
+        const bucket = seen.get(line.fingerprint);
+        if (!bucket || !bucket.length) continue;   // no ledger entry yet → stays 'pending'
+        const hit = bucket.shift();
+        jeToStamp.add(String(hit.jeId));
+        await supabase.from("bank_statement_lines")
+          .update({ status: hit.matched ? "matched" : "booked", journal_entry_id: String(hit.jeId) })
+          .eq("id", line.id).eq("company_id", currentCompany.id);
+      }
+      if (account?.id && jeToStamp.size) {
+        await supabase.from("journal_entries").update({ bank_account_id: account.id })
+          .in("id", [...jeToStamp]).eq("company_id", currentCompany.id);
+      }
+    } catch (e) { console.warn("[bank_statements] link-after-booking skipped:", e?.message || e); }
+  };
+
   const bookBankTransactions = async (account = null) => {
     // P0 (bank-import N× duplication): hard re-entrancy guard. Without it, a second
     // invocation while the awaits are in flight (double-click, an effect re-firing, a
@@ -4396,6 +4485,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     try {
     const toBook = bankTransactions.filter(t => t.checked);
     if (toBook.length === 0) { showNotification("Select at least one transaction to book.", "error"); return; }
+    // C185 — the persisted statement these lines belong to (captured BEFORE the review rows are
+    // cleared on success), so the post-booking sweep can advance its lines' status.
+    const stmtId = (bankTransactions.find(t => t._stmtId) || {})._stmtId || null;
 
     // O69-D / O57: offset by the account this statement belongs to, not hardcoded Cash.
     const offsetCode = (account && account.gl_code) || rc("cash");
@@ -4434,6 +4526,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       setBankFileName("");
       if (booked > 0) checkWatchTriggers(toBook.map(buildEntry), unknownDocs);
       try { await loadAllData(); } catch {}
+      await linkStatementLinesAfterBooking(stmtId, account);   // C185 — advance statement-line status + stamp bank_account_id
       showNotification(
         failed === 0
           ? `${booked} card charge${booked!==1?"s":""} booked (Dr Expense / Cr ${offsetCode}) ✓`
@@ -4491,6 +4584,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setBankFileName("");
     if (booked > 0) checkWatchTriggers(pr.rest.map(buildEntry), unknownDocs);
     try { await loadAllData(); } catch {}
+    await linkStatementLinesAfterBooking(stmtId, account);   // C185 — advance statement-line status (booked/matched) + stamp bank_account_id
     const failN = clearFailed + bookFailed + payrollIncompleteFailed;
     const totalBooked = booked + payrollIncompleteBooked;
     // Surface the matcher breakdown so the deterministic vs LLM contribution is visible WITHOUT
