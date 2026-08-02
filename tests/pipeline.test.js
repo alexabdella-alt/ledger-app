@@ -114,6 +114,53 @@ describe("mixed statement partitions cleanly", () => {
     expect(p.toBook.map(l => l.id).sort()).toEqual(["ok1", "ok2"]);
     expect(p.exceptions.map(e => e.lineId)).toEqual(["low"]);
     expect(p.alreadyBooked.map(l => l.id)).toEqual(["seen"]);
-    expect(p.counts).toEqual({ total: 4, toBook: 2, exceptions: 1, alreadyBooked: 1 });
+    expect(p.counts).toEqual({ total: 4, toBook: 2, exceptions: 1, alreadyBooked: 1, clearsOutstanding: 0 });
+  });
+});
+
+describe("C187 — outstanding clears partition BEFORE confidence/signed-period", () => {
+  const atlasCand = [{ jeId: "je-atlas", date: "2026-02-26", amount: 275, signed: -275, description: "Atlas" }];
+
+  it("an outstanding-matching line at ai_confidence 40 → clearsOutstanding, NOT a low_confidence exception", () => {
+    const marLine = line({ id: "atl", line_date: "2026-03-04", amount: -275, direction: "out", ai_confidence: 40 });
+    const marStmt = { period_start: "2026-03-01", period_end: "2026-03-31", stated_ending_balance: 20339.40 };
+    const p = planStatementPipeline({ lines: [marLine], outstandingCandidates: atlasCand, statement: marStmt, thresholds: th });
+    expect(p.clearsOutstanding).toHaveLength(1);
+    expect(p.clearsOutstanding[0].candidate.jeId).toBe("je-atlas");
+    expect(p.toBook).toEqual([]);
+    expect(p.exceptions).toEqual([]);              // low confidence did NOT make it an exception
+    expect(p.stillOutstanding).toEqual([]);
+    expect(p.counts.clearsOutstanding).toBe(1);
+  });
+
+  it("an outstanding clear is not re-checked against a signed period (nothing books)", () => {
+    // even if the clearing line is dated in a signed month, it CLEARS (no booking → no attestation change)
+    const janClear = line({ id: "atl", line_date: "2026-01-31", amount: -275, direction: "out", ai_confidence: 99 });
+    const cand = [{ jeId: "je-x", date: "2026-01-10", amount: 275, signed: -275 }];
+    const stmt = { period_start: "2026-02-01", period_end: "2026-02-28" };
+    const p = planStatementPipeline({ lines: [janClear], outstandingCandidates: cand, signoffs: [{ period: "2026-01", revoked_at: null }], statement: stmt, thresholds: th });
+    expect(p.clearsOutstanding).toHaveLength(1);
+    expect(p.exceptions).toEqual([]);
+  });
+
+  it("THE ATLAS FIXTURE end-to-end: Feb outstanding $275 + a March $275 out-line + confident others → clears, does not book, recon attempt proceeds with 0 still-outstanding", () => {
+    const marStmt = { period_start: "2026-03-01", period_end: "2026-03-31", stated_ending_balance: 20339.40 };
+    const lines = [
+      line({ id: "atlas275", line_date: "2026-03-04", amount: -275, direction: "out", ai_confidence: 92 }),   // the clearing debit
+      line({ id: "roma", line_date: "2026-03-10", amount: -512.35, direction: "out", ai_confidence: 95 }),     // a fresh confident line
+      line({ id: "toast", line_date: "2026-03-12", amount: 900, direction: "in", ai_confidence: 96 }),
+    ];
+    const p = planStatementPipeline({ lines, outstandingCandidates: atlasCand, statement: marStmt, thresholds: th });
+    expect(p.clearsOutstanding.map((c) => c.line.id)).toEqual(["atlas275"]);
+    expect(p.toBook.map((l) => l.id).sort()).toEqual(["roma", "toast"]);   // the $275 is NOT in toBook (no duplicate)
+    expect(p.stillOutstanding).toEqual([]);                                // the item cleared → chain empty
+    expect(p.reconciliation.attempt).toBe(true);
+  });
+
+  it("an item that does NOT clear this month stays in stillOutstanding (carries forward)", () => {
+    const marStmt = { period_start: "2026-03-01", period_end: "2026-03-31" };
+    const p = planStatementPipeline({ lines: [line({ id: "other", amount: -50, ai_confidence: 95 })], outstandingCandidates: atlasCand, statement: marStmt, thresholds: th });
+    expect(p.clearsOutstanding).toEqual([]);
+    expect(p.stillOutstanding.map((c) => c.jeId)).toEqual(["je-atlas"]);
   });
 });

@@ -16,6 +16,7 @@
 import { signedPeriodForDate, periodOf } from "./signedPeriod.js";
 import { isPeriodSignedOff } from "./signoff.js";
 import { reconciliationCoversPeriod } from "./controlTotals.js";
+import { matchOutstandingClears } from "./outstandingItems.js";
 
 // Line-shape normalizers — tolerate BOTH the persisted row (line_date, ai_confidence,
 // status='already_booked') and the in-memory parsed line (date, confidence, already_booked).
@@ -45,22 +46,34 @@ export const DEFAULT_AUTO_BOOK_FLOOR = 85;
 
 export function planStatementPipeline({
   lines = [],
-  invoices = [],          // reserved for the downstream matcher (not used to PARTITION here)
+  invoices = [],               // reserved for the downstream matcher (not used to PARTITION here)
   signoffs = [],
-  reconciliations = [],   // to skip re-reconciling an already-reconciled month
-  openItems = [],         // reserved for the downstream matcher (not used to PARTITION here)
+  reconciliations = [],        // to skip re-reconciling an already-reconciled month
+  openItems = [],              // reserved for the downstream matcher (not used to PARTITION here)
+  outstandingCandidates = [],  // C187 — prior periods' uncleared items (priorOutstandingCandidates)
   thresholds = {},
   statement = {},
   cashCode = null,
 } = {}) {
   const floor = thresholds.autoBookFloor != null ? Number(thresholds.autoBookFloor) : DEFAULT_AUTO_BOOK_FLOOR;
 
+  // Partition ORDER (C187): already_booked → OUTSTANDING CLEAR → signed_period → confidence.
+  // An outstanding match is a CLEAR even if the line's AI confidence is low — an exact-amount
+  // match to an explicitly-recorded outstanding item is stronger evidence than the categorizer's
+  // opinion, and NO booking occurs (so no miscategorization risk).
+  const alreadyBooked = [];
+  const forMatch = [];
+  for (const line of (lines || [])) {
+    if (isAlreadyBooked(line)) alreadyBooked.push(line);   // already in the books — untouched
+    else forMatch.push(line);
+  }
+  // Outstanding clears come BEFORE signed_period/confidence: clearing an existing entry can't
+  // change a signed month's totals (nothing books) and beats a low-confidence categorization.
+  const { clears: clearsOutstanding, remainingLines, stillOutstanding } = matchOutstandingClears(forMatch, outstandingCandidates);
+
   const toBook = [];
   const exceptions = [];
-  const alreadyBooked = [];
-
-  for (const line of (lines || [])) {
-    if (isAlreadyBooked(line)) { alreadyBooked.push(line); continue; }     // already in the books — untouched
+  for (const line of remainingLines) {
     const signedP = signedPeriodForDate(dateOf(line), signoffs, { source: line && line.source });
     if (signedP) { exceptions.push(makeException(line, "signed_period", { period: signedP })); continue; }
     const c = confOf(line);
@@ -75,14 +88,16 @@ export function planStatementPipeline({
   if (!period) { attempt = false; reason = "no_period"; }
   else if (isPeriodSignedOff(signoffs, period)) { attempt = false; reason = "period_signed_off"; }
   else if (reconciliationCoversPeriod(reconciliations, period)) { attempt = false; reason = "already_reconciled"; }
-  // "already matched": nothing to do AND the month is attested/reconciled (the Feb-re-upload case).
-  const conclusion = (!attempt && toBook.length === 0 && exceptions.length === 0) ? "already_matched" : null;
+  // "already matched": nothing happened AND the month is attested/reconciled (the Feb-re-upload case).
+  const conclusion = (!attempt && toBook.length === 0 && exceptions.length === 0 && clearsOutstanding.length === 0) ? "already_matched" : null;
 
   return {
     toBook,
     toMatch: toBook,               // the same set feeds the existing matcher downstream (clears vs direct-book split)
     exceptions,
     alreadyBooked,
+    clearsOutstanding,             // C187 — [{ line, candidate }] a prior entry clearing on this statement (book NOTHING)
+    stillOutstanding,              // C187 — candidates not yet cleared → carry forward into this recon's outstanding_books
     reconciliation: { attempt, reason, conclusion },
     period,
     counts: {
@@ -90,6 +105,7 @@ export function planStatementPipeline({
       toBook: toBook.length,
       exceptions: exceptions.length,
       alreadyBooked: alreadyBooked.length,
+      clearsOutstanding: clearsOutstanding.length,
     },
   };
 }

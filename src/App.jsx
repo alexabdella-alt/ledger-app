@@ -10,6 +10,7 @@ import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeE
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon } from "./lib/clarify";
 import { planStatementPipeline } from "./lib/pipeline";
+import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
 import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
@@ -4528,7 +4529,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // ── C186 — the automatic clean-path pipeline (§11 ★ North Star Phase 1-B) ──────────────────
   // Completes + inserts a reconciliation for the auto-run, reusing ReconView's write shape +
   // the supersede cleanup (C184). Statement-derived ending IS a verified balance (§11).
-  const completePipelineReconciliation = async ({ account, periodStart, periodEnd, statementBalance, booksBalance, difference }) => {
+  const completePipelineReconciliation = async ({ account, periodStart, periodEnd, statementBalance, booksBalance, difference, outstandingBooks = [] }) => {
     const at = new Date().toISOString(); const uid = session?.user?.id || null;
     const payload = {
       company_id: currentCompany.id,
@@ -4536,7 +4537,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       period_start: periodStart, period_end: periodEnd,
       statement_balance: statementBalance, books_balance: booksBalance, difference,
       statement_balance_verified: true, status: "complete",
-      matched_transactions: [], unmatched_bank: [], unmatched_books: [], outstanding_books: [], added_during_reconciliation: [],
+      // C187 — carry the STILL-outstanding chain forward so an item outstanding across multiple
+      // periods stays tracked until it clears.
+      matched_transactions: [], unmatched_bank: [], unmatched_books: [], outstanding_books: outstandingBooks || [], added_during_reconciliation: [],
       completed_at: at, completed_by: uid,
     };
     let rid = null;
@@ -4552,13 +4555,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   // ONE plain-language outcome line (Cardinal Principle — scrubbed by containsOwnerJargon). The
   // Feb-re-upload case (all already-booked, month attested) reads as calm confirmation, not activity.
-  const pipelineOutcomeCopy = ({ plan, bookedCount, exceptionCount, balanceDiscrepancy, reconciled }) => {
+  const pipelineOutcomeCopy = ({ plan, bookedCount, clearedCount = 0, exceptionCount, balanceDiscrepancy, reconciled }) => {
     const monthName = signedMonthLabel(plan.period) || "This";
+    // C187 — count cleared earlier checks distinctly and plainly (no GL jargon).
+    const clearPhrase = clearedCount > 0 ? `, ${clearedCount} earlier ${clearedCount === 1 ? "check" : "checks"} cleared` : "";
     let msg;
     if (plan.reconciliation.conclusion === "already_matched") msg = "Everything on this statement was already in your books ✓";
-    else if (exceptionCount === 0 && !balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded${reconciled ? " and matched to your bank ✓" : " ✓"}`;
-    else if (balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded; the ending balance needs your accountant's look`;
-    else msg = `${monthName} statement handled — ${bookedCount} recorded, ${exceptionCount} need${exceptionCount === 1 ? "s" : ""} your accountant's look`;
+    else if (exceptionCount === 0 && !balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}${reconciled ? ", matched to your bank ✓" : " ✓"}`;
+    else if (balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}; the ending balance needs your accountant's look`;
+    else msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}, ${exceptionCount} need${exceptionCount === 1 ? "s" : ""} your accountant's look`;
     // Cardinal-Principle safety net: if any GL/debit-credit jargon leaks, fall back to a plain line.
     if (containsOwnerJargon(msg)) msg = `${monthName} statement handled — we recorded what we could and flagged the rest for your accountant.`;
     return msg;
@@ -4580,8 +4585,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
     let stmt = null;
     try { const { data } = await supabase.from("bank_statements").select("*").eq("id", statementId).single(); stmt = data; } catch {}
+    // C187 — prior periods' uncleared items that may CLEAR on this statement (never re-book them).
+    const outstandingCandidates = priorOutstandingCandidates({ reconciliations, accountId: account.id, accountName: account.name, periodStart: stmt && stmt.period_start });
     const plan = planStatementPipeline({
-      lines: parsedLines, invoices: invoicesRef.current, signoffs, reconciliations,
+      lines: parsedLines, invoices: invoicesRef.current, signoffs, reconciliations, outstandingCandidates,
       thresholds: { autoBookFloor: AI_CONFIDENCE_AUTO_BOOK }, statement: stmt || {}, cashCode,
     });
     await setStmt({ status: "processing" });
@@ -4589,6 +4596,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const exceptions = [];
     // Line-level exceptions from the plan (signed_period / low_confidence) — persist immediately.
     for (const e of plan.exceptions) { exceptions.push(e); await setLine(e.lineId, { status: "excepted", exception_reason: e.reason }); }
+
+    // C187 — OUTSTANDING CLEARS: a line that matches a prior recon's outstanding item is that
+    // entry CLEARING, not new activity. Stamp the EXISTING entry cleared + the statement line
+    // 'matched'; BOOK NOTHING (no duplicate). The still-outstanding chain carries forward below.
+    let clearedOutstandingCount = 0;
+    for (const { line, candidate } of plan.clearsOutstanding) {
+      await setLine(lineDbId(line), { status: "matched", journal_entry_id: candidate.jeId || null });
+      if (candidate.jeId) {
+        try { await supabase.from("journal_entries").update({ cleared: true, cleared_at: (line.date || line.line_date) || null, bank_account_id: account.id }).eq("id", String(candidate.jeId)).eq("company_id", currentCompany.id); } catch (e) { console.warn("[pipeline] clear stamp failed:", e?.message || e); }
+      }
+      clearedOutstandingCount++;
+    }
 
     // Book + match plan.toBook through the EXISTING paths (mirrors bookBankTransactions).
     const byLineId = new Map(plan.toBook.map((l) => [lineDbId(l), l]));
@@ -4638,9 +4657,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (plan.reconciliation.attempt && stmt) {
       const booksBalance = reconBooksBalance(invoicesRef.current, [cashCode], { asOf: stmt.period_end });
       const stmtEnding = stmt.stated_ending_balance;
-      const difference = reconcileDifference({ statementBalance: stmtEnding, booksBalance, outstandingSigned: 0, unmatchedBankSigned: 0 });
+      // C187 — the STILL-outstanding chain (prior items not yet cleared) nets the difference the
+      // same way ReconView does, instead of a hardcoded 0.
+      const outstandingSigned = stillOutstandingSigned(plan.stillOutstanding);
+      const difference = reconcileDifference({ statementBalance: stmtEnding, booksBalance, outstandingSigned, unmatchedBankSigned: 0 });
       if (exceptions.length === 0 && canCompleteReconciliation({ statementBalance: String(stmtEnding == null ? "" : stmtEnding), difference })) {
-        await completePipelineReconciliation({ account, periodStart: stmt.period_start, periodEnd: stmt.period_end, statementBalance: stmtEnding, booksBalance, difference });
+        await completePipelineReconciliation({ account, periodStart: stmt.period_start, periodEnd: stmt.period_end, statementBalance: stmtEnding, booksBalance, difference, outstandingBooks: candidatesToOutstandingBooks(plan.stillOutstanding) });
         reconciled = true;
       } else if (Math.abs(Number(difference) || 0) >= 0.005) {
         balanceDiscrepancy = { diff: difference };   // statement-level exception; do NOT complete
@@ -4651,7 +4673,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const finalStatus = (exceptions.length === 0 && !balanceDiscrepancy) ? "complete" : "attention";
     await setStmt({ status: finalStatus });
     try { await loadStatementExceptions(currentCompany.id); } catch {}
-    showNotification(pipelineOutcomeCopy({ plan, bookedCount, exceptionCount: exceptions.length, balanceDiscrepancy, reconciled }), finalStatus === "complete" ? "success" : "info");
+    showNotification(pipelineOutcomeCopy({ plan, bookedCount, clearedCount: clearedOutstandingCount, exceptionCount: exceptions.length, balanceDiscrepancy, reconciled }), finalStatus === "complete" ? "success" : "info");
 
     // Only still-pending/excepted lines remain for the Bank Import review screen (item 4).
     const exceptionIds = new Set(exceptions.map((e) => String(e.lineId)));
