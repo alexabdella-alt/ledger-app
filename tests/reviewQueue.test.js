@@ -92,3 +92,35 @@ describe("open anomalies join the Review queue (O83) — visibility by any sever
     expect(q.anomaly).toEqual([]);
   });
 });
+
+describe("statement exceptions (C186) join the Review queue", () => {
+  const exc = (over = {}) => ({ id: "sx1", kind: "line", reason: "low_confidence", title: "Roma", amount: -512.35, plain: "We weren't sure how to categorize this.", ...over });
+
+  it("pipeline exceptions land in their own section + count toward the summary/totalItems", () => {
+    const q = buildReviewQueue({ statementExceptions: [exc(), exc({ id: "sx2", reason: "unmatched" })] });
+    expect(q.statementException).toHaveLength(2);
+    expect(q.summary.statementExceptionCount).toBe(2);
+    expect(q.summary.totalItems).toBe(2);
+  });
+
+  it("ANY statement exception keeps the screen from 'all clear'", () => {
+    const q = buildReviewQueue({ statementExceptions: [exc({ reason: "balance_discrepancy", kind: "statement" })] });
+    expect(q.summary.allClear).toBe(false);
+  });
+
+  it("no statement exceptions → does not affect all-clear (regression guard)", () => {
+    const q = buildReviewQueue({});
+    expect(q.statementException).toEqual([]);
+    expect(q.summary.statementExceptionCount).toBe(0);
+    expect(q.summary.allClear).toBe(true);
+  });
+
+  it("exceptions combine with the other nets in totalItems", () => {
+    const q = buildReviewQueue({
+      anomalies: [{ id: "a1", severity: "high", status: "open" }],
+      statementExceptions: [exc()],
+    });
+    expect(q.summary.totalItems).toBe(2);        // 1 anomaly + 1 statement exception
+    expect(q.summary.allClear).toBe(false);
+  });
+});

@@ -8,7 +8,9 @@ import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
-import { draftClientQuestion, plainCategoryPhrase, describeBooking } from "./lib/clarify";
+import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon } from "./lib/clarify";
+import { planStatementPipeline } from "./lib/pipeline";
+import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
@@ -19,7 +21,7 @@ import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, 
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
 import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
 import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "./lib/controlTotals";
-import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod } from "./lib/signoff";
+import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod, isPeriodSignedOff } from "./lib/signoff";
 import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy } from "./lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
@@ -737,6 +739,41 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // O83 Trap 2 — a booking held because it dates into a signed-off period: { invoice, period }.
   // The decision modal (reopen / rebook / CPA) reads this; null when nothing is held.
   const [pendingSignedPeriodBooking, setPendingSignedPeriodBooking] = useState(null);
+  // C186 — the automatic pipeline's exceptions surfaced to the CPA Review queue: excepted
+  // statement lines + attention statements, each with a plain-language reason.
+  const [statementExceptions, setStatementExceptions] = useState([]);
+  const loadStatementExceptions = async (companyId) => {
+    const cid = companyId || currentCompany?.id;
+    if (!cid) { setStatementExceptions([]); return; }
+    const plain = (reason) => ({
+      low_confidence: "We weren't sure how to categorize this — your accountant should decide.",
+      signed_period: "This is dated in a month your accountant already reviewed.",
+      unmatched: "We couldn't match this to an open bill or invoice.",
+      book_failed: "This couldn't be recorded automatically.",
+    }[reason] || "This needs your accountant's review.");
+    try {
+      const { data: lines } = await supabase.from("bank_statement_lines")
+        .select("id, statement_id, line_date, description, vendor, amount, exception_reason")
+        .eq("company_id", cid).eq("status", "excepted");
+      const { data: stmts } = await supabase.from("bank_statements")
+        .select("id, source_filename, period_end")
+        .eq("company_id", cid).eq("status", "attention");
+      const withExc = new Set((lines || []).map((l) => String(l.statement_id)));
+      const lineItems = (lines || []).map((l) => ({
+        kind: "line", id: `sxl_${l.id}`, statement_id: l.statement_id, date: l.line_date,
+        amount: l.amount, vendor: l.vendor, description: l.description, reason: l.exception_reason,
+        title: l.vendor || l.description || "Statement line", plain: plain(l.exception_reason),
+      }));
+      // An attention statement with NO excepted lines = a balance discrepancy (the ending balance
+      // didn't net) — surface it once, plainly, without GL jargon.
+      const stmtItems = (stmts || []).filter((s) => !withExc.has(String(s.id))).map((s) => ({
+        kind: "statement", id: `sxs_${s.id}`, statement_id: s.id, reason: "balance_discrepancy",
+        title: s.source_filename || "Bank statement",
+        plain: "The ending balance on this statement doesn't match your books yet — your accountant should reconcile it.",
+      }));
+      setStatementExceptions([...lineItems, ...stmtItems]);
+    } catch { /* tables may not exist pre-058 */ setStatementExceptions([]); }
+  };
   // Destructive AI actions staged behind the human confirmation gate (CR-9). null =
   // nothing pending; else { actions:[…], items:[{type,description,targets}] }.
   const [pendingAIActions, setPendingAIActions] = useState(null);
@@ -896,6 +933,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     dismissedRecurringRef.current = new Set();
     // Anomalies, notifications, onboarding UI
     applyAnomalyRows([]); anomaliesLoadedRef.current = false; anomalyScanBusyRef.current = false;
+    setStatementExceptions([]);   // C186
     setNotifications([]); setNotifOpen(false);
     setOnboardingUploadDone(false); setBusinessModalOpen(false);
   };
@@ -1095,6 +1133,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // than re-inserting everything on the first scan.
       await loadNotifications(cid);
       await loadAnomalies(cid);
+      await loadStatementExceptions(cid);   // C186 — pipeline exceptions for the CPA Review queue
 
     } catch(e) { console.error("loadAllData (secondary) error:", e); }
     // The critical ledger loaded (we returned early otherwise), so views may now trust
@@ -4413,7 +4452,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // durable statement/line ids onto the in-memory rows so booking can advance their status.
       try {
         const { statementId, lineIds } = await persistBankStatement({ account, file, rawTxns, lines: withIds, statedOpening, statedPeriodStart });
-        if (statementId) setBankTransactions(prev => prev.map((t, i) => ({ ...t, _stmtId: statementId, _stmtLineId: lineIds[i] || t._stmtLineId })));
+        if (statementId) {
+          const stampedLines = withIds.map((t, i) => ({ ...t, _stmtId: statementId, _stmtLineId: lineIds[i] || t._stmtLineId }));
+          setBankTransactions(stampedLines);
+          // C186 — AUTOMATIC PIPELINE: when the statement is bound to an account, run the clean-path
+          // pipeline (book confident lines → match/clear → reconcile; exceptions to the CPA Review
+          // queue). The Bank Import review screen is then reduced to only the lines needing a human.
+          // With NO bound account the manual flow is unchanged (drop-zone stash → next commit).
+          if (account && account.id && lineIds.length) {
+            try {
+              const remaining = await runStatementPipeline(statementId, account, stampedLines);
+              setBankTransactions(Array.isArray(remaining) ? remaining : []);
+            } catch (e) { console.warn("[pipeline] run skipped:", e?.message || e); }
+          }
+        }
       } catch (e) { console.warn("[bank_statements] persist call skipped:", e?.message || e); }
       setBankProgress(100);
       markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: `bank statement parsed — ${withIds.length} line(s) in Bank Import review` });   // terminal: accounted for
@@ -4471,6 +4523,139 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           .in("id", [...jeToStamp]).eq("company_id", currentCompany.id);
       }
     } catch (e) { console.warn("[bank_statements] link-after-booking skipped:", e?.message || e); }
+  };
+
+  // ── C186 — the automatic clean-path pipeline (§11 ★ North Star Phase 1-B) ──────────────────
+  // Completes + inserts a reconciliation for the auto-run, reusing ReconView's write shape +
+  // the supersede cleanup (C184). Statement-derived ending IS a verified balance (§11).
+  const completePipelineReconciliation = async ({ account, periodStart, periodEnd, statementBalance, booksBalance, difference }) => {
+    const at = new Date().toISOString(); const uid = session?.user?.id || null;
+    const payload = {
+      company_id: currentCompany.id,
+      account_id: (account && account.id) || null, account_name: (account && account.name) || "account",
+      period_start: periodStart, period_end: periodEnd,
+      statement_balance: statementBalance, books_balance: booksBalance, difference,
+      statement_balance_verified: true, status: "complete",
+      matched_transactions: [], unmatched_bank: [], unmatched_books: [], outstanding_books: [], added_during_reconciliation: [],
+      completed_at: at, completed_by: uid,
+    };
+    let rid = null;
+    try { const { data } = await supabase.from("reconciliations").insert(payload).select("id").single(); rid = data?.id; } catch (e) { console.warn("[pipeline] recon insert failed:", e?.message || e); return; }
+    // Same supersede cleanup ReconView.completeMatch runs — no stranded open row for the period.
+    try {
+      const { data: openRows } = await supabase.from("reconciliations").select("id, status, account_id, account_name, period_start, period_end").eq("company_id", currentCompany.id).eq("status", "open");
+      const stale = supersedableOpenReconciliations(openRows || [], { accountId: (account && account.id) || null, accountName: (account && account.name) || null, periodStart, periodEnd, keepId: rid });
+      if (stale.length) await supabase.from("reconciliations").delete().in("id", stale.map(r => r.id)).eq("company_id", currentCompany.id);
+    } catch { /* best-effort */ }
+    logAudit("reconciliation_completed", `Auto-reconciled ${(account && account.name) || "account"} ${periodStart}→${periodEnd} via the statement pipeline — balance ${statementBalance}`, null, { account: (account && account.name), period: `${periodStart}→${periodEnd}`, balance: statementBalance, auto: true });
+  };
+
+  // ONE plain-language outcome line (Cardinal Principle — scrubbed by containsOwnerJargon). The
+  // Feb-re-upload case (all already-booked, month attested) reads as calm confirmation, not activity.
+  const pipelineOutcomeCopy = ({ plan, bookedCount, exceptionCount, balanceDiscrepancy, reconciled }) => {
+    const monthName = signedMonthLabel(plan.period) || "This";
+    let msg;
+    if (plan.reconciliation.conclusion === "already_matched") msg = "Everything on this statement was already in your books ✓";
+    else if (exceptionCount === 0 && !balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded${reconciled ? " and matched to your bank ✓" : " ✓"}`;
+    else if (balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded; the ending balance needs your accountant's look`;
+    else msg = `${monthName} statement handled — ${bookedCount} recorded, ${exceptionCount} need${exceptionCount === 1 ? "s" : ""} your accountant's look`;
+    // Cardinal-Principle safety net: if any GL/debit-credit jargon leaks, fall back to a plain line.
+    if (containsOwnerJargon(msg)) msg = `${monthName} statement handled — we recorded what we could and flagged the rest for your accountant.`;
+    return msg;
+  };
+
+  // The EXECUTOR. Runs after persistBankStatement when an account is bound (Bank Import path).
+  // Reuses every existing path — buildBankLineEntry→bookToDb (book), matchableOpenItems→
+  // runMatchingEngine→planBankImport→markBillPaid (match/clear), planPayrollBankLines (payroll),
+  // reconBooksBalance/reconcileDifference/canCompleteReconciliation (reconcile). Returns the lines
+  // still needing a human (exceptions), for the Bank Import review screen.
+  const runStatementPipeline = async (statementId, account, parsedLines = []) => {
+    if (!statementId || !currentCompany?.id || !account?.id) return parsedLines;
+    const cashCode = (account.gl_code) || rc("cash");
+    const offsetCode = cashCode, offsetName = getAccountByCode(offsetCode)?.name || rn("cash");
+    const setStmt = async (patch) => { try { await supabase.from("bank_statements").update(patch).eq("id", statementId).eq("company_id", currentCompany.id); } catch {} };
+    const setLine = async (lineId, patch) => { if (!lineId) return; try { await supabase.from("bank_statement_lines").update(patch).eq("id", String(lineId)).eq("company_id", currentCompany.id); } catch {} };
+    const lineDbId = (l) => String(l._stmtLineId || l.id);
+    const excOf = (l, reason) => ({ lineId: lineDbId(l), reason, date: l.date || l.line_date, amount: Number(l.amount) || 0, vendor: l.vendor || null, gl_code: l.gl_code || l.ai_gl_code || null });
+
+    let stmt = null;
+    try { const { data } = await supabase.from("bank_statements").select("*").eq("id", statementId).single(); stmt = data; } catch {}
+    const plan = planStatementPipeline({
+      lines: parsedLines, invoices: invoicesRef.current, signoffs, reconciliations,
+      thresholds: { autoBookFloor: AI_CONFIDENCE_AUTO_BOOK }, statement: stmt || {}, cashCode,
+    });
+    await setStmt({ status: "processing" });
+
+    const exceptions = [];
+    // Line-level exceptions from the plan (signed_period / low_confidence) — persist immediately.
+    for (const e of plan.exceptions) { exceptions.push(e); await setLine(e.lineId, { status: "excepted", exception_reason: e.reason }); }
+
+    // Book + match plan.toBook through the EXISTING paths (mirrors bookBankTransactions).
+    const byLineId = new Map(plan.toBook.map((l) => [lineDbId(l), l]));
+    const parsedTxns = plan.toBook.map((l) => ({ id: lineDbId(l), date: l.date || l.line_date, description: l.description, vendor: l.vendor, amount: l.amount, type: l.type || (l.direction === "in" ? "revenue" : "expense"), gl_code: l.gl_code || l.ai_gl_code, gl_name: l.gl_name || getAccountByCode(l.gl_code || l.ai_gl_code)?.name, confidence: l.confidence != null ? l.confidence : l.ai_confidence, reasoning: l.reasoning, rule_applied: l.rule_applied }));
+    let bookedCount = 0;
+
+    const directBook = async (line, txn) => {
+      const entry = { id: txn.id, booked_at: new Date().toISOString(), ...buildBankLineEntry(txn, { offsetCode, offsetName }) };
+      setInvoices((prev) => [entry, ...prev]);
+      const jeId = await bookToDb(entry);
+      if (jeId) {
+        bookedCount++;
+        await setLine(lineDbId(line), { status: "booked", journal_entry_id: String(jeId) });
+        try { await supabase.from("journal_entries").update({ bank_account_id: account.id }).eq("id", String(jeId)).eq("company_id", currentCompany.id); } catch {}
+      } else {
+        exceptions.push(excOf(line, "book_failed"));
+        await setLine(lineDbId(line), { status: "excepted", exception_reason: "book_failed" });
+      }
+    };
+
+    if (!shouldRunApMatching(account)) {
+      // Credit card — direct-book every auto-safe line (no AP matching).
+      for (const txn of parsedTxns) { const line = byLineId.get(txn.id); if (line) await directBook(line, txn); }
+    } else {
+      const openItems = matchableOpenItems(invoicesRef.current || invoices, { arCode: rc("accounts_receivable"), apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities") });
+      const { autoCleared, queue } = await runMatchingEngine(parsedTxns, openItems);
+      const plan2 = planBankImport({ parsedTxns, autoCleared, queue, openItems, codes: { apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"), arCode: rc("accounts_receivable"), cashCode: offsetCode, cashName: offsetName } });
+      for (const c of plan2.clears) {
+        const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null });
+        if (ok && c.bankId != null) await setLine(c.bankId, { status: "matched" });   // clearing → statement line 'matched'
+      }
+      for (const m of plan2.review) {
+        const bid = m.bank_txn?.id ?? m.bank_txn_id;
+        const line = byLineId.get(String(bid));
+        if (line) { exceptions.push(excOf(line, "unmatched")); await setLine(lineDbId(line), { status: "excepted", exception_reason: "unmatched" }); }
+      }
+      const pr = planPayrollBankLines(plan2.standalone, invoicesRef.current || invoices);
+      for (const txn of pr.rest) { const line = byLineId.get(String(txn.id)); if (line) await directBook(line, txn); }
+      for (const t of pr.matched) { const line = byLineId.get(String(t.line?.id ?? t.line)); if (line) await setLine(lineDbId(line), { status: "matched" }); }   // register already booked the cash — no double-count
+      for (const t of pr.incomplete) { const line = byLineId.get(String(t.id)); if (line) { exceptions.push(excOf(line, "unmatched")); await setLine(lineDbId(line), { status: "excepted", exception_reason: "unmatched" }); } }
+    }
+
+    try { await loadAllData(); } catch {}
+
+    // ── Reconciliation (only when the plan says to attempt; NEVER a second recon for an attested month). ──
+    let balanceDiscrepancy = null, reconciled = false;
+    if (plan.reconciliation.attempt && stmt) {
+      const booksBalance = reconBooksBalance(invoicesRef.current, [cashCode], { asOf: stmt.period_end });
+      const stmtEnding = stmt.stated_ending_balance;
+      const difference = reconcileDifference({ statementBalance: stmtEnding, booksBalance, outstandingSigned: 0, unmatchedBankSigned: 0 });
+      if (exceptions.length === 0 && canCompleteReconciliation({ statementBalance: String(stmtEnding == null ? "" : stmtEnding), difference })) {
+        await completePipelineReconciliation({ account, periodStart: stmt.period_start, periodEnd: stmt.period_end, statementBalance: stmtEnding, booksBalance, difference });
+        reconciled = true;
+      } else if (Math.abs(Number(difference) || 0) >= 0.005) {
+        balanceDiscrepancy = { diff: difference };   // statement-level exception; do NOT complete
+        await setStmt({ status: "attention" });
+      }
+    }
+
+    const finalStatus = (exceptions.length === 0 && !balanceDiscrepancy) ? "complete" : "attention";
+    await setStmt({ status: finalStatus });
+    try { await loadStatementExceptions(currentCompany.id); } catch {}
+    showNotification(pipelineOutcomeCopy({ plan, bookedCount, exceptionCount: exceptions.length, balanceDiscrepancy, reconciled }), finalStatus === "complete" ? "success" : "info");
+
+    // Only still-pending/excepted lines remain for the Bank Import review screen (item 4).
+    const exceptionIds = new Set(exceptions.map((e) => String(e.lineId)));
+    return parsedLines.filter((l) => exceptionIds.has(lineDbId(l))).map((l) => ({ ...l, needs_review: true, checked: false }));
   };
 
   const bookBankTransactions = async (account = null) => {
@@ -5938,7 +6123,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, logIntake, markIntake };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, logIntake, markIntake };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // Only platform administrators see the Security tab / view.

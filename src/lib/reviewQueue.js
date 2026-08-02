@@ -13,7 +13,7 @@
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-export function buildReviewQueue({ droppedDocs = [], flaggedTxns = [], unknownDocs = [], accuracyFlags = [], anomalies = [] } = {}) {
+export function buildReviewQueue({ droppedDocs = [], flaggedTxns = [], unknownDocs = [], accuracyFlags = [], anomalies = [], statementExceptions = [] } = {}) {
   const completeness = droppedDocs || [];
   const needsReview = flaggedTxns || [];
   const unknown = (unknownDocs || []).filter((d) => !d.posted);   // posted ones are resolved
@@ -22,6 +22,11 @@ export function buildReviewQueue({ droppedDocs = [], flaggedTxns = [], unknownDo
   // review, so it keeps the screen from "all clear"; severity governs BLOCKING (only
   // HIGH-in-period blocks sign-off, in signOffReadiness), never VISIBILITY here.
   const anomaly = (anomalies || []).filter((a) => (a.status ? a.status === "open" : true));
+  // C186 — the automatic pipeline's exceptions: statement lines it could not safely handle
+  // (low_confidence / signed_period / unmatched / book_failed) + statement-level balance
+  // discrepancies. Surfaced for the CPA like any other net; counts toward totalItems/allClear.
+  // Does NOT change sign-off gating (only the existing HIGH-anomaly rule blocks sign-off).
+  const statementException = statementExceptions || [];
 
   const totalExposure = r2(needsReview.reduce((s, f) => s + Math.abs(Number(f.amount) || 0), 0));
   const highCount = needsReview.filter((f) => f.severity === "high").length
@@ -34,13 +39,14 @@ export function buildReviewQueue({ droppedDocs = [], flaggedTxns = [], unknownDo
     unknownCount: unknown.length,
     accuracyCount: accuracy.length,
     anomalyCount: anomaly.length,
+    statementExceptionCount: statementException.length,
     highCount,
     totalExposure,
-    totalItems: completeness.length + needsReview.length + unknown.length + accuracy.length + anomaly.length,
-    // ALL nets clear (completeness + confidence + accuracy) AND no open anomaly → eligible
-    // for the reassuring empty state. (Sign-off itself only BLOCKS on HIGH-in-period.)
-    allClear: completeness.length === 0 && needsReview.length === 0 && unknown.length === 0 && accuracy.length === 0 && anomaly.length === 0,
+    totalItems: completeness.length + needsReview.length + unknown.length + accuracy.length + anomaly.length + statementException.length,
+    // ALL nets clear (completeness + confidence + accuracy) AND no open anomaly AND no pipeline
+    // exception → eligible for the reassuring empty state. (Sign-off itself only BLOCKS on HIGH-in-period.)
+    allClear: completeness.length === 0 && needsReview.length === 0 && unknown.length === 0 && accuracy.length === 0 && anomaly.length === 0 && statementException.length === 0,
   };
 
-  return { completeness, needsReview, unknown, accuracy, anomaly, summary };
+  return { completeness, needsReview, unknown, accuracy, anomaly, statementException, summary };
 }

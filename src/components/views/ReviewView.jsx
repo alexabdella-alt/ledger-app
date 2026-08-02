@@ -15,7 +15,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded,
-    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, statementExceptions } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -55,7 +55,7 @@ export default function ReviewView() {
 
   const flagged = flagsForReview ? flagsForReview() : [];
   const accuracyFlags = (controlTotals && controlTotals.flags) || [];   // O59 third net
-  const { completeness, needsReview, unknown, accuracy, anomaly, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags, anomalies });
+  const { completeness, needsReview, unknown, accuracy, anomaly, statementException, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags, anomalies, statementExceptions });
   // O83: attestation is a REVIEWER action (accountant/admin), NOT the client-owner.
   const canSignOff = !!isReviewer;
   const [signingOff, setSigningOff] = React.useState(false);
@@ -166,8 +166,37 @@ export default function ReviewView() {
         {statCard("FLAGGED TXNS", summary.flaggedCount, summary.flaggedCount > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
         {statCard("ACCURACY CHECKS OFF", summary.accuracyCount, summary.accuracyCount > 0 ? "var(--sc-error)" : "var(--sc-success)")}
         {statCard("UNUSUAL ACTIVITY", summary.anomalyCount, summary.anomalyCount > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
+        {statCard("STATEMENT EXCEPTIONS", summary.statementExceptionCount, summary.statementExceptionCount > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
         {statCard("$ FLAGGED FOR REVIEW", _m0(summary.totalExposure), summary.totalExposure > 0 ? "var(--sc-gold)" : "var(--sc-success)")}
       </div>
+
+      {/* ── STATEMENT EXCEPTIONS (C186) — what the automatic pipeline could NOT safely handle
+             (low-confidence categorization, dated in a signed month, unmatched, couldn't book,
+             or a statement whose ending balance didn't net). Plain-language; surfaced for the
+             CPA to resolve. Counts toward the queue but does NOT change sign-off gating. ── */}
+      {statementException.length > 0 && (
+        <div style={{ border: "1px solid var(--sc-warning)", background: "var(--sc-warning-soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-warning)", marginBottom: 10 }}>📄 {statementException.length} statement {statementException.length === 1 ? "item" : "items"} the pipeline couldn't finish · awaiting review</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {statementException.map((x) => (
+              <div key={x.id} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--sc-text)" }}>
+                      {x.title || "Statement line"}{x.amount != null && x.kind === "line" ? ` · ${fmtSignedMoney(x.amount)}` : ""}{x.date ? ` · ${fmtDate(x.date)}` : ""}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 3 }}>{x.plain}</div>
+                  </div>
+                  <button onClick={() => setView && setView("bank")}
+                    style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer", flexShrink: 0 }}>
+                    Open in Bank Import →
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── UNUSUAL ACTIVITY (O83) — persisted anomaly records. All severities are VISIBLE
              here (CPA-side, full technical detail is fine); only HIGH-in-period BLOCKS
