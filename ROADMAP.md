@@ -5,13 +5,40 @@ This is **the** authoritative roadmap. When the user says "add to the roadmap," 
 ids are never reused. Keep the two sections separate. Mark an item DONE only when it's genuinely in
 the codebase (builder/function exists, tests pass, migration applied/committed).
 
-- **Last updated:** 2026-07-12
+- **Last updated:** 2026-08-02
 - **Test suite:** 1187 passing (`npm test`, 76 files; incl. `noUndefinedRefs` scope-scan (95 files) + `noTdzInHookDeps` TDZ-in-hook-deps guard (95 files, C125) over all src; incl. **fault-injection** suites that deliberately break the pipeline to prove the O60/O49 trust nets catch it — C115). **Build:** clean (`npm run build`).
 - **Owner-dashboard automation (C124):** depreciation now **auto-posts** when due (GL-truth idempotent) — removed the "run depreciation" owner nudge. **Sibling flagged:** the "Contract journal entries ready to post" dashboard prompt is the same deterministic-machinery class → auto-post/move to CPA side next (not yet done; has an extraction/confirm step).
 - **Pending migrations to apply:** `047_document_intake_ledger.sql` (O60 intake ledger). *(`048_rls_exposed_tables.sql` ✅ applied 2026-06-30 — RLS exposure closed; `050_period_signoffs` ✅ applied; `051_invite_hardening` ✅ applied; `052_insert_policy_scoping` ✅ applied 2026-07-09 — CR-11/CR-12 INSERT-policy drift closed.)*
 - **Live verification:** `VERIFICATION.md` (repo root) is the manual click-through checklist for built-but-not-live-verified work — worked under **O83** (pre-launch gate). Unit-test green ≠ live-verified.
 - **Migrations:** `000`–`045` applied (numbering non-contiguous; `045_drop_ap_invoices.sql` applied 2026-06-26 — dropped the orphaned `ap_invoices` table + dead `ap_aging` view, confirmed 0 rows). `046_company_aliases.sql` written (optional — adds `companies.aliases` for O75 self-identity; name-based direction works without it).
 - **Evidence** column points at the commit / lib file / migration / test that proves the item.
+
+---
+
+## SECTION 0 — LAUNCH PLAN (added 2026-08-02)
+
+### TIER 1 — LAUNCH-BLOCKING (~11 sessions; a paying client cannot onboard without these)
+
+1. **North Star Phase 1 pipeline** — persistence foundation (C185), orchestration over persisted statement lines, outcome surface on trust panel. ~3 sessions. Spec: §11 ★ NORTH STAR.
+2. **March fixture pack + O84 live-drive verification** of the pipeline against an untouched month with independent answer key. ~2.5 sessions. The pipeline ships live-verified or not at all.
+3. **IA collapse (North Star Phase 2)** — client nav = Home/Reports/Activity; workbench surfaces gate behind `isReviewer`. ~1.5 sessions. Sequenced strictly after the pipeline.
+4. **Business-type COA seeding** (restaurant template first, evidenced). ~1 session.
+5. **Confidence calibration + reasoning-consistency guard** (cap confidence below `AI_CONFIDENCE_ASK_FLOOR` on self-contradicting reasoning; owner-jargon scrub; "Loaded from database" placeholder fix). ~1 session. Joint acceptance test with item 4: "the first document a new signup uploads books correctly OR asks a smart question" — Miscellaneous fallback on a recognizable vendor is a hard fail.
+6. **Team invites + roles cleanup** (member/viewer naming reconciled; DB-layer sign-off acceptance test with a non-platform-admin user folds in). ~1 session.
+7. **Burn/runway revenue-blind fix** — burn = net cash change; profitable/cash-positive → no runway warning, positive framing. Single shared burn figure across dashboard/drill/AI snapshot must move together. ~0.5 session.
+8. **1099 minimal fix:** default-OFF with explicit CPA opt-in per vendor (derived eligibility deferred to Tier 3). ~0.25 session.
+
+### TIER 2 — LAUNCH-WEEK (~7 sessions; ship around launch, don't gate first client)
+
+demo/showcase company (~1, before first sales demo) · DB-level signed-period backstop trigger (~1) · Review-card trio: inspection links + anomaly comments + evidence-attached dismissal, built together (~1) · doc-library derived type + document date metadata (~0.75) · QBO import hardening (~1, scope TBD) · Activity-feed jargon scrub + trust-panel Documents queue glyph (~0.5) · reconcile ending-balance prefill as exception-path fallback (~0.25) · bulk soft-delete/void UI (~0.5) · pattern-level duplicate suppression for recurring vendors (~0.75).
+
+### TIER 3 — POST-LAUNCH
+
+full derived 1099 eligibility · opening-discrepancy persisted anomaly (bespoke lifecycle) · normalized reconciliations model · hard close (#17) · payroll accrue-then-pay · multi-jurisdiction sales tax · declining-balance/UoP/MACRS depreciation · `bank_account_id` retro-linkage of pre-C185 entries.
+
+### TIMELINE (at 4 build sessions/week; each session includes external diff verification)
+
+Tier 1 clears ~Aug 24; Tier 2 overlaps its back half → launchable mid-September 2026. Sensitivity: 3/wk → early October; 5/wk → ~Labor Day. Budget +2 remediation sessions for O84 findings (O83's finding rate). Dominant risk is verification findings, not build time.
 
 ---
 
