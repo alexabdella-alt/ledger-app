@@ -99,6 +99,27 @@ describe("AR / AP / docs-recorded / cash-recon control totals", () => {
     expect(c.ties).toBe(false);
     expect(Math.abs(c.diff)).toBe(0.75);
   });
+  it("cash-recon NETS stored outstanding items — a completed rec with an uncashed check PASSES (O83 Feb)", () => {
+    // The exact Feb scenario: books 20,339.40, statement 20,614.40, one $275 outstanding check
+    // (signed −275, money out). Raw books≠statement would false-fail "off by $275" and block
+    // sign-off; netting (20,614.40 − 275 = 20,339.40) ties.
+    const rec = { id: "feb", status: "complete", account_name: "Primary Checking", period_end: "2026-02-28",
+      books_balance: 20339.40, statement_balance: 20614.40,
+      outstanding_books: [{ id: "atlas", amount: 275, signed: -275 }], unmatched_bank: [] };
+    const c = findCheck(computeControlTotals({ invoices: [], reconciliations: [rec], codes: CODES }), "cash_recon");
+    expect(c).toBeDefined();
+    expect(c.ties).toBe(true);            // NETS → passes → Feb sign-off unblocked
+    expect(c.b).toBe(20339.40);           // the netted bank figure (after the uncashed check)
+  });
+  it("cash-recon still FAILS a genuinely-off rec even with outstanding netting", () => {
+    // Same as above but books are $100 short of the netted bank → real discrepancy, still flagged.
+    const rec = { id: "off", status: "complete", account_name: "Checking", period_end: "2026-02-28",
+      books_balance: 20239.40, statement_balance: 20614.40,
+      outstanding_books: [{ id: "atlas", amount: 275, signed: -275 }], unmatched_bank: [] };
+    const c = findCheck(computeControlTotals({ invoices: [], reconciliations: [rec], codes: CODES }), "cash_recon");
+    expect(c.ties).toBe(false);
+    expect(Math.abs(c.diff)).toBe(100);
+  });
   it("cash-recon does NOT emit a (vacuous 0===0) check for a $0 UNVERIFIED phantom (O83)", () => {
     const phantom = [{ id: "p1", status: "complete", account_name: "Checking", period_end: "2026-05-31", books_balance: 0, statement_balance: 0 }];
     const c = findCheck(computeControlTotals({ invoices: [], reconciliations: phantom, codes: CODES }), "cash_recon");

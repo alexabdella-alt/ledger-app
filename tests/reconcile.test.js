@@ -280,3 +280,35 @@ describe("reconBooksSet — the accrual lifecycle", () => {
     expect(s2).not.toContain("void");
   });
 });
+
+import { supersedableOpenReconciliations } from "../src/lib/reconcile.js";
+
+describe("supersedableOpenReconciliations — completing supersedes stale open rows (O83 Bug 2)", () => {
+  const feb = { periodStart: "2026-02-01", periodEnd: "2026-02-28" };
+  const orphan   = { id: "orphan",   status: "open",     account_id: "acc1", account_name: "Primary Checking", period_start: "2026-02-01", period_end: "2026-02-28" };
+  const complete = { id: "complete", status: "complete", account_id: "acc1", account_name: "Primary Checking", period_start: "2026-02-01", period_end: "2026-02-28" };
+  const otherPer = { id: "jan",      status: "open",     account_id: "acc1", account_name: "Primary Checking", period_start: "2026-01-01", period_end: "2026-01-31" };
+  const otherAcc = { id: "savings",  status: "open",     account_id: "acc2", account_name: "Savings",          period_start: "2026-02-01", period_end: "2026-02-28" };
+
+  it("picks the stale open row for the same account+period, excluding the completed one", () => {
+    const stale = supersedableOpenReconciliations([orphan, complete, otherPer, otherAcc], { accountId: "acc1", accountName: "Primary Checking", ...feb, keepId: "complete" });
+    expect(stale.map(r => r.id)).toEqual(["orphan"]);   // only the orphan; not other period/account, not completed
+  });
+  it("never supersedes the row being completed (keepId)", () => {
+    const stale = supersedableOpenReconciliations([{ ...orphan, id: "self", status: "open" }], { accountId: "acc1", accountName: "Primary Checking", ...feb, keepId: "self" });
+    expect(stale).toEqual([]);
+  });
+  it("matches by account_name when there's no account_id (manual account)", () => {
+    const manualOrphan = { id: "m", status: "open", account_id: null, account_name: "Manual", period_start: "2026-02-01", period_end: "2026-02-28" };
+    const stale = supersedableOpenReconciliations([manualOrphan], { accountId: "manual", accountName: "Manual", ...feb, keepId: "new" });
+    expect(stale.map(r => r.id)).toEqual(["m"]);
+  });
+  it("complete-with-a-stale-open-row-present → exactly one Complete, zero open (the scenario)", () => {
+    // After completing, the app deletes the stale set; simulate the resulting state.
+    const all = [orphan, complete];
+    const toDelete = new Set(supersedableOpenReconciliations(all, { accountId: "acc1", accountName: "Primary Checking", ...feb, keepId: "complete" }).map(r => r.id));
+    const remaining = all.filter(r => !toDelete.has(r.id));
+    expect(remaining.map(r => r.id)).toEqual(["complete"]);
+    expect(remaining.filter(r => r.status === "open")).toEqual([]);
+  });
+});

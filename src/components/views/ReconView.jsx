@@ -1,6 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference } from "../../lib/reconcile";
+import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations } from "../../lib/reconcile";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal, addDaysYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -191,8 +191,10 @@ export default function ReconView() {
     unmatched_books: unmatchedBooks.map(b=>b.id),
     // The DECIDED-outstanding book items ("hasn't hit the bank yet") — persisted so the marking
     // survives Save Progress/resume AND a completed record's history shows what was outstanding
-    // (migration 057). Stored as the full rows so history renders date+amount without the ledger.
-    outstanding_books: outstandingBooks.map(b=>({ id:b.id, date:b.date, amount:b.amount, gl_code:b.gl_code, description:b.description })),
+    // (migration 057). `signed` is the cash-signed amount (a check = negative), so the trust-layer
+    // bank-match control can NET the reconciliation the same way the completion bar does (C183) —
+    // without re-deriving the sign from the ledger.
+    outstanding_books: outstandingBooks.map(b=>({ id:b.id, date:b.date, amount:b.amount, signed:bookSigned(b), gl_code:b.gl_code, description:b.description })),
     added_during_reconciliation: bankTxns.filter(t=>t._added).map(t=>t._added),
   });
   const reconIdRef = React.useRef(null);   // synchronous mirror of reconId
@@ -303,6 +305,21 @@ export default function ReconView() {
       let rid=reconId;
       if (rid) await supabase.from("reconciliations").update(payload).eq("id",rid).eq("company_id",currentCompany.id);
       else { const { data } = await supabase.from("reconciliations").insert(payload).select("id").single(); rid=data?.id; setReconId(rid); }
+      // HARDEN (O83 Bug 2): completing SUPERSEDES any OTHER open/in-progress autosave row for the
+      // SAME account+period — so a mid-session save failure that stranded a phantom row can't leave
+      // a period both Complete (in History) AND resumable (the operator completed Feb twice this way).
+      // The Complete record is the source of truth; the orphan open rows are deleted.
+      try {
+        const { data: openRows } = await supabase.from("reconciliations")
+          .select("id, status, account_id, account_name, period_start, period_end")
+          .eq("company_id", currentCompany.id).eq("status", "open");
+        const stale = supersedableOpenReconciliations(openRows || [], { accountId, accountName, periodStart, periodEnd, keepId: rid });
+        if (stale.length) {
+          const { error: supErr } = await supabase.from("reconciliations").delete().in("id", stale.map(r=>r.id)).eq("company_id", currentCompany.id);
+          if (supErr) console.warn("[reconciliations] supersede open rows failed:", supErr.message);
+          else logAudit && logAudit("reconciliation_superseded_open", `Completing ${accountName} ${periodStart}→${periodEnd} closed ${stale.length} stale in-progress reconciliation${stale.length===1?"":"s"} for the same period`, null, { account: accountName, period: `${periodStart}→${periodEnd}`, completed_id: rid, superseded: stale.map(r=>r.id) });
+        }
+      } catch(e) { console.warn("[reconciliations] supersede skipped:", e?.message||e); }
       const dbIds = invoices.filter(i=>ids.includes(i.id) && i.db_entry_id).map(i=>i.db_entry_id);
       if (dbIds.length) {
         const { error } = await supabase.from("journal_entries").update({ cleared:true, cleared_at:at, reconciliation_id:rid||null }).in("id", dbIds).eq("company_id", currentCompany.id);

@@ -111,8 +111,18 @@ export function computeControlTotals({
     if (!isVerifiedReconciliation(rec)) continue;
     const books = Number(rec.books_balance) || 0;
     const stmt = Number(rec.statement_balance) || 0;
+    // NET the bank side by the SAME reconcileDifference identity the completion bar uses (O83
+    // Feb — C183 fixed this netting in the completion bar; this is the second consumer that
+    // missed it). The reconciled books equal: statement + Σ(outstanding book items, cash-signed)
+    // − Σ(unmatched bank lines). An outstanding check (money out, not yet cleared) is stored with
+    // a NEGATIVE `signed`, so a rec with a $275 uncashed check reconciles (20,614.40 − 275 =
+    // 20,339.40) instead of false-failing "off by $275" and blocking the sign-off.
+    const outSigned = (rec.outstanding_books || []).reduce((s, o) => s + (Number(o && o.signed) || 0), 0);
+    const unmatchedBankSigned = (rec.unmatched_bank || []).reduce((s, t) => s + (Number(t && t.amount) || 0), 0);
+    const expectedBooks = r2(stmt + outSigned - unmatchedBankSigned);
     const label = `Bank match — ${rec.account_name || "account"}${rec.period_end ? ` (through ${rec.period_end})` : ""}`;
-    checks.push(check("cash_recon", label, books, "your books", stmt, "the bank statement", { recId: rec.id }));
+    const bankLabel = outSigned !== 0 ? "your bank balance after checks that haven't cleared" : "the bank statement";
+    checks.push(check("cash_recon", label, books, "your books", expectedBooks, bankLabel, { recId: rec.id }));
   }
 
   // 6. Documents recorded (O60 intake) === journal entries created for them. A doc

@@ -129,6 +129,24 @@ export function reconMarkedOutstanding(booksRows = [], { matchedBookIds = new Se
   );
 }
 
+// The stale OPEN reconciliation rows that completing THIS one supersedes: same account (by id
+// when present, else by name) + same period, excluding the row being completed. Deleting these on
+// completion prevents a period being BOTH Complete (in History) AND resumable after a mid-session
+// save failure stranded a phantom autosave (O83 Bug 2 — the operator completed February twice this
+// way). Pure so the rule is testable; the completion flow deletes exactly this set by id.
+export function supersedableOpenReconciliations(recs = [], { accountId = null, accountName = null, periodStart = null, periodEnd = null, keepId = null } = {}) {
+  const sameAccount = (r) => (accountId && accountId !== "manual")
+    ? String(r.account_id) === String(accountId)
+    : String(r.account_name || "") === String(accountName || "");
+  return (recs || []).filter((r) =>
+    r && String(r.status) === "open" &&
+    String(r.id) !== String(keepId) &&
+    String(r.period_start) === String(periodStart) &&
+    String(r.period_end) === String(periodEnd) &&
+    sameAccount(r)
+  );
+}
+
 // Standard bank-reconciliation difference — RECONCILED when it is $0.00:
 //   difference = bank_ending_balance
 //              + Σ(outstanding book items, cash-leg signed)   [in the books, not yet on the bank]
