@@ -74,7 +74,15 @@ export default function PayrollView() {
               payrollTaxesPayableCode: getAccountByRole("payroll_taxes_payable")?.code || "2101",
               date: imp.pay_date,
               description: `${imp.source} Payroll — ${imp.period}`,
-              meta: { kind: "payroll", source: imp.source, period: imp.period },
+              // C189 — payroll cash is DISBURSED at post time: stamp payment_status 'paid' so the
+              // expense legs (Salaries + Payroll Tax Exp) don't satisfy apUnpaid (reports.js) and
+              // leak into the open-bills sub-ledger, failing the ap_tie control by gross+employer.
+              // The withholding liability is tracked by its own GL (Payroll Taxes Payable), not the
+              // bills list. persistMultiLineEntry passes meta as p_meta → post_journal_entry writes
+              // payment_status → flattenJournalEntries carries it (and the post path reloads via
+              // loadAllData, so in-state rows match what a reload produces). Every write path that
+              // creates a cash-settled entry must stamp this (§9).
+              meta: { kind: "payroll", source: imp.source, period: imp.period, payment_status: "paid" },
             });
             const acctName = (code) => (CHART_OF_ACCOUNTS.find(a => String(a.code) === String(code))?.name) || code;
 

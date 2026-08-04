@@ -167,3 +167,36 @@ describe("(d) O60 Phase 2 — a doc arriving via a non-upload path gets an intak
     }
   });
 });
+
+describe("C189 — posted payroll must stamp payment_status 'paid' (ap_tie control)", () => {
+  // A posted-payroll-shaped multi-line entry (flattened rows): Dr Salaries + Dr Payroll Tax
+  // Exp, Cr Cash + Cr Payroll Taxes Payable. Gross 4000, employer 306 → gross+employer = 4306
+  // (the live ap_tie failure amount). None of the legs touch A/P (2000) — the withholding
+  // liability lives in its own GL (2101) — so glAccountBalance('2000') = 0.
+  const payrollEntry = (paymentStatus) => {
+    const ps = paymentStatus ? { payment_status: paymentStatus } : {};
+    return [
+      { id: "pje_0", gl_code: "6000", amount: 4000, debit_credit: "debit",  date: "2026-03-15", status: "posted", source: "payroll", ...ps }, // Dr Salaries (gross)
+      { id: "pje_1", gl_code: "6010", amount: 306,  debit_credit: "debit",  date: "2026-03-15", status: "posted", source: "payroll", ...ps }, // Dr Payroll Tax Exp (employer)
+      { id: "pje_2", gl_code: "1000", amount: 3200, debit_credit: "credit", date: "2026-03-15", status: "posted", source: "payroll", ...ps }, // Cr Cash (net)
+      { id: "pje_3", gl_code: "2101", amount: 1106, debit_credit: "credit", date: "2026-03-15", status: "posted", source: "payroll", ...ps }, // Cr Payroll Taxes Payable (withholdings + employer)
+    ];
+  };
+
+  it("WITH payment_status 'paid' → ap_tie ties (nothing leaks into open bills)", () => {
+    const r = computeControlTotals({ invoices: payrollEntry("paid"), codes: CODES });
+    const c = findCheck(r, "ap_tie");
+    expect(c.ties).toBe(true);
+    expect(c.a).toBe(0);   // apSub — no unpaid expense legs
+    expect(c.b).toBe(0);   // apGl — A/P (2000) untouched by payroll
+  });
+
+  it("WITHOUT payment_status → ap_tie FAILS by exactly gross + employer (locks the bug signature)", () => {
+    const r = computeControlTotals({ invoices: payrollEntry(null), codes: CODES });
+    const c = findCheck(r, "ap_tie");
+    expect(c.ties).toBe(false);
+    expect(c.a).toBe(4306);            // both expense legs leak into "open bills"
+    expect(c.b).toBe(0);
+    expect(Math.abs(c.diff)).toBe(4306);   // the live $4,306.00 ap_tie failure
+  });
+});
