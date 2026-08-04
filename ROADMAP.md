@@ -30,7 +30,9 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ### TIER 2 — LAUNCH-WEEK (~7 sessions; ship around launch, don't gate first client)
 
-demo/showcase company (~1, before first sales demo) · DB-level signed-period backstop trigger (~1) · Review-card trio: inspection links + anomaly comments + evidence-attached dismissal, built together (~1) · doc-library derived type + document date metadata (~0.75) · QBO import hardening (~1, scope TBD) · Activity-feed jargon scrub + trust-panel Documents queue glyph (~0.5) · reconcile ending-balance prefill as exception-path fallback (~0.25) · bulk soft-delete/void UI (~0.5) · pattern-level duplicate suppression for recurring vendors (~0.75).
+demo/showcase company (~1, before first sales demo) · DB-level signed-period backstop trigger (~1) · Review-card trio: inspection links + anomaly comments + evidence-attached dismissal, built together (~1) · C188 statement/doc dedup (~0.5) · doc-library derived type + document date metadata (~0.75) · API degraded mode + credit monitoring (~0.5) · QBO import hardening (~1, scope TBD) · Activity-feed jargon scrub + trust-panel Documents queue glyph (~0.5) · reconcile ending-balance prefill as exception-path fallback (~0.25) · bulk soft-delete/void UI (~0.5) · pattern-level duplicate suppression for recurring vendors (~0.75).
+
+*(O84 Part 1 findings, 2026-08-04: items 2–5 fold into existing lines rather than new entries — #2 queue pre-override AI label → Tier 1 #5 confidence/reasoning-consistency; #3 payroll PDF ingestion + #4 doc date + #5 docs search → the Tier 2 doc-library line; #6 API degraded mode is the new launch-week line above. #1 dedup = C188.)*
 
 ### TIER 3 — POST-LAUNCH
 
