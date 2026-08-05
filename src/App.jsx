@@ -4602,8 +4602,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     await setStmt({ status: "processing" });
 
     const exceptions = [];
+    // C191 — resolve a plan exception's lineId back to its LINE (keyed by BOTH identities: the DB
+    // uuid and the parse-time local id) so persistence always targets the DB id. The planner now
+    // emits the DB uuid, but this makes a future id regression harmless instead of silent: setLine
+    // matches bank_statement_lines by uuid, so a local id would update ZERO rows and the exception
+    // would vanish (the live bug). Covers ALL parsed lines — exception lines are not in toBook.
+    const lineByAnyId = new Map();
+    for (const l of parsedLines) {
+      if (l._stmtLineId != null) lineByAnyId.set(String(l._stmtLineId), l);
+      if (l.id != null) lineByAnyId.set(String(l.id), l);
+    }
+    const resolveLineDbId = (lineId) => { const l = lineByAnyId.get(String(lineId)); return l ? lineDbId(l) : lineId; };
     // Line-level exceptions from the plan (signed_period / low_confidence) — persist immediately.
-    for (const e of plan.exceptions) { exceptions.push(e); await setLine(e.lineId, { status: "excepted", exception_reason: e.reason }); }
+    for (const e of plan.exceptions) { exceptions.push(e); await setLine(resolveLineDbId(e.lineId), { status: "excepted", exception_reason: e.reason }); }
 
     // C187 — OUTSTANDING CLEARS: a line that matches a prior recon's outstanding item is that
     // entry CLEARING, not new activity. Stamp the EXISTING entry cleared + the statement line
@@ -4684,7 +4695,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     showNotification(pipelineOutcomeCopy({ plan, bookedCount, clearedCount: clearedOutstandingCount, exceptionCount: exceptions.length, balanceDiscrepancy, reconciled }), finalStatus === "complete" ? "success" : "info");
 
     // Only still-pending/excepted lines remain for the Bank Import review screen (item 4).
-    const exceptionIds = new Set(exceptions.map((e) => String(e.lineId)));
+    // C191 — resolve through the SAME id map: this set is compared against lineDbId(l) below, so a
+    // non-DB exception id would filter every excepted line out of `remaining` and the review screen
+    // would stay empty (the second half of the live bug — invisible in the DB AND in the UI).
+    const exceptionIds = new Set(exceptions.map((e) => String(resolveLineDbId(e.lineId))));
     return parsedLines.filter((l) => exceptionIds.has(lineDbId(l))).map((l) => ({ ...l, needs_review: true, checked: false }));
   };
 

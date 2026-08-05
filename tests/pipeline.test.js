@@ -212,3 +212,53 @@ describe("C190 — pipelineStatementStatus (a plan with exceptions → 'attentio
     expect(pipelineStatementStatus({ exceptionCount: 0, balanceDiscrepancy: { diff: 275 } })).toBe("attention");
   });
 });
+
+describe("C191 — exception lineId must be the DB line id (the live five-pending-lines bug)", () => {
+  // The LIVE executor input shape: each line carries BOTH the parse-time local id (`id`, e.g.
+  // "bank_1784_3") AND the DB uuid stamped at persist time (`_stmtLineId`). The executor persists
+  // exceptions with .eq("id", lineId) against bank_statement_lines — which is keyed by the UUID.
+  // Emitting the local id matched ZERO rows → silent no-op (catch {}) → lines sat 'pending'.
+  const DB_UUID = "3f448d0e-5e5d-48d3-bf01-c7df802202d5";
+  const liveLine = (over = {}) => line({ id: "bank_1784852730168_3", _stmtLineId: DB_UUID, ai_confidence: 80, ...over });
+
+  it("a dead-zone line with BOTH ids → exception.lineId is the _stmtLineId (DB uuid), NOT the local id", () => {
+    const p = planStatementPipeline({ lines: [liveLine()], statement: febStmt, thresholds: th });
+    expect(p.exceptions).toHaveLength(1);
+    expect(p.exceptions[0].lineId).toBe(DB_UUID);                       // ← the whole bug
+    expect(p.exceptions[0].lineId).not.toBe("bank_1784852730168_3");
+    expect(p.exceptions[0].reason).toBe("low_confidence");
+  });
+
+  it("holds for a signed_period exception too (same makeException path)", () => {
+    const janStmt = { period_start: "2026-01-01", period_end: "2026-01-31" };
+    const p = planStatementPipeline({
+      lines: [liveLine({ line_date: "2026-01-20", ai_confidence: 99 })],
+      signoffs: [{ period: "2026-01", revoked_at: null }], statement: janStmt, thresholds: th,
+    });
+    expect(p.exceptions[0]).toMatchObject({ lineId: DB_UUID, reason: "signed_period" });
+  });
+
+  it("idOf agrees with makeException — the exhaustiveness invariant still holds with both ids present", () => {
+    // If idOf and makeException disagreed, the C190 sweep would double-add the line as a second
+    // exception (it would look unaccounted-for). Exactly one exception + exhaustive proves alignment.
+    const p = planStatementPipeline({ lines: [liveLine()], statement: febStmt, thresholds: th });
+    expect(p.exceptions).toHaveLength(1);
+    expect(p.exhaustive).toBe(true);
+    expect(p.counts).toMatchObject({ total: 1, exceptions: 1, toBook: 0, alreadyBooked: 0 });
+  });
+
+  it("the five-line March fixture in LIVE shape → all five carry DB uuids (executor can persist them)", () => {
+    const marStmt = { period_start: "2026-03-01", period_end: "2026-03-31" };
+    const uuid = (i) => `aaaaaaaa-0000-4000-8000-00000000000${i}`;
+    const lines = [82, 80, 80, 80, 80].map((c, i) => line({ id: `bank_local_${i}`, _stmtLineId: uuid(i), ai_confidence: c }));
+    const p = planStatementPipeline({ lines, statement: marStmt, thresholds: th });
+    expect(p.exceptions).toHaveLength(5);
+    expect(p.exceptions.map((e) => e.lineId)).toEqual([0, 1, 2, 3, 4].map(uuid));   // every id is persistable
+    expect(p.exceptions.some((e) => String(e.lineId).startsWith("bank_local_"))).toBe(false);
+  });
+
+  it("pure-test lines WITHOUT _stmtLineId still use `id` (fallback preserved)", () => {
+    const p = planStatementPipeline({ lines: [line({ id: "plain", ai_confidence: 40 })], statement: febStmt, thresholds: th });
+    expect(p.exceptions[0].lineId).toBe("plain");
+  });
+});

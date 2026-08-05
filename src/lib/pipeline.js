@@ -26,11 +26,18 @@ const needsReviewOf = (l) => !!(l && l.needs_review);
 const dateOf = (l) => (l && (l.date || l.line_date)) || null;
 const glOf = (l) => (l && (l.gl_code || l.ai_gl_code)) || null;
 // The stable line id (matches makeException's lineId) — used by the exhaustiveness invariant.
-const idOf = (l) => (l && (l.id != null ? l.id : (l._stmtLineId != null ? l._stmtLineId : null)));
+// C191: _stmtLineId (the DB uuid stamped at persist time) comes FIRST — it is the identity the
+// executor writes against (bank_statement_lines.id). `id` (the parse-time in-memory txn id) is
+// only a fallback for pure-test inputs that were never persisted. MUST stay aligned with
+// makeException below (the invariant compares the two).
+const idOf = (l) => (l && (l._stmtLineId != null ? l._stmtLineId : (l.id != null ? l.id : null)));
 
 function makeException(line, reason, extra = {}) {
   return {
-    lineId: line && (line.id != null ? line.id : (line._stmtLineId != null ? line._stmtLineId : null)),
+    // C191 — the DB uuid FIRST (see idOf): the executor persists exceptions with
+    // .eq("id", lineId) against bank_statement_lines, so a parse-time local id matched zero
+    // rows and every planner exception silently vanished (the live five-pending-lines bug).
+    lineId: line && (line._stmtLineId != null ? line._stmtLineId : (line.id != null ? line.id : null)),
     fingerprint: (line && line.fingerprint) || null,
     reason,                                    // 'signed_period' | 'low_confidence' (executor adds 'unmatched'/'book_failed'/'balance_discrepancy')
     date: dateOf(line),
