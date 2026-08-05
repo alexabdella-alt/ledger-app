@@ -1,6 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations } from "../../lib/reconcile";
+import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
+import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal, addDaysYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -95,6 +96,9 @@ export default function ReconView() {
   const [saveError, setSaveError] = React.useState(false);             // autosave persistence failed → surfaced (never silent)
   const saveErrorRef = React.useRef(false);
   const saveTimer = React.useRef(null);
+  const savingPromiseRef = React.useRef(null);          // C194 — in-flight autosave, awaited by completion
+  const [completing, setCompleting] = React.useState(false);
+  const [completeError, setCompleteError] = React.useState(null);   // C194 — set ONLY when the completion write did not verify
 
   // O83: in-progress reconciliations persist with status 'open' (RECON_STATUSES = open|complete;
   // 'open' = "not fully reconciled", CHECK-allowed). (Was 'in_progress', which the CHECK rejected
@@ -202,7 +206,16 @@ export default function ReconView() {
   // Persist the session. Surfaces failures — silent failed persistence is never acceptable
   // (the 'in_progress' CHECK violation that lost work). Notifies once on failure and once on
   // recovery (deduped via saveErrorRef so autosave retries don't spam).
+  // C194 — the completion path AWAITS any in-flight autosave (savingPromiseRef) before deciding
+  // whether a row exists. Without this, clicking "Lock and Complete" inside the 2s autosave
+  // debounce window meant the insert was still in flight, `reconId` (state) was null, and
+  // completion inserted a SECOND row — the ordering-dependent seam behind the live failure.
   const saveNow = async (status) => {
+    const p = runSave(status);
+    savingPromiseRef.current = p;
+    try { return await p; } finally { if (savingPromiseRef.current === p) savingPromiseRef.current = null; }
+  };
+  const runSave = async (status) => {
     if (!currentCompany?.id) return;
     const existingId = reconId || reconIdRef.current;
     // Don't fire a second INSERT before the first one has returned an id.
@@ -211,8 +224,11 @@ export default function ReconView() {
     let err = null;
     try {
       if (existingId) {
-        const { error } = await supabase.from("reconciliations").update(payload).eq("id", existingId).eq("company_id", currentCompany.id);
-        err = error;
+        // C194 — CHECKED: a zero-row update (the row was superseded/deleted under us) is a real
+        // failure, not a silent success. Falling back to an insert would duplicate; surfacing it
+        // lets the retry path re-create cleanly.
+        const r = await checkedRowUpdate({ supabase, table: "reconciliations", id: existingId, companyId: currentCompany.id, patch: payload, label: "recon:autosave" });
+        err = r.ok ? null : { message: `autosave did not persist (${r.reason})` };
       } else {
         savingRef.current = true;
         const { data, error } = await supabase.from("reconciliations").insert(payload).select("id").single();
@@ -299,12 +315,48 @@ export default function ReconView() {
     }
     const at=new Date().toISOString(); const uid=session?.user?.id||null;  // reconciliations.completed_by is a uuid column
     const ids = bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook);
+
+    // ── C194 — WRITE, THEN VERIFY. Nothing below runs until a row has been RE-SELECTED at
+    // status='complete'. This is the gate that the live false-success bypassed entirely. ──
+    setCompleting(true); setCompleteError(null);
+    const payload = { ...serialize("complete"), completed_at:at, completed_by:uid };
+    // Never race the autosave: wait for an in-flight insert so we see its id (ordering fix).
+    if (savingPromiseRef.current) { try { await savingPromiseRef.current; } catch {} }
+    let rid = resolveReconRowId({ stateId: reconId, refId: reconIdRef.current });   // ref FIRST (sync mirror)
+    let writeErr = null;
+    if (rid) {
+      const r = await checkedRowUpdate({ supabase, table:"reconciliations", id: rid, companyId: currentCompany.id, patch: payload, label: "recon:complete" });
+      if (!r.ok) rid = null;   // the row is gone (superseded/deleted) → fall through and create one
+    }
+    if (!rid) {
+      try {
+        const { data, error } = await supabase.from("reconciliations").insert(payload).select("id").single();
+        if (error || !data?.id) writeErr = error || new Error("insert returned no id");
+        else { rid = data.id; reconIdRef.current = rid; setReconId(rid); }
+      } catch (e) { writeErr = e; }
+    }
+    // VERIFY by re-select — the row must actually exist AND read 'complete'.
+    let verifyRow = null, verifyErr = writeErr;
+    if (rid && !writeErr) {
+      try {
+        const { data, error } = await supabase.from("reconciliations").select("id, status").eq("id", rid).eq("company_id", currentCompany.id).maybeSingle();
+        verifyRow = data || null; verifyErr = error || null;
+      } catch (e) { verifyErr = e; }
+    }
+    const gate = reconCompletionGate({ rid, error: verifyErr, row: verifyRow });
+    if (!gate.proceed) {
+      // NO success screen, NO ✓, NO completion audit event — and say plainly that nothing saved.
+      console.error("[reconciliations] completion NOT verified:", gate.reason, verifyErr?.message || "");
+      logAudit && logAudit("reconciliation_complete_failed", `Reconciliation completion did not persist for ${accountName} ${periodStart}→${periodEnd} (${gate.reason}) — nothing was locked in`, null, { account: accountName, period: `${periodStart}→${periodEnd}`, reason: gate.reason });
+      setCompleteError(gate.reason);
+      setCompleting(false);
+      showNotification && showNotification(reconCompletionCopy(gate), "error");
+      return;
+    }
+
+    // ── VERIFIED. Only now may anything downstream run. ──
     setInvoices(prev=>prev.map(i=>ids.includes(i.id)?{...i,cleared:true,cleared_at:at}:i));
     try {
-      const payload = { ...serialize("complete"), completed_at:at, completed_by:uid };
-      let rid=reconId;
-      if (rid) await supabase.from("reconciliations").update(payload).eq("id",rid).eq("company_id",currentCompany.id);
-      else { const { data } = await supabase.from("reconciliations").insert(payload).select("id").single(); rid=data?.id; setReconId(rid); }
       // HARDEN (O83 Bug 2): completing SUPERSEDES any OTHER open/in-progress autosave row for the
       // SAME account+period — so a mid-session save failure that stranded a phantom row can't leave
       // a period both Complete (in History) AND resumable (the operator completed Feb twice this way).
@@ -322,18 +374,20 @@ export default function ReconView() {
       } catch(e) { console.warn("[reconciliations] supersede skipped:", e?.message||e); }
       const dbIds = invoices.filter(i=>ids.includes(i.id) && i.db_entry_id).map(i=>i.db_entry_id);
       if (dbIds.length) {
-        const { error } = await supabase.from("journal_entries").update({ cleared:true, cleared_at:at, reconciliation_id:rid||null }).in("id", dbIds).eq("company_id", currentCompany.id);
-        if (error) console.warn("[reconciliations] cleared update failed (apply migration 006?):", error.message);
+        // C194 — checked batch: the cleared stamps are part of the attestation record.
+        await checkedIdsUpdate({ supabase, table: "journal_entries", ids: dbIds, companyId: currentCompany.id,
+          patch: { cleared:true, cleared_at:at, reconciliation_id: rid }, label: "recon:cleared-stamp" });
       }
-    } catch(e){ console.warn("[reconciliations] complete failed:", e.message); }
+    } catch(e){ console.warn("[reconciliations] post-verify step failed:", e.message); }
     // Auto-update the reconciled bank account's current balance to the statement
     // ending balance (migration 026). loadAllData() below re-derives dashboard cash.
     if (accountId && accountId !== "manual") {
-      try { await supabase.from("bank_accounts").update({ current_balance: stmtNum }).eq("id", accountId).eq("company_id", currentCompany.id); }
-      catch(e){ console.warn("[bank_accounts] balance update failed (apply migration 026?):", e?.message||e); }
+      await checkedRowUpdate({ supabase, table: "bank_accounts", id: accountId, companyId: currentCompany.id,
+        patch: { current_balance: stmtNum }, label: "recon:bank-balance" });
     }
-    logAudit && logAudit("reconciliation_completed", `Bank reconciliation completed for ${accountName} ${periodStart}→${periodEnd} — balance ${fmt(stmtNum)}`, null, { account:accountName, period:`${periodStart}→${periodEnd}`, balance:stmtNum });
-    showNotification && showNotification("Your books match your bank ✓");
+    setCompleting(false);
+    logAudit && logAudit("reconciliation_completed", `Bank reconciliation completed for ${accountName} ${periodStart}→${periodEnd} — balance ${fmt(stmtNum)}`, null, { account:accountName, period:`${periodStart}→${periodEnd}`, balance:stmtNum, reconciliation_id: rid });
+    showNotification && showNotification(RECON_COMPLETE_SUCCESS_COPY);
     loadAllData && loadAllData();
     setStep("done");
   };
@@ -501,9 +555,27 @@ export default function ReconView() {
             <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"11px 0", borderBottom:"1px solid var(--sc-surface-2)", fontSize:14 }}><span style={{ color:"var(--sc-text-2)" }}>{k}</span><span style={{ fontWeight:600 }}>{v}</span></div>
           ))}
           <div style={{ display:"flex", gap:10, marginTop:20 }}>
-            <button onClick={completeMatch} style={{ flex:1, padding:"13px", borderRadius:11, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:14, fontWeight:600, cursor:"pointer" }}>Lock and Complete</button>
+            <button onClick={completeMatch} disabled={completing} style={{ flex:1, padding:"13px", borderRadius:11, background: completing?"var(--sc-border)":"var(--sc-gold)", border:"none", color: completing?"var(--sc-text-mut)":"var(--sc-on-accent)", fontSize:14, fontWeight:600, cursor: completing?"wait":"pointer" }}>{completing?"Saving…":"Lock and Complete"}</button>
             <button onClick={()=>setStep("match")} style={{ padding:"13px 18px", borderRadius:11, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:14, cursor:"pointer" }}>Go back and review</button>
           </div>
+          {/* C194 — the completion write did NOT verify. Say plainly that nothing was locked in
+              (never imply a period is reconciled when the database disagrees) and offer a retry
+              that re-attempts the same checked+verified write. */}
+          {completeError && (
+            <div style={{ marginTop:16, padding:"14px 16px", borderRadius:11, background:"var(--sc-error-soft)", border:"1px solid var(--sc-error)" }}>
+              <div style={{ fontSize:13.5, fontWeight:600, color:"var(--sc-error)" }}>{RECON_COMPLETE_FAILURE_COPY}</div>
+              <div style={{ display:"flex", gap:10, marginTop:12 }}>
+                <button onClick={completeMatch} disabled={completing}
+                  style={{ padding:"9px 16px", borderRadius:9, background:"var(--sc-error)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor: completing?"wait":"pointer" }}>
+                  {completing ? "Trying again…" : "Try again"}
+                </button>
+                <button onClick={()=>setStep("match")}
+                  style={{ padding:"9px 16px", borderRadius:9, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer" }}>
+                  Back to my matches
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

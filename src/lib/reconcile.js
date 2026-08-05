@@ -147,6 +147,41 @@ export function supersedableOpenReconciliations(recs = [], { accountId = null, a
   );
 }
 
+// ── C194 — RECONCILIATION COMPLETION GATE ────────────────────────────────────
+// The worst O84 finding: ReconView showed "Your books match your bank ✓" for a
+// reconciliation that DID NOT EXIST in the database — the completion write was wrapped
+// in a try whose catch only console.warn'd, then the success screen, the ✓ toast and the
+// `reconciliation_completed` audit event all ran UNCONDITIONALLY.
+//
+// A reconciliation is complete ONLY when a row was RE-SELECTED and observed at
+// status='complete'. Everything downstream (cleared stamps, bank balance, supersede,
+// audit, ✓, the done screen) is gated on this verdict. Pure, so the UI and the tests agree.
+export function reconCompletionGate({ rid = null, error = null, row = null } = {}) {
+  if (!rid) return { proceed: false, reason: "no_row" };            // the write never produced an id
+  if (error) return { proceed: false, reason: "db_error" };          // the verify read itself failed
+  if (!row) return { proceed: false, reason: "zero_rows" };          // THE live bug: nothing there
+  if (String(row.status) !== "complete") return { proceed: false, reason: "not_complete" };
+  return { proceed: true, reason: null };
+}
+
+// Which row id the completion must target. The ordering-dependent seam behind the live
+// failure: `saveNow` records the new id in BOTH a synchronous ref and React state, but the
+// completion path read STATE only — so if the autosave insert was still in flight (or its
+// setState hadn't flushed) the completion saw null and INSERTED A SECOND ROW. Prefer the
+// synchronous ref; fall back to state. Pure.
+export function resolveReconRowId({ stateId = null, refId = null } = {}) {
+  return refId || stateId || null;
+}
+
+// Owner-facing copy for the two outcomes — plain language, no jargon, and the failure text
+// says explicitly that NOTHING was saved (the user must never think a period is locked in
+// when the database disagrees).
+export const RECON_COMPLETE_SUCCESS_COPY = "Your books match your bank ✓";
+export const RECON_COMPLETE_FAILURE_COPY = "We couldn't save this reconciliation — nothing was locked in. Your matches are still here.";
+export function reconCompletionCopy(gate) {
+  return (gate && gate.proceed) ? RECON_COMPLETE_SUCCESS_COPY : RECON_COMPLETE_FAILURE_COPY;
+}
+
 // Standard bank-reconciliation difference — RECONCILED when it is $0.00:
 //   difference = bank_ending_balance
 //              + Σ(outstanding book items, cash-leg signed)   [in the books, not yet on the bank]
