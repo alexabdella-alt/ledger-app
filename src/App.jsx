@@ -29,7 +29,8 @@ import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
-import { buildStatementRow, buildStatementLineRows, statementPeriod } from "./lib/bankStatements";
+import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
+import { fileSha256Hex } from "./lib/contentHash";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems, resolveMatchedInvoices, isSettlementEntry } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
@@ -545,6 +546,29 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       return doc.id;
     }
 
+    // ── C193 — CONTENT-HASH DEDUP: identical bytes link to the EXISTING document instead
+    // of stacking another copy (the live library held 3× March + 3× Feb of one statement).
+    // Scoped per company. A null hash (no WebCrypto / nothing to hash) simply means "not
+    // deduped" — the partial unique index exempts NULL. Nothing is ever deleted.
+    let contentHash = null;
+    try {
+      const hashBlob = file || (base64 ? b64ToBlob(base64, mediaType) : null);
+      if (hashBlob) contentHash = await fileSha256Hex(hashBlob);
+    } catch (e) { console.warn("[documents] hash skipped:", e?.message || e); }
+    if (contentHash) {
+      try {
+        const { data: dupe } = await supabase.from("documents").select("id")
+          .eq("company_id", currentCompany.id).eq("content_hash", contentHash).limit(1).maybeSingle();
+        if (dupe?.id) {
+          // Already stored — skip the storage upload AND the insert, drop the optimistic card,
+          // and hand back the EXISTING id so callers (bank_statements.document_id) link to it.
+          setDocLibrary(prev => prev.filter(d => d.id !== doc.id));
+          if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
+          return dupe.id;
+        }
+      } catch { /* column may not exist pre-059 → fall through and store normally */ }
+    }
+
     // ── 1. Upload the actual file to Storage at {company_id}/{ts}_{safeName} ──
     let storagePath = null, fileSize = null;
     try {
@@ -586,10 +610,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       storage_path: storagePath,
       file_size_bytes: fileSize,
       linked_invoice_id: effLinkedId != null ? String(effLinkedId) : null,  // ties the doc to its invoice
+      ...(contentHash ? { content_hash: contentHash } : {}),                 // C193
     };
     try {
       const { data, error } = await supabase.from("documents").insert(payload).select("id").single();
       if (error) {
+        // C193 RACE BACKSTOP: two concurrent uploads of identical bytes collide on the partial
+        // unique index (23505). The loser re-selects the winner's row, removes its own upload,
+        // and returns the existing id — never a duplicate, never an orphaned blob.
+        if (contentHash && /duplicate key|23505|unique constraint/i.test(error.message || "")) {
+          if (storagePath) { try { await supabase.storage.from("documents").remove([storagePath]); } catch {} }
+          try {
+            const { data: won } = await supabase.from("documents").select("id")
+              .eq("company_id", currentCompany.id).eq("content_hash", contentHash).limit(1).maybeSingle();
+            if (won?.id) {
+              setDocLibrary(prev => prev.filter(d => d.id !== doc.id));
+              if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
+              return won.id;
+            }
+          } catch { /* fall through to the normal error path */ }
+        }
         console.error("[documents] insert FAILED:", error.message, error.details || "", error.hint || "", error);
         // ── 3. Roll back the uploaded file so it isn't orphaned ──
         if (storagePath) { try { await supabase.storage.from("documents").remove([storagePath]); } catch {} }
@@ -760,6 +800,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data: stmts } = await supabase.from("bank_statements")
         .select("id, source_filename, period_end")
         .eq("company_id", cid).eq("status", "attention");
+      // C193 — SUPERSEDED parents produce ZOMBIE cards: their lines were resolved on a newer
+      // upload but keep their own 'excepted' status (we never rewrite history). Exclude them.
+      let supersededIds = [];
+      try {
+        const { data: dead } = await supabase.from("bank_statements").select("id").eq("company_id", cid).eq("status", "superseded");
+        supersededIds = (dead || []).map((s) => String(s.id));
+      } catch { /* column/status may not exist pre-059 */ }
       const withExc = new Set((lines || []).map((l) => String(l.statement_id)));
       const lineItems = (lines || []).map((l) => ({
         kind: "line", id: `sxl_${l.id}`, statement_id: l.statement_id, date: l.line_date,
@@ -773,7 +820,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         title: s.source_filename || "Bank statement",
         plain: "The ending balance on this statement doesn't match your books yet — your accountant should reconcile it.",
       }));
-      setStatementExceptions([...lineItems, ...stmtItems]);
+      const live = filterLiveExceptions({ lineItems, stmtItems, supersededIds });   // C193 — drop zombie cards
+      setStatementExceptions([...live.lineItems, ...live.stmtItems]);
     } catch { /* tables may not exist pre-058 */ setStatementExceptions([]); }
   };
   // Destructive AI actions staged behind the human confirmation gate (CR-9). null =
@@ -4282,6 +4330,25 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         documentId = (typeof stored === "string" && /^[0-9a-f-]{16,}$/i.test(stored)) ? stored : null;   // only a real uuid; the in-session fallback id isn't a documents FK
       } catch (e) { console.warn("[bank_statements] doc store skipped:", e?.message || e); }
 
+      // C193 — content hash of the SAME bytes the doc library deduped on. Statements are NOT
+      // uniquely constrained: a re-upload still gets its own fresh run record (the pipeline needs
+      // one). Instead we collect the PRIOR same-content rows for THIS account so they can be
+      // retired after the run (see supersedePriorStatements) — which is what stops their resolved
+      // lines showing as zombie exception cards.
+      let contentHash = null;
+      try { contentHash = await fileSha256Hex(file); } catch (e) { console.warn("[bank_statements] hash skipped:", e?.message || e); }
+      let priorSameHashIds = [];
+      if (contentHash) {
+        try {
+          // Scoped to this ACCOUNT (§11 item 7): the same file uploaded to a different account
+          // is a real problem the client must still see — never silently merged.
+          let q = supabase.from("bank_statements").select("id").eq("company_id", currentCompany.id).eq("content_hash", contentHash).neq("status", "superseded");
+          q = (account && account.id) ? q.eq("bank_account_id", account.id) : q.is("bank_account_id", null);
+          const { data: priors } = await q;
+          priorSameHashIds = (priors || []).map((r) => String(r.id));
+        } catch { /* column may not exist pre-059 */ }
+      }
+
       const der = deriveStatementOpening({ transactions: rawTxns, statedOpening, statedPeriodStart });
       const { periodStart, periodEnd } = statementPeriod(rawTxns);
       const stmtRow = buildStatementRow({
@@ -4294,15 +4361,30 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         statedEnding: der.ok ? der.endingBalance : null,
         sourceFilename: file?.name || null,
         status: "parsed",
+        contentHash,
       });
       const { data: stmt, error: sErr } = await supabase.from("bank_statements").insert(stmtRow).select("id").single();
-      if (sErr || !stmt) { console.warn("[bank_statements] insert failed (apply migration 058?):", sErr?.message); return { statementId: null, lineIds: [] }; }
+      if (sErr || !stmt) { console.warn("[bank_statements] insert failed (apply migration 058?):", sErr?.message); return { statementId: null, lineIds: [], priorSameHashIds: [] }; }
 
       const lineRows = buildStatementLineRows(lines, { companyId: currentCompany.id, statementId: stmt.id });
       const { data: insertedLines, error: lErr } = await supabase.from("bank_statement_lines").insert(lineRows).select("id");
       if (lErr) console.warn("[bank_statement_lines] insert failed:", lErr.message);
-      return { statementId: stmt.id, lineIds: (insertedLines || []).map(r => r.id) };
-    } catch (e) { console.warn("[bank_statements] persist skipped:", e?.message || e); return { statementId: null, lineIds: [] }; }
+      return { statementId: stmt.id, lineIds: (insertedLines || []).map(r => r.id), priorSameHashIds };
+    } catch (e) { console.warn("[bank_statements] persist skipped:", e?.message || e); return { statementId: null, lineIds: [], priorSameHashIds: [] }; }
+  };
+
+  // C193 — retire the PRIOR same-content statement rows after the new run completes: status
+  // 'superseded' + superseded_by → the new row. Their LINES keep their own history/status (we
+  // never rewrite what happened); the read layer (loadStatementExceptions) simply stops
+  // surfacing exceptions whose parent is superseded. Checked writes (C192) — never silent.
+  const supersedePriorStatements = async (priorIds, newStatementId) => {
+    if (!currentCompany?.id || !newStatementId || !(priorIds || []).length) return;
+    for (const pid of priorIds) {
+      if (String(pid) === String(newStatementId)) continue;
+      await checkedRowUpdate({ supabase, table: "bank_statements", id: pid, companyId: currentCompany.id,
+        patch: { status: "superseded", superseded_by: newStatementId }, label: "statement:supersede" });
+    }
+    logAudit("statement_superseded", `${priorIds.length} earlier upload${priorIds.length === 1 ? "" : "s"} of this statement retired (same content)`, null, { superseded: priorIds, superseded_by: newStatementId });
   };
 
   const handleBankFile = async (file, account = null) => {
@@ -4454,7 +4536,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C185 — PERSIST the statement + lines (additive; review flow above is unchanged). Stamp the
       // durable statement/line ids onto the in-memory rows so booking can advance their status.
       try {
-        const { statementId, lineIds } = await persistBankStatement({ account, file, rawTxns, lines: withIds, statedOpening, statedPeriodStart });
+        const { statementId, lineIds, priorSameHashIds } = await persistBankStatement({ account, file, rawTxns, lines: withIds, statedOpening, statedPeriodStart });
         if (statementId) {
           const stampedLines = withIds.map((t, i) => ({ ...t, _stmtId: statementId, _stmtLineId: lineIds[i] || t._stmtLineId }));
           setBankTransactions(stampedLines);
@@ -4470,6 +4552,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               pipelineRan = true; pipelineRemaining = rem.length;   // C190 — keep the review screen up if lines remain
             } catch (e) { console.warn("[pipeline] run skipped:", e?.message || e); }
           }
+          // C193 — AFTER the run, retire prior same-content uploads for this account so their
+          // already-resolved lines stop surfacing as zombie exception cards. Runs whether or not
+          // the pipeline executed (an unbound-account upload still supersedes its own earlier copy).
+          try {
+            await supersedePriorStatements(priorSameHashIds, statementId);
+            if ((priorSameHashIds || []).length) await loadStatementExceptions(currentCompany.id);
+          } catch (e) { console.warn("[bank_statements] supersede skipped:", e?.message || e); }
         }
       } catch (e) { console.warn("[bank_statements] persist call skipped:", e?.message || e); }
       setBankProgress(100);
@@ -4589,7 +4678,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!statementId || !currentCompany?.id || !account?.id) return parsedLines;
     const cashCode = (account.gl_code) || rc("cash");
     const offsetCode = cashCode, offsetName = getAccountByCode(offsetCode)?.name || rn("cash");
-    const setStmt = async (patch) => { try { await supabase.from("bank_statements").update(patch).eq("id", statementId).eq("company_id", currentCompany.id); } catch {} };
+    // C193 — the C192 follow-up: the statement's own status write is checked too.
+    const setStmt = async (patch) => await checkedRowUpdate({ supabase, table: "bank_statements", id: statementId, companyId: currentCompany.id, patch, label: "pipeline:statement-status" });
     // C192 — CHECKED write: a zero-row update (the C191 id-seam class) is now a LOUD, counted
     // failure instead of a silent no-op. Non-fatal by design — the run continues past a bad line.
     const setLine = async (lineId, patch, label = "pipeline:set-line") => {

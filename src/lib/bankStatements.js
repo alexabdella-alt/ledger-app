@@ -42,6 +42,7 @@ export function bookedBankLineStatus(entry = {}) {
 export function buildStatementRow({
   companyId, bankAccountId = null, documentId = null, periodStart = null, periodEnd = null,
   statedOpening = null, statedEnding = null, sourceFilename = null, status = "parsed",
+  contentHash = null,   // C193 — SHA-256 of the source bytes (null = not deduped)
 } = {}) {
   return {
     company_id: companyId,
@@ -53,6 +54,50 @@ export function buildStatementRow({
     stated_ending_balance: statedEnding != null ? statedEnding : null,
     source_filename: sourceFilename || null,
     status,
+    ...(contentHash ? { content_hash: contentHash } : {}),
+  };
+}
+
+// ── C193 — statement SUPERSEDE (the zombie-exception-card fix) ────────────────
+// Re-uploading the same statement creates a fresh run record (the pipeline needs one),
+// but the OLDER same-content rows must retire so their stale exceptions stop showing.
+// PURE mirror of migration 059's backfill: group by company + bank account + period +
+// source filename, keep the NEWEST (created_at desc, id desc as a deterministic
+// tie-break), and supersede every older row pointing at that newest id.
+// NOTE the deliberate scoping (§11 (d) / item 7): grouping includes the ACCOUNT and the
+// PERIOD, so the same file uploaded to a different account or period is NEVER merged.
+export function planStatementSupersede(rows = []) {
+  const groups = new Map();
+  for (const r of (rows || [])) {
+    if (!r || r.id == null) continue;
+    const key = [r.company_id, r.bank_account_id, r.period_start, r.period_end, r.source_filename].map((v) => String(v == null ? "" : v)).join("|");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  const keep = [], supersede = [];
+  for (const list of groups.values()) {
+    const sorted = list.slice().sort((a, b) => {
+      const t = String(b.created_at || "").localeCompare(String(a.created_at || ""));
+      return t !== 0 ? t : String(b.id).localeCompare(String(a.id));
+    });
+    const newest = sorted[0];
+    keep.push(String(newest.id));
+    for (const older of sorted.slice(1)) {
+      if (String(older.status) === "superseded") continue;   // already retired
+      supersede.push({ id: String(older.id), supersededBy: String(newest.id) });
+    }
+  }
+  return { keep, supersede };
+}
+
+// Drop exception cards belonging to SUPERSEDED statement rows — their lines were resolved
+// on a newer upload, so surfacing them is a zombie (7 live at O84). Pure; the loader passes
+// the assembled items plus the set of superseded statement ids.
+export function filterLiveExceptions({ lineItems = [], stmtItems = [], supersededIds = [] } = {}) {
+  const dead = new Set((supersededIds || []).map(String));
+  return {
+    lineItems: (lineItems || []).filter((x) => !dead.has(String(x && x.statement_id))),
+    stmtItems: (stmtItems || []).filter((x) => !dead.has(String(x && x.statement_id))),
   };
 }
 
