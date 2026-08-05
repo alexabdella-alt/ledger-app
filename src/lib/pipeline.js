@@ -25,6 +25,8 @@ const confOf = (l) => { const c = l && (l.confidence != null ? l.confidence : l.
 const needsReviewOf = (l) => !!(l && l.needs_review);
 const dateOf = (l) => (l && (l.date || l.line_date)) || null;
 const glOf = (l) => (l && (l.gl_code || l.ai_gl_code)) || null;
+// The stable line id (matches makeException's lineId) — used by the exhaustiveness invariant.
+const idOf = (l) => (l && (l.id != null ? l.id : (l._stmtLineId != null ? l._stmtLineId : null)));
 
 function makeException(line, reason, extra = {}) {
   return {
@@ -77,8 +79,28 @@ export function planStatementPipeline({
     const signedP = signedPeriodForDate(dateOf(line), signoffs, { source: line && line.source });
     if (signedP) { exceptions.push(makeException(line, "signed_period", { period: signedP })); continue; }
     const c = confOf(line);
+    // The DEAD-ZONE close (C190): anything BELOW the auto-book floor is a low_confidence
+    // exception — regardless of whether it cleared any ask floor. There is NO "pending, routed
+    // nowhere" state; a line either books (>= floor) or surfaces as an exception. (Confidence
+    // recalibration is Tier 1 #5 — this only makes the sub-floor band VISIBLE, not smarter.)
     if (needsReviewOf(line) || c == null || c < floor) { exceptions.push(makeException(line, "low_confidence")); continue; }
     toBook.push(line);
+  }
+
+  // EXHAUSTIVENESS INVARIANT (C190): every input line MUST land in exactly one bucket —
+  // already_booked / clearsOutstanding / toBook / exceptions. If any line escaped the partition
+  // (a future dead zone), sweep it into exceptions as low_confidence so it can NEVER sit
+  // invisible-and-pending. In the current partition this is a no-op; it's the guarantee that
+  // matters — the counts below MUST sum to the input length.
+  const accounted = new Set([
+    ...alreadyBooked.map(idOf),
+    ...clearsOutstanding.map((c) => idOf(c.line)),
+    ...toBook.map(idOf),
+    ...exceptions.map((e) => e.lineId),
+  ].map((id) => String(id)));
+  for (const line of (lines || [])) {
+    const key = String(idOf(line));
+    if (!accounted.has(key)) { exceptions.push(makeException(line, "low_confidence")); accounted.add(key); }
   }
 
   // ── Reconciliation decision — NEVER create a second reconciliation for an attested or
@@ -107,5 +129,16 @@ export function planStatementPipeline({
       alreadyBooked: alreadyBooked.length,
       clearsOutstanding: clearsOutstanding.length,
     },
+    // The partition is exhaustive by construction (the sweep above guarantees it) — true iff the
+    // four buckets sum to the input length. Callers/tests can assert on this.
+    exhaustive: (alreadyBooked.length + clearsOutstanding.length + toBook.length + exceptions.length) === (lines || []).length,
   };
+}
+
+// The statement's final status after a pipeline run — 'complete' iff nothing needs a human
+// (no line exceptions AND no balance discrepancy), else 'attention'. Pure, so the executor and
+// tests agree. (Line exceptions include the closed dead-zone band, so a sub-floor line correctly
+// drives the statement to 'attention'.)
+export function pipelineStatementStatus({ exceptionCount = 0, balanceDiscrepancy = null } = {}) {
+  return (Number(exceptionCount) === 0 && !balanceDiscrepancy) ? "complete" : "attention";
 }

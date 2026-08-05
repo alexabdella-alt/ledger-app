@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planStatementPipeline, DEFAULT_AUTO_BOOK_FLOOR } from "../src/lib/pipeline.js";
+import { planStatementPipeline, DEFAULT_AUTO_BOOK_FLOOR, pipelineStatementStatus } from "../src/lib/pipeline.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // C186 — the clean-path pipeline PLANNER. Pure partition: auto-book-safe lines vs
@@ -162,5 +162,53 @@ describe("C187 — outstanding clears partition BEFORE confidence/signed-period"
     const p = planStatementPipeline({ lines: [line({ id: "other", amount: -50, ai_confidence: 95 })], outstandingCandidates: atlasCand, statement: marStmt, thresholds: th });
     expect(p.clearsOutstanding).toEqual([]);
     expect(p.stillOutstanding.map((c) => c.jeId)).toEqual(["je-atlas"]);
+  });
+});
+
+describe("C190 — dead-zone lines surface (exhaustive partition + invariant)", () => {
+  it("a confidence-80 line (below the 85 auto-book floor, not needs_review) → low_confidence exception (the live case)", () => {
+    const p = planStatementPipeline({ lines: [line({ id: "z80", ai_confidence: 80, needs_review: false })], statement: febStmt, thresholds: th });
+    expect(p.toBook).toEqual([]);
+    expect(p.exceptions).toHaveLength(1);
+    expect(p.exceptions[0]).toMatchObject({ lineId: "z80", reason: "low_confidence" });
+    expect(p.exhaustive).toBe(true);
+  });
+
+  it("EXHAUSTIVENESS invariant: the four buckets always sum to the input length", () => {
+    const lines = [
+      line({ id: "ok", ai_confidence: 95 }),                 // toBook
+      line({ id: "low", ai_confidence: 40 }),                // exception
+      line({ id: "dead", ai_confidence: 82 }),               // dead-zone → exception (C190)
+      line({ id: "seen", status: "already_booked" }),        // alreadyBooked
+    ];
+    const p = planStatementPipeline({ lines, statement: febStmt, thresholds: th });
+    const { total, toBook, exceptions, alreadyBooked, clearsOutstanding } = p.counts;
+    expect(toBook + exceptions + alreadyBooked + clearsOutstanding).toBe(total);
+    expect(p.exhaustive).toBe(true);
+  });
+
+  it("THE MARCH FIVE-LINE FIXTURE (82 + 80×4 among the confident lines) → 5 exceptions, all surfaced, none booked", () => {
+    const marStmt = { period_start: "2026-03-01", period_end: "2026-03-31", stated_ending_balance: 12000 };
+    const deadZone = [82, 80, 80, 80, 80].map((c, i) => line({ id: `m${i}`, line_date: "2026-03-1" + i, ai_confidence: c, needs_review: false }));
+    const p = planStatementPipeline({ lines: deadZone, statement: marStmt, thresholds: th });
+    expect(p.toBook).toEqual([]);                              // NONE auto-book
+    expect(p.exceptions).toHaveLength(5);                      // all five surface
+    expect(p.exceptions.every((e) => e.reason === "low_confidence")).toBe(true);
+    expect(p.exhaustive).toBe(true);
+    // the executor returns exactly the exception lines as "remaining" → the review screen renders them
+    const remainingIds = new Set(p.exceptions.map((e) => String(e.lineId)));
+    expect(deadZone.filter((l) => remainingIds.has(String(l.id)))).toHaveLength(5);
+  });
+});
+
+describe("C190 — pipelineStatementStatus (a plan with exceptions → 'attention')", () => {
+  it("only low_confidence exceptions → 'attention'", () => {
+    expect(pipelineStatementStatus({ exceptionCount: 5 })).toBe("attention");
+  });
+  it("no exceptions, no balance discrepancy → 'complete'", () => {
+    expect(pipelineStatementStatus({ exceptionCount: 0 })).toBe("complete");
+  });
+  it("a balance discrepancy (even with zero line exceptions) → 'attention'", () => {
+    expect(pipelineStatementStatus({ exceptionCount: 0, balanceDiscrepancy: { diff: 275 } })).toBe("attention");
   });
 });

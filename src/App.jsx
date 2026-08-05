@@ -9,7 +9,7 @@ import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai"
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon } from "./lib/clarify";
-import { planStatementPipeline } from "./lib/pipeline";
+import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
 import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
@@ -4329,6 +4329,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setBankStep("parsing");
     setBankTransactions([]);
     setBankProgress(10);
+    let pipelineRan = false, pipelineRemaining = 0;   // C190 — did the auto-pipeline run, and how many lines still need a human?
 
     try {
       let fileContent = "";
@@ -4463,7 +4464,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           if (account && account.id && lineIds.length) {
             try {
               const remaining = await runStatementPipeline(statementId, account, stampedLines);
-              setBankTransactions(Array.isArray(remaining) ? remaining : []);
+              const rem = Array.isArray(remaining) ? remaining : [];
+              setBankTransactions(rem);
+              pipelineRan = true; pipelineRemaining = rem.length;   // C190 — keep the review screen up if lines remain
             } catch (e) { console.warn("[pipeline] run skipped:", e?.message || e); }
           }
         }
@@ -4478,7 +4481,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       showNotification("Failed to process bank statement. Please try again.", "error");
       console.error(e);
     }
-    setBankProcessing(false); setBankStep(null);
+    setBankProcessing(false);
+    // C190 — do NOT unconditionally tear the review screen down. When the pipeline handed back
+    // remaining lines (dead-zone/low-confidence exceptions needing a human), KEEP the review step
+    // so the reduced table renders them (same table, suggested GL + Clears-A/P badge). Only reset
+    // to the upload state when nothing remains (all handled) or the manual flow (no pipeline).
+    setBankStep(pipelineRan && pipelineRemaining > 0 ? "review" : null);
   };
 
   // Book the reviewed bank/card lines (O69 A/C/D). `account` is the source the statement
@@ -4670,7 +4678,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
     }
 
-    const finalStatus = (exceptions.length === 0 && !balanceDiscrepancy) ? "complete" : "attention";
+    const finalStatus = pipelineStatementStatus({ exceptionCount: exceptions.length, balanceDiscrepancy });
     await setStmt({ status: finalStatus });
     try { await loadStatementExceptions(currentCompany.id); } catch {}
     showNotification(pipelineOutcomeCopy({ plan, bookedCount, clearedCount: clearedOutstandingCount, exceptionCount: exceptions.length, balanceDiscrepancy, reconciled }), finalStatus === "complete" ? "success" : "info");
