@@ -2,7 +2,9 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
 import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
+import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy } from "../../lib/workbench";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
+import { priorOutstandingCandidates } from "../../lib/outstandingItems";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal, addDaysYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
@@ -69,7 +71,7 @@ export default function ReconView() {
   const {
     bankAccounts, invoices, setInvoices, reconciliations,
     currentCompany, session, supabase, bookToDb, logAudit, showNotification, loadAllData,
-    CHART_OF_ACCOUNTS, setView, getAccountByRole, cashGlCodes,
+    CHART_OF_ACCOUNTS, setView, getAccountByRole, cashGlCodes, loadStatementExceptions,
   } = useERP();
 
   const fmt = fmtSignedMoney;
@@ -177,6 +179,13 @@ export default function ReconView() {
   // "what your books show" figure above. Auto-resolved either way (a real gap is a flag, not a task).
   const glCashAtPeriodStart = reconBooksBalance(invoices, reconCashCodes, { asOf: addDaysYMD(periodStart, -1) });
   const openingMismatch = (stmtOpening != null) ? openingDiscrepancy({ statedOpening: stmtOpening, recordedOpening: glCashAtPeriodStart }) : { mismatch:false, diff:0 };
+  // C195(8) — how many KNOWN uncashed items (from the prior period's chain) account for the gap?
+  const openingExplainedCount = React.useMemo(() => {
+    if (!openingMismatch.mismatch) return 0;
+    const cands = priorOutstandingCandidates({ reconciliations, accountId, accountName, periodStart });
+    const total = cands.reduce((s2, c) => s2 + (Number(c.signed) || 0), 0);
+    return Math.abs(total + Number(openingMismatch.diff || 0)) < 0.005 ? cands.length : 0;
+  }, [openingMismatch.mismatch, openingMismatch.diff, reconciliations, accountId, accountName, periodStart]);
 
   // A statement balance is "verified" when it's a real non-zero ending balance OR the user
   // explicitly confirmed a genuinely-empty/closed account ($0). Distinguishes a real
@@ -385,6 +394,31 @@ export default function ReconView() {
       await checkedRowUpdate({ supabase, table: "bank_accounts", id: accountId, companyId: currentCompany.id,
         patch: { current_balance: stmtNum }, label: "recon:bank-balance" });
     }
+    // C195(2) — the reconciliation ANSWERS any statement it covers: retire 'attention' statements
+    // for this account whose period sits inside the reconciled period and which have no unresolved
+    // excepted lines, so their cards stop outliving the signed-off month.
+    try {
+      const { data: stmts } = await supabase.from("bank_statements")
+        .select("id, bank_account_id, period_start, period_end, status")
+        .eq("company_id", currentCompany.id).eq("status", "attention");
+      if ((stmts || []).length) {
+        const { data: excLines } = await supabase.from("bank_statement_lines")
+          .select("statement_id").eq("company_id", currentCompany.id).eq("status", "excepted");
+        const covered = statementsCoveredByReconciliation(stmts || [], {
+          accountId, periodStart, periodEnd,
+          exceptedStatementIds: (excLines || []).map(l => l.statement_id),
+        });
+        for (const sid of covered) {
+          await checkedRowUpdate({ supabase, table: "bank_statements", id: sid, companyId: currentCompany.id,
+            patch: { status: "complete" }, label: "recon:retire-covered-statement" });
+        }
+        if (covered.length) {
+          logAudit && logAudit("statement_retired_by_reconciliation", `${covered.length} statement${covered.length===1?"":"s"} covered by the ${periodStart}→${periodEnd} reconciliation ${covered.length===1?"was":"were"} closed out`, null, { statements: covered, period: `${periodStart}→${periodEnd}` });
+          try { await loadStatementExceptions && loadStatementExceptions(currentCompany.id); } catch {}
+        }
+      }
+    } catch (e) { console.warn("[reconciliations] retire covered statements skipped:", e?.message || e); }
+
     setCompleting(false);
     logAudit && logAudit("reconciliation_completed", `Bank reconciliation completed for ${accountName} ${periodStart}→${periodEnd} — balance ${fmt(stmtNum)}`, null, { account:accountName, period:`${periodStart}→${periodEnd}`, balance:stmtNum, reconciliation_id: rid });
     showNotification && showNotification(RECON_COMPLETE_SUCCESS_COPY);
@@ -633,7 +667,11 @@ export default function ReconView() {
           disagreement is surfaced here as a trust-layer flag, and the difference below reflects it. */}
       {openingMismatch.mismatch && (
         <div style={{ ...card, padding:"12px 16px", marginBottom:14, background:"var(--sc-warning-soft)", borderColor:"var(--sc-warning-soft)" }}>
-          <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ Your books carry {fmt(glCashAtPeriodStart)} into this period, but this statement's opening balance is {fmt(stmtOpening)} — off by {fmt(Math.abs(openingMismatch.diff))}. We kept your books unchanged; your accountant should reconcile the starting balance.</div>
+          {/* C195(8) — consult the KNOWN uncashed items first: a gap the chain already explains is a
+              ✓, not an alarm (the C179 false-alarm class). Only an unexplained gap gets flagged. */}
+          <div style={{ fontSize:13, color: openingExplainedCount>0 ? "var(--sc-success)" : "var(--sc-warning)" }}>
+            {openingExplainedCount>0 ? "" : "⚠ "}{openingMismatchCopy({ diff: openingMismatch.diff, explainedCount: openingExplainedCount, accountName })}
+          </div>
         </div>
       )}
 
@@ -716,7 +754,10 @@ export default function ReconView() {
           })}
           {unmatchedBooks.map(b=>(
             <div key={b.id} style={{ padding:"12px 0", borderTop:"1px solid var(--sc-surface-2)" }}>
-              <div style={{ fontSize:13, color:"var(--sc-text)", marginBottom:6 }}>In your books but not on this statement — <strong>{b.vendor}</strong> ({fmt(b.amount)}, {fmtDate(b.date)})</div>
+              {/* C195(8) — the "knows nothing" bar: say WHAT happened, WHY the two numbers differ,
+                  that it's normal, and what we'll do — not just jargon-free words. */}
+              <div style={{ fontSize:13, color:"var(--sc-text)", marginBottom:4 }}><strong>{b.vendor}</strong> — {fmt(b.amount)} on {fmtDate(b.date)}</div>
+              <div style={{ fontSize:12.5, color:"var(--sc-text-2)", marginBottom:8, maxWidth:620, lineHeight:1.5 }}>{outstandingCheckCopy({ amount: b.amount, date: b.date })}</div>
               <div style={{ display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" }}>
                 {/* Primary, plain-language, safe option. */}
                 <button onClick={()=>markOutstanding(b)} style={{ padding:"6px 14px", borderRadius:8, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Hasn't hit the bank yet</button>

@@ -195,6 +195,9 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
     push({ id: `dup:${key}`, type: "duplicate_payment", severity: "high",
       title: `Possible duplicate payment to ${i.vendor}`,
       description: `Two charges to ${i.vendor} for ${money(i.amount)} within a week — could be a double payment.`,
+      // C195 — structured vendor/amount so pattern suppression can match a prior dismissal
+      // without re-parsing prose. Not persisted (anomalyInsertRow maps only real columns).
+      vendor: i.vendor, amount: Math.abs(Number(i.amount) || 0),
       invoice_ids: [i.id, dup.id] });
   }
 

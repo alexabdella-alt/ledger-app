@@ -105,6 +105,19 @@ export default function AddView() {
                             ))}
                           </div>
                         </div>
+                        {/* C195(4) — "already paid" mode. Plain language: the client shouldn't need
+                            to know what a payable is. Ticking it books the money as already gone
+                            (offset to cash) and stamps the entry paid, so it never shows as an
+                            unpaid bill. */}
+                        {form.type === "expense" && (
+                          <label style={{ display:"flex", alignItems:"center", gap:9, gridColumn:"1 / -1", padding:"10px 12px", marginBottom:14, borderRadius:9, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", cursor:"pointer" }}>
+                            <input type="checkbox" checked={!!form.paidWithCash} onChange={e=>handleFormChange("paidWithCash", e.target.checked)} style={{ width:16, height:16, cursor:"pointer", accentColor:"var(--sc-gold)" }} />
+                            <span style={{ fontSize:13, color:"var(--sc-text)" }}>
+                              I already paid this — the money has left my account
+                              <span style={{ display:"block", fontSize:11.5, color:"var(--sc-text-2)", marginTop:2 }}>Leave unticked if it's a bill you still owe.</span>
+                            </span>
+                          </label>
+                        )}
                         <div>
                           <label style={labelStyle}>PROJECT</label>
                           <select value={form.project||"General"} onChange={e=>handleFormChange("project",e.target.value)} style={{ ...inputStyle, cursor:"pointer" }}>

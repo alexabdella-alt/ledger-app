@@ -77,6 +77,55 @@ export function reconcileAnomalies({ detected = [], rows = [] } = {}) {
   return { toInsert, toTouch, toResolve };
 }
 
+// ── C195 (3) — PATTERN SUPPRESSION (alarm fatigue) ───────────────────────────
+// Live: the identical 4-card Bluebonnet duplicate set was dismissed two months running.
+// Fingerprint dedup can't help — a new month's charges are new entries, so a new
+// fingerprint. If the reviewer already judged THIS vendor at THIS amount acceptable
+// recently, re-raising it at HIGH is noise that trains people to ignore the queue.
+//
+// Matching uses only columns the table already has (no migration): the dismissed row's
+// `title` carries the vendor and its `detail` carries the formatted amount.
+const DISMISSAL_WINDOW_DAYS = 60;
+const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+export function priorDismissalFor(rows = [], { type = "duplicate_payment", vendor = null, amount = null, now = new Date(), withinDays = DISMISSAL_WINDOW_DAYS } = {}) {
+  const v = normName(vendor);
+  if (!v) return null;
+  const amt = Math.abs(Number(amount) || 0);
+  const cutoff = +new Date(now) - withinDays * 86400000;
+  for (const r of (rows || [])) {
+    if (!r || r.status !== "dismissed" || r.type !== type) continue;
+    if (!normName(r.title).includes(v)) continue;                       // same vendor
+    if (amt > 0) {
+      // the amount as it was rendered into the detail text, e.g. "$145.00"
+      const hay = String(r.detail || "");
+      const shown = amt.toFixed(2);
+      if (!hay.includes(shown)) continue;                               // same amount
+    }
+    const when = +new Date(r.resolved_at || r.created_at || 0);
+    if (Number.isFinite(when) && when >= cutoff) return r;              // and recent enough
+  }
+  return null;
+}
+
+// Downgrade a freshly-detected anomaly the reviewer already dismissed for the same
+// vendor+amount recently: severity 'low' + copy that says WHY it's quiet. LOW never blocks
+// sign-off (the gate counts HIGH-in-period only — see openHighAnomaliesInPeriod), so this
+// keeps the record without re-alarming. Pure.
+export function applyPatternSuppression(detected = [], rows = [], { now = new Date(), withinDays = DISMISSAL_WINDOW_DAYS } = {}) {
+  return (detected || []).map((d) => {
+    if (!d || d.type !== "duplicate_payment") return d;
+    const prior = priorDismissalFor(rows, { type: d.type, vendor: d.vendor, amount: d.amount, now, withinDays });
+    if (!prior) return d;
+    return {
+      ...d,
+      severity: "low",
+      suppressed: true,
+      description: `${d.description} You've flagged this before — you confirmed it's a recurring charge, so we're noting it quietly rather than raising it.`,
+    };
+  });
+}
+
 // Map a freshly-detected anomaly → an INSERT row for the `anomalies` table.
 export function anomalyInsertRow(companyId, d) {
   return {

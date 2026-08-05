@@ -117,10 +117,18 @@ export default function BooksView() {
 
   return (
     <div>
-      <div style={{ marginBottom:18 }}>
-        <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>BOOKS</div>
-        <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>All transactions</h1>
-        <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Every entry in one place. Click a row for full detail, AI reasoning, and actions.</div>
+      <div style={{ marginBottom:18, display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>BOOKS</div>
+          <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>All transactions</h1>
+          <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Every entry in one place. Click a row for full detail, AI reasoning, and actions.</div>
+        </div>
+        {/* C195(4) — MANUAL ENTRY IS REACHABLE. AddView was orphaned: hand-entering a transaction
+            (e.g. a check written outside any statement) required direct SQL. This is its entry point. */}
+        <button onClick={()=>setView && setView("add")}
+          style={{ flexShrink:0, padding:"10px 18px", borderRadius:9, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+          + Add entry
+        </button>
       </div>
 
       {/* Search + filters */}

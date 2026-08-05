@@ -239,7 +239,11 @@ export default function BankView() {
               {bankProcessing && (
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, padding:36, textAlign:"center", marginBottom:24 }}>
                   <div style={{ fontSize:13, color:"var(--sc-gold)", marginBottom:20 }}>
-                    {bankStep==="parsing" ? "⟳ Reading bank statement..." : "⟳ AI is categorizing all transactions..."}
+                    {/* C195(5) — one continuous processing state that resolves DIRECTLY into the
+                        outcome; nothing appears and then vanishes. Plain language, no jargon. */}
+                    {bankStep==="parsing" ? "⟳ Reading your statement…"
+                      : bankStep==="handling" ? "⟳ Handling it — recording what we can and setting aside anything unclear…"
+                      : "⟳ Working out what each transaction was for…"}
                   </div>
                   <div style={{ height:6, background:"var(--sc-border)", borderRadius:3, overflow:"hidden", maxWidth:400, margin:"0 auto 12px" }}>
                     <div style={{ height:"100%", background:"linear-gradient(90deg,var(--sc-gold),var(--sc-gold))", borderRadius:3, width:`${bankProgress}%`, transition:"width 0.8s ease", animation:"pulse 2s ease-in-out infinite" }} />
