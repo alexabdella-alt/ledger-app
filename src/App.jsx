@@ -10,6 +10,7 @@ import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeE
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
+import { checkedRowUpdate, checkedIdsUpdate, getWriteFailures, resetWriteFailures, writeFailureSentence } from "./lib/checkedWrite";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
 import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
@@ -4523,13 +4524,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         if (!bucket || !bucket.length) continue;   // no ledger entry yet → stays 'pending'
         const hit = bucket.shift();
         jeToStamp.add(String(hit.jeId));
-        await supabase.from("bank_statement_lines")
-          .update({ status: hit.matched ? "matched" : "booked", journal_entry_id: String(hit.jeId) })
-          .eq("id", line.id).eq("company_id", currentCompany.id);
+        // C192 — checked writes (this sweep is exactly where a silent zero-row update would leave
+        // a booked line looking 'pending' forever).
+        await checkedRowUpdate({ supabase, table: "bank_statement_lines", id: line.id, companyId: currentCompany.id,
+          patch: { status: hit.matched ? "matched" : "booked", journal_entry_id: String(hit.jeId) },
+          label: "sweep:link-line" });
       }
       if (account?.id && jeToStamp.size) {
-        await supabase.from("journal_entries").update({ bank_account_id: account.id })
-          .in("id", [...jeToStamp]).eq("company_id", currentCompany.id);
+        await checkedIdsUpdate({ supabase, table: "journal_entries", ids: [...jeToStamp], companyId: currentCompany.id,
+          patch: { bank_account_id: account.id }, label: "sweep:stamp-bank-account" });
       }
     } catch (e) { console.warn("[bank_statements] link-after-booking skipped:", e?.message || e); }
   };
@@ -4587,10 +4590,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const cashCode = (account.gl_code) || rc("cash");
     const offsetCode = cashCode, offsetName = getAccountByCode(offsetCode)?.name || rn("cash");
     const setStmt = async (patch) => { try { await supabase.from("bank_statements").update(patch).eq("id", statementId).eq("company_id", currentCompany.id); } catch {} };
-    const setLine = async (lineId, patch) => { if (!lineId) return; try { await supabase.from("bank_statement_lines").update(patch).eq("id", String(lineId)).eq("company_id", currentCompany.id); } catch {} };
+    // C192 — CHECKED write: a zero-row update (the C191 id-seam class) is now a LOUD, counted
+    // failure instead of a silent no-op. Non-fatal by design — the run continues past a bad line.
+    const setLine = async (lineId, patch, label = "pipeline:set-line") => {
+      if (!lineId) return { ok: false, reason: "db_error" };
+      return await checkedRowUpdate({ supabase, table: "bank_statement_lines", id: lineId, companyId: currentCompany.id, patch, label });
+    };
     const lineDbId = (l) => String(l._stmtLineId || l.id);
     const excOf = (l, reason) => ({ lineId: lineDbId(l), reason, date: l.date || l.line_date, amount: Number(l.amount) || 0, vendor: l.vendor || null, gl_code: l.gl_code || l.ai_gl_code || null });
 
+    resetWriteFailures();   // C192 — count checked-write failures for THIS run
     let stmt = null;
     try { const { data } = await supabase.from("bank_statements").select("*").eq("id", statementId).single(); stmt = data; } catch {}
     // C187 — prior periods' uncleared items that may CLEAR on this statement (never re-book them).
@@ -4614,16 +4623,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
     const resolveLineDbId = (lineId) => { const l = lineByAnyId.get(String(lineId)); return l ? lineDbId(l) : lineId; };
     // Line-level exceptions from the plan (signed_period / low_confidence) — persist immediately.
-    for (const e of plan.exceptions) { exceptions.push(e); await setLine(resolveLineDbId(e.lineId), { status: "excepted", exception_reason: e.reason }); }
+    for (const e of plan.exceptions) { exceptions.push(e); await setLine(resolveLineDbId(e.lineId), { status: "excepted", exception_reason: e.reason }, "pipeline:except-line"); }
 
     // C187 — OUTSTANDING CLEARS: a line that matches a prior recon's outstanding item is that
     // entry CLEARING, not new activity. Stamp the EXISTING entry cleared + the statement line
     // 'matched'; BOOK NOTHING (no duplicate). The still-outstanding chain carries forward below.
     let clearedOutstandingCount = 0;
     for (const { line, candidate } of plan.clearsOutstanding) {
-      await setLine(lineDbId(line), { status: "matched", journal_entry_id: candidate.jeId || null });
+      await setLine(lineDbId(line), { status: "matched", journal_entry_id: candidate.jeId || null }, "pipeline:clear-outstanding-line");
       if (candidate.jeId) {
-        try { await supabase.from("journal_entries").update({ cleared: true, cleared_at: (line.date || line.line_date) || null, bank_account_id: account.id }).eq("id", String(candidate.jeId)).eq("company_id", currentCompany.id); } catch (e) { console.warn("[pipeline] clear stamp failed:", e?.message || e); }
+        // C192 — checked: stamping the EXISTING entry cleared is the whole point of the outstanding
+        // clear; a zero-row update here would silently leave it uncleared.
+        await checkedRowUpdate({ supabase, table: "journal_entries", id: candidate.jeId, companyId: currentCompany.id,
+          patch: { cleared: true, cleared_at: (line.date || line.line_date) || null, bank_account_id: account.id },
+          label: "pipeline:clear-outstanding" });
       }
       clearedOutstandingCount++;
     }
@@ -4639,11 +4652,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const jeId = await bookToDb(entry);
       if (jeId) {
         bookedCount++;
-        await setLine(lineDbId(line), { status: "booked", journal_entry_id: String(jeId) });
-        try { await supabase.from("journal_entries").update({ bank_account_id: account.id }).eq("id", String(jeId)).eq("company_id", currentCompany.id); } catch {}
+        await setLine(lineDbId(line), { status: "booked", journal_entry_id: String(jeId) }, "pipeline:book-line");
+        // C192 — checked: the bank_account_id linkage silently failing is what leaves booked
+        // entries unattributable to their account (the §11 missing-linkage class).
+        await checkedRowUpdate({ supabase, table: "journal_entries", id: jeId, companyId: currentCompany.id,
+          patch: { bank_account_id: account.id }, label: "pipeline:stamp-bank-account" });
       } else {
         exceptions.push(excOf(line, "book_failed"));
-        await setLine(lineDbId(line), { status: "excepted", exception_reason: "book_failed" });
+        await setLine(lineDbId(line), { status: "excepted", exception_reason: "book_failed" }, "pipeline:book-failed");
       }
     };
 
@@ -4692,7 +4708,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const finalStatus = pipelineStatementStatus({ exceptionCount: exceptions.length, balanceDiscrepancy });
     await setStmt({ status: finalStatus });
     try { await loadStatementExceptions(currentCompany.id); } catch {}
-    showNotification(pipelineOutcomeCopy({ plan, bookedCount, clearedCount: clearedOutstandingCount, exceptionCount: exceptions.length, balanceDiscrepancy, reconciled }), finalStatus === "complete" ? "success" : "info");
+    // C192 — if any checked write failed during this run, SAY SO (plain language) and record the
+    // failure detail in the audit log. Silent partial persistence is what this whole commit ends.
+    const wf = getWriteFailures();
+    if (wf.count > 0) {
+      logAudit("pipeline_write_failures", `${wf.count} checked write${wf.count === 1 ? "" : "s"} failed during the statement pipeline`, null, { statement_id: statementId, count: wf.count, records: wf.records });
+    }
+    showNotification(
+      pipelineOutcomeCopy({ plan, bookedCount, clearedCount: clearedOutstandingCount, exceptionCount: exceptions.length, balanceDiscrepancy, reconciled }) + writeFailureSentence(wf.count),
+      (finalStatus === "complete" && wf.count === 0) ? "success" : "info"
+    );
 
     // Only still-pending/excepted lines remain for the Bank Import review screen (item 4).
     // C191 — resolve through the SAME id map: this set is compared against lineDbId(l) below, so a
