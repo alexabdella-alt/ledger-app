@@ -3,6 +3,7 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
+import { statementExceptionTarget, OPEN_RECONCILE_LABEL } from "../../lib/statementLifecycle";
 import { buildReviewQueue } from "../../lib/reviewQueue";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
@@ -16,7 +17,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded,
-    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, statementExceptions } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, statementExceptions, offerReconciliation } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -198,7 +199,8 @@ export default function ReviewView() {
              CPA to resolve. Counts toward the queue but does NOT change sign-off gating. ── */}
       {statementException.length > 0 && (
         <div style={{ border: "1px solid var(--sc-warning)", background: "var(--sc-warning-soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-warning)", marginBottom: 10 }}>📄 {statementException.length} statement {statementException.length === 1 ? "item" : "items"} the pipeline couldn't finish · awaiting review</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-warning)", marginBottom: 10 }}>📄 {(() => { const ready = statementException.filter(i => i.state === "ready").length; const stuck = statementException.length - ready;
+                return [stuck ? `${stuck} statement ${stuck === 1 ? "item" : "items"} the pipeline couldn't finish` : "", ready ? `${ready} ready to check against the bank` : ""].filter(Boolean).join(" · "); })()}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {statementException.map((x) => (
               <div key={x.id} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px" }}>
@@ -209,10 +211,33 @@ export default function ReviewView() {
                     </div>
                     <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 3 }}>{x.plain}</div>
                   </div>
-                  <button onClick={() => setView && setView("bank")}
-                    style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer", flexShrink: 0 }}>
-                    Open in Bank Import →
-                  </button>
+                  {/* C198·1 (k) — a LINE exception is Bank Import's job (categorize + book
+                      one line). A STATEMENT-level one is about the whole period's balance,
+                      and Bank Import renders an EMPTY screen for it once the lines are
+                      booked (the live dead end). Send it to Reconcile, carrying the account
+                      and month so the session opens ready instead of asking for the file. */}
+                  {(() => {
+                    const target = statementExceptionTarget(x);
+                    if (target.view === "bank") return (
+                      <button onClick={() => setView && setView("bank")}
+                        style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer", flexShrink: 0 }}>
+                        Open in Bank Import →
+                      </button>
+                    );
+                    return (
+                      <button onClick={() => {
+                        offerReconciliation && offerReconciliation({
+                          id: x.statement_id, bank_account_id: x.bank_account_id,
+                          period_start: x.period_start, period_end: x.period_end,
+                          stated_ending_balance: x.stated_ending_balance,
+                        });
+                        setView && setView("recon");
+                      }}
+                        style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: x.state === "ready" ? "var(--sc-gold)" : "var(--sc-surface)", border: x.state === "ready" ? "none" : "1px solid var(--sc-border-2)", color: x.state === "ready" ? "var(--sc-on-accent)" : "var(--sc-text-2)", cursor: "pointer", flexShrink: 0 }}>
+                        {OPEN_RECONCILE_LABEL}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             ))}

@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { prefillEndingBalance, statementForPeriod, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
 import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
 import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
 import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy, outstandingClearedCopy, MATCH_EXISTING_ACTION_LABEL } from "../../lib/workbench";
@@ -72,6 +73,7 @@ export default function ReconView() {
     bankAccounts, invoices, setInvoices, reconciliations,
     currentCompany, session, supabase, bookToDb, logAudit, showNotification, loadAllData,
     CHART_OF_ACCOUNTS, setView, getAccountByRole, cashGlCodes, loadStatementExceptions,
+    reconcileOffer, setReconcileOffer,
   } = useERP();
 
   const fmt = fmtSignedMoney;
@@ -127,6 +129,67 @@ export default function ReconView() {
     })();
     return () => { cancelled = true; };
   }, [reconciliations, session]);  // eslint-disable-line react-hooks/exhaustive-deps
+  // ── C198·1 (j)+(l) — THE OFFERED SESSION ────────────────────────────────────
+  // When every line of a statement is already in the books, the system hands over a
+  // READY session instead of an empty screen that demands the file a third time: the
+  // account, the month, the statement's own lines, and its stated ending balance
+  // (O86 (j)/(l), live — the operator had to upload twice more and hand-type a number
+  // the database was already holding). The balance lands in the field EDITABLE: it is
+  // still the CPA's independent check, and anything they type governs from then on.
+  const [offerTaken, setOfferTaken] = React.useState(false);
+  const [prefilledFromStatement, setPrefilledFromStatement] = React.useState(false);
+  React.useEffect(() => {
+    if (!reconcileOffer || offerTaken || !currentCompany?.id) return;
+    let cancelled = false;
+    (async () => {
+      setOfferTaken(true);
+      try {
+        const { data: lines } = await supabase.from("bank_statement_lines")
+          .select("id, line_date, description, vendor, amount")
+          .eq("company_id", currentCompany.id).eq("statement_id", reconcileOffer.statementId);
+        if (cancelled) return;
+        const rows = (lines || []).map((l) => ({
+          id: "s_" + l.id, date: l.line_date, description: l.description || l.vendor || "Transaction",
+          amount: Number(l.amount) || 0, _matchBook: null,
+        }));
+        if (reconcileOffer.accountId) setAccountId(reconcileOffer.accountId);
+        if (reconcileOffer.accountName) setAccountName(reconcileOffer.accountName);
+        if (reconcileOffer.periodStart) setPeriodStart(reconcileOffer.periodStart);
+        if (reconcileOffer.periodEnd) setPeriodEnd(reconcileOffer.periodEnd);
+        // (l) — prefill ONLY into an empty field; a typed value is never overwritten.
+        const pre = prefillEndingBalance({ statement: { stated_ending_balance: reconcileOffer.statedEnding }, current: statementBalance });
+        if (pre != null) { setStatementBalance(pre); setPrefilledFromStatement(true); }
+        if (rows.length) { setBankTxns(rows); setStep("match"); setTimeout(() => runAutoMatch(rows), 50); }
+        setReconcileOffer && setReconcileOffer(null);
+      } catch (e) { console.warn("[recon] offered session skipped:", e?.message || e); }
+    })();
+    return () => { cancelled = true; };
+  }, [reconcileOffer, offerTaken, currentCompany?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // (l) — the same prefill for a session started by hand: once an account + month are
+  // chosen and a statement exists for them, its stated ending balance fills the field.
+  // Empty-field-only, so it can never clobber the CPA's own number.
+  const [periodStatements, setPeriodStatements] = React.useState([]);
+  React.useEffect(() => {
+    if (!currentCompany?.id || step === "landing") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.from("bank_statements")
+          .select("id, bank_account_id, period_start, period_end, stated_ending_balance, status, created_at")
+          .eq("company_id", currentCompany.id).neq("status", "superseded");
+        if (!cancelled) setPeriodStatements(data || []);
+      } catch { /* pre-058 */ }
+    })();
+    return () => { cancelled = true; };
+  }, [currentCompany?.id, step]);
+  React.useEffect(() => {
+    if (statementBalance !== "") return;                       // never overwrite a typed value
+    const st = statementForPeriod(periodStatements, { accountId, periodStart, periodEnd });
+    const pre = prefillEndingBalance({ statement: st, current: statementBalance });
+    if (pre != null) { setStatementBalance(pre); setPrefilledFromStatement(true); }
+  }, [periodStatements, accountId, periodStart, periodEnd]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const nameForUser = (uid) => {
     if (!uid) return "—";
     if (uid === session?.user?.id) return session?.user?.email || "You";
@@ -847,7 +910,7 @@ export default function ReconView() {
 
       {/* BOTTOM BAR */}
       <div style={{ position:"fixed", left:0, right:0, bottom:0, background:"var(--sc-surface)", borderTop:"1px solid var(--sc-border)", boxShadow:"0 -4px 20px rgba(0,0,0,.06)", padding:"12px 28px", display:"flex", alignItems:"center", gap:24, zIndex:50, flexWrap:"wrap" }}>
-        <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); setEmptyConfirmed(false); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:`1px solid ${!statementBalance?"var(--sc-warning)":"var(--sc-border-2)"}`, borderRadius:8, padding:"4px 8px", background:"var(--sc-surface-2)", color:"var(--sc-text)", outline:"none" }} /></div>
+        <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5, marginBottom:2 }}>BANK ENDING BALANCE{statementBalance!=="" && prefilledFromStatement ? " · from your statement" : ""}</div><input type="number" value={statementBalance} onChange={e=>{ setStatementBalance(e.target.value); setPrefilledFromStatement(false); setEmptyConfirmed(false); queueSave(); }} placeholder="enter from statement" style={{ width:140, fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", border:`1px solid ${!statementBalance?"var(--sc-warning)":"var(--sc-border-2)"}`, borderRadius:8, padding:"4px 8px", background:"var(--sc-surface-2)", color:"var(--sc-text)", outline:"none" }} /></div>
         {/* O83: a genuine $0 ending balance (empty/closed account) must be EXPLICITLY confirmed —
             otherwise an unverified $0 completion becomes a phantom the sign-off gate ignores. */}
         {statementBalance!=="" && stmtNum===0 && (

@@ -31,6 +31,7 @@ import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
+import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
 import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
@@ -808,7 +809,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         .select("id, statement_id, line_date, description, vendor, amount, exception_reason")
         .eq("company_id", cid).eq("status", "excepted");
       const { data: stmts } = await supabase.from("bank_statements")
-        .select("id, source_filename, period_end")
+        .select("id, source_filename, bank_account_id, period_start, period_end, stated_ending_balance")
         .eq("company_id", cid).eq("status", "attention");
       // C193 — SUPERSEDED parents produce ZOMBIE cards: their lines were resolved on a newer
       // upload but keep their own 'excepted' status (we never rewrite history). Exclude them.
@@ -825,11 +826,35 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }));
       // An attention statement with NO excepted lines = a balance discrepancy (the ending balance
       // didn't net) — surface it once, plainly, without GL jargon.
-      const stmtItems = (stmts || []).filter((s) => !withExc.has(String(s.id))).map((s) => ({
-        kind: "statement", id: `sxs_${s.id}`, statement_id: s.id, reason: "balance_discrepancy",
-        title: s.source_filename || "Bank statement",
-        plain: statementExceptionCopy("balance_discrepancy"),
-      }));
+      // C198·1 (k) — a statement-level card must know WHERE it points (account + period,
+      // so Reconcile opens on the right month) and must not describe a RESOLVED state.
+      // statementCardState decides: 'exception' (real open work), 'ready' (every line is
+      // in the books — an invitation, not a problem), or 'none' (reconciled/finished →
+      // render NOTHING; a card about a finished period is a lie with a button on it).
+      let lineStatusByStmt = new Map();
+      try {
+        const { data: allLines } = await supabase.from("bank_statement_lines")
+          .select("statement_id, status").eq("company_id", cid)
+          .in("statement_id", (stmts || []).map((x) => x.id));
+        for (const l of (allLines || [])) {
+          const k = String(l.statement_id);
+          if (!lineStatusByStmt.has(k)) lineStatusByStmt.set(k, []);
+          lineStatusByStmt.get(k).push(l.status);
+        }
+      } catch { /* pre-058 */ }
+      const stmtItems = (stmts || []).filter((s) => !withExc.has(String(s.id))).map((s) => {
+        const state = statementCardState({ statement: { ...s, status: "attention" }, lineStatuses: lineStatusByStmt.get(String(s.id)) || [], reconciliations });
+        if (state === "none") return null;
+        return {
+          kind: "statement", id: `sxs_${s.id}`, statement_id: s.id,
+          reason: state === "ready" ? "ready_to_reconcile" : "balance_discrepancy",
+          state,
+          bank_account_id: s.bank_account_id, period_start: s.period_start, period_end: s.period_end,
+          stated_ending_balance: s.stated_ending_balance,
+          title: s.source_filename || "Bank statement",
+          plain: state === "ready" ? READY_TO_RECONCILE_COPY : statementExceptionCopy("balance_discrepancy"),
+        };
+      }).filter(Boolean);
       const live = filterLiveExceptions({ lineItems, stmtItems, supersededIds });   // C193 — drop zombie cards
       setStatementExceptions([...live.lineItems, ...live.stmtItems]);
     } catch { /* tables may not exist pre-058 */ setStatementExceptions([]); }
@@ -4419,14 +4444,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       let contentHash = null;
       try { contentHash = await fileSha256Hex(file); } catch (e) { console.warn("[bank_statements] hash skipped:", e?.message || e); }
       let priorSameHashIds = [];
+      let priorSameHashRows = [];
       if (contentHash) {
         try {
           // Scoped to this ACCOUNT (§11 item 7): the same file uploaded to a different account
           // is a real problem the client must still see — never silently merged.
-          let q = supabase.from("bank_statements").select("id").eq("company_id", currentCompany.id).eq("content_hash", contentHash).neq("status", "superseded");
+          // C198·1 (j) — carry the STATUS (and period/balance) too: a re-upload onto a
+          // NON-complete statement must RE-EVALUATE, not silently retire-and-forget.
+          let q = supabase.from("bank_statements").select("id, status, bank_account_id, period_start, period_end, stated_ending_balance, source_filename").eq("company_id", currentCompany.id).eq("content_hash", contentHash).neq("status", "superseded");
           q = (account && account.id) ? q.eq("bank_account_id", account.id) : q.is("bank_account_id", null);
           const { data: priors } = await q;
           priorSameHashIds = (priors || []).map((r) => String(r.id));
+          priorSameHashRows = priors || [];
         } catch { /* column may not exist pre-059 */ }
       }
 
@@ -4450,8 +4479,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const lineRows = buildStatementLineRows(lines, { companyId: currentCompany.id, statementId: stmt.id });
       const { data: insertedLines, error: lErr } = await supabase.from("bank_statement_lines").insert(lineRows).select("id");
       if (lErr) console.warn("[bank_statement_lines] insert failed:", lErr.message);
-      return { statementId: stmt.id, lineIds: (insertedLines || []).map(r => r.id), priorSameHashIds };
-    } catch (e) { console.warn("[bank_statements] persist skipped:", e?.message || e); return { statementId: null, lineIds: [], priorSameHashIds: [] }; }
+      return { statementId: stmt.id, lineIds: (insertedLines || []).map(r => r.id), priorSameHashIds, priorSameHashRows };
+    } catch (e) { console.warn("[bank_statements] persist skipped:", e?.message || e); return { statementId: null, lineIds: [], priorSameHashIds: [], priorSameHashRows: [] }; }
   };
 
   // C193 — retire the PRIOR same-content statement rows after the new run completes: status
@@ -4466,6 +4495,77 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         patch: { status: "superseded", superseded_by: newStatementId }, label: "statement:supersede" });
     }
     logAudit("statement_superseded", `${priorIds.length} earlier upload${priorIds.length === 1 ? "" : "s"} of this statement retired (same content)`, null, { superseded: priorIds, superseded_by: newStatementId });
+  };
+
+  // ── C198·1 (i)+(j) — THE STATEMENT LIFECYCLE, off the reconcile path ────────
+  // Until now a statement could only reach 'complete' via the reconcile-completion
+  // sweep. The FIRST-PASS path (pipeline runs → a human books the leftovers in Bank
+  // Import) never re-derived it, so a fully-finished statement kept its 'attention'
+  // status and its Review card forever (O86 (i)). This re-derives it from the two
+  // things that actually decide it: are all the LINES in the ledger, and is the
+  // BALANCE settled (a completed reconciliation covers the period, or the stated
+  // ending balance ties to the books). Returns { advanced, ready, statement }.
+  // NO new status: 'complete' is exactly what ReconView's sweep writes.
+  const reevaluateStatement = async (stmtId, { account = null } = {}) => {
+    const cid = currentCompany?.id;
+    if (!stmtId || !cid) return { advanced: false, ready: false, statement: null };
+    try {
+      const { data: st } = await supabase.from("bank_statements")
+        .select("id, status, bank_account_id, period_start, period_end, stated_ending_balance, source_filename")
+        .eq("id", stmtId).eq("company_id", cid).maybeSingle();
+      if (!st) return { advanced: false, ready: false, statement: null };
+      const { data: ls } = await supabase.from("bank_statement_lines")
+        .select("status").eq("company_id", cid).eq("statement_id", stmtId);
+      const lineStatuses = (ls || []).map((l) => l.status);
+
+      // Is the BALANCE settled? Either the period is already reconciled, or the
+      // statement's own ending balance nets against the books. Never assume it —
+      // advancing on lines alone would manufacture a false green (§11 O90 class).
+      const covered = (reconciliations || []).some(r => r && String(r.status) === "complete"
+        && (!st.bank_account_id || !r.account_id || String(r.account_id) === String(st.bank_account_id))
+        && String(r.period_start || "") && String(st.period_start || "") >= String(r.period_start || "")
+        && String(st.period_end || "") <= String(r.period_end || ""));
+      let balanceSettled = covered;
+      if (!balanceSettled && st.stated_ending_balance != null) {
+        const acct = account || (bankAccounts || []).find(b => String(b.id) === String(st.bank_account_id));
+        const cashCode = (acct && acct.gl_code) || rc("cash");
+        const booksBalance = reconBooksBalance(invoicesRef.current, [cashCode], { asOf: st.period_end });
+        const diff = reconcileDifference({ statementBalance: st.stated_ending_balance, booksBalance, outstandingSigned: 0, unmatchedBankSigned: 0 });
+        balanceSettled = Math.abs(Number(diff) || 0) < 0.005;
+      }
+
+      const next = statementAdvanceStatus({ status: st.status, lineStatuses, balanceSettled });
+      let advanced = false;
+      if (next) {
+        const r = await checkedRowUpdate({ supabase, table: "bank_statements", id: stmtId, companyId: cid,
+          patch: { status: next }, label: "statement:advance-first-pass" });
+        advanced = !!(r && r.ok);
+        if (advanced) {
+          logAudit(STATEMENT_COMPLETED_AUDIT, `Everything on ${st.source_filename || "the statement"} is recorded — closed it out`, null, { statement_id: String(stmtId), from: st.status, to: next });
+          try { await loadStatementExceptions(cid); } catch {}
+        }
+      }
+      const ready = statementReadyToReconcile({ statement: { ...st, status: advanced ? next : st.status }, lineStatuses, reconciliations });
+      return { advanced, ready, statement: st, lineStatuses };
+    } catch (e) { console.warn("[statement] re-evaluate skipped:", e?.message || e); return { advanced: false, ready: false, statement: null }; }
+  };
+
+  // (j) — the offer. When every line of a statement is in the ledger and nobody has
+  // reconciled the period, the system HANDS the CPA a ready session (account, month,
+  // lines and the statement's own ending balance) instead of demanding the file again.
+  // Consumed by ReconView on arrival; cleared once taken.
+  const [reconcileOffer, setReconcileOffer] = useState(null);
+  const offerReconciliation = (statement, { account = null } = {}) => {
+    if (!statement) return;
+    const acct = account || (bankAccounts || []).find(b => String(b.id) === String(statement.bank_account_id));
+    setReconcileOffer({
+      statementId: String(statement.id),
+      accountId: statement.bank_account_id ? String(statement.bank_account_id) : (acct && String(acct.id)) || null,
+      accountName: (acct && acct.name) || "your account",
+      periodStart: statement.period_start || null,
+      periodEnd: statement.period_end || null,
+      statedEnding: statement.stated_ending_balance != null ? statement.stated_ending_balance : null,
+    });
   };
 
   const handleBankFile = async (file, account = null) => {
@@ -4623,7 +4723,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C185 — PERSIST the statement + lines (additive; review flow above is unchanged). Stamp the
       // durable statement/line ids onto the in-memory rows so booking can advance their status.
       try {
-        const { statementId, lineIds, priorSameHashIds } = await persistBankStatement({ account, file, rawTxns, lines: withIds, statedOpening, statedPeriodStart });
+        const { statementId, lineIds, priorSameHashIds, priorSameHashRows } = await persistBankStatement({ account, file, rawTxns, lines: withIds, statedOpening, statedPeriodStart });
         if (statementId) {
           const stampedLines = withIds.map((t, i) => ({ ...t, _stmtId: statementId, _stmtLineId: lineIds[i] || t._stmtLineId }));
           if (!willRunPipeline) setBankTransactions(stampedLines);   // C195(5) — the pipeline path sets the FINAL set only
@@ -4643,9 +4743,29 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // already-resolved lines stop surfacing as zombie exception cards. Runs whether or not
           // the pipeline executed (an unbound-account upload still supersedes its own earlier copy).
           try {
+            // C198·1 (j) — a re-upload onto a NON-COMPLETE prior may not silently no-op.
+            // For each prior, planStatementReupload decides: 'complete' → supersede
+            // exactly as C193 always did (unchanged); anything else → RE-EVALUATE it
+            // against the CURRENT ledger first, so work finished since the last upload
+            // is recognized instead of the stale 'attention' surviving to lie to Review.
+            for (const prior of (priorSameHashRows || [])) {
+              try {
+                const { data: pls } = await supabase.from("bank_statement_lines")
+                  .select("status").eq("company_id", currentCompany.id).eq("statement_id", prior.id);
+                const plan = planStatementReupload({ existing: prior, lineStatuses: (pls || []).map(l => l.status) });
+                if (plan.reevaluate) await reevaluateStatement(prior.id, { account });
+              } catch (e) { console.warn("[bank_statements] prior re-evaluate skipped:", e?.message || e); }
+            }
             await supersedePriorStatements(priorSameHashIds, statementId);
             if ((priorSameHashIds || []).length) await loadStatementExceptions(currentCompany.id);
           } catch (e) { console.warn("[bank_statements] supersede skipped:", e?.message || e); }
+          // C198·1 (j) — and the row that now OWNS the story gets the same treatment:
+          // re-derive its status from the ledger, and when every line is already in the
+          // books, OFFER the reconciliation instead of demanding the file a third time.
+          try {
+            const rv = await reevaluateStatement(statementId, { account });
+            if (rv.ready) offerReconciliation(rv.statement, { account });
+          } catch (e) { console.warn("[bank_statements] re-evaluate skipped:", e?.message || e); }
         }
       } catch (e) { console.warn("[bank_statements] persist call skipped:", e?.message || e); }
       setBankProgress(100);
@@ -4965,6 +5085,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       try { await loadAllData(); } catch {}
       await linkStatementLinesAfterBooking(stmtId, account);   // C185 — advance statement-line status + stamp bank_account_id
       try { await loadStatementExceptions(currentCompany.id); } catch {}   // C195(1) — resolved lines must leave the Review queue immediately
+      // C198·1 (i) — the statement itself must advance too, not just its lines.
+      try { const rv = await reevaluateStatement(stmtId, { account }); if (rv.ready) offerReconciliation(rv.statement, { account }); } catch {}
       showNotification(
         bookingToastCopy({ booked, failed }),                              // C195(6) — count what actually happened
         failed === 0 ? "success" : "error"
@@ -5022,6 +5144,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     try { await loadAllData(); } catch {}
     await linkStatementLinesAfterBooking(stmtId, account);   // C185 — advance statement-line status (booked/matched) + stamp bank_account_id
     try { await loadStatementExceptions(currentCompany.id); } catch {}   // C195(1) — resolved lines must leave the Review queue immediately
+    // C198·1 (i) — same first-pass advance on the A/P-matching branch.
+    try { const rv = await reevaluateStatement(stmtId, { account }); if (rv.ready) offerReconciliation(rv.statement, { account }); } catch {}
     const failN = clearFailed + bookFailed + payrollIncompleteFailed;
     const totalBooked = booked + payrollIncompleteBooked;
     // Surface the matcher breakdown so the deterministic vs LLM contribution is visible WITHOUT
@@ -6378,7 +6502,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, loadStatementExceptions, logIntake, markIntake };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // (`isPlatformAdmin` is derived once at the top of ERP, alongside the seat — C197.)
