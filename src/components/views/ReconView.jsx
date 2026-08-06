@@ -2,9 +2,9 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
 import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
-import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy } from "../../lib/workbench";
+import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy, outstandingClearedCopy, MATCH_EXISTING_ACTION_LABEL } from "../../lib/workbench";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
-import { priorOutstandingCandidates } from "../../lib/outstandingItems";
+import { priorOutstandingCandidates, matchOutstandingClears } from "../../lib/outstandingItems";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, ymdLocal, addDaysYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
@@ -186,6 +186,35 @@ export default function ReconView() {
     const total = cands.reduce((s2, c) => s2 + (Number(c.signed) || 0), 0);
     return Math.abs(total + Number(openingMismatch.diff || 0)) < 0.005 ? cands.length : 0;
   }, [openingMismatch.mismatch, openingMismatch.diff, reconciliations, accountId, accountName, periodStart]);
+
+  // ── C196(1) — THE HEADLINE FIX. "Things we need to sort out" offered **Accept & add** for a
+  // bank line that was actually a PRIOR PERIOD'S OUTSTANDING CHECK clearing — one human click on
+  // a product suggestion produced the program's first wrong ledger entry (a duplicate expense).
+  // The pipeline already answers this exact question (C187); this surface simply never asked.
+  // Map: bank-line id → the outstanding candidate it clears (if any).
+  const chainClears = React.useMemo(() => {
+    const cands = priorOutstandingCandidates({ reconciliations, accountId, accountName, periodStart });
+    if (!cands.length) return {};
+    const { clears } = matchOutstandingClears(unmatchedBank, cands);
+    const m = {};
+    for (const c of clears) m[String(c.line.id)] = c.candidate;
+    return m;
+  }, [reconciliations, accountId, accountName, periodStart, unmatchedBank]);
+
+  // Match a bank line to the existing entry it clears: stamp the ENTRY cleared (the same write the
+  // pipeline's clear path makes, via checkedRowUpdate) and mark the line matched to that jeId so it
+  // counts on the statement side and the difference resolves through the outstanding math.
+  // BOOKS NOTHING — that is the whole point.
+  const matchToOutstanding = async (t, candidate) => {
+    if (!candidate?.jeId) return;
+    const r = await checkedRowUpdate({ supabase, table: "journal_entries", id: candidate.jeId, companyId: currentCompany.id,
+      patch: { cleared: true, cleared_at: t.date || null }, label: "recon:match-outstanding" });
+    if (!r.ok) { showNotification && showNotification("We couldn't link that — nothing was changed. Please try again.", "error"); return; }
+    setInvoices(prev => prev.map(i => (String(i.db_entry_id) === String(candidate.jeId) || String(i.id) === String(candidate.jeId)) ? { ...i, cleared: true, cleared_at: t.date || null } : i));
+    setBankTxns(prev => prev.map(x => x.id === t.id ? { ...x, _matchBook: candidate.jeId, _auto: false, _conf: 100 } : x));
+    logAudit && logAudit("recon_matched_outstanding", `Matched ${fmt(t.amount)} on ${fmtDate(t.date)} to the existing entry it cleared (no new entry created)`, null, { bank_line: t.id, journal_entry_id: candidate.jeId });
+    queueSave();
+  };
 
   // A statement balance is "verified" when it's a real non-zero ending balance OR the user
   // explicitly confirmed a genuinely-empty/closed account ($0). Distinguishes a real
@@ -483,6 +512,35 @@ export default function ReconView() {
     setOutstanding(outMap);
     setStep("match");
   };
+  // C196(7) — ABANDON THIS MATCH. An accidentally-started session left an `open` reconciliation
+  // row that needed manual SQL to clean up; there was no in-app way to discard it. Deletes THIS
+  // session's row only (id-pinned + status='open' guarded, so a completed reconciliation can never
+  // be destroyed by this button), audits it, and returns to the Reconcile home.
+  const [abandoning, setAbandoning] = React.useState(false);
+  const abandonMatch = async () => {
+    const rid = resolveReconRowId({ stateId: reconId, refId: reconIdRef.current });
+    if (!window.confirm("Discard this match session? Nothing in your books changes — we'll just throw away this unfinished session.")) return;
+    setAbandoning(true);
+    if (savingPromiseRef.current) { try { await savingPromiseRef.current; } catch {} }
+    if (rid && currentCompany?.id) {
+      try {
+        const { error } = await supabase.from("reconciliations").delete()
+          .eq("id", rid).eq("company_id", currentCompany.id).eq("status", "open").select("id");
+        if (error) {
+          setAbandoning(false);
+          showNotification && showNotification("We couldn't discard that session — nothing was changed. Please try again.", "error");
+          return;
+        }
+        logAudit && logAudit("reconciliation_abandoned", `Discarded an unfinished match session for ${accountName} ${periodStart}→${periodEnd}`, null, { reconciliation_id: rid, account: accountName, period: `${periodStart}→${periodEnd}` });
+      } catch (e) { console.warn("[reconciliations] abandon failed:", e?.message || e); }
+    }
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    setAbandoning(false);
+    startFresh();
+    setStep("landing");
+    showNotification && showNotification("Match session discarded — your books are unchanged.");
+  };
+
   const startFresh = () => { setReconId(null); setBankTxns([]); setOutstanding({}); setStatementBalance(""); setEmptyConfirmed(false); setStmtOpening(null); setStep("setup"); };
 
   const card = { background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, boxShadow:"0 1px 3px rgba(0,0,0,.08)" };
@@ -647,6 +705,8 @@ export default function ReconView() {
           <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:3 }}>{accountName} · {periodStart} → {periodEnd}</div>
         </div>
         <button onClick={async()=>{ const ok = await saveNow("open"); if (ok) showNotification && showNotification("Progress saved ✓"); }} style={{ padding:"8px 16px", borderRadius:9, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer" }}>Save Progress</button>
+        {/* C196(7) — an accidental session must be discardable without a DBA. */}
+        <button onClick={abandonMatch} disabled={abandoning} style={{ padding:"8px 14px", borderRadius:9, background:"transparent", border:"none", color:"var(--sc-text-mut)", fontSize:12.5, textDecoration:"underline", cursor: abandoning?"wait":"pointer" }}>{abandoning ? "Discarding…" : "Abandon this match"}</button>
       </div>
 
       {autoBanner && (
@@ -729,6 +789,22 @@ export default function ReconView() {
           {unmatchedBank.map(t=>{
             const _acct=getAccountByRole(suggestRole(t.description, t.amount));
             const gl={gl_code:_acct?.code, gl_name:_acct?.name};
+            // C196(1) — chain-explained line: this is a prior entry CLEARING, not new activity.
+            // Explain it and offer MATCH. Accept-&-add is NOT rendered — offering it here is what
+            // produced the duplicate entry.
+            const cleared = chainClears[String(t.id)];
+            if (cleared) return (
+              <div key={t.id} style={{ padding:"12px 0", borderTop:"1px solid var(--sc-surface-2)" }}>
+                <div style={{ fontSize:13, color:"var(--sc-success)", marginBottom:4, fontWeight:600 }}>{outstandingClearedCopy({ date: cleared.date, amount: cleared.amount })}</div>
+                <div style={{ fontSize:12.5, color:"var(--sc-text-2)", marginBottom:8, maxWidth:620, lineHeight:1.5 }}>
+                  It's already in your books from when you wrote it — we'll link the two, not add it again.
+                </div>
+                <button onClick={()=>matchToOutstanding(t, cleared)}
+                  style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                  {MATCH_EXISTING_ACTION_LABEL}
+                </button>
+              </div>
+            );
             return (
               <div key={t.id} style={{ padding:"12px 0", borderTop:"1px solid var(--sc-surface-2)" }}>
                 <div style={{ fontSize:13, color:"var(--sc-warning)", marginBottom:6 }}>This is in your bank but not your books — <strong>{t.description}</strong> ({fmt(t.amount)}, {fmtDate(t.date)})</div>

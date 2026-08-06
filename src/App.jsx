@@ -31,7 +31,7 @@ import { onboardingSteps } from "./lib/onboarding";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
 import { fileSha256Hex } from "./lib/contentHash";
-import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake } from "./lib/workbench";
+import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems, resolveMatchedInvoices, isSettlementEntry } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
@@ -4697,6 +4697,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Feb-re-upload case (all already-booked, month attested) reads as calm confirmation, not activity.
   const pipelineOutcomeCopy = ({ plan, bookedCount, clearedCount = 0, exceptionCount, balanceDiscrepancy, reconciled }) => {
     const monthName = signedMonthLabel(plan.period) || "This";
+    // C196(3) — WHOLE-STATEMENT first. The toast used to describe only what changed; the client
+    // needs the denominator to see what the machine actually did ("21 · 16 handled · 5 need you").
+    const totalLines = (plan.counts && plan.counts.total) || 0;
+    const handledLines = Math.max(0, totalLines - (Number(exceptionCount) || 0));
+    const wholeStatement = totalLines ? statementSummaryCopy({ total: totalLines, handled: handledLines, needInput: exceptionCount }) : "";
     // C187 — count cleared earlier checks distinctly and plainly (no GL jargon).
     const clearPhrase = clearedCount > 0 ? `, ${clearedCount} earlier ${clearedCount === 1 ? "check" : "checks"} cleared` : "";
     let msg;
@@ -4706,7 +4711,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     else msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}, ${exceptionCount} need${exceptionCount === 1 ? "s" : ""} your accountant's look`;
     // Cardinal-Principle safety net: if any GL/debit-credit jargon leaks, fall back to a plain line.
     if (containsOwnerJargon(msg)) msg = `${monthName} statement handled — we recorded what we could and flagged the rest for your accountant.`;
-    return msg;
+    // Lead with the whole-statement count (C196(3)) unless nothing happened at all.
+    return (wholeStatement && plan.reconciliation.conclusion !== "already_matched") ? `${wholeStatement} — ${msg}` : msg;
   };
 
   // The EXECUTOR. Runs after persistBankStatement when an account is bound (Bank Import path).

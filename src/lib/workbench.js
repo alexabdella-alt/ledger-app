@@ -108,3 +108,46 @@ export const STATEMENT_EXCEPTION_COPY = {
 export function statementExceptionCopy(reason) {
   return STATEMENT_EXCEPTION_COPY[reason] || "This one needs your accountant's eyes before we record it.";
 }
+
+// ── C196(1) — OUTSTANDING-CHAIN AWARENESS IN THE SORT-OUT LIST ───────────────
+// THE headline O85 failure: Reconcile's "Things we need to sort out" offered
+// **Accept & add** for a bank line that was actually a prior period's outstanding check
+// CLEARING. One human click on a product suggestion produced the program's first wrong
+// ledger entry (a duplicate expense). The pipeline already knows better (C187) — this
+// surface just never asked it. Copy is a tested constant so the moment reads as an
+// explanation, not a task.
+export function outstandingClearedCopy({ date = null, amount = null } = {}) {
+  const when = date ? fmtDate(date) : null;
+  const amt = amount != null ? fmtMoney(Math.abs(Number(amount) || 0)) : null;
+  return `This is the ${amt ? amt + " " : ""}check you wrote${when ? ` on ${when}` : ""} — it just cleared ✓`;
+}
+export const MATCH_EXISTING_ACTION_LABEL = "Match to your existing entry";
+
+// ── C196(3) — WHOLE-STATEMENT COUNTERS ───────────────────────────────────────
+// Live: after a 21-line statement ran, the tiles read "Total transactions 5" — the
+// RESIDUE, not what happened. The counters must describe the whole statement, because
+// that sentence is the one moment the client sees the machine's entire contribution.
+export function statementSummaryCopy({ total = 0, handled = 0, needInput = 0 } = {}) {
+  const t = Math.max(0, Number(total) || 0);
+  const h = Math.max(0, Number(handled) || 0);
+  const n = Math.max(0, Number(needInput) || 0);
+  if (!t) return "No transactions on this statement";
+  const parts = [`${t} transaction${t === 1 ? "" : "s"}`];
+  if (h) parts.push(`${h} handled automatically`);
+  // Zero must never render as "0 need review" (or "1 need review" — the plural bug).
+  if (n) parts.push(`${n} need${n === 1 ? "s" : ""} your input`);
+  else if (h) parts.push("nothing needs your input ✓");
+  return parts.join(" · ");
+}
+
+// ── C196(6) — REVIEW OPENS ON THE FIRST UNSIGNED MONTH ───────────────────────
+// Three drives running, the month picker opened on the CURRENT calendar month (August)
+// when the work to review was months earlier. Default to the earliest month that has
+// activity and is not yet signed off; fall back to the current month when everything is
+// signed (nothing to do) or there is no activity at all. Pure.
+export function firstUnsignedMonth({ months = [], signoffs = [], fallback = null } = {}) {
+  const signed = new Set((signoffs || []).filter(s => s && !s.revoked_at).map(s => String(s.period)));
+  const candidates = [...new Set((months || []).filter(Boolean).map(String))].sort();
+  for (const m of candidates) if (!signed.has(m)) return m;
+  return fallback || null;
+}

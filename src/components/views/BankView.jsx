@@ -4,10 +4,12 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate, fmtSignedMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { autoMatchBankLines, matchableOpenItems, planBankImport, bankLineFates, shouldRunApMatching, bankReviewBuckets } from "../../lib/bankMatch";
+import { openingMismatchCopy, statementSummaryCopy } from "../../lib/workbench";
+import { priorOutstandingCandidates } from "../../lib/outstandingItems";
 
 export default function BankView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, rc, rn, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
-    pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy } = useERP();
+    pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, reconciliations } = useERP();
   // O83 opening-balance proposal — confirm/adjust the statement-derived starting balance.
   const [obAdjust, setObAdjust] = React.useState(null);   // null = use proposed amount; else the adjusted value
   const [obBusy, setObBusy] = React.useState(false);
@@ -47,7 +49,34 @@ export default function BankView() {
 
   // O83 — booking-state partition (already-booked / needs-review / new) — the single source
   // for the tiles, the sections, and Select All's scope. Already-booked lines are read-only.
+  // C196(3) — whole-statement counters. After a pipeline run `bankTransactions` holds only the
+  // RESIDUE (lines needing a human), so the on-screen list can't be the denominator. Prefer the
+  // persisted statement's own line counts; fall back to the in-memory list for the manual flow.
+  const [stmtCounts, setStmtCounts] = React.useState(null);
+  React.useEffect(() => {
+    const stmtId = (bankTransactions || []).find(t => t._stmtId)?._stmtId;
+    if (!stmtId || !currentCompany?.id) { setStmtCounts(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.from("bank_statement_lines").select("status")
+          .eq("company_id", currentCompany.id).eq("statement_id", stmtId);
+        if (cancelled || !Array.isArray(data)) return;
+        const total = data.length;
+        const needInput = data.filter(r => r.status === "pending" || r.status === "excepted").length;
+        setStmtCounts({ total, handled: total - needInput, needInput });
+      } catch { /* pre-058 or offline → fall back below */ }
+    })();
+    return () => { cancelled = true; };
+  }, [bankTransactions, currentCompany?.id, supabase]);
+
   const reviewBuckets = React.useMemo(() => bankReviewBuckets(bankTransactions), [bankTransactions]);
+  // Persisted counts win (whole statement); otherwise derive from what is on screen (manual flow).
+  const statementTotals = stmtCounts || {
+    total: reviewBuckets.total,
+    handled: reviewBuckets.alreadyBookedCount,
+    needInput: Math.max(0, reviewBuckets.total - reviewBuckets.alreadyBookedCount),
+  };
 
   // A deterministic match is confident — pull those lines OUT of "needs review" and check them
   // so they show the clearing chip in the main table and book by default. Guarded so it settles
@@ -177,14 +206,33 @@ export default function BankView() {
 
               {/* O83 — DISCREPANCY: an opening balance already exists and disagrees with this
                    statement. We never auto-adjust; this is a "something's wrong" signal. */}
-              {openingDiscrepancyFlag && (
+              {/* C196(2) — a surface may only WARN about what the system cannot explain. Reconcile
+                  got this gate in C195 item 8; Bank Import (the surface the client lands on first)
+                  did not, so a fully chain-explained gap still read as an alarm. Consult the known
+                  uncashed items: explained → calm ✓, no ⚠, no Dismiss (there is nothing to dismiss).
+                  Only a genuinely unexplained gap keeps the warning. */}
+              {openingDiscrepancyFlag && (() => {
+                const cands = priorOutstandingCandidates({
+                  reconciliations, accountId: importAccount?.id, accountName: openingDiscrepancyFlag.accountName,
+                  periodStart: openingDiscrepancyFlag.periodStart,
+                });
+                const total = cands.reduce((s2, c) => s2 + (Number(c.signed) || 0), 0);
+                const explained = Math.abs(total + Number(openingDiscrepancyFlag.diff || 0)) < 0.005 ? cands.length : 0;
+                if (explained > 0) return (
+                  <div style={{ border:"1px solid var(--sc-success-soft)", background:"var(--sc-success-soft)", borderRadius:16, padding:"14px 20px", marginBottom:24 }}>
+                    <div style={{ fontSize:13, color:"var(--sc-success)", lineHeight:1.5 }}>
+                      {openingMismatchCopy({ diff: openingDiscrepancyFlag.diff, explainedCount: explained, accountName: openingDiscrepancyFlag.accountName })}
+                    </div>
+                  </div>
+                );
+                return (
                 <div style={{ border:"1px solid var(--sc-warning)", background:"var(--sc-warning-soft)", borderRadius:16, padding:"18px 22px", marginBottom:24 }}>
                   <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
                     <span style={{ fontSize:20, flexShrink:0 }}>⚠️</span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:14.5, fontWeight:700, color:"var(--sc-text)", marginBottom:4 }}>This statement's starting balance doesn't match your books</div>
                       <div style={{ fontSize:13, color:"var(--sc-text)", lineHeight:1.5 }}>
-                        Your {openingDiscrepancyFlag.accountName} shows {fmtSignedMoney(openingDiscrepancyFlag.recordedOpening)} on your books, but this statement starts with {fmtSignedMoney(openingDiscrepancyFlag.statedOpening)} — a difference of {fmtSignedMoney(Math.abs(openingDiscrepancyFlag.diff))}. We haven't changed anything; your accountant should take a look.
+                        {openingMismatchCopy({ diff: openingDiscrepancyFlag.diff, explainedCount: 0, accountName: openingDiscrepancyFlag.accountName })}
                       </div>
                       <button onClick={()=>dismissOpeningDiscrepancy && dismissOpeningDiscrepancy()}
                         style={{ marginTop:12, background:"transparent", color:"var(--sc-text-2)", border:"1px solid var(--sc-border-2)", borderRadius:9, padding:"8px 14px", fontSize:12.5, cursor:"pointer" }}>
@@ -193,7 +241,8 @@ export default function BankView() {
                     </div>
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Upload zone */}
               {!bankProcessing && bankTransactions.length === 0 && (
@@ -257,11 +306,21 @@ export default function BankView() {
                 <div>
                   {/* Summary bar — O83: state BOOKING state (already in your books vs new), not
                       just categorization, so a re-upload reads "20 · 20 already booked · 0 new". */}
+                  {/* C196(3) — WHOLE-STATEMENT narration. Live: after a 21-line statement ran, the
+                      tiles read "Total transactions 5" — the RESIDUE, not what happened. This line is
+                      the one moment the client sees the machine's entire contribution, so it leads. */}
+                  <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:"14px 20px", marginBottom:14, fontSize:14, fontWeight:600, color:"var(--sc-text)" }}>
+                    {statementSummaryCopy({
+                      total: statementTotals.total,
+                      handled: statementTotals.handled,
+                      needInput: statementTotals.needInput,
+                    })}
+                  </div>
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:20 }}>
                     {[
-                      { label:"Total Transactions", value:reviewBuckets.total, color:"var(--sc-text)" },
-                      { label:"Already in your books", value:reviewBuckets.alreadyBookedCount, color:"var(--sc-success)" },
-                      { label:"New to add", value:reviewBuckets.newCount, color:"var(--sc-gold)" },
+                      { label:"On this statement", value:statementTotals.total, color:"var(--sc-text)" },
+                      { label:"Handled automatically", value:statementTotals.handled, color:"var(--sc-success)" },
+                      { label:"Need your input", value:statementTotals.needInput, color:"var(--sc-gold)" },
                     ].map(s=>(
                       <div key={s.label} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:"16px 20px" }}>
                         <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 }}>{s.label.toUpperCase()}</div>

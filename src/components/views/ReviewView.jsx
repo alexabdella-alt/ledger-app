@@ -4,6 +4,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildReviewQueue } from "../../lib/reviewQueue";
+import { firstUnsignedMonth } from "../../lib/workbench";
 import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
 import { isPeriodSignedOff } from "../../lib/signoff";
 
@@ -60,7 +61,28 @@ export default function ReviewView() {
   const canSignOff = !!isReviewer;
   const [signingOff, setSigningOff] = React.useState(false);
   // The reviewer chooses the period explicitly (defaults to the current month, NOT forced).
-  const [signOffMonth, setSignOffMonth] = React.useState(todayLocal().slice(0, 7));
+  // C196(6) — open on the FIRST UNSIGNED month with activity, not the current calendar month.
+  // Three drives running, Review opened on August while the work to review was months earlier.
+  // Falls back to today when everything is signed (nothing to do) or there's no activity yet.
+  const activityMonths = React.useMemo(() => {
+    const set = new Set();
+    for (const i of (invoices || [])) {
+      if (!i || i.status === "voided" || i.status === "deleted" || i.deleted_at) continue;
+      const m = String(i.date || "").slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(m)) set.add(m);
+    }
+    return [...set];
+  }, [invoices]);
+  const [signOffMonth, setSignOffMonth] = React.useState(() =>
+    firstUnsignedMonth({ months: activityMonths, signoffs, fallback: todayLocal().slice(0, 7) }));
+  // Re-seat the default ONCE data has loaded (the first render can precede invoices/signoffs).
+  const monthSeeded = React.useRef(false);
+  React.useEffect(() => {
+    if (monthSeeded.current || !activityMonths.length) return;
+    monthSeeded.current = true;
+    const m = firstUnsignedMonth({ months: activityMonths, signoffs, fallback: todayLocal().slice(0, 7) });
+    if (m) setSignOffMonth(m);
+  }, [activityMonths, signoffs]);
   const [overrideOpen, setOverrideOpen] = React.useState(false);
   const [overrideReason, setOverrideReason] = React.useState("");
   // SINGLE-SOURCE readiness for the chosen period (preconditions + the four nets) — the SAME

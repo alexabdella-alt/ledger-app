@@ -140,6 +140,19 @@ export function downloadCSV(filename, headers, rows) {
 // ids so a dismissed one (stored in localStorage) doesn't keep reappearing.
 //   { id, type, severity: "high"|"medium"|"low", title, description, invoice_ids, detected_at }
 // ─────────────────────────────────────────────────────────────────────────────
+// C196(4) — NOISE-DETECTOR EXEMPTION. The large-charge and round-amount detectors are
+// heuristics about DISCRETIONARY SPEND — "is this equipment you should capitalize?", "is this
+// a round estimate rather than an actual?". Neither question is meaningful for a machine-posted
+// payroll/system entry: a $4,000 payroll GROSS was flagged "may need to be capitalized" (O85),
+// which is nonsense and trains the reviewer to ignore the queue. Detection must not opine on
+// entries whose shape it doesn't own. Exported for tests.
+export function isSystemPostedEntry(i) {
+  const src = String((i && i.source) || "").toLowerCase();
+  if (["payroll", "opening_balance", "reconciliation", "depreciation", "qbo_import"].includes(src)) return true;
+  const kind = String((i && i.import_metadata && i.import_metadata.kind) || "").toLowerCase();
+  return ["payroll", "ap_payment", "ar_collection", "depreciation"].includes(kind);
+}
+
 export function runAnomalyDetection(invoices, recurring = [], now = new Date()) {
   const money = n => fmtSignedMoney(n);   // canonical cents (was ad-hoc whole-dollar)
   const daysAgo = d => (now - new Date(d)) / 86400000;
@@ -248,7 +261,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
 
   // 5. Large single transaction (> $2,500, not capitalized).
   const isCapitalized = i => String(i.gl_code || "")[0] === "1" || i.needs_depreciation || i.capitalized;
-  for (const i of expenses.filter(x => within(x.date, 95))) {
+  for (const i of expenses.filter(x => within(x.date, 95) && !isSystemPostedEntry(x))) {   // C196(4)
     const amt = Number(i.amount) || 0;
     if (amt > 2500 && !isCapitalized(i)) {
       push({ id: `large_txn:${i.id}`, type: "large_transaction", severity: "medium",
@@ -259,7 +272,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
   }
 
   // 6. Round number — exact multiple of $1,000 (possible estimate, not an actual).
-  for (const i of expenses.filter(x => within(x.date, 95))) {
+  for (const i of expenses.filter(x => within(x.date, 95) && !isSystemPostedEntry(x))) {   // C196(4)
     const amt = Number(i.amount) || 0;
     if (amt >= 1000 && amt % 1000 === 0) {
       push({ id: `round:${i.id}`, type: "round_number", severity: "low",

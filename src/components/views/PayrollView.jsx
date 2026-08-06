@@ -45,7 +45,7 @@ export default function PayrollView() {
                   setPayrollProcessing(false);
                   return;
                 }
-                const importRecord = { id:Date.now()+Math.random(), source:parsed.source||"Unknown", period:`${parsed.period_start} – ${parsed.period_end}`, pay_date:parsed.pay_date, total_gross:parsed.total_gross, total_net:parsed.total_net, total_employer_taxes:parsed.total_employer_taxes, journal_entries:parsed.journal_entries||[], employees:parsed.employees||[], imported_at:new Date().toISOString(), file_name:file.name, posted:false };
+                const importRecord = { id:Date.now()+Math.random(), _intakeId: pIntakeId, _fileName: file?.name || null, source:parsed.source||"Unknown", period:`${parsed.period_start} – ${parsed.period_end}`, pay_date:parsed.pay_date, total_gross:parsed.total_gross, total_net:parsed.total_net, total_employer_taxes:parsed.total_employer_taxes, journal_entries:parsed.journal_entries||[], employees:parsed.employees||[], imported_at:new Date().toISOString(), file_name:file.name, posted:false };
                 setPayrollImports(prev => [importRecord, ...prev]);
                 logAudit("payroll_parsed", `${parsed.source} payroll parsed: ${fmt(parsed.total_gross)} gross, ${(parsed.employees||[]).length} employees`);
                 storeDocument(file.name, null, "text/csv", "payroll", importRecord.id, ["payroll"], null, file);
@@ -94,6 +94,22 @@ export default function PayrollView() {
               const jeId = await persistMultiLineEntry(je);   // cutoff-guarded; refuses unbalanced
               if (!jeId) return;                              // failure already surfaced (e.g. pre-cutoff)
               setPayrollImports(prev => prev.map(p => p.id===imp.id ? {...p, posted:true} : p));
+              // C196(5) — the register is now REAL journal entries, so its intake row must say
+              // RECORDED (with the entry it became). Live: both May registers kept nagging
+              // "received but never recorded" after posting, because nothing closed the loop.
+              // Matched by the id we carried from parse time; falls back to filename+recent so a
+              // register routed here from another importer's drop zone is also closed out.
+              try {
+                if (imp._intakeId) {
+                  markIntake && markIntake(imp._intakeId, INTAKE_STATUS.RECORDED, { detail: `payroll posted — ${fmt(imp.total_gross)} gross`, journalEntryIds: [String(jeId)] });
+                } else if (currentCompany?.id && imp._fileName) {
+                  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+                  const { data: rows } = await supabase.from("document_intake")
+                    .select("id").eq("company_id", currentCompany.id).eq("filename", imp._fileName)
+                    .gte("received_at", since).order("received_at", { ascending: false }).limit(1);
+                  if (rows && rows[0]) markIntake && markIntake(rows[0].id, INTAKE_STATUS.RECORDED, { detail: `payroll posted — ${fmt(imp.total_gross)} gross`, journalEntryIds: [String(jeId)] });
+                }
+              } catch (e) { console.warn("[payroll] intake close-out skipped:", e?.message || e); }
               logAudit("payroll_posted", `${imp.source} payroll posted: ${fmt(imp.total_gross)} gross → Dr Salaries/Tax · Cr Cash/Payroll Taxes Payable`);
               try { await loadAllData(); } catch {}           // surface the posted entry
               showNotification(`Payroll posted: ${fmt(imp.total_gross)} gross ✓`);
