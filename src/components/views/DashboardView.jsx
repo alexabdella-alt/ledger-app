@@ -7,6 +7,7 @@ import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
+import { statementSummaryCopy } from "../../lib/workbench";
 import ClarificationFlow from "../ClarificationFlow";
 import TrustPanel from "./TrustPanel";
 import { t } from "../../lib/theme";
@@ -24,7 +25,16 @@ const drillLabel = (l) => {
 };
 
 export default function DashboardView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, glCash, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, bankMatch, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, companyDataLoaded, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, runDepreciationThrough, depreciationDueInfo, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, glCash, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, glDrilldown, setGlDrilldown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, bankMatch, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, companyDataLoaded, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, runDepreciationThrough, depreciationDueInfo, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat } = useERP();
+  // C197 — CPA cockpit vs client seat. Home is the ONE surface both seats share, so
+  // every link out of it that lands in the workbench must become plain status text for
+  // a client: a button that bounces you straight back is worse than no button at all.
+  const cockpit = navSeat ? navSeat.isReviewerSeat : true;
+  // THE ONE DOOR from Home into the cockpit. Every workbench destination goes through
+  // it, and it simply refuses for a client seat — so a gated link can never fire from
+  // the client experience even if a future edit forgets to hide the button. Enforced by
+  // grep (tests/iaCollapse.test.js): no direct setView("bank"|"matching"|…) in this file.
+  const goCockpit = (viewId, before) => { if (!cockpit) return; if (before) before(); setView(viewId); };
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   // Shared onion-layer drill navigation (drillStack) — drilling pushes a layer, Back pops
@@ -508,13 +518,23 @@ export default function DashboardView() {
                                   // Routed to Bank Import — matching/booking happens THERE (after the
                                   // user reviews), so there are no match numbers at upload time. Don't
                                   // fabricate a "Matched 0 of 0" summary; tell the truth + link there.
-                                  <span onClick={()=>setView("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
-                                    📄 Ready in Bank Import — review &amp; book your transactions there →
-                                  </span>
+                                  // C197: a client can't open Bank Import, so they get the same truth
+                                  // as status — what happened to their file and who has it next.
+                                  cockpit ? (
+                                    <span onClick={()=>goCockpit("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
+                                      📄 Ready in Bank Import — review &amp; book your transactions there →
+                                    </span>
+                                  ) : (
+                                    <span>📄 We've got your statement — your accountant will add these to your books.</span>
+                                  )
                                 ) : (
-                                  <span onClick={()=>setView("matching")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open matching detail">
-                                    ✓ Matched {item.result.matchedCount||0} of {item.result.txnCount||0} transactions — ${ (item.result.stillOpenTotal||0).toLocaleString("en-US",{minimumFractionDigits:2}) } in open items still unmatched{item.result.newBooked>0?` · ${item.result.newBooked} new booked`:""}{item.result.needsReview>0?` · ${item.result.needsReview} match${item.result.needsReview!==1?"es":""} to review`:""}
-                                  </span>
+                                  cockpit ? (
+                                    <span onClick={()=>goCockpit("matching")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open matching detail">
+                                      ✓ Matched {item.result.matchedCount||0} of {item.result.txnCount||0} transactions — ${ (item.result.stillOpenTotal||0).toLocaleString("en-US",{minimumFractionDigits:2}) } in open items still unmatched{item.result.newBooked>0?` · ${item.result.newBooked} new booked`:""}{item.result.needsReview>0?` · ${item.result.needsReview} match${item.result.needsReview!==1?"es":""} to review`:""}
+                                    </span>
+                                  ) : (
+                                    <span>{statementSummaryCopy({ total:item.result.txnCount||0, handled:(item.result.matchedCount||0)+(item.result.newBooked||0), needInput:item.result.needsReview||0 })}</span>
+                                  )
                                 )
                               )}
                               {item.status==="done" && item.type==="contract" && item.result && `✓ ${tc.label} · ${item.result.counterparty} · ${item.result.entries} record${item.result.entries===1?"":"s"} created`}
@@ -556,22 +576,22 @@ export default function DashboardView() {
                   {/* Bank reconciliation review prompt — opens the matching detail */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="bank_statement"&&q.result?.needsReview>0) && (
                     <div style={{ marginTop:12, background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ Some bank transactions need your review before they're added</div>
-                      <button onClick={()=>setView("matching")} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Matches →</button>
+                      <div style={{ fontSize:13, color:"var(--sc-warning)" }}>{cockpit ? "⚠ Some bank transactions need your review before they're added" : "A few things from your statement need a second look — your accountant is on it."}</div>
+                      {cockpit && <button onClick={()=>goCockpit("matching")} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Matches →</button>}
                     </div>
                   )}
                   {/* Contract review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="contract") && (
                     <div style={{ marginTop:8, background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"var(--sc-gold)" }}>📋 A contract is ready to record</div>
-                      <button onClick={()=>{ setView("contracts"); setContractView("list"); }} style={{ background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Contracts →</button>
+                      <div style={{ fontSize:13, color:"var(--sc-gold)" }}>{cockpit ? "📋 A contract is ready to record" : "📋 We've read your agreement — your accountant will record it."}</div>
+                      {cockpit && <button onClick={()=>goCockpit("contracts", ()=>setContractView("list"))} style={{ background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Contracts →</button>}
                     </div>
                   )}
                   {/* Unknown docs review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="unknown") && (
                     <div style={{ marginTop:8, background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"var(--sc-error)" }}>❓ Some documents need accountant review</div>
-                      <button onClick={()=>setView("review")} style={{ background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Now →</button>
+                      <div style={{ fontSize:13, color:"var(--sc-error)" }}>{cockpit ? "❓ Some documents need accountant review" : "❓ We couldn't tell what one of your files was — your accountant will take a look."}</div>
+                      {cockpit && <button onClick={()=>goCockpit("review")} style={{ background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Now →</button>}
                     </div>
                   )}
                 </div>
@@ -704,7 +724,10 @@ export default function DashboardView() {
               {/* ── ANOMALY DETECTION (Item 32) — below the metric cards ── */}
               {Array.isArray(anomalies) && anomalies.length > 0 && (() => {
                 const SEV = { high:{ c:"var(--sc-error)", bg:"var(--sc-error-soft)", b:"var(--sc-error-soft)" }, medium:{ c:"var(--sc-warning)", bg:"var(--sc-warning-soft)", b:"var(--sc-warning-soft)" }, low:{ c:"var(--sc-info)", bg:"var(--sc-info-soft)", b:"var(--sc-info-soft)" } };
-                const openTxn = (a) => { const inv=(invoices||[]).find(i=>String(i.id)===String((a.invoice_ids||[])[0])); if(inv){ setReturnTo && setReturnTo({view:"home"}); setSelectedInvoice(inv); setView("detail"); } else { setView("books"); } };
+                // C197: the transaction itself stays open to both seats (it's the client's own
+                // entry, reached from their own home page). The BOOKS fallback is cockpit-only —
+                // a client never gets bounced into the workbench because a lookup missed.
+                const openTxn = (a) => { const inv=(invoices||[]).find(i=>String(i.id)===String((a.invoice_ids||[])[0])); if(inv){ setReturnTo && setReturnTo({view:"home"}); setSelectedInvoice(inv); setView("detail"); } else { goCockpit("books"); } };
                 return (
                   <div style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
                     <div onClick={()=>setAnomExpanded(v=>!v)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
@@ -729,7 +752,9 @@ export default function DashboardView() {
                                   {/* Dismissal (with a required reason) is a reviewer action in the CPA Review
                                       queue — not a one-click here. These clear themselves once the underlying
                                       cause is fixed (auto-resolve). */}
-                                  <button onClick={()=>setView("review")} style={{ fontSize:12, fontWeight:600, color:"var(--sc-warning)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Review →</button>
+                                  {cockpit
+                                    ? <button onClick={()=>goCockpit("review")} style={{ fontSize:12, fontWeight:600, color:"var(--sc-warning)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Review →</button>
+                                    : <span style={{ fontSize:12, color:"var(--sc-text-2)" }}>Your accountant is taking a look at this.</span>}
                                 </div>
                               </div>
                             </div>
@@ -761,16 +786,16 @@ export default function DashboardView() {
                         {active.map((c,i)=>{
                           const ml = monthsLeft(c);
                           return (
-                            <div key={c.id||i} onClick={()=>{ setSelectedContract(c); setContractView("detail"); setView("contracts"); }}
-                              onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-                              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 20px", borderTop: i?"1px solid var(--sc-surface-2)":"none", cursor:"pointer" }}>
+                            <div key={c.id||i} onClick={cockpit ? ()=>goCockpit("contracts", ()=>{ setSelectedContract(c); setContractView("detail"); }) : undefined}
+                              onMouseEnter={cockpit ? (e=>e.currentTarget.style.background="var(--sc-surface-2)") : undefined} onMouseLeave={cockpit ? (e=>e.currentTarget.style.background="transparent") : undefined}
+                              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 20px", borderTop: i?"1px solid var(--sc-surface-2)":"none", cursor: cockpit?"pointer":"default" }}>
                               <div style={{ minWidth:0 }}>
                                 <div style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{c.counterparty||"Contract"}</div>
                                 <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{c.contract_type||"contract"}{ml!=null?` · ${ml} mo remaining`:""}</div>
                               </div>
                               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                                 <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmtMoney(c.payment_amount||0)}/mo</span>
-                                <span style={{ color:"var(--sc-text-mut)" }}>›</span>
+                                {cockpit && <span style={{ color:"var(--sc-text-mut)" }}>›</span>}
                               </div>
                             </div>
                           );

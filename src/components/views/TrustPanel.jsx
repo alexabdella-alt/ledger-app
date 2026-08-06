@@ -88,7 +88,10 @@ function TrustPanelNeutral({ headline, subtext }) {
 }
 
 export default function TrustPanel({ loading = false }) {
-  const { ownerTrust, onViewChange, setView } = useERP();
+  const { ownerTrust, onViewChange, setView, navSeat } = useERP();
+  // C197 — is this the CPA cockpit, or the client seat? (Absent context → cockpit,
+  // so nothing regresses for any surface that renders the panel outside ERP.)
+  const cockpit = navSeat ? navSeat.isReviewerSeat : true;
   // Paint the frame instantly: a shimmer skeleton while the panel's data is still loading,
   // so the reassurance card is present from first paint and its lines resolve in place —
   // never a blank gap, and never a false green while loading.
@@ -99,7 +102,9 @@ export default function TrustPanel({ loading = false }) {
 
   const { overall, headline, reviewedThrough, lines, nudge } = ownerTrust;
   const tone = TONE[overall] || TONE.attention;
-  const goReview = () => (onViewChange ? onViewChange("review") : setView && setView("review"));
+  // C197 — refuses for a client seat. The nudge already renders as status rather than
+  // a button there; this makes the refusal structural, not merely visual.
+  const goReview = () => { if (!cockpit) return; return onViewChange ? onViewChange("review") : setView && setView("review"); };
   const signedLabel = monthLabel(reviewedThrough);
 
   return (
@@ -128,14 +133,21 @@ export default function TrustPanel({ loading = false }) {
         <Line state={lines.correct.state} title="Nothing wrong" text={lines.correct.text} />
       </div>
 
-      {/* At most ONE gentle nudge (owner-actionable — a clarification to answer) */}
-      {nudge && (
+      {/* At most ONE gentle nudge (owner-actionable — a clarification to answer).
+          C197: the nudge points at the CPA's Review queue, which a client seat can't
+          open — so for a client it renders as STATUS, not a button. Same words, no
+          click that would bounce them straight back here. */}
+      {nudge && (cockpit ? (
         <button onClick={goReview}
           style={{ marginTop: 14, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 12, padding: "12px 16px", cursor: "pointer", textAlign: "left" }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)" }}>{lines.correct.text}</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-gold)", whiteSpace: "nowrap" }}>{nudge.text} →</span>
         </button>
-      )}
+      ) : (
+        <div style={{ marginTop: 14, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 12, padding: "12px 16px", textAlign: "left" }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)" }}>{lines.correct.text}</span>
+        </div>
+      ))}
     </div>
   );
 }

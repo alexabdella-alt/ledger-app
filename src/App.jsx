@@ -28,6 +28,7 @@ import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy } fro
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { onboardingSteps } from "./lib/onboarding";
+import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
 import { fileSha256Hex } from "./lib/contentHash";
@@ -327,6 +328,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // ATTESTER: admin or accountant (reviewer roles) — NOT the plain client-owner. The write
   // path AND the CPA UI share this so the button, the write, and the DB policy can't disagree.
   const isReviewer = canAttestPeriod(userRole);
+  // ── C197 IA COLLAPSE (★ NORTH STAR Phase 2) ────────────────────────────────
+  // The SEAT decides which walls exist. Reviewer seat = the CPA cockpit (every
+  // workbench surface); client seat = Home + Reports. Platform admins keep the
+  // cockpit so Support Mode still reaches everything (same bypass shape as
+  // `is_company_member`). `previewAsOwner` is the demo toggle: pure state, never
+  // persisted, changes ONLY what renders — never the role, never write access.
+  const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
+  const [previewAsOwner, setPreviewAsOwner] = useState(false);
+  const canPreviewAsOwner = isReviewerSeat({ role: userRole, isPlatformAdmin });
+  const navSeat = useMemo(
+    () => visibleNav({ role: userRole, isPlatformAdmin, previewAsOwner }),
+    [userRole, isPlatformAdmin, previewAsOwner]
+  );
 
   const [invoices, setInvoices] = useState([]);
   const invoicesRef = useRef([]); // always-current invoices for async lookups (e.g. doc relinking)
@@ -3115,6 +3129,21 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     notifTimerRef.current = setTimeout(() => setNotification(null), ms);
   };
 
+  // ── C197 ROUTE GUARD ───────────────────────────────────────────────────────
+  // A seat can arrive on a surface that isn't its own without ever clicking a
+  // tab: a restored `persistedView` from before the collapse, a notification
+  // deep-link, a company switch into a company where the role is different, or
+  // flipping the preview toggle while standing in the cockpit. In every case the
+  // answer is the same — go Home, in plain language. Never an error screen, and
+  // never a blank one. (Placed after `showNotification` so the toast is defined.)
+  useEffect(() => {
+    const to = navRedirect(view, { role: userRole, isPlatformAdmin, previewAsOwner });
+    if (!to || to === view) return;
+    setViewRaw(to);
+    onViewChange?.(to);
+    showNotification(GATED_VIEW_REDIRECT_COPY);
+  }, [view, userRole, isPlatformAdmin, previewAsOwner]); // eslint-disable-line
+
   const applyRule = (inv, ruleList) => {
     const rule = ruleList.find(r => r.vendor?.toLowerCase() === inv.vendor?.toLowerCase());
     if (!rule) return inv;
@@ -3652,7 +3681,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:route.to, result:{ routed:true, to:route.to }} : q));
             logUploadUpdate(item.upload_log_id, { status:"done", doc_type:route.to, result:{ routed:true } });
             markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `routed to ${route.to} importer` });   // terminal: in a visible queue, not lost
-            showNotification(`That looked like a ${TYPE_LABEL[route.to]} — routed it to the right importer.`);
+            if (navSeat.isReviewerSeat) showNotification(`That looked like a ${TYPE_LABEL[route.to]} — routed it to the right importer.`);   // C197: the client seat gets routeFileToType's plain-language confirmation instead
             return;
           }
           docType = "bank_statement";   // bank or unrecognized spreadsheet → bank flow
@@ -3668,7 +3697,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:docType, result:{ routed:true, to:docType }} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:docType, result:{ routed:true } });
           markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `routed to ${docType} importer` });   // terminal: in a visible queue
-          showNotification(`That looked like a ${TYPE_LABEL[docType]} — routed it to the right importer.`);
+          if (navSeat.isReviewerSeat) showNotification(`That looked like a ${TYPE_LABEL[docType]} — routed it to the right importer.`);   // C197: ditto — no "importer" language for a client
           return;
         }
 
@@ -3692,8 +3721,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"bank" }} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result:{ routed:true } });
           markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "routed to Bank Import — pending review/booking" });   // terminal: visible in Bank Import
-          showNotification("Bank statement uploaded — review & book it in Bank Import (Books → Bank Import).");
-          try { createNotification?.({ type:"bank_import", title:"Bank statement ready to import", description:"Open Bank Import to pick the account, review the matches, and book it.", link_view:"bank" }); } catch {}
+          // C197 — same fact, told to the seat that's listening. The client is not
+          // pointed at a tab they don't have, and their notification doesn't deep-link
+          // into one (the route guard would only bounce them back).
+          if (navSeat.isReviewerSeat) {
+            showNotification("Bank statement uploaded — review & book it in Bank Import (Books → Bank Import).");
+            try { createNotification?.({ type:"bank_import", title:"Bank statement ready to import", description:"Open Bank Import to pick the account, review the matches, and book it.", link_view:"bank" }); } catch {}
+          } else {
+            showNotification("Got it — we've saved your statement for your accountant to add to your books.");
+            try { createNotification?.({ type:"bank_import", title:"Your statement is in", description:"Your accountant will add these transactions to your books.", link_view:"home" }); } catch {}
+          }
           return;
         }
 
@@ -4339,7 +4376,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Send a file to the importer that matches its detected type. App-scope handlers
   // process directly; view-local importers (payroll, qbo) get the file stashed in
   // pendingImportFile and the view auto-consumes it on navigation.
+  //
+  // C197 — the importers for statements, payroll and QuickBooks are CPA surfaces. A
+  // CLIENT seat must never be walked into one: the file is still accepted and still
+  // stashed (nothing is lost, the CPA picks it up on their next visit), but we say so
+  // in plain language and stay put instead of navigating into a wall.
   const routeFileToType = (type, file) => {
+    if (!navSeat.isReviewerSeat && (type === "bank_statement" || type === "payroll" || type === "qbo")) {
+      setPendingImportFile({ type, file });
+      showNotification("Got it — we've saved that for your accountant to add to your books.");
+      return;
+    }
     if (type === "bank_statement") { setView("bank"); handleBankFile(file); }
     else if (type === "contract") { setView("contracts"); handleContractFile(file); }
     else if (type === "invoice") { setView("add"); handleUniversalUpload([file]); }
@@ -6331,11 +6378,10 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, loadStatementExceptions, logIntake, markIntake };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, loadStatementExceptions, logIntake, markIntake };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
-  // Only platform administrators see the Security tab / view.
-  const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
+  // (`isPlatformAdmin` is derived once at the top of ERP, alongside the seat — C197.)
   return (
     <ERPContext.Provider value={erpCtx}>
     <div style={{ fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", minHeight:"100vh", background:"var(--sc-bg)", color:"var(--sc-text)" }}>
@@ -6510,6 +6556,20 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:14 }}>
               <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
+              {/* C197 — PREVIEW AS OWNER. Renders the exact client experience without
+                  touching the role: one click in, one click back, nothing persisted.
+                  Only a reviewer seat can see it, and while it's on the label says
+                  plainly that this is a preview so nobody mistakes it for a lockout. */}
+              {canPreviewAsOwner && (
+                <button onClick={()=>setPreviewAsOwner(v=>!v)}
+                  title={previewAsOwner ? "Return to your full view" : "See exactly what the business owner sees"}
+                  style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px", borderRadius:9,
+                    background: previewAsOwner ? "var(--sc-warning-soft)" : "transparent",
+                    border:`1px solid ${previewAsOwner ? "var(--sc-warning)" : "var(--sc-border)"}`,
+                    color: previewAsOwner ? "var(--sc-warning)" : "var(--sc-text-mut)", cursor:"pointer", fontSize:13, fontWeight:500, whiteSpace:"nowrap", transition:"all .15s" }}>
+                  {previewAsOwner ? PREVIEW_AS_OWNER_EXIT_LABEL : PREVIEW_AS_OWNER_ENTER_LABEL}
+                </button>
+              )}
               <button onClick={()=>setView("settings")} title="Settings" aria-label="Settings"
                 style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px", borderRadius:9, background: SETTINGS_VIEWS.includes(view)?"var(--sc-gold-soft)":"transparent", border:`1px solid ${SETTINGS_VIEWS.includes(view)?"var(--sc-gold-line)":"var(--sc-border)"}`, color: SETTINGS_VIEWS.includes(view)?"var(--sc-gold)":"var(--sc-text-mut)", cursor:"pointer", transition:"all .15s" }}
                 onMouseEnter={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
@@ -6524,17 +6584,10 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
-          {/* Nav — 5 tabs */}
+          {/* Nav — C197: the tabs ARE the seat. Reviewer = the full cockpit;
+              client (and any reviewer previewing as owner) = Home + Reports. */}
           {(() => {
-            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","bank","recon","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
-            const REPORTS = ["reports"];
-            const tabs = [
-              { id:"home", label:"Home", group:["home","dashboard","add"] },
-              { id:"books", label:"Books", group:BOOKS },
-              { id:"reports", label:"Reports", group:REPORTS },
-              { id:"review", label:"Review", group:["review"] },   // O50 — the CPA's trust-layer cockpit
-              ...(isPlatformAdmin ? [{ id:"admin", label:"⚙ Admin", group:["admin"], admin:true }] : []),
-            ];
+            const tabs = navSeat.tabs;
             return (
               <div style={{ display:"flex", width:"100%", borderBottom:"1px solid var(--sc-border)", padding:"0 20px", gap:4 }}>
                 {tabs.map(tab => {
@@ -6583,11 +6636,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
 
           {/* Sub-nav for Books / Reports / Settings */}
           {(() => {
-            const BOOKS = ["books","invoices","ledger","ap","ar","money-in","money-out","matching","bank","recon","send-invoice","vendors","customers","payroll","docs","detail","contracts"];
-            const REPORTS = ["reports"];
             const SETTINGS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
             let subs = null;
-            if (BOOKS.includes(view)) subs = [["books","Transactions"],["books:contracts","Contracts"],["ap","Payables"],["vendors","Vendors"],["customers","Customers"],["send-invoice","Send Invoice"],["bank","Bank Import"],["recon","Reconcile"],["payroll","Payroll"],["docs","Documents"]];
+            // C197: the workbench sub-tabs come from the SEAT. A client seat gets an
+            // empty list, so the row doesn't render at all — the surfaces don't merely
+            // refuse to open, they have no client-facing existence.
+            if (BOOKS_GROUP.includes(view)) subs = navSeat.booksSubtabs.length ? navSeat.booksSubtabs : null;
             // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
             else if (SETTINGS.includes(view)) {
               subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import from QuickBooks"]];
