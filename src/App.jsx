@@ -31,7 +31,7 @@ import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
-import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT } from "./lib/statementLifecycle";
+import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
 import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
@@ -3742,10 +3742,37 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // than an inline panel. We stash the file (BankView consumes it on arrival via
           // pendingImportFile) and SURFACE the result where the user already is — a
           // queue link + a notification — instead of yanking them to another screen.
+          // ── C198·2 (a1) — THE DROP IS THE PIPELINE ────────────────────────────
+          // The ambiguity that forced C186's deferral (which account is this statement's
+          // offset?) only exists when there is a choice. With EXACTLY ONE bank account
+          // there is none: bind it and run the whole thing — parse, persist, book, match,
+          // except, and (a2) reconcile — right here. This is the missing half of
+          // "handled, not operated": the clean path has existed since C186; until now
+          // nothing client-facing could reach it.
+          const soleAccount = autoBindAccount(bankAccounts);
+          if (soleAccount) {
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"pipeline" }} : q));
+            logUploadUpdate(item.upload_log_id, { status:"processing", doc_type:"bank_statement", result:{ auto_bound: String(soleAccount.id) } });
+            // Same intake row, carried through — one arrival, one row. handleBankFile
+            // advances it to RECORDED (a4) once every line lands in the books.
+            await handleBankFile(file, soleAccount, { intakeId: item.intake_id });
+            return;
+          }
+          // 0 or 2+ accounts: a human still has to say which account this belongs to.
+          // Stash it — but DURABLY (a3): pendingImportFile is React state, so the live
+          // O86 loss was a statement evaporating on the next navigation. The stored
+          // document + the intake row are the pointer that survives.
           setPendingImportFile({ type: "bank_statement", file });
+          let stashDocId = null;
+          try {
+            const base64 = await fileToBase64(file);
+            const mediaType = file?.type || (/\.pdf$/i.test(file?.name || "") ? "application/pdf" : "text/csv");
+            const stored = await storeDocument(file.name, base64, mediaType, "bank_statement", null, ["bank_statement"], null, file);
+            stashDocId = (typeof stored === "string" && /^[0-9a-f-]{16,}$/i.test(stored)) ? stored : null;
+          } catch (e) { console.warn("[stash] document store skipped:", e?.message || e); }
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"bank" }} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result:{ routed:true } });
-          markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "routed to Bank Import — pending review/booking" });   // terminal: visible in Bank Import
+          markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: buildStashDetail({ fileName: file?.name }), documentId: stashDocId });   // (a3) the durable pointer
           // C197 — same fact, told to the seat that's listening. The client is not
           // pointed at a tab they don't have, and their notification doesn't deep-link
           // into one (the route guard would only bounce them back).
@@ -4546,7 +4573,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         }
       }
       const ready = statementReadyToReconcile({ statement: { ...st, status: advanced ? next : st.status }, lineStatuses, reconciliations });
-      return { advanced, ready, statement: st, lineStatuses };
+      return { advanced, ready, balanceSettled, statement: st, lineStatuses };
     } catch (e) { console.warn("[statement] re-evaluate skipped:", e?.message || e); return { advanced: false, ready: false, statement: null }; }
   };
 
@@ -4568,7 +4595,62 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     });
   };
 
-  const handleBankFile = async (file, account = null) => {
+  // ── C198·2 (a2) — THE MACHINE COMPLETES THE RECONCILIATION ──────────────────
+  // Reconciliation is ARITHMETIC (machine-verifiable); sign-off is JUDGMENT (human,
+  // always). Lower tiers have little or no CPA-review cadence, so the pipeline has
+  // to finish without a click. C194's rule is untouched and absolute: a row may only
+  // be created COMPLETE when the balance verifiably ties — this converts a PROVEN tie
+  // into a record, it never manufactures one. If the balance does not tie, NO row is
+  // written and the human session is offered instead (that's what it's for).
+  const completeReconciliationIfSettled = async (rv, { account = null } = {}) => {
+    if (!rv || !rv.statement) return false;
+    const st = rv.statement;
+    if (!shouldAutoCompleteReconciliation({ statement: st, lineStatuses: rv.lineStatuses || [], reconciliations, balanceSettled: rv.balanceSettled })) return false;
+    const acct = account || (bankAccounts || []).find(b => String(b.id) === String(st.bank_account_id));
+    const cashCode = (acct && acct.gl_code) || rc("cash");
+    const booksBalance = reconBooksBalance(invoicesRef.current, [cashCode], { asOf: st.period_end });
+    const difference = reconcileDifference({ statementBalance: st.stated_ending_balance, booksBalance, outstandingSigned: 0, unmatchedBankSigned: 0 });
+    // Belt and braces: re-assert the SAME gate ReconView's Complete button honours,
+    // against the same helper, immediately before the insert.
+    if (!canCompleteReconciliation({ statementBalance: String(st.stated_ending_balance == null ? "" : st.stated_ending_balance), difference })) return false;
+    await completePipelineReconciliation({
+      account: acct || { id: st.bank_account_id, name: "account" },
+      periodStart: st.period_start, periodEnd: st.period_end,
+      statementBalance: st.stated_ending_balance, booksBalance, difference, outstandingBooks: [],
+    });
+    // The auto-vs-manual marker lives in the AUDIT LOG (no new column, no migration):
+    // completePipelineReconciliation already stamps `auto: true`, and this second row
+    // carries the plain-language sentence an owner can read.
+    logAudit(AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail({ monthLabel: periodMonthLabel ? periodMonthLabel(st.period_start) : st.period_start, accountName: acct && acct.name }), null, { statement_id: String(st.id), period: `${st.period_start}→${st.period_end}`, auto: true });
+    try { await loadAllData(); } catch {}
+    return true;
+  };
+
+  // The single "what happens after a statement's lines are all settled" decision,
+  // shared by every path (pipeline run, first-pass manual booking, re-upload):
+  // tie → the machine reconciles; no tie → the CPA session is offered. Also advances
+  // the INTAKE row to RECORDED (a4) — the un-narrowed half of O86 (i), where finished
+  // work stayed 'held' forever and the completeness net kept calling it parked.
+  const settleStatementAftermath = async (statementId, { account = null, intakeId = null } = {}) => {
+    const rv = await reevaluateStatement(statementId, { account });
+    if (!rv || !rv.statement) return { reconciled: false, offered: false };
+    let reconciled = false;
+    if (rv.ready) {
+      reconciled = await completeReconciliationIfSettled(rv, { account });
+      if (!reconciled) offerReconciliation(rv.statement, { account });
+    }
+    if (intakeId && intakeAdvanceFromLines(rv.lineStatuses || [])) {
+      try {
+        const { data: jeLines } = await supabase.from("bank_statement_lines")
+          .select("journal_entry_id").eq("company_id", currentCompany.id).eq("statement_id", statementId);
+        const jeIds = [...new Set((jeLines || []).map(l => l.journal_entry_id).filter(Boolean).map(String))];
+        markIntake(intakeId, INTAKE_STATUS.RECORDED, { detail: `statement recorded — ${(rv.lineStatuses || []).length} transaction(s) in the books`, journalEntryIds: jeIds });
+      } catch (e) { console.warn("[intake] statement advance skipped:", e?.message || e); }
+    }
+    return { reconciled, offered: rv.ready && !reconciled, rv };
+  };
+
+  const handleBankFile = async (file, account = null, { intakeId: callerIntakeId = null } = {}) => {
     if (!file) return;
     const v = validateUpload(file, "bank");   // size + type guard (CR-34)
     if (!v.ok) { showNotification(v.error, "error"); return; }
@@ -4577,8 +4659,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // non-universal-upload path) is "accounted for" too. Marked terminal (HELD) once
     // it produces reviewable transactions; if processing throws it stays non-terminal
     // → surfaced by the completeness net (fail-safe).
-    const bankIntakeId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
-    logIntake(bankIntakeId, file, "bank");
+    // C198·2 (a1) — when the universal drop hands the file over it ALREADY logged an
+    // intake row; reuse it so one arrival is one row (a second would look like a second
+    // document to the completeness net) and so (a4) advances the row the drop created.
+    const bankIntakeId = callerIntakeId || ((typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()));
+    if (!callerIntakeId) logIntake(bankIntakeId, file, "bank");
     // The statement belongs to a specific account — its GL is the offset for direct
     // bookings (Cr 1000 for a bank account, Cr 2200 for a credit card), not hardcoded
     // Cash. Falls back to Cash if no account was selected (legacy/no accounts).
@@ -4594,6 +4679,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setBankTransactions([]);
     setBankProgress(10);
     let pipelineRan = false, pipelineRemaining = 0;   // C190 — did the auto-pipeline run, and how many lines still need a human?
+    let pipelineAutoReconciled = false, pipelineBooked = 0, pipelineTotal = 0;   // C198·2 — what the owner is told at the end
 
     try {
       let fileContent = "";
@@ -4737,6 +4823,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               const rem = Array.isArray(remaining) ? remaining : [];
               setBankTransactions(rem);
               pipelineRan = true; pipelineRemaining = rem.length;   // C190 — keep the review screen up if lines remain
+              pipelineTotal = stampedLines.length; pipelineBooked = stampedLines.length - rem.length;   // C198·2 — the owner sentence
             } catch (e) { console.warn("[pipeline] run skipped:", e?.message || e); }
           }
           // C193 — AFTER the run, retire prior same-content uploads for this account so their
@@ -4763,14 +4850,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // re-derive its status from the ledger, and when every line is already in the
           // books, OFFER the reconciliation instead of demanding the file a third time.
           try {
-            const rv = await reevaluateStatement(statementId, { account });
-            if (rv.ready) offerReconciliation(rv.statement, { account });
+            const after = await settleStatementAftermath(statementId, { account, intakeId: bankIntakeId });
+            if (after.reconciled) pipelineAutoReconciled = true;
           } catch (e) { console.warn("[bank_statements] re-evaluate skipped:", e?.message || e); }
         }
       } catch (e) { console.warn("[bank_statements] persist call skipped:", e?.message || e); }
       setBankProgress(100);
-      markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: `bank statement parsed — ${withIds.length} line(s) in Bank Import review` });   // terminal: accounted for
-      showNotification(`${withRules.length} transactions imported — ${withRules.filter(t=>t.needs_review).length} need review`);
+      // C198·2 (a4) — only mark HELD when something still needs a human; a fully-settled
+      // statement was advanced to RECORDED by settleStatementAftermath above.
+      if (!(pipelineRan && pipelineRemaining === 0)) markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: `bank statement parsed — ${withIds.length} line(s) in Bank Import review` });
+      // C198·2 (a1) — the OWNER hears what happened to their money, not how many rows a
+      // review table holds. The reviewer keeps the workbench count they actually use.
+      if (pipelineRan && !navSeat.isReviewerSeat) {
+        showNotification(dropZoneOutcomeCopy({ total: pipelineTotal, booked: pipelineBooked, exceptions: pipelineRemaining, reconciled: pipelineAutoReconciled }));
+      } else {
+        showNotification(`${withRules.length} transactions imported — ${withRules.filter(t=>t.needs_review).length} need review`);
+      }
       // The review screen derives each line's booking fate SYNCHRONOUSLY (BankView's deterministic
       // bankPreview useMemo) — no async preview call needed; the booking re-derives the same matches.
     } catch(e) {
@@ -5085,8 +5180,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       try { await loadAllData(); } catch {}
       await linkStatementLinesAfterBooking(stmtId, account);   // C185 — advance statement-line status + stamp bank_account_id
       try { await loadStatementExceptions(currentCompany.id); } catch {}   // C195(1) — resolved lines must leave the Review queue immediately
-      // C198·1 (i) — the statement itself must advance too, not just its lines.
-      try { const rv = await reevaluateStatement(stmtId, { account }); if (rv.ready) offerReconciliation(rv.statement, { account }); } catch {}
+      // C198·1 (i) + C198·2 (a2/a4) — advance the statement, then either reconcile it
+      // automatically (verified tie) or offer the session; advance the intake row too.
+      try { await settleStatementAftermath(stmtId, { account }); } catch {}
       showNotification(
         bookingToastCopy({ booked, failed }),                              // C195(6) — count what actually happened
         failed === 0 ? "success" : "error"
@@ -5144,8 +5240,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     try { await loadAllData(); } catch {}
     await linkStatementLinesAfterBooking(stmtId, account);   // C185 — advance statement-line status (booked/matched) + stamp bank_account_id
     try { await loadStatementExceptions(currentCompany.id); } catch {}   // C195(1) — resolved lines must leave the Review queue immediately
-    // C198·1 (i) — same first-pass advance on the A/P-matching branch.
-    try { const rv = await reevaluateStatement(stmtId, { account }); if (rv.ready) offerReconciliation(rv.statement, { account }); } catch {}
+    // C198·1 (i) + C198·2 (a2/a4) — same on the A/P-matching branch.
+    try { await settleStatementAftermath(stmtId, { account }); } catch {}
     const failN = clearFailed + bookFailed + payrollIncompleteFailed;
     const totalBooked = booked + payrollIncompleteBooked;
     // Surface the matcher breakdown so the deterministic vs LLM contribution is visible WITHOUT

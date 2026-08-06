@@ -190,3 +190,93 @@ export function statementForPeriod(statements = [], { accountId = null, periodSt
 export const READY_TO_RECONCILE_COPY = "Everything on this statement is in your books — the last step is checking it against your bank.";
 export const OPEN_RECONCILE_LABEL = "Check it against the bank →";
 export const STATEMENT_COMPLETED_AUDIT = "statement_completed_first_pass";
+
+// ════════════════════════════════════════════════════════════════════════════
+// C198·2 — THE DROP *IS* THE PIPELINE (§11 ★ O86 (a)).
+//
+// C186 deferred account binding because a statement's offset account can't be
+// read off the file (bank Cash vs card Credit Card), and C197 turned that
+// deferral into the client's entire experience: a drop on Home only ever
+// STASHED. But the ambiguity that forced the deferral only exists when there is
+// something to be ambiguous ABOUT. A company with exactly ONE bank account has
+// no choice to make — so the drop can bind it and run the whole pipeline.
+//
+// DESIGN DECISION (Alex, 2026-08-06): when the pipeline completes and the
+// balance ties, the MACHINE completes the reconciliation. Lower tiers have
+// reduced or no CPA-review cadence, so the pipeline must function without a CPA
+// click. Reconciliation is ARITHMETIC (machine-verifiable); SIGN-OFF is
+// JUDGMENT (human, always). C194's gate applies unchanged: a reconciliation row
+// may only be created complete when the balance verifiably ties — auto-complete
+// converts a PROVEN tie into a record, it never manufactures one.
+// ════════════════════════════════════════════════════════════════════════════
+
+// (a1) The account a dropped statement binds to, or null to fall back to the
+// stash. EXACTLY one account = no ambiguity = auto-bind. Zero accounts (nothing
+// to bind) and 2+ (a real choice only a human can make) both decline. An account
+// without an id can't be bound to anything, so it doesn't count.
+export function autoBindAccount(bankAccounts = []) {
+  const usable = (bankAccounts || []).filter((b) => b && b.id);
+  return usable.length === 1 ? usable[0] : null;
+}
+
+// (a2) May the machine COMPLETE the reconciliation itself? Every condition must
+// hold: all lines in the ledger, the balance verifiably ties, and no completed
+// reconciliation already covers the period (never a duplicate record). This is
+// deliberately stricter than `statementReadyToReconcile`, which only decides
+// whether to OFFER a human session — offering asks, completing asserts.
+export function shouldAutoCompleteReconciliation({ statement = {}, lineStatuses = [], reconciliations = [], balanceSettled = false } = {}) {
+  if (!balanceSettled) return false;                       // C194: no tie, no row. Absolute.
+  return statementReadyToReconcile({ statement, lineStatuses, reconciliations });
+}
+
+// (a4) The intake ledger's own advance. A statement whose every line is in the
+// ledger has been RECORDED, not merely HELD — the un-narrowed half of O86 (i):
+// the intake row was left terminal-but-held forever, so the completeness net kept
+// describing finished work as parked. Lines still open → stay HELD (honest).
+export function intakeAdvanceFromLines(lineStatuses = []) {
+  return allLinesSettled(lineStatuses) ? "recorded" : null;
+}
+
+// (a1) OWNER-SEAT NARRATION. What the person who dropped the file is told. No
+// workbench concepts, no jargon, no counts of things they don't operate — the
+// outcome, in the words they'd use. `reconciled` is the whole point of the
+// promise, so it earns the second clause only when it actually happened.
+export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, reconciled = false } = {}) {
+  const t = Math.max(0, Number(total) || 0);
+  const n = Math.max(0, Number(exceptions) || 0);
+  const b = Math.max(0, Number(booked) || 0);
+  if (!t) return "We couldn't find any transactions on that statement — your accountant will take a look.";
+  if (n === 0) {
+    const tail = reconciled ? ", and everything matches your bank to the penny." : ".";
+    return `All ${t} transaction${t === 1 ? "" : "s"} from your statement ${t === 1 ? "is" : "are"} in your books${tail}`;
+  }
+  return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} your accountant's eyes first.`;
+}
+
+// (a3) THE STASH THAT SURVIVES. `pendingImportFile` is in-memory React state, so a
+// statement dropped on Home is GONE the moment the user navigates (live loss, O86
+// (a)). The durable pointer is the intake row that already exists for every
+// arrival (047): status HELD + a stored document_id + this marker. No new table.
+export const STASH_DETAIL_MARKER = "statement_waiting";
+
+export function buildStashDetail({ fileName = null } = {}) {
+  return `${STASH_DETAIL_MARKER}: ${fileName || "bank statement"} waiting to be added to the books`;
+}
+
+// The statements still waiting, newest first — what Bank Import offers to pick up.
+// A row only qualifies while it is STILL held: once the pipeline records it the
+// status moves to 'recorded' (a4) and it drops out of here by itself.
+export function pendingStatementStashes(intakeRows = []) {
+  return (intakeRows || [])
+    .filter((r) => r && String(r.status) === "held_for_review" && r.document_id
+      && String(r.detail || "").includes(STASH_DETAIL_MARKER))
+    .slice()
+    .sort((a, b) => String(b.received_at || "").localeCompare(String(a.received_at || "")));
+}
+
+export const STASH_WAITING_COPY = "You dropped a statement we haven't added yet.";
+export const STASH_PICKUP_LABEL = "Pick up where you left off →";
+export const AUTO_RECONCILED_AUDIT = "reconciliation_auto_completed";
+export function autoReconciledAuditDetail({ monthLabel = null, accountName = null } = {}) {
+  return `Checked ${monthLabel || "the period"} against your bank automatically — your statement matched your books exactly${accountName ? ` (${accountName})` : ""}`;
+}

@@ -1,4 +1,6 @@
 import React from "react";
+import { pendingStatementStashes, STASH_WAITING_COPY, STASH_PICKUP_LABEL } from "../../lib/statementLifecycle";
+import { fetchStashRows } from "../../lib/documentIntake";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate, fmtSignedMoney } from "../../lib/format";
@@ -11,6 +13,37 @@ export default function BankView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, rc, rn, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, reconciliations } = useERP();
   // O83 opening-balance proposal — confirm/adjust the statement-derived starting balance.
+  // C198·2 (a3) — statements dropped on Home while the account was ambiguous. Read from
+  // the INTAKE ledger (047), which already carries the stored document id, so the pointer
+  // survives navigation and sessions. A stash disappears by itself once it's recorded.
+  const [waitingStashes, setWaitingStashes] = React.useState([]);
+  const [stashBusy, setStashBusy] = React.useState(false);
+  React.useEffect(() => {
+    if (!currentCompany?.id) { setWaitingStashes([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchStashRows(supabase, currentCompany.id);
+        if (!cancelled) setWaitingStashes(pendingStatementStashes((res && res.rows) || []));
+      } catch { if (!cancelled) setWaitingStashes([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [currentCompany?.id, bankStep, bankProcessing]);
+  // Fetch the stored bytes back out and hand them to the SAME pipeline a fresh drop uses —
+  // carrying the original intake row, so one arrival stays one row.
+  const pickUpStash = async (stash) => {
+    if (!stash || !stash.document_id) return;
+    setStashBusy(true);
+    try {
+      const { data: doc } = await supabase.from("documents").select("name, mime_type, storage_path").eq("id", stash.document_id).eq("company_id", currentCompany.id).maybeSingle();
+      if (!doc || !doc.storage_path) { showNotification("We couldn't find that file — please add it again.", "error"); return; }
+      const { data: blob, error } = await supabase.storage.from("documents").download(doc.storage_path);
+      if (error || !blob) { showNotification("We couldn't open that file — please add it again.", "error"); return; }
+      const file = new File([blob], doc.name || stash.filename || "statement", { type: doc.mime_type || blob.type });
+      await handleBankFile(file, importAccount, { intakeId: stash.id });
+    } catch (e) { console.warn("[stash] pickup failed:", e?.message || e); showNotification("We couldn't open that file — please add it again.", "error"); }
+    finally { setStashBusy(false); }
+  };
   const [obAdjust, setObAdjust] = React.useState(null);   // null = use proposed amount; else the adjusted value
   const [obBusy, setObBusy] = React.useState(false);
   // Which account this statement belongs to — its GL is the offset for direct
@@ -265,6 +298,22 @@ export default function BankView() {
                         Cancel
                       </button>
                     </div>
+                  </div>
+                )}
+                {/* C198·2 (a3) — THE STASH THAT SURVIVED. A statement dropped on Home when
+                    the account was ambiguous used to live in React state and evaporate on the
+                    next navigation (live loss, O86). Its intake row + stored document are a
+                    durable pointer, so it can be picked up later — even in another session. */}
+                {!pendingBankFile && waitingStashes.length > 0 && (
+                  <div style={{ background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold)", borderRadius:14, padding:"14px 18px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+                    <div>
+                      <div style={{ fontSize:13.5, fontWeight:600, color:"var(--sc-text)" }}>{STASH_WAITING_COPY}</div>
+                      <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:2 }}>{waitingStashes[0].filename || "Bank statement"}</div>
+                    </div>
+                    <button disabled={stashBusy} onClick={()=>pickUpStash(waitingStashes[0])}
+                      style={{ padding:"8px 14px", borderRadius:9, background: stashBusy?"var(--sc-border)":"var(--sc-gold)", border:"none", color: stashBusy?"var(--sc-text-mut)":"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor: stashBusy?"wait":"pointer", flexShrink:0 }}>
+                      {stashBusy ? "Opening…" : STASH_PICKUP_LABEL}
+                    </button>
                   </div>
                 )}
                 {!pendingBankFile &&

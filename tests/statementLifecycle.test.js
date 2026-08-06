@@ -175,16 +175,17 @@ describe("(wiring) the lifecycle is called on the paths that were dead", () => {
   const review = fs.readFileSync(new URL("../src/components/views/ReviewView.jsx", import.meta.url), "utf8");
   const recon = fs.readFileSync(new URL("../src/components/views/ReconView.jsx", import.meta.url), "utf8");
 
-  it("(i) both first-pass booking paths re-evaluate the statement afterwards", () => {
-    const calls = app.match(/await reevaluateStatement\(stmtId, \{ account \}\)/g) || [];
+  it("(i) both first-pass booking paths settle the statement afterwards", () => {
+    const calls = app.match(/await settleStatementAftermath\(stmtId, \{ account \}\)/g) || [];
     expect(calls.length).toBe(2);                       // the no-matching branch AND the A/P-matching branch
+    expect(app).toMatch(/const rv = await reevaluateStatement\(statementId, \{ account \}\);/);   // …which re-derives the status
     expect(app).toMatch(/statement:advance-first-pass/);  // …through a CHECKED write (C192)
   });
 
   it("(j) the re-upload path consults planStatementReupload and re-evaluates the new owner row", () => {
     expect(app).toMatch(/const plan = planStatementReupload\(\{ existing: prior/);
     expect(app).toMatch(/if \(plan\.reevaluate\) await reevaluateStatement\(prior\.id/);
-    expect(app).toMatch(/const rv = await reevaluateStatement\(statementId, \{ account \}\);\s*\n\s*if \(rv\.ready\) offerReconciliation/);
+    expect(app).toMatch(/const after = await settleStatementAftermath\(statementId, \{ account, intakeId: bankIntakeId \}\);/);
     expect(app).toMatch(/await supersedePriorStatements\(priorSameHashIds, statementId\);/);   // C193 path still there
   });
 

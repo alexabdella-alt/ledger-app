@@ -149,6 +149,11 @@ export async function detectFileType(file) {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" }).slice(0, 30);
       const text = rows.map(r => (Array.isArray(r) ? r.join(",") : "")).join("\n");
+      // C198(g): garbage bytes don't always THROW — xlsx can hand back a workbook with
+      // no readable cells, which previously fell through to an unknown carrying no
+      // reason at all. Same outcome, but now it says why (an unreadable file is a fact
+      // worth stating, not a silent shrug). Routing is unchanged either way.
+      if (!/[A-Za-z0-9]/.test(text)) return { type: "unknown", confidence: "none", signals: {}, reason: "xlsx parse produced no readable rows" };
       return detectFromText(text, name);
     } catch {
       return { type: "unknown", confidence: "none", signals: {}, reason: "xlsx parse failed" };

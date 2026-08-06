@@ -117,6 +117,21 @@ export async function fetchIntakeRows(db, companyId) {
   } catch (e) { return { ok: false, rows: [], error: String(e?.message || e) }; }
 }
 
+// C198·2 (a3) — the rows a DURABLE stash needs: a statement dropped on Home while the
+// account was still ambiguous. fetchIntakeRows deliberately selects a narrow column set for
+// the completeness reconcile, so this is its own query rather than a widening of that one
+// (its consumers must not start paying for columns they don't read).
+export async function fetchStashRows(db, companyId) {
+  if (!db || !companyId) return { ok: false, rows: [] };
+  try {
+    const { data, error } = await db.from("document_intake")
+      .select("id, status, detail, document_id, filename, received_at")
+      .eq("company_id", companyId).eq("status", "held_for_review");
+    if (error) return { ok: false, rows: [], error: error.message };
+    return { ok: true, rows: data || [] };
+  } catch (e) { return { ok: false, rows: [], error: String(e?.message || e) }; }
+}
+
 // sha-256 of a File's bytes (browser) — identity + dupe detection. Best-effort: returns null
 // if the platform lacks SubtleCrypto, so intake logging never blocks on it.
 export async function hashFile(file) {
