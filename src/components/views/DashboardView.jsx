@@ -8,6 +8,7 @@ import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
+import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
 import ClarificationFlow from "../ClarificationFlow";
 import TrustPanel from "./TrustPanel";
 import { t } from "../../lib/theme";
@@ -513,7 +514,29 @@ export default function DashboardView() {
                                 if (r.needsClarification > 0 && pendingReview) txt += ` · ${r.needsClarification} need${r.needsClarification===1 ? "s" : ""} your review`;
                                 return txt;
                               })()}
+                              {item.status==="processing" && item.type==="bank_statement" && item.result?.to==="pipeline" && (
+                                <span>Adding these to your books…</span>
+                              )}
                               {item.status==="done" && item.type==="bank_statement" && item.result && (
+                                // C198·2b — a PIPELINE result narrates what the pipeline did. This
+                                // must come FIRST: the live repro rendered the stash sentence ("your
+                                // accountant will add these") over a run that had already booked all
+                                // 21 lines, because a pipeline result has no txnCount and fell into
+                                // the routed-to-Bank-Import fallback below. That fallback is now
+                                // unreachable for to:"pipeline".
+                                item.result.to === "pipeline" ? (
+                                  cockpit ? (
+                                    (item.result.exceptions || 0) > 0 ? (
+                                      <span onClick={()=>goCockpit("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
+                                        {statementSummaryCopy({ total:item.result.total||0, handled:(item.result.total||0)-(item.result.exceptions||0), needInput:item.result.exceptions||0 })} →
+                                      </span>
+                                    ) : (
+                                      <span>{statementSummaryCopy({ total:item.result.total||0, handled:(item.result.total||0)-(item.result.exceptions||0), needInput:item.result.exceptions||0 })}</span>
+                                    )
+                                  ) : (
+                                    <span>{dropZoneOutcomeCopy({ total:item.result.total||0, booked:item.result.booked||0, exceptions:item.result.exceptions||0, reconciled:!!item.result.reconciled, alreadyReconciled:!!item.result.alreadyReconciled })}</span>
+                                  )
+                                ) :
                                 item.result.txnCount == null ? (
                                   // Routed to Bank Import — matching/booking happens THERE (after the
                                   // user reviews), so there are no match numbers at upload time. Don't
@@ -560,7 +583,7 @@ export default function DashboardView() {
                               </span>
                             )}
                             {item.status==="done" && !pendingReview && <span style={{ fontSize:11, color:"var(--sc-success)", background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", borderRadius:20, padding:"3px 10px" }}>Done</span>}
-                            {item.status==="error" && <span style={{ fontSize:11, color:"var(--sc-error)", background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:20, padding:"3px 10px" }}>Error</span>}
+                            {item.status==="error" && <span style={{ fontSize:11, color:"var(--sc-error)", background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:20, padding:"3px 10px" }}>{item.result?.failed && item.result?.to==="pipeline" ? "Needs a look" : "Error"}</span>}
                           </div>
                         </div>
                       );

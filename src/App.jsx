@@ -31,7 +31,7 @@ import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
-import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
+import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
 import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
@@ -3751,11 +3751,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // nothing client-facing could reach it.
           const soleAccount = autoBindAccount(bankAccounts);
           if (soleAccount) {
-            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"pipeline" }} : q));
+            // C198·2b — the tile said "Done" beside the stash sentence while the pipeline
+            // was still booking, because this branch stamped 'done' BEFORE awaiting and
+            // nothing wrote the result back. Order it honestly: PROCESSING first…
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"processing", type:"bank_statement", result:{ routed:true, to:"pipeline", running:true }} : q));
             logUploadUpdate(item.upload_log_id, { status:"processing", doc_type:"bank_statement", result:{ auto_bound: String(soleAccount.id) } });
             // Same intake row, carried through — one arrival, one row. handleBankFile
             // advances it to RECORDED (a4) once every line lands in the books.
-            await handleBankFile(file, soleAccount, { intakeId: item.intake_id });
+            try {
+              const outcome = await handleBankFile(file, soleAccount, { intakeId: item.intake_id });
+              // …and only NOW is it done — stamped with what actually happened, so the queue
+              // line renders the pipeline's own truth instead of the stash copy it replaced.
+              setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"pipeline", ...(outcome || { ran:false }) }} : q));
+              logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result: outcome || { ran:false } });
+            } catch (e) {
+              // Never "done" on a throw. The line says something needs a look, and the
+              // intake row stays non-terminal so the completeness net still sees it.
+              console.error("[pipeline] auto-run failed:", e);
+              setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", type:"bank_statement", result:{ routed:true, to:"pipeline", failed:true }} : q));
+              logUploadUpdate(item.upload_log_id, { status:"error", doc_type:"bank_statement", result:{ failed:true, error: String(e?.message || e) } });
+            }
             return;
           }
           // 0 or 2+ accounts: a human still has to say which account this belongs to.
@@ -4639,6 +4654,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       reconciled = await completeReconciliationIfSettled(rv, { account });
       if (!reconciled) offerReconciliation(rv.statement, { account });
     }
+    // C198·2b — WHY it wasn't reconciled on this run matters to the owner: "already
+    // checked" is a good outcome, "not checked" is a pending one. Read the coverage fact
+    // directly rather than inferring it from `ready` (which is false for BOTH reasons).
+    const alreadyReconciled = !reconciled && reconciliationCoversStatement(reconciliations, rv.statement);
     if (intakeId && intakeAdvanceFromLines(rv.lineStatuses || [])) {
       try {
         const { data: jeLines } = await supabase.from("bank_statement_lines")
@@ -4647,7 +4666,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         markIntake(intakeId, INTAKE_STATUS.RECORDED, { detail: `statement recorded — ${(rv.lineStatuses || []).length} transaction(s) in the books`, journalEntryIds: jeIds });
       } catch (e) { console.warn("[intake] statement advance skipped:", e?.message || e); }
     }
-    return { reconciled, offered: rv.ready && !reconciled, rv };
+    return { reconciled, alreadyReconciled, offered: rv.ready && !reconciled, rv };
   };
 
   const handleBankFile = async (file, account = null, { intakeId: callerIntakeId = null } = {}) => {
@@ -4679,7 +4698,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setBankTransactions([]);
     setBankProgress(10);
     let pipelineRan = false, pipelineRemaining = 0;   // C190 — did the auto-pipeline run, and how many lines still need a human?
-    let pipelineAutoReconciled = false, pipelineBooked = 0, pipelineTotal = 0;   // C198·2 — what the owner is told at the end
+    let pipelineAutoReconciled = false, pipelineAlreadyReconciled = false, pipelineBooked = 0, pipelineTotal = 0;   // C198·2 — what the owner is told at the end
 
     try {
       let fileContent = "";
@@ -4852,6 +4871,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           try {
             const after = await settleStatementAftermath(statementId, { account, intakeId: bankIntakeId });
             if (after.reconciled) pipelineAutoReconciled = true;
+            if (after.alreadyReconciled) pipelineAlreadyReconciled = true;
           } catch (e) { console.warn("[bank_statements] re-evaluate skipped:", e?.message || e); }
         }
       } catch (e) { console.warn("[bank_statements] persist call skipped:", e?.message || e); }
@@ -4862,7 +4882,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C198·2 (a1) — the OWNER hears what happened to their money, not how many rows a
       // review table holds. The reviewer keeps the workbench count they actually use.
       if (pipelineRan && !navSeat.isReviewerSeat) {
-        showNotification(dropZoneOutcomeCopy({ total: pipelineTotal, booked: pipelineBooked, exceptions: pipelineRemaining, reconciled: pipelineAutoReconciled }));
+        showNotification(dropZoneOutcomeCopy({ total: pipelineTotal, booked: pipelineBooked, exceptions: pipelineRemaining, reconciled: pipelineAutoReconciled, alreadyReconciled: pipelineAlreadyReconciled }));
       } else {
         showNotification(`${withRules.length} transactions imported — ${withRules.filter(t=>t.needs_review).length} need review`);
       }
@@ -4879,6 +4899,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // so the reduced table renders them (same table, suggested GL + Clears-A/P badge). Only reset
     // to the upload state when nothing remains (all handled) or the manual flow (no pipeline).
     setBankStep(pipelineRan && pipelineRemaining > 0 ? "review" : null);
+    // C198·2b — hand the OUTCOME back to the caller. The universal drop stamped its queue
+    // tile 'done' before this function had done anything (live: "Done" beside the old stash
+    // sentence while the pipeline was still booking), because there was nothing to wait for
+    // and nothing to write back. Now there is. undefined = the pipeline didn't run (manual
+    // flow and every early return are unchanged).
+    if (!pipelineRan) return undefined;
+    return { ran: true, total: pipelineTotal, booked: pipelineBooked, exceptions: pipelineRemaining, reconciled: pipelineAutoReconciled, alreadyReconciled: pipelineAlreadyReconciled };
   };
 
   // Book the reviewed bank/card lines (O69 A/C/D). `account` is the source the statement

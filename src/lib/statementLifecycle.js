@@ -241,13 +241,21 @@ export function intakeAdvanceFromLines(lineStatuses = []) {
 // workbench concepts, no jargon, no counts of things they don't operate — the
 // outcome, in the words they'd use. `reconciled` is the whole point of the
 // promise, so it earns the second clause only when it actually happened.
-export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, reconciled = false } = {}) {
+// `reconciled` = the machine completed the check on THIS run. `alreadyReconciled` = it
+// didn't, because the month had ALREADY been checked (the coverage decline in
+// shouldAutoCompleteReconciliation). Those are different facts and the owner deserves
+// the right one: without the second, a clean run onto an already-reconciled month drops
+// the tail entirely and undersells to "we filed your paperwork". NEITHER clause is ever
+// rendered on a guess — both are passed in only where the coverage fact is actually known.
+export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, reconciled = false, alreadyReconciled = false } = {}) {
   const t = Math.max(0, Number(total) || 0);
   const n = Math.max(0, Number(exceptions) || 0);
   const b = Math.max(0, Number(booked) || 0);
   if (!t) return "We couldn't find any transactions on that statement — your accountant will take a look.";
   if (n === 0) {
-    const tail = reconciled ? ", and everything matches your bank to the penny." : ".";
+    const tail = reconciled ? ", and everything matches your bank to the penny."
+      : alreadyReconciled ? ", and this month was already checked against your bank ✓"
+      : ".";
     return `All ${t} transaction${t === 1 ? "" : "s"} from your statement ${t === 1 ? "is" : "are"} in your books${tail}`;
   }
   return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} your accountant's eyes first.`;

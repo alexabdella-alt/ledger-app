@@ -139,6 +139,87 @@ describe("(a4) the intake ledger advances when the work is actually done", () =>
   });
 });
 
+describe("C198·2b — the queue line tells the pipeline's truth", () => {
+  const dash = fs.readFileSync(new URL("../src/components/views/DashboardView.jsx", import.meta.url), "utf8");
+  const app2 = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+
+  it("★ the tile is NOT 'done' until handleBankFile resolves (the live premature Done)", () => {
+    const start = app2.indexOf("const soleAccount = autoBindAccount(bankAccounts);");
+    expect(start).toBeGreaterThan(0);
+    const branch = app2.slice(start, app2.indexOf("// 0 or 2+ accounts", start));
+    const processingAt = branch.indexOf('status:"processing", type:"bank_statement", result:{ routed:true, to:"pipeline", running:true }');
+    const awaitAt = branch.indexOf("await handleBankFile(file, soleAccount");
+    const doneAt = branch.indexOf('status:"done", type:"bank_statement", result:{ routed:true, to:"pipeline", ...(outcome');
+    expect(processingAt).toBeGreaterThan(-1);
+    expect(awaitAt).toBeGreaterThan(processingAt);   // processing is stamped BEFORE the await…
+    expect(doneAt).toBeGreaterThan(awaitAt);         // …and done only AFTER it resolves
+  });
+
+  it("a throw stamps a needs-attention state, never 'done'", () => {
+    const start = app2.indexOf("const soleAccount = autoBindAccount(bankAccounts);");
+    const branch = app2.slice(start, app2.indexOf("// 0 or 2+ accounts", start));
+    expect(branch).toMatch(/catch \(e\) \{[\s\S]{0,400}status:"error", type:"bank_statement", result:\{ routed:true, to:"pipeline", failed:true \}/);
+    expect(dash).toMatch(/item\.result\?\.failed && item\.result\?\.to==="pipeline" \? "Needs a look" : "Error"/);
+  });
+
+  it("handleBankFile hands its outcome back (undefined when the pipeline didn't run)", () => {
+    expect(app2).toMatch(/if \(!pipelineRan\) return undefined;/);
+    expect(app2).toMatch(/return \{ ran: true, total: pipelineTotal, booked: pipelineBooked, exceptions: pipelineRemaining, reconciled: pipelineAutoReconciled, alreadyReconciled: pipelineAlreadyReconciled \};/);
+  });
+
+  it("a to:'pipeline' result renders the OUTCOME — owner copy vs cockpit copy", () => {
+    expect(dash).toMatch(/item\.result\.to === "pipeline" \? \(/);
+    expect(dash).toMatch(/dropZoneOutcomeCopy\(\{ total:item\.result\.total\|\|0/);      // owner seat
+    expect(dash).toMatch(/statementSummaryCopy\(\{ total:item\.result\.total\|\|0/);     // cockpit
+    expect(dash).toMatch(/\(item\.result\.exceptions \|\| 0\) > 0 \? \([\s\S]{0,200}goCockpit\("bank"\)/);  // link only when there IS work
+  });
+
+  it("★ the stale stash sentence is UNREACHABLE for a pipeline result", () => {
+    const branchAt = dash.indexOf('item.result.to === "pipeline" ? (');
+    const fallbackAt = dash.indexOf("We've got your statement — your accountant will add these to your books.");
+    expect(branchAt).toBeGreaterThan(-1);
+    expect(fallbackAt).toBeGreaterThan(branchAt);      // the pipeline branch is tested FIRST…
+    // …and the fallback is guarded by txnCount == null, which a pipeline result never sets.
+    expect(dash.slice(branchAt, fallbackAt)).toMatch(/item\.result\.txnCount == null \? \(/);
+    expect(app2).not.toMatch(/to: ?"pipeline"[^}]*txnCount/);
+  });
+
+  it("an in-flight auto-run says what it's doing, in plain language", () => {
+    expect(dash).toMatch(/item\.status==="processing" && item\.type==="bank_statement" && item\.result\?\.to==="pipeline"/);
+    expect(dash).toContain("Adding these to your books…");
+    expect(containsOwnerJargon("Adding these to your books…")).toBe(false);
+  });
+});
+
+describe("C198·2b — 'already checked' is a different fact from 'just checked'", () => {
+  it("renders the already-checked clause ONLY when the coverage fact is known true", () => {
+    const already = dropZoneOutcomeCopy({ total: 21, booked: 21, exceptions: 0, reconciled: false, alreadyReconciled: true });
+    expect(already).toBe("All 21 transactions from your statement are in your books, and this month was already checked against your bank ✓");
+    expect(containsOwnerJargon(already)).toBe(false);
+    // neither flag → no claim about the bank at all
+    const neither = dropZoneOutcomeCopy({ total: 21, booked: 21, exceptions: 0 });
+    expect(neither).not.toMatch(/bank/);
+    expect(neither.endsWith("in your books.")).toBe(true);
+  });
+
+  it("a fresh machine check outranks 'already' — it never says both", () => {
+    const c = dropZoneOutcomeCopy({ total: 21, booked: 21, exceptions: 0, reconciled: true, alreadyReconciled: true });
+    expect(c).toMatch(/matches your bank to the penny/);
+    expect(c).not.toMatch(/already checked/);
+  });
+
+  it("with exceptions outstanding, NEITHER clause appears (nothing is settled yet)", () => {
+    const c = dropZoneOutcomeCopy({ total: 21, booked: 16, exceptions: 5, reconciled: false, alreadyReconciled: true });
+    expect(c).toBe("16 added to your books — 5 need your accountant's eyes first.");
+  });
+
+  it("the flag is DERIVED from real coverage, not guessed", () => {
+    const app2 = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+    expect(app2).toMatch(/const alreadyReconciled = !reconciled && reconciliationCoversStatement\(reconciliations, rv\.statement\);/);
+    expect(app2).toMatch(/if \(after\.alreadyReconciled\) pipelineAlreadyReconciled = true;/);
+  });
+});
+
 // ── Source contracts (no DOM in this suite): the paths the drive found dead. ──
 describe("(wiring) the drop reaches the pipeline, and the stash reaches storage", () => {
   const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
