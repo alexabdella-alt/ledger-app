@@ -7,6 +7,8 @@ import {
   autoReconciledAuditDetail,
 } from "../src/lib/statementLifecycle.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
+import { reconcileIntake } from "../src/lib/documentIntake.js";
+import { autoResolvableIntake } from "../src/lib/workbench.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // C198·2 — the drop IS the pipeline (§11 ★ O86 (a)).
@@ -217,6 +219,49 @@ describe("C198·2b — 'already checked' is a different fact from 'just checked'
     const app2 = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
     expect(app2).toMatch(/const alreadyReconciled = !reconciled && reconciliationCoversStatement\(reconciliations, rv\.statement\);/);
     expect(app2).toMatch(/if \(after\.alreadyReconciled\) pipelineAlreadyReconciled = true;/);
+  });
+});
+
+describe("C198·2c — one physical drop, one intake row (and orphans actually clear)", () => {
+  const app3 = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+
+  it("the universal enqueue mints ONE id and logs ONE row, then carries that id everywhere", () => {
+    // Minting and logging happen once, inside the per-file map of handleUniversalUpload…
+    expect((app3.match(/logIntake\(intakeId, f, "upload"\)/g) || []).length).toBe(1);
+    expect(app3).toMatch(/const intakeId = \(typeof crypto[\s\S]{0,120}randomUUID\(\) : null;\s*\n\s*if \(intakeId\) logIntake\(intakeId, f, "upload"\);/);
+    // …and every downstream branch marks THAT id rather than minting another.
+    expect(app3).not.toMatch(/logIntake\([^)]*\)[^;]*;\s*\n[^\n]*logIntake\(/);
+  });
+
+  it("★ the pipeline branch REUSES the queue item's id — a second row is impossible", () => {
+    expect(app3).toMatch(/await handleBankFile\(file, soleAccount, \{ intakeId: item\.intake_id \}\)/);
+    // handleBankFile self-logs ONLY when no caller id was supplied.
+    expect(app3).toMatch(/const bankIntakeId = callerIntakeId \|\| \(\(typeof crypto/);
+    expect(app3).toMatch(/if \(!callerIntakeId\) logIntake\(bankIntakeId, file, "bank"\);/);
+    // the stash pickup carries its original row too
+    const bank = fs.readFileSync(new URL("../src/components/views/BankView.jsx", import.meta.url), "utf8");
+    expect(bank).toMatch(/handleBankFile\(file, importAccount, \{ intakeId: stash\.id \}\)/);
+  });
+
+  it("★ a dropped row carries its CONTENT HASH, so the duplicate auto-resolve can fire", () => {
+    // THE BUG: reconcileIntake built {id, filename, status, received_at, age_minutes, reason}
+    // and dropped content_hash, so reconcileDroppedDocs' `hashes` was ALWAYS empty and
+    // C195(7) never resolved anything. Live: an orphan at 'received' for two days whose
+    // hash matched a recorded document.
+    const rows = [{ id: "orphan", status: "received", received_at: new Date(Date.now() - 90 * 60000).toISOString(), filename: "june.pdf", content_hash: "f22a611113f1", document_id: null }];
+    const dropped = reconcileIntake(rows, { stuckMinutes: 30 });
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0].content_hash).toBe("f22a611113f1");           // ← was undefined
+    // …and end-to-end: with the hash present, the recorded document explains it.
+    const resolvable = autoResolvableIntake({ droppedRows: dropped, recordedHashes: [{ id: "doc1", content_hash: "f22a611113f1" }] });
+    expect(resolvable).toEqual([{ intakeId: "orphan", documentId: "doc1" }]);
+  });
+
+  it("an orphan with NO matching document still surfaces — auto-resolve never hides real losses", () => {
+    const rows = [{ id: "lost", status: "received", received_at: new Date(Date.now() - 90 * 60000).toISOString(), content_hash: "deadbeef" }];
+    const dropped = reconcileIntake(rows, { stuckMinutes: 30 });
+    expect(autoResolvableIntake({ droppedRows: dropped, recordedHashes: [{ id: "doc1", content_hash: "other" }] })).toEqual([]);
+    expect(dropped[0].reason).toMatch(/never recorded/);
   });
 });
 

@@ -59,7 +59,7 @@ export function reconcileIntake(rows = [], { now = new Date(), stuckMinutes = 30
     if (status === INTAKE_STATUS.FAILED) reason = "processing failed";
     else if (status === INTAKE_STATUS.PROCESSING) { if (ageMin > stuckMinutes) reason = `stuck in processing (${Math.round(ageMin)}m)`; }
     else { if (ageMin > stuckMinutes) reason = `received but never recorded (${Math.round(ageMin)}m)`; }
-    if (reason) dropped.push({ id: r.id, filename: r.filename, status, received_at: r.received_at, age_minutes: Math.round(ageMin), reason });
+    if (reason) dropped.push({ id: r.id, filename: r.filename, status, received_at: r.received_at, age_minutes: Math.round(ageMin), reason, content_hash: r.content_hash || null, document_id: r.document_id || null });
   }
   return dropped;
 }
