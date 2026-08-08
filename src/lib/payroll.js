@@ -19,6 +19,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildJournalEntry } from "./journalEntries.js";
+import { containsOwnerJargon } from "./clarify.js";
+import { fmtMoney } from "./format.js";
 
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -51,8 +53,225 @@ export function buildPayrollEntry({
 
   return buildJournalEntry({
     lines, date, source: "payroll", description, memo,
-    meta: meta || { kind: "payroll", gross: g, net, withholdings: wh, employer_taxes: emp },
+    // The caller's meta (kind/source/period/payment_status) FIRST, then the figures
+    // derived from the lines actually being posted — so the metadata can never
+    // describe a different run than the entry does. C198·3a made this load-bearing:
+    // `gross` is the trailing-average input for the next run's norm check, and `net`
+    // is what matchPayrollBankLine compares a bank net-pay line against (it used to
+    // fall through to the flattened row's own amount, which only lined up because
+    // the Cr Cash row happens to carry net).
+    meta: { ...(meta || { kind: "payroll" }), gross: g, net, withholdings: wh, employer_taxes: emp },
   });
+}
+
+// The SINGLE entry builder for a parsed register — shared by the confirm-card
+// preview, the manual Post button, and the C198·3a auto-post. One function is the
+// point: auto-post writes the IDENTICAL journal entry the human path writes, and
+// cannot drift into a parallel posting implementation.
+export function payrollEntryForImport(imp = {}, codes = {}) {
+  return buildPayrollEntry({
+    gross: Number(imp.total_gross) || 0,
+    netPay: imp.total_net != null ? Number(imp.total_net) : null,
+    employerTaxes: Number(imp.total_employer_taxes) || 0,
+    salariesCode: codes.salariesCode || "6000",
+    payrollTaxExpCode: codes.payrollTaxExpCode || "6010",
+    cashCode: codes.cashCode || "1000",
+    payrollTaxesPayableCode: codes.payrollTaxesPayableCode || "2101",
+    date: imp.pay_date,
+    description: `${imp.source} Payroll — ${imp.period}`,
+    // C189 — payroll cash is DISBURSED at post time: stamp payment_status 'paid' so the
+    // expense legs (Salaries + Payroll Tax Exp) don't satisfy apUnpaid (reports.js) and
+    // leak into the open-bills sub-ledger, failing the ap_tie control by gross+employer.
+    // The withholding liability is tracked by its own GL (Payroll Taxes Payable), not the
+    // bills list. persistMultiLineEntry passes meta as p_meta → post_journal_entry writes
+    // payment_status → flattenJournalEntries carries it. Every write path that creates a
+    // cash-settled entry must stamp this (§9).
+    meta: { kind: "payroll", source: imp.source, period: imp.period, payment_status: "paid" },
+  });
+}
+
+// ── C198·3a — THE AUTO-POST GATE ─────────────────────────────────────────────
+// A CPA clicking "Post to Ledger" on a standard biweekly register is OPERATING,
+// not reviewing (O86 finding (b)). So standard registers post themselves. But
+// auto-post sits downstream of AI extraction, which has hallucinated before —
+// the O86 phantom (06-20, $10,000/$7,335) matched no register on file. The GATE
+// is the whole design: a hallucinated extraction must STRUCTURALLY fail to
+// auto-post and fall back to the human confirm card that already exists.
+//
+// Pure, so every condition is mutation-testable. ALL five must hold; any failure
+// returns the plain-CPA reason(s) the card shows and the audit row records.
+//
+// On the withholdings input: use the register's OWN deductions total, never
+// gross − net. Deriving it would make FOOTS a tautology (net = gross − (gross −
+// net) is true for any two numbers) — the check only means something when the
+// register states all three independently and they agree.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const PAYROLL_GATE = {
+  SHAPE: "shape",             // 1. recognized format — the full field set, no nulls
+  FOOTS: "foots",             // 2. net = gross − withholdings, to the cent
+  CONSISTENT: "consistent",   // 3. internal consistency
+  PAY_DATE: "pay_date",       // 4. pay date within/adjacent to the period
+  NORM: "norm",               // 5. within this company's own norms
+};
+
+// Gross may sit this far either side of the trailing average before a human looks.
+export const PAYROLL_NORM_TOLERANCE = 0.5;
+// A pay date may fall this many days AFTER period end and still be "adjacent".
+export const PAYROLL_PAY_DATE_GRACE_DAYS = 7;
+
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const numOrNull = (v) => {
+  if (v === null || v === undefined || v === "") return null;   // Number(null) is 0 — check first
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+const ymdOrNull = (v) => {
+  const s = typeof v === "string" ? v.trim() : "";
+  return YMD_RE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) ? s : null;
+};
+const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+
+// The parsed AI payload → the gate's register shape. `total_deductions` is the
+// employee-withholdings total the parse already returns and the app has been
+// dropping on the floor; it is what makes condition 2 a real check.
+export function registerFromParsedPayroll(parsed = {}) {
+  return {
+    periodStart: parsed?.period_start ?? null,
+    periodEnd: parsed?.period_end ?? null,
+    payDate: parsed?.pay_date ?? null,
+    gross: parsed?.total_gross ?? null,
+    net: parsed?.total_net ?? null,
+    withholdings: parsed?.total_deductions ?? null,
+    employerTax: parsed?.total_employer_taxes ?? null,
+  };
+}
+
+// Prior POSTED payroll runs, oldest → newest, as { id, date, gross }.
+// Gross comes from the entry's own metadata where present; entries posted before
+// C198·3a stamped only { kind, source, period }, so fall back to the Salaries &
+// Wages DEBIT, which IS gross by construction (buildPayrollEntry line 1).
+// Voided/deleted runs never count toward a norm.
+export function payrollHistoryFromLedger(ledger = [], { salariesCode = null } = {}) {
+  const byEntry = new Map();
+  for (const row of ledger || []) {
+    const m = row && row.import_metadata;
+    if (!m || m.kind !== "payroll") continue;
+    if (row.status === "voided" || row.status === "deleted") continue;
+    const id = String(row.db_entry_id ?? row.id ?? "");
+    if (!id) continue;
+    if (!byEntry.has(id)) byEntry.set(id, { id, date: row.date || null, metaGross: null, salaryDebit: 0 });
+    const rec = byEntry.get(id);
+    const mg = numOrNull(m.gross);
+    if (mg !== null) rec.metaGross = r2(mg);
+    if (salariesCode && String(row.gl_code) === String(salariesCode) && row.debit_credit === "debit") {
+      rec.salaryDebit = r2(rec.salaryDebit + (Number(row.amount) || 0));
+    }
+  }
+  return [...byEntry.values()]
+    .map(r => ({ id: r.id, date: r.date, gross: r.metaGross !== null ? r.metaGross : r.salaryDebit }))
+    .filter(r => r.gross > 0)
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+}
+
+// Accepts [{gross}] or bare numbers.
+const historyGrosses = (history) =>
+  (history || [])
+    .map(h => numOrNull(h && typeof h === "object" ? h.gross : h))
+    .filter(g => g !== null && g > 0);
+
+export function payrollAutoPostGate(register = {}, history = []) {
+  const reasons = [];
+  const fail = (code, text) => reasons.push({ code, text });
+
+  const periodStart = ymdOrNull(register.periodStart);
+  const periodEnd = ymdOrNull(register.periodEnd);
+  const payDate = ymdOrNull(register.payDate);
+  const gross = numOrNull(register.gross);
+  const net = numOrNull(register.net);
+  const withholdings = numOrNull(register.withholdings);
+  const employerTax = numOrNull(register.employerTax);
+
+  // 1. RECOGNIZED FORMAT — the parse produced the whole field set.
+  const missing = [];
+  if (!periodStart) missing.push("pay period start");
+  if (!periodEnd) missing.push("pay period end");
+  if (!payDate) missing.push("pay date");
+  if (gross === null) missing.push("gross pay");
+  if (withholdings === null) missing.push("employee withholdings");
+  if (net === null) missing.push("net pay");
+  if (employerTax === null) missing.push("employer taxes");
+  if (missing.length) {
+    fail(PAYROLL_GATE.SHAPE, `We couldn't read the whole register — no ${missing.join(", ")}.`);
+  }
+
+  // 2. TOTALS FOOT — net = gross − withholdings, exactly, and employer tax is real.
+  // A figure we never got is a FAILED footing, not a skipped one: the gate's job is
+  // to PROVE the register adds up, and absence of proof is not proof. (This is what
+  // gives the O86 phantom — gross and net, no period, no withholdings — a second
+  // independent failure rather than sliding through on the shape check alone.)
+  if (gross === null || net === null || withholdings === null || employerTax === null) {
+    fail(PAYROLL_GATE.FOOTS, "We couldn't check that the register adds up — gross, withholdings, net and employer taxes didn't all come through.");
+  } else {
+    if (r2(gross - withholdings) !== r2(net)) {
+      fail(PAYROLL_GATE.FOOTS, `The register doesn't foot: gross ${fmtMoney(gross)} less withholdings ${fmtMoney(withholdings)} is ${fmtMoney(r2(gross - withholdings))}, but it states net pay of ${fmtMoney(net)}.`);
+    }
+    if (employerTax < 0) {
+      fail(PAYROLL_GATE.FOOTS, `Employer taxes came through as ${fmtMoney(employerTax)} — that can't be negative.`);
+    }
+  }
+
+  // 3. INTERNAL CONSISTENCY. (net < gross is the binding constraint — it also rules
+  // out a zero-withholding run, which is not a shape we auto-post unreviewed.)
+  const inconsistent = [];
+  if (gross !== null && !(gross > 0)) inconsistent.push(`gross pay is ${fmtMoney(gross)}`);
+  if (net !== null && !(net > 0)) inconsistent.push(`net pay is ${fmtMoney(net)}`);
+  if (withholdings !== null && withholdings < 0) inconsistent.push(`withholdings are ${fmtMoney(withholdings)}`);
+  if (gross !== null && net !== null && !(net < gross)) inconsistent.push(`net pay ${fmtMoney(net)} isn't less than gross ${fmtMoney(gross)}`);
+  if (inconsistent.length) {
+    fail(PAYROLL_GATE.CONSISTENT, `The numbers don't hold together — ${inconsistent.join("; ")}.`);
+  }
+
+  // 4. PAY DATE within, or within a week after, the stated period.
+  if (periodStart && periodEnd && payDate) {
+    if (daysBetween(periodStart, periodEnd) < 0) {
+      fail(PAYROLL_GATE.PAY_DATE, `The pay period runs backwards — it ends ${periodEnd}, before it starts ${periodStart}.`);
+    } else {
+      const afterEnd = daysBetween(periodEnd, payDate);
+      const beforeStart = daysBetween(payDate, periodStart);
+      if (beforeStart > 0 || afterEnd > PAYROLL_PAY_DATE_GRACE_DAYS) {
+        fail(PAYROLL_GATE.PAY_DATE, `The pay date ${payDate} doesn't sit in the pay period ${periodStart} to ${periodEnd}, or the week after it.`);
+      }
+    }
+  }
+
+  // 5. WITHIN THIS COMPANY'S NORMS. No prior payroll → no norm exists → never
+  // auto-post. The first register is ALWAYS confirmed by a person; the norm only
+  // means something once a human has attested at least one run.
+  const priors = historyGrosses(history);
+  if (!priors.length) {
+    fail(PAYROLL_GATE.NORM, "This is the first payroll we've recorded for this company — someone should check the first one by hand.");
+  } else if (gross !== null && gross > 0) {
+    const avg = r2(priors.reduce((s, g) => s + g, 0) / priors.length);
+    if (avg > 0 && Math.abs(gross - avg) > avg * PAYROLL_NORM_TOLERANCE) {
+      fail(PAYROLL_GATE.NORM, `Gross pay of ${fmtMoney(gross)} is well outside this company's usual ${fmtMoney(avg)} a run.`);
+    }
+  }
+
+  return { pass: reasons.length === 0, reasons };
+}
+
+// Plain narration for a run that posted itself. Jargon-scanned with a plain
+// fallback, the same safety net pipelineOutcomeCopy uses — the owner reads an
+// outcome, never an entry. (fmtMoney's thousands separators also keep a bare
+// 4-digit amount from tripping the GL-code lint.)
+export function payrollAutoPostNarration({ periodLabel = "", net = 0, headcount = 0 } = {}) {
+  const people = Number(headcount) > 0
+    ? ` to ${headcount} ${Number(headcount) === 1 ? "person" : "people"}`
+    : "";
+  const period = String(periodLabel || "").trim();
+  const msg = `Payroll${period ? ` for ${period}` : ""} is in your books — ${fmtMoney(net)} net${people}.`;
+  return containsOwnerJargon(msg) ? `Payroll${period ? ` for ${period}` : ""} is in your books.` : msg;
 }
 
 // ── O72: bank net-pay line ↔ payroll register reconciliation ─────────────────

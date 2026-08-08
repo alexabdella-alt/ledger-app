@@ -5,7 +5,7 @@ import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
-import { buildPayrollEntry } from "../../lib/payroll";
+import { payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll } from "../../lib/payroll";
 import { validateUpload } from "../../lib/uploadGuard";
 import { INTAKE_STATUS } from "../../lib/documentIntake";
 import { extractFirstJson } from "../../lib/aiJson";
@@ -45,10 +45,28 @@ export default function PayrollView() {
                   setPayrollProcessing(false);
                   return;
                 }
-                const importRecord = { id:Date.now()+Math.random(), _intakeId: pIntakeId, _fileName: file?.name || null, source:parsed.source||"Unknown", period:`${parsed.period_start} – ${parsed.period_end}`, pay_date:parsed.pay_date, total_gross:parsed.total_gross, total_net:parsed.total_net, total_employer_taxes:parsed.total_employer_taxes, journal_entries:parsed.journal_entries||[], employees:parsed.employees||[], imported_at:new Date().toISOString(), file_name:file.name, posted:false };
+                // C198·3a — THE GATE. A standard register that proves itself posts itself;
+                // anything else (including a hallucinated extraction) falls back to the
+                // confirm card below with the failing reasons on it. The decision is
+                // audited either way, so "why didn't this auto-post?" always has an answer.
+                const register = registerFromParsedPayroll(parsed);
+                const history = payrollHistoryFromLedger(invoices, { salariesCode: payrollCodes().salariesCode });
+                const gate = payrollAutoPostGate(register, history);
+                const importRecord = { id:Date.now()+Math.random(), _intakeId: pIntakeId, _fileName: file?.name || null, _gate: gate, source:parsed.source||"Unknown", period:`${parsed.period_start} – ${parsed.period_end}`, period_start:parsed.period_start??null, period_end:parsed.period_end??null, pay_date:parsed.pay_date, total_gross:parsed.total_gross, total_net:parsed.total_net, total_withholdings:parsed.total_deductions??null, total_employer_taxes:parsed.total_employer_taxes, journal_entries:parsed.journal_entries||[], employees:parsed.employees||[], imported_at:new Date().toISOString(), file_name:file.name, posted:false };
                 setPayrollImports(prev => [importRecord, ...prev]);
                 logAudit("payroll_parsed", `${parsed.source} payroll parsed: ${fmt(parsed.total_gross)} gross, ${(parsed.employees||[]).length} employees`);
+                logAudit("payroll_autopost_gate",
+                  gate.pass
+                    ? `${importRecord.source} register passed every shape check — posting without a confirm step`
+                    : `${importRecord.source} register held for a person: ${gate.reasons.map(r => r.text).join(" ")}`,
+                  null,
+                  { pass: gate.pass, reasons: gate.reasons, prior_runs: history.length });
                 storeDocument(file.name, null, "text/csv", "payroll", importRecord.id, ["payroll"], null, file);
+                if (gate.pass) {
+                  await postPayroll(importRecord, { auto: true });   // marks the intake row RECORDED
+                  setPayrollProcessing(false);
+                  return;
+                }
                 markIntake && markIntake(pIntakeId, INTAKE_STATUS.HELD, { detail: "payroll imported — review/post in Payroll" });   // terminal: accounted for
               } catch(e) { markIntake && markIntake(pIntakeId, INTAKE_STATUS.FAILED, { detail: `payroll parse error: ${e?.message||e}` }); console.error(e); }
               setPayrollProcessing(false);
@@ -59,36 +77,26 @@ export default function PayrollView() {
                 const f = pendingImportFile.file; setPendingImportFile(null); handlePayrollFile(f);
               }
             }, [pendingImportFile]);
-            // The SINGLE source for both the preview and the post: the standard payroll
-            // entry built deterministically from the parsed totals (Dr Salaries / Dr
-            // Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes Payable). Accounts resolve
-            // by ROLE (works whether payroll_tax is 6010 or a legacy 5101). The preview
-            // renders THIS, so what the user reviews is exactly what posts.
-            const payrollEntryFor = (imp) => buildPayrollEntry({
-              gross: Number(imp.total_gross) || 0,
-              netPay: imp.total_net != null ? Number(imp.total_net) : null,
-              employerTaxes: Number(imp.total_employer_taxes) || 0,
+            // The SINGLE source for the preview, the manual Post button AND the C198·3a
+            // auto-post: the standard payroll entry built deterministically from the parsed
+            // totals (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes
+            // Payable). Accounts resolve by ROLE (works whether payroll_tax is 6010 or a
+            // legacy 5101). The preview renders THIS, so what the user reviews is exactly
+            // what posts — and auto-post writes the identical entry, not a second one.
+            const payrollCodes = () => ({
               salariesCode: getAccountByRole("salaries_wages")?.code || "6000",
               payrollTaxExpCode: getAccountByRole("payroll_tax")?.code || "6010",
               cashCode: getAccountByRole("cash")?.code || "1000",
               payrollTaxesPayableCode: getAccountByRole("payroll_taxes_payable")?.code || "2101",
-              date: imp.pay_date,
-              description: `${imp.source} Payroll — ${imp.period}`,
-              // C189 — payroll cash is DISBURSED at post time: stamp payment_status 'paid' so the
-              // expense legs (Salaries + Payroll Tax Exp) don't satisfy apUnpaid (reports.js) and
-              // leak into the open-bills sub-ledger, failing the ap_tie control by gross+employer.
-              // The withholding liability is tracked by its own GL (Payroll Taxes Payable), not the
-              // bills list. persistMultiLineEntry passes meta as p_meta → post_journal_entry writes
-              // payment_status → flattenJournalEntries carries it (and the post path reloads via
-              // loadAllData, so in-state rows match what a reload produces). Every write path that
-              // creates a cash-settled entry must stamp this (§9).
-              meta: { kind: "payroll", source: imp.source, period: imp.period, payment_status: "paid" },
             });
+            const payrollEntryFor = (imp) => payrollEntryForImport(imp, payrollCodes());
             const acctName = (code) => (CHART_OF_ACCOUNTS.find(a => String(a.code) === String(code))?.name) || code;
 
             // Was setInvoices-only → never persisted (vanished on refresh); now durable
             // like every other event, posting the SAME entry shown in the preview.
-            const postPayroll = async (imp) => {
+            // `auto` only changes the NARRATION and the audit wording — the entry, the
+            // write path and the intake close-out are byte-identical either way (C198·3a).
+            const postPayroll = async (imp, { auto = false } = {}) => {
               const je = payrollEntryFor(imp);
               if (!je || !je.balanced) { showNotification("Couldn't build the payroll entry — check the totals.", "error"); return; }
               const jeId = await persistMultiLineEntry(je);   // cutoff-guarded; refuses unbalanced
@@ -110,9 +118,12 @@ export default function PayrollView() {
                   if (rows && rows[0]) markIntake && markIntake(rows[0].id, INTAKE_STATUS.RECORDED, { detail: `payroll posted — ${fmt(imp.total_gross)} gross`, journalEntryIds: [String(jeId)] });
                 }
               } catch (e) { console.warn("[payroll] intake close-out skipped:", e?.message || e); }
-              logAudit("payroll_posted", `${imp.source} payroll posted: ${fmt(imp.total_gross)} gross → Dr Salaries/Tax · Cr Cash/Payroll Taxes Payable`);
+              logAudit("payroll_posted", `${imp.source} payroll ${auto ? "auto-posted (register passed every shape check)" : "posted"}: ${fmt(imp.total_gross)} gross → Dr Salaries/Tax · Cr Cash/Payroll Taxes Payable`, null, { auto, journal_entry_id: String(jeId) });
               try { await loadAllData(); } catch {}           // surface the posted entry
-              showNotification(`Payroll posted: ${fmt(imp.total_gross)} gross ✓`);
+              showNotification(auto
+                ? payrollAutoPostNarration({ periodLabel: imp.period, net: imp.total_net, headcount: (imp.employees || []).length })
+                : `Payroll posted: ${fmt(imp.total_gross)} gross ✓`);
+              return true;
             };
             return (
               <div>
@@ -160,6 +171,17 @@ export default function PayrollView() {
                       </div>
                       {!imp.posted && <button onClick={()=>postPayroll(imp)} style={{padding:"9px 20px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:"var(--sc-on-accent)",cursor:"pointer"}}>Post to Ledger</button>}
                     </div>
+                    {/* C198·3a — why this one still needs a person. A standard register that
+                        proves itself never reaches this card; when it doesn't, say which
+                        check it missed rather than making the reviewer re-derive it. */}
+                    {!imp.posted && imp._gate && !imp._gate.pass && (
+                      <div style={{padding:"10px 20px",borderTop:"1px solid var(--sc-border)",background:"var(--sc-surface-2)"}}>
+                        <div style={{fontSize:11,letterSpacing:1,color:"var(--sc-text-2)",fontWeight:600,marginBottom:6}}>NEEDS YOUR CONFIRMATION</div>
+                        {imp._gate.reasons.map((r,i)=>(
+                          <div key={r.code || i} style={{fontSize:12.5,color:"var(--sc-text)",marginBottom:4,lineHeight:1.45}}>· {r.text}</div>
+                        ))}
+                      </div>
+                    )}
                     {/* Journal entries preview — renders the SAME entry postPayroll posts
                         (built by buildPayrollEntry), so what's reviewed is what's written. */}
                     <div style={{borderTop:"1px solid var(--sc-border)",overflow:"clip"}}>
