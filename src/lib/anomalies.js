@@ -12,6 +12,16 @@
 export const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
 export const isHighAnomaly = (a) => !!a && a.severity === "high";
 
+// The three ways an anomaly can close (migration 056 + 060). They must not blur:
+//   auto      — the condition disappeared; the next scan noticed, honestly.
+//   dismissed — a human judged THIS note acceptable, reason required.
+//   attested  — a human attested the MONTH over it. Nobody judged the note itself,
+//               so it must never feed priorDismissalFor (which reads dismissals as
+//               vendor+amount judgements and quiets later duplicates on the strength
+//               of them). C198·3b (f1).
+export const ANOMALY_RESOLUTION = { AUTO: "auto", DISMISSED: "dismissed", ATTESTED: "attested" };
+export const ATTESTED_NOTE = "period attested over this note";
+
 // The linked journal-entry ids for an anomaly, from either shape (persisted row's
 // `entity_refs` or a freshly-detected anomaly's `invoice_ids`).
 function refIds(anomaly) {
@@ -39,6 +49,27 @@ export function anomalyTouchesPeriod(anomaly, period, invoices = []) {
   });
 }
 
+// The single period an anomaly is ABOUT (YYYY-MM), or null when it can't be placed.
+// An anomaly spanning a month boundary (a duplicate pair straddling Jan 30 / Feb 2)
+// reports its LATEST month — so attesting the earlier month never retires a note that
+// also reaches into a month nobody has attested yet.
+export function anomalySubjectPeriod(anomaly, invoices = []) {
+  if (!anomaly) return null;
+  const refs = refIds(anomaly);
+  if (!refs.length) {
+    const m = /:(\d{4}-\d{2})$/.exec(String(anomaly.fingerprint || anomaly.id || ""));
+    return m ? m[1] : null;
+  }
+  const byId = new Map((invoices || []).map((i) => [String(i.id), i]));
+  let latest = null;
+  for (const r of refs) {
+    const inv = byId.get(String(r));
+    const p = inv && String(inv.date || "").slice(0, 7);
+    if (p && p.length === 7 && (!latest || p > latest)) latest = p;
+  }
+  return latest;
+}
+
 // Count of OPEN HIGH anomalies whose refs touch `period` — the sign-off blocker input.
 // (Medium/low NEVER block a sign-off; they surface in the CPA queue but don't gate.)
 export function openHighAnomaliesInPeriod(rows = [], period, invoices = []) {
@@ -51,8 +82,10 @@ export function openHighAnomaliesInPeriod(rows = [], period, invoices = []) {
 //   toInsert  — detected fingerprints with NO open row AND not durably dismissed → new open rows
 //   toResolve — open rows whose fingerprint is no longer detected → AUTO-RESOLVE (history)
 //   toTouch   — open rows still detected → bump last_seen_at
-// A DISMISSED fingerprint suppresses re-insert (durable across sessions/devices). A
-// RESOLVED one does NOT: if the condition genuinely recurs, it re-opens as a new event
+// A DISMISSED fingerprint suppresses re-insert (durable across sessions/devices). So
+// does an ATTESTED one (C198·3b f1) — the condition is still in the ledger, so without
+// this the very next scan would re-open every note a sign-off just retired. A RESOLVED
+// one does NOT: if the condition genuinely recurs, it re-opens as a new event
 // (resolved means "was gone" — its return is real news).
 export function reconcileAnomalies({ detected = [], rows = [] } = {}) {
   const openByFp = new Map();
@@ -61,6 +94,7 @@ export function reconcileAnomalies({ detected = [], rows = [] } = {}) {
     if (!r || !r.fingerprint) continue;
     if (r.status === "open") openByFp.set(r.fingerprint, r);
     else if (r.status === "dismissed") dismissedFps.add(r.fingerprint);
+    else if (r.resolution === ANOMALY_RESOLUTION.ATTESTED) dismissedFps.add(r.fingerprint);
   }
   const detectedByFp = new Map();
   for (const d of detected || []) if (d && d.fingerprint) detectedByFp.set(d.fingerprint, d);
@@ -75,6 +109,40 @@ export function reconcileAnomalies({ detected = [], rows = [] } = {}) {
   for (const [fp, row] of openByFp) if (!detectedByFp.has(fp)) toResolve.push(row);
 
   return { toInsert, toTouch, toResolve };
+}
+
+// ── C198·3b (f1) — ANOMALIES EXPIRE WITH THE MONTH ───────────────────────────
+// A reviewer who attested a month has, by that act, judged its low-severity notes
+// acceptable. Carrying them into later months is the alarm-fatigue class again: the
+// queue fills with notes about periods that are closed, and the reviewer learns to
+// scroll past all of it.
+//
+// Everything at or BEFORE the signed month goes, not just the signed month itself —
+// a note about April that survived April's sign-off has been attested over twice by
+// the time May closes, and leaving it is the same lie.
+//
+// HIGH is excluded by design: a HIGH anomaly BLOCKS sign-off (signOffReadiness), so
+// it should be resolved or dismissed on its merits, never retired by the act it was
+// supposed to prevent. An override can still sign a month with an open HIGH — and
+// that HIGH stays open, which is the point.
+export function anomaliesExpiredBySignoff(rows = [], period, invoices = []) {
+  if (!period) return [];
+  return (rows || []).filter((a) => {
+    if (!a || a.status !== "open" || isHighAnomaly(a)) return false;
+    const subject = anomalySubjectPeriod(a, invoices);
+    return !!subject && subject <= String(period);
+  });
+}
+
+// The inverse. Revoking month M's sign-off re-opens exactly the notes M retired —
+// matched on `attested_period`, so a note attested by a DIFFERENT month stays closed.
+// Un-attesting has to give back what attesting took, or a revoke would quietly
+// launder away every note the month was carrying.
+export function anomaliesReopenedByRevoke(rows = [], period) {
+  if (!period) return [];
+  return (rows || []).filter(
+    (a) => a && a.resolution === ANOMALY_RESOLUTION.ATTESTED && String(a.attested_period) === String(period)
+  );
 }
 
 // ── C195 (3) — PATTERN SUPPRESSION (alarm fatigue) ───────────────────────────

@@ -16,7 +16,7 @@ import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, stat
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
-import { reconcileAnomalies, anomalyInsertRow, openHighAnomaliesInPeriod, applyPatternSuppression } from "./lib/anomalies";
+import { reconcileAnomalies, anomalyInsertRow, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE } from "./lib/anomalies";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
@@ -33,7 +33,7 @@ import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markA
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
 import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
-import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy } from "./lib/workbench";
+import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy, bankImportToastCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
 import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems, resolveMatchedInvoices, isSettlementEntry } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
@@ -1777,8 +1777,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // anomalies persist, dedup, AUTO-RESOLVE when their condition disappears (clearing is
   // an event, not amnesia — the O83 fix), and feed the trust layer (owner panel + sign-off
   // gate + Review). localStorage dismissals are retired (device-local; unmigratable).
-  //   anomalyRows — ALL non-resolved rows (open + dismissed): the reconcile source + the
-  //     dismissal-suppression set. `anomalies` (derived) — the OPEN rows in view shape.
+  //   anomalyRows — open + dismissed + ATTESTED rows: the reconcile source + the
+  //     re-insert-suppression set. Attested rows (C198·3b f1) carry status 'resolved'
+  //     but MUST be loaded — they are what stops the next scan re-opening every note a
+  //     sign-off just retired, and what a revoke matches on to give them back.
+  //     `anomalies` (derived) — the OPEN rows in view shape.
   const [anomalyRows, setAnomalyRows] = useState([]);
   const anomalyRowsRef = useRef([]);
   const anomaliesLoadedRef = useRef(false);
@@ -1796,7 +1799,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!cid) return;
     try {
       const { data } = await supabase.from("anomalies").select("*")
-        .eq("company_id", cid).in("status", ["open", "dismissed"])
+        .eq("company_id", cid)
+        .or(`status.eq.open,status.eq.dismissed,resolution.eq.${ANOMALY_RESOLUTION.ATTESTED}`)
         .order("created_at", { ascending: false });
       if (Array.isArray(data)) { applyAnomalyRows(data); anomaliesLoadedRef.current = true; }
     } catch { /* table may not exist yet (pre-056) — degrade gracefully */ }
@@ -1866,6 +1870,45 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       await loadAnomalies(cid);
       return { ok: true };
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+  };
+
+  // ── C198·3b (f1) — ANOMALIES EXPIRE WITH THE MONTH, AND COME BACK IF IT REOPENS ──
+  // 'attested' is its own resolution (migration 060), not a dismissal: nobody judged
+  // THIS note, they attested the month over it — folding it into 'dismissed' would feed
+  // priorDismissalFor and quietly downgrade later duplicates for the same vendor+amount.
+  // And not 'auto' either: the condition is still in the ledger, so 'auto' would be
+  // undone by the next scan (reconcileAnomalies only suppresses re-insert for a
+  // dismissal or an attestation).
+  const expireAnomaliesForSignedPeriod = async (period) => {
+    const cid = currentCompany?.id;
+    if (!cid || !period) return;
+    try {
+      const expiring = anomaliesExpiredBySignoff(anomalyRowsRef.current, period, invoicesRef.current);
+      const ids = expiring.map(a => a.id).filter(Boolean);
+      if (!ids.length) return;
+      const { error } = await supabase.from("anomalies")
+        .update({ status: "resolved", resolution: ANOMALY_RESOLUTION.ATTESTED, attested_period: period, resolved_at: new Date().toISOString(), resolved_by: null, dismissed_reason: null })
+        .in("id", ids).eq("company_id", cid);
+      if (error) { console.error("[anomaly] sign-off expiry failed:", error.message); return; }
+      logAudit("anomaly_expired_on_signoff", `${ids.length} open ${ids.length === 1 ? "note" : "notes"} retired — ${ATTESTED_NOTE} (${period})`, null, { period, anomaly_ids: ids, fingerprints: expiring.map(a => a.fingerprint) });
+      await loadAnomalies(cid);
+    } catch (e) { console.error("[anomaly] sign-off expiry error:", e?.message || e); }
+  };
+
+  const reopenAnomaliesForRevokedPeriod = async (period) => {
+    const cid = currentCompany?.id;
+    if (!cid || !period) return;
+    try {
+      const reopening = anomaliesReopenedByRevoke(anomalyRowsRef.current, period);
+      const ids = reopening.map(a => a.id).filter(Boolean);
+      if (!ids.length) return;
+      const { error } = await supabase.from("anomalies")
+        .update({ status: "open", resolution: null, attested_period: null, resolved_at: null, resolved_by: null })
+        .in("id", ids).eq("company_id", cid);
+      if (error) { console.error("[anomaly] revoke reopen failed:", error.message); return; }
+      logAudit("anomaly_reopened_on_revoke", `${ids.length} ${ids.length === 1 ? "note" : "notes"} reopened — ${period}'s sign-off was revoked`, null, { period, anomaly_ids: ids });
+      await loadAnomalies(cid);
+    } catch (e) { console.error("[anomaly] revoke reopen error:", e?.message || e); }
   };
 
   // ── NOTIFICATIONS (Item 55) ─────────────────────────────────────────────────
@@ -3516,6 +3559,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (res.ok) {
       setSignoffs(prev => [res.row, ...prev.filter(s => s.period !== period)]);
       logAudit("period_signed_off", overrideRec ? `Reviewed through ${period} (override: ${overrideRec.reason || "no reason given"})` : `Reviewed through ${period}`, null, { period, override: !!overrideRec, blockers: overrideRec?.blockers || null });
+      await expireAnomaliesForSignedPeriod(period);
       showNotification(overrideRec ? `Signed off ${period} with an override ✓` : `Signed off — reviewed through ${period} ✓`);
     } else {
       showNotification(`Couldn't record the sign-off — ${res.error}`, "error");
@@ -3533,6 +3577,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (res.ok) {
       setSignoffs(prev => prev.filter(s => s.period !== period));
       logAudit("period_reopened", `Reopened ${period} (sign-off revoked)`, { period }, null);
+      await reopenAnomaliesForRevokedPeriod(period);
       showNotification(`Reopened ${period} — sign-off revoked`);
     } else {
       showNotification(`Couldn't reopen the period — ${res.error}`, "error");
@@ -4884,7 +4929,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (pipelineRan && !navSeat.isReviewerSeat) {
         showNotification(dropZoneOutcomeCopy({ total: pipelineTotal, booked: pipelineBooked, exceptions: pipelineRemaining, reconciled: pipelineAutoReconciled, alreadyReconciled: pipelineAlreadyReconciled }));
       } else {
-        showNotification(`${withRules.length} transactions imported — ${withRules.filter(t=>t.needs_review).length} need review`);
+        // C198·3b — count what actually happened: a re-upload whose every line was
+        // already booked imported nothing, and must not claim otherwise.
+        showNotification(bankImportToastCopy({
+          total: withRules.length,
+          alreadyBooked: withRules.filter(t => t.already_booked).length,
+          needReview: withRules.filter(t => t.needs_review && !t.already_booked).length,
+        }));
       }
       // The review screen derives each line's booking fate SYNCHRONOUSLY (BankView's deterministic
       // bankPreview useMemo) — no async preview call needed; the booking re-derives the same matches.
@@ -5001,7 +5052,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // Cardinal-Principle safety net: if any GL/debit-credit jargon leaks, fall back to a plain line.
     if (containsOwnerJargon(msg)) msg = `${monthName} statement handled — we recorded what we could and flagged the rest for your accountant.`;
     // Lead with the whole-statement count (C196(3)) unless nothing happened at all.
-    return (wholeStatement && plan.reconciliation.conclusion !== "already_matched") ? `${wholeStatement} — ${msg}` : msg;
+    const composed = (wholeStatement && plan.reconciliation.conclusion !== "already_matched") ? `${wholeStatement} — ${msg}` : msg;
+    // C198·3b — scan what the owner ACTUALLY reads. The check above ran on `msg` alone,
+    // so anything the prepended whole-statement clause contributed went unscanned — a
+    // guard applied to a fragment of the final string is a guard with a hole in it.
+    return containsOwnerJargon(composed)
+      ? `${monthName} statement handled — we recorded what we could and flagged the rest for your accountant.`
+      : composed;
   };
 
   // The EXECUTOR. Runs after persistBankStatement when an account is bound (Bank Import path).

@@ -27,7 +27,17 @@ describe("fingerprint stability — same condition re-detected yields ONE row", 
     expect(dupA).toBeTruthy();
     expect(dupA.severity).toBe("high");
     expect(dupA.fingerprint).toBe(dupB.fingerprint);        // stable across time
-    expect(dupA.fingerprint).toBe("dup:je1-je2");            // sorted pair → symmetric
+    // C198·3b (f3) — keyed on CONTENT (vendor · amount in cents · the two dates, sorted
+    // so the pair stays symmetric), not on the two row ids. The old id-keyed recipe is
+    // exactly what let a statement re-upload open a second card for the same charge.
+    expect(dupA.fingerprint).toBe("dup:sysco:120000:2026-01-10+2026-01-12");
+  });
+
+  it("and survives the ledger renumbering the rows underneath it", () => {
+    const renumbered = dupLedger.map((r, i) => ({ ...r, id: `other_${i}`, db_entry_id: `other_${i}` }));
+    const before = runAnomalyDetection(dupLedger, [], NOW).find((x) => x.type === "duplicate_payment");
+    const after = runAnomalyDetection(renumbered, [], NOW).find((x) => x.type === "duplicate_payment");
+    expect(after.fingerprint).toBe(before.fingerprint);
   });
 
   it("re-detecting an already-open row is a no-op INSERT (toTouch, not toInsert)", () => {
@@ -54,7 +64,11 @@ describe("fingerprint stability — same condition re-detected yields ONE row", 
 describe("auto-resolve on condition disappearance — the O83 duplicate-cleanup fixture", () => {
   it("a persisted open row auto-resolves when the duplicate is deleted", () => {
     const detected0 = runAnomalyDetection(dupLedger, [], NOW);
-    const openRow = { ...anomalyInsertRow("co1", detected0.find((d) => d.type === "duplicate_payment")), status: "open", fingerprint: "dup:je1-je2" };
+    // C198·3b (f3) — the fingerprint is now keyed on CONTENT (vendor + amount + the two
+    // dates), not on the pair of row ids, so a re-run over the same statement can't mint
+    // a second card for the same fact. Derive it rather than hardcode the recipe.
+    const DUP_FP = detected0.find((d) => d.type === "duplicate_payment").fingerprint;
+    const openRow = { ...anomalyInsertRow("co1", detected0.find((d) => d.type === "duplicate_payment")), status: "open", fingerprint: DUP_FP };
 
     // Remediation: the duplicate je2 is soft-deleted → next scan detects NOTHING.
     const detected1 = runAnomalyDetection([dupLedger[0]], [], new Date("2026-02-01T12:00:00Z"));
@@ -64,22 +78,27 @@ describe("auto-resolve on condition disappearance — the O83 duplicate-cleanup 
     expect(toInsert).toHaveLength(0);
     expect(toTouch).toHaveLength(0);
     expect(toResolve).toHaveLength(1);
-    expect(toResolve[0].fingerprint).toBe("dup:je1-je2");   // survives as history, now resolved
+    expect(toResolve[0].fingerprint).toBe(DUP_FP);   // survives as history, now resolved
   });
 });
 
 describe("durable dismissal — a dismissed fingerprint is NOT re-inserted", () => {
+  const dupFingerprint = () =>
+    runAnomalyDetection(dupLedger, [], NOW).find((d) => d.type === "duplicate_payment").fingerprint;
+
   it("dismissed row suppresses re-creation across sessions/devices", () => {
     const detected = runAnomalyDetection(dupLedger, [], NOW);
-    const dismissed = { fingerprint: "dup:je1-je2", status: "dismissed", dismissed_reason: "known vendor deposit, not a dup" };
+    const fp = dupFingerprint();
+    const dismissed = { fingerprint: fp, status: "dismissed", dismissed_reason: "known vendor deposit, not a dup" };
     const { toInsert } = reconcileAnomalies({ detected, rows: [dismissed] });
-    expect(toInsert.find((d) => d.fingerprint === "dup:je1-je2")).toBeFalsy();
+    expect(toInsert.find((d) => d.fingerprint === fp)).toBeFalsy();
   });
   it("a RESOLVED fingerprint does NOT suppress — a genuine recurrence re-opens", () => {
     const detected = runAnomalyDetection(dupLedger, [], NOW);
-    const resolved = { fingerprint: "dup:je1-je2", status: "resolved", resolution: "auto" };
+    const fp = dupFingerprint();
+    const resolved = { fingerprint: fp, status: "resolved", resolution: "auto" };
     const { toInsert } = reconcileAnomalies({ detected, rows: [resolved] });
-    expect(toInsert.find((d) => d.fingerprint === "dup:je1-je2")).toBeTruthy();
+    expect(toInsert.find((d) => d.fingerprint === fp)).toBeTruthy();
   });
 });
 

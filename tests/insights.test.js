@@ -170,9 +170,12 @@ describe("duplicate_payment — tight window excludes legitimate recurring same-
     ];
     const flags = dupFlags(ledger);
     expect(flags).toHaveLength(2);
-    // adjacent pairs only — never the 14-day-apart (b1,b3) pair
-    const keys = flags.map(f => f.fingerprint).sort();
-    expect(keys).toEqual(["dup:b1-b2", "dup:b2-b3"]);
+    // adjacent pairs only — never the 14-day-apart (b1,b3) pair. Asserted on the linked
+    // entries rather than the fingerprint string: C198·3b (f3) re-keyed emission onto
+    // CONTENT (vendor + amount + dates) so a re-upload can't mint a second card, and the
+    // pairing — which is what this test is actually about — is unchanged by that.
+    const pairs = flags.map(f => [...f.invoice_ids].sort().join("-")).sort();
+    expect(pairs).toEqual(["b1-b2", "b2-b3"]);
   });
 
   it("same-day identical charges → a flag (0 days apart, the genuine double-pay)", () => {

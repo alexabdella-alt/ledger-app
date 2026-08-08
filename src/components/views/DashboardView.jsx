@@ -9,6 +9,7 @@ import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, comp
 import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
+import { ownerAnomalyLine } from "../../lib/ownerTrust";
 import ClarificationFlow from "../ClarificationFlow";
 import TrustPanel from "./TrustPanel";
 import { t } from "../../lib/theme";
@@ -744,8 +745,21 @@ export default function DashboardView() {
                 );
               })()}
 
-              {/* ── ANOMALY DETECTION (Item 32) — below the metric cards ── */}
-              {Array.isArray(anomalies) && anomalies.length > 0 && (() => {
+              {/* ── C198·3b (d) — THE OWNER SEAT HEARS ONE CALM LINE ──
+                  The amber box, the severity chips and the per-anomaly cards below are a
+                  REVIEWER's working queue. Rendered on the owner's home they contradicted
+                  the trust panel directly above them ("Nothing needs your attention" over
+                  "⚠ 5 unusual patterns detected"). One muted line, no colour, no cards. */}
+              {!cockpit && Array.isArray(anomalies) && anomalies.length > 0 && (() => {
+                const line = ownerAnomalyLine(anomalies);
+                if (!line) return null;
+                return (
+                  <div style={{ fontSize:12.5, color:"var(--sc-text-2)", marginBottom:24, paddingLeft:2 }}>{line}</div>
+                );
+              })()}
+
+              {/* ── ANOMALY DETECTION (Item 32) — below the metric cards. CPA-only (C198·3b d). ── */}
+              {cockpit && Array.isArray(anomalies) && anomalies.length > 0 && (() => {
                 const SEV = { high:{ c:"var(--sc-error)", bg:"var(--sc-error-soft)", b:"var(--sc-error-soft)" }, medium:{ c:"var(--sc-warning)", bg:"var(--sc-warning-soft)", b:"var(--sc-warning-soft)" }, low:{ c:"var(--sc-info)", bg:"var(--sc-info-soft)", b:"var(--sc-info-soft)" } };
                 // C197: the transaction itself stays open to both seats (it's the client's own
                 // entry, reached from their own home page). The BOOKS fallback is cockpit-only —

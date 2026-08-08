@@ -143,11 +143,54 @@ describe("(6) Review opens on the first UNSIGNED month, not the calendar month",
     const signoffs = [{ period: "2026-03", revoked_at: "2026-05-01T00:00:00Z" }];
     expect(firstUnsignedMonth({ months, signoffs, fallback: "2026-08" })).toBe("2026-03");
   });
-  it("everything signed → the fallback (nothing to review)", () => {
+  it("every month with activity signed → the month AFTER the latest sign-off, not the calendar month", () => {
+    // C198·3b(c) — was the fallback (August). A month nobody attested is the month
+    // to review, whether or not anything was booked in it.
     const signoffs = months.map(p => ({ period: p, revoked_at: null }));
-    expect(firstUnsignedMonth({ months, signoffs, fallback: "2026-08" })).toBe("2026-08");
+    expect(firstUnsignedMonth({ months, signoffs, fallback: "2026-08" })).toBe("2026-06");
   });
   it("no activity at all → the fallback", () => {
     expect(firstUnsignedMonth({ months: [], signoffs: [], fallback: "2026-08" })).toBe("2026-08");
+  });
+});
+
+// ── C198·3b (c) — THE RULE IS CALENDAR, NOT ACTIVITY ─────────────────────────
+// Live O86: June signed off, and the picker opened on AUGUST because July had
+// nothing booked in it. A quiet month is still a month someone has to attest.
+describe("(c) the next month to review is the month AFTER the latest sign-off, independent of activity", () => {
+  it("THE LIVE REPRO — zero-activity July is the default once June is signed", () => {
+    expect(firstUnsignedMonth({
+      months: ["2026-05", "2026-06"],                       // July has nothing booked
+      signoffs: [{ period: "2026-05" }, { period: "2026-06" }].map(s => ({ ...s, revoked_at: null })),
+      fallback: "2026-08",
+    })).toBe("2026-07");
+  });
+
+  it("a GAP in sign-offs lands on the gap rather than stepping over it", () => {
+    expect(firstUnsignedMonth({
+      months: ["2026-03", "2026-05"],
+      signoffs: [{ period: "2026-03", revoked_at: null }, { period: "2026-05", revoked_at: null }],
+      fallback: "2026-08",
+    })).toBe("2026-04");
+  });
+
+  it("crosses a year boundary", () => {
+    expect(firstUnsignedMonth({
+      months: ["2026-12"],
+      signoffs: [{ period: "2026-12", revoked_at: null }],
+      fallback: "2027-03",
+    })).toBe("2027-01");
+  });
+
+  it("never runs past the caller's current month — nothing to review means stay put", () => {
+    expect(firstUnsignedMonth({
+      months: ["2026-08"],
+      signoffs: [{ period: "2026-08", revoked_at: null }],
+      fallback: "2026-08",
+    })).toBe("2026-08");
+  });
+
+  it("nothing signed at all → the start of the books, not the calendar month", () => {
+    expect(firstUnsignedMonth({ months: ["2026-04", "2026-05"], signoffs: [], fallback: "2026-08" })).toBe("2026-04");
   });
 });

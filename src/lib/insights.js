@@ -153,10 +153,36 @@ export function isSystemPostedEntry(i) {
   return ["payroll", "ap_payment", "ar_collection", "depreciation"].includes(kind);
 }
 
-export function runAnomalyDetection(invoices, recurring = [], now = new Date()) {
+// ── C198·3b (f2) — THE BOOKS' OWN CLOCK ──────────────────────────────────────
+// The frontier is the latest date the BOOKS know about: the newest live entry,
+// never later than wall-clock (a future-dated entry must not drag the frontier
+// forward). Bookkeeping always trails real time — that is the normal state of
+// every real client, not an exception — so "how long has it been?" has to be
+// asked of the ledger, not of the calendar. Returns YYYY-MM-DD, or null for
+// empty books. Pure.
+export function booksFrontier(invoices = [], now = new Date()) {
+  const nowKey = ymdLocal(now);
+  let max = null;
+  for (const i of invoices || []) {
+    if (!isLive(i) || !i.date) continue;
+    const d = String(i.date).slice(0, 10);
+    if (d > nowKey) continue;
+    if (!max || d > max) max = d;
+  }
+  return max;
+}
+
+const dayDiffYMD = (from, to) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+
+export function runAnomalyDetection(invoices, recurring = [], now = new Date(), { frontier = null } = {}) {
   const money = n => fmtSignedMoney(n);   // canonical cents (was ad-hoc whole-dollar)
   const daysAgo = d => (now - new Date(d)) / 86400000;
   const within = (d, days) => { const x = daysAgo(d); return x >= 0 && x <= days; };
+  // The period under review wins when the caller supplies one; otherwise the books'
+  // own high-water mark. Staleness (detector 4) is measured against THIS, never `now`.
+  const asOf = frontier || booksFrontier(invoices, now) || ymdLocal(now);
+  const agedFromBooks = d => dayDiffYMD(String(d).slice(0, 10), asOf);
   const out = [];
   // `fingerprint` is a STABLE content key (O83 persistence): re-detecting the same
   // condition yields the same fingerprint, so it dedups to one persisted row and
@@ -164,6 +190,28 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
   // rule already builds IS that key — fingerprint mirrors it (kept as a named field so
   // the persistence layer never has to know each rule's id recipe).
   const push = a => out.push({ detected_at: now.toISOString(), invoice_ids: [], ...a, fingerprint: a.id });
+
+  // ── C198·3b (f3) — EMISSION IS KEYED ON CONTENT, NOT ON ROW IDENTITY ───────
+  // Live O86: a statement re-upload took the queue from 5 cards to 10. C193 dedupes
+  // LINES; this is the emission layer above it. Half these rules keyed their
+  // fingerprint on a journal-entry id, so the same economic fact re-derived from the
+  // same statement produced a DIFFERENT key and opened a second card for it — the
+  // dedup was keyed on the identity of the row rather than on what the row says.
+  //
+  // The content key is what the anomaly is ABOUT: type + vendor + the subject's own
+  // date and amount. Same charge, same key, whatever the ledger renumbered it to.
+  // (category_spike already keyed on GL code + month and keeps its `:YYYY-MM` tail —
+  // anomalyTouchesPeriod parses that tail for the aggregate anomalies that carry no
+  // entity_refs, so it must stay in that shape.)
+  //
+  // ONE-TIME TRANSITION: anomalies persisted under the old id-keyed fingerprints no
+  // longer match, so on the first scan after this ships they auto-resolve and re-open
+  // under their content key — the same reconcile pass does both, so the queue count
+  // stays right rather than doubling. A previously DISMISSED anomaly can come back
+  // once, because its suppression was recorded against the old key.
+  const cents = n => Math.round(Math.abs(Number(n) || 0) * 100);
+  const ymd = d => String(d || "").slice(0, 10);
+  const subjectKey = i => `${ymd(i && i.date)}:${cents(i && i.amount)}`;
 
   const expenses = (invoices || []).filter(i => isLive(i) && i.date && isExpenseCode(i.gl_code) && (Number(i.amount) > 0));
 
@@ -185,7 +233,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
     const amt = Number(latest.amount) || 0;
     if (baseline > 0 && amt >= 2 * baseline && within(latest.date, 40)) {
       const x = (amt / baseline).toFixed(1);
-      push({ id: `vendor_spike:${k}:${latest.id}`, type: "vendor_spike", severity: "high",
+      push({ id: `vendor_spike:${k}:${subjectKey(latest)}`, type: "vendor_spike", severity: "high",
         title: `${latest.vendor} charged ${money(amt)} — ${x}× usual`,
         description: `${latest.vendor} normally runs about ${money(baseline)}; this charge is ${x}× that. Worth a look.`,
         invoice_ids: [latest.id] });
@@ -202,7 +250,9 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
   for (const i of expenses) {
     const dup = findDuplicate(i, expenses.filter(x => String(x.id) !== String(i.id)), { windowDays: 7 });
     if (!dup) continue;
-    const key = [String(i.id), String(dup.id)].sort().join("-");
+    // Content key: the vendor, the amount, and the two dates it happened on —
+    // NOT the pair of row ids, which a re-run renumbers (C198·3b f3).
+    const key = `${normVendor(i.vendor)}:${cents(i.amount)}:${[ymd(i.date), ymd(dup.date)].sort().join("+")}`;
     if (seen.has(key)) continue;
     seen.add(key);
     push({ id: `dup:${key}`, type: "duplicate_payment", severity: "high",
@@ -243,14 +293,32 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
   }
 
   // 4. Missing recurring — a roughly-monthly vendor that's gone quiet 35+ days.
-  for (const [k, list] of Object.entries(byVendor)) {
+  //
+  // C198·3b (f2) — MEASURED AGAINST THE BOOKS, NOT THE CALENDAR. Live O86: "Lone Star
+  // hasn't charged you in 59 days" rendered fifty pixels from that vendor's June 8
+  // charge, because the age was wall-clock and the books only ran to June. Every real
+  // client's books trail real time, so a wall-clock detector reports every one of them
+  // as having lost half their vendors. The vendor grouping is anchored to the frontier
+  // too — a now()-relative input window would put the trailing-books case (the exact
+  // case this fixes) outside the detector's reach entirely.
+  //
+  // The other detectors below still window on `now`; that is recorded, not fixed here
+  // (they ask "is this recent activity unusual?", not "how long has it been?").
+  const byVendorAsOf = {};
+  for (const i of expenses) {
+    const a = agedFromBooks(i.date);
+    if (a < 0 || a > 95) continue;
+    const k = normVendor(i.vendor);
+    if (k) (byVendorAsOf[k] = byVendorAsOf[k] || []).push(i);
+  }
+  for (const [k, list] of Object.entries(byVendorAsOf)) {
     if (list.length < 2) continue;
     const s = sortByDate(list);
     const gaps = [];
     for (let j = 1; j < s.length; j++) gaps.push((new Date(s[j].date) - new Date(s[j - 1].date)) / 86400000);
     const monthly = gaps.length && gaps.every(g => g >= 25 && g <= 40);
     const last = s[s.length - 1];
-    const age = daysAgo(last.date);
+    const age = agedFromBooks(last.date);
     if (monthly && age >= 35) {
       push({ id: `missing_recurring:${k}`, type: "missing_recurring", severity: "medium",
         title: `${last.vendor} hasn't charged you in ${Math.round(age)} days`,
@@ -264,7 +332,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
   for (const i of expenses.filter(x => within(x.date, 95) && !isSystemPostedEntry(x))) {   // C196(4)
     const amt = Number(i.amount) || 0;
     if (amt > 2500 && !isCapitalized(i)) {
-      push({ id: `large_txn:${i.id}`, type: "large_transaction", severity: "medium",
+      push({ id: `large_txn:${normVendor(i.vendor)}:${subjectKey(i)}`, type: "large_transaction", severity: "medium",
         title: `Large charge: ${money(amt)} to ${i.vendor}`,
         description: `${money(amt)} to ${i.vendor} on ${String(i.date)}. If it's equipment or software lasting over a year, it may need to be capitalized rather than expensed.`,
         invoice_ids: [i.id] });
@@ -275,7 +343,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
   for (const i of expenses.filter(x => within(x.date, 95) && !isSystemPostedEntry(x))) {   // C196(4)
     const amt = Number(i.amount) || 0;
     if (amt >= 1000 && amt % 1000 === 0) {
-      push({ id: `round:${i.id}`, type: "round_number", severity: "low",
+      push({ id: `round:${normVendor(i.vendor)}:${subjectKey(i)}`, type: "round_number", severity: "low",
         title: `Round amount: ${money(amt)} to ${i.vendor}`,
         description: `${money(amt)} is an exact round number — sometimes that means an estimate was booked instead of the actual amount.`,
         invoice_ids: [i.id] });
@@ -290,7 +358,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date()) 
       const windowItems = s.filter(x => { const h = (new Date(x.date) - new Date(s[a].date)) / 3600000; return h >= 0 && h <= 48; });
       if (windowItems.length >= 3) {
         const tot = windowItems.reduce((t, x) => t + (Number(x.amount) || 0), 0);
-        push({ id: `rapid:${k}:${s[a].id}`, type: "rapid_sequential", severity: "medium",
+        push({ id: `rapid:${k}:${ymd(s[a].date)}:${windowItems.length}`, type: "rapid_sequential", severity: "medium",
           title: `${windowItems.length} charges from ${s[a].vendor} in 48 hours`,
           description: `${windowItems.length} separate charges from ${s[a].vendor} within two days, totaling ${money(tot)}.`,
           invoice_ids: windowItems.map(x => x.id) });

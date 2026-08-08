@@ -140,14 +140,66 @@ export function statementSummaryCopy({ total = 0, handled = 0, needInput = 0 } =
   return parts.join(" · ");
 }
 
-// ── C196(6) — REVIEW OPENS ON THE FIRST UNSIGNED MONTH ───────────────────────
-// Three drives running, the month picker opened on the CURRENT calendar month (August)
-// when the work to review was months earlier. Default to the earliest month that has
-// activity and is not yet signed off; fall back to the current month when everything is
-// signed (nothing to do) or there is no activity at all. Pure.
+// ── C198·3b — THE BANK IMPORT TOAST TELLS THE ALREADY-HAVE TRUTH ─────────────
+// Live O86: re-uploading a statement whose every line was already booked announced
+// "21 transactions imported — 0 need review". Nothing was imported; all 21 were
+// deduped. Same class as the C198·2b queue-line fix, one surface over — a tile
+// reporting the work it MEANT to do rather than the work it did. The pipeline path
+// already says this properly ("Everything on this statement was already in your
+// books ✓"); this is the manual path saying the same thing.
+//
+// Also keeps the "0 need review" plural bug out (cf. statementSummaryCopy). Pure.
+export function bankImportToastCopy({ total = 0, alreadyBooked = 0, needReview = 0 } = {}) {
+  const t = Math.max(0, Number(total) || 0);
+  const a = Math.min(t, Math.max(0, Number(alreadyBooked) || 0));
+  const n = Math.max(0, Number(needReview) || 0);
+  if (!t) return "No transactions found on that statement.";
+  if (a === t) {
+    return t === 1
+      ? "That transaction was already in your books ✓ — nothing added."
+      : `All ${t} transactions were already in your books ✓ — nothing added.`;
+  }
+  const added = t - a;
+  const parts = [`${added} transaction${added === 1 ? "" : "s"} imported`];
+  if (a) parts.push(`${a} already in your books`);
+  parts.push(n ? `${n} need${n === 1 ? "s" : ""} review` : "nothing needs review ✓");
+  return parts.join(" · ");
+}
+
+// ── C196(6) / C198·3b(c) — REVIEW OPENS ON THE FIRST UNSIGNED MONTH ──────────
+// C196(6) fixed the picker opening on the CURRENT calendar month, but keyed the
+// answer to months WITH ACTIVITY. O86 (c) caught the rest of the bug live: after
+// June was signed off the picker opened on AUGUST, because July had nothing booked
+// and so was never a candidate — the reviewer was walked silently past a period
+// nobody attested.
+//
+// The rule is calendar, not activity: the next month to review is the earliest
+// month NOT signed off, counting months as a continuous sequence. A quiet month is
+// still a month someone has to attest — "nothing happened" is a finding, and only a
+// human can say it. Walking the sequence (rather than jumping to latest-signed + 1)
+// also means a GAP in sign-offs lands on the gap instead of stepping over it.
+//
+// Never returns a month later than `fallback` (the caller's current month) — with
+// everything attested there is nothing to review and we stay put rather than
+// sending the reviewer into a month that hasn't happened yet. Pure.
+const nextMonthKey = (ym) => {
+  const [y, m] = String(ym).split("-").map(Number);
+  return m >= 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+};
+
 export function firstUnsignedMonth({ months = [], signoffs = [], fallback = null } = {}) {
   const signed = new Set((signoffs || []).filter(s => s && !s.revoked_at).map(s => String(s.period)));
-  const candidates = [...new Set((months || []).filter(Boolean).map(String))].sort();
-  for (const m of candidates) if (!signed.has(m)) return m;
+  const activity = [...new Set((months || []).filter(Boolean).map(String))].sort();
+  const signedList = [...signed].sort();
+  if (!activity.length && !signedList.length) return fallback || null;
+
+  // Walk from the start of the books (or the first attested month, whichever is
+  // earlier) to one month past the last month we know anything about.
+  const start = [activity[0], signedList[0]].filter(Boolean).sort()[0];
+  const lastKnown = [activity[activity.length - 1], signedList[signedList.length - 1]].filter(Boolean).sort().pop();
+  const limit = nextMonthKey(lastKnown);
+  for (let m = start; m <= limit; m = nextMonthKey(m)) {
+    if (!signed.has(m)) return fallback && m > fallback ? fallback : m;
+  }
   return fallback || null;
 }

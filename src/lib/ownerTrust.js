@@ -187,3 +187,29 @@ export function ownerTrustState({
     nets: { completeness: capturedOk, confidence: confidenceOk, accuracy: accuracyOk, bankMatched: !bankOverdue, noAnomalies: anomaliesOk, signOffOk: evalr.ok },
   };
 }
+
+// ── C198·3b (d) — WHAT THE OWNER HEARS ABOUT ANOMALIES ───────────────────────
+// Live O86: the trust panel said "Nothing needs your attention" while an amber
+// box reading "⚠ 5 unusual patterns detected" sat below it on the SAME screen,
+// with five expandable cards under that. Both were telling the truth — the panel
+// about HIGH anomalies, the box about all of them — and the owner read a
+// contradiction and lost trust in both.
+//
+// The seat decides the register. Amber, severity chips and per-anomaly cards are
+// a REVIEWER's working queue; the owner gets AT MOST ONE MUTED LINE, and only
+// about the notes the trust panel isn't already speaking for.
+//
+// HIGH is deliberately excluded here: ownerTrustState already turns an open HIGH
+// into "Something looks unusual — your accountant is taking a look", so repeating
+// it would re-create the double-statement this fix exists to remove.
+//
+// Returns a single plain string, or null when there is nothing to say. Pure.
+export function ownerAnomalyLine(anomalies = []) {
+  const quiet = (anomalies || []).filter(a => a && a.severity !== "high");
+  const n = quiet.length;
+  if (!n) return null;
+  const small = quiet.every(a => a.severity === "low") ? " small" : "";
+  return n === 1
+    ? `One${small} thing noted — your accountant will look it over.`
+    : `${n}${small} things noted — your accountant will look them over.`;
+}

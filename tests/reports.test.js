@@ -241,7 +241,9 @@ describe("businessHealth — owner-facing status, no books-health, honest", () =
     expect(bh.concerns).toEqual([]);
     // the FOUR key numbers live here (once) — cash, monthly burn, runway, net income
     expect(bh.facts.map(f => f.key)).toEqual(["cash", "burn", "runway", "profit"]);
-    expect(bh.facts.map(f => f.label)).toEqual(["Cash on hand", "Monthly burn", "Runway", `Net income · 2026`]);
+    // C198·3b (e) — a PROFITABLE business isn't counting down to zero, so the same figure
+    // is labelled as coverage. It reverts to "Runway" the moment the business is at a loss.
+    expect(bh.facts.map(f => f.label)).toEqual(["Cash on hand", "Monthly burn", "Cash covers", `Net income · 2026`]);
     expect(bh.facts.every(f => f.drill)).toBe(true);   // each figure drills in (replaced the metric cards)
   });
 

@@ -541,28 +541,47 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {
   // (the same `burn` runway divides by, and what the runway drill shows as "average monthly
   // burn") — NOT the current partial month, which collapsed to the single most-recent expense
   // early in a month and disagreed with the runway math shown right beside it.
+  // ── C198·3b (e) — A PROFITABLE BUSINESS IS NOT BURNING ─────────────────────
+  // Live O86, on the DEMO surface a prospect sees: "You're profitable with ~3 months
+  // of runway · Worth a look". Two true facts welded into a false one. "Runway" is a
+  // countdown to running out — it presumes you are consuming cash faster than you
+  // make it. Said of a company that is making money, it is simply wrong, and the
+  // alarm badge beside it turned a healthy month into a scare.
+  //
+  // The numbers do not change. The framing does: when net income is positive the same
+  // figure is stated as COVERAGE ("cash covers about N months of spending at the
+  // current pace, even before new revenue"), which is what it actually measures, and
+  // it stops being a concern. The alarm is reserved for the genuinely alarming state —
+  // unprofitable AND short of cash.
+  const profitable = net >= 0;
+  const runwayShort = !runwayInfinite && runway < 6;
+
   const facts = [
     { key: "cash",   label: "Cash on hand",         value: money(cash),                                    tone: "neutral",                                                                     drill: "cash" },
     { key: "burn",   label: "Monthly burn",         value: money(burn),                                    tone: "neutral",                                                                     drill: "burn" },
-    { key: "runway", label: "Runway",               value: runwayInfinite ? "No burn" : `~${runway} mo`,   tone: (runwayInfinite || runway >= 6) ? "good" : runway >= 3 ? "watch" : "concern",  drill: "runway" },
-    { key: "profit", label: `Net income · ${year}`, value: money(net),                                     tone: net >= 0 ? "good" : "concern",                                                 drill: "net" },
+    // Coverage on a profitable month is a fact, not a warning — no amber beside "You're profitable".
+    { key: "runway", label: profitable ? "Cash covers" : "Runway", value: runwayInfinite ? "No burn" : `~${runway} mo`,
+      tone: (runwayInfinite || runway >= 6) ? "good" : profitable ? "neutral" : runway >= 3 ? "watch" : "concern", drill: "runway" },
+    { key: "profit", label: `Net income · ${year}`, value: money(net),                                     tone: profitable ? "good" : "concern",                                               drill: "net" },
   ];
 
   const concerns = [];
-  if (net < 0) concerns.push({ key: "profit", severity: "high", text: `You're spending more than you're earning this year (${money(net)} net).` });
+  if (!profitable) concerns.push({ key: "profit", severity: "high", text: `You're spending more than you're earning this year (${money(net)} net).` });
   // Don't re-state the burn number here — it's already in the facts row above; reference it.
-  if (!runwayInfinite && runway < 6) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: `Only ~${runway} month${runway === 1 ? "" : "s"} of runway at the current spending pace.`, actionLabel: "See burn breakdown", actionView: "runway" });
+  if (runwayShort && !profitable) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: `Only ~${runway} month${runway === 1 ? "" : "s"} of runway at the current spending pace.`, actionLabel: "See burn breakdown", actionView: "runway" });
   if (overdue.length) concerns.push({ key: "ar", severity: overdueTotal >= 5000 ? "high" : "med", text: `${overdue.length} invoice${overdue.length > 1 ? "s are" : " is"} 60+ days overdue (${money(overdueTotal)}).`, actionLabel: "Chase overdue invoices", actionView: "ar" });
   if (burnUpPct) concerns.push({ key: "burn", severity: "med", text: `Spending is up ${burnUpPct}% versus last month.` });
 
   concerns.sort((a, b) => (a.severity === "high" ? 0 : 1) - (b.severity === "high" ? 0 : 1));
   const tone = concerns.some(c => c.severity === "high") ? "concern" : concerns.length ? "watch" : "good";
 
-  const profitPhrase = net >= 0 ? "You're profitable" : "You're running at a loss";
-  const runwayPhrase = runwayInfinite ? "" : ` with ~${runway} month${runway === 1 ? "" : "s"} of runway`;
+  const months = (n) => `${n} month${n === 1 ? "" : "s"}`;
+  const lead = profitable
+    ? `You're profitable.${runwayInfinite ? "" : ` Cash covers about ${months(runway)} of spending at the current pace, even before new revenue.`}`
+    : `You're running at a loss${runwayInfinite ? "" : ` with about ${months(runway)} of runway`}.`;
   const headline = !concerns.length
-    ? `${profitPhrase}${runwayPhrase}. Everything looks healthy right now.`
-    : `${profitPhrase}${runwayPhrase}. ${tone === "concern" ? "Needs attention" : "Heads up"}: ${concerns[0].text}`;
+    ? `${lead} Everything looks healthy right now.`
+    : `${lead} ${tone === "concern" ? "Needs attention" : "Heads up"}: ${concerns[0].text}`;
 
   return { tone, headline, facts, concerns };
 }
