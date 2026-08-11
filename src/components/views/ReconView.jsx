@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { prefillEndingBalance, statementForPeriod, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
-import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
+import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
 import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
 import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy, outstandingClearedCopy, MATCH_EXISTING_ACTION_LABEL } from "../../lib/workbench";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
@@ -613,13 +613,32 @@ export default function ReconView() {
   // ════════ LANDING ════════
   if (step==="landing") {
     const viewing = viewRecId ? completed.find(r=>r.id===viewRecId) : null;
+    // C198·3c (iii) — count what's actually in the books for THIS record's account + period, so
+    // the auto-path detail can say what happened instead of scoring a match run that never ran.
+    // Scoped to the reconciled account (its own cash code) exactly like reconCashCodes; when the
+    // account can't be resolved we pass null and the helper prints an em dash rather than a
+    // number derived from the wrong account.
+    const viewingBooksCount = (() => {
+      if (!viewing || !viewing.period_start || !viewing.period_end) return null;
+      // STRICTLY this record's own account. Deliberately NO fallback to every cash code:
+      // a multi-bank company would then be shown a figure summed across accounts (and a
+      // cash-to-cash transfer counted twice) on a card whose whole job is to be exact.
+      // An unresolvable account (a manual session, a deleted bank account) yields null and
+      // the helper prints an em dash — the auto path always has a bound account, so nothing
+      // that needs this number loses it.
+      const acct = (bankAccounts||[]).find(b => String(b.id)===String(viewing.account_id));
+      if (!acct?.gl_code) return null;
+      return reconBooksSet(invoices, { cashCodes: [String(acct.gl_code)], from: viewing.period_start, to: viewing.period_end })
+        .filter(b => !isOpeningPositionRow(b, viewing.period_start)).length;
+    })();
+    const viewingActivity = viewing ? reconciliationActivityLine(viewing, { booksCount: viewingBooksCount }) : null;
     if (viewing) return (
       <div>
         <button onClick={()=>setViewRecId(null)} style={{ marginBottom:16, padding:"7px 14px", borderRadius:9, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer" }}>← Back</button>
         <div style={{ ...card, padding:24, maxWidth:560 }}>
           <div style={{ fontSize:11, color:"var(--sc-success)", letterSpacing:1, marginBottom:8, fontWeight:600 }}>✓ COMPLETE</div>
           <h2 style={{ margin:"0 0 14px", fontSize:20 }}>{viewing.account_name} · {viewing.period_start} → {viewing.period_end}</h2>
-          {[["Your bank's ending balance",fmt(viewing.statement_balance)],["What your books showed",fmt(viewing.books_balance)],["Difference",fmt(viewing.difference||0)],["Transactions matched",(viewing.matched_transactions||[]).length],["Completed",viewing.completed_at?new Date(viewing.completed_at).toLocaleString():"—"],["By",nameForUser(viewing.completed_by)]].map(([k,v])=>(
+          {[["Your bank's ending balance",fmt(viewing.statement_balance)],["What your books showed",fmt(viewing.books_balance)],["Difference",fmt(viewing.difference||0)],[viewingActivity.label,viewingActivity.value],["Completed",viewing.completed_at?new Date(viewing.completed_at).toLocaleString():"—"],["By",nameForUser(viewing.completed_by)]].map(([k,v])=>(
             <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:"1px solid var(--sc-surface-2)", fontSize:13 }}><span style={{ color:"var(--sc-text-2)" }}>{k}</span><span style={{ fontWeight:500 }}>{v}</span></div>
           ))}
         </div>

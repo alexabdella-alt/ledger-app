@@ -5,8 +5,9 @@ import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
-import { payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll } from "../../lib/payroll";
+import { payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata } from "../../lib/payroll";
 import { validateUpload } from "../../lib/uploadGuard";
+import { checkedRowUpdate } from "../../lib/checkedWrite";
 import { INTAKE_STATUS } from "../../lib/documentIntake";
 import { extractFirstJson } from "../../lib/aiJson";
 
@@ -101,6 +102,24 @@ export default function PayrollView() {
               if (!je || !je.balanced) { showNotification("Couldn't build the payroll entry — check the totals.", "error"); return; }
               const jeId = await persistMultiLineEntry(je);   // cutoff-guarded; refuses unbalanced
               if (!jeId) return;                              // failure already surfaced (e.g. pre-cutoff)
+              // C198·3c (i) — STAMP import_metadata, or the next register's norm check is blind.
+              // The canonical RPC drops every p_meta key it doesn't have a column for (see
+              // payrollImportMetadata), so this follow-up CHECKED update is the only thing that
+              // ever puts `kind:'payroll'` on the row payrollHistoryFromLedger reads. It runs
+              // BEFORE loadAllData so the reload carries the stamp into the in-memory ledger.
+              // A zero-row update is a FAILURE and says so out loud (checkedWrite.js) — the
+              // silent-write class that let ·3a ship inert for a whole release.
+              const stampRes = await checkedRowUpdate({
+                supabase, table: "journal_entries", id: jeId, companyId: currentCompany?.id,
+                patch: { import_metadata: payrollImportMetadata(imp) },
+                label: "payroll:stamp-import-metadata",
+              });
+              if (!stampRes.ok) {
+                // The ENTRY is correct and posted — only the norm history is lost. Say which,
+                // and don't dress it up: the next register will honestly report that it couldn't
+                // find a prior run rather than claiming there wasn't one (the O87 Q2 lesson).
+                logAudit("payroll_history_stamp_failed", `Payroll posted, but this run won't count toward this company's payroll norms (${stampRes.reason}) — the next register will still ask for a person.`, null, { journal_entry_id: String(jeId), reason: stampRes.reason });
+              }
               setPayrollImports(prev => prev.map(p => p.id===imp.id ? {...p, posted:true} : p));
               // C196(5) — the register is now REAL journal entries, so its intake row must say
               // RECORDED (with the entry it became). Live: both May registers kept nagging
@@ -120,9 +139,14 @@ export default function PayrollView() {
               } catch (e) { console.warn("[payroll] intake close-out skipped:", e?.message || e); }
               logAudit("payroll_posted", `${imp.source} payroll ${auto ? "auto-posted (register passed every shape check)" : "posted"}: ${fmt(imp.total_gross)} gross → Dr Salaries/Tax · Cr Cash/Payroll Taxes Payable`, null, { auto, journal_entry_id: String(jeId) });
               try { await loadAllData(); } catch {}           // surface the posted entry
-              showNotification(auto
+              // C198·3c — the outcome the operator reads must include the part that FAILED.
+              // The entry is in the books either way, so this is not an error toast; but a
+              // silent success line over a lost stamp is the C198·2b "Done"-over-the-stash
+              // failure again, and this commit exists to stop telling that kind of story.
+              showNotification((auto
                 ? payrollAutoPostNarration({ periodLabel: imp.period, net: imp.total_net, headcount: (imp.employees || []).length })
-                : `Payroll posted: ${fmt(imp.total_gross)} gross ✓`);
+                : `Payroll posted: ${fmt(imp.total_gross)} gross ✓`)
+                + (stampRes.ok ? "" : " — we couldn't file it against this company's payroll history, so the next run will still need a person"));
               return true;
             };
             return (

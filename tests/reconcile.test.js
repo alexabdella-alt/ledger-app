@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { touchesCashAccount, cashLegSigned, reconBooksSet, statementBalanceVerified, canCompleteReconciliation,
-  isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference } from "../src/lib/reconcile.js";
+  isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, reconciliationActivityLine } from "../src/lib/reconcile.js";
 import { openingDiscrepancy } from "../src/lib/openingBalanceProposal.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -310,5 +312,107 @@ describe("supersedableOpenReconciliations — completing supersedes stale open r
     const remaining = all.filter(r => !toDelete.has(r.id));
     expect(remaining.map(r => r.id)).toEqual(["complete"]);
     expect(remaining.filter(r => r.status === "open")).toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// C198·3c (iii) — "TRANSACTIONS MATCHED: 0" ON A MONTH THAT WENT PERFECTLY.
+//
+// O87 July: 21 lines, 17 auto-booked, difference 0, auto-completed and signed off —
+// and the completed record's detail card said "Transactions matched: 0". Literally
+// true (the auto path BOOKS, it does not MATCH, so the matcher's counter is zero) and
+// it reads as failure. The count is not wrong; the LABEL is. Same true-but-reads-false
+// class as the C198·2b queue line and the ·3b re-upload toast.
+// ════════════════════════════════════════════════════════════════════════════
+describe("(iii) the completed-reconciliation detail says what happened", () => {
+  const AUTO = { matched_transactions: [], unmatched_bank: [], status: "complete", difference: 0 };
+  const SESSION = { matched_transactions: [{ bank: { id: "t1" }, bookId: "b1" }, { bank: { id: "t2" }, bookId: "b2" }], status: "complete" };
+
+  it("★ an auto-path month NEVER renders 'Transactions matched: 0'", () => {
+    const line = reconciliationActivityLine(AUTO, { booksCount: 21 });
+    expect(line.label).not.toBe("Transactions matched");
+    expect(String(line.value)).not.toBe("0");
+    expect(line.value).toBe("21 transactions already in your books");
+  });
+
+  it("a SESSION-matched month keeps its real count under its real label", () => {
+    expect(reconciliationActivityLine(SESSION, { booksCount: 21 })).toEqual({ label: "Transactions matched", value: "2" });
+  });
+
+  it("a session count is never overwritten by the books count — they can differ", () => {
+    expect(reconciliationActivityLine(SESSION, { booksCount: 0 }).value).toBe("2");
+    expect(reconciliationActivityLine(SESSION, { booksCount: null }).value).toBe("2");
+  });
+
+  it("one transaction is singular", () => {
+    expect(reconciliationActivityLine(AUTO, { booksCount: 1 }).value).toBe("1 transaction already in your books");
+  });
+
+  it("zero rows is reported as a QUERY result, never as a fact about the month", () => {
+    // The O87 Q2 lesson: an empty result set may only ever be reported as an empty
+    // result set. "There were no transactions" would be a claim about the world.
+    const v = reconciliationActivityLine(AUTO, { booksCount: 0 }).value;
+    expect(v).toBe("We didn't find any in your books for this period");
+    expect(v).not.toMatch(/there (were|are) no|nothing happened|no transactions in/i);
+  });
+
+  it("no countable books → an em dash, never a number we can't stand behind", () => {
+    for (const c of [null, undefined, NaN, -3, "twenty-one"]) {
+      expect(reconciliationActivityLine(AUTO, { booksCount: c }).value).toBe("—");
+    }
+    expect(reconciliationActivityLine(AUTO).value).toBe("—");
+  });
+
+  it("a malformed record degrades instead of throwing", () => {
+    expect(reconciliationActivityLine().value).toBe("—");
+    expect(reconciliationActivityLine({ matched_transactions: null }, { booksCount: 4 }).value).toBe("4 transactions already in your books");
+  });
+
+  it("END TO END — July's shape, counted off the real books set", () => {
+    // reconBooksSet is what the view feeds in: live cash-touching rows in the period,
+    // less the opening position. The 21 is COUNTED, never invented.
+    const july = [
+      { id: "ob", source: "opening_balance", date: "2026-07-01", gl_code: AC1, secondary_gl_code: "3400", debit_credit: "debit", amount: 1000, status: "booked" },
+      ...Array.from({ length: 21 }, (_, i) => ({
+        id: `t${i}`, date: `2026-07-${String((i % 27) + 1).padStart(2, "0")}`,
+        gl_code: "6000", secondary_gl_code: AC1, debit_credit: "debit", amount: 100 + i, status: "booked",
+      })),
+      { id: "aug", date: "2026-08-02", gl_code: "6000", secondary_gl_code: AC1, debit_credit: "debit", amount: 50, status: "booked" },   // out of period
+    ];
+    const booksCount = reconBooksSet(july, { cashCodes: [AC1], from: "2026-07-01", to: "2026-07-31" })
+      .filter(r => !isOpeningPositionRow(r, "2026-07-01")).length;
+    expect(booksCount).toBe(21);
+    expect(reconciliationActivityLine(AUTO, { booksCount }).value).toBe("21 transactions already in your books");
+  });
+});
+
+// The count the card renders is computed in ReconView, not here, so the recipe passing
+// says nothing about the caller. This pins the two properties that make the number
+// honest: it is scoped to THIS record's own bank account, and an unresolvable account
+// yields null (an em dash) rather than a figure summed across every cash account —
+// which on a multi-bank company would also double-count a cash-to-cash transfer.
+describe("(iii) ReconView computes that count against the record's OWN account", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), "src/components/views/ReconView.jsx"), "utf8");
+  const block = src.slice(src.indexOf("const viewingBooksCount"), src.indexOf("const viewingActivity"));
+
+  it("resolves the bank account from viewing.account_id and uses only its gl_code", () => {
+    expect(block).toMatch(/String\(viewing\.account_id\)/);
+    expect(block).toMatch(/cashCodes:\s*\[String\(acct\.gl_code\)\]/);
+  });
+
+  it("returns null when the account can't be resolved — no all-cash-codes fallback", () => {
+    expect(block).toMatch(/if\s*\(!acct\?\.gl_code\)\s*return null/);
+    expect(block).not.toMatch(/cashGlCodes/);
+  });
+
+  it("excludes the opening position and scopes to the record's period", () => {
+    expect(block).toMatch(/isOpeningPositionRow\(b, viewing\.period_start\)/);
+    expect(block).toMatch(/from: viewing\.period_start, to: viewing\.period_end/);
+  });
+
+  it("the card renders the helper's label AND value, not a hardcoded 'Transactions matched'", () => {
+    const card = src.slice(src.indexOf("✓ COMPLETE"), src.indexOf("✓ COMPLETE") + 1400);
+    expect(card).toMatch(/\[viewingActivity\.label,\s*viewingActivity\.value\]/);
+    expect(card).not.toMatch(/"Transactions matched",\(viewing\.matched_transactions/);
   });
 });

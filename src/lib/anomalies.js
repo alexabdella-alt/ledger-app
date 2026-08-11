@@ -53,21 +53,56 @@ export function anomalyTouchesPeriod(anomaly, period, invoices = []) {
 // An anomaly spanning a month boundary (a duplicate pair straddling Jan 30 / Feb 2)
 // reports its LATEST month — so attesting the earlier month never retires a note that
 // also reaches into a month nobody has attested yet.
+//
+// Three ways to place it, in descending order of authority:
+//   1. REFS  — resolve entity_refs/invoice_ids to their entries and take the latest date.
+//   2. MONTH TAIL — the aggregate anomalies (category_spike) that carry no refs encode
+//      their month in the fingerprint tail (`…:YYYY-MM`).
+//   3. FULL DATES IN THE FINGERPRINT (C198·3c (v)) — the f3 content keys embed the
+//      subject's own dates (`dup:<vendor>:<cents>:<dateA>+<dateB>`,
+//      `vendor_spike:<vendor>:<date>:<cents>`, `rapid:<vendor>:<date>:<count>`), so the
+//      month can be read straight off the key. Take the LATEST date, for the same
+//      straddle reason as (1).
+//
+// WHY (3) EXISTS, and why it is NOT gated on `refs.length === 0`. At July's sign-off the
+// f1 sweep skipped three duplicate cards. Both prior paths missed them for INDEPENDENT
+// reasons: ·3b(f3) re-keyed duplicate fingerprints to a date-PAIR tail that the
+// `:YYYY-MM$` regex can't match, AND the detection-time `invoice_ids` on those persisted
+// rows no longer resolved against a reloaded ledger. So `refs.length` was non-zero — the
+// old code never even reached its fallback — and every ref resolved to nothing. Placing
+// the fallback behind "no refs" would have left the live trio exactly as stuck; the
+// condition that matters is "the refs didn't RESOLVE", not "there are no refs". (Note
+// the shape of the original miss: ·3b re-keyed the fingerprints and ·3b consumed them,
+// in the SAME commit, and the two halves disagreed about the format.)
+//
+// The conservative skip stays: nothing parses → null → anomaliesExpiredBySignoff leaves
+// the note open. Failing to place a note must never mean retiring it.
 export function anomalySubjectPeriod(anomaly, invoices = []) {
   if (!anomaly) return null;
   const refs = refIds(anomaly);
-  if (!refs.length) {
-    const m = /:(\d{4}-\d{2})$/.exec(String(anomaly.fingerprint || anomaly.id || ""));
-    return m ? m[1] : null;
+  if (refs.length) {
+    const byId = new Map((invoices || []).map((i) => [String(i.id), i]));
+    let latest = null;
+    for (const r of refs) {
+      const inv = byId.get(String(r));
+      const p = inv && String(inv.date || "").slice(0, 7);
+      if (p && p.length === 7 && (!latest || p > latest)) latest = p;
+    }
+    if (latest) return latest;                       // refs resolved — they are the authority
   }
-  const byId = new Map((invoices || []).map((i) => [String(i.id), i]));
-  let latest = null;
-  for (const r of refs) {
-    const inv = byId.get(String(r));
-    const p = inv && String(inv.date || "").slice(0, 7);
-    if (p && p.length === 7 && (!latest || p > latest)) latest = p;
+  const fp = String(anomaly.fingerprint || anomaly.id || "");
+  const tail = /:(\d{4}-\d{2})$/.exec(fp);
+  if (tail) return tail[1];
+  // `rapid:<vendor>:<date>:<count>` is the one f3 key whose date is the WINDOW START,
+  // not the subject: its refs are every charge in a 48-hour window, which can reach into
+  // the next month. Reading the month off that key would place a straddling note EARLY
+  // and let the earlier month's sign-off retire it — the exact guarantee this function's
+  // "latest month" rule exists to keep. Unplaceable is the correct answer; it stays open.
+  if (!/^rapid:/.test(fp)) {
+    const dates = fp.match(/\d{4}-\d{2}-\d{2}/g);
+    if (dates && dates.length) return dates.reduce((mx, d) => (d > mx ? d : mx)).slice(0, 7);
   }
-  return latest;
+  return null;
 }
 
 // Count of OPEN HIGH anomalies whose refs touch `period` — the sign-off blocker input.

@@ -117,7 +117,10 @@ describe("payrollAutoPostGate — the first register is ALWAYS human-confirmed",
     const g = payrollAutoPostGate(STANDARD, []);
     expect(g.pass).toBe(false);
     expect(codesOf(g)).toEqual([PAYROLL_GATE.NORM]);
-    expect(g.reasons[0].text).toMatch(/first payroll/i);
+    // C198·3c — the reason is a claim about the QUERY, never about the world. Franklin Ave
+    // had twelve priors when the old string told the operator this was its first payroll.
+    expect(g.reasons[0].text).toBe("We couldn't find any prior payroll for this company — someone should check this one by hand.");
+    expect(g.reasons[0].text).not.toMatch(/this is the first|first payroll we/i);
   });
 
   it("the SAME register passes once one prior run exists — the norm is what changed", () => {

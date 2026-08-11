@@ -3007,6 +3007,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (!je) { incomplete.push(row); continue; }   // couldn't build → treat as incomplete, don't guess
       const jeId = await persistMultiLineEntry(je);
       if (!jeId) continue;
+      // C198·3c (i, blast radius) — the SAME follow-up stamp the payroll path needs, for the
+      // same reason. `depreciationAlreadyPosted` derives idempotency from a LIVE JE carrying
+      // import_metadata {kind:'depreciation', asset_id, period} — and post_journal_entry drops
+      // every p_meta key it has no column for, so that guard has ALWAYS returned false and the
+      // `status='pending'` prefilter above has been the only thing preventing a double-post.
+      // The comment there ("the GL is the real guard") described an intention, not the code.
+      // Restoring it matters because the flag write on the next line is precisely the failure
+      // it was meant to survive: the GL entry commits, the flag write doesn't, the row stays
+      // pending, and the next session posts the same asset-period again.
+      const depStamp = await checkedRowUpdate({ supabase, table: "journal_entries", id: jeId, companyId: currentCompany.id,
+        patch: { import_metadata: { kind: "depreciation", asset_id: row.asset_id, period: row.period_index } },
+        label: "depreciation:stamp-import-metadata" });
+      if (!depStamp.ok) logAudit("depreciation_stamp_failed", `Depreciation posted, but its duplicate guard wasn't recorded (${depStamp.reason}) — the schedule flag is now the only thing stopping a repeat`, null, { journal_entry_id: String(jeId), asset_id: String(row.asset_id), period: row.period_index, reason: depStamp.reason });
       try { await supabase.from("depreciation_schedule").update({ status: "posted", journal_entry_id: jeId, posted_at: new Date().toISOString() }).eq("id", row.id).eq("company_id", currentCompany.id); }
       catch (e) { console.warn("[depreciation] schedule flag update failed (GL still correct):", e?.message || e); }
       posted++;
@@ -4511,7 +4524,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Stores the statement FILE in the doc library (document_type 'bank_statement') and links it.
   // Returns { statementId, lineIds } (lineIds aligned to `lines` order) so the caller can stamp
   // the in-memory rows and the booking flow can advance their status.
-  const persistBankStatement = async ({ account, file, rawTxns, lines, statedOpening, statedPeriodStart }) => {
+  const persistBankStatement = async ({ account, file, rawTxns, lines, statedOpening, statedPeriodStart, statedPeriodEnd }) => {
     if (!currentCompany?.id) return { statementId: null, lineIds: [] };
     try {
       // Doc-library linkage for the bank path (§11 "Document library misses bank statements" (a)).
@@ -4547,12 +4560,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
 
       const der = deriveStatementOpening({ transactions: rawTxns, statedOpening, statedPeriodStart });
-      const { periodStart, periodEnd } = statementPeriod(rawTxns);
+      // C198·3c (ii) — the STATED period wins on each side it exists; the transaction span is
+      // the fallback, not the default. (der.periodStart already prefers the stated start; it has
+      // no opinion about the end, which is precisely the side July got wrong.)
+      const { periodStart, periodEnd, periodEndSource } = statementPeriod(rawTxns, { statedStart: statedPeriodStart, statedEnd: statedPeriodEnd });
+      if (periodEndSource === "span") console.info("[bank_statements] period_end inferred from the last transaction — the statement didn't state one");
       const stmtRow = buildStatementRow({
         companyId: currentCompany.id,
         bankAccountId: (account && account.id) || null,
         documentId,
-        periodStart: (der.ok && der.periodStart) || periodStart,
+        // C198·3c (ii) — statementPeriod's start, not der.periodStart. Both prefer the
+        // stated start, but deriveStatementOpening takes it VERBATIM (`statedPeriodStart ||
+        // first.date`), so a half-read header went straight into a `date` column and the
+        // rejected insert took statement + line persistence down with it, behind a warn.
+        periodStart,
         periodEnd,
         statedOpening: der.ok ? der.openingBalance : (statedOpening != null ? statedOpening : null),
         statedEnding: der.ok ? der.endingBalance : null,
@@ -4788,8 +4809,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // The parse profile returns the object shape { opening_balance, period_start,
       // transactions } OR (legacy) a bare transactions array — the SHARED normalizer handles
       // both (same one the Reconcile flow uses). Stated opening + period start feed the O83
-      // opening-balance proposal below.
-      const { transactions: rawTxns, statedOpening, statedPeriodStart } = normalizeBankParse(fileContent);
+      // opening-balance proposal below; the stated period (C198·3c (ii)) feeds the persisted
+      // statement's period, in preference to the transaction span.
+      const { transactions: rawTxns, statedOpening, statedPeriodStart, statedPeriodEnd } = normalizeBankParse(fileContent);
       setBankProgress(60);
 
       // Now batch-categorize all transactions with GL coding + vendor extraction
@@ -4873,7 +4895,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C185 — PERSIST the statement + lines (additive; review flow above is unchanged). Stamp the
       // durable statement/line ids onto the in-memory rows so booking can advance their status.
       try {
-        const { statementId, lineIds, priorSameHashIds, priorSameHashRows } = await persistBankStatement({ account, file, rawTxns, lines: withIds, statedOpening, statedPeriodStart });
+        const { statementId, lineIds, priorSameHashIds, priorSameHashRows } = await persistBankStatement({ account, file, rawTxns, lines: withIds, statedOpening, statedPeriodStart, statedPeriodEnd });
         if (statementId) {
           const stampedLines = withIds.map((t, i) => ({ ...t, _stmtId: statementId, _stmtLineId: lineIds[i] || t._stmtLineId }));
           if (!willRunPipeline) setBankTransactions(stampedLines);   // C195(5) — the pipeline path sets the FINAL set only

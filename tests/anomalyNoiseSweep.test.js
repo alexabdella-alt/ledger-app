@@ -349,3 +349,106 @@ describe("the Bank Import toast says the already-have truth", () => {
     expect(bankImportToastCopy({ total: 0 })).toBe("No transactions found on that statement.");
   });
 });
+
+// ── (v) THE JULY TRIO — PLACING A NOTE WHOSE REFS NO LONGER RESOLVE ──────────
+// O87: the f1 sweep skipped three July duplicate cards at sign-off. They were SKIPPED,
+// not mis-attested — the sweep failed safe — but they were skipped for a reason that
+// will recur every month: ·3b(f3) re-keyed duplicate fingerprints to a date-PAIR tail
+// (`dup:<vendor>:<cents>:<dateA>+<dateB>`) that the `:YYYY-MM$` regex cannot match, AND
+// the detection-time `invoice_ids` on the persisted rows stopped resolving after a
+// reload. Two halves of a contract, re-keyed and consumed in the same commit,
+// disagreeing about the format.
+describe("(v) anomalySubjectPeriod places f3 date-pair fingerprints", () => {
+  // The live shape: persisted rows whose entity_refs point at ledger ids that are gone.
+  const TRIO = [
+    { id: "t1", status: "open", severity: "low",    entity_refs: ["gone-1", "gone-2"], fingerprint: "dup:bluebonnet:14500:2026-07-08+2026-07-10" },
+    { id: "t2", status: "open", severity: "medium", entity_refs: ["gone-3", "gone-4"], fingerprint: "dup:lone star:31200:2026-07-15+2026-07-18" },
+    { id: "t3", status: "open", severity: "low",    entity_refs: ["gone-5", "gone-6"], fingerprint: "dup:sysco:120000:2026-07-22+2026-07-24" },
+  ];
+  const RELOADED_LEDGER = [{ id: "other", date: "2026-07-02" }];   // none of the refs are in it
+
+  it("the fingerprint tail is a DATE PAIR — the old month-tail path could not read it", () => {
+    // Proved against the REAL function, not a locally re-declared regex: strip the refs and
+    // the month tail is all that is left to go on. Before this commit these returned null.
+    for (const a of TRIO) expect(anomalySubjectPeriod({ fingerprint: a.fingerprint, entity_refs: [] }, [])).toBe("2026-07");
+    for (const a of TRIO) expect(a.fingerprint.endsWith("2026-07")).toBe(false);
+  });
+
+  it("★ each of the trio is now placed by its own content key", () => {
+    expect(TRIO.map(a => anomalySubjectPeriod(a, RELOADED_LEDGER))).toEqual(["2026-07", "2026-07", "2026-07"]);
+  });
+
+  it("★ and therefore sweeps at the NEXT sign-off — no re-sweep path needed", () => {
+    // August's sign-off retires everything at or before August, the trio included.
+    expect(anomaliesExpiredBySignoff(TRIO, "2026-08", RELOADED_LEDGER).map(a => a.id)).toEqual(["t1", "t2", "t3"]);
+    // July's own sign-off would have taken them too, had this existed at the time.
+    expect(anomaliesExpiredBySignoff(TRIO, "2026-07", RELOADED_LEDGER).map(a => a.id)).toEqual(["t1", "t2", "t3"]);
+  });
+
+  it("it takes the LATEST date of the pair — a straddling pair is not retired early", () => {
+    const straddle = { id: "s", status: "open", severity: "low", entity_refs: [], fingerprint: "dup:sysco:120000:2026-07-30+2026-08-02" };
+    expect(anomalySubjectPeriod(straddle, [])).toBe("2026-08");
+    expect(anomaliesExpiredBySignoff([straddle], "2026-07", [])).toHaveLength(0);
+    expect(anomaliesExpiredBySignoff([straddle], "2026-08", [])).toHaveLength(1);
+  });
+
+  it("REFS STILL WIN when they resolve — the fallback never overrides the ledger", () => {
+    // A row whose fingerprint says July but whose refs resolve to August: the entries
+    // are the authority (the fingerprint is a content key, not a period record).
+    const a = { id: "r", entity_refs: ["aug"], fingerprint: "dup:sysco:120000:2026-07-30+2026-07-31" };
+    expect(anomalySubjectPeriod(a, [{ id: "aug", date: "2026-08-02" }])).toBe("2026-08");
+  });
+
+  it("the fallback also rescues the other SUBJECT-dated f3 shapes", () => {
+    expect(anomalySubjectPeriod({ entity_refs: ["gone"], fingerprint: "vendor_spike:sysco:2026-07-15:400000" }, [])).toBe("2026-07");
+    expect(anomalySubjectPeriod({ entity_refs: ["gone"], fingerprint: "large_txn:equipment co:2026-07-15:250000" }, [])).toBe("2026-07");
+    expect(anomalySubjectPeriod({ entity_refs: ["gone"], fingerprint: "round:office supply:2026-07-15:100000" }, [])).toBe("2026-07");
+  });
+
+  it("★ but NOT `rapid:` — its date is the WINDOW START, so reading it could retire early", () => {
+    // `rapid:<vendor>:<date>:<count>` keys on the FIRST charge of a 48-hour window while its
+    // refs are every charge in it — so a Jan-31 + Feb-1 burst fingerprints as January. Placing
+    // it there would let January\'s sign-off retire a note reaching into an unattested month,
+    // which is the one thing the "latest month" rule exists to prevent. Unplaceable is right.
+    expect(anomalySubjectPeriod({ entity_refs: ["gone"], fingerprint: "rapid:sysco:2026-07-31:3" }, [])).toBe(null);
+    expect(anomaliesExpiredBySignoff(
+      [{ id: "r", status: "open", severity: "medium", entity_refs: ["gone"], fingerprint: "rapid:sysco:2026-07-31:3" }],
+      "2026-07", [],
+    )).toHaveLength(0);
+    // Its refs still place it when they resolve — the fallback is what is withheld, not the row.
+    expect(anomalySubjectPeriod({ entity_refs: ["a", "b"], fingerprint: "rapid:sysco:2026-07-31:3" },
+      [{ id: "a", date: "2026-07-31" }, { id: "b", date: "2026-08-01" }])).toBe("2026-08");
+  });
+
+  it("the `:YYYY-MM` tail still wins for the aggregate anomalies that carry no dates", () => {
+    expect(anomalySubjectPeriod({ entity_refs: [], fingerprint: "category_spike:6200:2026-07" }, [])).toBe("2026-07");
+  });
+
+  it("★ THE CONSERVATIVE SKIP SURVIVES — nothing parses, nothing is retired", () => {
+    for (const fp of ["missing_recurring:bluebonnet", "fp-a", "", "dup:acme:1200:notadate+alsonot"]) {
+      const a = { id: "u", status: "open", severity: "low", entity_refs: ["gone"], fingerprint: fp };
+      expect(anomalySubjectPeriod(a, []), fp).toBe(null);
+      expect(anomaliesExpiredBySignoff([a], "2026-08", [])).toHaveLength(0);
+    }
+    expect(anomalySubjectPeriod(null, [])).toBe(null);
+  });
+
+  it("a HIGH note is still never retired by the sweep, however well it is placed", () => {
+    const high = [{ ...TRIO[0], severity: "high" }];
+    expect(anomalySubjectPeriod(high[0], [])).toBe("2026-07");
+    expect(anomaliesExpiredBySignoff(high, "2026-08", [])).toHaveLength(0);
+  });
+
+  it("the fingerprints the DETECTOR emits today are the shape this parses", () => {
+    // Contract check against the real generator — the ·3b failure was exactly this:
+    // the producer and the consumer disagreeing about a format, unchecked.
+    const dupes = [
+      exp({ id: "d1", vendor: "Sysco", amount: 1200, date: "2026-07-08" }),
+      exp({ id: "d2", vendor: "Sysco", amount: 1200, date: "2026-07-10" }),
+    ];
+    const found = runAnomalyDetection(dupes, [], new Date("2026-07-20")).find(a => a.type === "duplicate_payment");
+    expect(found).toBeTruthy();
+    expect(found.fingerprint).toBe("dup:sysco:120000:2026-07-08+2026-07-10");
+    expect(anomalySubjectPeriod({ ...found, entity_refs: ["gone"] }, [])).toBe("2026-07");
+  });
+});

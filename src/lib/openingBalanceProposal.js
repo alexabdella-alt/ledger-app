@@ -33,16 +33,21 @@ export function periodMonthLabel(ymd, { withYear = true } = {}) {
 // normalizer so every consumer — Bank Import AND Reconcile (and any future one) — reads
 // the parse the same way and can't go stale on the shape again (the O83 reconcile-PDF
 // regression: ReconView still did `Array.isArray(arr) ? arr : []` and rejected the object).
+// C198·3c (ii) — `statedPeriodEnd` joins it. The parse profiles have always asked for
+// `period_start` and never for `period_end`, so the one side of the period the July
+// drive got WRONG was the one side nobody was reading off the document. A statement
+// that carries neither still normalizes to nulls and the caller falls back to the span.
 export function normalizeBankParse(parsed) {
-  if (Array.isArray(parsed)) return { transactions: parsed, statedOpening: null, statedPeriodStart: null };
+  if (Array.isArray(parsed)) return { transactions: parsed, statedOpening: null, statedPeriodStart: null, statedPeriodEnd: null };
   if (parsed && typeof parsed === "object") {
     return {
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
       statedOpening: parsed.opening_balance != null ? parsed.opening_balance : null,
       statedPeriodStart: parsed.period_start || null,
+      statedPeriodEnd: parsed.period_end || null,
     };
   }
-  return { transactions: [], statedOpening: null, statedPeriodStart: null };
+  return { transactions: [], statedOpening: null, statedPeriodStart: null, statedPeriodEnd: null };
 }
 
 // Derive the statement's opening balance + period start from parsed data.

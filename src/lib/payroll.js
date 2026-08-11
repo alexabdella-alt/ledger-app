@@ -132,6 +132,59 @@ const ymdOrNull = (v) => {
 };
 const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 
+// ── C198·3c (i) — THE STAMP THAT UN-INERTS THE GATE ──────────────────────────
+// `post_journal_entry` (migrations 010 / 036) cherry-picks SIX named scalars out of
+// `p_meta` — ai_reasoning, ai_confidence, approval_status, payment_status,
+// payment_method, due_date — into their own columns and NEVER writes
+// `import_metadata`. Every other key the poster hands it (`kind`, `gross`, `net`,
+// `withholdings`, `employer_taxes`, `period`) is silently discarded at the RPC
+// boundary. Since that RPC is the single canonical write path (§7), every payroll
+// entry ever posted carries `import_metadata = NULL` — so
+// `payrollHistoryFromLedger`, which selects on `import_metadata.kind === 'payroll'`,
+// has always returned an empty history, so gate condition 5 has failed for every
+// company since C198·3a shipped. The gate failed CLOSED, which is the one mercy.
+//
+// The fix is a FOLLOW-UP CHECKED UPDATE after the RPC returns — the shape the
+// payment path already uses (markBillPaid, App.jsx:6087) — NOT a change to
+// `post_journal_entry`, which would move ·3c off "migrations unchanged" and would
+// change the canonical write path for every caller. (Making `import_metadata` a
+// first-class RPC parameter is the right end state and is recorded as separate,
+// unscheduled work; it is not a bug-fix rider.)
+//
+// PURE, so the shape is assertable without a database. The keys are the gate's own
+// inputs: `gross` feeds the trailing-average norm, `pay_date`/`period_start`/
+// `period_end` place the run, `register_import_id` links the entry back to the
+// intake row the register arrived on (document_intake.id — durable, unlike the
+// in-session import record's id, which is regenerated on every reload).
+//
+// ★ `net` IS NOT OPTIONAL, and it is here for a reason the gate doesn't need.
+// Stamping `kind:'payroll'` does not only wake the gate — it wakes EVERY reader that
+// selects on that key, and `matchPayrollBankLine` is one of them. That matcher
+// compares a bank net-pay line against `m.net`, and its fallback when `m.net` is
+// absent is the FLATTENED ROW'S OWN AMOUNT. Since flattenJournalEntries copies one
+// entry's `import_metadata` onto every leg, that fallback offers the matcher FOUR
+// amounts — gross, employer taxes, net, and withholdings+employer — and a match
+// SUPPRESSES the bank line (no re-book, by design, because the register already
+// booked that cash). Gusto drafts net pay and the tax remittance as separate ACHs, so
+// a stamp without `net` would silently swallow a real tax-remittance outflow and
+// leave Payroll Taxes Payable un-relieved. Un-inerting a reader is only safe if you
+// give it the field it was written to read. (`matchPayrollBankLine` now also REFUSES
+// that fallback — belt and braces, so a backfilled entry carrying only kind+gross
+// can never match on a leg amount either.)
+export function payrollImportMetadata(imp = {}) {
+  const g = numOrNull(imp.total_gross);
+  const n = numOrNull(imp.total_net);
+  return {
+    kind: "payroll",
+    gross: g === null ? null : r2(g),
+    net: n === null ? null : r2(n),
+    pay_date: ymdOrNull(imp.pay_date),
+    period_start: ymdOrNull(imp.period_start),
+    period_end: ymdOrNull(imp.period_end),
+    register_import_id: imp._intakeId != null ? String(imp._intakeId) : null,
+  };
+}
+
 // The parsed AI payload → the gate's register shape. `total_deductions` is the
 // employee-withholdings total the parse already returns and the app has been
 // dropping on the floor; it is what makes condition 2 a real check.
@@ -245,12 +298,24 @@ export function payrollAutoPostGate(register = {}, history = []) {
     }
   }
 
-  // 5. WITHIN THIS COMPANY'S NORMS. No prior payroll → no norm exists → never
+  // 5. WITHIN THIS COMPANY'S NORMS. No prior payroll FOUND → no norm exists → never
   // auto-post. The first register is ALWAYS confirmed by a person; the norm only
   // means something once a human has attested at least one run.
+  //
+  // C198·3c — THE REASON IS A CLAIM ABOUT THE QUERY, NOT ABOUT THE WORLD (O87 Q2).
+  // This string used to read "This is the first payroll we've recorded for this
+  // company." Franklin Ave had TWELVE priors; the gate was structurally inert, found
+  // an empty history, and rendered absence of evidence as evidence of absence. That
+  // is the failure the operator rubric is built to catch — worse than the missed
+  // feature, because the ledger was perfect and the system still asserted a falsehood.
+  // Fixing the extractor does not fix this: ANY future lookup failure re-tells the
+  // same lie with the same confidence. An empty result set may only ever be reported
+  // as an empty result set, so the sentence now describes what we looked for and
+  // didn't find. It stays true whether the history is genuinely empty or merely
+  // unreadable — which is exactly the property the old one lacked.
   const priors = historyGrosses(history);
   if (!priors.length) {
-    fail(PAYROLL_GATE.NORM, "This is the first payroll we've recorded for this company — someone should check the first one by hand.");
+    fail(PAYROLL_GATE.NORM, "We couldn't find any prior payroll for this company — someone should check this one by hand.");
   } else if (gross !== null && gross > 0) {
     const avg = r2(priors.reduce((s, g) => s + g, 0) / priors.length);
     if (avg > 0 && Math.abs(gross - avg) > avg * PAYROLL_NORM_TOLERANCE) {
@@ -301,8 +366,17 @@ export function matchPayrollBankLine(bankLine = {}, ledger = [], { dateWindowDay
     if (i.status === "voided" || i.status === "deleted") continue;
     const id = String(i.db_entry_id ?? i.id);
     if (usedIds.has(id)) continue;
-    const net = Math.abs(_num(m.net != null ? m.net : i.amount));
-    if (Math.abs(net - amt) > 0.01) continue;
+    // C198·3c — the register must STATE its net. This used to fall through to `i.amount`,
+    // the flattened row's own figure, which "worked" only because the Cr Cash leg happens
+    // to carry net — while the Salaries leg carries GROSS and the payable leg carries
+    // withholdings+employer, and every leg carries the same import_metadata. A match here
+    // SUPPRESSES the bank line, so that fallback could swallow a genuine separate outflow
+    // (a Gusto tax remittance) as though the register had already booked it. No stated
+    // net, no match: the line then falls to `incomplete`, which books it and FLAGS it —
+    // visible and wrong-way-safe, rather than silently absent from the books.
+    const stated = numOrNull(m.net);
+    if (stated === null) continue;
+    if (Math.abs(Math.abs(stated) - amt) > 0.01) continue;
     if (bankLine.date && i.date) {
       const dd = Math.abs((new Date(bankLine.date) - new Date(i.date)) / 86400000);
       if (isNaN(dd) || dd > dateWindowDays) continue;

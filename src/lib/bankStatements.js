@@ -118,9 +118,59 @@ export function buildStatementLineRows(lines = [], { companyId, statementId } = 
   }));
 }
 
-// Period span (min/max line date) for a set of parsed lines — deriveStatementOpening gives the
-// start but not the end, so the persist path uses this for period_end. Pure.
-export function statementPeriod(lines = []) {
-  const dates = (lines || []).map((t) => String(t && t.date || "").slice(0, 10)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
-  return { periodStart: dates[0] || null, periodEnd: dates[dates.length - 1] || null };
+// ── C198·3c (ii) — THE STATEMENT'S OWN PERIOD BEATS THE TRANSACTION SPAN ──────
+// This used to be min/max of the line dates, full stop. July 2026 therefore persisted
+// as 07-01 → 07-27 (the last transaction) against a statement that plainly states a
+// period ending 07-31. Harmless that month because the tie still proved, but the span
+// is an INFERENCE standing in for a FACT the document carries: a month whose last few
+// days are quiet gets a short period, and everything keyed on period_end (the
+// reconciliation window, statementForPeriod, the supersede grouping key) inherits the
+// error. The last transaction is the last thing that HAPPENED, not the end of the
+// period it happened in.
+//
+// So: prefer the STATED period when the parse carries one, per SIDE (a statement may
+// state its start and not its end), and fall back to the span for whichever side is
+// missing. Only a REAL calendar date counts as stated — a half-read header, or an AI
+// hallucination like "2026-13-45", must degrade to the inference, never to null and
+// never into a `date` column that rejects it (a rejected insert takes the whole
+// statement + line persistence down with it, silently, via a console.warn).
+//
+// And one invariant the span used to give away for free: min ≤ max, always. A single
+// stated side can now break that, and an inverted period is worse than an inferred one
+// — reconBooksSet(from > to) returns nothing and reconciliationCoversPeriod can never
+// bracket the month, so the sign-off precondition fails with no visible cause. If the
+// two sides come out inverted, the stated pair is not trustworthy: fall back to the
+// span for both. Pure.
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const statedYmd = (v) => {
+  const s = String(v == null ? "" : v).slice(0, 10);
+  if (!YMD.test(s)) return null;
+  // Reject well-SHAPED non-dates (2026-02-31, 2026-13-45) by round-tripping the parts
+  // through a UTC date and checking they survive. Deliberately NOT toISOString().slice()
+  // — that is the UTC-period-key anti-pattern the date-key guard forbids (O86/CR-5); this
+  // reads back explicit UTC components of a date built from explicit UTC components, so
+  // no local/UTC boundary is ever crossed and nothing here determines a period.
+  const [y, mo, da] = s.split("-").map(Number);
+  const d = new Date(Date.UTC(y, mo - 1, da));
+  return d.getUTCFullYear() === y && d.getUTCMonth() === mo - 1 && d.getUTCDate() === da ? s : null;
+};
+
+export function statementPeriod(lines = [], { statedStart = null, statedEnd = null } = {}) {
+  const dates = (lines || []).map((t) => String(t && t.date || "").slice(0, 10)).filter((d) => YMD.test(d)).sort();
+  const spanStart = dates[0] || null;
+  const spanEnd = dates[dates.length - 1] || null;
+  let start = statedYmd(statedStart);
+  let end = statedYmd(statedEnd);
+  // Inversion can come from two stated sides OR from ONE stated side against the span
+  // (a stated end earlier than the first transaction). Either way the stated pair has
+  // been mis-read: drop back to the span, which cannot invert.
+  if ((start || spanStart) > (end || spanEnd)) { start = null; end = null; }
+  return {
+    periodStart: start || spanStart,
+    periodEnd: end || spanEnd,
+    // What each side actually came from, so a caller (and a test) can tell a fact from
+    // an inference instead of guessing at two dates that look identical either way.
+    periodStartSource: start ? "stated" : (spanStart ? "span" : "none"),
+    periodEndSource: end ? "stated" : (spanEnd ? "span" : "none"),
+  };
 }

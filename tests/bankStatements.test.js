@@ -3,7 +3,7 @@ import {
   bankStatementLineFingerprint, initialBankLineStatus, bookedBankLineStatus,
   buildStatementRow, buildStatementLineRows, statementPeriod, BANK_LINE_STATUSES, isBankLineStatus,
 } from "../src/lib/bankStatements.js";
-import { bankTxnKey, bankLineDirection, bookedLineDirection } from "../src/lib/openingBalanceProposal.js";
+import { bankTxnKey, bankLineDirection, bookedLineDirection, normalizeBankParse } from "../src/lib/openingBalanceProposal.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // C185 — bank-statement persistence foundation. The fingerprint MUST equal the
@@ -71,8 +71,103 @@ describe("row-shape builders (pure, no I/O)", () => {
     expect(rows[0].fingerprint).toBe(bankStatementLineFingerprint(lines[0]));
     expect(rows[1]).toMatchObject({ direction: "in", status: "already_booked", ai_gl_code: "4000", ai_confidence: 95 });   // already-booked line
   });
-  it("statementPeriod returns the min/max line date", () => {
-    expect(statementPeriod(lines)).toEqual({ periodStart: "2026-02-05", periodEnd: "2026-02-10" });
-    expect(statementPeriod([])).toEqual({ periodStart: null, periodEnd: null });
+  it("statementPeriod falls back to the min/max line date when the statement states no period", () => {
+    expect(statementPeriod(lines)).toMatchObject({ periodStart: "2026-02-05", periodEnd: "2026-02-10", periodStartSource: "span", periodEndSource: "span" });
+    expect(statementPeriod([])).toMatchObject({ periodStart: null, periodEnd: null, periodStartSource: "none", periodEndSource: "none" });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C198·3c (ii) — THE STATED PERIOD BEATS THE TRANSACTION SPAN.
+//
+// O87: July persisted as 07-01 → 07-27 (its last transaction) against a statement
+// that states a period ending 07-31. The span is an inference standing in for a fact
+// the document carries. These hold the preference AND the fallback, because a
+// statement that states nothing must still get a period.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("(ii) statement period — stated first, span as the fallback", () => {
+  // JULY'S EXACT SHAPE: activity 07-01 → 07-27, stated period 07-01 → 07-31.
+  const july = [
+    { date: "2026-07-01", amount: -120 },
+    { date: "2026-07-14", amount: 4500 },
+    { date: "2026-07-27", amount: -88.4 },
+  ];
+
+  it("a last transaction that PREDATES the stated period end does not shorten the period", () => {
+    const p = statementPeriod(july, { statedStart: "2026-07-01", statedEnd: "2026-07-31" });
+    expect(p.periodEnd).toBe("2026-07-31");            // the stated fact, not 07-27
+    expect(p.periodEndSource).toBe("stated");
+    expect(p.periodStart).toBe("2026-07-01");
+  });
+
+  it("the SAME lines with no stated period still get one — from the span", () => {
+    const p = statementPeriod(july);
+    expect(p).toMatchObject({ periodStart: "2026-07-01", periodEnd: "2026-07-27", periodEndSource: "span" });
+  });
+
+  it("each side falls back independently — a stated end with no stated start", () => {
+    const p = statementPeriod(july, { statedEnd: "2026-07-31" });
+    expect(p).toMatchObject({ periodStart: "2026-07-01", periodStartSource: "span", periodEnd: "2026-07-31", periodEndSource: "stated" });
+  });
+
+  it("a half-read header degrades to the inference, never to null", () => {
+    for (const junk of ["", null, "July 2026", "07/31/2026", "2026-07"]) {
+      const p = statementPeriod(july, { statedStart: junk, statedEnd: junk });
+      expect(p, String(junk)).toMatchObject({ periodStart: "2026-07-01", periodEnd: "2026-07-27", periodEndSource: "span" });
+    }
+  });
+
+  it("a well-SHAPED non-date is rejected too — it would take the whole insert down", () => {
+    // `period_start`/`period_end` are `date` columns. A hallucinated 2026-13-45 passes a
+    // naive YYYY-MM-DD regex, Postgres rejects the row, and persistBankStatement swallows
+    // that to a console.warn — losing the statement AND every one of its lines, silently.
+    for (const bad of ["2026-13-45", "2026-02-31", "2026-00-10", "0000-00-00"]) {
+      expect(statementPeriod(july, { statedStart: bad, statedEnd: bad }), bad)
+        .toMatchObject({ periodStart: "2026-07-01", periodEnd: "2026-07-27", periodStartSource: "span", periodEndSource: "span" });
+    }
+  });
+
+  it("★ an INVERTED stated period is distrusted on BOTH sides, not persisted", () => {
+    // The span guaranteed min ≤ max for free; one stated side can now break it. An inverted
+    // period is worse than an inferred one: reconBooksSet(from > to) returns nothing and
+    // reconciliationCoversPeriod can never bracket the month, so the sign-off precondition
+    // fails with no visible cause.
+    const p = statementPeriod(july, { statedStart: "2026-07-31", statedEnd: "2026-07-01" });
+    expect(p).toMatchObject({ periodStart: "2026-07-01", periodEnd: "2026-07-27", periodStartSource: "span", periodEndSource: "span" });
+    expect(p.periodStart <= p.periodEnd).toBe(true);
+  });
+
+  it("start ≤ end holds for every combination of stated and inferred", () => {
+    const vals = [null, "2026-06-28", "2026-07-15", "2026-07-31", "2026-13-45"];
+    for (const a of vals) for (const b of vals) {
+      const p = statementPeriod(july, { statedStart: a, statedEnd: b });
+      if (p.periodStart && p.periodEnd) expect(p.periodStart <= p.periodEnd, `${a} → ${b}`).toBe(true);
+    }
+  });
+
+  it("a stated period WIDER than the span on both sides is honoured on both sides", () => {
+    const p = statementPeriod(july, { statedStart: "2026-06-28", statedEnd: "2026-07-31" });
+    expect(p).toMatchObject({ periodStart: "2026-06-28", periodEnd: "2026-07-31", periodStartSource: "stated", periodEndSource: "stated" });
+  });
+
+  it("a stated period with NO transactions at all still produces the stated period", () => {
+    expect(statementPeriod([], { statedStart: "2026-07-01", statedEnd: "2026-07-31" }))
+      .toMatchObject({ periodStart: "2026-07-01", periodEnd: "2026-07-31" });
+  });
+
+  it("normalizeBankParse carries period_end through — the side nobody was reading", () => {
+    expect(normalizeBankParse({ opening_balance: 100, period_start: "2026-07-01", period_end: "2026-07-31", transactions: july }))
+      .toMatchObject({ statedPeriodStart: "2026-07-01", statedPeriodEnd: "2026-07-31" });
+    // Legacy bare-array and absent-field shapes normalize to nulls, so the caller spans.
+    expect(normalizeBankParse(july).statedPeriodEnd).toBe(null);
+    expect(normalizeBankParse({ transactions: july }).statedPeriodEnd).toBe(null);
+  });
+
+  it("END TO END — the persisted row keeps the stated end, not the last transaction", () => {
+    const { statedPeriodStart, statedPeriodEnd, transactions } =
+      normalizeBankParse({ period_start: "2026-07-01", period_end: "2026-07-31", transactions: july });
+    const { periodStart, periodEnd } = statementPeriod(transactions, { statedStart: statedPeriodStart, statedEnd: statedPeriodEnd });
+    const row = buildStatementRow({ companyId: "co1", periodStart, periodEnd });
+    expect(row).toMatchObject({ period_start: "2026-07-01", period_end: "2026-07-31" });
   });
 });

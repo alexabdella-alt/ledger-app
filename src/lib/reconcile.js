@@ -193,3 +193,27 @@ export function reconCompletionCopy(gate) {
 export function reconcileDifference({ statementBalance = 0, booksBalance = 0, outstandingSigned = 0, unmatchedBankSigned = 0 } = {}) {
   return r2c((Number(statementBalance) || 0) + (Number(outstandingSigned) || 0) - (Number(unmatchedBankSigned) || 0) - (Number(booksBalance) || 0));
 }
+
+// ── C198·3c (iii) — "TRANSACTIONS MATCHED: 0" ON A MONTH THAT WENT PERFECTLY ──
+// July 2026 reconciled to the cent — 21 lines, 17 auto-booked, difference 0, signed
+// off — and its completed record said "Transactions matched: 0". The count is not
+// wrong: the automatic pipeline BOOKS lines rather than MATCHING them to open items,
+// so the matcher's counter is legitimately zero and `matched_transactions` is
+// legitimately empty. The LABEL is the lie — it names a process that never ran and
+// then reports its non-result as a score. Same true-but-reads-false class as the
+// C198·2b queue line ("Done" over the old stash sentence) and the ·3b re-upload toast.
+//
+// So: a SESSION-matched reconciliation keeps its real count under its real label,
+// unchanged. An AUTO-path one — no matched pairs on the record — says what actually
+// happened instead. The number it quotes is counted from the BOOKS (the live cash-side
+// entries in the period), never invented, and when the caller can't supply that count
+// we print an em dash rather than a figure we can't stand behind. The zero case is a
+// query-claim, not a world-claim (O87 Q2): "we didn't find any", never "there are none".
+export function reconciliationActivityLine(recon = {}, { booksCount = null } = {}) {
+  const matched = Array.isArray(recon && recon.matched_transactions) ? recon.matched_transactions.length : 0;
+  if (matched > 0) return { label: "Transactions matched", value: String(matched) };
+  const n = Number(booksCount);
+  if (booksCount == null || !Number.isFinite(n) || n < 0) return { label: "Transactions checked", value: "—" };
+  if (n === 0) return { label: "Transactions checked", value: "We didn't find any in your books for this period" };
+  return { label: "Transactions checked", value: `${n} transaction${n === 1 ? "" : "s"} already in your books` };
+}
