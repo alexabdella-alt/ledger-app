@@ -374,6 +374,14 @@ export function matchPayrollBankLine(bankLine = {}, ledger = [], { dateWindowDay
     // (a Gusto tax remittance) as though the register had already booked it. No stated
     // net, no match: the line then falls to `incomplete`, which books it and FLAGS it —
     // visible and wrong-way-safe, rather than silently absent from the books.
+    //
+    // ★ PROVEN BY `tests/payroll.test.js` → "a register with NO stated net suppresses
+    // nothing". Restore the `?? _num(i.amount)` fallback here and four assertions go
+    // red; that was run, not assumed. The pin lives in the MATCHER suite deliberately.
+    // It was missing from there at first — every other fixture in that file carries
+    // `net`, so this branch was unreachable from all of them and the suite stayed green
+    // under the mutation. A guard nobody can falsify from the file that tests the guard
+    // is a claim, not a guarantee.
     const stated = numOrNull(m.net);
     if (stated === null) continue;
     if (Math.abs(Math.abs(stated) - amt) > 0.01) continue;

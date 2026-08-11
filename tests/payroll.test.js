@@ -133,4 +133,83 @@ describe("O72 payroll-from-statement — match the register's net, never double-
     expect(plan.matched).toHaveLength(0);
     expect(plan.incomplete).toHaveLength(0);
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // C198·3c — THE NULL-NET REFUSAL. This is the pin the guard was missing.
+  //
+  // Every registerRun() fixture above carries `net`, so none of them ever reaches
+  // the branch that decides what to do WITHOUT one — and the matcher's old
+  // behaviour there was to fall through to `i.amount`, the flattened row's own
+  // figure. Since flattenJournalEntries copies ONE entry's import_metadata onto
+  // EVERY leg, that fallback quietly offered the matcher four different amounts to
+  // match against, and a match SUPPRESSES the bank line (no re-book, by design,
+  // because the register already booked that cash). A false positive there does
+  // not mis-book a line; it removes a real cash movement from the books entirely.
+  //
+  // The shape below is the C198·3c BACKFILL — {kind:'payroll', gross} and nothing
+  // else — which exists to give the auto-post norm a history and must never also
+  // start suppressing bank lines. Franklin Ave's run: gross 4,000 · net 3,150 ·
+  // withholdings 850 · employer 306 → legs of 4,000 / 306 / 3,150 / 1,156.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe("a register with NO stated net suppresses nothing", () => {
+    // Cross-checked against the REAL builder so the magnitudes can't drift out of
+    // sync with what a register actually posts.
+    const REAL = buildPayrollEntry({ gross: 4000, netPay: 3150, employerTaxes: 306, ...codes, date: "2026-06-19" });
+    const LEG_AMOUNTS = REAL.lines.map(l => l.debit || l.credit);
+
+    it("the fixture below is exactly what a 4,000/3,150/306 register posts", () => {
+      expect(LEG_AMOUNTS).toEqual([4000, 306, 3150, 1156]);
+      expect(REAL.balanced).toBe(true);
+    });
+
+    // The BACKFILL shape: kind + gross, no net. One flattened row per leg, every one
+    // carrying the same import_metadata — which is how flattenJournalEntries emits it.
+    const BACKFILL_META = { kind: "payroll", gross: 4000 };
+    const backfilled = LEG_AMOUNTS.map((amount, i) => ({
+      id: `je-bf_${i}`, db_entry_id: "je-bf", date: "2026-06-19", status: "posted",
+      amount, import_metadata: BACKFILL_META,
+    }));
+    const gustoLine = (amount) => ({ id: "bl1", date: "2026-06-19", vendor: "GUSTO", description: "GUSTO", amount, type: "expense" });
+
+    it("★ matchPayrollBankLine returns null at every leg magnitude — 4000, 3150, 1156", () => {
+      expect(backfilled.some(r => r.import_metadata.net !== undefined)).toBe(false);   // the premise
+      for (const amount of [4000, 3150, 1156]) {
+        expect(matchPayrollBankLine(gustoLine(amount), backfilled), `amount ${amount}`).toBeNull();
+      }
+      expect(matchPayrollBankLine(gustoLine(306), backfilled)).toBeNull();             // the employer-tax leg too
+    });
+
+    it("★ the 3,150 net line routes to INCOMPLETE — booked and flagged, never silently gone", () => {
+      // Wrong-way-safe: with no stated net we cannot PROVE this line is the register's
+      // disbursement, so it books at low confidence with an honest note (O49 surfaces it)
+      // rather than vanishing on a guess.
+      const plan = planPayrollBankLines([gustoLine(3150)], backfilled);
+      expect(plan.matched).toHaveLength(0);
+      expect(plan.incomplete).toHaveLength(1);
+      expect(plan.rest).toHaveLength(0);
+      expect(flagIncompletePayroll(plan.incomplete[0]).confidence).toBe(40);
+    });
+
+    it("a separate tax-remittance draft is likewise never swallowed", () => {
+      // 1,156 is the Payroll Taxes Payable leg — the magnitude Gusto drafts as its own
+      // ACH. Under the old fallback this matched and the outflow left no trace.
+      const plan = planPayrollBankLines([gustoLine(1156)], backfilled);
+      expect(plan.matched).toHaveLength(0);
+      expect(plan.incomplete).toHaveLength(1);
+    });
+
+    it("adding the net back makes it match again — the refusal is about the DATA, not the shape", () => {
+      const stamped = backfilled.map(r => ({ ...r, import_metadata: { ...BACKFILL_META, net: 3150 } }));
+      expect(matchPayrollBankLine(gustoLine(3150), stamped)).toBeTruthy();
+      expect(matchPayrollBankLine(gustoLine(4000), stamped)).toBeNull();   // and still only the net
+      expect(matchPayrollBankLine(gustoLine(1156), stamped)).toBeNull();
+    });
+
+    it("a null/blank/unparseable net is refused the same way as a missing one", () => {
+      for (const net of [null, "", undefined, "n/a", NaN]) {
+        const rows = backfilled.map(r => ({ ...r, import_metadata: { ...BACKFILL_META, net } }));
+        expect(matchPayrollBankLine(gustoLine(3150), rows), String(net)).toBeNull();
+      }
+    });
+  });
 });
