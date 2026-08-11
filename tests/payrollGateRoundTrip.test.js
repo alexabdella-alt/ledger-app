@@ -313,13 +313,31 @@ describe("(i) the REAL call site issues the stamp the round trip assumes", () =>
     expect(notify).toMatch(/stampRes\.ok\s*\?/);
   });
 
-  it("depreciation — the other genuinely-inert import_metadata reader — is stamped too", () => {
+  // The post loop inside autoPostDepreciation — everything between the function and the
+  // fully_depreciated flip.
+  const depreciationPostBlock = () => {
     const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
     const start = app.indexOf("const autoPostDepreciation =");
     expect(start).toBeGreaterThan(-1);
-    const block = app.slice(start, app.indexOf("for (const assetId of assetsToFlip)", start));
+    return app.slice(start, app.indexOf("for (const assetId of assetsToFlip)", start));
+  };
+
+  it("depreciation — the other genuinely-inert import_metadata reader — is stamped too", () => {
+    const block = depreciationPostBlock();
     expect(block).toMatch(/checkedRowUpdate\(\{[^}]*table: "journal_entries"/s);
     expect(block).toMatch(/kind: "depreciation", asset_id: row\.asset_id, period: row\.period_index/);
+  });
+
+  it("(D3) and its schedule flag write is CHECKED — a zero-row flag write re-posts the period", () => {
+    // §9: this was a row-targeted `.update()` with no `.select()` inside a `catch`.
+    // PostgREST reports NO ERROR for an update that matched nothing, so that catch never
+    // fired: the row stayed 'pending' with its GL entry committed, and the next session
+    // posted the same asset-period again. That is the double-post sequence, in full.
+    const block = depreciationPostBlock();
+    expect(block).toMatch(/checkedRowUpdate\(\{[^}]*table: "depreciation_schedule"/s);
+    expect(block).toMatch(/label: "depreciation:schedule-flag"/);
+    expect(block).toMatch(/depreciation_flag_write_failed/);     // audited, not swallowed
+    expect(block).not.toMatch(/from\("depreciation_schedule"\)\s*\.update\(/);
   });
 });
 

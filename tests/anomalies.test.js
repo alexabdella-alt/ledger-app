@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { runAnomalyDetection } from "../src/lib/insights.js";
 import {
-  reconcileAnomalies, anomalyTouchesPeriod, openHighAnomaliesInPeriod, anomalyInsertRow, isHighAnomaly,
+  reconcileAnomalies, anomalyTouchesPeriod, anomalySubjectPeriod, openHighAnomaliesInPeriod, anomalyInsertRow, isHighAnomaly,
 } from "../src/lib/anomalies.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -130,5 +130,97 @@ describe("period-scoped HIGH counting for the sign-off gate", () => {
   it("isHighAnomaly guards severity", () => {
     expect(isHighAnomaly(highJan)).toBe(true);
     expect(isHighAnomaly(medJan)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C198·3c (D1) — THE HIGH BLOCKER MUST NOT UNDER-COUNT WHEN REFS GO DEAD.
+//
+// (v) fixed anomalySubjectPeriod — the sweep that RETIRES notes — and left
+// anomalyTouchesPeriod, the one that BLOCKS sign-off, reading the old way. Same root
+// cause, opposite consequence: a duplicate_payment is emitted at severity HIGH with an
+// f3 date-pair fingerprint, so a persisted row whose entity_refs stopped resolving
+// after a reload vanished from the blocker entirely. The sweep failing is a note left
+// open; the blocker failing is a month signed off over an unresolved HIGH.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("(D1) refs that no longer resolve still block the sign-off", () => {
+  // THE EXACT LIVE SHAPE: persisted rows, refs pointing at ledger ids that are gone,
+  // f3 date-pair content key. Same trio as the (v) tests, at their real severity.
+  const DEAD_REFS = { status: "open", severity: "high", entity_refs: ["gone-1", "gone-2"],
+                      fingerprint: "dup:bluebonnet:14500:2026-07-08+2026-07-10" };
+  const RELOADED = [{ id: "other", date: "2026-07-02" }];   // resolves none of the refs
+
+  it("★ openHighAnomaliesInPeriod counts it for July — it used to count zero", () => {
+    expect(openHighAnomaliesInPeriod([DEAD_REFS], "2026-07", RELOADED)).toBe(1);
+  });
+
+  it("and still does not count it for a month it doesn't touch", () => {
+    expect(openHighAnomaliesInPeriod([DEAD_REFS], "2026-06", RELOADED)).toBe(0);
+    expect(openHighAnomaliesInPeriod([DEAD_REFS], "2026-08", RELOADED)).toBe(0);
+  });
+
+  it("TOUCHES is a set membership, not a single month — a straddle blocks BOTH", () => {
+    // The difference from anomalySubjectPeriod, which reports the LATEST month only.
+    const straddle = { ...DEAD_REFS, fingerprint: "dup:sysco:120000:2026-07-30+2026-08-02" };
+    expect(anomalyTouchesPeriod(straddle, "2026-07", [])).toBe(true);
+    expect(anomalyTouchesPeriod(straddle, "2026-08", [])).toBe(true);
+    expect(anomalySubjectPeriod(straddle, [])).toBe("2026-08");
+    expect(anomalyTouchesPeriod(straddle, "2026-09", [])).toBe(false);
+  });
+
+  it("REFS STILL WIN when they resolve — a live ledger is never overridden by a key", () => {
+    const live = [{ id: "gone-1", date: "2026-08-04" }, { id: "gone-2", date: "2026-08-06" }];
+    expect(openHighAnomaliesInPeriod([DEAD_REFS], "2026-08", live)).toBe(1);
+    expect(openHighAnomaliesInPeriod([DEAD_REFS], "2026-07", live)).toBe(0);   // the key says July; the ledger says August
+  });
+
+  it("PARTIALLY dead refs count as resolved — the surviving entries are the record", () => {
+    const half = [{ id: "gone-1", date: "2026-08-04" }];
+    expect(anomalyTouchesPeriod(DEAD_REFS, "2026-08", half)).toBe(true);
+    expect(anomalyTouchesPeriod(DEAD_REFS, "2026-07", half)).toBe(false);
+  });
+
+  it("`rapid:` IS read here though anomalySubjectPeriod refuses it — the asymmetry is deliberate", () => {
+    // Retiring on an under-inclusive month closes a note early (unsafe); blocking on one
+    // blocks a month that genuinely contains the window's first charge (safe).
+    const rapid = { ...DEAD_REFS, fingerprint: "rapid:sysco:2026-07-31:3" };
+    expect(anomalyTouchesPeriod(rapid, "2026-07", [])).toBe(true);
+    expect(openHighAnomaliesInPeriod([rapid], "2026-07", [])).toBe(1);
+    expect(anomalySubjectPeriod(rapid, [])).toBe(null);
+  });
+
+  it("unplaceable is still unplaceable — no fingerprint, no dates, no block", () => {
+    for (const fp of ["missing_recurring:bluebonnet", "fp-a", ""]) {
+      expect(anomalyTouchesPeriod({ ...DEAD_REFS, fingerprint: fp }, "2026-07", []), fp).toBe(false);
+    }
+    expect(anomalyTouchesPeriod(null, "2026-07", [])).toBe(false);
+    expect(anomalyTouchesPeriod(DEAD_REFS, null, [])).toBe(false);
+  });
+
+  it("a CLOSED row never blocks, however well it is placed", () => {
+    for (const status of ["dismissed", "resolved"]) {
+      expect(openHighAnomaliesInPeriod([{ ...DEAD_REFS, status }], "2026-07", RELOADED)).toBe(0);
+    }
+  });
+
+  it("ONE PARSER, TWO CONSUMERS — the two functions agree on every real f3 key", () => {
+    // The (v) bug was a producer and a consumer disagreeing about a fingerprint format.
+    // Two independent parsers of the same key is that trap with the sides swapped, so
+    // this pins that a month anomalySubjectPeriod names is always a month TOUCHES agrees
+    // with. (rapid: is the documented exception — subject declines to name one at all.)
+    const keys = [
+      "dup:bluebonnet:14500:2026-07-08+2026-07-10",
+      "dup:sysco:120000:2026-07-30+2026-08-02",
+      "vendor_spike:sysco:2026-07-15:400000",
+      "large_txn:equipment co:2026-07-15:250000",
+      "round:office supply:2026-07-15:100000",
+      "category_spike:6200:2026-07",
+    ];
+    for (const fingerprint of keys) {
+      const a = { status: "open", severity: "high", entity_refs: ["gone"], fingerprint };
+      const subject = anomalySubjectPeriod(a, []);
+      expect(subject, fingerprint).not.toBe(null);
+      expect(anomalyTouchesPeriod(a, subject, []), fingerprint).toBe(true);
+    }
   });
 });

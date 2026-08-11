@@ -3020,8 +3020,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         patch: { import_metadata: { kind: "depreciation", asset_id: row.asset_id, period: row.period_index } },
         label: "depreciation:stamp-import-metadata" });
       if (!depStamp.ok) logAudit("depreciation_stamp_failed", `Depreciation posted, but its duplicate guard wasn't recorded (${depStamp.reason}) — the schedule flag is now the only thing stopping a repeat`, null, { journal_entry_id: String(jeId), asset_id: String(row.asset_id), period: row.period_index, reason: depStamp.reason });
-      try { await supabase.from("depreciation_schedule").update({ status: "posted", journal_entry_id: jeId, posted_at: new Date().toISOString() }).eq("id", row.id).eq("company_id", currentCompany.id); }
-      catch (e) { console.warn("[depreciation] schedule flag update failed (GL still correct):", e?.message || e); }
+      // C198·3c (D3) — CHECKED, per §9. This was a row-targeted `.update()` with no
+      // `.select()` inside a `catch` — the exact anti-pattern the standing rule names,
+      // and the one that matters most here: PostgREST reports NO ERROR for an update
+      // that matched nothing, so a zero-row flag write never even reached that catch.
+      // The row then stays 'pending' while its GL entry is committed, and the next
+      // session re-posts the same asset-period. The stamp above is the backstop for
+      // that; this makes the failure visible instead of leaving the backstop to
+      // absorb something nobody knew had happened.
+      const flagRes = await checkedRowUpdate({ supabase, table: "depreciation_schedule", id: row.id, companyId: currentCompany.id,
+        patch: { status: "posted", journal_entry_id: jeId, posted_at: new Date().toISOString() }, label: "depreciation:schedule-flag" });
+      if (!flagRes.ok) logAudit("depreciation_flag_write_failed", `Depreciation posted correctly, but its schedule row still reads "pending" (${flagRes.reason}) — the GL entry is the record; the duplicate guard will stop a repeat`, null, { schedule_row_id: String(row.id), journal_entry_id: String(jeId), asset_id: String(row.asset_id), period: row.period_index, reason: flagRes.reason });
       posted++;
     }
     for (const assetId of assetsToFlip) {

@@ -31,22 +31,65 @@ function refIds(anomaly) {
   return [];
 }
 
+// ── C198·3c — THE MONTHS A FINGERPRINT ITSELF ENCODES ────────────────────────
+// ONE parser, two consumers. The f3 content keys carry their subject's own dates —
+// `dup:<vendor>:<cents>:<dateA>+<dateB>`, `vendor_spike:<vendor>:<date>:<cents>`,
+// `large_txn:…`, `round:…`, `rapid:<vendor>:<date>:<count>` — while the aggregate
+// anomalies (category_spike) carry a `…:YYYY-MM` tail instead. Both period functions
+// read this, deliberately: the (v) bug was ·3b re-keying fingerprints and ·3b consuming
+// them in the same commit while the two halves disagreed about the format. Two
+// independent parsers of the same key is that same trap with the sides swapped.
+function fingerprintMonths(fp) {
+  const s = String(fp || "");
+  const tail = /:(\d{4}-\d{2})$/.exec(s);
+  if (tail) return [tail[1]];
+  const dates = s.match(/\d{4}-\d{2}-\d{2}/g);
+  return dates ? dates.map((d) => d.slice(0, 7)) : [];
+}
+
+// Do this anomaly's refs resolve to anything at all, and if so which months?
+// `resolved: false` is the (v) condition: the row HAS refs, and none of them are in
+// the ledger any more — which is not the same as having no refs, and is exactly the
+// case both callers used to mistake for "unplaceable".
+function refMonths(anomaly, invoices) {
+  const refs = refIds(anomaly);
+  if (!refs.length) return { resolved: false, months: [] };
+  const byId = new Map((invoices || []).map((i) => [String(i.id), i]));
+  const months = [];
+  for (const r of refs) {
+    const inv = byId.get(String(r));
+    const p = inv && String(inv.date || "").slice(0, 7);
+    if (p && p.length === 7) months.push(p);
+  }
+  return { resolved: months.length > 0, months };
+}
+
 // Does this anomaly touch the given sign-off period (YYYY-MM)? Entry-linked anomalies
 // resolve their refs → dates via the invoices array. Aggregate anomalies (e.g.
 // category_spike, which carries no entry refs) encode the month in the fingerprint
 // tail (`…:YYYY-MM`) — fall back to that so a month-scoped spike still period-gates.
+//
+// C198·3c (D1) — THE FINGERPRINT FALLBACK APPLIES HERE TOO, and for a sharper reason
+// than it did for anomalySubjectPeriod. The only consumer of this function is
+// openHighAnomaliesInPeriod → signOffReadiness: the gate that BLOCKS a sign-off on an
+// open HIGH note. `duplicate_payment` is emitted at severity high with an f3 date-pair
+// key, so under the exact (v) condition — persisted rows whose entity_refs stopped
+// resolving after a reload — this returned false and the blocker silently UNDER-counted.
+// A sign-off gate that fails to block is the dangerous direction; the sweep failing to
+// retire (the (v) symptom) merely leaves a note open.
+//
+// Which is why `rapid:` is EXCLUDED from anomalySubjectPeriod's fallback but INCLUDED
+// here, and the asymmetry is the point. Its key holds the window START while its refs
+// span up to 48 hours, so the month it names is under-inclusive. For a function that
+// RETIRES notes, an under-inclusive month is a note retired a month early — unsafe. For
+// a function that BLOCKS sign-off, an under-inclusive month is one fewer month blocked,
+// and TOUCHES asks "does any part of this land in the period", to which the window's
+// first charge is a truthful yes. Over-blocking is the safe side of this one.
 export function anomalyTouchesPeriod(anomaly, period, invoices = []) {
   if (!anomaly || !period) return false;
-  const refs = refIds(anomaly);
-  if (!refs.length) {
-    const m = /:(\d{4}-\d{2})$/.exec(String(anomaly.fingerprint || anomaly.id || ""));
-    return m ? m[1] === period : false;
-  }
-  const byId = new Map((invoices || []).map((i) => [String(i.id), i]));
-  return refs.some((r) => {
-    const inv = byId.get(String(r));
-    return !!inv && String(inv.date || "").slice(0, 7) === period;
-  });
+  const refs = refMonths(anomaly, invoices);
+  if (refs.resolved) return refs.months.some((m) => m === period);
+  return fingerprintMonths(anomaly.fingerprint || anomaly.id).some((m) => m === period);
 }
 
 // The single period an anomaly is ABOUT (YYYY-MM), or null when it can't be placed.
@@ -79,30 +122,18 @@ export function anomalyTouchesPeriod(anomaly, period, invoices = []) {
 // the note open. Failing to place a note must never mean retiring it.
 export function anomalySubjectPeriod(anomaly, invoices = []) {
   if (!anomaly) return null;
-  const refs = refIds(anomaly);
-  if (refs.length) {
-    const byId = new Map((invoices || []).map((i) => [String(i.id), i]));
-    let latest = null;
-    for (const r of refs) {
-      const inv = byId.get(String(r));
-      const p = inv && String(inv.date || "").slice(0, 7);
-      if (p && p.length === 7 && (!latest || p > latest)) latest = p;
-    }
-    if (latest) return latest;                       // refs resolved — they are the authority
-  }
+  const refs = refMonths(anomaly, invoices);
+  if (refs.resolved) return refs.months.reduce((mx, m) => (m > mx ? m : mx));   // refs are the authority
   const fp = String(anomaly.fingerprint || anomaly.id || "");
-  const tail = /:(\d{4}-\d{2})$/.exec(fp);
-  if (tail) return tail[1];
   // `rapid:<vendor>:<date>:<count>` is the one f3 key whose date is the WINDOW START,
   // not the subject: its refs are every charge in a 48-hour window, which can reach into
   // the next month. Reading the month off that key would place a straddling note EARLY
   // and let the earlier month's sign-off retire it — the exact guarantee this function's
   // "latest month" rule exists to keep. Unplaceable is the correct answer; it stays open.
-  if (!/^rapid:/.test(fp)) {
-    const dates = fp.match(/\d{4}-\d{2}-\d{2}/g);
-    if (dates && dates.length) return dates.reduce((mx, d) => (d > mx ? d : mx)).slice(0, 7);
-  }
-  return null;
+  // (anomalyTouchesPeriod deliberately does NOT make this exclusion — see the note there.)
+  if (/^rapid:/.test(fp)) return null;
+  const months = fingerprintMonths(fp);
+  return months.length ? months.reduce((mx, m) => (m > mx ? m : mx)) : null;
 }
 
 // Count of OPEN HIGH anomalies whose refs touch `period` — the sign-off blocker input.
