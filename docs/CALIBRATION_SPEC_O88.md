@@ -89,6 +89,6 @@ Everything below is these rules meeting specific cases.
 
 ## SIGN-OFF
 
-- [ ] Alex (CPA) — familiarity axis house rules, ladder, Q1–Q9 resolutions as written
+- [x] Alex (CPA) — familiarity axis house rules, ladder, Q1–Q9 resolutions as written
 
 *Upon signature: becomes Tier 1 commit spec. Full zip review, standing rules per CLAUDE.md — verify-don't-trust, checkable artifacts, ▶ RUN NOW/HOLD markers, migrations manual, `git log origin/main..HEAD` printed everywhere.*
