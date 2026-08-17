@@ -58,6 +58,13 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
   { code: "6900", name: "Depreciation & Amortization", category: "Expenses", system_role: "depreciation_amortization" },
   { code: "7000", name: "Bad Debt Expense", category: "Expenses", system_role: "bad_debt" },
   { code: "7100", name: "Miscellaneous Expense", category: "Expenses", system_role: "miscellaneous_expense" },
+  // O88 calibration (migration 063) — HONEST SUSPENSE. A bank line whose vendor we do
+  // not know books HERE, never to a guessed account. Distinct from 7100 on purpose:
+  // Miscellaneous means "we looked and it is genuinely miscellaneous", Uncategorized
+  // means "we did not know". Tier 1 #7's acceptance test treats a Miscellaneous
+  // fallback on a recognizable vendor as a HARD FAIL — collapsing the two would
+  // delete that test's meaning. Nothing books here until the ladder is wired.
+  { code: "7150", name: "Uncategorized Expense", category: "Expenses", system_role: "uncategorized_expense" },
   // Other / Below the line
   { code: "8000", name: "Interest Expense", category: "Expenses", system_role: "interest_expense" },
   { code: "8100", name: "Income Tax Expense", category: "Expenses", system_role: "income_tax_expense" },
