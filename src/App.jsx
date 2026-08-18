@@ -1263,6 +1263,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           buildAccountInsert({ companyId: currentCompany.id, code: newGlCode, name: newGlName || acctDef?.name || newGlCode, category: acctDef?.category })
         ).select("id").single();
         if (insErr || !created) { console.error("[persistRecode] account insert:", insErr?.message); return false; }
+        // O108 finding 4, FOURTH SITE — this is how 6520 and 6530 came to exist. A CPA recoded
+        // a bank line to a code that was in no chart, and the recode created it. Origin was a
+        // HUMAN CORRECTION, not machine invention; the account is still role-less and invisible.
+        logAudit("account_materialized", `Created account ${newGlCode} "${newGlName || newGlCode}" while recategorizing — it was not in this company's chart`, null, { code: newGlCode, name: newGlName || newGlCode, site: "persistRecode" });
         acctRow = created;
       }
       if (!acctRow?.id) return false;
@@ -1323,6 +1327,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         const { data: created } = await supabase.from("accounts").insert(
           buildAccountInsert({ companyId: currentCompany.id, code, name: name || acctDef?.name || code, category: acctDef?.category })
         ).select("id").single();
+        // O108 finding 4 — SAY SO. This inserts a permanent account on the client's chart with
+        // system_role NULL, invisible to every role lookup thereafter. It ran three times on
+        // Franklin Ave across attested months and left no trace anywhere. Behaviour unchanged;
+        // it is simply no longer silent. (`system_role IS NULL` + a late created_at is the
+        // fingerprint — see the standing query in tests/accountMaterialization.test.js.)
+        if (created) logAudit("account_materialized", `Created account ${code} "${name || acctDef?.name || code}" on the fly — it was not in this company's chart`, null, { code, name: name || acctDef?.name || code, in_default_chart: !!acctDef, site: "ensureAccount" });
         return created;
       };
 
@@ -1454,6 +1464,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         const { data: created } = await supabase.from("accounts").insert(
           buildAccountInsert({ companyId: currentCompany.id, code, name: name || acctDef?.name || code, category: acctDef?.category })
         ).select("id").single();
+        // O108 finding 4 — SAY SO. This inserts a permanent account on the client's chart with
+        // system_role NULL, invisible to every role lookup thereafter. It ran three times on
+        // Franklin Ave across attested months and left no trace anywhere. Behaviour unchanged;
+        // it is simply no longer silent. (`system_role IS NULL` + a late created_at is the
+        // fingerprint — see the standing query in tests/accountMaterialization.test.js.)
+        if (created) logAudit("account_materialized", `Created account ${code} "${name || acctDef?.name || code}" on the fly — it was not in this company's chart`, null, { code, name: name || acctDef?.name || code, in_default_chart: !!acctDef, site: "ensureAccount" });
         return created;
       };
       const resolved = [];
@@ -1502,6 +1518,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       category: def?.category || (code === OBE_CODE ? "Equity" : "Assets"),
     })).select("id").single();
     if (error) { console.warn("[opening] ensureAccount failed:", code, error.message); return null; }
+    // O108 finding 4 — the path that materialised 3400 Opening Balance Equity on 2026-07-22.
+    logAudit("account_materialized", `Created account ${code} on the fly during opening balances — it was not in this company's chart`, null, { code, site: "ensureAccountIdForCode" });
     await reloadAccounts();
     return data?.id || null;
   };
@@ -2487,6 +2505,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data: made, error } = await supabase.from("accounts")
         .insert(buildAccountInsert({ companyId: currentCompany.id, code: glCode, name: glName || def?.name || glCode, category: def?.category })).select("id").single();
       if (error || !made) { console.warn("[resolveAccountId] create failed:", error?.message); return null; }
+      // O108 finding 4, FIFTH SITE — found by the CI guard, not by reading. This one is
+      // reached from the AI action path (add_rule / set_contact_rule), so a model-proposed
+      // GL code can mint a permanent account on a client's chart. Loudest of the five, for
+      // that reason; behaviour unchanged.
+      logAudit("account_materialized", `Created account ${glCode} "${glName || def?.name || glCode}" while resolving a rule target — it was not in this company's chart`, null, { code: glCode, name: glName || def?.name || glCode, in_default_chart: !!def, site: "resolveAccountId" });
       return made.id;
     } catch (e) { console.warn("[resolveAccountId]", e?.message); return null; }
   };

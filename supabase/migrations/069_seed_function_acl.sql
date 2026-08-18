@@ -1,0 +1,69 @@
+-- =====================================================================
+-- 069_seed_function_acl.sql  (O108 finding 2)
+--
+-- Revokes EXECUTE on `seed_company_accounts(uuid)` from `anon`.
+--
+-- WHAT WAS FOUND (live `proacl`, 2026-08-17):
+--   {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+-- while BOTH `009_account_system_roles.sql` and `044_…` end with:
+--   revoke all on function public.seed_company_accounts(uuid) from public;
+--   grant execute on function public.seed_company_accounts(uuid) to authenticated;
+-- So the repo believes `anon` was revoked. Live says otherwise. (`044` never ran at
+-- all — it inserts an `account_type` column that does not exist — which is most of
+-- the explanation, and is O108 finding 1.)
+--
+-- ── HOW BAD IS IT: NOT EXPLOITABLE TODAY, AND SAY WHY ────────────────────
+-- The function is SECURITY DEFINER, so a grant to `anon` would matter — except its
+-- FIRST statement is:
+--     if not public.is_company_member(p_company_id) then raise exception … end if;
+-- `is_company_member` resolves through `auth.uid()`, which is NULL for an
+-- unauthenticated caller, so the guard raises before anything is read or written.
+-- There is no known path to data. **But the guard is doing the work the grant was
+-- supposed to do**, and that is one accident away from mattering: any future edit
+-- that moves, weakens or short-circuits that first statement turns a defence-in-depth
+-- miss into a live hole. Defence in depth means the outer layer is closed too.
+--
+-- ── PRE-APPLY CHECK (code side, done; live side is the operator's) ───────
+-- The ONLY caller in the codebase is `src/components/CompanySetup.jsx:21`, which:
+--   • is rendered only when a session exists (`App.jsx:272` returns <AuthScreen/>
+--     when `!session`), and takes `session` as a prop;
+--   • runs AFTER `create_company()` succeeds, which itself requires an authed user.
+-- So no anonymous call path exists in the client. Confirm against live behaviour
+-- before applying: create a company end-to-end and watch it still seed.
+--
+-- NOTE: this does NOT touch `authenticated`, `service_role` or `postgres`. Company
+-- creation is unaffected.
+--
+-- Apply after `063`. Idempotent; safe to re-run (`revoke` on an absent grant is a no-op).
+-- =====================================================================
+begin;
+
+revoke execute on function public.seed_company_accounts(uuid) from anon;
+
+commit;
+
+-- =====================================================================
+-- VERIFY (read-only; paste the output into the report, per §6):
+--
+--   -- (a) anon is gone, authenticated survives
+--   select proacl::text as acl,
+--          proacl::text not like '%anon=%'          as anon_revoked,
+--          proacl::text like '%authenticated=X%'    as authenticated_kept
+--   from pg_proc where proname = 'seed_company_accounts';
+--   -- expect: anon_revoked = true, authenticated_kept = true
+--
+--   -- (b) the function itself is untouched — same body, still 56+ chart rows
+--   select position('uncategorized_expense' in prosrc) > 0 as body_intact
+--   from pg_proc where proname = 'seed_company_accounts';
+--   -- expect: true
+--
+--   -- (c) BEHAVIOURAL, and the one that actually matters: create a company
+--   --     through the UI and confirm its chart seeded. A green ACL with a broken
+--   --     onboarding is a worse outcome than the finding.
+--   select c.id, c.name, count(a.id) as accounts_seeded
+--   from public.companies c
+--   left join public.accounts a on a.company_id = c.id
+--   where c.created_at > now() - interval '1 hour'
+--   group by c.id, c.name;
+--   -- expect: accounts_seeded = 56 for the new company
+-- =====================================================================
