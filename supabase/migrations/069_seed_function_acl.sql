@@ -65,5 +65,8 @@ commit;
 --   left join public.accounts a on a.company_id = c.id
 --   where c.created_at > now() - interval '1 hour'
 --   group by c.id, c.name;
---   -- expect: accounts_seeded = 56 for the new company
+--   -- expect: accounts_seeded = 59 for the new company (56 before `068`; that
+--   -- migration added 3400/6520/6530. Corrected 2026-08-17 — a stale expected
+--   -- value in a verification step turns the check into a rubber stamp, and 56
+--   -- would now read as a pass while meaning `068` did not take.)
 -- =====================================================================

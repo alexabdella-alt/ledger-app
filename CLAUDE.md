@@ -122,6 +122,12 @@ Two-stage pipeline, both calls through the **`ai-proxy`** Edge Function (`supaba
 
 > **★ MIGRATIONS APPLIED — the live state.** **Applied & verified live: through `061`, PLUS `063`** (`060` on 2026-08-08, `061` on 2026-08-09, **`063` on 2026-08-17**; all verified via catalog queries, not an HTTP 201). **Pending: `062`** (unknown_documents policy dedup — queued, unwritten).
 >
+> **`068` + `069` APPLIED 2026-08-17.** Ledger now: **applied & verified through `061`, plus `063`, `068`, `069`.** *(`062` still owed.)*
+>
+> **`068` verification** — (a) roles set on all three codes ✓ · (c) all six seed checks true ✓ · (d) Franklin Ave lines untouched (`6520`=3, `6530`=2) ✓ · **(a) surprise: `3400` exists on TWO companies, not one** — a second company's on-demand OBE materialisation, now correctly roled by the backfill; benign, and the identity of that company is still owed. **(b) FAILED ITS EXPECTATION AND THAT IS THE VALUABLE PART: expected 0 role-less accounts, returned 36** — none on Franklin Ave, all on three other companies, in a foreign numbering scheme. **DESIGNATED `O110`.**
+>
+> **`069` verification — PARTIAL, and it is NOT closed.** (a) `anon` revoked, `authenticated` kept ✓ · (b) body intact ✓ · **(c) NOT RUN.** The behavioural check — create a company end to end and confirm it seeds — is the only one that can prove the revoke didn't break onboarding, and a catalog read cannot stand in for it. **`069` is applied but NOT fully verified; the open item is recorded on ROADMAP `O108`.** *(The file's expected count said 56, from before `068`; corrected to 59 — a stale expected value turns a check into a rubber stamp, and 56 would now read as a pass while meaning `068` did not take.)*
+>
 > **`063` APPLIED OUT OF ORDER, deliberately.** `062` is queued-but-unwritten and is not a prerequisite of `063`; the chain is monotonic, not contiguous (§6), and waiting on an unwritten file would have blocked calibration for no gain. **`062` remains owed.**
 >
 > **`063` verification, 2026-08-17** — (a) **11 companies / 11 with 7150 / 11 with the role** · (b) all five true: gained `uncategorized_expense`, kept `lease_liability_current`, `marketing_advertising`, `common_stock`, and no `account_type` · (c) **0 lines booked to 7150** (C200 wires no caller, as intended) · (d) ACL `{postgres=X,anon=X,authenticated=X,service_role=X}` — preserved by create-or-replace, **and see `O108` finding 2: `anon` holds EXECUTE, which the repo believes was revoked.**

@@ -149,3 +149,52 @@ describe("(O108) the client chart and the newest seed migration agree", () => {
     expect(seedRoles.size).toBeGreaterThan(50);   // sanity: the parse actually found the list
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MIGRATION FILE SANITY (requested 2026-08-17).
+//
+// HONEST SCOPE, STATED FIRST: this would NOT have caught the reported defect. The
+// operator hit an unparseable bare `=====` on line 1 of 068/069 in the SQL editor and
+// fixed it by hand — but the COMMITTED blobs both begin `-- =====` (verified byte-wise
+// via `git show HEAD:…`), and every migration in the tree passes the check below. The
+// `--` was lost somewhere between the file and the editor, in a step no test can see.
+//
+// Kept anyway because it is cheap and the class is real: a migration whose first line
+// is not a comment or SQL will fail at the point of most consequence, against
+// production, by hand. A guard that cannot catch the incident that prompted it is
+// worth having only if you say so out loud — otherwise it is the ·3a pattern again,
+// a test that reassures without testing.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("migration files are parseable at a glance", () => {
+  const dir = path.join(process.cwd(), "supabase/migrations");
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql"));
+
+  it("there are migrations to check", () => expect(files.length).toBeGreaterThan(50));
+
+  it("★ line 1 is a comment or SQL — never a bare rule", () => {
+    const bad = files.filter((f) => {
+      const first = fs.readFileSync(path.join(dir, f), "utf8").split("\n")[0].trim();
+      return first !== "" && !/^(--|\/\*|begin|set|create|alter|insert|update|drop|revoke|grant|do|with|comment)/i.test(first);
+    });
+    expect(bad, "first line parses as neither comment nor SQL").toEqual([]);
+  });
+
+  it("no unterminated dollar-quote — the other way a paste dies mid-statement", () => {
+    for (const f of files) {
+      const t = fs.readFileSync(path.join(dir, f), "utf8");
+      for (const tag of ["$fn$", "$function$", "$$"]) {
+        const n = t.split(tag).length - 1;
+        expect(n % 2, `${f}: odd number of ${tag} delimiters (${n})`).toBe(0);
+      }
+    }
+  });
+
+  it("every file that opens a transaction closes it", () => {
+    for (const f of files) {
+      const t = fs.readFileSync(path.join(dir, f), "utf8").toLowerCase();
+      const begins = (t.match(/^\s*begin;/gm) || []).length;
+      const commits = (t.match(/^\s*commit;/gm) || []).length;
+      expect(commits, `${f}: ${begins} begin; vs ${commits} commit;`).toBe(begins);
+    }
+  });
+});
