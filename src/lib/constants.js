@@ -52,6 +52,13 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
   { code: "6300", name: "Marketing & Advertising", category: "Expenses", system_role: "marketing_advertising" },
   { code: "6400", name: "Travel & Entertainment", category: "Expenses", system_role: "travel_entertainment" },
   { code: "6500", name: "Technology & Software (SaaS)", category: "Expenses", system_role: "technology_software" },
+  // O108 (2026-08-17) — BLESSED as canonical, migration 068. These existed on live client
+  // charts with system_role NULL for months: a CPA recategorised two January bank lines to
+  // codes no chart knew, `persistRecode` created the accounts, and nothing recorded it.
+  // Real recurring costs for a restaurant client, chosen by a CPA — so they are adopted,
+  // not reclassified. Without a role here, `getAccountByRole` could never resolve them.
+  { code: "6520", name: "Merchant Processing Fees", category: "Expenses", system_role: "merchant_processing_fees" },
+  { code: "6530", name: "Bank Service Charges", category: "Expenses", system_role: "bank_service_charges" },
   { code: "6600", name: "Office Supplies & De Minimis Equipment", category: "Expenses", system_role: "office_supplies" },
   { code: "6700", name: "Insurance", category: "Expenses", system_role: "insurance" },
   { code: "6800", name: "Professional Services (Legal/Accounting)", category: "Expenses", system_role: "professional_services" },

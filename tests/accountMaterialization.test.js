@@ -103,3 +103,49 @@ describe("(O108) the role fallback is audible, and still a fallback", () => {
     expect(hook).not.toMatch(/throw new Error/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O108 — THE GUARD THAT WOULD HAVE CAUGHT THE WHOLE THING.
+//
+// The client chart (`constants.js`) and the SEED that creates a company's chart must
+// describe the same accounts. Nothing checked that, which is how `044` sat in the tree
+// for months describing a chart the database had never had, and how `6520`/`6530` came
+// to exist in live charts and in no definition at all.
+//
+// This reads the HIGHEST-NUMBERED migration that defines `seed_company_accounts` and
+// diffs its roles against `constants.js`. It is deliberately self-maintaining: write a
+// new seed migration and this test starts checking that one.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("(O108) the client chart and the newest seed migration agree", () => {
+  const dir = path.join(process.cwd(), "supabase/migrations");
+  const seedFile = fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".sql") && /^\d/.test(f))
+    // Must DEFINE the function with a values list — 069 only revokes a grant on it,
+    // and mentioning the name is not defining the chart. (Caught by this test on the
+    // first run, which is the smallest possible version of the O108 lesson.)
+    .filter((f) => {
+      const t = fs.readFileSync(path.join(dir, f), "utf8");
+      return /create or replace function public\.seed_company_accounts/i.test(t) && /from \(values/i.test(t);
+    })
+    .sort()
+    .pop();
+
+  it("a seed-defining migration exists to check against", () => {
+    expect(seedFile, "no migration defines seed_company_accounts").toBeTruthy();
+  });
+
+  it("★ every role in the newest seed is in constants.js, and vice versa", () => {
+    const sql = fs.readFileSync(path.join(dir, seedFile), "utf8");
+    const fn = sql.slice(sql.search(/function public\.seed_company_accounts/i));
+    const values = fn.slice(fn.indexOf("from (values"), fn.indexOf(") as v("));
+    const seedRoles = new Set([...values.matchAll(/','([a-z_]+)'\)/g)].map((m) => m[1]));
+    const clientRoles = new Set(
+      [...read("src/lib/constants.js").matchAll(/system_role:\s*"([a-z_]+)"/g)].map((m) => m[1]),
+    );
+    const missingFromClient = [...seedRoles].filter((r) => !clientRoles.has(r)).sort();
+    const missingFromSeed = [...clientRoles].filter((r) => !seedRoles.has(r)).sort();
+    expect(missingFromClient, `in ${seedFile} but not constants.js`).toEqual([]);
+    expect(missingFromSeed, `in constants.js but not ${seedFile}`).toEqual([]);
+    expect(seedRoles.size).toBeGreaterThan(50);   // sanity: the parse actually found the list
+  });
+});
