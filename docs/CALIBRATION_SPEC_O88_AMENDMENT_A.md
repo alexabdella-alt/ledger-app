@@ -142,7 +142,7 @@ world:
 
 ## SIGN-OFF
 
-- [ ] Alex (CPA) — shadow-mode pass criterion as written, §§1–7
+- [x] Alex (CPA) — shadow-mode pass criterion as written, §§1–7
 
 *Upon signature: C201 is released from ▶ HOLD and shadow mode may be built to this standard.
 Until then C201 remains held. Standing rules per CLAUDE.md — verify-don't-trust, checkable

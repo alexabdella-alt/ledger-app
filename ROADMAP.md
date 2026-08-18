@@ -17,7 +17,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ## OPEN LEDGER — every tracked, unshipped item
 
-**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-17 (evening).**
+**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-17 (Amendment A signed).**
 
 ### Before the first paying client — 8 open
 
@@ -85,7 +85,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 *The immediate next piece of work, written down so the order is not re-litigated.*
 
-- [ ] **Write the shadow-mode PASS CRITERION for O102, and approve it — BEFORE any of it is built.** Shadow mode runs the new way alongside the old one and records what it *would* have done, without touching a single booking. The criterion says, in advance, what counts as it working: which months, how many lines, what rate of agreement, and what result would mean stop. **Written and approved first, because a criterion invented after the numbers arrive is not a test — it is a description.** C201 stays held until then.
+- [x] **Shadow-mode PASS CRITERION written and SIGNED 2026-08-17** — `docs/CALIBRATION_SPEC_O88_AMENDMENT_A.md`, signed by Alex (CPA). Written before the numbers existed, which was the point. **C201 is released from ▶ HOLD** and shadow mode may be built to that standard. Structural, not statistical: two automatic fails (a stranger reaching a real account; two vendors collapsing into one), every known-vendor disagreement itemised, and parking explicitly not a gate.
 
 ### Shipped but NOT yet proven in a real run — 3 open
 
