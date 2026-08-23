@@ -4,6 +4,7 @@ import { parseQbo, normalizeQbo, matchAccount, isQboBankFile } from "../../lib/q
 import { findDuplicate, downloadCSV } from "../../lib/insights";
 import { fmtSignedMoney } from "../../lib/format";
 import { validateUpload } from "../../lib/uploadGuard";
+import { buildAccountInsert } from "../../lib/writeShapes";
 
 const ROW_CAP = 10000;
 const FIELDS = [["date", "Date"], ["type", "Type"], ["num", "Num"], ["name", "Vendor / Name"], ["account", "Account"], ["split", "Split"], ["amount", "Amount"], ["debit", "Debit"], ["credit", "Credit"], ["memo", "Memo / Description"]];
@@ -109,11 +110,40 @@ export default function QBOImportView() {
       const { data: accts } = await supabase.from("accounts").select("id, code").eq("company_id", cid);
       (accts || []).forEach(a => { acctId[a.code] = a.id; });
     } catch {}
+    // ── O110 (2026-08-23) — THIS BLOCK WAS BROKEN, SILENTLY, AND THE SILENCE WAS THE BUG ──
+    // It inserted an `account_type` column that DOES NOT EXIST on `public.accounts`
+    // (confirmed live: 0 rows in information_schema), inside a bare `try {} catch {}`.
+    // So the insert threw, the throw was swallowed, `acctId[code]` stayed undefined, and
+    // the downstream guard `if (!pId || !oId) { failedN++; continue; }` dropped every row
+    // needing that account — counted as "failed" in the summary with no reason given
+    // anywhere. A silent non-booking, not a wrong booking: it fails safe and opaquely,
+    // which is the combination that survives seven drives without being noticed.
+    //
+    // Now: the shared `buildAccountInsert` shape (no phantom column, `system_role: null`
+    // consistent with every other site, and INSIDE the CI guard that requires an audit
+    // event beside each materialisation), the error is reported instead of eaten, and the
+    // creation is audited like the other six doors.
+    const acctCreateFailures = [];
     for (const code of neededCodes) {
       if (!acctId[code]) {
         const def = (CHART_OF_ACCOUNTS || []).find(a => a.code === code);
-        try { const { data } = await supabase.from("accounts").insert({ company_id: cid, code, name: def?.name || code, account_type: (def?.category || "expense").toLowerCase() }).select("id").single(); if (data) acctId[code] = data.id; } catch {}
+        const { data, error } = await supabase.from("accounts")
+          .insert(buildAccountInsert({ companyId: cid, code, name: def?.name || code, category: def?.category }))
+          .select("id").single();
+        if (error || !data) {
+          console.error("[qbo] account create failed:", code, error?.message);
+          acctCreateFailures.push(code);
+          continue;
+        }
+        acctId[code] = data.id;
+        logAudit("account_materialized", `Created account ${code} "${def?.name || code}" during a QuickBooks import — it was not in this company's chart`, null, { code, name: def?.name || code, in_default_chart: !!def, site: "qboImport" });
       }
+    }
+    if (acctCreateFailures.length) {
+      // SAY SO. The rows needing these accounts are about to be dropped by the
+      // `!pId || !oId` guard below, and "N failed" with no cause is what hid this for months.
+      showNotification(`Couldn't create ${acctCreateFailures.length} account${acctCreateFailures.length === 1 ? "" : "s"} (${acctCreateFailures.join(", ")}) — transactions needing them won't import.`, "error");
+      logAudit("qbo_account_create_failed", `${acctCreateFailures.length} account(s) could not be created during a QuickBooks import: ${acctCreateFailures.join(", ")}`, null, { codes: acctCreateFailures });
     }
 
     // Create the batch record first → its id is the import_batch_id.

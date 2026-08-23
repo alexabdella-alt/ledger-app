@@ -52,15 +52,53 @@ describe("(O108) buildAccountInsert — the fingerprint is intentional", () => {
 describe("(O108) every materialisation site is AUDIBLE", () => {
   const app = read("src/App.jsx");
 
-  it("★ all FIVE call sites of buildAccountInsert in App.jsx log an audit event", () => {
-    // If a fifth site appears without an audit line, this fails — which is the point.
-    const sites = [...app.matchAll(/buildAccountInsert\(/g)].map((m) => m.index);
-    expect(sites.length, "call sites of buildAccountInsert in App.jsx").toBe(5);
-    for (const i of sites) {
-      const window = app.slice(i, i + 900);
-      expect(window, `site at offset ${i} has no account_materialized audit within 900 chars`)
+  // O110 — WIDENED 2026-08-23 FROM App.jsx TO ALL OF src/. The original guard read only
+  // App.jsx and reported "all five sites covered", which was true and useless: the SIXTH
+  // site lived in QBOImportView.jsx, had been silently broken for months, and the guard
+  // was structurally incapable of seeing it. A test that scopes itself to where you
+  // already looked will always tell you that you have looked everywhere.
+  const srcFiles = (function walk(d, acc = []) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) walk(full, acc);
+      else if (/\.jsx?$/.test(e.name)) acc.push(full);
+    }
+    return acc;
+  })(path.join(process.cwd(), "src"));
+
+  it("★ EVERY buildAccountInsert call site in src/ logs an audit event", () => {
+    const sites = [];
+    for (const f of srcFiles) {
+      const t = fs.readFileSync(f, "utf8");
+      // Skip the DEFINITION in writeShapes.js — `export function buildAccountInsert(` is
+      // not a call site, and counting it would make the expected number a lie.
+      for (const m of t.matchAll(/(?<!function )buildAccountInsert\(/g)) {
+        sites.push({ file: path.relative(process.cwd(), f), i: m.index, t });
+      }
+    }
+    // 5 in App.jsx + 1 in QBOImportView.jsx. writeShapes.js defines it; it does not call it.
+    expect(sites.length, `sites: ${sites.map((s) => s.file).join(", ")}`).toBe(6);
+    for (const s of sites) {
+      expect(s.t.slice(s.i, s.i + 900), `${s.file}@${s.i} has no account_materialized audit within 900 chars`)
         .toMatch(/logAudit\("account_materialized"/);
     }
+  });
+
+  it("★ no RAW account insert bypasses the shared shape — the door O110 came through", () => {
+    // QBOImportView.jsx:115 was `supabase.from("accounts").insert({ … })` by hand, with a
+    // column that did not exist and no system_role. Any future hand-rolled account insert
+    // is invisible to the guard above, so forbid the shape itself.
+    const offenders = [];
+    for (const f of srcFiles) {
+      const t = fs.readFileSync(f, "utf8");
+      for (const m of t.matchAll(/from\(\s*["']accounts["']\s*\)\s*\n?\s*\.insert\(\s*\{/g)) {
+        offenders.push(`${path.relative(process.cwd(), f)}@${m.index}`);
+      }
+    }
+    // addCustomAccount (App.jsx) is the one sanctioned hand-rolled insert: it is the
+    // explicit "user adds an account" path, sets system_role: null deliberately, and is
+    // audited as `coa_added` rather than `account_materialized`.
+    expect(offenders.length, `raw accounts inserts: ${offenders.join(", ")}`).toBeLessThanOrEqual(1);
   });
 
   it("names WHICH site fired — three distinct sites, so the audit trail is diagnosable", () => {
