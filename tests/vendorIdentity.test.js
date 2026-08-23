@@ -171,6 +171,18 @@ describe("groupByEntity — the shape the census pass reads", () => {
 // only the real four prove the CASE the spec cites. The guard below is written to
 // fail the moment someone pastes them in, which forces the real assertion to be
 // switched on rather than quietly sitting next to a filled-in fixture.
+// ★ 2026-08-23 — THE FIXTURES CANNOT SUPPLY THEM. The Franklin Ave extraction shows
+// Lone Star's RAW bank text is BYTE-IDENTICAL across all four months
+// ("ACH DEBIT - LONE STAR RESTAURANT SUPPLY"). So Specimen 2's flapping cause —
+// descriptor variance — IS NOT REPRESENTED IN THE DRIVE DATA AT ALL. The four variants
+// were never in the ledger; they were in the statements, or in the reading of them.
+//
+// This matters more than it looks: the whole fixture program cannot exercise identity
+// resolution, because normalisation has no work to do on a constant string. A green
+// backfill preview over this data says nothing about the resolver. The corpus needs the
+// real statement strings, or explicitly-labelled synthetic variants — and until then
+// `planVendorBackfill` reports `variance.identityResolutionUnexercised: true` so a clean
+// result can never be read as a tested one.
 const REAL_LONE_STAR_DESCRIPTORS = [];   // ← paste the four real descriptors here
 
 describe("(spec line 82) the Lone Star seed corpus", () => {

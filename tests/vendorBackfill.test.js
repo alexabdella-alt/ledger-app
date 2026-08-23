@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { planVendorBackfill, graduationPreview, attestationStrengthFor, ATTESTATION_STRENGTH } from "../src/lib/vendorBackfill.js";
+import { planVendorBackfill, graduationPreview, attestationStrengthFor, rawDescriptorOf, ATTESTATION_STRENGTH } from "../src/lib/vendorBackfill.js";
 import { VENDOR_TIER } from "../src/lib/vendorTier.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -19,7 +19,7 @@ import { VENDOR_TIER } from "../src/lib/vendorTier.js";
 // ═════════════════════════════════════════════════════════════════════════════
 
 const ln = (over = {}) => ({
-  line_id: "L1", descriptor: "SYSCO FOODS", date: "2026-01-15", account_id: "acct-cogs",
+  line_id: "L1", descriptor: "Sysco Foods – ACH DEBIT SYSCO FOODS", date: "2026-01-15", account_id: "acct-cogs",
   amount: 1200, deleted: false, exception_resolved: false, recoded: false, ...over,
 });
 const SIGNED = ["2026-01", "2026-02", "2026-03"];
@@ -38,7 +38,7 @@ describe("what counts, and what does not", () => {
 
   it("a descriptor carrying no identity does not become a vendor", () => {
     // "884213" is a trace number, not a vendor. C200's letters-required guard.
-    const p = planVendorBackfill({ lines: [ln({ descriptor: "884213" })], signedMonths: SIGNED });
+    const p = planVendorBackfill({ lines: [ln({ descriptor: "Unknown – 884213" })], signedMonths: SIGNED });
     expect(p.skipped.no_identity).toBe(1);
     expect(p.counts.entities).toBe(0);
   });
@@ -62,9 +62,9 @@ describe("identity grouping uses the app's ONE implementation", () => {
     // would seed keys the app cannot look up: inert on arrival, and green.
     const p = planVendorBackfill({
       lines: [
-        ln({ line_id: "a", descriptor: "SQ *BLUEBONNET LINEN", date: "2026-01-05", account_id: "acct-linen", amount: 145 }),
-        ln({ line_id: "b", descriptor: "ACH DEBIT BLUEBONNET LINEN", date: "2026-02-05", account_id: "acct-linen", amount: 150 }),
-        ln({ line_id: "c", descriptor: "BLUEBONNET LINEN #12", date: "2026-03-05", account_id: "acct-linen", amount: 148 }),
+        ln({ line_id: "a", descriptor: "Bluebonnet Linen – SQ *BLUEBONNET LINEN", date: "2026-01-05", account_id: "acct-linen", amount: 145 }),
+        ln({ line_id: "b", descriptor: "Bluebonnet Linen – ACH DEBIT BLUEBONNET LINEN", date: "2026-02-05", account_id: "acct-linen", amount: 150 }),
+        ln({ line_id: "c", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN #12", date: "2026-03-05", account_id: "acct-linen", amount: 148 }),
       ],
       signedMonths: SIGNED,
     });
@@ -74,7 +74,7 @@ describe("identity grouping uses the app's ONE implementation", () => {
 
   it("two genuinely different vendors stay two entities", () => {
     const p = planVendorBackfill({
-      lines: [ln({ line_id: "a", descriptor: "SYSCO FOODS" }), ln({ line_id: "b", descriptor: "SYSCO FUEL", date: "2026-02-01" })],
+      lines: [ln({ line_id: "a", descriptor: "Sysco Foods – SYSCO FOODS" }), ln({ line_id: "b", descriptor: "Sysco Fuel – SYSCO FUEL", date: "2026-02-01" })],
       signedMonths: SIGNED,
     });
     expect(p.counts.entities).toBe(2);
@@ -85,8 +85,8 @@ describe("★ the two live specimens, as the deploy would see them", () => {
   it("BLUEBONNET LINEN graduates KNOWN on two signed months", () => {
     const p = planVendorBackfill({
       lines: [
-        ln({ line_id: "b1", descriptor: "BLUEBONNET LINEN", date: "2026-01-08", account_id: "acct-linen", amount: 145 }),
-        ln({ line_id: "b2", descriptor: "BLUEBONNET LINEN", date: "2026-02-08", account_id: "acct-linen", amount: 150 }),
+        ln({ line_id: "b1", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN", date: "2026-01-08", account_id: "acct-linen", amount: 145 }),
+        ln({ line_id: "b2", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN", date: "2026-02-08", account_id: "acct-linen", amount: 150 }),
       ],
       signedMonths: SIGNED, companyId: "co1",
     });
@@ -98,8 +98,8 @@ describe("★ the two live specimens, as the deploy would see them", () => {
   it("LONE STAR graduates once its descriptor variants collapse to one entity", () => {
     const p = planVendorBackfill({
       lines: [
-        ln({ line_id: "l1", descriptor: "TST* LONE STAR RESTAURANT SUPPLY", date: "2026-01-20", account_id: "acct-cogs", amount: 240 }),
-        ln({ line_id: "l2", descriptor: "ACH DEBIT LONE STAR RESTAURANT SUPPLY", date: "2026-02-20", account_id: "acct-cogs", amount: 240 }),
+        ln({ line_id: "l1", descriptor: "Lone Star Restaurant Supply – TST* LONE STAR RESTAURANT SUPPLY", date: "2026-01-20", account_id: "acct-cogs", amount: 240 }),
+        ln({ line_id: "l2", descriptor: "Lone Star Restaurant Supply – ACH DEBIT LONE STAR RESTAURANT SUPPLY", date: "2026-02-20", account_id: "acct-cogs", amount: 240 }),
       ],
       signedMonths: SIGNED, companyId: "co1",
     });
@@ -110,8 +110,8 @@ describe("★ the two live specimens, as the deploy would see them", () => {
   it("★ a vendor attested to TWO accounts does NOT graduate — and says why", () => {
     const p = planVendorBackfill({
       lines: [
-        ln({ line_id: "x", descriptor: "AMBIGUOUS CO", date: "2026-01-02", account_id: "acct-a" }),
-        ln({ line_id: "y", descriptor: "AMBIGUOUS CO", date: "2026-02-02", account_id: "acct-b" }),
+        ln({ line_id: "x", descriptor: "Ambiguous Co – AMBIGUOUS CO", date: "2026-01-02", account_id: "acct-a" }),
+        ln({ line_id: "y", descriptor: "Ambiguous Co – AMBIGUOUS CO", date: "2026-02-02", account_id: "acct-b" }),
       ],
       signedMonths: SIGNED,
     });
@@ -120,7 +120,7 @@ describe("★ the two live specimens, as the deploy would see them", () => {
   });
 
   it("a weekly vendor billing four times in ONE signed month does not graduate", () => {
-    const lines = [5, 12, 19, 26].map((d) => ln({ line_id: `w${d}`, descriptor: "WEEKLY CO", date: `2026-01-${d}` }));
+    const lines = [5, 12, 19, 26].map((d) => ln({ line_id: `w${d}`, descriptor: "Weekly Co – WEEKLY CO", date: `2026-01-${d}` }));
     const p = planVendorBackfill({ lines, signedMonths: SIGNED });
     expect(p.counts.graduating).toBe(0);
     expect(graduationPreview(p)[0].blocked_by).toMatch(/all 4 observations fall in 2026-01/);
@@ -150,9 +150,9 @@ describe("(Q3) dormancy applies on arrival", () => {
 describe("the preview is checkable by a human before anything is written", () => {
   const p = planVendorBackfill({
     lines: [
-      ln({ line_id: "a", descriptor: "BLUEBONNET LINEN", date: "2026-01-08", account_id: "acct-linen", amount: 145, exception_resolved: true }),
-      ln({ line_id: "b", descriptor: "BLUEBONNET LINEN", date: "2026-02-08", account_id: "acct-linen", amount: 150 }),
-      ln({ line_id: "c", descriptor: "ONE HIT WONDER", date: "2026-01-09", account_id: "acct-x", amount: 50 }),
+      ln({ line_id: "a", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN", date: "2026-01-08", account_id: "acct-linen", amount: 145, exception_resolved: true }),
+      ln({ line_id: "b", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN", date: "2026-02-08", account_id: "acct-linen", amount: 150 }),
+      ln({ line_id: "c", descriptor: "One Hit Wonder – ONE HIT WONDER", date: "2026-01-09", account_id: "acct-x", amount: 50 }),
     ],
     signedMonths: SIGNED, companyId: "co1",
   });
@@ -187,5 +187,85 @@ describe("the planner cannot write, and does not reimplement identity", () => {
 
   it("graduation comes from the REAL state machine, not a backfill-only rule", () => {
     expect(src).toMatch(/import \{ recordObservation, vendorStateRow, applyDormancy/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★ THE OPEN-BOOK PROBLEM (operator finding, 2026-08-23).
+//
+// `je.description` is "Resolved Vendor Name – RAW BANK TEXT". Resolving identity from
+// the FULL string grades the resolver against a string containing its own answer:
+// every variant resolves perfectly because the resolved name is right there, and the
+// backfill reports flawless grouping while proving nothing. Closed-book, or it is not
+// a test.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("★ identity is resolved from the RAW half only", () => {
+  it("splits on the en-dash and takes the right half", () => {
+    expect(rawDescriptorOf("Lone Star Restaurant Supply – ACH DEBIT - LONE STAR RESTAURANT SUPPLY"))
+      .toBe("ACH DEBIT - LONE STAR RESTAURANT SUPPLY");
+    // A HYPHEN inside the raw text must not be mistaken for the separator.
+    expect(rawDescriptorOf("X – ACH DEBIT - Y")).toBe("ACH DEBIT - Y");
+  });
+
+  it("★ a row with NO separator is EXCLUDED, not scored on the whole string", () => {
+    // Falling back to the full string is the contaminated case in disguise.
+    expect(rawDescriptorOf("JUST ONE PART")).toBe(null);
+    const p = planVendorBackfill({ lines: [ln({ descriptor: "JUST ONE PART" })], signedMonths: SIGNED });
+    expect(p.skipped.ambiguous_descriptor).toBe(1);
+    expect(p.counts.entities).toBe(0);
+  });
+
+  it("★ the resolved name in the LEFT half cannot influence grouping", () => {
+    // Same raw text, deliberately DIFFERENT resolved names. If the left half leaked in,
+    // these would split into two entities. They must be one.
+    const p = planVendorBackfill({
+      lines: [
+        ln({ line_id: "a", descriptor: "Sysco Foods – ACH DEBIT SYSCO", date: "2026-01-04" }),
+        ln({ line_id: "b", descriptor: "Totally Different Name – ACH DEBIT SYSCO", date: "2026-02-04" }),
+      ],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(1);
+  });
+
+  it("★ and conversely: one resolved name over two DIFFERENT raw texts still splits", () => {
+    const p = planVendorBackfill({
+      lines: [
+        ln({ line_id: "a", descriptor: "Sysco – ACH DEBIT SYSCO FOODS", date: "2026-01-04" }),
+        ln({ line_id: "b", descriptor: "Sysco – ACH DEBIT SYSCO FUEL", date: "2026-02-04" }),
+      ],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(2);   // Foods and Fuel are not one vendor
+  });
+});
+
+describe("★ corpus variance — a clean preview must not imply a tested resolver", () => {
+  it("flags data where every vendor arrives under ONE raw string", () => {
+    // The Franklin Ave fixture shape: Lone Star's raw text is byte-identical across all
+    // four months, so normalisation has no work to do and a perfect grouping result is
+    // an artefact of the fixture, not evidence about the function.
+    const p = planVendorBackfill({
+      lines: [
+        ln({ line_id: "a", descriptor: "Lone Star – ACH DEBIT - LONE STAR RESTAURANT SUPPLY", date: "2026-01-20" }),
+        ln({ line_id: "b", descriptor: "Lone Star – ACH DEBIT - LONE STAR RESTAURANT SUPPLY", date: "2026-02-20" }),
+      ],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.graduating).toBe(1);                       // it graduates…
+    expect(p.variance.identityResolutionUnexercised).toBe(true);  // …and proves nothing about identity
+    expect(p.variance.vendorsWithMultipleRawDescriptors).toBe(0);
+  });
+
+  it("does NOT flag data that genuinely exercises normalisation", () => {
+    const p = planVendorBackfill({
+      lines: [
+        ln({ line_id: "a", descriptor: "Bluebonnet – SQ *BLUEBONNET LINEN", date: "2026-01-05" }),
+        ln({ line_id: "b", descriptor: "Bluebonnet – ACH DEBIT BLUEBONNET LINEN #4", date: "2026-02-05" }),
+      ],
+      signedMonths: SIGNED,
+    });
+    expect(p.variance.identityResolutionUnexercised).toBe(false);
+    expect(p.variance.vendorsWithMultipleRawDescriptors).toBe(1);
   });
 });

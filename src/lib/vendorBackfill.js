@@ -43,6 +43,30 @@ export function attestationStrengthFor(line = {}) {
 
 const monthOf = (d) => String(d || "").slice(0, 7);
 
+// ── ★ THE OPEN-BOOK PROBLEM (found by the operator, 2026-08-23) ──────────────
+// `journal_entries.description` on a bank line is NOT the raw bank descriptor. It is
+// `"Resolved Vendor Name – RAW BANK TEXT"`, en-dash separated — `ledger.js:31` relies
+// on the same split, taking the LEFT half as the display vendor.
+//
+// Resolving identity from the FULL string would grade identity resolution against a
+// string that already contains the answer. Every variant would resolve perfectly
+// because the resolved name is sitting right there in the input, and the backfill
+// would report flawless grouping while proving nothing about the function under test.
+// An open-book exam, scored as if it were closed-book.
+//
+// So: split, take the RIGHT half, and when there is no separator DO NOT fall back to
+// the whole string — that is the contaminated case in disguise. Those rows are
+// excluded and COUNTED, so the preview shows how much of the corpus could not be read
+// honestly rather than quietly scoring what it could.
+const RAW_SEP = " – ";
+export function rawDescriptorOf(description) {
+  const s = String(description == null ? "" : description);
+  const i = s.indexOf(RAW_SEP);
+  if (i < 0) return null;                       // no separator ⇒ cannot tell raw from resolved
+  const right = s.slice(i + RAW_SEP.length).trim();
+  return right || null;
+}
+
 // Plan the backfill. `lines` are historical bank-sourced journal lines:
 //   { line_id, descriptor, date, account_id, exception_resolved?, recoded?, deleted? }
 // `signedMonths` is the set of attested periods ('YYYY-MM') for the company.
@@ -53,7 +77,7 @@ const monthOf = (d) => String(d || "").slice(0, 7);
 // backfill's clothes.
 export function planVendorBackfill({ lines = [], signedMonths = [], companyId = null, asOfMonth = null } = {}) {
   const signed = new Set((signedMonths || []).map(String));
-  const skipped = { unsigned_month: 0, deleted: 0, no_identity: 0, no_account: 0 };
+  const skipped = { unsigned_month: 0, deleted: 0, no_identity: 0, no_account: 0, ambiguous_descriptor: 0 };
   const byEntity = new Map();
 
   for (const line of lines || []) {
@@ -62,12 +86,16 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
     const month = monthOf(line.date);
     if (!signed.has(month)) { skipped.unsigned_month += 1; continue; }
     if (line.account_id == null) { skipped.no_account += 1; continue; }
-    const entity_key = entityKeyFor(line.descriptor);
+    // RIGHT HALF ONLY — see rawDescriptorOf. A row we cannot split is excluded rather
+    // than scored against a string containing its own answer.
+    const raw = rawDescriptorOf(line.descriptor);
+    if (!raw) { skipped.ambiguous_descriptor += 1; continue; }
+    const entity_key = entityKeyFor(raw);
     if (!entity_key) { skipped.no_identity += 1; continue; }
 
     if (!byEntity.has(entity_key)) byEntity.set(entity_key, { entity_key, observations: [], descriptors: new Set() });
     const g = byEntity.get(entity_key);
-    g.descriptors.add(String(line.descriptor || ""));
+    g.descriptors.add(raw);   // the RAW text, not the resolved-name-bearing original
     g.observations.push({
       month, account_id: String(line.account_id), amount: Math.abs(Number(line.amount) || 0),
       attested: true,                                   // signed month ⇒ attested, per the decision above
@@ -91,10 +119,28 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
     states.push({ state, descriptors: [...g.descriptors] });
   }
 
+  // ★ CORPUS VARIANCE — does this data exercise identity resolution AT ALL?
+  // A vendor whose raw text is byte-identical every month tests nothing: normalisation
+  // has no work to do, and a clean grouping result would be an artefact of the fixture
+  // rather than evidence about the function. Reported so a clean preview can never be
+  // read as "identity resolution works".
+  const variance = states.map(({ state, descriptors }) => ({
+    entity_key: state.entity_key, distinctRawDescriptors: descriptors.length,
+  }));
+  const exercised = variance.filter((v) => v.distinctRawDescriptors > 1).length;
+
   return {
     rows: states.map(({ state }) => vendorStateRow(state, { companyId })),
     states,
     skipped,
+    variance: {
+      vendorsWithMultipleRawDescriptors: exercised,
+      totalVendors: variance.length,
+      // TRUE when every vendor arrived under exactly one raw string — i.e. the corpus
+      // cannot exercise normalisation, whatever the grouping result looks like.
+      identityResolutionUnexercised: variance.length > 0 && exercised === 0,
+      perVendor: variance,
+    },
     counts: {
       entities: states.length,
       graduating: states.filter(({ state }) => state.tier === VENDOR_TIER.KNOWN).length,
