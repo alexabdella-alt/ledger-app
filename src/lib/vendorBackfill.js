@@ -143,6 +143,29 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
     // Q3 — a vendor that graduated historically but has been silent for six months
     // decays on arrival rather than being seeded KNOWN on stale pattern data.
     if (asOfMonth) state = applyDormancy(state, asOfMonth);
+
+    // ── ★ AMENDMENT B (signed 2026-08-25) — THE BACKFILL GRADUATION BAR ────────
+    // A vendor graduates from HISTORY only if at least one qualifying observation was
+    // EXPLICITLY attested. Signing a month is not examining a vendor, and in the
+    // historical data the two are indistinguishable.
+    //
+    // Applied HERE and not in `vendorTier.js` on purpose: Q1 governs LIVE graduation
+    // and Amendment B §3 leaves it untouched. Putting this bar in the state machine
+    // would silently raise the live rule too, and the asymmetry is deliberate — live
+    // records the distinction as it happens, history cannot.
+    //
+    // ONLY THE TIER IS WITHHELD (§5). observation_count, distinct_months, the amount
+    // band and first/last-seen are all still seeded; the vendor simply starts STRANGER
+    // and re-earns KNOWN over two live months.
+    //
+    // ON TODAY'S DATA THIS WITHHOLDS EVERYTHING — zero of 63 observations can be marked
+    // explicit, because `exception_resolved` is null throughout and a recode leaves no
+    // marker (O108). The amendment says so in its own §0; the planner reports it below
+    // rather than letting a run of STRANGERs look like a judgement it did not make.
+    const explicitCount = (state.observations || []).filter((o) => o.strength === ATTESTATION_STRENGTH.EXPLICIT).length;
+    if (state.tier === VENDOR_TIER.KNOWN && explicitCount === 0) {
+      state = { ...state, tier: VENDOR_TIER.STRANGER, tier_withheld: "no_explicit_attestation" };
+    }
     states.push({ state, descriptors: [...g.descriptors] });
   }
 
@@ -160,6 +183,15 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
     resolved: allObs.filter((o) => o.identity_source === IDENTITY_STRATEGY.RESOLVE).length,
     read: allObs.filter((o) => o.identity_source === IDENTITY_STRATEGY.READ).length,
   };
+  // Amendment B's effect, in the report shape. `withheld` counts vendors that met every
+  // Q1 condition and were held back ONLY for want of an explicit attestation — so a
+  // preview of nothing-but-STRANGERs can never be mistaken for a data problem, or for
+  // a judgement about those vendors.
+  const attestationMix = {
+    explicit: allObs.filter((o) => o.strength === ATTESTATION_STRENGTH.EXPLICIT).length,
+    implicit: allObs.filter((o) => o.strength === ATTESTATION_STRENGTH.IMPLICIT).length,
+  };
+  const withheldByAmendmentB = states.filter(({ state }) => state.tier_withheld === "no_explicit_attestation").length;
   const exercised = variance.filter((v) => v.distinctRawDescriptors > 1).length;
 
   return {
@@ -167,6 +199,8 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
     states,
     skipped,
     identityMix,
+    attestationMix,
+    withheldByAmendmentB,
     variance: {
       vendorsWithMultipleRawDescriptors: exercised,
       totalVendors: variance.length,
@@ -206,6 +240,11 @@ export function graduationPreview(plan = {}) {
 }
 
 function blockersFor(state) {
+  // Amendment B first: a vendor held back for want of an explicit attestation met every
+  // other condition, and saying "only 2 observations" about it would be false.
+  if (state.tier_withheld === "no_explicit_attestation") {
+    return "met every Q1 condition; tier withheld — no observation was explicitly attested (Amendment B)";
+  }
   const obs = state.observations || [];
   const months = new Set(obs.map((o) => o.month));
   const accounts = new Set(obs.map((o) => String(o.account_id)));
@@ -213,5 +252,8 @@ function blockersFor(state) {
   if (months.size < 2) return `all ${obs.length} observations fall in ${[...months][0]}`;
   if (accounts.size > 1) return `attested to ${accounts.size} different accounts`;
   if (state.demotion_reason) return `decayed on arrival (${state.demotion_reason})`;
+  if (state.tier_withheld === "no_explicit_attestation") {
+    return "met every Q1 condition; tier withheld — no observation was explicitly attested (Amendment B)";
+  }
   return "unknown";
 }

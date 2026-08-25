@@ -47,12 +47,16 @@ describe("what counts, and what does not", () => {
     expect(attestationStrengthFor({ exception_resolved: true })).toBe(ATTESTATION_STRENGTH.EXPLICIT);
     expect(attestationStrengthFor({ recoded: true })).toBe(ATTESTATION_STRENGTH.EXPLICIT);
     expect(attestationStrengthFor({})).toBe(ATTESTATION_STRENGTH.IMPLICIT);
-    // Two IMPLICIT observations in two signed months still graduate — strength informs, never gates.
+    // Both kinds count toward the CLOCK — observation_count and distinct_months are
+    // seeded either way. Amendment B (2026-08-25) then withholds the TIER separately
+    // when none was explicit; that is a different gate, tested in its own block below.
     const p = planVendorBackfill({
       lines: [ln({ line_id: "a", date: "2026-01-10" }), ln({ line_id: "b", date: "2026-02-10" })],
       signedMonths: SIGNED,
     });
-    expect(p.counts.graduating).toBe(1);
+    expect(p.rows[0].observation_count).toBe(2);
+    expect(p.rows[0].distinct_months).toEqual(["2026-01", "2026-02"]);
+    expect(p.withheldByAmendmentB).toBe(1);
   });
 });
 
@@ -62,7 +66,7 @@ describe("identity grouping uses the app's ONE implementation", () => {
     // would seed keys the app cannot look up: inert on arrival, and green.
     const p = planVendorBackfill({
       lines: [
-        ln({ line_id: "a", descriptor: "Bluebonnet Linen – SQ *BLUEBONNET LINEN", date: "2026-01-05", account_id: "acct-linen", amount: 145 }),
+        ln({ line_id: "a", descriptor: "Bluebonnet Linen – SQ *BLUEBONNET LINEN", date: "2026-01-05", account_id: "acct-linen", amount: 145, exception_resolved: true }),
         ln({ line_id: "b", descriptor: "Bluebonnet Linen – ACH DEBIT BLUEBONNET LINEN", date: "2026-02-05", account_id: "acct-linen", amount: 150 }),
         ln({ line_id: "c", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN #12", date: "2026-03-05", account_id: "acct-linen", amount: 148 }),
       ],
@@ -85,7 +89,7 @@ describe("★ the two live specimens, as the deploy would see them", () => {
   it("BLUEBONNET LINEN graduates KNOWN on two signed months", () => {
     const p = planVendorBackfill({
       lines: [
-        ln({ line_id: "b1", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN", date: "2026-01-08", account_id: "acct-linen", amount: 145 }),
+        ln({ line_id: "b1", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN", date: "2026-01-08", account_id: "acct-linen", amount: 145, exception_resolved: true }),
         ln({ line_id: "b2", descriptor: "Bluebonnet Linen – BLUEBONNET LINEN", date: "2026-02-08", account_id: "acct-linen", amount: 150 }),
       ],
       signedMonths: SIGNED, companyId: "co1",
@@ -98,7 +102,7 @@ describe("★ the two live specimens, as the deploy would see them", () => {
   it("LONE STAR graduates once its descriptor variants collapse to one entity", () => {
     const p = planVendorBackfill({
       lines: [
-        ln({ line_id: "l1", descriptor: "Lone Star Restaurant Supply – TST* LONE STAR RESTAURANT SUPPLY", date: "2026-01-20", account_id: "acct-cogs", amount: 240 }),
+        ln({ line_id: "l1", descriptor: "Lone Star Restaurant Supply – TST* LONE STAR RESTAURANT SUPPLY", date: "2026-01-20", account_id: "acct-cogs", amount: 240, exception_resolved: true }),
         ln({ line_id: "l2", descriptor: "Lone Star Restaurant Supply – ACH DEBIT LONE STAR RESTAURANT SUPPLY", date: "2026-02-20", account_id: "acct-cogs", amount: 240 }),
       ],
       signedMonths: SIGNED, companyId: "co1",
@@ -140,7 +144,7 @@ describe("(Q3) dormancy applies on arrival", () => {
 
   it("a recently-seen vendor is seeded KNOWN", () => {
     const p = planVendorBackfill({
-      lines: [ln({ line_id: "a", date: "2026-02-05" }), ln({ line_id: "b", date: "2026-03-05" })],
+      lines: [ln({ line_id: "a", date: "2026-02-05", exception_resolved: true }), ln({ line_id: "b", date: "2026-03-05" })],
       signedMonths: SIGNED, asOfMonth: "2026-04",
     });
     expect(p.rows[0].tier).toBe(VENDOR_TIER.KNOWN);
@@ -247,7 +251,7 @@ describe("★ corpus variance — a clean preview must not imply a tested resolv
     // an artefact of the fixture, not evidence about the function.
     const p = planVendorBackfill({
       lines: [
-        ln({ line_id: "a", descriptor: "Lone Star – ACH DEBIT - LONE STAR RESTAURANT SUPPLY", date: "2026-01-20" }),
+        ln({ line_id: "a", descriptor: "Lone Star – ACH DEBIT - LONE STAR RESTAURANT SUPPLY", date: "2026-01-20", exception_resolved: true }),
         ln({ line_id: "b", descriptor: "Lone Star – ACH DEBIT - LONE STAR RESTAURANT SUPPLY", date: "2026-02-20" }),
       ],
       signedMonths: SIGNED,
@@ -414,5 +418,82 @@ describe("★ the merge test, on REAL strings from the re-pull", () => {
     expect(p.counts.entities).toBe(2);
     const keys = p.rows.map((r) => r.entity_key).sort();
     expect(keys).toEqual(["franklin ave properties", "franklin ave properties rent"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★ AMENDMENT B — THE BACKFILL GRADUATION BAR (signed 2026-08-25).
+//
+// Graduation from HISTORY requires at least one EXPLICITLY attested observation.
+// Signing a month is not examining a vendor, and in historical data the two are
+// indistinguishable — so the backfill must assume the second.
+//
+// On today's data this withholds EVERYTHING (zero explicit observations exist), and
+// the amendment says so in its own §0. These tests hold both halves: that the bar
+// works when the distinction IS available, and that it withholds when it is not.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("★ (Amendment B) backfill graduation requires an explicit attestation", () => {
+  const two = (over = {}) => [
+    ln({ line_id: "a", date: "2026-01-10", ...over }),
+    ln({ line_id: "b", date: "2026-02-10" }),
+  ];
+
+  it("★ two IMPLICIT observations meet every Q1 condition and STILL do not graduate", () => {
+    // This is Culinary Edge: two auto-bookings, two signed months, agreeing mapping.
+    const p = planVendorBackfill({ lines: two(), signedMonths: SIGNED });
+    expect(p.counts.graduating).toBe(0);
+    expect(p.rows[0].tier).toBe("STRANGER");
+    expect(p.withheldByAmendmentB).toBe(1);
+  });
+
+  it("★ and the preview says WHY — not 'too few observations', which would be false", () => {
+    const p = planVendorBackfill({ lines: two(), signedMonths: SIGNED });
+    const [row] = graduationPreview(p);
+    expect(row.blocked_by).toMatch(/met every Q1 condition/);
+    expect(row.blocked_by).toMatch(/no observation was explicitly attested/);
+    expect(row.blocked_by).not.toMatch(/only \d+ attested observation/);
+  });
+
+  it("ONE explicit observation is enough to release the bar", () => {
+    const p = planVendorBackfill({ lines: two({ exception_resolved: true }), signedMonths: SIGNED });
+    expect(p.counts.graduating).toBe(1);
+    expect(p.rows[0].tier).toBe("KNOWN");
+    expect(p.withheldByAmendmentB).toBe(0);
+  });
+
+  it("a recode counts as explicit too", () => {
+    const p = planVendorBackfill({ lines: two({ recoded: true }), signedMonths: SIGNED });
+    expect(p.counts.graduating).toBe(1);
+  });
+
+  it("★ ONLY THE TIER IS WITHHELD — history is still seeded (§5)", () => {
+    const p = planVendorBackfill({ lines: two(), signedMonths: SIGNED });
+    const [row] = p.rows;
+    expect(row.tier).toBe("STRANGER");
+    expect(row.observation_count).toBe(2);
+    expect(row.distinct_months).toEqual(["2026-01", "2026-02"]);
+    expect(row.amount_mean).toBe(1200);
+    expect(row.first_seen).toBe("2026-01");
+  });
+
+  it("★ LIVE Q1 IS NOT RAISED — the bar lives in the backfill, not the state machine", () => {
+    // Amendment B §3. Putting it in vendorTier would silently raise the live rule too.
+    const src = fs.readFileSync(path.join(process.cwd(), "src/lib/vendorTier.js"), "utf8");
+    // Names the MECHANISM, not the word: an earlier version of this guard matched the
+    // word "explicit" and tripped on the phrase "explicit transitions" in a comment —
+    // a test that fails for a reason it does not mean is a test nobody will trust.
+    expect(src, "the state machine must not read attestation strength").not.toMatch(/ATTESTATION_STRENGTH|\.strength\b|tier_withheld/);
+  });
+
+  it("the effect is REPORTED, so a run of STRANGERs is never mistaken for a data problem", () => {
+    const p = planVendorBackfill({ lines: two(), signedMonths: SIGNED });
+    expect(p.attestationMix).toEqual({ explicit: 0, implicit: 2 });
+    expect(p.withheldByAmendmentB).toBe(1);
+  });
+
+  it("a vendor that fails Q1 anyway is NOT reported as an Amendment-B withholding", () => {
+    const p = planVendorBackfill({ lines: [ln({ line_id: "a", date: "2026-01-10" })], signedMonths: SIGNED });
+    expect(p.withheldByAmendmentB).toBe(0);
+    expect(graduationPreview(p)[0].blocked_by).toMatch(/only 1 attested observation/);
   });
 });
