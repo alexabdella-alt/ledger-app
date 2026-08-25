@@ -20,7 +20,7 @@
 // The executor (one-off, operator-triggered) does the reading and the upserting.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { entityKeyFor } from "./vendorIdentity.js";
+import { identityForEntry, IDENTITY_STRATEGY } from "./vendorIdentity.js";
 import { recordObservation, vendorStateRow, applyDormancy, VENDOR_TIER } from "./vendorTier.js";
 
 // Q6/decision 2026-08-23 — HOW A HISTORICAL LINE COUNTS.
@@ -58,7 +58,7 @@ const monthOf = (d) => String(d || "").slice(0, 7);
 // the whole string — that is the contaminated case in disguise. Those rows are
 // excluded and COUNTED, so the preview shows how much of the corpus could not be read
 // honestly rather than quietly scoring what it could.
-const RAW_SEP = " – ";
+const RAW_SEP = " – ";   // kept: rawDescriptorOf is still exported and tested
 export function rawDescriptorOf(description) {
   const s = String(description == null ? "" : description);
   const i = s.indexOf(RAW_SEP);
@@ -77,7 +77,10 @@ export function rawDescriptorOf(description) {
 // backfill's clothes.
 export function planVendorBackfill({ lines = [], signedMonths = [], companyId = null, asOfMonth = null } = {}) {
   const signed = new Set((signedMonths || []).map(String));
-  const skipped = { unsigned_month: 0, deleted: 0, no_identity: 0, no_account: 0, ambiguous_descriptor: 0 };
+  // Skip reasons are open-ended now: `source_payroll`, `source_opening_balance`,
+  // `no_raw_half`, `no_vendor_field`, `no_identity`… Each is counted by name so an
+  // excluded population can never be a silent one.
+  const skipped = { unsigned_month: 0, deleted: 0, no_account: 0 };
   const byEntity = new Map();
 
   for (const line of lines || []) {
@@ -86,12 +89,13 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
     const month = monthOf(line.date);
     if (!signed.has(month)) { skipped.unsigned_month += 1; continue; }
     if (line.account_id == null) { skipped.no_account += 1; continue; }
-    // RIGHT HALF ONLY — see rawDescriptorOf. A row we cannot split is excluded rather
-    // than scored against a string containing its own answer.
-    const raw = rawDescriptorOf(line.descriptor);
-    if (!raw) { skipped.ambiguous_descriptor += 1; continue; }
-    const entity_key = entityKeyFor(raw);
-    if (!entity_key) { skipped.no_identity += 1; continue; }
+    // PER-SOURCE (approved 2026-08-25). bank_import RESOLVEs the noisy right half;
+    // universal_upload/manual/recurring/qbo_import READ the clean left half; payroll,
+    // opening_balance, ar_invoice and api are EXCLUDED because they carry no
+    // vendor→account judgement to learn. An unrecognised source is excluded and counted.
+    const ident = identityForEntry({ description: line.descriptor, source: line.source });
+    if (ident.excluded) { skipped[ident.excluded] = (skipped[ident.excluded] || 0) + 1; continue; }
+    const { entity_key, identity_source, raw } = ident;
 
     if (!byEntity.has(entity_key)) byEntity.set(entity_key, { entity_key, observations: [], descriptors: new Set() });
     const g = byEntity.get(entity_key);
@@ -100,6 +104,10 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
       month, account_id: String(line.account_id), amount: Math.abs(Number(line.amount) || 0),
       attested: true,                                   // signed month ⇒ attested, per the decision above
       strength: attestationStrengthFor(line),
+      // RESOLVED (the resolver did work and could be wrong) vs READ (a field, and
+      // cannot be). Carried per observation so shadow scoring can report them apart —
+      // a PROCEED resting mostly on READ identities has not tested the resolver.
+      identity_source,
       line_id: line.line_id,
     });
   }
@@ -127,12 +135,19 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
   const variance = states.map(({ state, descriptors }) => ({
     entity_key: state.entity_key, distinctRawDescriptors: descriptors.length,
   }));
+  // Identity provenance, in the report shape rather than a footnote.
+  const allObs = [...byEntity.values()].flatMap((g) => g.observations);
+  const identityMix = {
+    resolved: allObs.filter((o) => o.identity_source === IDENTITY_STRATEGY.RESOLVE).length,
+    read: allObs.filter((o) => o.identity_source === IDENTITY_STRATEGY.READ).length,
+  };
   const exercised = variance.filter((v) => v.distinctRawDescriptors > 1).length;
 
   return {
     rows: states.map(({ state }) => vendorStateRow(state, { companyId })),
     states,
     skipped,
+    identityMix,
     variance: {
       vendorsWithMultipleRawDescriptors: exercised,
       totalVendors: variance.length,

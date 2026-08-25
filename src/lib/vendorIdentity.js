@@ -146,6 +146,107 @@ export function resolveVendorIdentity(descriptor, { aliases = [], knownKeys = []
   return miss;
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// PER-SOURCE IDENTITY STRATEGY (approved 2026-08-25).
+//
+// ONE RULE FOR ALL SOURCES WAS WRONG, and silently so on two of four. The entry
+// description is a DISPLAY STRING assembled from structured data, and it is assembled
+// by two different paths that do not know about each other:
+//   • `persistJournalEntry` (App.jsx:1386) → `${vendor} – ${description}`, vendor LEFT
+//   • `persistMultiLineEntry` (App.jsx:1482) → `entry.description` VERBATIM
+// so payroll keeps `Gusto Payroll — 2026-02-28 – 2026-03-13` (em-dash after the
+// vendor, EN-dash between the dates) and a naive " – " split lands on the date range.
+//
+// ★ THE REFRAME THAT MAKES THIS TRACTABLE: only ONE source has a descriptor problem.
+// Rail-stripping exists because BANK descriptors are noisy. The other sources carry a
+// vendor as structured data and never had variants to resolve — so the open-book
+// objection does not apply to them, because there is nothing to resolve. Reading a
+// vendor field is not cheating on a test the field was never sitting for.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export const IDENTITY_STRATEGY = {
+  RESOLVE: "resolve",   // noisy bank text on the RIGHT — rail-strip then normalize
+  READ:    "read",      // clean vendor on the LEFT — normalize only, no rail-stripping
+  EXCLUDE: "exclude",   // not a vendor→account judgement at all
+};
+
+// `identity_source` on an observation: was the identity RESOLVED (the resolver did
+// work and could be wrong) or merely READ (a field, and cannot be)? Shadow-mode
+// scoring reports these separately and prominently — a PROCEED resting mostly on READ
+// identities has not tested the resolver, and the report must be structurally unable
+// to hide that.
+export const SOURCE_STRATEGY = {
+  bank_import:      IDENTITY_STRATEGY.RESOLVE,
+  universal_upload: IDENTITY_STRATEGY.READ,
+  manual:           IDENTITY_STRATEGY.READ,
+  recurring:        IDENTITY_STRATEGY.READ,
+  qbo_import:       IDENTITY_STRATEGY.READ,
+  // EXCLUDED, each for a stated reason rather than by omission:
+  payroll:          IDENTITY_STRATEGY.EXCLUDE,   // books by STRUCTURE, no mapping to learn
+  opening_balance:  IDENTITY_STRATEGY.EXCLUDE,   // a position, not a purchase
+  ar_invoice:       IDENTITY_STRATEGY.EXCLUDE,   // customer side; not a vendor
+  api:              IDENTITY_STRATEGY.EXCLUDE,   // provenance unknown — conservative
+};
+
+// An UNRECOGNISED source is EXCLUDED and counted, never guessed at. A wrong entity key
+// merges two vendors and launders one's attested mapping onto the other's charges
+// (Q4's one-way door); a missing one merely books to suspense and flags. The two errors
+// are not symmetric, so the default takes the recoverable side.
+export function strategyForSource(source) {
+  return SOURCE_STRATEGY[String(source || "")] || IDENTITY_STRATEGY.EXCLUDE;
+}
+
+const SEP = " – ";   // EN-dash, as written by App.jsx:1386
+
+// RIGHT half — the raw bank text. Null when there is no separator, because falling
+// back to the whole string would score the resolver against a string containing the
+// resolved vendor name: an open-book exam marked as closed-book.
+export function rightHalf(description) {
+  const s = String(description == null ? "" : description);
+  const i = s.indexOf(SEP);
+  if (i < 0) return null;
+  return s.slice(i + SEP.length).trim() || null;
+}
+
+// LEFT half — the vendor field. When there is no separator the WHOLE string is the
+// vendor, which is a legitimate shape here (unlike the right-half case) because
+// nothing has been concatenated onto it.
+export function leftHalf(description) {
+  const s = String(description == null ? "" : description).trim();
+  if (!s) return null;
+  const i = s.indexOf(SEP);
+  return (i < 0 ? s : s.slice(0, i).trim()) || null;
+}
+
+// READ — normalize ONLY. No rail-stripping: a vendor field has no rails on it, and
+// running the strip would risk eating a real name ("Sysco Foods TX" is a vendor whose
+// name ends in two letters, not a state-code tail).
+export function readIdentity(vendorField) {
+  const n = normalizeName(String(vendorField || "")) || "";
+  return /[a-z]/.test(n) ? n : null;
+}
+
+// The single entry point. Returns { entity_key, identity_source, raw, strategy } — or
+// { excluded: <reason> } when this entry carries no vendor→account judgement to learn.
+export function identityForEntry({ description, source } = {}) {
+  const strategy = strategyForSource(source);
+  if (strategy === IDENTITY_STRATEGY.EXCLUDE) {
+    return { excluded: `source_${String(source || "unknown")}`, strategy };
+  }
+  if (strategy === IDENTITY_STRATEGY.RESOLVE) {
+    const raw = rightHalf(description);
+    if (!raw) return { excluded: "no_raw_half", strategy };
+    const entity_key = entityKeyFor(raw);
+    if (!entity_key) return { excluded: "no_identity", strategy };
+    return { entity_key, identity_source: IDENTITY_STRATEGY.RESOLVE, raw, strategy };
+  }
+  const field = leftHalf(description);
+  if (!field) return { excluded: "no_vendor_field", strategy };
+  const entity_key = readIdentity(field);
+  if (!entity_key) return { excluded: "no_identity", strategy };
+  return { entity_key, identity_source: IDENTITY_STRATEGY.READ, raw: field, strategy };
+}
+
 // Do these descriptors name the same vendor? The property the Lone Star corpus
 // exists to hold: four rails, one entity. Convenience over resolveVendorIdentity
 // for tests and for the census pass's grouping.

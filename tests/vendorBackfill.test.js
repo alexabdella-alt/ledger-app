@@ -20,7 +20,7 @@ import { VENDOR_TIER } from "../src/lib/vendorTier.js";
 
 const ln = (over = {}) => ({
   line_id: "L1", descriptor: "Sysco Foods – ACH DEBIT SYSCO FOODS", date: "2026-01-15", account_id: "acct-cogs",
-  amount: 1200, deleted: false, exception_resolved: false, recoded: false, ...over,
+  amount: 1200, deleted: false, exception_resolved: false, recoded: false, source: "bank_import", ...over,
 });
 const SIGNED = ["2026-01", "2026-02", "2026-03"];
 
@@ -181,7 +181,7 @@ describe("the planner cannot write, and does not reimplement identity", () => {
   it("★ identity comes from the ONE implementation, not a copy", () => {
     // The whole reason this is not a SQL migration. A second normalizer would drift —
     // ·3b(f3) re-keyed fingerprints while (f1) read the old shape, in one commit.
-    expect(src).toMatch(/import \{ entityKeyFor \} from "\.\/vendorIdentity\.js"/);
+    expect(src).toMatch(/import \{ identityForEntry, IDENTITY_STRATEGY \} from "\.\/vendorIdentity\.js"/);
     expect(src).not.toMatch(/replace\(\/\^sq|normalizeName\s*=/);   // no local re-implementation
   });
 
@@ -211,7 +211,7 @@ describe("★ identity is resolved from the RAW half only", () => {
     // Falling back to the full string is the contaminated case in disguise.
     expect(rawDescriptorOf("JUST ONE PART")).toBe(null);
     const p = planVendorBackfill({ lines: [ln({ descriptor: "JUST ONE PART" })], signedMonths: SIGNED });
-    expect(p.skipped.ambiguous_descriptor).toBe(1);
+    expect(p.skipped.no_raw_half).toBe(1);
     expect(p.counts.entities).toBe(0);
   });
 
@@ -267,5 +267,69 @@ describe("★ corpus variance — a clean preview must not imply a tested resolv
     });
     expect(p.variance.identityResolutionUnexercised).toBe(false);
     expect(p.variance.vendorsWithMultipleRawDescriptors).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PER-SOURCE IDENTITY STRATEGY (approved 2026-08-25).
+// One rule for all four sources was wrong on two of them, silently. Only bank_import
+// has a descriptor problem; the rest carry a vendor as structured data.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("per-source identity strategy", () => {
+  it("bank_import RESOLVES from the noisy right half", () => {
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "a", source: "bank_import", descriptor: "Roma – ACH DEBIT - ROMA CHEESE & DAIRY CO", date: "2026-01-04" }),
+              ln({ line_id: "b", source: "bank_import", descriptor: "Roma – ACH DEBIT - ROMA CHEESE & DAIRY CO", date: "2026-02-04" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(1);
+    expect(p.identityMix).toEqual({ resolved: 2, read: 0 });
+  });
+
+  it("universal_upload and manual READ the clean left half", () => {
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "a", source: "universal_upload", descriptor: "Roma Cheese & Dairy Co. – 40LB MOZZARELLA", date: "2026-01-04" }),
+              ln({ line_id: "b", source: "manual", descriptor: "Roma Cheese & Dairy Co – Payment – Roma Cheese & Dairy Co", date: "2026-02-04" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(1);              // the product line never becomes the vendor
+    expect(p.identityMix).toEqual({ resolved: 0, read: 2 });
+  });
+
+  it("★ payroll is EXCLUDED, not parsed — it carries no vendor→account judgement", () => {
+    const p = planVendorBackfill({
+      lines: [ln({ source: "payroll", descriptor: "Gusto Payroll — 2026-02-28 – 2026-03-13", date: "2026-03-13" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(0);
+    expect(p.skipped.source_payroll).toBe(1);
+    // And specifically NOT mis-parsed to the date, which is what the old rule did.
+    expect(p.skipped.no_identity).toBeUndefined();
+  });
+
+  it("opening_balance, ar_invoice and api are excluded, each counted by name", () => {
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "a", source: "opening_balance" }), ln({ line_id: "b", source: "ar_invoice" }), ln({ line_id: "c", source: "api" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.skipped).toMatchObject({ source_opening_balance: 1, source_ar_invoice: 1, source_api: 1 });
+  });
+
+  it("★ an UNRECOGNISED source is excluded and counted, never guessed at", () => {
+    // A wrong entity key merges two vendors and launders one's mapping onto the
+    // other's charges. A missing one books to suspense and flags. Not symmetric.
+    const p = planVendorBackfill({ lines: [ln({ source: "something_new" })], signedMonths: SIGNED });
+    expect(p.counts.entities).toBe(0);
+    expect(p.skipped.source_something_new).toBe(1);
+  });
+
+  it("★ identity_source is carried per observation and reported, not footnoted", () => {
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "a", source: "bank_import", descriptor: "Roma – ACH DEBIT - ROMA CHEESE & DAIRY CO", date: "2026-01-04" }),
+              ln({ line_id: "b", source: "universal_upload", descriptor: "Roma Cheese & Dairy Co. – 40LB MOZZARELLA", date: "2026-02-04" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.identityMix).toEqual({ resolved: 1, read: 1 });
+    expect(p.counts.entities).toBe(1);              // the two doors merge
   });
 });
