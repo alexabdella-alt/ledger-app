@@ -1,5 +1,5 @@
 # AUGUST 2026 DRIVE — FIXTURE SPEC
-**Written:** 2026-08-25 · **Company:** Franklin Ave (`3a704760-4121-41eb-be47-ab31b44a2cb3`)
+**Written:** 2026-08-25 · **RECONCILED TO THE BUILT FIXTURE 2026-08-26** · **Company:** Franklin Ave (`3a704760-4121-41eb-be47-ab31b44a2cb3`)
 **Purpose:** ROADMAP §0 TIER 1 #12 (invoice-volume drive) **plus five outstanding
 verification debts** that only a live month can settle.
 
@@ -17,173 +17,213 @@ two-month clock; first real scoring is September.** Decided 2026-08-25 — decid
 `O112` first would have cost a week to make a log slightly less empty in a month with
 bigger fish.
 
-**Nothing in this file has been built.** No fixture exists in the repo; there is no
-`fixtures/` directory and never has been. Every drive to date ran on files made outside
-it, and this one does too.
+**★ BUILT 2026-08-26.** The files exist and the arithmetic closes. This document has
+been reconciled to what was actually built — where the fixture differs from the original
+spec it is the FIXTURE that is authoritative, and the differences are improvements. They
+are marked ▲ below. The files live outside the repo, as every drive's have.
 
 ---
 
-## 1. THE BANK STATEMENT
+## 1. THE BANK STATEMENT — as built
 
-**Account:** Franklin Ave operating checking (the `1000` cash account).
-**★ STATED PERIOD: 2026-08-01 → 2026-08-31.** The statement header MUST say `08-31`.
-**★ LAST TRANSACTION: 2026-08-27.** Nothing may be dated 08-28 → 08-31.
+**24 lines.** Opening **54,880.41** (July's close) + deposits **23,482.65** (10 Toast
+settlements) − withdrawals **13,480.75** (14) = stated ending **64,882.31**.
+Books close at **64,697.31** after cheque #1051.
 
-That gap is the whole point of element ①: it is the only way to tell whether the
-parser now reads the *stated* period or still infers it from the transaction span.
+**★ STATED PERIOD: 2026-08-01 → 2026-08-31.**
+**★ LAST TRANSACTION: 2026-08-28** ▲ *(the second payroll debit, not 08-27)*.
 
-| # | Date | Descriptor — use VERBATIM | Amount | Element |
-|---|---|---|---|---|
-| 1 | 2026-08-01 | `ACH DEBIT - FRANKLIN AVE PROPERTIES LP RENT` | −2,400.00 | ④ |
-| 2 | 2026-08-03 | `ACH DEBIT - BLUEBONNET LINEN SERVICE` | −145.00 | ④ |
-| 3 | 2026-08-04 | `ACH DEBIT - ROMA CHEESE & DAIRY CO` | −548.30 | ④ |
-| 4 | 2026-08-06 | `ACH DEBIT - TOAST INC MERCHANT FEES AUG` | −502.15 | **②** |
-| 5 | 2026-08-07 | `GUSTO PAYROLL 080726` | −3,150.00 | ⑥ |
-| 6 | 2026-08-10 | `ACH DEBIT - BLUEBONNET LINEN SERVICE` | −145.00 | ④ |
-| 7 | 2026-08-11 | `ACH DEBIT - LONE STAR RESTAURANT SUPPLY` | −1,326.55 | ④ |
-| 8 | 2026-08-17 | `ACH DEBIT - BLUEBONNET LINEN SERVICE` | −145.00 | ④ |
-| 9 | 2026-08-18 | `ACH DEBIT - AUSTIN MUNICIPAL UTILITIES` | −391.20 | ④ |
-| 10 | 2026-08-19 | `ACH DEBIT - HILL COUNTRY MILLING CO` | −467.85 | ④ |
-| 11 | 2026-08-20 | `ACH DEBIT - PECAN STREET COLD STORAGE` | −615.00 | **③** |
-| 12 | 2026-08-24 | `ACH DEBIT - BLUEBONNET LINEN SERVICE` | −145.00 | ④ |
-| 13 | 2026-08-27 | `ACH DEBIT - ROMA CHEESE & DAIRY CO` | −531.75 | ④ **← LAST** |
+**Element ① is unaffected** — a **three-day gap** between the last transaction and the
+stated period end is just as decisive as four. If the parser reports `08-28`, it is
+still inferring from the span; only `08-31` proves it reads the stated fact.
 
-**Opening balance:** whatever July's statement closed at.
-**Stated ending balance:** opening − 11,113.80 (the sum above).
+▲ **The fixture is richer than the spec in three ways, all of them better:**
+- **Ten Toast DEPOSITS**, not one fee debit. A restaurant's card settlements are its
+  revenue arriving, which is what the month actually looks like.
+- **Both payroll debits are on the statement** (08-14 and 08-28, 3,150.00 each), so the
+  `markAlreadyBooked` dedup probe runs **twice** rather than once.
+- **Descriptor variance is built in and graded** — see §8, which replaces the element ⑨
+  I was about to propose and is better than what I would have asked for.
 
-### Notes on specific rows
+### ③ The novel vendor ▲
 
-**Row 4 — Toast.** The month suffix `AUG` is deliberate and load-bearing. Identity
-resolution *cannot* merge `…FEES AUG` with `…FEES JAN`/`FEB`/`APRIL` — they normalise
-to four different keys — and it must not learn to, because word-stripping would also
-eat "Lone Star Restaurant **Supply**". The **directory** should recognise it anyway,
-via the one `prefix` entry (`toast merchant fees`). This is the only element that will
-produce a non-park in shadow mode.
+`ALAMO FIRE & SAFETY LLC` — **425.00**, **2026-08-24**. Same shape as the spec's Pecan
+Street and a better choice: fire-suppression service is **genuinely ambiguous** between
+repairs, insurance and professional services, so there is no "obviously right" account
+for a plausibility-guesser to stumble onto. In no chart, no history, no directory.
+**Must land in `7150`, never `7100`.**
 
-**Row 5 — payroll on the bank rail.** `3,150.00` is **net** (gross 4,000 − 850
-withholdings), matching January and February's historical bank lines. It should
-**dedup** against the register's `Cr Cash` leg via `markAlreadyBooked` (date + amount +
-direction) and NOT book twice. Watch that it does.
+## 2. THE PAYROLL REGISTERS — four files ▲
 
-**Row 11 — the novel vendor.** `PECAN STREET COLD STORAGE` is chosen to be plausibly
-a real restaurant supplier and to exist in **no chart, no history, no directory**. It
-must book to **`7150` Uncategorized**, never `7100` Miscellaneous. This is the Culinary
-Edge shape, handled correctly.
+Two that must post, two that must be refused **for different reasons**. The spec asked
+for one of each; the fixture's second refusal is the more valuable addition.
 
-**Row 2/6/8/12 — Bluebonnet, four Mondays.** August has a fifth Monday (08-31) and it
-is **deliberately omitted** so the last transaction stays 08-27. If you prefer realism,
-move that invoice to September's statement rather than adding it here.
+| File | Pay date | Gross | W/h | Net | Employer | Expected |
+|---|---|---|---|---|---|---|
+| **02** | 2026-08-14 | 4,000.00 | 850.00 | 3,150.00 | 306.00 | **AUTO-POST** |
+| **03** | 2026-08-28 | 4,000.00 | 850.00 | 3,150.00 | 306.00 | **AUTO-POST** |
+| **04** | — | 4,000.00 | 850.00 | **3,200.00** | — | **REFUSE — condition 2 (FOOTS)** |
+| **05** | 2026-08-31 | **12,000.00** | 2,550.00 | 9,450.00 | 918.00 | **REFUSE — condition 5 (NORM)** |
 
----
+**02 and 03** sit dead-centre of the norm the backfill established (10 historical runs
+at 4,000.00), so all five conditions pass. Both post **without a confirm card**, and
+both net debits are on the statement.
 
-## 2. THE PAYROLL REGISTERS — two files
+**04 is the footing bait** ▲ — not in the original spec, and it tests the condition the
+O86 phantom was built around: `4,000 − 850 = 3,150`, but the register **states 3,200**.
+Condition 2 must catch a register that does not add up. **This is the first live test of
+FOOTS**, and it is the check that exists because AI extraction has hallucinated totals
+before.
 
-### ⑥ REGISTER A — must AUTO-POST
-```
-Provider:        Gusto
-Period:          2026-07-26 → 2026-08-08
-Pay date:        2026-08-07
-Total gross:      4,000.00
-Total deductions:   850.00
-Total net:        3,150.00
-Employer taxes:     306.00
-Employees:        4
-```
-Gross **4,000.00 exactly** matters: the backfill stamped **10 historical runs at 4,000**,
-so the trailing average is 4,000 and this sits dead-centre of the ±50% norm band. All
-five gate conditions should pass and it should post **without a confirm card**.
+**05 is out-of-norms and nothing else.** Pay date 08-31 against a period ending 08-28 is
+**3 days — deliberately inside the 7-day grace** — so condition 4 cannot fire and the
+refusal is unambiguously condition 5. That precision is the difference between "it
+refused" and "it refused for the reason we think".
 
-### ⑦ REGISTER B — must be REFUSED
-```
-Provider:        Gusto
-Period:          2026-08-09 → 2026-08-22
-Pay date:        2026-08-21
-Total gross:     12,000.00
-Total deductions: 2,550.00
-Total net:        9,450.00
-Employer taxes:     918.00
-Employees:        4
-```
-Foots correctly, shape is valid, pay date is adjacent — **it fails only condition 5**,
-gross 12,000 against a 4,000 norm. Deliberately not on the statement: it is a bonus run
-that never cleared in August. **A gate that only ever passes is an untested gate**, and
-this is the half of ·3a that has never been exercised on live data.
+**Why two refusals matter:** a gate that only ever passes is untested, and a gate that
+refuses everything is equally uninformative. Two passes and two refusals **on different
+conditions** is the first evidence that the gate discriminates.
 
----
-
-## 3. ⑤ THE OUTSTANDING CHEQUE
-
-One **manually entered** payment, in the app, not on the statement:
+## 3. ⑤ THE OUTSTANDING CHEQUE — as built ▲
 
 ```
+Cheque:  #1051
 Date:    2026-08-29
-Vendor:  Hays County Health Dept
-Memo:    CHECK #1051 — annual food service permit
-Amount:  425.00   (Cr Cash / Dr a licences-or-miscellaneous expense)
+Vendor:  Capital City Pest Control
+Amount:  185.00      (Cr Cash / Dr expense)
+Clears:  September
 ```
 
-Dated **after the last statement transaction (08-27) but inside the stated period
-(→08-31)**. This is a real outstanding cheque, and it is the **D4** probe: now that
-`period_end` widens to the stated date, `booksBalance` as-of 08-31 includes it while
-the bank's ending balance does not.
+Written **after the last statement transaction (08-28) and inside the stated period
+(→08-31)**. It is why books close at **64,697.31** against a bank ending of
+**64,882.31** — a difference of exactly **185.00**.
 
----
+**This is the D4 probe, and the number to hold onto.** Now that `period_end` widens to
+the stated 08-31, `booksBalance` as-of 08-31 includes this cheque and the bank's ending
+balance does not. **If the reconciliation difference is exactly −185.00, D4 is confirmed
+and behaving correctly** — an outstanding cheque is a real timing difference, and the
+right handling is the outstanding-items path, not a widened tolerance.
 
-## 4. ⑧ THE INVOICE VOLUME — 30 to 50 files
+## 4. ⑧ THE INVOICE VOLUME — 36 files, as built ▲
 
-Through the **universal drop**, as PDFs or images. This is TIER 1 #12's actual gate:
-the engine is proven on a statement-shaped path and a real client arrives
-invoice-shaped.
+**12 match bank lines · 24 unpaid at close.** An A/P balance at month end is the shape a
+real client arrives in and the statement-centric drives have never produced.
 
-**Composition:**
-- **~20 from vendors already on the statement** — Roma Cheese & Dairy Co., Lone Star
-  Restaurant Supply, Hill Country Milling Co., Austin Municipal Utilities, Franklin Ave
-  Properties LP. These exercise the **READ** identity path and the **merge** across two
-  doors.
-- **~10 from new vendors** not on any statement — genuinely new suppliers, small
-  amounts, so they park.
-- **~5 receipts** rather than invoices — photographed, imperfect, no clean header.
-- **2–3 deliberately awkward:** a handwritten receipt, a duplicate of one already
-  submitted, and one with no vendor name at all.
+**★ THE HILL COUNTRY DRIFT** ▲ — invoice **468.50** against a bank line of **486.50**.
+That is an **±18.00 digit transposition**, not a rounding difference, and it is the
+sharpest single item in the fixture: exact-amount matching must **fail to match** these
+two, and the right outcome is an unmatched invoice and an unmatched bank line, **not** a
+fuzzy match that quietly pairs them. A matcher that reconciles a transposition is a
+matcher that will reconcile a wrong number.
 
-**Vendor-name format matters.** Use the vendor's *invoice* name, not the bank string —
-e.g. `Roma Cheese & Dairy Co.` **with** the trailing period, `Hill Country Milling Co.`,
-`Franklin Ave Properties LP`. Four of those merge with their bank identity;
-**Franklin Ave will split** (`franklin ave properties` vs `franklin ave properties
-rent`) and that is the known, accepted `O111` case — confirm it still splits rather
-than being surprised by it.
+**★ TWO INVOICES AIMED AT `O112`** ▲ — deliberately, to inform the decision rather than
+pre-empt it:
+- **Manchaca Auto & Fleet** — vehicle expense. This company has **no vehicle account**.
+- **Spectrum Business** — internet. `6210` exists **on another company but not this one**
+  (it is in `O110`'s foreign-chart set).
 
----
+Both should surface the "recognised, nowhere to put it" shape. **Watch what they do; do
+not fix.** This is evidence for `O112`, and the whole point is to see the failure before
+choosing between create / prompt / park.
 
-## 5. UPLOAD ORDER — this matters
+**Vendor-name format** still matters: invoice names carry the trailing period
+(`Roma Cheese & Dairy Co.`) where bank strings do not. Four of five merge; **Franklin
+Ave Properties splits** (`franklin ave properties` vs `…properties rent`) — the known,
+accepted `O111` case.
 
-1. **Register A (⑥).** First, so the boundary check has a clean JE to query before
-   anything else touches the ledger.
-2. **The bank statement (①–④).**
-3. **The invoice volume (⑧).**
-4. **Register B (⑦).** Last — after the norm exists, so its refusal is about *norms*
-   and not about missing history.
-5. **The outstanding cheque (⑤)** any time before reconciling.
+## 5. UPLOAD ORDER — as built
 
----
+1. **Register 02** (08-14). **First, alone.** The O87 live boundary check needs a clean
+   JE to query before anything else touches the ledger, and this is the run that either
+   proves `import_metadata` lands or repeats ·3a. **Stop and check before continuing.**
+2. **Register 03** (08-28). Second auto-post — proves the gate is repeatable, not lucky.
+3. **The bank statement.** Both payroll debits should now dedup against the two
+   registers' `Cr Cash` legs.
+4. **The 36 invoices** through the universal drop.
+5. **Cheque #1051**, before reconciling.
+6. **Register 04** (footing bait) → expect refusal on condition 2.
+7. **Register 05** (out of norms) → expect refusal on condition 5, **last**, so the norm
+   is fully established and the refusal cannot be about missing history.
+8. **Reconcile, then sign off August.**
 
-## 6. THE WATCH-LIST
+**Why 02 alone, then stop:** every other check in this drive is downstream of the gate
+working. If `import_metadata` is null after step 1, the rest of the drive is still worth
+running but it is a different drive — and you want to know that before uploading 36
+invoices on top of it.
+
+## 6. THE WATCH-LIST — as built
 
 | After | Check | Expect | Debt it settles |
 |---|---|---|---|
-| Register A | `select import_metadata from journal_entries where source='payroll' order by created_at desc limit 1` | **NOT NULL**, `kind:'payroll'`, `gross:4000`, `net:3150` | **The O87 live boundary check.** Unit tests structurally cannot cross this boundary — it is exactly how ·3a shipped inert |
-| Register A | Did it post without a confirm card? | **Yes** | The gate FIRING, for the first time ever |
-| Statement | `select period_start, period_end from bank_statements order by created_at desc limit 1` | **`2026-08-01` / `2026-08-31`** — not `08-27` | **(ii), deployed 2026-08-17, unverified.** A silent model failure looks identical to the old behaviour |
-| Statement | `PECAN STREET COLD STORAGE` lands where? | **`7150`**, not `7100` | Uncategorized as honest suspense; keeps TIER 1 #7's Miscellaneous hard-fail meaningful |
-| Statement | Does row 5 double-book payroll? | **No** — deduped against the register | The `markAlreadyBooked` path, which is what actually handled Gusto in June/July |
-| Reconcile | Does it still auto-complete? | **Possibly not** — the 08-29 cheque may break the tie | **D4.** If it drops to `attention`, that is EXPECTED and fails safe, not a regression |
-| Re-upload | Re-upload the same statement | Coverage still holds | **D5**, the one-time transition |
-| Register B | Refused with a plain reason? | **Yes** — condition 5, gross outside norms | The gate REFUSING. Never yet exercised live |
+| **Register 02** | `select import_metadata from journal_entries where source='payroll' order by created_at desc limit 1` | **NOT NULL** · `kind:'payroll'` · `gross:4000` · `net:3150` | **★ THE O87 LIVE BOUNDARY CHECK.** Unit tests structurally cannot cross this boundary — it is exactly how ·3a shipped inert. **Stop here if null.** |
+| Register 02 | Posted with no confirm card? | **Yes** | The gate FIRING, first time ever |
+| Register 03 | Same again | **Yes** | Repeatable, not lucky |
+| Statement | `select period_start, period_end from bank_statements order by created_at desc limit 1` | **`2026-08-01` / `2026-08-31`** — not `08-28` | **(ii)**, deployed 2026-08-17, unverified since |
+| Statement | `ALAMO FIRE & SAFETY LLC` lands where? | **`7150`**, never `7100` | Uncategorized as honest suspense |
+| Statement | Do the two 3,150 debits double-book? | **No** — deduped against both registers | The `markAlreadyBooked` path, twice |
+| Statement | **Which of the three variant descriptors unified?** | **Lone Star only** (computed, §8) | **★ The C200 corpus, finally exercised** |
+| Invoices | Hill Country `468.50` vs bank `486.50` | **NO match** — one unmatched invoice, one unmatched line | A matcher that reconciles an ±18 transposition will reconcile a wrong number |
+| Invoices | Manchaca Auto & Fleet · Spectrum Business | Surface "recognised, nowhere to put it" | **`O112` evidence.** Watch, do not fix |
+| Invoices | Franklin Ave Properties across both doors | **Still splits** | `O111`, known and accepted |
+| Register 04 | Refused? On which condition? | **Condition 2 (FOOTS)** | **First live test of FOOTS** — the check that exists because extraction has hallucinated totals |
+| Register 05 | Refused? On which condition? | **Condition 5 (NORM) only** | The gate REFUSING on norms, never exercised live |
+| Reconcile | Difference | **exactly −185.00** (cheque #1051) | **D4** — confirms the widened `period_end` behaves, and that a timing difference is a timing difference |
+| Re-upload | Same statement again | Coverage holds | **D5**, the one-time transition |
 | Anytime | `select * from audit_log where action='account_materialized' and created_at > now() - interval '1 day'` | **ZERO ROWS** | Any row is an **eighth materialisation door** |
 | Anytime | `select company_id, code from accounts where system_role is null and origin <> 'external'` | **ZERO ROWS** | The O108 detector, restored by `073`, staying clean |
-| Sign-off | 16 notes attest, 3 July cards sweep | The (v) trio clears | The `anomalySubjectPeriod` fallback, shipped ·3c, unproven live |
+| Sign-off | The 3 open July cards | **Sweep** | `anomalySubjectPeriod`'s fallback, shipped ·3c, unproven live |
 
----
+## 8. ★★ DESCRIPTOR VARIANCE — THE C200 CORPUS, FINALLY ARRIVED ▲
+
+The C200 guard has been waiting since 2026-08-17 for descriptors that make identity
+resolution *do something*. The July data could not supply them — every vendor's bank
+string was byte-identical month to month, so a clean grouping result proved nothing.
+**This fixture supplies them, and grades them.** Two of the three are predicted
+failures, deliberately.
+
+**I computed all three before the drive rather than leaving them as watch-items** —
+identity resolution is a pure function of the two strings, so the answer is available
+now and does not need a live run to discover:
+
+| vendor | prior months | August | key (prior → August) | |
+|---|---|---|---|---|
+| **Lone Star** | `…LONE STAR RESTAURANT SUPPLY` | `…LONE STAR RESTAURANT SUPPLY 884213` | `lone star restaurant supply` → **same** | ✅ **UNIFIES** |
+| **Roma** | `…ROMA CHEESE & DAIRY CO` | `…ROMA CHEESE + DAIRY CO` | `roma cheese and dairy` → `roma cheese + dairy` | ❌ **SPLITS** |
+| **Austin Municipal** | `…AUSTIN MUNICIPAL UTILITIES` | `…AUSTIN MUNI UTILITIES` | `austin municipal utilities` → `austin muni utilities` | ❌ **SPLITS** |
+
+**1 of 3 unifies.** Both predictions confirmed; the one flagged "genuinely unknown"
+resolved, and the reason is specific:
+
+> **`normalizeName` special-cases `&` → `" and "`, but `+` is not in its punctuation
+> class at all** (`[.,/#!$%^*;:{}=\-_\`~()'"]`). So `+` **survives verbatim into the
+> entity key** — `roma cheese + dairy`. It is not that `&` and `+` normalise
+> differently; it is that `+` does not normalise at all.
+
+### ★ WHY I AM NOT FIXING THE `+` CASE BEFORE THE DRIVE
+
+It looks like a one-character fix, and it is in a *safer* class than word-stripping —
+character-level equivalence cannot eat a real vendor name the way stripping "RENT" or
+"SUPPLY" would. So the temptation is real.
+
+**But Amendment A §5 already names this as a STOP condition, in the signed text:**
+
+> *"identity resolution requires a new rail-stripping rule to reach agreement (this
+> means the corpus was under-specified; extend the corpus and re-run rather than tuning
+> to the answer)"*
+
+Changing the normaliser **because I have seen the fixture** is tuning to the answer —
+the ·3a shape, where the test is reshaped until it agrees with the code. The fixture was
+built to find out what happens; the finding is that two of three split, and that is the
+result, not a bug to be edited away before it is recorded.
+
+**The principled route for Roma and Austin Municipal is the ALIAS mechanism (`O111`)** —
+a human attests that two strings are the same vendor, and the link is recorded rather
+than inferred. That is precisely what `O111` was minted for, and this fixture has just
+made the case for it concrete instead of hypothetical.
+
+**Watch-list item:** record which of the three unified, and treat the two splits as
+`O111`'s acceptance criteria — the alias feature is done when a human can reunify
+`roma cheese + dairy` and `austin muni utilities` in one action each.
 
 ## 7. WHAT THIS FIXTURE DELIBERATELY DOES NOT TEST
 
