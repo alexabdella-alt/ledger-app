@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { normalizeName } from "./docDirection.js";
+import { matchDirectory } from "./vendorDirectory.js";
 
 // How an entity key was arrived at. Ordered by authority — a caller comparing two
 // resolutions should prefer the earlier one, and the flag copy names the source so
@@ -133,14 +134,16 @@ export function resolveVendorIdentity(descriptor, { aliases = [], knownKeys = []
     }
   }
 
-  // 3. DIRECTORY — curated, binary, global.
-  for (const d of directory || []) {
-    if (!d || !d.entityKey) continue;
-    for (const pat of d.patterns || []) {
-      if (normalizeDescriptor(pat) === normalized) {
-        return { entityKey: String(d.entityKey), matchedVia: MATCH_SOURCE.DIRECTORY, rawDescriptor: raw, normalized };
-      }
-    }
+  // 3. DIRECTORY — curated, binary, global. Accepts BOTH the legacy inline shape
+  //    ({entityKey, patterns}) and a `universal_vendor_directory` row
+  //    ({entity_key, match_patterns, match_type}); the matching itself lives in
+  //    `vendorDirectory.matchDirectory` so there is ONE matcher, not two that drift.
+  const dirEntries = (directory || []).map((d) => (d && d.entity_key)
+    ? d
+    : { entity_key: d && d.entityKey, match_patterns: (d && d.patterns) || [], match_type: "exact", active: true });
+  const hit = matchDirectory(raw, dirEntries);
+  if (hit) {
+    return { entityKey: String(hit.entity_key), matchedVia: MATCH_SOURCE.DIRECTORY, rawDescriptor: raw, normalized };
   }
 
   return miss;
