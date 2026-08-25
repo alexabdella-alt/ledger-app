@@ -103,7 +103,7 @@ and any report of it must say so.
 
 ## SIGN-OFF
 
-- [ ] Alex (CPA) — backfill graduation bar as written, §§1–5
+- [x] Alex (CPA) — backfill graduation bar as written, §§1–5
 
 *Upon signature: `planVendorBackfill` gains the explicit-attestation requirement and the
 preview is regenerated. Until then the planner is unchanged and the backfill is not run.
