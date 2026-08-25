@@ -333,3 +333,86 @@ describe("per-source identity strategy", () => {
     expect(p.counts.entities).toBe(1);              // the two doors merge
   });
 });
+
+describe("★ payroll on the BANK rail is excluded too", () => {
+  it("a Gusto net-pay bank line does not become a vendor", () => {
+    // source='payroll' catches the register; this catches the net-pay debit that
+    // arrives as an ordinary bank_import line. Without it, a `gusto payroll` entity
+    // survives at 3,150 NET while the register books 4,000 GROSS — one entity, two
+    // paths measuring different quantities, and a spurious 1.27x band event.
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "g1", source: "bank_import", descriptor: "Gusto Payroll – GUSTO PAYROLL 011526", date: "2026-01-15", amount: 3150 }),
+              ln({ line_id: "g2", source: "bank_import", descriptor: "Gusto Payroll – GUSTO PAYROLL 013026", date: "2026-01-30", amount: 3150 })],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(0);
+    expect(p.skipped.payroll_bank_line).toBe(2);
+  });
+
+  it("and it does NOT swallow ordinary vendors", () => {
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "a", source: "bank_import", descriptor: "Roma – ACH DEBIT - ROMA CHEESE & DAIRY CO", date: "2026-01-04" }),
+              ln({ line_id: "b", source: "bank_import", descriptor: "Bank – MONTHLY SERVICE FEE", date: "2026-02-04" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.skipped.payroll_bank_line).toBeUndefined();
+    expect(p.counts.entities).toBe(2);
+  });
+});
+
+describe("★ the merge test, on REAL strings from the re-pull", () => {
+  const cases = [
+    ["roma cheese and dairy", "R – ACH DEBIT - ROMA CHEESE & DAIRY CO", "Roma Cheese & Dairy Co. – Wholesale cheese and dairy products plus refrigerated delivery", "Roma Cheese & Dairy Co. – Payment – Roma Cheese & Dairy Co."],
+    ["lone star restaurant supply", "L – ACH DEBIT - LONE STAR RESTAURANT SUPPLY", "Lone Star Restaurant Supply – Foodservice supplies: crushed tomatoes, high-gluten flour, olive oil blend", null],
+    ["austin municipal utilities", "A – ACH DEBIT - AUSTIN MUNICIPAL UTILITIES", "Austin Municipal Utilities – Utility bill — electric service, water & wastewater, fees for service period 12/05/2025–01/05/2026", null],
+    ["hill country milling", "H – ACH DEBIT - HILL COUNTRY MILLING CO", "Hill Country Milling Co. – Specialty flour and freight — bread flour, 00-style pizza flour", null],
+  ];
+
+  it("★ bank, invoice and manual all land on ONE key", () => {
+    for (const [expected, bank, invoice, manual] of cases) {
+      const lines = [ln({ line_id: "b", source: "bank_import", descriptor: bank, date: "2026-01-04" }),
+                     ln({ line_id: "i", source: "universal_upload", descriptor: invoice, date: "2026-02-04" })];
+      if (manual) lines.push(ln({ line_id: "m", source: "manual", descriptor: manual, date: "2026-03-04" }));
+      const p = planVendorBackfill({ lines, signedMonths: SIGNED });
+      expect(p.counts.entities, expected).toBe(1);
+      expect(p.rows[0].entity_key).toBe(expected);
+    }
+  });
+
+  it("a trailing \"Co.\" on the invoice side normalises away", () => {
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "a", source: "universal_upload", descriptor: "Roma Cheese & Dairy Co. – Cheese", date: "2026-01-04" }),
+              ln({ line_id: "b", source: "bank_import", descriptor: "R – ACH DEBIT - ROMA CHEESE & DAIRY CO", date: "2026-02-04" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(1);
+  });
+
+  it("★ em-dashes and unspaced en-dashes INSIDE the right half never become the split point", () => {
+    // "…freight — bread flour" and "12/05/2025–01/05/2026" must not be mistaken for
+    // the separator; only " – " (spaced en-dash) is.
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "a", source: "universal_upload", descriptor: "Austin Municipal Utilities – Utility bill — electric, water 12/05/2025–01/05/2026", date: "2026-01-04" }),
+              ln({ line_id: "b", source: "universal_upload", descriptor: "Austin Municipal Utilities – Something else entirely — with an em-dash", date: "2026-02-04" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(1);
+    expect(p.rows[0].entity_key).toBe("austin municipal utilities");
+  });
+
+  it("★ FRANKLIN AVE STILL SPLITS — knowingly accepted, pending the alias feature", () => {
+    // The bank string carries a PURPOSE SUFFIX ("…LP RENT") that the vendor name does
+    // not. Invoice and manual agree with each other; the bank alone dissents. This is
+    // pinned as a KNOWN split so the alias feature has a failing case to fix, and so
+    // nobody "fixes" it by widening the strip — which would also eat "Restaurant Supply".
+    const p = planVendorBackfill({
+      lines: [ln({ line_id: "b", source: "bank_import", descriptor: "F – ACH DEBIT - FRANKLIN AVE PROPERTIES LP RENT", date: "2026-01-04" }),
+              ln({ line_id: "i", source: "universal_upload", descriptor: "Franklin Ave Properties LP – Monthly base rent — 1214 Franklin Ave Suite B — January 2026", date: "2026-02-04" }),
+              ln({ line_id: "m", source: "manual", descriptor: "Franklin Ave Properties LP – Payment – Franklin Ave Properties LP", date: "2026-03-04" })],
+      signedMonths: SIGNED,
+    });
+    expect(p.counts.entities).toBe(2);
+    const keys = p.rows.map((r) => r.entity_key).sort();
+    expect(keys).toEqual(["franklin ave properties", "franklin ave properties rent"]);
+  });
+});

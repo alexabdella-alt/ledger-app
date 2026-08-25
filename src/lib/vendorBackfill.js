@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { identityForEntry, IDENTITY_STRATEGY } from "./vendorIdentity.js";
+import { isPayrollBankLine } from "./payroll.js";
 import { recordObservation, vendorStateRow, applyDormancy, VENDOR_TIER } from "./vendorTier.js";
 
 // Q6/decision 2026-08-23 — HOW A HISTORICAL LINE COUNTS.
@@ -95,6 +96,24 @@ export function planVendorBackfill({ lines = [], signedMonths = [], companyId = 
     // vendor→account judgement to learn. An unrecognised source is excluded and counted.
     const ident = identityForEntry({ description: line.descriptor, source: line.source });
     if (ident.excluded) { skipped[ident.excluded] = (skipped[ident.excluded] || 0) + 1; continue; }
+    // ── PAYROLL ARRIVES ON THE BANK RAIL TOO (found by the 2026-08-25 re-run) ──
+    // Checked AFTER the source exclusion so the counters stay honest: a payroll
+    // REGISTER entry is `source_payroll`, a net-pay BANK line is `payroll_bank_line`.
+    // Ordering them the other way round labelled register entries as bank lines —
+    // caught by a test that had asserted the more specific counter.
+    // Excluding `source='payroll'` removes the REGISTER entries, but the net-pay debit
+    // shows up as an ordinary `bank_import` line. Franklin Ave's Jan/Feb Gusto lines are
+    // exactly that, and without this they survive as a `gusto payroll` entity at 3,150
+    // NET — while the register books 4,000 GROSS from March. One entity, two paths
+    // measuring different quantities, and a spurious 1.27x band event: precisely the
+    // half of the net-vs-gross mismatch the source exclusion was meant to prevent.
+    //
+    // Reuses the EXISTING predicate rather than growing a second definition of "this is
+    // payroll" — the ·3b(f3) lesson about two halves of one contract drifting apart.
+    if (isPayrollBankLine({ vendor: line.vendor, description: line.descriptor })) {
+      skipped.payroll_bank_line = (skipped.payroll_bank_line || 0) + 1;
+      continue;
+    }
     const { entity_key, identity_source, raw } = ident;
 
     if (!byEntity.has(entity_key)) byEntity.set(entity_key, { entity_key, observations: [], descriptors: new Set() });
