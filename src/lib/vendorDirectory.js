@@ -153,6 +153,19 @@ export const DIRECTORY_SEED = [
 // how the operator treats the sale. The directory's whole premise is that a curated
 // default is right for a stranger's books, and for these it is not. A contested
 // mapping in a global asset is plausibility scoring with a human's name on it.
+// ★★ THE STANDARD FOR ANYTHING ADDED TO THIS DIRECTORY LATER (operator, 2026-08-25):
+//
+//     A CONTESTED DEFAULT IN A GLOBAL ASSET IS PLAUSIBILITY SCORING WITH A HUMAN'S
+//     NAME ON IT.
+//
+// Every row here asserts a mapping that NOBODY AT THE COMPANY HAS ATTESTED. That is
+// only defensible when the mapping is not a judgement call — when any competent
+// bookkeeper, for any restaurant, would put this vendor in this account. The moment
+// reasonable people would disagree, curating a default does not remove the guess; it
+// centralises it and hides the guesser. Park it and let a human attest instead.
+//
+// Apply the test before adding a row: "would I defend this account for a client whose
+// books I have never seen?" If the answer needs context, the row does not belong here.
 export const DIRECTORY_EXCLUSIONS = {
   utilities: "no national utility exists; local vendor → per-company alias (O111)",
   delivery_platforms: "mapping is contested (commission vs marketing vs revenue contra) — no default is right for a stranger",
