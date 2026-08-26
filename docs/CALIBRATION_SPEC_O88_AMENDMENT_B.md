@@ -109,3 +109,17 @@ and any report of it must say so.
 preview is regenerated. Until then the planner is unchanged and the backfill is not run.
 Standing rules per CLAUDE.md — verify-don't-trust, checkable artifacts, ▶ RUN NOW/HOLD
 markers, migrations manual, `git log origin/main..HEAD` printed.*
+
+---
+
+## CROSS-REFERENCE (added 2026-08-26)
+
+This amendment is the **first instance** of a rule that has since been promoted to a standing
+principle in `CLAUDE.md` §9: **an attestation is scoped to the question that was asked.**
+
+*Signing a month is not examining a vendor* is the specific form; the general form is that a human's
+click is evidence about the thing they were looking at and nothing else. The **second instance** is
+`docs/INVOICE_PAYMENT_SPEC_O114.md` §6 — *answering a duplicate card is not attesting a mapping* —
+where the same hazard reappeared in a new costume: without a deliberate exclusion, resolving an
+invoice-payment ambiguity card would have satisfied this amendment's own `>= 1 explicit` bar and
+graduated vendors on paperwork volume.

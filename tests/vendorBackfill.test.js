@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { planVendorBackfill, graduationPreview, attestationStrengthFor, rawDescriptorOf, ATTESTATION_STRENGTH } from "../src/lib/vendorBackfill.js";
+import { planVendorBackfill, graduationPreview, attestationStrengthFor, rawDescriptorOf, ATTESTATION_STRENGTH, NON_ATTESTING_EXCEPTIONS } from "../src/lib/vendorBackfill.js";
+import { MATCH_EXCEPTION_KIND, matchResolutionFacts } from "../src/lib/invoicePayment.js";
 import { VENDOR_TIER } from "../src/lib/vendorTier.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -47,6 +48,45 @@ describe("what counts, and what does not", () => {
     expect(attestationStrengthFor({ exception_resolved: true })).toBe(ATTESTATION_STRENGTH.EXPLICIT);
     expect(attestationStrengthFor({ recoded: true })).toBe(ATTESTATION_STRENGTH.EXPLICIT);
     expect(attestationStrengthFor({})).toBe(ATTESTATION_STRENGTH.IMPLICIT);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ★★ AN ATTESTATION IS SCOPED TO THE QUESTION THAT WAS ASKED (CLAUDE.md §9).
+  //
+  // Pinned HERE, in the attestation suite, and NOT in `tests/invoicePayment.test.js`
+  // — because this is where someone doubting the ATTESTATION rule will come looking,
+  // and a proof filed by the commit that created it is a proof nobody finds. That is
+  // the ·3c review bounce, verbatim: the null-net pin existed, passed under mutation,
+  // and lived where no falsifier of the matcher would ever run it.
+  // ═══════════════════════════════════════════════════════════════════════════
+  it("★★ resolving an INVOICE-PAYMENT MATCH does NOT mint an explicit attestation", () => {
+    // The hazard, concretely: an ambiguity card IS an exception, so `exception_resolved`
+    // is set when a human answers it. Amendment B's backfill bar is ">= 1 explicit", so
+    // without this exclusion a vendor would graduate to KNOWN on PAPERWORK VOLUME — the
+    // machine attesting to its own guess through a human's click on a question that was
+    // never about the account. Amendment B was signed to prevent exactly that.
+    expect(attestationStrengthFor({ exception_resolved: true, exception_kind: MATCH_EXCEPTION_KIND }))
+      .toBe(ATTESTATION_STRENGTH.IMPLICIT);
+  });
+
+  it("★ but a RECODE alongside the match DOES attest — a human looked at the account", () => {
+    // Two events, two facts. The attestation attaches to the recode, never to the match,
+    // and only one of them touches the familiarity clock.
+    expect(attestationStrengthFor({ exception_resolved: true, exception_kind: MATCH_EXCEPTION_KIND, recoded: true }))
+      .toBe(ATTESTATION_STRENGTH.EXPLICIT);
+    const f = matchResolutionFacts({ entryId: "e", invoiceId: "i", answer: "same", recodedAccountId: "a" });
+    expect(f.match.attests_mapping).toBe(false);
+    expect(f.recode.attests_mapping).toBe(true);
+  });
+
+  it("★ every OTHER exception kind still attests — the exclusion is narrow, not a hole", () => {
+    // Widening this set is how the bar quietly disappears, so the guard asserts the
+    // set's exact contents rather than merely that the one case works.
+    expect([...NON_ATTESTING_EXCEPTIONS]).toEqual([MATCH_EXCEPTION_KIND]);
+    for (const kind of ["low_confidence", "unmatched_bank_line", "balance_discrepancy", undefined]) {
+      expect(attestationStrengthFor({ exception_resolved: true, exception_kind: kind }), String(kind))
+        .toBe(ATTESTATION_STRENGTH.EXPLICIT);
+    }
     // Both kinds count toward the CLOCK — observation_count and distinct_months are
     // seeded either way. Amendment B (2026-08-25) then withholds the TIER separately
     // when none was explicit; that is a different gate, tested in its own block below.

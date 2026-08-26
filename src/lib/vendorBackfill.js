@@ -38,8 +38,31 @@ import { recordObservation, vendorStateRow, applyDormancy, VENDOR_TIER } from ".
 // that it does not gate.
 export const ATTESTATION_STRENGTH = { EXPLICIT: "explicit", IMPLICIT: "implicit" };
 
+// ★★ AN ATTESTATION IS SCOPED TO THE QUESTION THAT WAS ASKED (CLAUDE.md §9, O114).
+// Not every exception a human resolves is a judgment about the ACCOUNT. Answering
+// "are these two documents the same purchase?" is a judgment about DOCUMENT IDENTITY
+// — the human need not have seen the account, and attaching does not change it. So
+// the exception KIND decides, not the mere fact that a human clicked.
+//
+// Amendment B's backfill bar is ">= 1 explicit". Without this exclusion a vendor would
+// graduate to KNOWN on PAPERWORK VOLUME, with `attested_account_id` set to whatever
+// the machine happened to book — the machine attesting to its own guess through a
+// human's click on an unrelated question, routing around the amendment within one
+// release of it being signed.
+//
+// A SET, not a special case, because this is the SECOND instance of the rule (the
+// first: signing a month is not examining a vendor) and there will be a third.
+export const NON_ATTESTING_EXCEPTIONS = new Set(["invoice_payment_match"]);
+
 export function attestationStrengthFor(line = {}) {
-  return (line.exception_resolved || line.recoded) ? ATTESTATION_STRENGTH.EXPLICIT : ATTESTATION_STRENGTH.IMPLICIT;
+  // A RECODE always attests: a human looked at the account and changed it. When a
+  // match resolution ALSO recodes, the attestation attaches to the recode — two
+  // events, two facts, and only one of them touches the familiarity clock.
+  if (line.recoded) return ATTESTATION_STRENGTH.EXPLICIT;
+  if (line.exception_resolved && !NON_ATTESTING_EXCEPTIONS.has(line.exception_kind)) {
+    return ATTESTATION_STRENGTH.EXPLICIT;
+  }
+  return ATTESTATION_STRENGTH.IMPLICIT;
 }
 
 const monthOf = (d) => String(d || "").slice(0, 7);

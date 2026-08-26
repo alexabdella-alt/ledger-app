@@ -1,6 +1,8 @@
 # O114 — THE INVOICE AND THE PAYMENT ARE ONE EVENT
 
-**Design spec. Drafted 2026-08-26. UNSIGNED — nothing is built against this until the operator has read it.**
+**Design spec. Drafted 2026-08-26. READ AND APPROVED by the operator the same day — no signature ritual,
+by explicit instruction. AMENDED after approval with the three responses below and the NEAR-band
+decision; the core is BUILT (`src/lib/invoicePayment.js`, `tests/invoicePayment.test.js`).**
 
 Same species as `docs/CALIBRATION_SPEC_O88.md`: a design session, not a bug fix. The defect is a
 symptom; what is actually missing is a model of the relationship between a bill and the money that
@@ -160,8 +162,40 @@ is precisely the `O111` per-company alias write-side that does not yet exist.
 
 **I do not propose loosening `autoMatchBankLines`' existing name rule in this work.** It is load-bearing
 for the bank rail, it has been live and correct across eight drives, and changing it is a separate,
-evidenced decision. Flagged here because the two rails will then use different name rules, which is a
-real inconsistency and should be recorded as owed rather than quietly tolerated.
+evidenced decision.
+
+### 2.1a TWO CONSEQUENCES, RECORDED EXPLICITLY (operator, 2026-08-26)
+
+1. **`O111` IS NOW THE LAST MILE OF THIS FEATURE.** Franklin Ave does not auto-attach until a human
+   can teach us that two entity keys are one vendor. It asks instead, which is the correct failure —
+   but the ask does not go away on its own, and the per-company alias is what closes it. Sequenced
+   with C202; **it does not block the other 80%**, and a test pins Franklin Ave attaching once the
+   keys agree, so the alias feature has a passing target rather than a description.
+
+2. **THE TWO RAILS NOW USE DIFFERENT NAME RULES, AND THAT IS RECORDED AS OWED, NOT TOLERATED.** The
+   bank rail matches by two-way substring containment; this rail requires exact entity-key equality.
+   **Unifying them is its own decision, and the direction is already set: tighten toward EXACT, never
+   loosen toward substring** (operator, 2026-08-26 — *"the bank rail's substring matching may itself
+   be too loose"*). It is not done here because it changes a path that has been live and correct for
+   eight drives, and that change needs its own evidence — not a rider on a bug fix.
+
+### 2.1b TWO DIVERGENCES THE SUITE FOUND THAT READING DID NOT
+
+Both surfaced by running the six real specimens, and both are recorded because they are the kind of
+thing a green suite over invented fixtures would never have produced:
+
+- **`Alamo Fire & Safety LLC` did not relate to `ALAMO FIRE SAFETY LLC`.** `normalizeDescriptor`
+  expands `&` to `and`, and the bank text carries no ampersand — so the same vendor produced
+  `alamo fire and safety` and `alamo fire safety`, neither a prefix of the other. **Fixed at
+  COMPARISON time (a standalone `and` is dropped), deliberately NOT in `entityKeyFor`:** changing key
+  MINTING would silently re-key `vendor_state` rows and move tiers, which is a migration wearing a
+  one-line diff.
+- **`Toast Inc` (invoice) did not relate to `toast merchant fees aug` (bank)** — the month-name split
+  C201 hit and declined to fix by word-stripping. **Resolved with no seed change by letting the
+  DIRECTORY canonicalise both sides**, which is exactly what C202 was built for: the bank side
+  recognises as `toast`, the invoice side already is `toast`. Note the directory's patterns are
+  `toast merchant fees`, deliberately not bare `toast` — so the curation that prevents over-matching
+  is also what makes this work.
 
 ---
 
@@ -210,13 +244,35 @@ $18 discrepancy as an 18-dollar residual payable would be inventing a partial-pa
 effect of a bug fix**, which is how the depreciation-schedule dead code and the normalised
 reconciliation model both got built and never used.
 
-**Open question I cannot settle alone — the NEAR band's width.** A percentage (say 5%) scales with the
-charge, which is wrong in both tails: on a $12 charge it is 60¢, on a $12,000 charge it is $600. A flat
-dollar band does not scale at all. A digit-transposition-aware rule (same digits, different order)
-would catch Hill Country precisely and nothing else — **but it encodes a theory about the CAUSE, and
-the card is forbidden from having one (§5).** Using it to decide *candidacy* while keeping the copy
-causeless may be defensible; I flag it rather than choose. **Operator's call, and it is an accounting
-judgment, not a threshold.**
+### 4.1 THE NEAR BAND — DECIDED 2026-08-26
+
+**It is a UNION OF TWO NAMED RULES, not one number**, because the causes of a small discrepancy have
+different scales and no single threshold is right for all of them. Asked for a recommendation rather
+than an open question, this is it:
+
+> **NEAR = (a) within 2% of the larger amount, OR (b) the two amounts are DIGIT PERMUTATIONS of each
+> other.**
+
+**(a) is a PERCENTAGE, not a flat dollar band**, because a flat band is wrong in both tails: $25 is
+200% of a $12 charge and invisible against a $12,000 one. 2% covers what actually produces small
+gaps — rounding, a small discount, a fee difference — and scales correctly at every magnitude. It
+picks up where EXACT (one cent, the same tolerance `autoMatchBankLines` already uses) leaves off.
+
+**(b) needs no threshold at all, and that is the point.** The digit-multiset constraint is
+self-limiting: two amounts with identical digits in a different order, compared as integer cents with
+equal length required. **This is the real transposition test — not the CPA's divisible-by-9
+shortcut**, which is only a proxy for it and fires on **1 in 9 arbitrary differences**. Hill Country
+is the case: 468.50 vs 486.50 is **3.8% apart, so rule (a) misses it**, and its difference of 18 is
+divisible by 9 — but so is a difference of 27 between two genuinely unrelated charges. The digit test
+catches the first and rejects the second, and a test in the suite pins exactly that pair.
+
+**On your objection that this encodes a theory about the cause — it does, and the resolution is that
+the theory decides CANDIDACY only and never reaches the COPY.** Deciding a pair is worth *asking*
+about is not the same as asserting why they differ. The card still says only: two amounts, one date,
+one subtraction, and that we cannot tell. **It must never say "this looks like a typo"** — a
+transposition and a genuine second charge are externally identical, and which one it is is precisely
+the question being asked. The constraint is written into the module's header so a future edit to the
+copy has to walk past it.
 
 ---
 
@@ -339,11 +395,23 @@ is a weekly fixed-fee vendor at exactly 7-day spacing, and the detector's window
 a legitimately weekly charge lands **exactly on the boundary** every single week. Same-vendor-same-amount
 is the *normal* case for that vendor, and no amount of invoice-to-payment matching changes it.
 
-**That is the pattern-level suppression item already on the backlog** (recognise a vendor as
-legitimately recurring at a cadence via `detectRecurringPatterns` / `recurring_transactions`, and
-exclude its on-cadence charges from duplicate detection). It should be fixed *with* this work, since
-both land in the same detector and the operator will otherwise reasonably read "O114 fixed" as "the
-Bluebonnet cards are gone." **They will not be.** Recorded here so that cannot happen quietly.
+**SPLIT OUT AS `O117` ON 2026-08-26, at the operator's instruction, precisely so that shipping O114
+cannot be mistaken for fixing the detector.** The duplicate detector has **two failure modes needing
+two fixes**:
+
+| | mode | fix |
+|---|---|---|
+| **O114** | same event, two documents | this spec — the invoice rail gains a matcher |
+| **O117** | a genuinely recurring fixed-fee vendor | cadence-aware suppression; **not this spec** |
+
+**The connection worth carrying into `O117`'s design** (operator): *a KNOWN vendor with a stable
+cadence and a stable amount is precisely a vendor whose repeat charges are EXPECTED* — so **the
+ladder's own pattern data is probably the input that fixes it.** `vendor_state` already stores the
+amount band, `first_seen`/`last_seen` and the distinct-month list; `detectRecurringPatterns` already
+models cadence. **Not designed here.** Minted and sequenced.
+
+A test in this feature's suite asserts the four weekly Bluebonnet invoices return `BOOK_PAYABLE` and
+names `O117` in its comment, so the boundary is visible from inside the code rather than only here.
 
 ---
 
