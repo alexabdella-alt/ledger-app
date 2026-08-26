@@ -17,7 +17,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ## OPEN LEDGER — every tracked, unshipped item
 
-**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-23 (064 applied; backfill planner + preview).**
+**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-26 (August drive Acts 1–4 recorded; O113/O114/O115 minted).**
 
 ### Before the first paying client — 8 open
 
@@ -32,7 +32,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **10 · 1099s: off by default, on when the accountant says so** — ~quarter session.
 - [ ] **12 · Push a month of INVOICES through, at volume** — every test so far has been bank-statement-shaped, but a new client arrives with invoices and receipts. **Gate: before we call the product demo-ready.** Also proves three things from the last release that are shipped-but-unproven (see below). ~1 session.
 
-### Around launch week — 13 open
+### Around launch week — 14 open
 
 *Ship near launch; none of these stop the first client.*
 
@@ -61,14 +61,14 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **O106 · Better at spotting the same vendor under a new name** — suggests matches the exact-match rule misses, and only ever *suggests*: a suggestion becomes real when you confirm it, and it can never decide an account on its own.
 - [ ] Full 1099 eligibility · opening-balance mismatches as tracked notes · normalized reconciliation storage · year-end close · payroll accrue-then-pay · multi-state sales tax · more depreciation methods · link older entries to bank accounts · **owner nudge channel (Slack/SMS/email)** — differentiator-class · vendor teach-in → entity profiles · Reconcile collapses to exceptions-only · clean up four legacy demo companies.
 
-### Known problems, not yet scheduled — 16 open
+### Known problems, not yet scheduled — 25 open
 
 *Real defects and debt. Each has an id so it can't get lost.*
 
 - [ ] **Decide how we identify a vendor for each kind of record** — bank lines carry a messy bank description that needs cleaning up; invoices, payroll and manual entries already carry a clean vendor name and need none. One rule was being used for all four, and it silently fails on two of them. **Nothing else on the vendor-recognition work moves until this is settled.**
 - [x] **Amendment B SIGNED 2026-08-25** — the backfill graduation bar. On today's records we cannot tell a month you signed from a vendor you examined, so **nothing carries forward**: every supplier starts unknown and earns its place over two live months. Bluebonnet costs two confirmation cards instead of the seven it has already cost. The alternative would have promoted Culinary Edge — the one supplier that caused all of this.
 - [x] **Migrations 066, 071, 072, 073 APPLIED & VERIFIED 2026-08-25.** Account origins are now precisely labelled (external 36 · runtime 6 · seed 530); the vendor directory, month-key check and shadow-record table are live.
-- [ ] **Build the August fixture** — spec at `docs/AUGUST_DRIVE_FIXTURE.md`: one bank statement, one payroll register, one deliberately-bad register, one outstanding cheque, and 30–50 invoices. — vendor directory · month-key check · shadow records · account-origin relabel. Run each PREVIEW block before its migration; `073`'s expects exactly 33 rows to move. — one pass. Settle the 070 `runtime` labels first, below.
+- [x] **August fixture BUILT and DRIVEN 2026-08-26** — spec at `docs/AUGUST_DRIVE_FIXTURE.md`, reconciled to the actual files. Acts 1–3 passed; the drive was stopped at Act 4 on invoice volume, producing `O113`/`O114`/`O115`. Migrations `066`/`071`/`072`/`073` were applied and verified before it ran.
 - [ ] **Two checks owed on the account TIER 1 #8 will create** — prove a non-admin cannot write the shared vendor directory, and prove creating a company still works after the permission tightening. Neither blocks the migrations; both are unproven until that account exists. — and settle the 070 `runtime` labels first, below.
 - [ ] **O102 · Rebuild how we decide which account a charge belongs to** — today the system guesses from how readable the description is; it should only use what we actually know about this client's vendors. Everything still gets recorded either way; unknown vendors park in a holding account instead of a guess. **Spec SIGNED 2026-08-16.** Foundations are in (C200: the holding account + working out who a vendor is). **Next step is deliberately NOT building:** the shadow-mode PASS CRITERION gets written and approved first — what the new way has to demonstrate, against the old way, on real statements, before it is allowed to decide anything. **This is the big one.**
 - [ ] **O103 · Notice when an answer doesn't fit the question** — if we flag a possible double payment and the answer explains a price rise, say so plainly and pass it to the accountant's monthly list rather than closing it quietly. **Your answer always stands** — the system never overrules it and never changes any booking. **Blocked until O102's switch is proven and the flag list exists.**
@@ -93,18 +93,18 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **O76 · Screens that don't refresh after a change** — fix as a class, not screen by screen.
 - [ ] **O89 · The main app file is 7,000 lines.**
 
-### Sequenced next — 1 open
+### Sequenced next — 0 open
 
 *The immediate next piece of work, written down so the order is not re-litigated.*
 
 - [x] **Shadow-mode PASS CRITERION written and SIGNED 2026-08-17** — `docs/CALIBRATION_SPEC_O88_AMENDMENT_A.md`, signed by Alex (CPA). Written before the numbers existed, which was the point. **C201 is released from ▶ HOLD** and shadow mode may be built to that standard. Structural, not statistical: two automatic fails (a stranger reaching a real account; two vendors collapsing into one), every known-vendor disagreement itemised, and parking explicitly not a gate.
 
-### Shipped but NOT yet proven in a real run — 3 open
+### Shipped but NOT yet proven in a real run — 1 open
 
 *Written, tested, deployed. No live drive has confirmed them. All three are checked by item 12.*
 
-- [ ] **Payroll auto-posting actually works end to end** — unit tests cannot reach the database, which is exactly how it shipped broken last time. Confirm on August's first register.
-- [ ] **Statement dates come from the statement** — a silent failure looks identical to the old behaviour, so only a live run can tell.
+- [x] **PROVEN 2026-08-26 — payroll auto-posting works end to end.** Both August registers auto-posted and the stamp landed: `kind`/`gross`/`net`/`pay_date`/`register_import_id` all present on the posted entry. This is the check unit tests structurally could not make, and it is exactly how it shipped broken last time.
+- [x] **PROVEN 2026-08-26 — statement dates come from the statement.** `period_end = 2026-08-31` against a last transaction of 08-28. A silent failure would have looked identical to the old behaviour; it did not occur.
 - [ ] **Reconciliation still auto-completes** — the date fix moved what gets compared. It fails safe, but watch it.
 
 ---
@@ -113,6 +113,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 *Completion should be as visible as backlog.*
 
+- ✅ **August drive, Acts 1–4** (2026-08-26) `b5d5a34` — O87 debt settled, stated-period fix proven live, absorber held; 4 findings recorded, 2 P0
 - ✅ **Migration 063 applied** (2026-08-17) — Uncategorized Expense live on all 11 companies, verified
 - ✅ **C198·3c** `1f82dd9` — payroll gate un-inerted + three honesty fixes; backfill applied (10 runs); `ai-proxy` v16
 - ✅ **C199** `d612964` — RLS hardening: one policy generation governs the ledger, the stricter one
