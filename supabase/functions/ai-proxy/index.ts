@@ -20,10 +20,13 @@ const UPLOAD_LIMIT = 20;   // file uploads / user / hour
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-rate-kind",
+  // Exposed so a caller can READ its remaining budget rather than discovering it by
+  // being refused. The limiter computes these to make its decision either way.
+  "Access-Control-Expose-Headers": "x-ratelimit-remaining-ai, x-ratelimit-remaining-upload",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-const json = (obj: unknown, status: number) =>
-  new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json" } });
+const json = (obj: unknown, status: number, extra: Record<string, string> = {}) =>
+  new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json", ...extra } });
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -38,15 +41,43 @@ serve(async (req) => {
 
     // 2. Rate limit. Every call counts against the AI limit; calls tagged
     //    `x-rate-kind: upload` also count against the per-file upload limit.
-    const { data: aiCount } = await admin.rpc("bump_rate_limit", { p_user: user.id, p_bucket: "ai" });
-    if ((aiCount ?? 0) > AI_LIMIT) {
-      return json({ error: `Rate limit exceeded. You can make ${AI_LIMIT} AI requests per hour. Please wait before trying again.` }, 429);
+    //
+    // ★ O113a — A REFUSED CALL IS NOT CHARGED FOR. The previous shape called
+    // `bump_rate_limit` (which increments and returns) and checked the result AFTER, so
+    // every rejection still spent budget: the 2026-08-25 drive hour recorded `ai = 81`
+    // against a ceiling of 60, twenty-one charges for calls that never ran. That made
+    // retrying actively harmful while nothing on screen said so.
+    //
+    // It also charged ACROSS buckets: an upload-tagged call bumped `ai`, passed, then was
+    // refused by `upload` — leaving the `ai` charge behind. So the decision has to be
+    // all-or-nothing across every bucket, which is why both are passed in one call.
+    // `consume_rate_limit` (migration 074) reads, decides, and only then charges, inside
+    // one transaction.
+    const isUpload = (req.headers.get("x-rate-kind") || "").toLowerCase() === "upload";
+    const buckets = isUpload ? ["ai", "upload"] : ["ai"];
+    const limits  = isUpload ? [AI_LIMIT, UPLOAD_LIMIT] : [AI_LIMIT];
+    const { data: gate, error: gateErr } = await admin.rpc("consume_rate_limit", {
+      p_user: user.id, p_buckets: buckets, p_limits: limits,
+    });
+    // FAIL CLOSED. If the limiter cannot answer we do not know the budget, and guessing
+    // in the permissive direction is how a limiter becomes decorative under exactly the
+    // load it exists for.
+    if (gateErr || !gate) {
+      console.error("[ai-proxy] rate limiter unavailable:", gateErr?.message);
+      return json({ error: "Rate limiting is temporarily unavailable. Please try again in a moment." }, 503);
     }
-    if ((req.headers.get("x-rate-kind") || "").toLowerCase() === "upload") {
-      const { data: upCount } = await admin.rpc("bump_rate_limit", { p_user: user.id, p_bucket: "upload" });
-      if ((upCount ?? 0) > UPLOAD_LIMIT) {
-        return json({ error: `Upload limit exceeded. You can upload ${UPLOAD_LIMIT} files per hour. Please wait before trying again.` }, 429);
-      }
+    if (!gate.allowed) {
+      const blocked = gate.blocked_bucket;
+      // Say WHICH budget ran out and WHEN it resets. The window is a fixed clock hour
+      // (`date_trunc('hour', now())`, migration 021), so the wait is 55 minutes at :05
+      // and five at :55 — arbitrary, and previously invisible. Stating it is not a fix
+      // for that (O113c), but a caller that is told the reset time can stop retrying
+      // into a wall, and retries were the thing making it worse.
+      const resetsInMin = 60 - new Date().getUTCMinutes();
+      const msg = blocked === "upload"
+        ? `Upload limit reached — ${UPLOAD_LIMIT} files per hour. This resets in about ${resetsInMin} minute(s).`
+        : `AI request limit reached — ${AI_LIMIT} per hour, shared across everything the app asks the AI to do. This resets in about ${resetsInMin} minute(s).`;
+      return json({ error: msg, blocked_bucket: blocked, remaining: gate.remaining, resets_in_minutes: resetsInMin }, 429);
     }
 
     // 3. Build the Anthropic Messages payload SERVER-SIDE from the profile registry.
@@ -82,9 +113,20 @@ serve(async (req) => {
       },
       body: JSON.stringify(outbound),
     });
+    // Report the remaining budget on SUCCESS, not only on refusal. The limiter computed
+    // these to make its decision, so surfacing them costs nothing — and a caller that can
+    // see "3 left" can pace itself, where one that only learns at zero cannot. This is a
+    // step toward the budget being something a user can reason about (O113a's sibling
+    // finding: the limit is not "20 invoices", it is "20 invoices minus whatever else you
+    // did this hour"), NOT a fix for it — that needs a surface, and none is built here.
+    const rem = (gate?.remaining ?? {}) as Record<string, number>;
     return new Response(await upstream.text(), {
       status: upstream.status,
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: {
+        ...cors, "Content-Type": "application/json",
+        "x-ratelimit-remaining-ai": String(rem.ai ?? ""),
+        ...(isUpload ? { "x-ratelimit-remaining-upload": String(rem.upload ?? "") } : {}),
+      },
     });
   } catch (e) {
     return json({ error: `Proxy error: ${e?.message || String(e)}` }, 500);
