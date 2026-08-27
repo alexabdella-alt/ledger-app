@@ -334,3 +334,61 @@ describe("★★★ ORDER INDEPENDENCE — the same pair, both orders, the same 
     expect(Number(wrong["2000"].toFixed(2))).toBe(-534.8);        // and a payable that will never clear
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★ THE COPY STANDARD, MADE MECHANICAL.
+//
+// The Act 7 payroll refusal cards are the reference: state the arithmetic and what the
+// document says, draw no conclusion about why. A digit-permutation test is what makes
+// the Hill Country pair a CANDIDATE, and the card is forbidden from saying so — a
+// transposition and a genuine second charge are externally identical, which is exactly
+// what is being asked.
+//
+// Comments are stripped before scanning. Three guards in this project have tripped on
+// their own explanatory prose, and the comments here necessarily DISCUSS the words the
+// copy may not use. A guard that fails for a reason it does not mean is a guard nobody
+// will trust.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★ the lifecycle card asserts no cause", () => {
+  const raw = fs.readFileSync(path.join(process.cwd(), "src/components/ClarificationFlow.jsx"), "utf8");
+  const code = raw.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+  // Bounded at the NEXT card's branch, not by a character count — an over-long slice
+  // spills into the old duplicate card and the guard then fails on that one's prose.
+  const card = code.slice(code.indexOf("item.isLifecycle"), code.indexOf("item.isDuplicate"));
+
+  it("never names a cause, and never hedges into one", () => {
+    for (const forbidden of ["typo", "transpos", "fraud", "mistake", "incorrect", "error",
+                             "appears", "probably", "likely", "suspicious", "duplicate"]) {
+      expect(card.toLowerCase(), forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it("★ says what we cannot tell — a claim about US, not about the world", () => {
+    expect(card).toContain("We can't tell");
+  });
+
+  it("★ the defer LEADS, and the destructive answer never does", () => {
+    const opts = card.slice(card.indexOf("options: ["));
+    const order = ["defer", "same", "different"].map((v) => opts.indexOf(`"${v}"`));
+    expect(order[0]).toBeGreaterThan(-1);
+    expect(order[0]).toBeLessThan(order[1]);   // defer before "same"
+    expect(order[1]).toBeLessThan(order[2]);   // and "different" is never first
+  });
+
+  it("★ NO PATH THROUGH THE HANDLER BOOKS ON A DEFER", () => {
+    // The old duplicate card's "Not sure" books at confidence 100 — the one value that
+    // guarantees shouldFlagForReview returns nothing, so it books AND hides. The defer
+    // here must post nothing, because booking nothing is what leaves the intake row
+    // HELD, and HELD is what routes it to the CPA completeness net.
+    const h = code.slice(code.indexOf("const resolveLifecycle"), code.indexOf("const bookDuplicate"));
+    const deferBranch = h.slice(h.lastIndexOf("} else {"));
+    expect(deferBranch).not.toMatch(/bookToDb|setInvoices/);
+    expect(deferBranch).toContain("invoice_deferred");
+  });
+
+  it("★ confirming a match records that it does NOT attest the mapping", () => {
+    const h = code.slice(code.indexOf("const resolveLifecycle"), code.indexOf("const bookDuplicate"));
+    expect(h).toContain("attests_mapping: false");
+    expect(h).toContain("MATCH_EXCEPTION_KIND");
+  });
+});

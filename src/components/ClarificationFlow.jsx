@@ -3,6 +3,8 @@ import { useERP } from "./ERPContext";
 import { fmtDate , fmtSignedMoney, todayLocal } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
 import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
+import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
+import { rightHalf } from "../lib/vendorIdentity";
 
 const money = fmtSignedMoney;
 
@@ -25,6 +27,62 @@ function deriveSession(item) {
       questions: [{
         field: "gaap", type: "buttons", prompt: item.question, explanation: item.explanation,
         options: (item.options || []).map(o => ({ label: o.label, value: o })),
+      }],
+    };
+  }
+
+  // ── O114 — THE LIFECYCLE CARD. Two documents, possibly one purchase.
+  //
+  // ★ COPY STANDARD: the Act 7 payroll refusal cards (2026-08-26). Those state the
+  // arithmetic and what the document says and draw NO conclusion about why — no "may be
+  // fraudulent", no "appears incorrect". Everything below is checkable: two amounts we
+  // hold, one date we hold, one subtraction, and one statement about OUR OWN inability,
+  // which is a claim about us rather than about the world.
+  //
+  // ★★ IT MAY NEVER NAME A CAUSE. A digit-permutation test is what made the Hill Country
+  // pair a candidate, but a transposition and a genuine second charge are externally
+  // identical — which is precisely what is being asked. The card must never say "this
+  // looks like a typo". Candidacy may use the theory; the copy may not.
+  if (item.isLifecycle) {
+    const ex = item.candidateEntry || {};
+    const arr = item.arrival || {};
+    const invAmt = Number(inv.amount), exAmt = Number(ex.amount);
+    const when = ex.date ? fmtDate(ex.date) : null;
+    const raw = rightHalf(ex.description || "") || ex.vendor || null;
+
+    let prompt;
+    if (arr.reason === ASK_REASON.MULTIPLE_CANDIDATES) {
+      prompt = `This invoice from ${inv.vendor} is for ${money(invAmt)}. We recorded more than one payment of that amount. We can't tell which one this invoice belongs to.`;
+    } else if (arr.reason === ASK_REASON.IDENTITY_DIFFERS) {
+      // Asks about the COMPANY, not the purchase — that IS the uncertainty here, and it
+      // makes the answer reusable as a permanent alias (O111) rather than a one-off.
+      prompt = `This invoice is from ${inv.vendor} for ${money(invAmt)}.${when ? ` On ${when} we recorded a payment for the same amount` : " We recorded a payment for the same amount"}${raw ? `, and the bank called it "${raw}"` : ""}. We can't tell from the wording whether that's the same company.`;
+    } else {
+      const gap = Math.abs(exAmt - invAmt);
+      const dir = exAmt > invAmt ? "more" : "less";
+      prompt = `This invoice from ${inv.vendor} is for ${money(invAmt)}.${when ? ` On ${when} we` : " We"} recorded a payment to ${ex.vendor || inv.vendor} of ${money(exAmt)} — ${money(gap)} ${dir} than the invoice. We can't tell from the documents whether these are the same purchase.`;
+    }
+
+    return {
+      kind: "lifecycle",
+      questions: [{
+        field: "lifecycle", type: "buttons", prompt,
+        // ★ THE DEFER LEADS, and it is not a courtesy — it is correct ROUTING.
+        // This card asks the owner to adjudicate an accounting question. They know
+        // whether they ordered flour twice; they do not know what a payable is.
+        //
+        // The two substantive answers are NOT symmetric, and that asymmetry is why
+        // neither may lead: answering "same" wrongly SUPPRESSES a real charge and leaves
+        // nothing on any screen, while answering "different" wrongly creates a payable
+        // that never clears — which at least surfaces in Payables as money owed to
+        // someone already paid. One hides, the other self-reports. Leading with either
+        // would nudge a reflexive click into one of those, so the option that leads is
+        // the one with no wrong outcome.
+        options: [
+          { label: "Not sure — set it aside for my accountant", value: "defer" },
+          { label: "Same purchase — file it with that payment", value: "same" },
+          { label: "Different purchase — record it separately", value: "different" },
+        ],
       }],
     };
   }
@@ -205,6 +263,7 @@ function ClarificationCard({ item }) {
   const onPill = (field, value) => {
     if (done) return; // already booking
     if (kind === "gaap") { answerAndAdvance(field, value); return; }       // → summary
+    if (kind === "lifecycle") { setAnswer(field, value); resolveLifecycle(value); return; }
     if (kind === "duplicate") { setAnswer(field, value); bookDuplicate(value); return; }
     // Direction choice: "we sent it" books as revenue; "we received it" re-routes to the
     // plain expense question (reuses the O75 type-correction machinery).
@@ -233,6 +292,43 @@ function ClarificationCard({ item }) {
   const rejectPersonal = () => {
     logAudit("invoice_rejected", `Skipped (personal): ${inv.vendor} · ${money(inv.amount)} — user marked not a business expense`, inv, null);
     finishWithSuccess("Skipped — marked personal", "muted");
+  };
+
+  // ── O114 — resolving the lifecycle card.
+  //
+  // ★★ NOTE WHAT THE OLD DUPLICATE CARD DOES BY COMPARISON (bookDuplicate, below):
+  // its "Not sure" branch BOOKS the invoice at `confidence: 100` and stamps
+  // `approval_status: "flagged"`. But `shouldFlagForReview` keys only on confidence and
+  // amount, and 100 is precisely the value that guarantees NO flag — while
+  // `duplicate_flag` is read by an unrelated AP screener and by nothing in the review
+  // queue. So that option books the expense AND makes it invisible to the queue it
+  // claims to route to. This handler books nothing on any path.
+  const resolveLifecycle = (value) => {
+    const ex = item.candidateEntry || {};
+    if (value === "same") {
+      // One purchase, already recorded. Post nothing; file the document against it.
+      logAudit("invoice_attached",
+        `${inv.vendor} · ${money(inv.amount)} — confirmed as the same purchase as the payment on ${ex.date || "an earlier date"}; nothing booked twice`,
+        null, { attached_to: String(ex.db_entry_id ?? ex.id ?? ""), exception_kind: MATCH_EXCEPTION_KIND,
+                // ★ attests DOCUMENT IDENTITY, never the account (CLAUDE.md §9).
+                attests_mapping: false });
+      finishWithSuccess("Filed with the payment we already recorded", "muted");
+    } else if (value === "different") {
+      const finalInv = { ...inv, confidence: 100, status: "booked" };
+      logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — a separate purchase from the payment on ${ex.date || "an earlier date"})`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+      setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
+      if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+      finishWithSuccess(describeBooking(finalInv));
+    } else {
+      // ★ DEFER — BOOKS NOTHING, and that is exactly what routes it. Nothing booked
+      // leaves the document's intake row at `held_for_review` (App.jsx, the invoice
+      // terminal), and HELD rows feed the completeness net into the CPA review queue.
+      // A defer that booked would be indistinguishable from an answer.
+      logAudit("invoice_deferred",
+        `${inv.vendor} · ${money(inv.amount)} — set aside for the accountant: may be the same purchase as the payment on ${ex.date || "an earlier date"}. Nothing booked.`,
+        null, { deferred_against: String(ex.db_entry_id ?? ex.id ?? ""), exception_kind: MATCH_EXCEPTION_KIND });
+      finishWithSuccess("Set aside for your accountant — nothing booked", "muted");
+    }
   };
 
   const bookDuplicate = (value) => {
@@ -374,6 +470,11 @@ function ClarificationCard({ item }) {
   };
   const summaryText = () => {
     if (kind === "gaap") return `Got it — I'll handle this as: ${answers.gaap?.label || "your selection"}.`;
+    if (kind === "lifecycle") return answers.lifecycle === "same"
+      ? "Got it — I'll file this with the payment we already have. Nothing new will be booked."
+      : answers.lifecycle === "different"
+        ? "Got it — I'll record this as a separate purchase."
+        : "Got it — I'll set this aside for your accountant. Nothing will be booked.";
     if (kind === "duplicate") return answers.duplicate === "skip"
       ? "Got it — I'll skip this duplicate. Nothing will be booked."
       : "Got it — I'll book this as a separate charge.";

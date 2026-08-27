@@ -3,7 +3,7 @@ import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, AP_AUTO_APPROVE_THRESHOLD, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
-import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox } from "./lib/format";
+import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
@@ -11,6 +11,8 @@ import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClient
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
 import { checkedRowUpdate, checkedIdsUpdate, getWriteFailures, resetWriteFailures, writeFailureSentence } from "./lib/checkedWrite";
+import { planInvoiceArrival, ARRIVAL, ASK_REASON } from "./lib/invoicePayment";
+import { DIRECTORY_SEED } from "./lib/vendorDirectory";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
 import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
@@ -3969,6 +3971,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // Split invoices by confidence — high confidence books immediately, low confidence asks user
           const highConfidence = [];
           const needsClarification = [];
+          const attachPlans = [];   // O114 — decided in the loop, WRITTEN after it
+          const attached = [];      // …the ones whose stamp actually landed
           let mealsBooked = 0;
 
           extractedList.forEach((extracted, idx) => {
@@ -4056,7 +4060,35 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               : null;
             const dupExisting = dupByNumber || findDuplicate(invoice, invoices);
 
-            if (dupExisting) {
+            // ── O114 — IS THIS INVOICE A SECOND DOCUMENT FOR A PAYMENT ALREADY BOOKED?
+            // Asked BEFORE the duplicate check, because "you already paid this" and
+            // "you uploaded this twice" are different questions and only one of them has
+            // a payment to attach to. An invoice books Dr Expense / Cr AP while a bank
+            // line books Dr Expense / Cr Cash, so without this the same charge lands
+            // TWICE whenever the statement arrives first — which is the normal order.
+            const arrival = planInvoiceArrival(invoice, invoices, {
+              cashCodes: cashGlCodes, directory: DIRECTORY_SEED,
+            });
+
+            if (arrival.action === ARRIVAL.ATTACH) {
+              // The expense is already recorded, at the right amount on the right date.
+              // File the invoice against it and post NOTHING — creating a payable here
+              // and clearing it in the same breath is a two-step no-op that
+              // double-counts if either step is ever missed.
+              //
+              // This loop is a SYNCHRONOUS forEach, where `return` means "continue".
+              // Rather than convert it (which would silently turn every such `return`
+              // into an early exit from the whole handler), the decision is recorded
+              // here and the awaited write happens once the loop is done.
+              attachPlans.push({ invoice, target: arrival.candidate.entry, arrival });
+            } else if (arrival.action === ARRIVAL.ASK) {
+              needsClarification.push({
+                id: Date.now() + Math.random(), invoice, queueItemId: item.id,
+                isLifecycle: true, arrival,
+                candidateEntry: arrival.candidate ? arrival.candidate.entry : null,
+                options: [], suggestedCode: invoice.gl_code, suggestedName: invoice.gl_name,
+              });
+            } else if (dupExisting) {
               needsClarification.push({
                 id: Date.now() + Math.random(),
                 invoice,
@@ -4148,6 +4180,40 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             }
           });
 
+          // ── O114 — perform the attaches. Nothing is POSTED here: the only write is a
+          // stamp on the payment that already exists, so the expense stays booked once.
+          for (const plan of attachPlans) {
+            const targetId = plan.target.db_entry_id ?? plan.target.id;
+            const stamp = await checkedRowUpdate({
+              supabase, table: "journal_entries", id: targetId, companyId: currentCompany.id,
+              values: { import_metadata: { ...(plan.target.import_metadata || {}),
+                invoice_attached: true,
+                attached_invoice_id: plan.invoice.invoice_number || String(plan.invoice.id),
+                attached_invoice_date: plan.invoice.date || null } },
+              label: "o114_attach_invoice",
+            });
+            if (stamp.ok) {
+              logAudit("invoice_attached",
+                `${plan.invoice.vendor} · ${fmtMoney(plan.invoice.amount)} — filed with the payment already recorded on ${fmtDate(plan.target.date)}; nothing booked twice`,
+                null, { attached_to: String(targetId), invoice_number: plan.invoice.invoice_number || null });
+              attached.push(plan);
+            } else {
+              // ★ THE STAMP IS THE ONLY THING STOPPING A SECOND INVOICE FROM CLAIMING
+              // THIS SAME PAYMENT (`hasAttachedInvoice` reads exactly this field), so a
+              // failed stamp must NEVER be reported as an attach — that is the C189/C191
+              // silent-write class, where a zero-row update reads as success. Ask
+              // instead: the card books nothing either way, and a human deciding beats a
+              // half-attach nobody can see.
+              needsClarification.push({
+                id: Date.now() + Math.random(), invoice: plan.invoice, queueItemId: item.id,
+                isLifecycle: true,
+                arrival: { ...plan.arrival, action: ARRIVAL.ASK, reason: ASK_REASON.MULTIPLE_CANDIDATES },
+                candidateEntry: plan.target, options: [],
+                suggestedCode: plan.invoice.gl_code, suggestedName: plan.invoice.gl_name,
+              });
+            }
+          }
+
           // Book high-confidence invoices immediately — log each one individually.
           // Keep each invoice's booking promise so we can link the source document to
           // the durable db_entry_id once both the entry AND the document exist.
@@ -4208,8 +4274,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"invoice", result: invoiceResult });
           // O60 terminal: booked → recorded (+ JE links); nothing booked but in the
           // clarification queue → held_for_review (visible, not lost).
-          if (highConfidence.length > 0) markIntake(item.intake_id, INTAKE_STATUS.RECORDED, { journalEntryIds: highConfidence.map(i => i.db_entry_id).filter(Boolean), detail: `${highConfidence.length} invoice(s) booked` });
-          else markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: needsClarification.length ? "awaiting clarification in review queue" : "no transaction extracted — needs review" });
+          // O114 — an ATTACH is recorded work even though it posts no entry: the document
+          // is filed against a payment already in the books, so it must not read as
+          // "nothing extracted". A card OUTRANKS it — anything unanswered keeps the row
+          // HELD, and HELD is exactly what routes it to the CPA completeness net.
+          if (needsClarification.length > 0) markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "awaiting clarification in review queue" });
+          else if (highConfidence.length > 0 || attached.length > 0) markIntake(item.intake_id, INTAKE_STATUS.RECORDED, { journalEntryIds: highConfidence.map(i => i.db_entry_id).filter(Boolean), detail: `${highConfidence.length} invoice(s) booked${attached.length ? `, ${attached.length} filed with a payment already recorded` : ""}` });
+          else markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "no transaction extracted — needs review" });
 
         } else if (docType === "bank_statement") {
           // BACKSTOP ONLY — bank/card statements are now ROUTED to the Bank Import

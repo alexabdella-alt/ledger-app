@@ -301,8 +301,69 @@ route that defers rather than forcing a guess:
 - "Different purchase — record it separately"
 - "Not sure — set it aside for my accountant"
 
-**"Not sure" is not a courtesy, it is a correctness feature.** A forced binary on an unanswerable
-question manufactures a wrong answer at a known rate, and the answer is a booking.
+### 5.1 THE ORDERING, AND WHY (decided 2026-08-26 — this SUPERSEDES the rule stated above)
+
+**THE DEFER LEADS.** Two reasons, and the second is the stronger one.
+
+**(1) THE TWO SUBSTANTIVE ANSWERS ARE NOT SYMMETRIC, AND THE ASYMMETRY IS THE POINT.**
+
+| answered wrongly | what happens | discoverable? |
+|---|---|---|
+| **"Same purchase"** | a real charge is suppressed | **NO — nothing on any screen.** Discovery requires noticing an expense that isn't there |
+| **"Different purchase"** | a payable is created that never clears | **YES** — it surfaces in Payables as money owed to someone already paid |
+
+**One hides, the other self-reports.** Every other decision in this project takes the recoverable
+side — soft delete over hard delete, park over book, refuse over guess, `origin='runtime'` as the
+default because an INSERT that forgets to say where it came from must not label itself legitimate.
+This is the same choice, and it is why **neither substantive answer may lead**: leading with either
+nudges a reflexive click into one of those failures, and one of them is the silent one.
+
+*(Note this supersedes §5's original "never lead with the destructive option". That rule was derived
+from the CURRENT card, where the system is confident and the prominent option is wrong. It does not
+transfer to a card that only appears under genuine uncertainty, where BOTH substantive options carry
+a failure mode.)*
+
+**(2) THE STRONGER REASON — THIS CARD ASKS THE OWNER TO ADJUDICATE AN ACCOUNTING QUESTION.**
+**They know whether they ordered flour twice. They do not know what a payable is.** So the defer is
+not a courtesy and not a procrastinate — **it is correct ROUTING**, to the person whose job this is.
+That is the Cardinal Principle applied to the OPTIONS rather than to the wording: a surface that
+assumes zero accounting knowledge must not make the answer depend on having some.
+
+**ROUTING CONFIRMED IN CODE, not assumed.** A defer **books nothing**, and booking nothing is
+precisely what routes it: the invoice terminal marks the document's intake row `held_for_review`
+("awaiting clarification in review queue"), `fetchDroppedIntake` selects exactly that status, and it
+feeds `buildReviewQueue`'s `completeness` input on the CPA screen. **The defer works because it
+abstains, not despite it.**
+
+### 5.2 ★★ AND CONFIRMING IT EXPOSED A THIRD DEFECT IN THE CURRENT CARD
+
+The operator's instruction was to confirm the defer routes rather than leaving the card unanswered
+forever — *"the difference between a defer option and a procrastinate option."* Checking it found
+that today's equivalent is **neither**:
+
+**`ClarificationFlow.jsx`'s "Not sure — let me check" BOOKS THE INVOICE** at `confidence: 100`,
+stamping `approval_status: "flagged"` and `duplicate_flag: true`. But:
+
+- `shouldFlagForReview` (`confidenceFlag.js:34`) keys **only** on confidence and amount — and **100
+  is exactly the value that guarantees it returns `none`**;
+- `duplicate_flag` is read only by an unrelated AP screener (`App.jsx:5969`);
+- `approval_status: "flagged"` is read only by a detail panel someone must already have opened.
+
+**So the option books the expense AND sets the one field value that makes it invisible to the queue
+it appears to route to.** A field written and never read — the C195(7) shape, where a block was
+unreachable for a whole release because its input was always empty.
+
+**Which means all THREE options on the current card are wrong in the lifecycle case:** "New charge"
+double-counts, "Not sure" double-counts *and* hides, and only "Same invoice — skip it", the least
+prominent, is correct. The finding as filed said the natural-looking answer corrupts the books. It is
+worse than that — **the cautious-looking answer corrupts them too, and silently.**
+
+### 5.3 WHEN THE SYSTEM IS NOT UNCERTAIN, IT REPORTS RATHER THAN ASKS
+
+Card 1 is **not a card**. That is a principle, not a UI choice: a question implies we do not know,
+and asking one we can answer teaches the owner that the buttons are noise. An owner *told* what
+happened can correct it; an owner *asked* something they have no way to answer learns to click the
+first option — which is the behaviour that makes every one of the failures above more likely.
 
 **And the plain no-candidate case is not a question at all.** When exactly one candidate matches to the
 cent, the owner gets a statement: *"Filed this invoice with the payment we already recorded on August
