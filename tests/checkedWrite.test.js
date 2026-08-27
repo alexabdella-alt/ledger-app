@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   assessWriteResult, checkedRowUpdate, checkedIdsUpdate,
   getWriteFailures, resetWriteFailures, writeFailureSentence,
@@ -137,5 +139,74 @@ describe("writeFailureSentence — the owner-facing outcome addendum", () => {
     const full = outcome + writeFailureSentence(2);
     expect(full).toContain("2 updates didn't save");
     expect(full).not.toMatch(/debit|credit|journal|GL\b|bank_statement_lines|zero_rows/i);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ THE PAYLOAD KEY IS `patch`, AND A CALLER THAT NAMES IT ANYTHING ELSE FAILS SILENTLY.
+//
+// `checkedRowUpdate({ ..., patch })` destructures ONE name. A caller passing `values:`
+// (or `data:`, or `set:`) hands `patch === undefined` to `.update()`, the write does
+// nothing, `recordFailure` fires, and the CALLER's failure branch runs — which is a branch
+// nobody exercises in the happy path and which, in the O114 case, reported a completely
+// different cause to the user.
+//
+// COST ALREADY PAID (2026-08-27): the O114 attach passed `values:` where the helper takes
+// `patch:`. Every attach on the re-drive failed, all three cards blamed a phantom "more
+// than one payment of that amount", and the drive could not be diagnosed from its own
+// output — author and operator both spent a session hunting a candidate-counting bug that
+// did not exist. ONE misnamed key, and 13 of 14 call sites had it right.
+//
+// This is the cheap, mechanical check that would have caught it in the commit that
+// introduced it, and it lives HERE — with the helper — because that is where someone
+// doubting the calling convention will look.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ every checked-write call site names its payload `patch`", () => {
+  const SRC = "src";
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const full = path.join(dir, d.name);
+    return d.isDirectory() ? walk(full) : (/\.(js|jsx)$/.test(d.name) ? [full] : []);
+  });
+
+  it("★ no call passes `values:` / `data:` / `set:` instead of `patch:`", () => {
+    const offenders = [];
+    for (const file of walk(path.join(process.cwd(), SRC))) {
+      const src = fs.readFileSync(file, "utf8");
+      // Scan the argument object of each checked-write call: from the call to its
+      // matching `});`. Comments are stripped first — three guards in this project have
+      // tripped on their own prose.
+      const code = src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+      // `function checkedRowUpdate({...})` is the DEFINITION, not a call — exclude it, or
+      // the guard flags the very contract it is protecting.
+      const re = /(?<!function\s)checked(?:RowUpdate|IdsUpdate)\(\{/g;
+      let m;
+      while ((m = re.exec(code))) {
+        const chunk = code.slice(m.index, m.index + 900);
+        const end = chunk.indexOf("});");
+        const args = end > -1 ? chunk.slice(0, end) : chunk;
+        // `patch` may be passed as ES6 SHORTHAND (`patch,`) as well as `patch:` — two live
+        // call sites do, and a guard that rejected valid JS would be worse than none.
+        if (/\b(values|data|set)\s*:/.test(args) || !/\bpatch\s*[,:}]/.test(args)) {
+          offenders.push(`${path.relative(process.cwd(), file)} :: ${args.slice(0, 120).replace(/\s+/g, " ")}`);
+        }
+      }
+    }
+    expect(offenders, `checked-write call sites not naming their payload \`patch\`:\n${offenders.join("\n")}`)
+      .toEqual([]);
+  });
+
+  it("the scan is not vacuous — it finds the real call sites", () => {
+    let n = 0;
+    for (const file of walk(path.join(process.cwd(), SRC))) {
+      n += (fs.readFileSync(file, "utf8").match(/checked(?:RowUpdate|IdsUpdate)\(\{/g) || []).length;
+    }
+    expect(n).toBeGreaterThanOrEqual(10);   // 14 at the time of writing
+  });
+
+  it("★ and the helper still destructures exactly `patch` — the guard tracks the contract", () => {
+    // If the helper is ever renamed to accept `values`, this guard must move with it
+    // rather than silently pass while every caller is wrong in the other direction.
+    const helper = fs.readFileSync(path.join(process.cwd(), "src/lib/checkedWrite.js"), "utf8");
+    expect(helper).toMatch(/export async function checkedRowUpdate\(\{[^}]*\bpatch\b/);
   });
 });

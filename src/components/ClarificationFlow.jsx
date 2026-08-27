@@ -51,7 +51,12 @@ function deriveSession(item) {
     const raw = rightHalf(ex.description || "") || ex.vendor || null;
 
     let prompt;
-    if (arr.reason === ASK_REASON.MULTIPLE_CANDIDATES) {
+    if (arr.reason === ASK_REASON.RECORD_FAILED) {
+      // Says what WE failed to do. It does not describe the books, because the books are
+      // not the problem — we are. Reporting this as "more than one payment" was a claim
+      // about the ledger that was false, and it hid a real bug for a whole drive.
+      prompt = `This invoice from ${inv.vendor} for ${money(invAmt)} matches a payment we already recorded${when ? ` on ${when}` : ""}. We couldn't save the link between them, so we haven't recorded anything.`;
+    } else if (arr.reason === ASK_REASON.MULTIPLE_CANDIDATES) {
       prompt = `This invoice from ${inv.vendor} is for ${money(invAmt)}. We recorded more than one payment of that amount. We can't tell which one this invoice belongs to.`;
     } else if (arr.reason === ASK_REASON.IDENTITY_DIFFERS) {
       // Asks about the COMPANY, not the purchase — that IS the uncertainty here, and it

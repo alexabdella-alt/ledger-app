@@ -4186,7 +4186,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             const targetId = plan.target.db_entry_id ?? plan.target.id;
             const stamp = await checkedRowUpdate({
               supabase, table: "journal_entries", id: targetId, companyId: currentCompany.id,
-              values: { import_metadata: { ...(plan.target.import_metadata || {}),
+              patch: { import_metadata: { ...(plan.target.import_metadata || {}),
                 invoice_attached: true,
                 attached_invoice_id: plan.invoice.invoice_number || String(plan.invoice.id),
                 attached_invoice_date: plan.invoice.date || null } },
@@ -4204,10 +4204,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               // silent-write class, where a zero-row update reads as success. Ask
               // instead: the card books nothing either way, and a human deciding beats a
               // half-attach nobody can see.
+              //
+              // ★★ AND THE REASON MUST BE THE TRUE ONE. This branch originally reported
+              // `MULTIPLE_CANDIDATES`, which renders as "we recorded more than one payment
+              // of that amount" — a statement about the LEDGER that was false. On the
+              // 2026-08-27 re-drive every attach failed here (the call passed `values:`
+              // where the helper takes `patch:`), all three cards blamed a phantom second
+              // payment, and the drive was undiagnosable from its own output: it sent both
+              // reader and author hunting a candidate-counting bug that did not exist.
+              // A card may say we could not record something; it may not invent a cause.
+              logAudit("invoice_attach_failed",
+                `${plan.invoice.vendor} · ${fmtMoney(plan.invoice.amount)} — matched the payment recorded on ${fmtDate(plan.target.date)}, but we could not record the link. Nothing booked; asked instead.`,
+                null, { target_entry: String(targetId), reason: stamp.reason || "unknown" });
               needsClarification.push({
                 id: Date.now() + Math.random(), invoice: plan.invoice, queueItemId: item.id,
                 isLifecycle: true,
-                arrival: { ...plan.arrival, action: ARRIVAL.ASK, reason: ASK_REASON.MULTIPLE_CANDIDATES },
+                arrival: { ...plan.arrival, action: ARRIVAL.ASK, reason: ASK_REASON.RECORD_FAILED },
                 candidateEntry: plan.target, options: [],
                 suggestedCode: plan.invoice.gl_code, suggestedName: plan.invoice.gl_name,
               });

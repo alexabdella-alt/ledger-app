@@ -269,6 +269,11 @@ export const ASK_REASON = {
   AMOUNT_DIFFERS: "amount_differs",
   IDENTITY_DIFFERS: "identity_differs",
   MULTIPLE_CANDIDATES: "multiple_candidates",
+  // ★ NOT a judgement about the ledger — a report that WE failed. The match was certain
+  // and the write that records it did not land. It earns its own reason because reusing
+  // MULTIPLE_CANDIDATES made the card assert a false fact about the books, and a drive
+  // whose output misstates its own failure cannot be diagnosed from that output.
+  RECORD_FAILED: "record_failed",
 };
 
 // ★ ATTACH REQUIRES CERTAINTY ON BOTH AXES AND A SINGLE CANDIDATE.
