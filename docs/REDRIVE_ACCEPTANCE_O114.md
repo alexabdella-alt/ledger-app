@@ -51,6 +51,37 @@ neither, which is how §6's caveat gets invoked instead of a result.
 
 ---
 
+## 0.2 STATE AT DRIVE TIME — verified 2026-08-27, against `8190d29`
+
+| fact | value | meaning |
+|---|---|---|
+| bank lines, August, live | **17** | the payment side is intact; **do NOT re-load the statement** |
+| entries carrying an attach stamp | **0** | the failed 2026-08-27 attempt left **no residue** — nothing to clean |
+| `universal_upload` invoices, August, live | **5** | four are non-specimens and stay; **Hill Country must go** |
+| open anomalies | **1** — COGS `category_spike` | **pre-existing, category 3, NOT a specimen.** Do not count it under §1 or §2 |
+| AI budget this hour | **0 / 60 · 0 / 20** | clean |
+
+**THE COGS ANOMALY WILL PROBABLY RESOLVE ITSELF WHEN HILL COUNTRY IS DELETED**, because
+that removes 468.50 of double-counted COGS. **That is the cleanup working, not the drive
+fixing anything** — do not record it as a result.
+
+## 0.3 WHAT IS ACTUALLY UNDER TEST THIS RUN
+
+The previous attempt did not fail §1 — **it never executed the write that §1 measures.**
+`checkedRowUpdate` takes `patch` and the attach passed `values`, so every attach failed and
+the fallback card blamed a phantom second payment. Changed since:
+
+1. `patch` — **the root cause**
+2. `ASK_REASON.RECORD_FAILED` + honest copy — a failed write can no longer invent a ledger reason
+3. attach failure now writes an `invoice_attach_failed` audit row — **it can no longer be invisible**
+4. entry-level dedupe on `db_entry_id` (real, latent, unrelated to §1)
+5. a repo-wide guard that every checked-write call site names its payload `patch`
+
+**§5's `attached >= 3` is now the load-bearing criterion** — it is the one that would have
+caught this on the first pass, and the reason absence-checks alone were not enough.
+
+---
+
 ## 1. THE FOUR CARDS THAT MUST BE GONE — AND WHAT REPLACES THEM
 
 **The distinction matters and must not be blurred:** three of these should produce **no card at
