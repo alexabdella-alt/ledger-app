@@ -25,6 +25,30 @@ non-result, not as a pass.**
 `O113c`'s fixed window will truncate it and the truncation will be indistinguishable from a feature
 failure. Confirm `rate_limit` is clear for the hour before starting.
 
+### 0.1 ★ THIS RE-DRIVE IS NINE DOCUMENTS, NOT THIRTY-SIX — AND THAT IS NOT A CONCESSION
+
+**Every criterion in this document is satisfied by the SPECIMEN SET**, and the specimen set is small:
+
+| document | proves |
+|---|---|
+| the August bank statement | §0 — the payments must exist first |
+| Roma · Toast · Alamo Fire invoices | §1 — silent attach, and §5's positive count |
+| Franklin Ave invoice | §1 — the identity card, and that exact-key was not bypassed |
+| Hill Country invoice | §3 — the amounts-differ card |
+| Bluebonnet ×4 | §2 — the anti-vacuity check |
+
+**Nine invoices plus one statement. At 3 AI calls each that is ~30 AI calls and 10 upload bumps —
+comfortably inside BOTH walls (60 and 20), with room to spare.**
+
+**★ SO THE O114 RE-DRIVE IS NOT GATED ON THE THROUGHPUT WORK AT ALL.** `O113a` should still land
+first (a truncated run muddies any result, and the operator sequenced it that way), but **the
+36-invoice volume question belongs to `O113b` and `O118`, and answering it is not a precondition for
+verifying O114.** Loading 36 documents here would guarantee hitting the 20-file wall and produce a
+truncated drive whose failures are throttle artefacts — testing two things at once and learning
+neither, which is how §6's caveat gets invoked instead of a result.
+
+**Run the volume drive SEPARATELY, against `O118`'s criteria, once `O118` has an answer.**
+
 ---
 
 ## 1. THE FOUR CARDS THAT MUST BE GONE — AND WHAT REPLACES THEM
