@@ -145,6 +145,27 @@ drive asserts a POSITIVE COUNT, not an absence.**
 
 ---
 
+## 5.1 ★ STANDING DELIVERABLE FROM THIS DRIVE ON — THE CARD RATE, SPLIT BY CATEGORY (`O122`)
+
+Every drive from 2026-08-27 records the card count **split three ways**, not as a total:
+
+| category | this drive expects | rule |
+|---|---|---|
+| **1 · BUG** — no controller would ever ask it | **0** | a fix, not a design question |
+| **2 · ONE-TIME TEACHING** — alias, first-graduation | **Franklin Ave ×1** | must be askable ONCE and then never re-asked |
+| **3 · GENUINE JUDGMENT** — a real bookkeeper stops | **Hill Country ×1** | forever, and rare |
+
+**Bluebonnet's four are category 1** under the rule *a card the user sees every month is a bug
+wearing a question mark* — they recur weekly on the same question (`O117`). **§2 still requires
+them to APPEAR**, because this work does not fix them; they are counted as category 1 and stay
+open. Requiring their presence while classifying them as defects is not a contradiction — it is
+the difference between *this change didn't touch it* and *this change fixed it*.
+
+**A total is not acceptable.** The question is whether category 2 shrinks month over month, and a
+falling total with a flat category 2 means the teaching is not sticking — invisible in aggregate.
+
+---
+
 ## 6. WHAT THIS DRIVE DOES *NOT* PROVE — stated now, so it is not claimed later
 
 - **`O117` is not fixed** and Bluebonnet will still be noisy (§2 requires it).
