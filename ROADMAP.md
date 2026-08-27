@@ -17,7 +17,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ## OPEN LEDGER — every tracked, unshipped item
 
-**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-26 (O113 split into three defects; call-count proposals recorded, nothing built).**
+**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-26 (re-drive acceptance criteria fixed in advance; name-the-reader rule recorded).**
 
 ### Before the first paying client — 8 open
 
@@ -97,14 +97,15 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **O76 · Screens that don't refresh after a change** — fix as a class, not screen by screen.
 - [ ] **O89 · The main app file is 7,000 lines.**
 
-### Sequenced next — 6 open
+### Sequenced next — 7 open
 
 *The immediate next piece of work, written down so the order is not re-litigated.*
 
 - [ ] **1 · O114 — the invoice/payment lifecycle. FIRST.** *Operator's reasoning, recorded verbatim because it is the ranking rule and not just this ranking:* **"Rate limits are visible and annoying; a double-counted P&L is invisible and wrong."** A correctness bug where the natural-looking answer is the wrong one outranks a capacity bug you can see happening. **Subsumes P2** (the ±$18 drift), which needs the same missing machinery to have anything to fail against. **DESIGN SESSION, NOT A BUG FIX — spec first.** `docs/INVOICE_PAYMENT_SPEC_O114.md` **READ AND APPROVED 2026-08-26. CORE BUILT (`635eb32`) AND WIRED — the decision runs in `handleBookInvoice`, the card is live, and the defer routes to the CPA queue by booking nothing.** Remaining: `O111`'s alias closes the Franklin Ave last mile. Same species as O88.
 - [ ] **1b · O117 — the detector's OTHER failure mode.** Split out of `O114` on 2026-08-26 so shipping O114 cannot be read as fixing the detector. The weekly-vendor false positives are untouched by lifecycle matching. **P1**, straight after O114.
 - [ ] **OWED, not scheduled — the two rails now use different name rules.** The bank rail matches vendor names by two-way substring containment (`autoMatchBankLines`); the invoice rail requires exact entity-key equality (`invoicePayment.js`). **Unifying them is its own decision and the direction is already set: TIGHTEN TOWARD EXACT, never loosen toward substring** — the bank rail's substring rule may itself be too loose (operator, 2026-08-26). Not done as a rider on a bug fix: that path has been live and correct for eight drives and changing it needs its own evidence.
-- [ ] **2 · O113 — the throttle. THE DIAGNOSIS IS CLOSED; IT IS THREE DEFECTS (`O113a`/`b`/`c`).** `O113a` first — it is a correctness bug in the limiter. **THERE IS NO FOURTH CALL:** Live counters for the drive hour read `ai` **81/60** and `upload` **18/20** — the AI bucket blew, the upload bucket never tripped. Three calls per file, provably; the deficit was a **shared bucket** (≥6 of the 60 were not invoice work), a **counter that charges for refusals** (81 = 60 + 21 rejected, and 21 invoices failed), and a **fixed clock-hour window**. **Part (b) is the open question:** are 3 calls per invoice necessary, redundant, or cacheable? **No change to `AI_LIMIT` proposed.**
+- [ ] **2 · O113 — the throttle, AND IT NOW GATES THE RE-DRIVE.** `O113a` (rejected calls stop charging) **plus** the per-invoice call-count question are the work that must land **before** the O114 re-drive — a 36-invoice run cannot clear while every failure deepens the hole. Acceptance criteria for the re-drive are written in advance: `docs/REDRIVE_ACCEPTANCE_O114.md`. **THERE IS NO FOURTH CALL:** Live counters for the drive hour read `ai` **81/60** and `upload` **18/20** — the AI bucket blew, the upload bucket never tripped. Three calls per file, provably; the deficit was a **shared bucket** (≥6 of the 60 were not invoice work), a **counter that charges for refusals** (81 = 60 + 21 rejected, and 21 invoices failed), and a **fixed clock-hour window**. **Part (b) is the open question:** are 3 calls per invoice necessary, redundant, or cacheable? **No change to `AI_LIMIT` proposed.**
+- [ ] **2b · RE-DRIVE O114 against `docs/REDRIVE_ACCEPTANCE_O114.md`** — criteria fixed 2026-08-26, before the build, so the result cannot be rationalised either way. **Load the statement BEFORE the invoices or the feature never executes and a clean result proves nothing.** Roma/Toast/Alamo Fire → no card · Franklin Ave → the identity card, and auto-attaching is a FAILURE · Hill Country → the amounts-differ card · **Bluebonnet's four must REMAIN** (if they vanish, something over-matched) · nothing books through the defer.
 - [ ] **3 · O115 and the `7100`/Alamo Ice instance.** The summary copy that contradicts the booked account, and the Miscellaneous fallback on a recognisable vendor (TIER 1 #7's own hard-fail test, first live instance).
 - [ ] **4 · O116 — payroll routes from Home.** Product, not bug; after the P0s.
 
