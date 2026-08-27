@@ -232,7 +232,29 @@ export function settlementCandidates(invoice = {}, entries = [], ctx = {}) {
 
     candidates.push({ entry: e, entityKey: key, identity: idRel, amount: amt, gapDays: gap });
   }
-  return { candidates, excludedBy, invoiceEntityKey: invKey };
+
+  // ★★ ONE ENTRY IS ONE PAYMENT, HOWEVER MANY ROWS IT FLATTENS TO.
+  // `flattenJournalEntries` emits ONE row for a <=2-line entry (`id: e.id`) but expands a
+  // MULTI-LINE entry into one row PER LINE (`id: `${e.id}_${li}``, all sharing
+  // `db_entry_id`). Without this dedupe a multi-line settlement — a payroll run, a taxed
+  // AR invoice, a lease commencement — would present as several candidates, and
+  // `planInvoiceArrival` would see "more than one payment of that amount" and refuse to
+  // choose. **The refusal would be safe and completely wrong**, and it would look like the
+  // ambiguity the card exists for rather than like a bug.
+  //
+  // WHY IT WAS INVISIBLE: every fixture pays through a 2-line bank entry, so every input
+  // the suite could construct lacked the property that breaks this. Same shape as a guard
+  // whose input is always empty (C195(7)) — the code was never wrong on any case anyone
+  // could write down. Pinned now by a test that builds the multi-line shape explicitly.
+  const byEntry = new Map();
+  for (const c of candidates) {
+    const key = String(c.entry.db_entry_id ?? c.entry.id);
+    // Keep the CLOSEST amount match, so a multi-line entry is represented by its most
+    // relevant leg rather than by whichever line happened to come first.
+    const prev = byEntry.get(key);
+    if (!prev || (c.amount.diff ?? Infinity) < (prev.amount.diff ?? Infinity)) byEntry.set(key, c);
+  }
+  return { candidates: [...byEntry.values()], excludedBy, invoiceEntityKey: invKey };
 }
 
 // ── THE DECISION ─────────────────────────────────────────────────────────────

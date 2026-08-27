@@ -392,3 +392,55 @@ describe("★ the lifecycle card asserts no cause", () => {
     expect(h).toContain("MATCH_EXCEPTION_KIND");
   });
 });
+
+describe("★★ one entry is one payment, however many rows it flattens to", () => {
+  // `flattenJournalEntries` emits ONE row for a <=2-line entry but expands a MULTI-LINE
+  // entry into one row PER LINE, all sharing `db_entry_id`. Every fixture in this file
+  // pays through a 2-line bank entry, so no input the suite could previously construct had
+  // the property that breaks candidate counting — the code was never wrong on any case
+  // anyone could write down. That is the C195(7) shape: not untested, UNTESTABLE by the
+  // fixtures available.
+  const legs = (over = {}) => [
+    { ...payment("Roma Cheese & Dairy Co", "ACH DEBIT - ROMA CHEESE & DAIRY CO", 534.8, "2026-08-04"),
+      id: "je-9_0", db_entry_id: "je-9", ...over },
+    { ...payment("Roma Cheese & Dairy Co", "ACH DEBIT - ROMA CHEESE & DAIRY CO", 534.8, "2026-08-04"),
+      id: "je-9_1", db_entry_id: "je-9", ...over },
+    { ...payment("Roma Cheese & Dairy Co", "ACH DEBIT - ROMA CHEESE & DAIRY CO", 534.8, "2026-08-04"),
+      id: "je-9_2", db_entry_id: "je-9", ...over },
+  ];
+
+  it("★ a THREE-ROW settlement yields exactly ONE candidate", () => {
+    const { candidates } = settlementCandidates(
+      invoice("Roma Cheese & Dairy Co.", 534.8, "2026-08-04"), legs(), ctx);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].entry.db_entry_id).toBe("je-9");
+  });
+
+  it("★★ and it ATTACHES — it does not refuse as 'more than one payment'", () => {
+    // The failure this guards is a refusal that is SAFE AND COMPLETELY WRONG: it would
+    // read as the ambiguity the card exists for, rather than as a bug.
+    const r = planInvoiceArrival(invoice("Roma Cheese & Dairy Co.", 534.8, "2026-08-04"), legs(), ctx);
+    expect(r.action).toBe(ARRIVAL.ATTACH);
+    expect(r.reason).not.toBe(ASK_REASON.MULTIPLE_CANDIDATES);
+  });
+
+  it("★ two GENUINELY distinct payments still ask — the dedupe must not merge real ones", () => {
+    const two = [
+      { ...payment("Roma Cheese & Dairy Co", "ACH DEBIT - ROMA CHEESE & DAIRY CO", 534.8, "2026-08-04"), id: "je-1", db_entry_id: "je-1" },
+      { ...payment("Roma Cheese & Dairy Co", "ACH DEBIT - ROMA CHEESE & DAIRY CO", 534.8, "2026-08-06"), id: "je-2", db_entry_id: "je-2" },
+    ];
+    const r = planInvoiceArrival(invoice("Roma Cheese & Dairy Co.", 534.8, "2026-08-04"), two, ctx);
+    expect(r.action).toBe(ARRIVAL.ASK);
+    expect(r.reason).toBe(ASK_REASON.MULTIPLE_CANDIDATES);
+  });
+
+  it("keeps the CLOSEST leg when a multi-line entry's legs differ in amount", () => {
+    const mixed = [
+      { ...payment("Roma Cheese & Dairy Co", "ACH DEBIT - ROMA CHEESE & DAIRY CO", 500, "2026-08-04"), id: "je-3_0", db_entry_id: "je-3" },
+      { ...payment("Roma Cheese & Dairy Co", "ACH DEBIT - ROMA CHEESE & DAIRY CO", 534.8, "2026-08-04"), id: "je-3_1", db_entry_id: "je-3" },
+    ];
+    const { candidates } = settlementCandidates(invoice("Roma Cheese & Dairy Co.", 534.8, "2026-08-04"), mixed, ctx);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].amount.relation).toBe(AMOUNT_RELATION.EXACT);
+  });
+});
