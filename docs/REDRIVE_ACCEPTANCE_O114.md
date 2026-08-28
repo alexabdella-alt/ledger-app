@@ -223,3 +223,59 @@ falling total with a flat category 2 means the teaching is not sticking — invi
 ---
 
 **STATUS: WRITTEN IN ADVANCE. No result yet. Nothing below this line until the drive runs.**
+
+---
+
+# ═══ RESULT — SCORED 2026-08-27 against `8190d29`. §1 PASS · §2 **FAIL** ═══
+
+**Overall: the feature works and the drive found a real defect. Not a clean pass, and it must not be recorded as one.**
+
+| § | criterion | result |
+|---|---|---|
+| **0** | statement before invoices | ✅ statement pre-loaded, invoices after |
+| **1** | Roma / Toast / Alamo Fire → no card, silent attach | ✅ **PASS** — all three attached, stamps verified in the DB |
+| **1** | Franklin Ave → identity card, **attach would be a failure** | ✅ **PASS** — card raised, correct wording, did not attach |
+| **2** | **Bluebonnet's FOUR cards must remain** | ❌ **FAIL — only THREE remain. One over-matched.** |
+| **3** | Hill Country → amounts-differ card, no cause named | ✅ **PASS** — "$18.00 more than the invoice", no cause asserted |
+| **4** | nothing books through the defer | ✅ n/a — no defer was exercised |
+| **5.1** | `attached >= 3` | ⚠️ **4 attached, but ONE IS WRONG** — the count passes and one of its members is a defect |
+| **5.2** | stamps landed | ✅ 4 entries carry `invoice_attached=true` with `attached_invoice_id` |
+
+## ★★ §2 FAILED, AND IT FAILED EXACTLY AS WRITTEN
+
+§2 said: *"IF BLUEBONNET'S CARDS VANISH, SOMETHING OVER-MATCHED. That is a failure of this
+drive, not a pleasant surprise, and it is the single most likely way for a wrong
+implementation to LOOK BETTER than a right one."*
+
+**One vanished. Something over-matched.** Invoice `BLS-88412` (dated **2026-08-03**) attached
+to the payment of **2026-07-27** — **seven days EARLIER, exactly on the `WINDOW_BEFORE_DAYS`
+boundary.**
+
+**THE EVIDENCE:** Bluebonnet pays **weekly at exactly $145.00** — 07/06, 07/13, 07/20, 07/27.
+So `settlementCandidates` held **FOUR indistinguishable candidates**: same vendor, same
+amount to the cent. **Only the date window separated them**, leaving 07/27 as the sole
+survivor — which then satisfied *"exactly one certain candidate → ATTACH"*.
+
+> **THE CERTAINTY WAS AN ARTEFACT OF THE WINDOW, NOT OF THE EVIDENCE.** At ±14 days there
+> would have been two candidates and it would have ASKED. At ±3 there would have been none
+> and it would have booked a payable. **The outcome was decided by a threshold, not by
+> anything about the documents.**
+
+**AND IT FAILED IN THE SILENT DIRECTION** — the one the entire design was built to avoid.
+The 08/03 delivery's expense is now **suppressed** (filed, not booked), and the 07/27 payment
+is claimed by an invoice that is not its own. **Nothing on any screen says so.**
+
+**THIS IS `O117` WEARING THE `O114` COSTUME.** Same root property: for a **flat-fee recurring
+vendor, amount + identity carry NO information**, so the match rests entirely on a date
+window — **and a window is not evidence.** O117's version produces a noisy card; this
+version silently suppresses a real charge, which is strictly worse. **→ `O127`.**
+
+## CARD RATE (`O122`) — 9 documents, 5 cards
+
+| category | n | which |
+|---|---|---|
+| **1 · BUG** | **3** | Bluebonnet duplicates (`O117`) — *and a 4th Bluebonnet card is MISSING, which is `O127`* |
+| **2 · ONE-TIME TEACHING** | 1 | Franklin Ave identity → an `O111` alias once answered, never asked again |
+| **3 · GENUINE JUDGMENT** | 1 | Hill Country's $18 gap — a controller asks this, and should, forever |
+
+**Steady state for this document set: 1 card**, once `O117`, `O111` and `O127` land.
