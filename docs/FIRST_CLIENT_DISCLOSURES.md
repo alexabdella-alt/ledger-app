@@ -41,7 +41,7 @@ they found it themselves, it goes here.
 | **C1** | **"Loading your first two or three months of paperwork takes six to twelve hours of waiting, in the foreground, and it fails partway through rather than queueing."** 20 files/hour against 120–240 documents. **This is the first thing they will ever do.** | **`O97`** |
 | **C2** | **"Delete is not on the screen where you inspect a transaction. It is four steps away behind a button that reads like a filter."** So the button you *will* find is Void — see **A2**. | **`O126`** |
 | **C3** | "A payroll file cannot be dropped on the home screen like everything else; it has its own importer under Admin." | **`O116`** |
-| **C4** | "Uploads can be lost by a browser refresh — we record that a file arrived, not the work to process it." | **`O97`** |
+| ~~**C4**~~ | ~~"Uploads can be lost by a browser refresh."~~ **✅ CLOSED 2026-08-27 — `O97` step 1.** The bytes are now stored **before** the first AI call, so a refresh can no longer lose the file. *(Stays listed, struck through, until a drive confirms it.)* | `O97` step 1 |
 
 ## D. GOVERNANCE AND TRUST — the ones no drive will ever surface
 

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   INTAKE_STATUS, TERMINAL_INTAKE_STATUSES, isTerminalIntake,
   buildIntakeRow, reconcileIntake, insertIntake, setIntakeStatus,
@@ -119,5 +121,61 @@ describe("(d) THE GUARANTEE: reconciliation is INDEPENDENT — it catches what t
 
   it("empty intake → nothing dropped (no false positives on a clean company)", () => {
     expect(reconcileIntake([], {})).toEqual([]);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ O97 STEP 1 — THE BYTES ARE STORED BEFORE THE FIRST AI CALL.
+//
+// This feature IS an ordering. There is no new module and no new table to assert on —
+// `document_intake` + `documents.storage_path` + `upload_log` were already a durable work
+// queue; the defect was that we wrote to it AFTER the work it was meant to schedule.
+//
+// So the only thing that can regress is the ORDER, and an order regresses silently: move
+// the store back below the classify and everything still works, right up until a browser
+// refresh eats a file — which is O97's original symptom (the live orphan of 2026-08-06).
+//
+// Comments are stripped before scanning. Guards in this project have tripped on their own
+// prose three times.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ O97 — durable-first intake ordering", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const code = src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+  const fn = code.slice(code.indexOf("const processUploadItem = async"),
+                       code.indexOf("const processUploadItem = async") + 9000);
+
+  it("★ storeDocument is called BEFORE classifyFile", () => {
+    const store = fn.indexOf("storeDocument(");
+    const classify = fn.indexOf("classifyFile(");
+    expect(store, "storeDocument not found in processUploadItem").toBeGreaterThan(-1);
+    expect(classify, "classifyFile not found in processUploadItem").toBeGreaterThan(-1);
+    expect(store).toBeLessThan(classify);
+  });
+
+  it("★ the first store does not wait for a document type — it stores `pending`", () => {
+    // The type is an OUTPUT of classification. Requiring it before keeping the file is
+    // exactly what forced the store to happen last.
+    const store = fn.slice(fn.indexOf("storeDocument("), fn.indexOf("storeDocument(") + 160);
+    expect(store).toContain('"pending"');
+  });
+
+  it("★ the stored document id is stamped onto the intake row", () => {
+    // Without this the two halves of the queue cannot be joined, and a drain (step 2)
+    // has no way to find rows that have bytes and no outcome.
+    expect(fn).toMatch(/markIntake\([^)]*INTAKE_STATUS\.PROCESSING[\s\S]{0,120}documentId/);
+  });
+
+  it("★ the real type is stamped once classification returns", () => {
+    // Otherwise every document sits in the library as `pending` forever — the dedup branch
+    // of storeDocument returns an existing id WITHOUT updating the type, so a later call
+    // cannot fix it.
+    expect(fn).toMatch(/o97_stamp_doc_type/);
+    expect(fn).toMatch(/document_type: docType/);
+  });
+
+  it("★ a failed store must NOT block processing, and must NOT be silent", () => {
+    const guard = fn.slice(fn.indexOf("durableDocId = await storeDocument"), fn.indexOf("durableDocId = await storeDocument") + 700);
+    expect(guard).toMatch(/catch/);
+    expect(guard).toMatch(/console\.error/);
   });
 });

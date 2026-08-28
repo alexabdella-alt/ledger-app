@@ -3785,6 +3785,33 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           mediaType = ext==="pdf" ? "application/pdf" : `image/${ext==="jpg"?"jpeg":ext}`;
         }
 
+        // ── O97 STEP 1 — DURABLE-FIRST INTAKE. STORE THE BYTES BEFORE ANY AI CALL. ──
+        // Until now `fileStoreRef` — an in-memory React ref — was the ONLY copy of the
+        // file, while `logIntake` durably recorded that it had ARRIVED. So a refresh
+        // between arrival and processing lost the work while the intake row went on
+        // saying the file was here (the live orphan of 2026-08-06 20:11:42, O97).
+        //
+        // ★ THE QUEUE THIS NEEDS ALREADY EXISTED. `document_intake` holds the arrival,
+        // `documents.storage_path` the bytes, `upload_log` the outcome — together a
+        // durable work queue that we only ever wrote to AFTER the work it was meant to
+        // schedule. This is an ORDERING, not a feature.
+        //
+        // The document TYPE is an OUTPUT of classification, not a precondition for
+        // KEEPING the file, so it is stored `pending` and stamped the moment we know it.
+        //
+        // ★ AND IT MAKES DEDUP CHEAPER, NOT WEAKER: C193's content hash is computed here,
+        // so identical bytes are recognised BEFORE we spend a single AI call on them.
+        let durableDocId = null;
+        try {
+          durableDocId = await storeDocument(item.name, base64, mediaType, "pending", null, [], item.id, file);
+          if (durableDocId) markIntake(item.intake_id, INTAKE_STATUS.PROCESSING, { documentId: String(durableDocId), detail: "file stored — safe to close the tab" });
+        } catch (e) {
+          // Never block processing on the store: the old behaviour (process, then store)
+          // is strictly better than not processing at all. But it is LOUD, because a
+          // silent failure here returns us to exactly the orphan this closes.
+          console.error("[o97] durable-first store failed — falling back to process-then-store:", e?.message || e);
+        }
+
         // Universal "drop anything" routing. A spreadsheet was previously ASSUMED to
         // be a bank statement — which silently booked a payroll CSV as bank entries.
         // Now we sniff it (deterministic) and route payroll/QBO to the right importer;
@@ -3804,6 +3831,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           docType = "bank_statement";   // bank or unrecognized spreadsheet → bank flow
         } else {
           docType = await classifyFile(base64, mediaType, item.name);
+        }
+
+        // O97 — stamp the real type onto the already-stored document. Placed HERE, before
+        // any routing branch returns, so a payroll/QBO file that leaves for another
+        // importer does not sit in the library as `pending` forever.
+        if (durableDocId && docType) {
+          checkedRowUpdate({ supabase, table: "documents", id: durableDocId, companyId: currentCompany.id,
+            patch: { document_type: docType }, label: "o97_stamp_doc_type" });
         }
 
         // O55: a PDF/image the AI classifier recognized as a payroll register or a

@@ -67,8 +67,13 @@ derived, not estimated — which also satisfies §9's *describe from the record*
 **Proposed copy:**
 
 > **"All 214 of your documents are safely stored. We've sorted 38 so far and we're working through
-> the rest — they'll be done by about 9:40 tonight. You can close this; we'll email you when it's
-> finished."**
+> the rest — they'll be done by about 9:40 tonight. You can close this and come back; your place is
+> saved."**
+
+*(Operator decision, 2026-08-27: **change the sentence, do not build the channel.** A notification
+channel is its own workstream and is not what blocks a client. **"Your place is saved" is true the
+moment step 1 lands; "we'll email you" would have promised a thing we do not have** — the same
+defect as the card that invented a cause, one surface over.)*
 
 Every clause is checkable: a count we hold, a count we hold, a division, and a promise we will keep.
 
@@ -135,8 +140,7 @@ relocates the wall.
   is `O113` part (b) and `C203` (deleting call 3 for known vendors).
 - **It does not fix `O113b`/`O113c`.** The shared bucket and the clock-hour window survive; the
   queue merely stops a human from watching them.
-- **It does not deliver email notification.** *"We'll email you"* implies a channel that does not
-  exist — **either build it or change the sentence.** Flagged rather than assumed.
+- **It does not notify.** *Decided 2026-08-27: the SENTENCE changed, the channel was not built.* The copy now promises only what is true — the work is saved and they can come back. **A notification channel is its own workstream and does not block a client.**
 - **It does not address `O122`'s card rate.** 214 documents will produce cards; how many is that
   item's question.
 
@@ -155,4 +159,4 @@ relocates the wall.
 
 ---
 
-**STATUS: DRAFT. NOT SIGNED. NOTHING BUILT.**
+**STATUS: STEP 1 BUILT 2026-08-27 (durable-first intake). Steps 2–4 unbuilt.**
