@@ -82,6 +82,49 @@ cheap against today's data it is flagged **▶ CHEAP**; everything else stays li
 
 ---
 
+## ✅ CHECK RUN — O87's THREE SKIPPED CARDS. 2026-08-27. **NO FINDING.**
+
+**The question:** three anomaly cards were explicitly left open at the end of the July drive
+(*"leave them"*). Today there are **zero** open. What resolved them — and did anything record it?
+
+**ANSWER: A HUMAN DISMISSED THEM, AND IT IS FULLY AUDITED.**
+
+All three are found, exactly three, and they are the **(v) trio**:
+
+```
+dup:bluebonnet linen service:14500:2026-07-06+2026-07-13
+dup:bluebonnet linen service:14500:2026-07-13+2026-07-20
+dup:bluebonnet linen service:14500:2026-07-20+2026-07-27
+```
+
+`status = dismissed` · `resolution = dismissed` · `resolved_by` **set** · resolved
+**2026-08-11 02:16** · and **24 `anomaly_dismissed` audit rows against 24 dismissed anomalies —
+a 1:1 match.** **Not a silent code path. Not the `O127` class. Nothing to mint.**
+
+### The scare that wasn't, worth writing down
+
+The grouping first read as **40 rows with `resolution='auto'` against only 16
+`anomaly_auto_resolved` audit rows**, and **16 `attested` against a single
+`anomaly_expired_on_signoff`** — which looks exactly like partial audit coverage.
+
+**It is BATCH LOGGING, and the batches carry their contents.** `App.jsx:1855` logs one row per
+SWEEP with `{ fingerprints: [...] }`; `App.jsx:1913` logs one row per SIGN-OFF with `period`,
+`anomaly_ids` **and** `fingerprints`. So every resolution is individually traceable to the sweep
+that closed it. **The audit is better than the row count implied — and "audit rows < resolutions"
+is a false alarm shape worth remembering, because the honest version and the broken version look
+identical from a count.**
+
+### ★ AND A CORROBORATION FOR `O117` NOBODY WENT LOOKING FOR
+
+**The three cards a human dismissed by hand in July are BLUEBONNET WEEKLY DUPLICATES** — the same
+vendor, the same $145.00, the same 7-day spacing that produced three more in August and the
+over-match in `O127`. **So the weekly-vendor false positive has been costing a human hand-clearing
+every month since at least July**, and the July drive recorded it as a fingerprint-parsing curiosity
+rather than as the recurring defect it was. **"A card the user sees every month is a bug wearing a
+question mark" — with receipts, from a month before the rule existed.**
+
+---
+
 ## THE BOUNDED CONCLUSION
 
 **Four checks are cheap and would take one query each:** O83's 14 remediated entries · O84's #1043
