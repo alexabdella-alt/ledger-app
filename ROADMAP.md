@@ -17,7 +17,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ## OPEN LEDGER — every tracked, unshipped item
 
-**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-27 (describe-from-the-record rule; O115 widened to 3 sites; O127+O117 sequenced).**
+**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-27 (disclosure list + retro absence criteria; O97 design started).**
 
 ### Before the first paying client — 8 open
 
@@ -111,6 +111,8 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 *The immediate next piece of work, written down so the order is not re-litigated.*
 
+- [ ] **DISCLOSURE LIST — `docs/FIRST_CLIENT_DISCLOSURES.md`.** Every item a first paying client would have to be TOLD, each naming the ledger id that closes it, so the list shrinks visibly as work lands. **Section D is the one to watch: governance and trust, none of it code, none of it surfaced by any drive** — the AI-provider data path (`s3`), signing off your own books (`O93`), and "who has looked at my books" having no answer. Nothing is removed until a drive verifies it.
+- [ ] **RETRO ABSENCE CRITERIA — `docs/RETRO_ABSENCE_CRITERIA.md`.** What a pre-registered §2-style criterion WOULD have asserted for each of drives O83–O87, now that `O127` proved the method works. **Not a to-do and not an investigation — the exposure, named and bounded.** Four checks are cheap; **O87's three skipped anomaly cards is the one worth running.**
 - [ ] **0 · O97 — accept-and-queue** *(absorbs `O118`)*. Product-blocking for onboarding and **independent of the AI-call work**: it counts documents, not calls. **The defect is that the ceiling is enforced synchronously while a human watches**, and the durable queue is the prerequisite for fixing it. Five design questions recorded on the item; **(5) what is actually being protected, first.** Design session, no code. **Before any client work.**
 - [ ] **1 · O114 — the invoice/payment lifecycle. FIRST.** *Operator's reasoning, recorded verbatim because it is the ranking rule and not just this ranking:* **"Rate limits are visible and annoying; a double-counted P&L is invisible and wrong."** A correctness bug where the natural-looking answer is the wrong one outranks a capacity bug you can see happening. **Subsumes P2** (the ±$18 drift), which needs the same missing machinery to have anything to fail against. **DESIGN SESSION, NOT A BUG FIX — spec first.** `docs/INVOICE_PAYMENT_SPEC_O114.md` **READ AND APPROVED 2026-08-26. CORE BUILT (`635eb32`) AND WIRED — the decision runs in `handleBookInvoice`, the card is live, and the defer routes to the CPA queue by booking nothing.** Remaining: `O111`'s alias closes the Franklin Ave last mile. Same species as O88.
 - [ ] **1b · O117 — the detector's OTHER failure mode.** Split out of `O114` on 2026-08-26 so shipping O114 cannot be read as fixing the detector. The weekly-vendor false positives are untouched by lifecycle matching. **P1**, straight after O114.
