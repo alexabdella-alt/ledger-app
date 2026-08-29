@@ -2371,6 +2371,28 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     let allIds = [];
     for (const inv of items) { const ids = await softDeleteJournalEntry(inv); allIds = allIds.concat(ids); }
     const label = items.length === 1 ? (snaps[0].vendor || "entry") : `${items.length} entries`;
+
+    // ★★ O124(c) — SAY "DELETED" ONLY IF SOMETHING WAS DELETED. This function's own comment
+    // (a few lines down) records that callers gate "✓ done" on a non-empty result (O78) —
+    // and then it announced success without ever looking. `softDeleteJournalEntry` returns
+    // [] on a signed-period block or a DB error, so a refused delete was indistinguishable
+    // from a completed one. C194 class, one surface over.
+    //
+    // ★ AND THE OPTIMISTIC REMOVAL MADE IT WORSE, NOT BETTER: the rows were filtered out of
+    // `invoices` BEFORE the write, so a failed delete also LOOKED done — the entry vanished
+    // from the screen while remaining in the books. Put them back, or the next reload
+    // resurrects a row the user believes they removed. (§9: an action whose effect is
+    // invisible will be repeated — here the effect was visible and had not happened.)
+    if (!allIds.length) {
+      setInvoices(prev => {
+        const have = new Set(prev.map(i => String(i.id)));
+        return [...snaps.filter(s => !have.has(String(s.id))), ...prev];
+      });
+      logAudit("invoice_delete_failed", `Couldn't delete ${label} — nothing was removed`, null, { attempted: items.length }, byAI ? "AI Chat" : "owner");
+      showNotification(`Couldn't delete ${label} — it's still in your books. If the month has been signed off, your accountant needs to reopen it.`, "error");
+      return [];
+    }
+
     showNotification(`Deleted ${label} — tap Undo to restore`, "success", async () => {
       if (allIds.length) await restoreJournalEntries(allIds);
       setInvoices(prev => { const have = new Set(prev.map(i => String(i.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
@@ -4423,13 +4445,25 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           logAudit("invoice_uploaded", `Uploaded ${item.name}: ${extractedList.length} invoice(s) extracted`);
           const firstBooked = highConfidence[0] || null;
           const firstReview = needsClarification[0]?.invoice || null;
+          // ★★ O128 — THE OUTCOME LINE COUNTS **EVERY** OUTCOME, NOT JUST THE BOOKED ONE.
+          // `invoiceCount: highConfidence.length` is blind to `attached`, so a file whose
+          // invoices all matched payments already in the books rendered as
+          // "✓ 0 invoices booked · $0.00 total" — the most valuable thing this feature
+          // does, announced as though nothing had happened. Filing an invoice against a
+          // payment we already hold is the SUCCESS case: it is what stops the expense
+          // being counted twice.
+          const attachedAmt = attached.reduce((sum, p) => sum + (p.invoice?.amount || 0), 0);
           const invoiceResult = {
             invoiceCount: highConfidence.length,
+            attachedCount: attached.length,
+            attachedAmount: attachedAmt,
+            attachedVendor: attached[0]?.invoice?.vendor ?? null,
             needsClarification: needsClarification.length,
             amount: totalAmt,
             vendor: firstBooked?.vendor ?? null,
             gl_name: firstBooked?.gl_name ?? null,
-            // (2) Plain-language trail for the owner — "as a client meal", never an account name.
+            // (2) Plain-language trail for the owner — "as a client meal", never an account
+            // name. Read off `firstBooked`'s ACCOUNT since O115, not its vendor text.
             bookedAs: firstBooked ? plainCategoryPhrase(firstBooked) : null,
             confidence: highConfidence.length > 0 ? Math.round(highConfidence.reduce((s,i)=>s+(i.confidence||0),0)/highConfidence.length) : null,
             reviewVendor: firstReview?.vendor ?? null,

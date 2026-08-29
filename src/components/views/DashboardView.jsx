@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
+import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -496,25 +497,12 @@ export default function DashboardView() {
                               {item.status==="classifying" && "⟳ Identifying document type..."}
                               {item.status==="processing" && `⟳ Processing as ${tc.label}...`}
                               {item.status==="error" && item.error}
-                              {item.status==="done" && item.type==="invoice" && item.result && (() => {
-                                const r = item.result;
-                                const money = fmtMoney;
-                                // Nothing booked at upload time, only items needing review.
-                                if (!(r.invoiceCount > 0) && r.needsClarification > 0) {
-                                  // Once the clarification has been answered & booked, flip to ✓ Booked.
-                                  if (!pendingReview)
-                                    return `✓ Booked${r.reviewVendor ? `: ${r.reviewVendor}` : ""}${r.reviewAmount!=null ? ` · ${money(r.reviewAmount)}` : ""}`;
-                                  return `⚠ Needs your input · ${r.reviewVendor || "this entry"}${r.reviewAmount!=null ? ` · ${money(r.reviewAmount)}` : ""}${r.needsClarification > 1 ? ` (+${r.needsClarification-1} more)` : ""}`;
-                                }
-                                // Plain-language trail (Cardinal Principle): "as a client meal",
-                                // never "→ 6420 Meals & Entertainment" or a confidence score.
-                                let txt = r.invoiceCount === 1
-                                  ? `✓ Booked: ${r.vendor || "entry"} · ${money(r.amount)}${r.bookedAs ? ` as ${r.bookedAs}` : ""}`
-                                  : `✓ ${r.invoiceCount} invoices booked · ${money(r.amount)} total`;
-                                // Only show the outstanding-review suffix while items are still pending.
-                                if (r.needsClarification > 0 && pendingReview) txt += ` · ${r.needsClarification} need${r.needsClarification===1 ? "s" : ""} your review`;
-                                return txt;
-                              })()}
+                              {item.status==="done" && item.type==="invoice" && item.result &&
+                                // §9 — the sentence is a pure function of the recorded outcome
+                                // (`src/lib/uploadOutcome.js`), so every clause can be shown to
+                                // read a field of it. Was an inline closure; O128 lived in the
+                                // gap between what it read and what actually happened.
+                                invoiceOutcomeCopy(item.result, { pendingReview })}
                               {item.status==="processing" && item.type==="bank_statement" && item.result?.to==="pipeline" && (
                                 <span>Adding these to your books…</span>
                               )}

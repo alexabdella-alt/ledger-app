@@ -61,6 +61,8 @@ export function draftClientQuestion(txn = {}) {
 // 2) MAP A HUMAN ANSWER → a system_role (deterministic keyword match; reuses the same
 // vendor→category signals the categorizer/ReconView use). Returns null when the answer is
 // too vague to disambiguate — so a still-ambiguous answer NEVER falsely resolves a flag.
+import { DEFAULT_CHART_OF_ACCOUNTS } from "./constants";
+
 const ANSWER_MAP = [
   [/\binsurance\b|\bliability\b|\bworkers?[' ]?comp\b/, "insurance"],
   [/\brent\b|\blease\b|\boffice space\b|\bcowork|\bwework\b/, "rent_occupancy"],
@@ -127,6 +129,15 @@ const ROLE_PHRASE = {
   repairs_maintenance: "repairs and upkeep",
   fixed_assets: "equipment",
   intangible_assets: "an improvement",
+  // Reachable since the code map above was widened. Plain words only — no "processing
+  // fees payable", no "direct labor cost of sales".
+  direct_labor: "wages on jobs",
+  shipping_fulfillment: "shipping",
+  payroll_tax: "payroll taxes",
+  employee_benefits: "employee benefits",
+  merchant_processing_fees: "card processing fees",
+  bank_service_charges: "bank fees",
+  uncategorized_expense: "something we haven't sorted yet",
 };
 // A keyword the owner might type that round-trips back through answerToCategory to the
 // same role (so a chip built from a role resolves deterministically when clicked).
@@ -145,10 +156,27 @@ const ROLE_KEYWORD = {
 // Default-COA code → role (matches DEFAULT_CHART_OF_ACCOUNTS). A rename/renumber falls back
 // to keyword-matching the account name, so this is a fast-path, not the only path.
 const DEFAULT_CODE_ROLE = {
-  "6000": "salaries_wages", "6100": "rent_occupancy", "6200": "utilities",
+  // 5xxx — direct costs. THESE WERE MISSING, and their absence is half of O115: an entry
+  // booked to 5000 had no code→role answer, so the phrase fell through to keyword-matching
+  // the vendor name, and "Lone Star Restaurant Supply" matched /restaurant/.
+  "5000": "cogs", "5100": "direct_labor", "5200": "shipping_fulfillment",
+  "6000": "salaries_wages", "6010": "payroll_tax", "6020": "employee_benefits",
+  "6100": "rent_occupancy", "6200": "utilities", "6250": "repairs_maintenance",
   "6300": "marketing_advertising", "6400": "travel_entertainment", "6500": "technology_software",
+  "6520": "merchant_processing_fees", "6530": "bank_service_charges",
   "6600": "office_supplies", "6700": "insurance", "6800": "professional_services",
-  "6900": "depreciation", "7100": "miscellaneous_expense", "8000": "interest_expense",
+  "6900": "depreciation", "7100": "miscellaneous_expense",
+  "7150": "uncategorized_expense", "8000": "interest_expense",
+};
+
+// ★ THE ONLY PLACE TEXT IS ALLOWED TO NARROW A BOOKED ACCOUNT (O115). One entry, and it
+// earns it: "Travel & Entertainment" is two different everyday things and the owner-facing
+// sentence should say which. Adding a role here is a deliberate act — it re-opens exactly
+// the door that let a vendor's NAME overrule the account its money is sitting in.
+const ROLE_REFINEMENTS = {
+  travel_entertainment: [
+    { test: (inv, text) => inv.meals_pct != null || MEALS_RE.test(text), phrase: "a client meal" },
+  ],
 };
 
 const MEALS_RE = /\b(restaurant|meal|meals|dining|cafe|café|coffee|catering|caterer|lunch|dinner|bar|grill)\b|grubhub|doordash|uber eats|seamless/i;
@@ -162,14 +190,85 @@ export function inferRole(invoice = {}) {
 }
 
 // The plain-language phrase for how an entry was booked. Never an account name / GL code.
+//
+// ★★ O115 — IT DESCRIBES THE ACCOUNT THE ENTRY IS ON, NOT WHAT THE TEXT LOOKS LIKE.
+// This function used to keyword-match the vendor and description BEFORE consulting the
+// booked account, so it produced a description assembled in parallel with the booking
+// rather than derived from it — and the two diverged in production: Lone Star was
+// announced to the owner "as a client meal" while the ledger correctly said 5000 Cost of
+// Goods Sold. `MEALS_RE` matched "Lone Star **Restaurant** Supply", a restaurant SUPPLIER.
+//
+// ★ THE BOOKS WERE RIGHT AND THE OWNER WAS MISINFORMED, which is the worst combination
+// available: nothing is broken, so nothing gets fixed (CLAUDE.md §9).
+//
+// So the order is now: the account decides when there IS one; the text is consulted only
+// for an entry that has not been coded yet — which is the ask path, where guessing is the
+// entire job and there is no answer sitting three feet away to read instead.
 export function plainCategoryPhrase(invoice = {}) {
   if (isRevenueish(invoice)) return "income";
-  const text = `${invoice.description || ""} ${invoice.vendor || ""} ${invoice.notes || ""} ${invoice.gl_name || ""}`;
+
+  // (a) THE BOOKED ACCOUNT, if the entry has one. `roleFromAccount` reads the code map
+  // first, then keyword-matches the ACCOUNT NAME — both are properties of where the money
+  // actually went, so a renumbered or renamed chart still resolves.
+  const coded = String(invoice.gl_code || "").trim() || String(invoice.gl_name || "").trim();
+  if (coded) {
+    const role = roleFromAccount(invoice);
+    // ★ THE ACCOUNT FIXES THE CATEGORY; TEXT MAY ONLY REFINE **WITHIN** IT.
+    // That is the whole distinction O115 turns on, and it is narrower than "never read the
+    // text". `6400 Travel & Entertainment` genuinely spans two everyday things, so calling
+    // a caterer on that account "a client meal" REFINES the account — it does not
+    // contradict it. Calling a 5000 Cost-of-Goods entry "a client meal" contradicts it,
+    // and that is what shipped. Refinements are therefore declared PER ROLE and nowhere
+    // else: a role with no entry in the table cannot be talked out of its own phrase.
+    const refine = ROLE_REFINEMENTS[role];
+    if (refine) {
+      const text = `${invoice.description || ""} ${invoice.vendor || ""} ${invoice.notes || ""}`;
+      for (const r of refine) if (r.test(invoice, text)) return r.phrase;
+    }
+    if (role && ROLE_PHRASE[role]) return ROLE_PHRASE[role];
+    // Coded to something we have no phrase for. Still refuse to fall back to the vendor
+    // text: an unrecognised account is not evidence for a client meal.
+    return "a general business expense";
+  }
+
+  // (b) NOT YET CODED — the ask path. Now the text is all there is, and `meals_pct` is a
+  // real booking-time signal rather than a guess about a name.
+  const text = `${invoice.description || ""} ${invoice.vendor || ""} ${invoice.notes || ""}`;
   if (invoice.meals_pct != null || MEALS_RE.test(text)) return "a client meal";
   const role = inferRole(invoice);
   if (role && ROLE_PHRASE[role]) return ROLE_PHRASE[role];
   return "a general business expense";
 }
+
+// Role from the ACCOUNT ONLY — the code map, then the account name. Never the vendor or
+// description. Split out from `inferRole` (which deliberately also reads the description,
+// for the uncoded ask path) so the two questions cannot be confused again: "what is this
+// probably?" and "what was this actually booked as?" are different questions.
+export function roleFromAccount(invoice = {}) {
+  const code = String(invoice.gl_code || "").trim();
+  if (DEFAULT_CODE_ROLE[code]) return DEFAULT_CODE_ROLE[code];
+  const name = String(invoice.gl_name || "").toLowerCase().trim();
+  if (!name) return null;
+  // ★ ACCOUNT NAMES ARE THEIR OWN VOCABULARY, NOT THE ASK PATH'S. `ANSWER_MAP` maps what a
+  // HUMAN TYPES ("it was a flight") and knows nothing of "Cost of Goods Sold" or "Merchant
+  // Processing Fees" — so a renumbered COGS account resolved to nothing and the phrase fell
+  // back to a generic. Reusing that map here would also mean editing the ask path's booking
+  // behaviour to fix a sentence, which is the wrong blast radius entirely.
+  //
+  // ★★ AND THE MAP IS BUILT FROM `DEFAULT_CHART_OF_ACCOUNTS`, NOT RETYPED. This repo
+  // already carries three implementations of vendor identity (O125) because each new
+  // caller wrote its own; a fourth hand-copy of the chart is the same mistake in a
+  // different column. If an account is renamed in constants.js, this follows.
+  if (ACCOUNT_NAME_ROLE.has(name)) return ACCOUNT_NAME_ROLE.get(name);
+  return answerToCategory(invoice.gl_name || "") || null;
+}
+
+// name (lowercased) → system_role, straight off the default chart.
+const ACCOUNT_NAME_ROLE = new Map(
+  (DEFAULT_CHART_OF_ACCOUNTS || [])
+    .filter((a) => a && a.name && a.system_role)
+    .map((a) => [String(a.name).toLowerCase().trim(), a.system_role]),
+);
 
 // (2) The transparent auto-booking record: a non-interrupting, plain-language sentence the
 // owner CAN see but never has to act on. "Booked Bella Vita Catering ($477.38) as a client meal."

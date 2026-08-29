@@ -103,7 +103,7 @@ function SourceDocPreview({ doc, onExpand }) {
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
-    setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
+    setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, softDeleteInvoice, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
@@ -179,6 +179,20 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   // button stayed enabled — three reversals against one invoice, −937.00, because the
   // only feedback the user had was that nothing changed.
   const reversedInfo = reversalFor(reversalIndex(invoices), sel);
+
+  // ── O126(A) — DELETE BELONGS ON THE SURFACE YOU REACH BY CLICKING THE THING ──
+  // `softDeleteInvoice` was wired to exactly ONE control in the whole app: the red × in
+  // Books → Invoices, four steps deep behind "View all invoices for X →" — a label that
+  // reads as a filter, not as the only place an entry can be removed. So a user who opened
+  // an entry to deal with it was offered Void and nothing else, and Void is the button that
+  // compounded O123 into three reversals. The safe action being hidden and the dangerous
+  // one being unmarked is ONE funnel; this is its other end.
+  const doDelete = (inv) => {
+    setDeleteConfirm({
+      label: `Delete the entry for ${inv.vendor || "this transaction"}${inv.amount!=null ? ` · ${fmtMoney(inv.amount)}` : ""}? You'll have 30 seconds to undo, and your accountant can restore it later.`,
+      onConfirm: () => { softDeleteInvoice && softDeleteInvoice(inv); onClose(); },
+    });
+  };
 
   const doVoid = (inv) => {
     setDeleteConfirm({
@@ -312,6 +326,9 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   <button onClick={() => setPayOpen(true)} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Mark as Paid</button>
                 )}
                 <button onClick={() => { setReturnTo && setReturnTo(returnContext || null); setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Full entry →</button>
+                {!isMember && (
+                  <button onClick={() => doDelete(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Delete</button>
+                )}
                 {sel.status !== "voided" && !isMember && (
                   // ★ DISABLED, NOT REFUSED-ON-CLICK. Refusing on click is strictly worse
                   // than not offering: it teaches that clicking is how you find out.
