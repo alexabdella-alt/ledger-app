@@ -23,6 +23,8 @@ import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
+import { classifyFailure, drainProgressCopy, FAILURE_KIND } from "./lib/intakeDrain";
+import { runIntakeDrain } from "./lib/intakeDrainIo";
 import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
 import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "./lib/controlTotals";
 import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod, isPeriodSignedOff } from "./lib/signoff";
@@ -498,6 +500,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const clearTransientUploadState = () => {
     setUploadedFile(null); setUploadQueue([]); setUploadProcessing(false);
     setDocsPreview(null); fileStoreRef.current = {};
+    uploadQueueRef.current = []; setDrainStatus(null);
   };
   const enterSupport = (company) => {
     if (!company?.id) return;
@@ -874,6 +877,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Keeps File objects alive across view changes (File objects can't live in React state reliably)
   const fileStoreRef = useRef({}); // { [queueItemId]: File }
   const uploadActiveRef = useRef(false); // prevents concurrent processing
+  const drainBusyRef = useRef(false);   // O97 step 2: one drain pass at a time
+  const uploadQueueRef = useRef([]);    // always-current queue, so the drain can see what this tab is already working on
+  const [drainStatus, setDrainStatus] = useState(null); // { plan, startedAt } — last drain census, for the owner copy
+  useEffect(() => { uploadQueueRef.current = uploadQueue; }, [uploadQueue]);
   const bankBookingRef = useRef(false);  // P0: prevents re-entrant bank booking (no N× duplication)
 
   const allProjects = useMemo(() => [...new Set([...PROJECTS, ...customProjects])], [customProjects]);
@@ -1010,6 +1017,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // Upload / session refs
     fileStoreRef.current = {};
     uploadActiveRef.current = false;
+    // O97 step 2: the drain's census and copy are company-scoped — leaving them set would
+    // narrate the PREVIOUS company's queue over the new one while its data loads (§3).
+    uploadQueueRef.current = []; drainBusyRef.current = false; setDrainStatus(null);
     recentContactsRef.current = new Set();
     // Learned AI profile — drop the previous company's; loadAllData reloads the new one.
     if (profilePersistTimer.current) { clearTimeout(profilePersistTimer.current); profilePersistTimer.current = null; }
@@ -3473,6 +3483,82 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (!res.ok) console.warn("[document_intake] status update failed:", status, res?.error);
     }).catch(e => console.warn("[document_intake] markIntake error:", e));
   };
+  // ── O97 STEP 2 — THE DRAIN ───────────────────────────────────────────────────
+  // Step 1 made the bytes durable BEFORE the first AI call. This is the half that acts on
+  // that: work stored but not finished — a closed tab, a refresh, a throttled hour — gets
+  // picked back up on its own instead of dying where the user last saw it.
+  //
+  // ★ THE DEFECT THIS CLOSES IS NOT THE CEILING'S HEIGHT. It is that the ceiling was
+  // enforced synchronously while a human watched: 200 files in, 20 succeed and 180 turn
+  // red. Onboarding is a batch job; nobody needs January categorised in ninety seconds.
+  //
+  // ★★ THE RETRY CARRIES THE ORIGINAL `intake_id` AND DOES NOT CALL `logIntake`. A second
+  // arrival row for one document would corrupt the completeness ledger's population — the
+  // one table whose entire value is that it independently knows what came in (O60).
+  const enqueueDrainedItem = ({ intakeId, file, filename }) => {
+    const id = Date.now() + Math.random();
+    fileStoreRef.current[id] = file;
+    setUploadQueue(prev => (
+      // Belt to the io shell's braces: never two live queue items for one intake row.
+      prev.some(q => q.intake_id && String(q.intake_id) === String(intakeId) && q.status !== "done" && q.status !== "error")
+        ? prev
+        : [{ id, name: filename, status: "pending", type: null, result: null, error: null,
+             upload_log_id: null, intake_id: intakeId, resumed: true }, ...prev]
+    ));
+  };
+
+  const runDrain = async ({ limit = 5 } = {}) => {
+    if (!currentCompany?.id || drainBusyRef.current) return null;
+    drainBusyRef.current = true;
+    try {
+      // Rows this tab is already working on. Without it, a file whose lease expired while
+      // it is genuinely still running HERE would be picked up again and processed twice.
+      const busy = (uploadQueueRef.current || [])
+        .filter(q => q.intake_id && q.status !== "done" && q.status !== "error")
+        .map(q => q.intake_id);
+      const res = await runIntakeDrain({
+        supabase, companyId: currentCompany.id, now: new Date().toISOString(),
+        limit, enqueue: enqueueDrainedItem, excludeIntakeIds: busy,
+      });
+      if (!res?.ok) { console.warn("[o97 drain] pass failed:", res?.error); return null; }
+      if (res.started.length || res.held.length) {
+        console.info("[o97 drain]", { resumed: res.started.length, held: res.held.length, census: res.plan.counts });
+      }
+      // Only ever describe what a pass actually returned (§9 — describe from the record).
+      // `perHour` is deliberately null: the AI budget is shared, so something else may be
+      // consuming it (O113b) and we do not hold a rate we could honestly divide by. The
+      // copy states the counts and OMITS the finish time rather than inventing one.
+      setDrainStatus({
+        plan: res.plan, started: res.started.length, held: res.held.length,
+        census: res.census,
+        copy: res.census?.ok
+          ? drainProgressCopy({ stored: res.census.stored, done: res.census.done, plan: res.plan, perHour: null })
+          : null,
+      });
+      return res;
+    } catch (e) {
+      console.warn("[o97 drain] error:", e?.message || e);
+      return null;
+    } finally { drainBusyRef.current = false; }
+  };
+
+  // Runs on company load and then on a slow poll. The poll is deliberately faster than the
+  // planner's retry spacing — the planner owns the pacing, this only offers it a chance to
+  // decide. It also stays out of the way while the queue is busy: the drain exists to
+  // resume abandoned work, not to compete with the file a user just dropped.
+  useEffect(() => {
+    if (!companyDataLoaded || !currentCompany?.id) return;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      const live = (uploadQueueRef.current || []).some(q => q.status === "pending" || q.status === "classifying" || q.status === "processing");
+      if (!live) runDrain();
+    };
+    const first = setTimeout(tick, 4000);          // let the initial load settle
+    const iv = setInterval(tick, 60000);
+    return () => { cancelled = true; clearTimeout(first); clearInterval(iv); };
+  }, [companyDataLoaded, currentCompany?.id]); // eslint-disable-line
+
   // The completeness check — surface every document that fell through (received/processing
   // stuck, or failed). Independent of the recording pipeline (reads the intake population).
   const reconcileDroppedDocs = async (opts = {}) => {
@@ -4619,9 +4705,30 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     } catch(e) {
       console.error("Upload error:", item.name, e);
       const errMsg = e?.message || String(e) || "Processing failed";
-      setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:`${errMsg} — try again`} : q));
-      logUploadUpdate(item.upload_log_id, { status:"error", error:`${errMsg} — try again` });
-      markIntake(item.intake_id, INTAKE_STATUS.FAILED, { detail: errMsg });   // O60: NON-terminal → reconciliation surfaces it
+
+      // ── O97 STEP 2 — CLASSIFY THE FAILURE, DON'T COUNT IT ────────────────────
+      // A 429 is transient however many times it happens; an unreadable file is permanent
+      // on the first try. So the kind comes from the ERROR, and it decides which of two
+      // very different things we are looking at:
+      //   TRANSIENT → `failed`, which is NON-terminal, so the drain picks it back up and
+      //               the age box (not a counter) is what eventually stops it.
+      //   PERMANENT → `held_for_review`, terminal and VISIBLE, with the reason stated.
+      // Before this, every error landed in `failed` — so a file that could never process
+      // was retried forever, and the completeness net nagged about it forever with it.
+      // Anything unrecognised is PERMANENT: a document held with a reason is visible, a
+      // document retried forever is not.
+      const kind = classifyFailure(e);
+      const transient = kind === FAILURE_KIND.TRANSIENT;
+      const userMsg = transient
+        ? `${errMsg} — we'll keep trying; nothing is lost`
+        : `${errMsg} — try again`;
+      setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:userMsg, transient} : q));
+      logUploadUpdate(item.upload_log_id, { status:"error", error:userMsg });
+      markIntake(
+        item.intake_id,
+        transient ? INTAKE_STATUS.FAILED : INTAKE_STATUS.HELD,
+        { detail: transient ? errMsg : `We couldn't read this one: ${errMsg}` },
+      );
     } finally {
       // Clean up file ref and release lock so next pending item can run
       delete fileStoreRef.current[item.id];
@@ -6854,7 +6961,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, depreciationDueInfo, attachDepreciationToExistingAsset, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, runDrain, drainStatus };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // (`isPlatformAdmin` is derived once at the top of ERP, alongside the seat — C197.)
@@ -6989,8 +7096,30 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:2 }}>
               {uploadQueue.find(q=>q.status==="processing"||q.status==="classifying")?.name || ""}
             </div>
+            {/* O97 step 2 — say when we picked work back up ourselves. An action whose
+                effect is invisible will be repeated (§9), and re-uploading is exactly the
+                repeat this feature exists to make unnecessary. */}
+            {uploadQueue.some(q=>q.resumed && (q.status==="pending"||q.status==="classifying"||q.status==="processing")) && (
+              <div style={{ fontSize:11, color:"var(--sc-gold)", marginTop:3 }}>
+                Picked up where we left off — no need to upload again.
+              </div>
+            )}
           </div>
           <button onClick={()=>{ setView("home"); setTimeout(()=>document.getElementById("universal-upload-zone")?.scrollIntoView({behavior:"smooth",block:"center"}), 250); }} style={{ marginLeft:"auto", background:"none", border:"1px solid var(--sc-border-2)", borderRadius:6, padding:"4px 10px", color:"var(--sc-gold)", fontSize:11, cursor:"pointer", flexShrink:0 }}>View</button>
+        </div>
+      )}
+
+      {/* O97 STEP 2 — WAITING WORK, WITH ITS OWN SENTENCE.
+          Renders only when the drain HAS something it is holding for later and nothing is
+          currently in flight (the processing banner above owns that state). The copy is
+          derived from the pass's census, never composed here — including the case where
+          nothing is resumable, which says so rather than "all caught up". */}
+      {!uploadQueue.some(q => q.status==="pending"||q.status==="classifying"||q.status==="processing")
+        && drainStatus?.copy
+        && (drainStatus.plan?.counts?.wait > 0 || drainStatus.plan?.counts?.deferred > 0 || drainStatus.plan?.unresumable > 0) && (
+        <div style={{ position:"fixed", bottom:100, left:"50%", transform:"translateX(-50%)", zIndex:999, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:12, padding:"12px 20px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 8px 32px rgba(0,0,0,0.6)", maxWidth:520 }}>
+          <span style={{ fontSize:15 }}>🗂</span>
+          <div style={{ fontSize:12, color:"var(--sc-text)", lineHeight:1.45 }}>{drainStatus.copy}</div>
         </div>
       )}
 
