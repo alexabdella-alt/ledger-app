@@ -17,15 +17,21 @@ export default function BankView() {
   // the INTAKE ledger (047), which already carries the stored document id, so the pointer
   // survives navigation and sessions. A stash disappears by itself once it's recorded.
   const [waitingStashes, setWaitingStashes] = React.useState([]);
+  const [stashLoadFailed, setStashLoadFailed] = React.useState(false);   // O98 — 'couldn't look' ≠ 'none waiting'
   const [stashBusy, setStashBusy] = React.useState(false);
   React.useEffect(() => {
-    if (!currentCompany?.id) { setWaitingStashes([]); return; }
+    if (!currentCompany?.id) { setWaitingStashes([]); setStashLoadFailed(false); return; }
     let cancelled = false;
     (async () => {
       try {
         const res = await fetchStashRows(supabase, currentCompany.id);
-        if (!cancelled) setWaitingStashes(pendingStatementStashes((res && res.rows) || []));
-      } catch { if (!cancelled) setWaitingStashes([]); }
+        if (!cancelled) { setWaitingStashes(pendingStatementStashes((res && res.rows) || [])); setStashLoadFailed(!(res && res.ok)); }
+      } catch (e) {
+        // O98 — an empty list here means "none waiting"; a THROWN load means "we couldn't
+        // look". Kept distinct so the screen never presents the second as the first.
+        console.error("[bank] waiting-statements load FAILED — this is NOT 'none waiting':", e?.message || e);
+        if (!cancelled) { setWaitingStashes([]); setStashLoadFailed(true); }
+      }
     })();
     return () => { cancelled = true; };
   }, [currentCompany?.id, bankStep, bankProcessing]);
@@ -304,6 +310,13 @@ export default function BankView() {
                     the account was ambiguous used to live in React state and evaporate on the
                     next navigation (live loss, O86). Its intake row + stored document are a
                     durable pointer, so it can be picked up later — even in another session. */}
+                {/* O98 — say when we couldn't look, rather than showing the same empty
+                    screen a genuinely clear account shows. */}
+                {!pendingBankFile && stashLoadFailed && (
+                  <div style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, padding:"12px 16px", marginBottom:16, fontSize:12.5, color:"var(--sc-warning)" }}>
+                    We couldn't check for statements waiting to be added. If you dropped one recently, it's still saved — try refreshing in a moment.
+                  </div>
+                )}
                 {!pendingBankFile && waitingStashes.length > 0 && (
                   <div style={{ background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold)", borderRadius:14, padding:"14px 18px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap" }}>
                     <div>

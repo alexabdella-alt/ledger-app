@@ -263,3 +263,36 @@ describe("★ the payment→bill link is a CHECKED write — delete's cascade de
     expect(src).toMatch(/payment_for: String\(dbId\)/);
   });
 });
+
+describe("★ O98 — the two remaining swallowed-query sites, closed", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const review = fs.readFileSync(path.join(process.cwd(), "src/components/views/ReviewView.jsx"), "utf8");
+  const bank = fs.readFileSync(path.join(process.cwd(), "src/components/views/BankView.jsx"), "utf8");
+
+  it("★★ a failed statement-exception load can no longer render 'All clear'", () => {
+    // This one was labelled 'minor' when it was named, and it wasn't: `statementExceptions`
+    // swallowing into [] feeds the SAME review queue whose summary produces the green
+    // "All clear — nothing needs review". A failed query and a clean month looked identical
+    // on the screen whose whole job is to be trustworthy.
+    expect(app).toMatch(/setStatementExceptionsLoadFailed\(true\)/);
+    expect(app).toMatch(/setStatementExceptionsLoadFailed\(false\)/);   // and cleared on success
+    expect(review).toMatch(/droppedCheckFailed \|\| statementExceptionsLoadFailed/);
+  });
+
+  it("the bank screen distinguishes 'none waiting' from 'we couldn't look'", () => {
+    expect(bank).toMatch(/stashLoadFailed/);
+    expect(bank).toMatch(/couldn't check for statements waiting/i);
+  });
+
+  it("★ every one of these says it about the QUERY, never about the books", () => {
+    for (const [name, src] of [["review", review], ["bank", bank]]) {
+      const msgs = [...src.matchAll(/We couldn't [^<"`]{10,140}/g)].map((m) => m[0]);
+      expect(msgs.length, `${name} should carry at least one honest-failure sentence`).toBeGreaterThan(0);
+      for (const m of msgs) {
+        // Never assert an absence, and never blame the books.
+        expect(m).not.toMatch(/nothing (found|missing|to review)/i);
+        expect(m).not.toMatch(/your books are (wrong|incorrect)/i);
+      }
+    }
+  });
+});
