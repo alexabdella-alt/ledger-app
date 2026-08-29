@@ -32,6 +32,55 @@ export function mutationHitsSignedPeriod(entry, signoffs = []) {
   return !!signedPeriodForDate(entry && entry.date, signoffs, { source: entry && entry.source });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// O130 — ONE "REMOVE THIS" DECISION, MADE BY THE SYSTEM.
+//
+// The product offered TWO destructive controls, Void and Delete, and asked the owner to
+// pick. **"Void" and "reversal" are bookkeeper words** — an owner cannot be expected to
+// know that one erases a draft and the other posts a dated correction, and being wrong
+// about it is how one invoice ended up reversed three times (O123/O126).
+//
+// ★★ AND THE CHOICE WAS NEVER REALLY THEIRS TO MAKE, BECAUSE ONE INPUT DECIDES IT:
+// HAS THE MONTH BEEN SIGNED OFF?
+//   · NOT signed → nobody has attested to those numbers yet, so removing a wrong entry is
+//     correcting a draft. Soft delete: the row survives, every view filters it, Undo
+//     restores it, and the audit trail keeps it.
+//   · SIGNED → you may not quietly change a month your accountant put their name to. That
+//     is the entire value of the signature. The correction must be a NEW entry dated
+//     today, which is what a reversal actually is.
+//
+// So the user gets one button and the machine picks. This is the same "outcomes, not
+// tasks" rule the rest of the product runs on, applied to the one place it was still
+// asking the owner to do accounting.
+//
+// PURE — takes the entry and the sign-off list, returns the decision and the sentence.
+// The sentence lives here WITH the decision (§9: describe from the record) so a caller
+// cannot render "Deleted" over a correction, or the reverse.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const REMOVAL = { DELETE: "delete", CORRECT: "correct" };
+
+export function planEntryRemoval(entry, signoffs = [], { monthLabel = null } = {}) {
+  const period = signedPeriodForDate(entry && entry.date, signoffs, { source: entry && entry.source });
+  const who = (entry && entry.vendor && String(entry.vendor).trim()) || "this transaction";
+  if (!period) {
+    return {
+      mode: REMOVAL.DELETE,
+      period: null,
+      confirm: `Remove the entry for ${who}? You'll have 30 seconds to undo, and your accountant can restore it later.`,
+      done: null,   // the delete path owns its own toast (it carries the Undo action)
+    };
+  }
+  const label = (typeof monthLabel === "function" ? monthLabel(period) : null) || period;
+  return {
+    mode: REMOVAL.CORRECT,
+    period,
+    // Says what will happen and WHY, without the words "void", "reversal" or "journal".
+    confirm: `${label} has already been signed off by your accountant, so we won't change it. We'll record a correction dated today that cancels this out instead. Go ahead?`,
+    done: `Corrected — we recorded it today rather than changing ${label}.`,
+  };
+}
+
 // Option (b): rebook the entry into the CURRENT open month (date-adjust for a cash-basis
 // straggler) — KEEP the document's original date in metadata so nothing is lost, and stamp
 // why. Pure; returns a NEW invoice object (never mutates the input).

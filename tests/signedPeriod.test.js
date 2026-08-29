@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { periodOf, signedPeriodForDate, mutationHitsSignedPeriod, rebookedIntoOpenMonth, signedPeriodOwnerCopy } from "../src/lib/signedPeriod.js";
+import { periodOf, signedPeriodForDate, mutationHitsSignedPeriod, rebookedIntoOpenMonth, signedPeriodOwnerCopy, planEntryRemoval, REMOVAL } from "../src/lib/signedPeriod.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // O83 Trap 2 — a signed period is a guarded period. Detection must fire on every
@@ -85,5 +85,74 @@ describe("reopen-and-book transition + per-path guard predicate", () => {
     expect(mutationHitsSignedPeriod({ date: "2026-01-10" }, signed)).toBe(true);
     // a payment DATED in the open month clears a signed-month bill fine (only the payment date gates)
     expect(signedPeriodForDate("2026-02-05", signed)).toBe(null);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// O130 — ONE "REMOVE THIS" DECISION, MADE BY THE SYSTEM.
+//
+// The product offered TWO destructive controls, Void and Delete, and asked the owner to
+// pick between them. "Void" and "reversal" are bookkeeper words — an owner cannot be
+// expected to know that one erases a draft and the other posts a dated correction, and
+// being wrong about it is how one invoice ended up reversed three times (O123/O126).
+//
+// ★★ THE CHOICE WAS NEVER THEIRS TO MAKE, BECAUSE ONE INPUT DECIDES IT: has the month
+// been signed off? Not signed → nobody has attested to those numbers, so removing a wrong
+// entry is correcting a draft. Signed → you may not quietly change a month your accountant
+// put their name to; the correction must be a new entry dated today.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ O130 — planEntryRemoval picks the mechanism so the owner doesn't have to", () => {
+  const signed = [{ period: "2026-08", revoked_at: null }];
+  const label = (p) => ({ "2026-08": "August 2026" }[p] || p);
+
+  it("an OPEN month is a straight removal", () => {
+    const plan = planEntryRemoval({ date: "2026-09-02", vendor: "Roma Cheese" }, signed, { monthLabel: label });
+    expect(plan.mode).toBe(REMOVAL.DELETE);
+    expect(plan.period).toBe(null);
+    expect(plan.confirm).toMatch(/Remove the entry for Roma Cheese/);
+    expect(plan.confirm).toMatch(/undo/i);
+  });
+
+  it("★ a SIGNED month becomes a correction dated today — and says why", () => {
+    const plan = planEntryRemoval({ date: "2026-08-06", vendor: "Hill Country" }, signed, { monthLabel: label });
+    expect(plan.mode).toBe(REMOVAL.CORRECT);
+    expect(plan.period).toBe("2026-08");
+    expect(plan.confirm).toMatch(/August 2026 has already been signed off/);
+    expect(plan.confirm).toMatch(/correction dated today/);
+    expect(plan.done).toMatch(/rather than changing August 2026/);
+  });
+
+  it("★★ NO BOOKKEEPER VOCABULARY IN EITHER SENTENCE — that is the whole point", () => {
+    const plans = [
+      planEntryRemoval({ date: "2026-09-02", vendor: "X" }, signed, { monthLabel: label }),
+      planEntryRemoval({ date: "2026-08-06", vendor: "X" }, signed, { monthLabel: label }),
+    ];
+    for (const p of plans) {
+      for (const str of [p.confirm, p.done].filter(Boolean)) {
+        for (const word of ["void", "reversal", "reversing", "journal", "debit", "credit", "ledger", "entry id"]) {
+          expect(str.toLowerCase()).not.toContain(word);
+        }
+      }
+    }
+  });
+
+  it("★ the sentence travels WITH the decision — a caller cannot mismatch them", () => {
+    // A confirmation composed separately from the routing can promise a delete and perform
+    // a correction. Returning both from one function makes that impossible by construction.
+    const del = planEntryRemoval({ date: "2026-09-02", vendor: "X" }, signed, { monthLabel: label });
+    const cor = planEntryRemoval({ date: "2026-08-06", vendor: "X" }, signed, { monthLabel: label });
+    expect(del.confirm).not.toBe(cor.confirm);
+    expect(del.confirm).not.toMatch(/signed off/);
+    expect(cor.confirm).not.toMatch(/undo/i);
+  });
+
+  it("an opening-balance entry is exempt, as everywhere else", () => {
+    const plan = planEntryRemoval({ date: "2026-08-06", vendor: "X", source: "opening_balance" }, signed, { monthLabel: label });
+    expect(plan.mode).toBe(REMOVAL.DELETE);
+  });
+
+  it("falls back to the raw period when no label function is given", () => {
+    const plan = planEntryRemoval({ date: "2026-08-06", vendor: "X" }, signed);
+    expect(plan.confirm).toMatch(/2026-08 has already been signed off/);
   });
 });

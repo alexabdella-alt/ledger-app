@@ -103,7 +103,7 @@ function SourceDocPreview({ doc, onExpand }) {
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
-    setInvoices, setSelectedInvoice, setView, setReturnTo, voidInvoiceWithUndo, softDeleteInvoice, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
+    setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
@@ -170,34 +170,23 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
       showNotification && showNotification("Couldn't save the recode — please try again.", "error");
     }
   };
-  // Confirm before voiding a journal entry (destructive, even with Undo) — consistent with
-  // the Books-list void. setDeleteConfirm opens the app's confirm modal.
   // ── O123/O124 — IS THIS ENTRY ALREADY REVERSED? ──────────────────────────────
-  // A reversal is a SEPARATE offsetting entry carrying `import_metadata.reverses`; the
-  // original correctly stays live (§12 #14 — reverse, never delete). What was missing is
-  // that nothing SAID so, so the original looked identical to a live entry and the Void
-  // button stayed enabled — three reversals against one invoice, −937.00, because the
-  // only feedback the user had was that nothing changed.
+  // A correction is a SEPARATE offsetting entry carrying `import_metadata.reverses`; the
+  // original correctly stays live (§12 #14). What was missing is that nothing SAID so, so
+  // it looked identical to a live entry and the control stayed enabled — three corrections
+  // against one invoice, because the only feedback was that nothing changed.
   const reversedInfo = reversalFor(reversalIndex(invoices), sel);
 
-  // ── O126(A) — DELETE BELONGS ON THE SURFACE YOU REACH BY CLICKING THE THING ──
-  // `softDeleteInvoice` was wired to exactly ONE control in the whole app: the red × in
-  // Books → Invoices, four steps deep behind "View all invoices for X →" — a label that
-  // reads as a filter, not as the only place an entry can be removed. So a user who opened
-  // an entry to deal with it was offered Void and nothing else, and Void is the button that
-  // compounded O123 into three reversals. The safe action being hidden and the dangerous
-  // one being unmarked is ONE funnel; this is its other end.
-  const doDelete = (inv) => {
+  // ── O130 — ONE CONTROL. The system picks the mechanism; the user picks the intent. ──
+  // Was Void AND Delete side by side, asking the owner to know that one erases a draft and
+  // the other posts a dated correction. `removalPlanFor` decides from the only input that
+  // matters (is the month signed off) and hands back the sentence that matches the
+  // decision, so the confirmation can never promise one outcome and perform the other.
+  const doRemove = (inv) => {
+    const plan = removalPlanFor ? removalPlanFor(inv) : null;
     setDeleteConfirm({
-      label: `Delete the entry for ${inv.vendor || "this transaction"}${inv.amount!=null ? ` · ${fmtMoney(inv.amount)}` : ""}? You'll have 30 seconds to undo, and your accountant can restore it later.`,
-      onConfirm: () => { softDeleteInvoice && softDeleteInvoice(inv); onClose(); },
-    });
-  };
-
-  const doVoid = (inv) => {
-    setDeleteConfirm({
-      label: `Void the entry for ${inv.vendor || "this transaction"}${inv.amount!=null ? ` · ${fmtMoney(inv.amount)}` : ""}? It stays in the audit trail and posts a reversing entry. You'll have a moment to undo.`,
-      onConfirm: () => { voidInvoiceWithUndo(inv, "Voided from detail panel"); onClose(); },
+      label: plan?.confirm || `Remove the entry for ${inv.vendor || "this transaction"}?`,
+      onConfirm: () => { removeEntry && removeEntry(inv); onClose(); },
     });
   };
 
@@ -222,7 +211,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               {txnStatusBadge(sel)}
               {/* O124 — name the pixel. The effect of a void must be visible on the thing
                   that was voided, or the action reads as having done nothing. */}
-              {reversedInfo && <span style={badge("neutral")}>Reversed{reversedInfo.date ? ` · ${fmtDate(reversedInfo.date)}` : ""}</span>}
+              {reversedInfo && <span style={badge("neutral")}>Removed{reversedInfo.date ? ` · ${fmtDate(reversedInfo.date)}` : ""}</span>}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 28, alignItems: "start" }}>
               <div>
@@ -327,14 +316,12 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                 )}
                 <button onClick={() => { setReturnTo && setReturnTo(returnContext || null); setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Full entry →</button>
                 {!isMember && (
-                  <button onClick={() => doDelete(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Delete</button>
-                )}
-                {sel.status !== "voided" && !isMember && (
-                  // ★ DISABLED, NOT REFUSED-ON-CLICK. Refusing on click is strictly worse
-                  // than not offering: it teaches that clicking is how you find out.
+                  // ★ DISABLED, NOT REFUSED-ON-CLICK, once a correction already exists.
+                  // Refusing on click is strictly worse than not offering: it teaches that
+                  // clicking is how you find out (O124/O126).
                   reversedInfo
-                    ? <button disabled title={`Already reversed${reversedInfo.date ? ` on ${fmtDate(reversedInfo.date)}` : ""}`} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", color: "var(--sc-text-2)", cursor: "not-allowed" }}>Already reversed</button>
-                    : <button onClick={() => doVoid(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", color: "var(--sc-error)", cursor: "pointer" }}>Void</button>
+                    ? <button disabled title={`Already corrected${reversedInfo.date ? ` on ${fmtDate(reversedInfo.date)}` : ""}`} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", color: "var(--sc-text-2)", cursor: "not-allowed" }}>Already removed</button>
+                    : <button onClick={() => doRemove(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", color: "var(--sc-error)", cursor: "pointer" }}>Delete</button>
                 )}
               </>
             )}

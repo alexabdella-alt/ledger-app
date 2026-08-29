@@ -169,23 +169,36 @@ describe("★★ O124(c) — 'Deleted' is claimed only when something was delete
   });
 });
 
-describe("★ O126(A) — delete is on the surface you reach by clicking the thing", () => {
+describe("★ O126(A)/O130 — one removal control, on the surface you reach by clicking the thing", () => {
   const src = fs.readFileSync(path.join(process.cwd(), "src/components/TransactionDetailPanel.jsx"), "utf8");
+  const list = fs.readFileSync(path.join(process.cwd(), "src/components/views/InvoicesView.jsx"), "utf8");
 
-  it("the detail panel offers Delete, not only Void", () => {
-    // `softDeleteInvoice` was wired to exactly ONE control in the app — four steps deep,
-    // behind a label that reads as a filter. So a user who opened an entry to deal with it
-    // was offered only the button that compounded O123 into three reversals.
-    expect(src).toMatch(/softDeleteInvoice/);
-    expect(src).toMatch(/const doDelete/);
+  it("the detail panel offers removal at all — it used to offer only Void", () => {
+    // The safe action was four steps deep behind "View all invoices for X →", a label that
+    // reads as a filter. So a user who opened an entry to deal with it was given the one
+    // button that compounded O123 into three reversals.
+    expect(src).toMatch(/const doRemove/);
+    expect(src).toMatch(/removeEntry/);
     expect(src).toMatch(/>Delete</);
   });
 
-  it("★ it is confirm-guarded, and the confirmation says undo is available", () => {
-    const fn = src.slice(src.indexOf("const doDelete"), src.indexOf("const doVoid"));
+  it("★ NEITHER surface offers a competing 'Void' any more", () => {
+    // Two destructive buttons whose difference is bookkeeper vocabulary is a choice the
+    // owner cannot make correctly, and being wrong about it is what caused O123.
+    for (const f of [src, list]) {
+      const code = f.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l)).join("\n");
+      expect(code).not.toMatch(/voidInvoiceWithUndo/);
+      expect(code).not.toMatch(/>Void</);
+    }
+  });
+
+  it("★ the confirmation comes from the SAME planner that performs the action", () => {
+    // Or the modal could promise one outcome while the action performs the other — §9,
+    // one layer up: describe from the decision, not alongside it.
+    for (const f of [src, list]) expect(f).toMatch(/removalPlanFor/);
+    const fn = src.slice(src.indexOf("const doRemove"), src.indexOf("return createPortal"));
     expect(fn).toMatch(/setDeleteConfirm/);
-    expect(fn).toMatch(/undo/i);
-    expect(fn).toMatch(/softDeleteInvoice/);
+    expect(fn).toMatch(/plan\?\.confirm/);
   });
 });
 
