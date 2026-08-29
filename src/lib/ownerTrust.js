@@ -63,6 +63,13 @@ export function ownerTrustState({
   // comments name the O83 "Nothing wrong" and the bank-overdue one. This is the net nobody
   // wired in.
   openClarifications = 0,
+  // ★★ O98 — DID THE DOCUMENT CHECK ACTUALLY RUN? `intakeRows` arriving empty means one of
+  // two things — nothing was uploaded, or we could not ask — and until now the panel could
+  // not tell them apart. A failed load left `intakeRows` at `[]`, `outstanding` at 0, the
+  // completeness net PASSED, and the header went green on a check that never happened.
+  // Same lie the payroll gate told ("this is the first payroll we've recorded"), on the
+  // owner's trust panel.
+  completenessChecked = true,
   // ── "Is there anything to evaluate yet?" signals (the false-green-on-empty fix). ──
   // A brand-new company with NO journal entries and NO completed setup has nothing to
   // evaluate — every net trivially "clears" (zero failures out of zero checks), which is
@@ -114,9 +121,14 @@ export function ownerTrustState({
   // ── DOCUMENTS (document-UPLOAD completeness — O60 intake ledger, NOT the whole books). Did
   //    any file the owner uploaded fall through before becoming an entry? Honest "still
   //    processing"; never a false all-clear; neutral (not a gap) when nothing was uploaded. ──
-  const capturedOk = outstanding === 0;
+  const capturedOk = outstanding === 0 && completenessChecked;
   let capturedText, capturedStateVal;
-  if (outstanding > 0) {
+  if (!completenessChecked) {
+    // A claim about the QUERY, never about the books — and deliberately reassuring, because
+    // the books are probably fine; what failed is our ability to say so.
+    capturedText = "We couldn't check your documents just now — nothing's wrong with your books, we just can't confirm they're all in yet.";
+    capturedStateVal = "attention";
+  } else if (outstanding > 0) {
     capturedText = `${outstanding} ${plural(outstanding, "document", "documents")} still ${plural(outstanding, "needs", "need")} attention — we couldn't file ${plural(outstanding, "it", "them")} automatically yet.`;
     capturedStateVal = "attention";
   } else if (pendingCount > 0) {
@@ -190,7 +202,7 @@ export function ownerTrustState({
   //    bug). Bank-not-matched / in-flight docs → in_progress; a short net or open anomaly →
   //    attention. ──
   let overall, headline;
-  if (!evalr.ok || !anomaliesOk || !asksOk) {
+  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked) {
     // O121 — `asksOk` is gated HERE explicitly, for the same reason `anomaliesOk` is: the
     // clarification queue is not part of `evaluateSignOff`'s three doc/confidence/accuracy
     // nets, so without naming it the header would reach `all_clear` with questions open.

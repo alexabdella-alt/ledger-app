@@ -188,3 +188,43 @@ describe("★ O126(A) — delete is on the surface you reach by clicking the thi
     expect(fn).toMatch(/softDeleteInvoice/);
   });
 });
+
+describe("★★ O98 — the completeness check reports whether it RAN, and sign-off respects that", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+
+  it("reconcileDroppedDocs returns a checked/ok shape, not a bare array", () => {
+    const body = src.slice(src.indexOf("const reconcileDroppedDocs"), src.indexOf("const flagsForReview"));
+    // A bare array made "we could not ask" and "nothing fell through" the SAME VALUE to
+    // every caller — the payroll lie's exact shape, on the net whose entire purpose is to
+    // independently catch dropped documents.
+    expect(body).toMatch(/return \{ ok: false, checked: false, dropped: \[\]/);
+    expect(body).toMatch(/return \{ ok: true, checked: true, dropped \}/);
+    expect(body).not.toMatch(/\n\s*return dropped;/);
+  });
+
+  it("★★ a failed check BLOCKS sign-off rather than clearing it", () => {
+    const body = src.slice(src.indexOf("const signOffPeriod"), src.indexOf("const reopenPeriod"));
+    // Before: a failed query returned [], the gate saw no dropped documents, and the
+    // sign-off was PERMITTED — a false green on the attestation surface itself, reached
+    // through an absence claim. C194's class meeting O98's.
+    const guard = body.indexOf("if (!completeness.ok)");
+    const gate = body.indexOf("signOffReadinessFor(period, dropped)");
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(gate);
+    expect(body).toMatch(/blockers: \["We couldn't check whether every document/);
+  });
+
+  it("★ it is a BLOCKER, not a hard refusal — the override path still applies", () => {
+    // A reviewer may proceed with a recorded acknowledgment and reason. What they can no
+    // longer do is proceed without being told.
+    const body = src.slice(src.indexOf("const signOffPeriod"), src.indexOf("const reopenPeriod"));
+    expect(body).toMatch(/override && override\.acknowledged/);
+  });
+
+  it("the blocker sentence assumes no accounting knowledge and blames the query", () => {
+    const body = src.slice(src.indexOf("const signOffPeriod"), src.indexOf("const reopenPeriod"));
+    const msg = (body.match(/blockers: \["([^"]+)"\]/) || [])[1] || "";
+    expect(msg).toMatch(/couldn't check/i);
+    expect(msg).not.toMatch(/journal|ledger|reconcile|intake|query|null/i);
+  });
+});

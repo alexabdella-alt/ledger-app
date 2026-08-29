@@ -803,6 +803,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Trust-layer third net (O59) + sign-off (O50): all intake rows (for the docs-recorded
   // control total) + persisted period sign-offs ("reviewed through …").
   const [intakeRows, setIntakeRows] = useState([]);
+  const [intakeLoadOk, setIntakeLoadOk] = useState(true);   // O98 — did the document check run at all?
   const [signoffs, setSignoffs] = useState([]);
   // O83 Trap 2 — a booking held because it dates into a signed-off period: { invoice, period }.
   // The decision modal (reopen / rebook / CPA) reads this; null when nothing is held.
@@ -3620,10 +3621,21 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   // The completeness check — surface every document that fell through (received/processing
   // stuck, or failed). Independent of the recording pipeline (reads the intake population).
+  // ★★ O98 — RETURNS WHETHER THE CHECK RAN, NOT JUST WHAT IT FOUND. This used to return a
+  // bare array and `console.warn` a failed query, so "we could not ask" and "nothing fell
+  // through" were the SAME VALUE — an empty array — to every caller. That is the payroll
+  // lie's exact shape ("this is the first payroll we've recorded" when the query returned
+  // nothing), on the net whose entire purpose is to independently catch dropped documents.
+  //
+  // The array is still returned as `dropped` so nothing has to re-derive it, but `ok` now
+  // travels with it and the callers below are required to read it.
   const reconcileDroppedDocs = async (opts = {}) => {
-    if (!currentCompany?.id) return [];
+    if (!currentCompany?.id) return { ok: false, checked: false, dropped: [], error: "no company" };
     const res = await fetchDroppedIntake(supabase, currentCompany.id, opts);
-    if (!res.ok) console.warn("[document_intake] reconcile failed:", res.error);
+    if (!res.ok) {
+      console.error("[document_intake] completeness check FAILED — this is NOT 'nothing dropped':", res.error);
+      return { ok: false, checked: false, dropped: [], error: res.error };
+    }
     let dropped = res.dropped || [];
     // C195(7) — AUTO-RESOLVE ORPHANS: a re-upload of a file we ALREADY recorded nagged as
     // "received but never recorded" for an hour. document_intake carries content_hash (047) and
@@ -3648,7 +3660,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         }
       } catch (e) { console.warn("[document_intake] duplicate auto-resolve skipped:", e?.message || e); }
     }
-    return dropped;
+    return { ok: true, checked: true, dropped };
   };
 
   // ── O49 AI confidence: the queryable "needs review" set (for O50's CPA surface) ──
@@ -3705,8 +3717,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // O121 — questions we have asked the owner and they have not answered. Each holds a
       // document OUT of the books, so the header must not claim they are up to date.
       openClarifications: (clarificationQueue || []).length,
+      completenessChecked: intakeLoadOk,   // O98 — a check that did not run is not a pass
     });
-  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount, clarificationQueue]);
+  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount, clarificationQueue, intakeLoadOk]);
 
   // ── O83 SIGN-OFF READINESS (single source) — "can THIS period be attested?" ──
   // Preconditions (non-vacuous: a period with nothing to check is NOT ready) + the four
@@ -3742,7 +3755,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const signOffPeriod = async (period, { note = null, override = null } = {}) => {
     if (!currentCompany?.id || !session?.user?.id || !period) return { ok: false, error: "missing company/user/period" };
     if (!isReviewer) return { ok: false, error: "only a reviewer (accountant/admin) can sign off — the account owner can't attest their own books" };
-    const dropped = await reconcileDroppedDocs();
+    // ★★ O98 — A COMPLETENESS CHECK THAT DID NOT RUN CANNOT CLEAR A PERIOD. This used to
+    // take a bare array: a failed query returned `[]`, the gate saw no dropped documents,
+    // and THE SIGN-OFF WAS PERMITTED. That is a false green on the attestation surface
+    // itself (C194's class) reached through an absence claim (O98's class) — the two
+    // worst-behaved families in this product, meeting.
+    //
+    // It is a BLOCKER, not a hard refusal: the existing override path still applies, so a
+    // reviewer can proceed with a recorded acknowledgment and reason. What they can no
+    // longer do is proceed without being told.
+    const completeness = await reconcileDroppedDocs();
+    const dropped = completeness.dropped;
+    if (!completeness.ok) {
+      return { ok: false, blockers: ["We couldn't check whether every document made it into the books, so we can't confirm this month is complete. Try again in a moment — if it keeps happening, that's worth reporting."] };
+    }
     const gate = signOffReadinessFor(period, dropped);   // authoritative re-check
     // Blocked and NOT explicitly overridden → refuse, hand back the plain-language blockers.
     if (!gate.ok && !(override && override.acknowledged)) return { ok: false, blockers: gate.blockers };
@@ -3824,7 +3850,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   // Load intake rows + sign-offs when the company changes (best-effort, pre-migration safe).
   useEffect(() => {
-    if (!currentCompany?.id) { setIntakeRows([]); setSignoffs([]); return; }
+    if (!currentCompany?.id) { setIntakeRows([]); setSignoffs([]); setIntakeLoadOk(true); return; }
     let cancelled = false;
     (async () => {
       const [ir, so] = await Promise.all([
@@ -3832,6 +3858,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         fetchSignoffs(supabase, currentCompany.id),
       ]);
       if (cancelled) return;
+      // O98 — record whether the load RAN. `[]` from a failed query and `[]` from a company
+      // with no uploads are the same value and must not be the same claim.
+      setIntakeLoadOk(!!ir.ok);
       if (ir.ok) setIntakeRows(ir.rows);
       if (so.ok) setSignoffs(so.signoffs);
     })();

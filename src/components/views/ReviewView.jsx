@@ -22,6 +22,7 @@ export default function ReviewView() {
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
   const [loadingDropped, setLoadingDropped] = React.useState(true);
+  const [droppedCheckFailed, setDroppedCheckFailed] = React.useState(false);   // O98 — 'we couldn't ask' is not 'nothing found'
   const [droppedLoaded, setDroppedLoaded] = React.useState(false);   // has the FIRST reconcile completed? ("loaded" ≠ "empty")
   const [busyId, setBusyId] = React.useState(null);
   const [overrideFor, setOverrideFor] = React.useState(null);   // flagged-txn id being overridden
@@ -49,8 +50,14 @@ export default function ReviewView() {
   // once per company instead; action handlers call refreshDropped() directly to re-sync.
   const refreshDropped = async () => {
     setLoadingDropped(true);
-    try { const d = await (reconcileDroppedDocs ? reconcileDroppedDocs() : Promise.resolve([])); setDropped(Array.isArray(d) ? d : []); }
-    catch { setDropped([]); }
+    // O98 — an empty list means one of two very different things, and the screen must not
+    // present them identically. `checked` says whether the query actually ran.
+    try {
+      const r = await (reconcileDroppedDocs ? reconcileDroppedDocs() : Promise.resolve({ ok: true, checked: true, dropped: [] }));
+      setDropped(Array.isArray(r?.dropped) ? r.dropped : []);
+      setDroppedCheckFailed(!r?.ok);
+    }
+    catch { setDropped([]); setDroppedCheckFailed(true); }
     finally { setLoadingDropped(false); setDroppedLoaded(true); }
   };
   React.useEffect(() => { setDroppedLoaded(false); refreshDropped(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [currentCompany?.id]);
@@ -518,6 +525,18 @@ export default function ReviewView() {
               {ready && signOffCard}
               {!ready ? (
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>Loading your review queue…</div>
+              ) : droppedCheckFailed ? (
+                /* ★★ O98 — "WE COULDN'T ASK" IS NOT "NOTHING FOUND". The completeness check
+                   returning an empty list used to be indistinguishable from it FAILING, so a
+                   broken query rendered as a green "All clear — nothing needs review" on the
+                   screen whose whole job is to be trustworthy. The claim made here is about
+                   the QUERY, never about the books. */
+                <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, padding:48, textAlign:"center" }}>
+                  <div style={{ fontSize:32, marginBottom:12 }}>⚠</div>
+                  <div style={{ fontSize:16, fontWeight:600, marginBottom:8, color:"var(--sc-warning)" }}>We couldn't check the document list just now</div>
+                  <div style={{ fontSize:13, color:"var(--sc-text-2)", maxWidth:420, margin:"0 auto" }}>This isn't a problem with your books — we just couldn't confirm every document made it in, so we're not going to tell you everything's clear. Try again in a moment.</div>
+                  <button onClick={refreshDropped} style={{ marginTop:16, padding:"8px 16px", borderRadius:8, fontSize:13, fontWeight:600, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text)", cursor:"pointer" }}>Try again</button>
+                </div>
               ) : summary.allClear ? (
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-success-soft)", borderRadius:14, padding:48, textAlign:"center" }}>
                   <div style={{ fontSize:32, marginBottom:12 }}>✓</div>

@@ -377,3 +377,47 @@ describe("★★ O121 — open questions block the all-clear", () => {
     for (const str of strings(s)) expect(containsOwnerJargon(str)).toBe(false);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// O98 — "WE COULDN'T ASK" IS NOT "NOTHING FOUND".
+//
+// The payroll gate once told the owner "this is the first payroll we've recorded for this
+// company" when there were twelve priors. The true statement was "we couldn't find any" —
+// a claim about the QUERY, not about the company. Payroll's instance was fixed; the CLASS
+// was listed as a finding, and a list is not a home.
+//
+// ★ THE INSTANCE HERE IS THE SHARPEST ONE LEFT: `intakeRows` arriving empty means either
+// "nothing was uploaded" or "we could not ask", and the panel could not tell them apart.
+// A failed load left the array at `[]`, `outstanding` at 0, the completeness net PASSED,
+// and the header went green ON A CHECK THAT NEVER RAN.
+// ════════════════════════════════════════════════════════════════════════════
+describe("★★ O98 — a document check that did not run is not a pass", () => {
+  it("THE BUG: an unchecked completeness net cannot reach all_clear", () => {
+    const s = ownerTrustState({ ...base, intakeRows: [], completenessChecked: false });
+    expect(s.overall).not.toBe("all_clear");
+    expect(s.overall).toBe("attention");
+  });
+
+  it("★ and it claims something about the QUERY, never about the books", () => {
+    const s = ownerTrustState({ ...base, intakeRows: [], completenessChecked: false });
+    const t = s.lines.captured.text;
+    expect(t).toMatch(/couldn't check/i);
+    // It must NOT assert an absence…
+    expect(t).not.toMatch(/nothing missing/i);
+    expect(t).not.toMatch(/everything you sent/i);
+    // …and it must not frighten: the books are probably fine, our ability to say so isn't.
+    expect(t).toMatch(/nothing's wrong with your books/i);
+    expect(containsOwnerJargon(t)).toBe(false);
+  });
+
+  it("★ the SAME empty array, when the check DID run, is still a clean pass", () => {
+    // The distinction is entirely in whether we asked — that is the whole point.
+    const s = ownerTrustState({ ...base, intakeRows: [], completenessChecked: true });
+    expect(s.overall).toBe("all_clear");
+    expect(s.lines.captured.text).toMatch(/No documents waiting/i);
+  });
+
+  it("defaults to checked, so callers that don't pass the signal keep the old behaviour", () => {
+    expect(ownerTrustState({ ...base }).overall).toBe("all_clear");
+  });
+});
