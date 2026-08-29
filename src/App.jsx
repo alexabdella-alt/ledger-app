@@ -2414,9 +2414,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const lines = buildReversalLines(orig.journal_entry_lines);
     if (!lines.length) { showNotification("Nothing to reverse on that entry", "error"); return null; }
 
-    // Post the reversal WITH its link metadata in the SAME atomic RPC (p_meta persists to
-    // import_metadata — the depreciation guard relies on the same contract). No separate,
-    // swallowable update: the idempotency marker is written iff the entry is posted.
+    // ── O123 — THE MARKER IS WRITTEN AFTER THE POST, BECAUSE THE RPC DROPS IT ──────
+    // WHAT THIS COMMENT USED TO SAY WAS FALSE, AND THE FALSEHOOD WAS THE BUG. It read:
+    // "p_meta persists to import_metadata … no separate, swallowable update: the
+    // idempotency marker is written iff the entry is posted." Every clause of that is
+    // wrong. `post_journal_entry` (migration 010) cherry-picks SIX named scalars out of
+    // p_meta — ai_reasoning, ai_confidence, approval_status, payment_status,
+    // payment_method, due_date — and never writes `import_metadata` at all (O95). So
+    // `reverses` was discarded on every reversal this product has ever posted, BOTH
+    // idempotency guards above have been permanently false, and the O8 display marker
+    // has had nothing to read. Live cost: one Hill Country invoice reversed THREE times,
+    // −937.00, three clicks twenty seconds apart because nothing on screen changed.
+    //
+    // ★ AND THIS IS THE p_meta VICTIM THAT FAILS **OPEN**. Payroll and depreciation failed
+    // closed — a missed feature and a refused post. This one CREATES WRONG ENTRIES, one
+    // per click, with no ceiling. The remedy is the follow-up checked update ·3c applied
+    // to both of those; the reversal path was missed in that sweep.
     const { data: rpcData, error: rpcErr } = await supabase.rpc("post_journal_entry", {
       p_company_id: currentCompany.id, p_entry_date: todayLocal(),
       p_description: `REVERSAL: ${orig.description || invoice.vendor || "entry"}${reason ? ` — ${reason}` : ""}`,
@@ -2425,6 +2438,25 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     });
     if (rpcErr) { console.error("[reverse] post failed:", rpcErr.message); showNotification("Couldn't post the reversal — " + rpcErr.message, "error"); return null; }
     const revId = rpcData?.id || rpcData?.entry?.id || null;
+
+    // ★★ HERE THE STAMP IS THE **ONLY** GUARD, WHICH IS NOT TRUE OF ITS PRECEDENTS.
+    // Depreciation has `status='pending'` behind it and payroll only loses norm history.
+    // Nothing else stops a second reversal — so a failed stamp is not a degraded feature,
+    // it is a live double-post hazard, and it must be SAID rather than logged and hidden.
+    if (revId) {
+      const stamp = await checkedRowUpdate({
+        supabase, table: "journal_entries", id: revId, companyId: currentCompany.id,
+        patch: { import_metadata: { kind: "reversal", reverses: String(origId) } },
+        label: "reversal:stamp-import-metadata",
+      });
+      if (!stamp.ok) {
+        logAudit("reversal_stamp_failed",
+          `Reversed ${invoice.vendor || orig.description || "entry"}, but the link back to the original wasn't saved (${stamp.reason}) — a second Void on that entry would post a SECOND reversal`,
+          null, { journal_entry_id: String(revId), reverses: String(origId), reason: stamp.reason });
+        // Owner-facing, no jargon, and it states the consequence rather than the mechanism.
+        showNotification("Reversed — but we couldn't record that it's been reversed. Don't press Void on it again; tell your accountant.", "error");
+      }
+    }
     logAudit("entry_reversed", `Reversed ${invoice.vendor || orig.description || "entry"} · $${(invoice.amount || 0).toFixed(2)}${reason ? ` — ${reason}` : ""}`,
       null, { reverses: String(origId), reversal_id: revId ? String(revId) : null }, byAI ? "AI Chat" : "owner");
     return revId;

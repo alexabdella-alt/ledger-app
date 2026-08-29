@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { classifyTxn } from "../../lib/txnPresent";
 import { initials, vendorColor, fmtDate, todayLocal } from "../../lib/format";
@@ -7,6 +8,10 @@ import { getAuthHeaders } from "../../lib/supabase";
 
 export default function InvoicesView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, softDeleteInvoice, voidInvoiceWithUndo, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  // O123/O124 — which originals already carry a live reversing entry. Memoized: the
+  // table renders a row per invoice and this is O(n) over the whole ledger.
+  const revIdx = React.useMemo(() => reversalIndex(invoices), [invoices]);
+
   return (
             <div>
               <div style={{ marginBottom:28, display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
@@ -69,16 +74,31 @@ export default function InvoicesView() {
                           </td>
                           <td style={{ padding:"8px 16px" }}>
                             <div style={{ display:"flex", gap:4 }}>
-                              {inv.status !== "voided" && (
-                                <button
-                                  onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Void entry for ${inv.vendor} · $${inv.amount} on ${fmtDate(inv.date)}?
+                              {/* O123/O124 — an already-reversed entry gets a DISABLED control,
+                                  not one that refuses on click. The original stays listed by
+                                  design (§12 #14); what was missing is any sign that it was
+                                  already dealt with, which is what produced three reversals
+                                  of one invoice. */}
+                              {inv.status !== "voided" && (() => {
+                                const rev = reversalFor(revIdx, inv);
+                                if (rev) return (
+                                  <button disabled
+                                    style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid var(--sc-border)", color:"var(--sc-text-mut)", fontSize:11, cursor:"not-allowed" }}
+                                    title={`Already reversed${rev.date ? ` on ${fmtDate(rev.date)}` : ""}`}>
+                                    Reversed
+                                  </button>
+                                );
+                                return (
+                                  <button
+                                    onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Void entry for ${inv.vendor} · $${inv.amount} on ${fmtDate(inv.date)}?
 
 Voiding keeps an audit trail.`, onConfirm:()=>{ voidInvoiceWithUndo(inv); }}); }}
-                                  style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:11, cursor:"pointer" }}
-                                  title="Void (keeps audit trail)">
-                                  Void
-                                </button>
-                              )}
+                                    style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:11, cursor:"pointer" }}
+                                    title="Void (keeps audit trail)">
+                                    Void
+                                  </button>
+                                );
+                              })()}
                               <button
                                 onClick={e=>{ e.stopPropagation(); setDeleteConfirm({ label:`Delete ${inv.vendor} · $${inv.amount} on ${fmtDate(inv.date)}? You'll have 30 seconds to undo, and an admin can restore it later.`, onConfirm:()=>{ softDeleteInvoice(inv); }}); }}
                                 style={{ padding:"4px 8px", borderRadius:6, background:"transparent", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", fontSize:11, cursor:"pointer" }}

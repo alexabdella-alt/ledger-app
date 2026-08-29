@@ -8,6 +8,7 @@ import { classifyTxn, settlementKind } from "../lib/txnPresent";
 import { badge } from "../lib/ui";
 import { classifyBankReason } from "../lib/bankMatch";
 import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
+import { reversalIndex, reversalFor } from "../lib/ledger";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
 
 // Older bank/QBO entries stored the PROVENANCE ("Imported from bank statement") in the
@@ -171,6 +172,14 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   };
   // Confirm before voiding a journal entry (destructive, even with Undo) — consistent with
   // the Books-list void. setDeleteConfirm opens the app's confirm modal.
+  // ── O123/O124 — IS THIS ENTRY ALREADY REVERSED? ──────────────────────────────
+  // A reversal is a SEPARATE offsetting entry carrying `import_metadata.reverses`; the
+  // original correctly stays live (§12 #14 — reverse, never delete). What was missing is
+  // that nothing SAID so, so the original looked identical to a live entry and the Void
+  // button stayed enabled — three reversals against one invoice, −937.00, because the
+  // only feedback the user had was that nothing changed.
+  const reversedInfo = reversalFor(reversalIndex(invoices), sel);
+
   const doVoid = (inv) => {
     setDeleteConfirm({
       label: `Void the entry for ${inv.vendor || "this transaction"}${inv.amount!=null ? ` · ${fmtMoney(inv.amount)}` : ""}? It stays in the audit trail and posts a reversing entry. You'll have a moment to undo.`,
@@ -195,7 +204,12 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
             <div style={{ fontSize: 30, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: cls.inflow ? "var(--sc-success)" : "var(--sc-error)", marginBottom: 6 }}>{cls.inflow ? "+" : "-"}{fmtM(sel.amount)}</div>
-            <div style={{ marginBottom: 18 }}>{txnStatusBadge(sel)}</div>
+            <div style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {txnStatusBadge(sel)}
+              {/* O124 — name the pixel. The effect of a void must be visible on the thing
+                  that was voided, or the action reads as having done nothing. */}
+              {reversedInfo && <span style={badge("neutral")}>Reversed{reversedInfo.date ? ` · ${fmtDate(reversedInfo.date)}` : ""}</span>}
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 28, alignItems: "start" }}>
               <div>
                 {[
@@ -298,7 +312,13 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   <button onClick={() => setPayOpen(true)} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Mark as Paid</button>
                 )}
                 <button onClick={() => { setReturnTo && setReturnTo(returnContext || null); setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Full entry →</button>
-                {sel.status !== "voided" && !isMember && <button onClick={() => doVoid(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", color: "var(--sc-error)", cursor: "pointer" }}>Void</button>}
+                {sel.status !== "voided" && !isMember && (
+                  // ★ DISABLED, NOT REFUSED-ON-CLICK. Refusing on click is strictly worse
+                  // than not offering: it teaches that clicking is how you find out.
+                  reversedInfo
+                    ? <button disabled title={`Already reversed${reversedInfo.date ? ` on ${fmtDate(reversedInfo.date)}` : ""}`} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", color: "var(--sc-text-2)", cursor: "not-allowed" }}>Already reversed</button>
+                    : <button onClick={() => doVoid(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", color: "var(--sc-error)", cursor: "pointer" }}>Void</button>
+                )}
               </>
             )}
           </div>

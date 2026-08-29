@@ -75,6 +75,13 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         reasoning: e.ai_reasoning || "Loaded from database",
         db_entry_id: e.id,
         import_metadata: e.import_metadata || null,   // carries reversal linkage (O8)
+        // O123 — carried so `alreadyReversed`'s liveness filter means something. It tests
+        // `!r.deleted_at`, and until now flatten never emitted the field, so that half of
+        // the guard was inert: it worked only because `fetchLedgerEntries` filters deleted
+        // rows upstream. Anything that ever loads soft-deleted entries into `invoices`
+        // (a restore flow, a "show deleted" toggle) would make a soft-deleted reversal
+        // count as live and block a legitimate re-void.
+        deleted_at: e.deleted_at || null,
       });
     } else {
       // Multi-line entry (lease commencement, payroll, taxed AR invoice, …) — expand
@@ -122,6 +129,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
           reasoning: e.ai_reasoning || "Loaded from database",
           db_entry_id: e.id,
           import_metadata: e.import_metadata || null,   // carries reversal linkage (O8)
+          deleted_at: e.deleted_at || null,   // O123 — see the simple-entry branch above
           balance_sheet_account: ["Assets", "Liabilities", "Equity"].includes(acctDef?.category),
         });
       });

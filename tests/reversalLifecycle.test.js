@@ -202,3 +202,99 @@ describe("CR-21 memo equivalence — net income from rev/exp memos === computeNe
     });
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// O123 — VOID IS IDEMPOTENT, AND ITS GUARD IS ONLY REAL IF THE MARKER IS WRITTEN.
+//
+// ★★ THE LIVE FAILURE THIS PINS. `reverseJournalEntry` posted with
+// `p_meta: { kind:'reversal', reverses: origId }` — and `post_journal_entry`
+// (migration 010) cherry-picks SIX named scalars out of p_meta and never writes
+// `import_metadata` at all (O95). So `reverses` was discarded on every reversal ever
+// posted, BOTH idempotency guards were permanently false, and the O8 display marker had
+// nothing to read. One Hill Country invoice was reversed THREE times — −937.00 against a
+// single 468.50 charge, three clicks twenty seconds apart, because nothing on screen
+// changed and the button stayed enabled.
+//
+// ★ AND IT IS THE FIRST p_meta VICTIM THAT FAILS **OPEN**. Payroll failed closed (asked a
+// human); depreciation failed closed (posted nothing). This one CREATES WRONG ENTRIES,
+// one per click, with no ceiling.
+// ════════════════════════════════════════════════════════════════════════════
+describe("★★ O123 — the double-reversal, and the guard that has to stop it", () => {
+  const orig = () => dbEntry("HC", "2026-08-06", [{ code: EXP, debit: 468.50 }, { code: CASH, credit: 468.50 }]);
+  const rev = (id, date) => dbEntry(id, date, reversed([{ code: EXP, debit: 468.50 }, { code: CASH, credit: 468.50 }]),
+                                    { import_metadata: { kind: "reversal", reverses: "HC" } });
+
+  it("ONE reversal nets the charge to zero — the correct outcome", () => {
+    const flat = flattenJournalEntries([orig(), rev("r1", "2026-08-27")]);
+    expect(glAccountBalance(EXP, flat, { asOf: "2026-12-31" })).toBe(0);
+  });
+
+  it("★ THREE reversals put the ledger 937.00 the WRONG side of zero — the live damage", () => {
+    // Reproduces the production shape exactly: one debit, three credits. Recorded as a
+    // number rather than a description so the repair has something to be checked against.
+    const flat = flattenJournalEntries([orig(), rev("r1", "2026-08-27"), rev("r2", "2026-08-27"), rev("r3", "2026-08-27")]);
+    expect(glAccountBalance(EXP, flat, { asOf: "2026-12-31" })).toBe(-937.00);
+  });
+
+  it("★★ the guard catches the second click — BUT ONLY IF THE MARKER IS ON THE ROW", async () => {
+    const { alreadyReversed } = await import("../src/lib/ledger.js");
+    const flat = flattenJournalEntries([orig(), rev("r1", "2026-08-27")]);
+    expect(alreadyReversed(flat, "HC")).toBe(true);
+
+    // ★ THE BUG, STATED AS A TEST. Strip `import_metadata` — which is precisely what the
+    // RPC did to every reversal in production — and the guard goes quietly false while
+    // the reversing entry is sitting right there in the ledger.
+    const stripped = flattenJournalEntries([orig(), dbEntry("r1", "2026-08-27",
+      reversed([{ code: EXP, debit: 468.50 }, { code: CASH, credit: 468.50 }]))]);
+    expect(alreadyReversed(stripped, "HC")).toBe(false);
+  });
+
+  it("a soft-deleted or voided reversal does NOT count — undo must re-enable the void", async () => {
+    const { alreadyReversed } = await import("../src/lib/ledger.js");
+    const undone = flattenJournalEntries([orig(),
+      dbEntry("r1", "2026-08-27", reversed([{ code: EXP, debit: 468.50 }, { code: CASH, credit: 468.50 }]),
+              { import_metadata: { kind: "reversal", reverses: "HC" }, deleted_at: "2026-08-28T00:00:00Z" })]);
+    expect(alreadyReversed(undone, "HC")).toBe(false);
+  });
+});
+
+// ── THE SOURCE CONTRACT ──────────────────────────────────────────────────────
+// ★★ A UNIT TEST CANNOT REACH THIS BUG: it lived on the far side of the RPC boundary,
+// where the client's p_meta went in and nothing came out. What IS checkable from here is
+// that the caller no longer DEPENDS on that boundary — the marker must be written by a
+// follow-up checked update (the remedy ·3c applied to payroll and depreciation, and
+// missed here), never by p_meta alone.
+describe("★★ the reversal marker is written AFTER the post, not through p_meta", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const src = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const raw = src.slice(src.indexOf("const reverseJournalEntry"), src.indexOf("const voidInvoiceWithUndo"));
+  const body = raw;
+  // Comments stripped for the "no longer claims" check below: this suite QUOTES the old
+  // false comment in order to explain it, and a guard that matches its own explanation is
+  // the C202 false positive all over again.
+  const code = raw.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+
+  it("finds the reversal path", () => { expect(body.length).toBeGreaterThan(500); });
+
+  it("★ issues a checkedRowUpdate stamping import_metadata.reverses on the posted reversal", () => {
+    expect(body).toMatch(/checkedRowUpdate\(/);
+    const stamp = body.slice(body.indexOf("checkedRowUpdate("));
+    expect(stamp).toMatch(/table:\s*"journal_entries"/);
+    expect(stamp).toMatch(/import_metadata:\s*\{[^}]*reverses/);
+  });
+
+  it("★ a failed stamp is AUDITED and SAID OUT LOUD — here the stamp is the only guard", () => {
+    // Depreciation has `status='pending'` behind it; payroll only loses norm history.
+    // Nothing else stops a second reversal, so a silent stamp failure is a live
+    // double-post hazard rather than a degraded feature.
+    expect(body).toMatch(/reversal_stamp_failed/);
+    expect(body).toMatch(/showNotification\(/);
+  });
+
+  it("★ no longer claims p_meta persists import_metadata", () => {
+    // The old comment asserted exactly that, and was the reason no follow-up stamp was
+    // written. A comment that states a false contract is how this survived a green suite.
+    expect(code).not.toMatch(/p_meta persists to/);
+    expect(code).not.toMatch(/marker is written iff the entry is posted/);
+  });
+});
