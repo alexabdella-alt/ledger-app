@@ -17,7 +17,9 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ## OPEN LEDGER — every tracked, unshipped item
 
-**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **Last refreshed: 2026-08-29 (big session: O97 step 2, O123, O124, O126, O115, O128, O119, O96 — eight items. One repair SQL owed to the operator.)**
+**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **TOTAL OPEN: 79** — 8 before the first client · 14 around launch · 16 after launch · 30 known problems · 10 sequenced · 1 unproven. **Last refreshed: 2026-08-29** (big session: O97 step 2, O123, O124, O126, O115, O128, O119, O96 — eight items closed. One repair SQL owed to the operator.)
+
+> **The counts above are DERIVED, not typed** — `- [ ]` lines per section. Three were wrong when this was checked: "Known problems" said 38 against a real 36; "Sequenced next" said 8 against 10; and "After launch" said 16 correctly but **twelve of its items were buried inside a single run-on bullet**, so the number was right and the list was unreadable, which is its own kind of stale. A printed count cannot be wrong, only old — and nothing about it invites correction (§6).
 
 ### Before the first paying client — 8 open
 
@@ -59,7 +61,18 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **O104 · Reports that answer the questions you actually ask** — who do I owe, what am I spending on, which vendors are creeping up. Built only on months someone has signed off, so it can never sound surer than the books beneath it. Needs its own design session first. **After the new booking system proves out.**
 - [ ] **O105 · Offer to fix the past when you fix a mapping** — correct a vendor's account and we'll offer to move its older transactions to match. **A closed month is never quietly rewritten**: either a dated correction in the current month, or it goes on the accountant's list. Nothing moves without you saying so. **Behind O103.**
 - [ ] **O106 · Better at spotting the same vendor under a new name** — suggests matches the exact-match rule misses, and only ever *suggests*: a suggestion becomes real when you confirm it, and it can never decide an account on its own.
-- [ ] Full 1099 eligibility · opening-balance mismatches as tracked notes · normalized reconciliation storage · year-end close · payroll accrue-then-pay · multi-state sales tax · more depreciation methods · link older entries to bank accounts · **owner nudge channel (Slack/SMS/email)** — differentiator-class · vendor teach-in → entity profiles · Reconcile collapses to exceptions-only · clean up four legacy demo companies.
+- [ ] **Owner nudge channel (Slack / SMS / email)** — ask the owner about a charge where they already are, and let the answer teach the supplier's category permanently. *Differentiator-class.*
+- [ ] **Supplier teach-in → entity profiles** — learn a new client's suppliers from paperwork they already have, before their first month runs.
+- [ ] **Full 1099 eligibility** — worked out from what the supplier is and what they were paid, not a flag someone ticked.
+- [ ] **Opening-balance mismatches become tracked notes** rather than a one-off warning.
+- [ ] **Year-end close** — actually post the closing entries and lock the year.
+- [ ] **Payroll: record the liability, then the payment** — two steps instead of one.
+- [ ] **Sales tax across multiple states / per-line rates.**
+- [ ] **More depreciation methods** — declining balance, units of production, MACRS.
+- [ ] **Link older entries to their bank account** — the missing connection behind three separate symptoms.
+- [ ] **Reconcile becomes an exceptions-only screen** once the pipeline carries the clean path.
+- [ ] **Normalized reconciliation storage** — the proper relational shape; today's works.
+- [ ] **Clean up four legacy demo companies** — quarantined, so cleanup is deferred, not urgent.
 
 ### Known problems, not yet scheduled — 30 open
 
@@ -107,7 +120,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **O76 · Screens that don't refresh after a change** — fix as a class, not screen by screen.
 - [ ] **O89 · The main app file is 7,000 lines.**
 
-### Sequenced next — 8 open
+### Sequenced next — 10 open
 
 *The immediate next piece of work, written down so the order is not re-litigated.*
 
@@ -119,7 +132,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **OWED, not scheduled — the two rails now use different name rules.** The bank rail matches vendor names by two-way substring containment (`autoMatchBankLines`); the invoice rail requires exact entity-key equality (`invoicePayment.js`). **Unifying them is its own decision and the direction is already set: TIGHTEN TOWARD EXACT, never loosen toward substring** — the bank rail's substring rule may itself be too loose (operator, 2026-08-26). Not done as a rider on a bug fix: that path has been live and correct for eight drives and changing it needs its own evidence.
 - [ ] **2 · O113 — the throttle, AND IT NOW GATES THE RE-DRIVE.** `O113a` **BUILT 2026-08-26 (migration `074` + `ai-proxy`, both ▶ HOLD — apply the migration BEFORE the deploy).** The call-count question is **DECIDED: proposal 2, sequenced with `C203`** — deleting call 3 for known vendors, which makes the calibration work the throughput fix as well. These must land **before** the O114 re-drive — a 36-invoice run cannot clear while every failure deepens the hole. Acceptance criteria for the re-drive are written in advance: `docs/REDRIVE_ACCEPTANCE_O114.md`. **THERE IS NO FOURTH CALL:** Live counters for the drive hour read `ai` **81/60** and `upload` **18/20** — the AI bucket blew, the upload bucket never tripped. Three calls per file, provably; the deficit was a **shared bucket** (≥6 of the 60 were not invoice work), a **counter that charges for refusals** (81 = 60 + 21 rejected, and 21 invoices failed), and a **fixed clock-hour window**. **Part (b) is the open question:** are 3 calls per invoice necessary, redundant, or cacheable? **No change to `AI_LIMIT` proposed.**
 - [ ] **2b · RE-DRIVE O114 against `docs/REDRIVE_ACCEPTANCE_O114.md`** — criteria fixed 2026-08-26, before the build, so the result cannot be rationalised either way. **NINE DOCUMENTS, NOT 36** — the specimen set satisfies every criterion at ~30 AI calls and 10 uploads, inside both walls. **Loading 36 would guarantee hitting the 20-file wall and produce throttle artefacts dressed as feature failures.** The volume drive is `O118`'s, run separately. **Load the statement BEFORE the invoices or the feature never executes and a clean result proves nothing.** Roma/Toast/Alamo Fire → no card · Franklin Ave → the identity card, and auto-attaching is a FAILURE · Hill Country → the amounts-differ card · **Bluebonnet's four must REMAIN** (if they vanish, something over-matched) · nothing books through the defer.
-- [ ] **3 · O115 and the `7100`/Alamo Ice instance.** The summary copy that contradicts the booked account, and the Miscellaneous fallback on a recognisable vendor (TIER 1 #7's own hard-fail test, first live instance).
+- [ ] **3 · The `7100`/Alamo Ice instance.** *(`O115` — the summary contradicting the booked account — **FIXED 2026-08-29**.)* What remains is the Miscellaneous fallback on a recognisable supplier: `Alamo Ice & Beverage` (CO2 tanks, bagged ice) went to Miscellaneous, which is TIER 1 #7's own hard-fail test and its first live instance.
 - [ ] **4 · O116 — payroll routes from Home.** Product, not bug; after the P0s.
 
 - [x] **Shadow-mode PASS CRITERION written and SIGNED 2026-08-17** — `docs/CALIBRATION_SPEC_O88_AMENDMENT_A.md`, signed by Alex (CPA). Written before the numbers existed, which was the point. **C201 is released from ▶ HOLD** and shadow mode may be built to that standard. Structural, not statistical: two automatic fails (a stranger reaching a real account; two vendors collapsing into one), every known-vendor disagreement itemised, and parking explicitly not a gate.
