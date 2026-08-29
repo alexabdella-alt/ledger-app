@@ -228,3 +228,25 @@ describe("★★ O98 — the completeness check reports whether it RAN, and sign
     expect(msg).not.toMatch(/journal|ledger|reconcile|intake|query|null/i);
   });
 });
+
+describe("★ the payment→bill link is a CHECKED write — delete's cascade depends on it", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+
+  it("markBillPaid writes the link through checkedRowUpdate, not a bare update", () => {
+    const i = src.indexOf("LINK THE PAYMENT TO ITS BILL");
+    const body = src.slice(i, i + 1600);
+    expect(body).toMatch(/checkedRowUpdate\(/);
+    expect(body).toMatch(/payment_for: String\(dbId\)/);
+    expect(body).toMatch(/payment_link_write_failed/);
+  });
+
+  it("★ and the delete cascade reads exactly that key — the two must not drift apart", () => {
+    // `softDeleteJournalEntry` finds a paid bill's payment by `import_metadata->>payment_for`
+    // so the two are removed together and restored together. An unwritten link means
+    // deleting a paid bill leaves its payment behind: a debit against Accounts Payable
+    // with no bill to offset it. The writer and the reader are pinned to one key here so a
+    // rename on either side fails loudly rather than silently un-cascading the delete.
+    expect(src).toMatch(/\.eq\("import_metadata->>payment_for", String\(billId\)\)/);
+    expect(src).toMatch(/payment_for: String\(dbId\)/);
+  });
+});

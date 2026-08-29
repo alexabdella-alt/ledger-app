@@ -6463,12 +6463,27 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         if (!already) {
           postedPaymentId = await persistJournalEntry(payEntry);
           if (!postedPaymentId) return await fail("payment GL entry post failed");
-          // Link the payment JE to its bill (import_metadata.payment_for) for reversal.
-          try {
-            await supabase.from("journal_entries")
-              .update({ import_metadata: { kind: payEntry._paymentKind, payment_for: String(dbId) } })
-              .eq("id", postedPaymentId).eq("company_id", currentCompany.id);
-          } catch (e) { console.warn("[markBillPaid] payment link write failed:", e?.message || e); }
+          // ★★ LINK THE PAYMENT TO ITS BILL — AND CHECK THAT THE LINK LANDED.
+          // This was a row-targeted `.update()` with NO `.select()` inside a catch that
+          // only warned: the C192 anti-pattern §9 forbids by name. PostgREST reports no
+          // error for an update that matched nothing, so a failed link was invisible.
+          //
+          // ★ AND THE FIELD IS LOAD-BEARING FOR DELETE. `softDeleteJournalEntry` finds a
+          // paid bill's payment by exactly this key (`import_metadata->>payment_for`) so
+          // the two are removed together and restored together. An unwritten link means
+          // deleting a paid bill LEAVES ITS PAYMENT BEHIND — a debit against Accounts
+          // Payable with no bill to offset it, pushing the amount-owed figure negative,
+          // while `markBillPaid` reported success either way.
+          const linkRes = await checkedRowUpdate({
+            supabase, table: "journal_entries", id: postedPaymentId, companyId: currentCompany.id,
+            patch: { import_metadata: { kind: payEntry._paymentKind, payment_for: String(dbId) } },
+            label: "markBillPaid:link-payment-to-bill",
+          });
+          if (!linkRes.ok) {
+            logAudit("payment_link_write_failed",
+              `Payment recorded, but it wasn't linked to its bill (${linkRes.reason}) — deleting that bill would leave this payment behind`,
+              null, { payment_entry_id: String(postedPaymentId), bill_entry_id: String(dbId), reason: linkRes.reason });
+          }
         }
       }
     }
