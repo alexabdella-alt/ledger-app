@@ -89,7 +89,14 @@ export function normalizeDescriptor(descriptor) {
   // vendor: Q4's one-way door, opened by a rounding error. Found by the test, not by
   // reading the code — the tails only strip when preceded by whitespace, so a BARE
   // numeric survived every strip and normalized to itself.
-  return /[a-z]/.test(n) ? n : "";
+  // ★ O119 FOLLOW-ON, AND THE TEST FOUND IT RATHER THAN THE AUTHOR. Mapping `+` to the
+  // word "and" (docDirection.normalizeName) made a NEW phantom reachable: `"+"` used to
+  // normalize to `"+"`, carry no letters, and correctly resolve to nothing — now it
+  // normalizes to `"and"`, which has letters and would have minted an entity keyed on the
+  // joining word itself. So the letters test ignores the joiner: a descriptor made only of
+  // joiners is no more a vendor than a bare trace number is.
+  const meaningful = n.replace(/\band\b/g, " ").trim();
+  return /[a-z]/.test(meaningful) ? n : "";
 }
 
 // The stable per-company identity of a vendor. Derived from the normalized

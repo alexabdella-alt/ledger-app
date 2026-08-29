@@ -220,3 +220,50 @@ describe("(Rule 2) Uncategorized Expense is its own account", () => {
     expect(DEFAULT_CHART_OF_ACCOUNTS.filter((a) => a.code === "7150")).toHaveLength(1);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// O119 — THE SAME SUPPLIER WRITTEN TWO WAYS IS ONE SUPPLIER.
+//
+// Live specimen, August: Roma arrived as `ACH DEBIT - ROMA CHEESE & DAIRY CO` on 08-04 and
+// `ACH DEBIT - ROMA CHEESE + DAIRY CO` on 08-19. `normalizeName` mapped `&` to "and" and
+// left `+` alone — and `+` was not in the punctuation strip either — so the two keyed as
+// different companies. Nothing broke; the second simply sat unmatched, and the ladder
+// would have learned one vendor's habits twice under two names.
+//
+// ★ THIS WIDENS A MERGE RULE, which is the one-way door: a wrong merge silently launders
+// one vendor's attested mapping onto another's charges. So the anti-merge pairs are
+// asserted alongside, and they are the reason to trust the widening rather than the
+// widening being the reason to trust itself.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ O119 — a plus sign joins a name exactly as an ampersand does", () => {
+  it("THE LIVE PAIR: the two August Roma descriptors reach ONE key", () => {
+    const a = entityKeyFor("ACH DEBIT - ROMA CHEESE & DAIRY CO");
+    const b = entityKeyFor("ACH DEBIT - ROMA CHEESE + DAIRY CO");
+    expect(a).toBe("roma cheese and dairy");
+    expect(b).toBe(a);
+  });
+
+  it("and the invoice-side spelling joins them too", () => {
+    expect(entityKeyFor("Roma Cheese + Dairy Co.")).toBe(entityKeyFor("Roma Cheese & Dairy Co"));
+  });
+
+  it("★ it does NOT merge vendors that differ by anything more than the joiner", () => {
+    // The widening must be exactly one character wide. These pairs are genuinely
+    // different businesses and must stay that way.
+    const pairs = [
+      ["SYSCO", "SYSCO FUEL"],
+      ["ROMA CHEESE + DAIRY", "ROMA CHEESE + DAIRY SUPPLY"],
+      ["LONE STAR", "LONE STAR RESTAURANT SUPPLY"],
+      ["A+ PLUMBING", "PLUMBING"],
+    ];
+    for (const [x, y] of pairs) {
+      expect(entityKeyFor(x)).not.toBe(entityKeyFor(y));
+    }
+  });
+
+  it("★ a bare joiner still carries no identity — it must not mint an entity", () => {
+    // A descriptor that normalizes to nothing but the joining word is not a vendor.
+    expect(entityKeyFor("+")).toBe(null);
+    expect(entityKeyFor("& & &")).toBe(null);
+  });
+});

@@ -12,7 +12,18 @@ const STRIP = /\b(incorporated|inc|llc|l\.?l\.?c|ltd|limited|corporation|corp|co
 export function normalizeName(s) {
   return String(s || "")
     .toLowerCase()
-    .replace(/&/g, " and ")
+    // ★ O119 — `+` JOINS A NAME EXACTLY AS `&` DOES, AND WAS THE ONLY ONE HANDLED.
+    // Live: the same supplier arrived as "ROMA CHEESE & DAIRY CO" on one August bank line
+    // and "ROMA CHEESE + DAIRY CO" on another, so they keyed as two different companies —
+    // the second sat unmatched, and the system would have learned that vendor's habits
+    // twice instead of once. `&` was already mapped; `+` was not in the punctuation strip
+    // either, so it survived as a token of its own.
+    //
+    // ★ THIS WIDENS A MERGE RULE, WHICH IS THE ONE-WAY DOOR (Q4) — so it is deliberately
+    // the NARROWEST form: one character, mapped to the word it already means, exactly as
+    // its twin is. It cannot merge two vendors that differ by anything else, and the
+    // anti-merge pairs in `vendorIdentity.test.js` are asserted either way.
+    .replace(/[&+]/g, " and ")
     .replace(/[.,/#!$%^*;:{}=\-_`~()'"]/g, " ")
     .replace(STRIP, " ")
     .replace(/\s+/g, " ")

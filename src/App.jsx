@@ -47,7 +47,12 @@ import { pickActiveCompany } from "./lib/companies";
 import { companyIdentityNames, classifyDocDirection } from "./lib/docDirection";
 import { composeAssistantReply } from "./lib/chatReply";
 import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
-import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, planDepreciationRun, depreciationDue, planDepreciationAutoPost } from "./lib/depreciation";
+// O96 — `planDepreciationRun` was imported here and never called. The manual
+// "run depreciation through DATE" trigger was deliberately REMOVED from both Reports and
+// Dashboard (depreciation is deterministic, so it auto-posts when due); the import and a
+// matching destructure in DashboardView outlived it. The planner itself stays — it is the
+// pure core `autoPostDepreciation` is built on and it is unit-tested.
+import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, depreciationDue, planDepreciationAutoPost } from "./lib/depreciation";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
