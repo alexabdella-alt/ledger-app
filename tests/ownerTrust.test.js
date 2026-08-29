@@ -304,3 +304,76 @@ describe("(Cardinal) no owner-facing jargon in any state", () => {
     }
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// O121 — THE HEADER COULD SAY "CORRECT AND UP TO DATE" WITH QUESTIONS STILL OPEN.
+//
+// Every other net in this function is about work the SYSTEM owes. The clarification queue
+// is the one about work the OWNER owes, and it was the one input the panel did not have —
+// so ten unanswered questions could sit below the fold ON THE SAME SCREEN while the
+// headline read all-clear, each one a document we had deliberately declined to book.
+//
+// ★ THE INDIRECT PATH WAS NOT A SAFETY NET, WHICH IS WHY THIS NEEDED ITS OWN INPUT. An
+// unanswered card leaves its intake row `held_for_review`, and `intakeRows` IS an input —
+// but `reconcileIntake` treats `held_for_review` as TERMINAL (a resting place), so it never
+// surfaces. The green header beside fresh unanswered cards was the DESIGNED behaviour, not
+// a race. The test below proves that by passing a held row and showing it does nothing.
+// ════════════════════════════════════════════════════════════════════════════
+describe("★★ O121 — open questions block the all-clear", () => {
+  it("THE LIVE SCREEN: ten unanswered questions cannot read as up to date", () => {
+    const s = ownerTrustState({ ...base, openClarifications: 10 });
+    expect(s.overall).not.toBe("all_clear");
+    expect(s.overall).toBe("attention");
+    for (const str of strings(s)) {
+      expect(str).not.toMatch(/correct and up to date/i);
+      expect(str).not.toMatch(/nothing needs your attention/i);
+    }
+  });
+
+  it("★ says whose move it is, and what it costs — the document is NOT in the books", () => {
+    const s = ownerTrustState({ ...base, openClarifications: 3 });
+    expect(s.lines.correct.text).toMatch(/asked you about 3 transactions/i);
+    expect(s.lines.correct.text).toMatch(/not in your books until you answer/i);
+    // It is the one thing here the owner can personally clear, so it carries the nudge.
+    expect(s.nudge).toMatchObject({ kind: "clarification", count: 3 });
+    expect(s.nudge.text).toMatch(/Answer 3 questions/);
+  });
+
+  it("one question reads as one, not as '1 transactions'", () => {
+    const s = ownerTrustState({ ...base, openClarifications: 1 });
+    expect(s.lines.correct.text).toMatch(/asked you about one transaction/i);
+    expect(s.lines.correct.text).toMatch(/it's not in your books/i);
+    expect(s.nudge.text).toBe("Answer 1 question");
+  });
+
+  it("★★ PROOF THE INDIRECT PATH NEVER WORKED: a held intake row alone still goes green", () => {
+    // This is the state an unanswered card actually leaves behind. Without the new input
+    // the panel reads all-clear — which is exactly what shipped.
+    const held = [{ id: "h1", status: "held_for_review", received_at: "2026-06-10T09:00:00" }];
+    const withoutInput = ownerTrustState({ ...base, intakeRows: [...recorded(2), ...held] });
+    expect(withoutInput.overall).toBe("all_clear");
+    // …and with the input, the same rows are correctly not all-clear.
+    const withInput = ownerTrustState({ ...base, intakeRows: [...recorded(2), ...held], openClarifications: 1 });
+    expect(withInput.overall).toBe("attention");
+  });
+
+  it("zero open questions changes nothing — the green path is untouched", () => {
+    const before = ownerTrustState({ ...base });
+    const after = ownerTrustState({ ...base, openClarifications: 0 });
+    expect(after.overall).toBe("all_clear");
+    expect(after.lines.correct.text).toBe(before.lines.correct.text);
+  });
+
+  it("★ it outranks the other attention states — it is the one the owner can clear", () => {
+    // With a bank not yet matched AND questions open, the owner is told about the question:
+    // the bank match is ours to finish, the answer is theirs.
+    const s = ownerTrustState({ ...base, bankMatch: UNMATCHED, openClarifications: 2 });
+    expect(s.lines.correct.text).toMatch(/asked you about 2 transactions/i);
+    expect(s.nudge.kind).toBe("clarification");
+  });
+
+  it("no owner-facing jargon in any of the new strings", () => {
+    const s = ownerTrustState({ ...base, openClarifications: 4 });
+    for (const str of strings(s)) expect(containsOwnerJargon(str)).toBe(false);
+  });
+});

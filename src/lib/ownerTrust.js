@@ -45,6 +45,24 @@ export function ownerTrustState({
   // were live. Medium/low anomalies do NOT affect the owner panel (they carry no urgency
   // for the owner). Plain-language only — the owner never sees "duplicate_payment HIGH".
   openHighAnomalies = 0,
+  // ★★ O121 — OPEN CLARIFICATION CARDS. Questions we have ASKED THE OWNER and they have
+  // not answered yet, each holding a document that is therefore NOT in the books.
+  //
+  // THIS INPUT DID NOT EXIST, AND ITS ABSENCE IS THE WHOLE BUG. Every other net here is
+  // about work the SYSTEM owes; this is the one about work the OWNER owes, and it was the
+  // one the panel could not see. So the headline could read "your books are correct and up
+  // to date" while ten unanswered questions sat below the fold ON THE SAME SCREEN, each
+  // one a document we had deliberately declined to book.
+  //
+  // ★ THE ONE INDIRECT PATH WAS NOT A SAFETY NET. An unanswered card leaves its intake row
+  // `held_for_review`, and `intakeRows` IS an input — but `reconcileIntake` treats
+  // `held_for_review` as TERMINAL (a resting place), so it never surfaces. A green header
+  // beside FRESH unanswered cards was not a race, it was the designed behaviour.
+  //
+  // Same family as every false green this function was already hardened against — its own
+  // comments name the O83 "Nothing wrong" and the bank-overdue one. This is the net nobody
+  // wired in.
+  openClarifications = 0,
   // ── "Is there anything to evaluate yet?" signals (the false-green-on-empty fix). ──
   // A brand-new company with NO journal entries and NO completed setup has nothing to
   // evaluate — every net trivially "clears" (zero failures out of zero checks), which is
@@ -129,9 +147,18 @@ export function ownerTrustState({
   const bankOverdue = !!(bankMatch && bankMatch.overdue);
   const anomalyCount = Math.max(0, Number(openHighAnomalies) || 0);
   const anomaliesOk = anomalyCount === 0;
+  const askedCount = Math.max(0, Number(openClarifications) || 0);
+  const asksOk = askedCount === 0;
   let nudge = null;
   let correctText, correctStateVal;
-  if (!confidenceOk) {
+  if (!asksOk) {
+    // ★ FIRST, ahead of every other branch: this is the only one the owner can personally
+    // clear, and each open card is a document sitting OUT of the books until they do. It
+    // also carries the nudge, because unlike an accuracy mismatch it IS an owner task.
+    correctText = `${askedCount === 1 ? "We've asked you about one transaction" : `We've asked you about ${askedCount} transactions`} — ${askedCount === 1 ? "it's" : "they're"} not in your books until you answer.`;
+    correctStateVal = "attention";
+    nudge = { kind: "clarification", count: askedCount, text: askedCount === 1 ? "Answer 1 question" : `Answer ${askedCount} questions` };
+  } else if (!confidenceOk) {
     correctText = `${confidenceCount === 1 ? "One transaction needs" : `${confidenceCount} transactions need`} a quick answer from you.`;
     correctStateVal = "attention";
     nudge = { kind: "confidence", count: confidenceCount, text: `${confidenceCount === 1 ? "Answer 1 quick question" : `Answer ${confidenceCount} quick questions`}` };
@@ -154,7 +181,7 @@ export function ownerTrustState({
     correctText = "Nothing needs your attention — your books are correct and up to date.";
     correctStateVal = "ok";
   }
-  const correctOk = confidenceOk && accuracyOk && !bankOverdue && anomaliesOk;
+  const correctOk = asksOk && confidenceOk && accuracyOk && !bankOverdue && anomaliesOk;
 
   // ── Overall — never all_clear unless the three sign-off nets clear AND the books are matched
   //    to the bank AND no open HIGH anomaly AND nothing's mid-flight. Anomalies are NOT part
@@ -163,7 +190,10 @@ export function ownerTrustState({
   //    bug). Bank-not-matched / in-flight docs → in_progress; a short net or open anomaly →
   //    attention. ──
   let overall, headline;
-  if (!evalr.ok || !anomaliesOk) {
+  if (!evalr.ok || !anomaliesOk || !asksOk) {
+    // O121 — `asksOk` is gated HERE explicitly, for the same reason `anomaliesOk` is: the
+    // clarification queue is not part of `evaluateSignOff`'s three doc/confidence/accuracy
+    // nets, so without naming it the header would reach `all_clear` with questions open.
     overall = "attention";
     headline = "A couple of things need a look.";
   } else if (bankOverdue || pendingCount > 0) {

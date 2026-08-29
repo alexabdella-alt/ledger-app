@@ -3702,8 +3702,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       hasBooks,
       setupComplete,
       openHighAnomalies: openHighAnomalyCount,   // O83 — open HIGH anomaly ⇒ "Nothing wrong" can't be green
+      // O121 — questions we have asked the owner and they have not answered. Each holds a
+      // document OUT of the books, so the header must not claim they are up to date.
+      openClarifications: (clarificationQueue || []).length,
     });
-  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount]);
+  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount, clarificationQueue]);
 
   // ── O83 SIGN-OFF READINESS (single source) — "can THIS period be attested?" ──
   // Preconditions (non-vacuous: a period with nothing to check is NOT ready) + the four
