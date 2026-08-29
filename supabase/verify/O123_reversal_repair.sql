@@ -157,20 +157,74 @@ order by count(r.id) desc, o.entry_date;
 
 
 -- ── STEP 5 — CONFIRM THE MONEY. Run AFTER steps 3 and 4 are committed.
--- The whole point: the account the triple reversal distorted is back where it belongs.
--- Substitute the vendor if you are checking a different one than Hill Country.
+--
+-- ★★ THIS REPLACES A BROKEN CHECK, AND THE BREAKAGE IS WORTH STATING. The first version
+-- summed EVERY account touched by the vendor and judged each one with the sentence
+-- "expense account is not negative". Run live it reported:
+--     1000 Cash & Cash Equivalents  -3526.85  FAIL - still on the wrong side
+--     5000 Cost of Goods Sold       +3526.85  PASS
+-- **The FAIL was the check's fault, not the data's.** Cash is an ASSET and a net credit on
+-- it is exactly right — money left the business to pay the supplier. The verdict was
+-- written for expenses and applied to everything it found.
+--
+-- ★★ AND THE DEEPER FLAW: A VENDOR TOTAL CANNOT ANSWER A PER-INVOICE QUESTION. The defect
+-- is one bill reversed three times (−937.00 on a 468.50 charge). Inside a vendor total of
+-- +3,526.85 that hole is invisible — the aggregate would read PASS while the bug was still
+-- live. A check that cannot fail in the presence of the thing it looks for is not a check.
+--
+-- So this asks the question directly, per entry: DID ANY ENTRY GET REVERSED FOR MORE THAN
+-- IT WAS BOOKED FOR? That is true of an over-reversed bill no matter what else the vendor
+-- did, and it needs no knowledge of which account is debit-normal.
 select
-  a.code, a.name,
-  round(sum(l.debit) - sum(l.credit), 2) as net_movement,
-  case when round(sum(l.debit) - sum(l.credit), 2) >= 0
-       then 'PASS - expense account is not negative'
-       else 'FAIL - still ' || round(sum(l.debit) - sum(l.credit), 2)
-            || ' on the wrong side; a duplicate reversal is still live'
-  end as verdict
-from public.journal_entry_lines l
-join public.journal_entries e on e.id = l.journal_entry_id
-join public.accounts a on a.id = l.account_id
-where e.status = 'posted' and e.deleted_at is null
-  and (e.description ilike '%Hill Country%' or e.description ilike 'REVERSAL:%Hill Country%')
-group by a.code, a.name
-order by a.code;
+  o.id                                        as original_id,
+  o.entry_date,
+  o.description,
+  round(orig.amt, 2)                          as booked,
+  round(rev.amt, 2)                           as reversed_total,
+  rev.n                                       as live_reversals,
+  case
+    when rev.n > 1 then 'FAIL - ' || rev.n || ' live reversals; step 3 has not been run or did not commit'
+    when round(rev.amt, 2) > round(orig.amt, 2) then 'FAIL - reversed for more than it was booked for'
+    else 'PASS - reversed once, for what it was booked for'
+  end                                         as verdict
+from public.journal_entries o
+join lateral (
+  select sum(greatest(l.debit, l.credit)) as amt
+  from public.journal_entry_lines l where l.journal_entry_id = o.id
+) orig on true
+join lateral (
+  select count(*) as n, coalesce(sum(x.amt), 0) as amt
+  from (
+    select r.id, sum(greatest(rl.debit, rl.credit)) as amt
+    from public.journal_entries r
+    join public.journal_entry_lines rl on rl.journal_entry_id = r.id
+    where r.company_id = o.company_id
+      and r.status = 'posted' and r.deleted_at is null
+      and r.description like 'REVERSAL:%'
+      and split_part(substring(r.description from 11), ' — ', 1) = o.description
+    group by r.id
+  ) x
+) rev on true
+where o.status = 'posted' and o.deleted_at is null
+  and o.description not like 'REVERSAL:%'
+  and rev.n > 0
+order by (rev.n > 1) desc, o.entry_date;
+
+
+-- ── STEP 6 — ONE LINE, WHOLE-COMPANY. The verdict for the repair as a whole.
+select
+  count(*)                                     as originals_with_extra_reversals,
+  case when count(*) = 0
+       then 'PASS - no entry carries more than one live reversal'
+       else 'FAIL - ' || count(*) || ' entr(y/ies) still over-reversed; re-run step 2 and step 3'
+  end                                          as verdict
+from (
+  select o.id
+  from public.journal_entries o
+  join public.journal_entries r
+    on r.company_id = o.company_id and r.status = 'posted' and r.deleted_at is null
+   and r.description like 'REVERSAL:%'
+   and split_part(substring(r.description from 11), ' — ', 1) = o.description
+  where o.status = 'posted' and o.deleted_at is null and o.description not like 'REVERSAL:%'
+  group by o.id having count(r.id) > 1
+) dupes;

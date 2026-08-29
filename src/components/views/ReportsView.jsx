@@ -12,7 +12,7 @@ import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPane
 import MonthlyReportsPanel from "./MonthlyReportsPanel";
 
 export default function ReportsView() {
-  const { plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, attachDepreciationToExistingAsset, isOwner, isAdmin, cutoffDate, glCash, cashGlCodes, getAccountByRole, reconciliations, anomalies, setReturnTo, AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, isOwner, isAdmin, cutoffDate, glCash, cashGlCodes, getAccountByRole, reconciliations, anomalies, setReturnTo, AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
   // plDrill / drill / drillSel are now LIFTED to ERP context (above) so they survive the
   // transaction-detail round-trip — Back returns to the line-item list, not the report top.
   // In-report Back pops exactly one drill level via the shared reportNavBack state machine.
@@ -21,29 +21,9 @@ export default function ReportsView() {
     if (prev) { setPlDrill(prev.plDrill); setDrill(prev.drill); setDrillSel(null); }
   };
   const [tbAdjusted, setTbAdjusted] = React.useState(true); // trial balance: adjusted (exclude voided) vs unadjusted
-  // Depreciation posts AUTOMATICALLY when due (App.jsx autoPostDepreciation, GL-truth idempotent) —
-  // there's no manual "run depreciation" trigger anymore (removed from Reports + Dashboard; it's a
-  // deterministic accounting task, not something to nudge a human about, and it doesn't belong in
-  // the view-your-statements tab). The "attach to existing asset" maintenance tool below stays.
-  // Maintenance: attach depreciation to an already-capitalized asset (existing JE).
-  const [attachOpen, setAttachOpen] = React.useState(false);
-  const [attachJe, setAttachJe] = React.useState("");
-  const [attachLifeY, setAttachLifeY] = React.useState("5");
-  const [attachSalvage, setAttachSalvage] = React.useState("0");
-  const [attachDate, setAttachDate] = React.useState("");
-  const [attaching, setAttaching] = React.useState(false);
-  const runAttach = async () => {
-    if (attaching || !attachJe.trim()) return;
-    setAttaching(true);
-    try {
-      await attachDepreciationToExistingAsset({
-        journalEntryId: attachJe.trim(),
-        usefulLifeMonths: Math.max(1, Math.round((parseFloat(attachLifeY) || 5) * 12)),
-        salvageValue: parseFloat(attachSalvage) || 0,
-        inServiceDate: attachDate || null,
-      });
-    } finally { setAttaching(false); }
-  };
+  // Depreciation posts AUTOMATICALLY when due (App.jsx autoPostDepreciation, GL-truth
+  // idempotent). There is no manual trigger and, since O129, no maintenance tool here
+  // either — nothing about depreciation belongs on the view-your-statements tab.
   // NOTE: drill state is no longer cleared on a ReportsView remount (that would wipe the
   // drill when returning from the transaction detail → the skip bug). It's cleared only when
   // the user actively switches report tabs (the tab onClick below).
@@ -260,30 +240,14 @@ export default function ReportsView() {
                     No "posts automatically" announcement here; the record lives in the audit log.
                     Only the owner/admin maintenance tool — attach depreciation to an
                     already-capitalized asset — remains. */}
-                {(isOwner || isAdmin) && (
-                  <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:24, padding:"12px 14px", background:"var(--sc-bg)", border:"1px solid var(--sc-border)", borderRadius:10 }}>
-                    <span style={{ fontSize:13, fontWeight:600, color:"var(--sc-text-2)" }}>Depreciation</span>
-                    <button onClick={()=>setAttachOpen(o=>!o)} style={{ marginLeft:"auto", fontSize:12, fontWeight:500, color:"var(--sc-text-2)", background:"none", border:"none", cursor:"pointer" }}>{attachOpen?"Close":"Attach to existing asset"}</button>
-                  </div>
-                )}
-
-                {/* Maintenance (owner/admin): attach depreciation to an already-capitalized
-                    asset whose Dr Fixed Asset / Cr AP entry already exists. Posts NO new
-                    capitalization JE; idempotent (skips if already linked). */}
-                {(isOwner || isAdmin) && attachOpen && (
-                  <div style={{ display:"flex", alignItems:"flex-end", gap:12, flexWrap:"wrap", marginBottom:24, padding:"12px 14px", background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:10 }}>
-                    <label style={{ fontSize:12, color:"var(--sc-text-2)", display:"flex", flexDirection:"column", gap:4 }}>Capitalization entry id
-                      <input value={attachJe} onChange={e=>setAttachJe(e.target.value)} placeholder="journal_entries.id" style={{ width:320, height:36, borderRadius:8, border:"1px solid var(--sc-border-2)", padding:"0 10px", fontSize:13, fontFamily:"monospace" }} /></label>
-                    <label style={{ fontSize:12, color:"var(--sc-text-2)", display:"flex", flexDirection:"column", gap:4 }}>Life (yrs)
-                      <input type="number" min="1" value={attachLifeY} onChange={e=>setAttachLifeY(e.target.value)} style={{ width:80, height:36, borderRadius:8, border:"1px solid var(--sc-border-2)", padding:"0 10px", fontSize:13 }} /></label>
-                    <label style={{ fontSize:12, color:"var(--sc-text-2)", display:"flex", flexDirection:"column", gap:4 }}>Salvage ($)
-                      <input type="number" min="0" value={attachSalvage} onChange={e=>setAttachSalvage(e.target.value)} style={{ width:110, height:36, borderRadius:8, border:"1px solid var(--sc-border-2)", padding:"0 10px", fontSize:13 }} /></label>
-                    <label style={{ fontSize:12, color:"var(--sc-text-2)", display:"flex", flexDirection:"column", gap:4 }}>In-service date
-                      <input type="date" value={attachDate} onChange={e=>setAttachDate(e.target.value)} style={{ height:36, borderRadius:8, border:"1px solid var(--sc-border-2)", padding:"0 10px", fontSize:13 }} /></label>
-                    <button onClick={runAttach} disabled={attaching || !attachJe.trim()} style={{ height:36, padding:"0 16px", borderRadius:8, fontSize:13, fontWeight:600, color:"var(--sc-on-accent)", background:(attaching||!attachJe.trim())?"var(--sc-text-mut)":"var(--sc-warning)", border:"none", cursor:(attaching||!attachJe.trim())?"default":"pointer" }}>{attaching?"Attaching…":"Attach depreciation"}</button>
-                    <span style={{ fontSize:12, color:"var(--sc-warning)", width:"100%" }}>Reuses the existing capitalization entry — posts no new Dr/Cr. In-service date defaults to the entry date if blank.</span>
-                  </div>
-                )}
+                {/* O129 — THE DEPRECIATION BAR IS GONE (operator, 2026-08-29: "no one is gonna
+                    use that"). It offered one control, "Attach to existing asset", which
+                    opened a form asking for a raw `journal_entries.id` — a database
+                    primary key, typed by hand, on the tab where you go to READ YOUR
+                    STATEMENTS. It was a repair tool for a case the normal capitalize flow
+                    already handles, wearing the clothes of a report.
+                    Depreciation itself is untouched: it posts automatically when due
+                    (App.jsx autoPostDepreciation, GL-truth idempotent). */}
 
                 {/* Monthly Reports — the immutable archive, always reachable regardless of live ledger state. */}
                 {reportType==="monthly" && <MonthlyReportsPanel />}
