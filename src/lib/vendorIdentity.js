@@ -257,6 +257,61 @@ export function identityForEntry({ description, source } = {}) {
   return { entity_key, identity_source: IDENTITY_STRATEGY.READ, raw: field, strategy };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// O125 — THE DISPLAY LAYER'S TWO QUESTIONS, WHICH ARE NOT THE SAME QUESTION.
+//
+// `flattenJournalEntries` derived the vendor as `description.split(" – ")[0]` — an
+// IDENTITY DECISION, made in the display layer, by punctuation. Three live symptoms, all
+// on the screen that is the only route to Delete:
+//   (1) **Gusto rendered as FIFTEEN separate vendors** — payroll writes an EM-dash before
+//       the period (`Gusto Payroll — 2026-08-15 – 2026-08-28`), so an en-dash-only split
+//       missed and the pay period became part of the name.
+//   (2) **A trailing full stop split a vendor in two** — `Hill Country Milling Co` and
+//       `…Co.` were different vendors, on a screen where the vendor list IS the navigation.
+//   (3) **Reversals got their own vendor** (`REVERSAL: Hill Country Milling Co.`), so the
+//       original's total was overstated and the reversal sat under a name of its own.
+//
+// ★★ THE ROOT CAUSE IS THAT ONE STRING WAS DOING TWO JOBS. A vendor needs a NAME a human
+// reads and a KEY the system groups by, and they have opposite requirements: the name must
+// keep its capitals, its punctuation and its legal suffix; the key must throw all three
+// away. Deriving one from the other by a split gets both wrong.
+//
+// ★ AND THIS IS WHY IT IS HERE AND NOT IN `ledger.js`. The repo already carries three
+// implementations of vendor identity because each caller wrote its own — the very reason
+// migration `065` was released ("the backfill cannot be SQL: it would be a second
+// implementation of the identity contract"). We declined to write one in SQL and then
+// shipped two in JS. This is the resolver; the display layer calls it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A SPACED en-dash or em-dash separates the vendor from whatever was appended to it.
+// BOTH, because the two description builders disagree: `persistJournalEntry` writes
+// `Vendor – detail` (en) while `payrollEntryForImport` writes `Gusto Payroll — start – end`
+// (em, then en). Splitting on the FIRST of either is what makes payroll one vendor.
+// Unspaced dashes are left alone — `12/05/2025–01/05/2026` is a date range, not a break.
+const DISPLAY_SEP = /\s[–—]\s/;
+
+// The name a human reads: original case, punctuation intact, everything after the first
+// separator dropped. `REVERSAL:` is stripped so a reversal files under the entry it
+// reverses rather than inventing a vendor — the total then nets to zero, which is the
+// arithmetic truth of a reversed charge.
+export function displayVendorName(description) {
+  let s = String(description == null ? "" : description).trim();
+  if (!s) return null;
+  s = s.replace(/^reversal:\s*/i, "").trim();
+  const m = s.split(DISPLAY_SEP);
+  const name = (m[0] || "").trim();
+  return name || null;
+}
+
+// The key the system GROUPS by. Normalised hard — case, trailing full stop, legal suffix,
+// `&`/`+` — so `Hill Country Milling Co` and `Hill Country Milling Co.` are one vendor.
+// Returns null when nothing identity-bearing survives, and callers must fall back to the
+// display name rather than grouping every such row together under "".
+export function vendorGroupKey(description) {
+  const name = displayVendorName(description);
+  return name ? entityKeyFor(name) : null;
+}
+
 // Do these descriptors name the same vendor? The property the Lone Star corpus
 // exists to hold: four rails, one entity. Convenience over resolveVendorIdentity
 // for tests and for the census pass's grouping.

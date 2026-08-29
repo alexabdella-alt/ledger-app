@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { glIsRevenue, glIsExpense } from "./gl";
+import { displayVendorName, vendorGroupKey } from "./vendorIdentity";
 
 const isPLCode = c => c && (glIsRevenue(c) || glIsExpense(c));
 
@@ -28,7 +29,18 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
   const mapped = [];
   (entries || []).forEach(e => {
     const lines = e.journal_entry_lines || [];
-    const vendor = e.description?.split(" – ")[0] || e.description;
+    // ★★ O125 — TWO QUESTIONS, TWO FIELDS. This was `description.split(" – ")[0]`: an
+    // identity decision made in the display layer, by punctuation. It rendered payroll as
+    // fifteen separate vendors (the payroll builder uses an EM-dash), split one supplier in
+    // two over a trailing full stop, and gave every reversal a vendor of its own.
+    //   `vendor`     — the NAME a human reads: original case, punctuation intact.
+    //   `vendor_key` — the KEY the system GROUPS by: normalised hard.
+    // They have opposite requirements, so deriving one from the other by a split got both
+    // wrong. The resolver owns this now (`vendorIdentity.js`); the display layer asks it.
+    const vendor = displayVendorName(e.description) || e.description;
+    // Null key → callers fall back to the display name. Grouping every unkeyable row
+    // together under "" would merge unrelated vendors, which is the one-way door.
+    const vendor_key = vendorGroupKey(e.description) || null;
     // Primary P&L line for display (first debit or revenue line)
     const primaryDebit = lines.find(l => l.debit > 0);
     const primaryCredit = lines.find(l => l.credit > 0);
@@ -49,7 +61,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
       const primaryIsDebit = (primaryLine?.debit || 0) > 0;
       const primaryCode = primaryLine?.accounts?.code;
       mapped.push({
-        id: e.id, vendor, description: e.description,
+        id: e.id, vendor, vendor_key, description: e.description,
         amount: (primaryIsDebit ? primaryLine?.debit : primaryLine?.credit) || 0,
         date: e.entry_date,
         type: glIsRevenue(primaryCode) ? "revenue" : "expense",
@@ -104,7 +116,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         const acctDef = (chartOfAccounts || []).find(a => a.code === code);
         const isRevenueRow = acctDef?.category === "Revenue";
         mapped.push({
-          id: `${e.id}_${li}`, vendor, description: e.description,
+          id: `${e.id}_${li}`, vendor, vendor_key, description: e.description,
           amount,
           // Full receivable owed (incl. tax) for the revenue row of a taxed AR invoice;
           // AR aging/collection/total read this, P&L still reads `amount` (ex-tax).

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  normalizeDescriptor, entityKeyFor, resolveVendorIdentity, sameEntity, groupByEntity, MATCH_SOURCE,
-} from "../src/lib/vendorIdentity.js";
+  normalizeDescriptor, entityKeyFor, resolveVendorIdentity, sameEntity, groupByEntity, MATCH_SOURCE, displayVendorName, vendorGroupKey } from "../src/lib/vendorIdentity.js";
 import { DEFAULT_CHART_OF_ACCOUNTS } from "../src/lib/constants.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -265,5 +264,66 @@ describe("★★ O119 — a plus sign joins a name exactly as an ampersand does"
     // A descriptor that normalizes to nothing but the joining word is not a vendor.
     expect(entityKeyFor("+")).toBe(null);
     expect(entityKeyFor("& & &")).toBe(null);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// O125 — THE DISPLAY LAYER'S TWO QUESTIONS.
+//
+// `flattenJournalEntries` derived the vendor as `description.split(" – ")[0]` — an
+// identity decision made in the display layer, by punctuation, and a THIRD implementation
+// of a contract this repo already declined to write twice (migration `065` was released
+// precisely because "the backfill cannot be SQL: it would be a second implementation").
+//
+// ★ ONE STRING WAS DOING TWO JOBS, and they have opposite requirements: the NAME keeps its
+// capitals, punctuation and legal suffix; the KEY throws all three away.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ O125 — display name vs grouping key", () => {
+  it("THE LIVE SYMPTOM: payroll is ONE vendor, not fifteen", () => {
+    // The payroll builder writes an EM-dash before the period; the en-dash-only split
+    // missed it, so every pay period became part of the supplier's name.
+    const runs = ["2026-01-15", "2026-01-31", "2026-08-15", "2026-08-28"]
+      .map((d) => `Gusto Payroll — ${d} – ${d}`);
+    const keys = new Set(runs.map(vendorGroupKey));
+    expect(keys.size).toBe(1);
+    expect(displayVendorName(runs[0])).toBe("Gusto Payroll");
+  });
+
+  it("THE LIVE SYMPTOM: a trailing full stop does not split a supplier in two", () => {
+    expect(vendorGroupKey("Hill Country Milling Co. – freight")).toBe(vendorGroupKey("Hill Country Milling Co – freight"));
+    // …and the NAME keeps the punctuation the user actually saw.
+    expect(displayVendorName("Hill Country Milling Co. – freight")).toBe("Hill Country Milling Co.");
+  });
+
+  it("THE LIVE SYMPTOM: a reversal files under the entry it reverses", () => {
+    const orig = "Hill Country Milling Co. – freight";
+    const rev = "REVERSAL: Hill Country Milling Co. – freight — Voided";
+    expect(vendorGroupKey(rev)).toBe(vendorGroupKey(orig));
+    expect(displayVendorName(rev)).toBe("Hill Country Milling Co.");
+  });
+
+  it("★ splits on the FIRST spaced dash only — an unspaced one is a date range", () => {
+    // Real string: the right half carries an unspaced en-dash between two dates.
+    expect(displayVendorName("Austin Municipal Utilities – 12/05/2025–01/05/2026")).toBe("Austin Municipal Utilities");
+    // Real string: the right half carries an EM-dash of its own, after the en-dash break.
+    expect(displayVendorName("Hill Country Milling Co. – freight — bread flour")).toBe("Hill Country Milling Co.");
+  });
+
+  it("★ still refuses to merge suppliers that differ by more than punctuation", () => {
+    // The widening must not become a general-purpose collapse.
+    expect(vendorGroupKey("Lone Star – x")).not.toBe(vendorGroupKey("Lone Star Restaurant Supply – x"));
+    expect(vendorGroupKey("Sysco – x")).not.toBe(vendorGroupKey("Sysco Fuel – x"));
+  });
+
+  it("a description with no separator is entirely the vendor", () => {
+    expect(displayVendorName("Bluebonnet Linen Service")).toBe("Bluebonnet Linen Service");
+    expect(vendorGroupKey("Bluebonnet Linen Service")).toBe("bluebonnet linen service");
+  });
+
+  it("★ an unkeyable descriptor returns null rather than an empty key", () => {
+    // Grouping every unkeyable row together under "" would merge unrelated vendors —
+    // the one-way door, arrived at through a falsy default.
+    expect(vendorGroupKey("884213 – x")).toBe(null);
+    expect(displayVendorName("   ")).toBe(null);
   });
 });

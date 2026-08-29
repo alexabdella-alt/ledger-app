@@ -6981,20 +6981,37 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   };
 
   // Derived data
+  // ★★ O125 — GROUP BY THE KEY, DISPLAY THE NAME. Keyed on `inv.vendor` — the display
+  // string — this listed `Hill Country Milling Co` and `…Co.` as two suppliers, payroll as
+  // fifteen, and every reversal under a vendor of its own (so the original's total was
+  // overstated and the reversal hid under `REVERSAL: …`). Grouping on `vendor_key` nets a
+  // reversal against the charge it reverses, which is the arithmetic truth.
+  //
+  // The label shown is the display name from the entry we saw MOST RECENTLY: it is a real
+  // string the user has seen, not a normalised key, and not a vote nobody can predict.
   const vendorSummary = useMemo(() => {
     const map = {};
     invoices.forEach(inv => {
-      const v = inv.vendor || "Unknown";
-      if (!map[v]) map[v] = { name:v, total:0, count:0, lastDate:"", glAccounts:new Set(), projects:new Set() };
-      map[v].total += inv.amount; map[v].count += 1;
-      if (!map[v].lastDate || inv.date > map[v].lastDate) map[v].lastDate = inv.date;
-      map[v].glAccounts.add(inv.gl_name); map[v].projects.add(inv.project||"General");
+      const key = inv.vendor_key || inv.vendor || "Unknown";
+      if (!map[key]) map[key] = { key, name: inv.vendor || "Unknown", nameDate: "", total:0, count:0, lastDate:"", glAccounts:new Set(), projects:new Set() };
+      const m = map[key];
+      m.total += inv.amount; m.count += 1;
+      if (!m.lastDate || inv.date > m.lastDate) m.lastDate = inv.date;
+      if (inv.vendor && (!m.nameDate || String(inv.date || "") >= m.nameDate)) { m.name = inv.vendor; m.nameDate = String(inv.date || ""); }
+      m.glAccounts.add(inv.gl_name); m.projects.add(inv.project||"General");
     });
     return Object.values(map).sort((a,b) => b.total-a.total);
   }, [invoices]);
 
   const allVendorNames = useMemo(() => vendorSummary.map(v => v.name), [vendorSummary]);
-  const filteredInvoices = useMemo(() => invoices.filter(inv => vendorFilter==="all" || inv.vendor===vendorFilter), [invoices, vendorFilter]);
+  // O125 — the filter follows the same grouping the list shows, or picking "Hill Country
+  // Milling Co." from the vendor list would hide the rows spelled without the full stop.
+  const filteredInvoices = useMemo(() => {
+    if (vendorFilter === "all") return invoices;
+    const target = vendorSummary.find(v => v.name === vendorFilter);
+    const key = target?.key || null;
+    return invoices.filter(inv => (key ? (inv.vendor_key || inv.vendor) === key : inv.vendor === vendorFilter));
+  }, [invoices, vendorFilter, vendorSummary]);
   // Canonical layer (reports.js) — all-time, live (voided/deleted excluded). The single
   // source for these figures everywhere they appear. MEMOIZED on `invoices` (CR-21): each
   // walks the FULL (uncapped since C135) ledger, and App re-renders on every keystroke
