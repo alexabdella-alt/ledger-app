@@ -31,6 +31,7 @@ import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, ca
 import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, planEntryRemoval, REMOVAL } from "./lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
+import { buildVendorSummary } from "./lib/vendorSummary";
 import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
@@ -7054,27 +7055,18 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   };
 
   // Derived data
-  // ★★ O125 — GROUP BY THE KEY, DISPLAY THE NAME. Keyed on `inv.vendor` — the display
-  // string — this listed `Hill Country Milling Co` and `…Co.` as two suppliers, payroll as
-  // fifteen, and every reversal under a vendor of its own (so the original's total was
-  // overstated and the reversal hid under `REVERSAL: …`). Grouping on `vendor_key` nets a
-  // reversal against the charge it reverses, which is the arithmetic truth.
-  //
-  // The label shown is the display name from the entry we saw MOST RECENTLY: it is a real
-  // string the user has seen, not a normalised key, and not a vote nobody can predict.
-  const vendorSummary = useMemo(() => {
-    const map = {};
-    invoices.forEach(inv => {
-      const key = inv.vendor_key || inv.vendor || "Unknown";
-      if (!map[key]) map[key] = { key, name: inv.vendor || "Unknown", nameDate: "", total:0, count:0, lastDate:"", glAccounts:new Set(), projects:new Set() };
-      const m = map[key];
-      m.total += inv.amount; m.count += 1;
-      if (!m.lastDate || inv.date > m.lastDate) m.lastDate = inv.date;
-      if (inv.vendor && (!m.nameDate || String(inv.date || "") >= m.nameDate)) { m.name = inv.vendor; m.nameDate = String(inv.date || ""); }
-      m.glAccounts.add(inv.gl_name); m.projects.add(inv.project||"General");
-    });
-    return Object.values(map).sort((a,b) => b.total-a.total);
-  }, [invoices]);
+  // ── THE VENDORS TAB'S POPULATION (pure — `src/lib/vendorSummary.js`) ──────────
+  // Was keyed over EVERY flattened row with no filter, which produced three defects on the
+  // screen where the vendor list IS the navigation, all reproduced on real-shaped data:
+  //   · the system opening-balance entry appeared as a vendor named "Opening balances as
+  //     of 2026-01-01", with an Edit button;
+  //   · a revenue deposit appeared as a "Toast POS" vendor — money coming IN;
+  //   · ★ and every bill's PAYMENT was counted as a second piece of spend, so an $824.60
+  //     purchase read as $1,649.20. That is the half that made the tab WRONG rather than
+  //     untidy, and it was found by running the old code on a fixture rather than by
+  //     reading it.
+  // One rule replaces all three: spend is an EXPENSE-account movement.
+  const vendorSummary = useMemo(() => buildVendorSummary(invoices), [invoices]);
 
   const allVendorNames = useMemo(() => vendorSummary.map(v => v.name), [vendorSummary]);
   // O125 — the filter follows the same grouping the list shows, or picking "Hill Country
