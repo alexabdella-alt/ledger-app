@@ -1,7 +1,7 @@
 # The flat-fee recurring vendor — design spec for `O117` + `O127`
 
-**Status: BUILT 2026-08-29 (matching half). Detection half (§7) NOT built.**
-Design session + implementation, same day, on the operator's instruction ("build it").
+**Status: BUILT 2026-08-29 — BOTH HALVES.** Matching (§6) in C218, detection (§7) in C220.
+Design session + implementation, same day, on the operator's instruction.
 
 Signed: `[ ]` Alex (CPA) — date: ________
 
@@ -201,7 +201,16 @@ card the user sees every week is, by `O122`, a defect rather than a question.
 **★ BUT SUPPRESSION IS NOT BLANKET, AND THIS IS THE LOAD-BEARING HALF.** What must still
 fire is a **count** anomaly, not a **pair** anomaly:
 
-> *"Bluebonnet charged 6 times in August; they normally charge 4."*
+> *"Bluebonnet charged twice in 3 days — they normally charge about every 7 days."*
+>
+> **★ DEVIATION FROM THIS SECTION AS WRITTEN, RECORDED AT BUILD TIME.** §7 originally
+> proposed a MONTHLY COUNT — *"charged 6 times in August; they normally charge 4."* **A
+> weekly vendor legitimately charges five times in a month with five Mondays**, so a monthly
+> count fires on the calendar rather than on the vendor: a category-1 card, which is exactly
+> what this section exists to remove. The rhythm framing states the same property and cannot
+> be fooled by month length. The implemented window is HALF THE VENDOR'S OWN MEDIAN
+> INTERVAL — no calendar unit is smuggled in, and a vendor's rhythm is evidence we already
+> held rather than a threshold being tuned.
 
 Same reframe as §3 — count, not pair. A genuine double-payment still surfaces, because it
 shows up as a count above the cadence. What disappears is the weekly card that says two
