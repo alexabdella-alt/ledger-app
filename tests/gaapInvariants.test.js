@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildPaymentEntry, paymentEntryLines } from "../src/lib/payments.js";
-import { reverseEntryLines } from "../src/lib/journalEntries.js";
+import { reverseEntryLines, buildYearEndCloseEntry } from "../src/lib/journalEntries.js";
 import { buildOpeningBalanceEntry } from "../src/lib/openingBalances.js";
 import { buildDepreciationEntry } from "../src/lib/depreciation.js";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "../src/lib/revenueEntries.js";
@@ -94,6 +94,20 @@ const EVENTS = [
   // statement-shaped — and `buildBankLineEntry` was tested for its SHAPE in five files while
   // no test ever ran it through Dr=Cr, the accounting equation, or the net-income rules.
   // A builder that produces most of the ledger belongs in the file that checks the ledger.
+  // ── 17 · YEAR-END CLOSE (real builder) ──────────────────────────────────────
+  // ★ THE LAST OF THE SEVENTEEN TO GET A BUILDER. It has NO CALLER by design — the product
+  // does a DERIVED soft close, and whether to also POST closing entries is an accounting
+  // decision about locking a year, not a mechanism gap. §12's rule is that every event has a
+  // pure builder with a test asserting exact Dr/Cr, so the decision can be made without also
+  // being a build.
+  //
+  // ★★ `movesNI: true` IS CORRECT AND READS ODDLY, so it is worth stating: the close ZEROES
+  // the P&L, so its own effect on net income is the whole year's net, inverted. It is the one
+  // entry whose purpose is to move net income to zero.
+  { name: "17 · year-end close (real builder)", lines: buildYearEndCloseEntry({
+      retainedEarningsCode: "3100",
+      balances: [{ code: C.revenue, balance: 10000 }, { code: C.expense, balance: 4000 }],
+    }).lines, movesNI: true },
   ...[
     { n: "3 · bank line — money out (expense)", txn: { amount: 120, type: "expense", gl_code: C.expense, gl_name: "Software", date: "2026-06-19", vendor: "Vendor" } },
     { n: "3b · bank line — money in (revenue)", txn: { amount: 900, type: "revenue", gl_code: C.revenue, gl_name: "Sales", date: "2026-06-19", vendor: "Customer" } },
