@@ -131,49 +131,19 @@ commit;
 -- from pg_policies where tablename = 'anomaly_comments';
 
 
--- VERIFY (c) — ★★ THE GATE REFUSES A DISMISSAL WITH NO REASON. A rule nobody has watched
--- refuse anything is a rule on paper (the standard `071` and `076` were held to). Rolled
--- back either way. Run the WHOLE block as ONE statement — the rollback is what makes it safe.
+-- ▶ VERIFY (c) AND (d) MOVED TO `supabase/verify/080_dismissal_gate.sql`, AND THE
+-- VERSIONS THAT WERE HERE WERE NOT SOUND. They ran a bare UPDATE — but **the Supabase SQL
+-- editor runs as a superuser role, which BYPASSES RLS**, so the update would have been
+-- permitted regardless of the policy and (c) would have reported `FAIL - a dismissal with
+-- NO REASON was accepted` against a perfectly correct migration. A false FAIL on a correct
+-- guard is the mirror of a false PASS on a broken one: both come from testing something
+-- other than the thing you named. The replacements switch to the `authenticated` role with
+-- a real member's uid, REPORT the role they actually ran as (so a failed switch cannot be
+-- read as a result), and create their own probe row instead of reporting INCONCLUSIVE when
+-- the anomaly queue happens to be clean — which is exactly what happened on the live run.
 --
--- do $$
--- declare v text; a uuid;
--- begin
---   select id into a from public.anomalies where status = 'open' limit 1;
---   if a is null then
---     raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - no open anomaly to test against';
---   end if;
---   begin
---     update public.anomalies set status = 'dismissed', dismissed_reason = null where id = a;
---     v := 'FAIL - a dismissal with NO REASON was accepted';
---   exception
---     when insufficient_privilege then v := 'PASS - refused (RLS)';
---     when others then v := 'PASS - refused: ' || SQLERRM;
---   end;
---   raise exception 'CHECK RESULT (not an error - this rolled back on purpose): %', v;
--- end $$;
---
--- ▶ NOTE ON HOW THIS ONE CAN MISLEAD: run as the OPERATOR, `is_company_reviewer` returns
--- true through the platform-admin bypass, so this checks the REASON half only. The
--- REVIEWER half cannot be proved from this account at all — the operator's own login
--- cannot fail it (§3 Option A, the same trap that blocked the sign-off proof). It belongs
--- to the non-reviewer probe TIER 1 #8 now unblocks, and is recorded as OWED, not done.
-
-
--- VERIFY (d) — ★ AND THE HOUSEKEEPING STILL WORKS. Without this, (c) passing is equally
--- consistent with "we gated dismissal" and "we broke every other update", which is the
--- `079` failure exactly: for a guard, blocking too much is the dangerous direction.
---
--- do $$
--- declare v text; a uuid;
--- begin
---   select id into a from public.anomalies where status = 'open' limit 1;
---   if a is null then
---     raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - no open anomaly to test against';
---   end if;
---   begin
---     update public.anomalies set last_seen_at = now() where id = a;
---     v := 'PASS - ordinary anomaly housekeeping still works';
---   exception when others then v := 'FAIL - a non-dismissal update was blocked: ' || SQLERRM;
---   end;
---   raise exception 'CHECK RESULT (not an error - this rolled back on purpose): %', v;
--- end $$;
+-- ▶ AND THE LIMIT THAT SURVIVES EITHER WAY: run from the OPERATOR's account,
+-- `is_company_reviewer` returns true through the platform-admin bypass, so the REVIEWER
+-- half cannot be proved from that login at all (§3 Option A — the same trap that blocked
+-- the sign-off proof). Only the REASON half is provable today. The reviewer half belongs to
+-- the non-reviewer probe TIER 1 #8 now unblocks, and is recorded as OWED, not done.
