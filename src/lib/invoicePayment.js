@@ -27,6 +27,7 @@ import { matchDirectory } from "./vendorDirectory.js";
 
 // ── AMOUNTS ──────────────────────────────────────────────────────────────────
 
+import { applyAlias } from "./vendorAlias.js";
 import { classifyCadence, planSetSettlement, SET_ACTION, periodOf } from "./recurringVendor.js";
 
 export const AMOUNT_RELATION = { EXACT: "exact", NEAR: "near", NONE: "none" };
@@ -114,6 +115,19 @@ export const IDENTITY_RELATION = { EXACT: "exact", NEAR: "near", NONE: "none" };
 // MINTING would silently re-key `vendor_state` rows and move tiers. This can only widen
 // what this one feature considers, and the anti-merge cases are pinned either way.
 const compareKey = (k) => String(k || "").split(" ").filter((t) => t && t !== "and");
+
+// ★★ O111 — AN ASSERTED ALIAS IS CONSULTED **BEFORE** THE STRING RULES, NOT INSTEAD OF
+// THEM. A person saying "these two names are my landlord" is stronger evidence than any
+// comparison we can make, so it decides first — and when there is no alias, every existing
+// rule (and every anti-merge test pinning SYSCO vs SYSCO FUEL) behaves exactly as before.
+// This is what closes the Franklin Ave case that O114's re-drive left open: the bank
+// descriptor carries a purpose word (`RENT`) the invoice does not, and no amount of string
+// surgery can safely remove it.
+export function identityRelationWithAliases(keyA, keyB, aliasIndex = null) {
+  const a = aliasIndex ? applyAlias(keyA, aliasIndex) : keyA;
+  const b = aliasIndex ? applyAlias(keyB, aliasIndex) : keyB;
+  return identityRelation(a, b);
+}
 
 export function identityRelation(keyA, keyB) {
   if (!keyA || !keyB) return IDENTITY_RELATION.NONE;
@@ -205,7 +219,7 @@ export function hasAttachedInvoice(entry = {}) {
 // denominator cannot tell "nothing matched" from "nothing was examined", which is
 // the C195(7) failure (a block whose input was always empty for a whole release).
 export function settlementCandidates(invoice = {}, entries = [], ctx = {}) {
-  const { cashCodes = [], amountOpts = {}, directory = [] } = ctx;
+  const { cashCodes = [], amountOpts = {}, directory = [], aliasIndex = null } = ctx;
   const invKey = entityKeyOfInvoice(invoice, { directory });
   const excludedBy = {};
   const bump = (k) => { excludedBy[k] = (excludedBy[k] || 0) + 1; };
@@ -222,7 +236,7 @@ export function settlementCandidates(invoice = {}, entries = [], ctx = {}) {
     const { key, excluded } = entityKeyOfEntry(e, { directory });
     if (excluded) { bump(`entry_${excluded}`); continue; }
 
-    const idRel = identityRelation(invKey, key);
+    const idRel = identityRelationWithAliases(invKey, key, aliasIndex);
     if (idRel === IDENTITY_RELATION.NONE) { bump("identity_none"); continue; }
 
     const amt = amountRelation(invoice.amount, e.amount, amountOpts);
@@ -291,7 +305,7 @@ export const ASK_REASON = {
 // in one place) plus every entry, because the cadence is a property of the vendor's whole
 // history and the period balance is a property of one month.
 function planFlatFeeSettlement(invoice, entries, ctx, candidates) {
-  const { cashCodes = [], directory = [] } = ctx || {};
+  const { cashCodes = [], directory = [], aliasIndex = null } = ctx || {};
   const invKey = entityKeyOfInvoice(invoice, { directory });
   const invPeriod = periodOf(invoice && invoice.date);
   if (!invKey || !invPeriod) return { action: SET_ACTION.NOT_APPLICABLE };
@@ -305,7 +319,7 @@ function planFlatFeeSettlement(invoice, entries, ctx, candidates) {
     if (!isCashSettled(e, { cashCodes })) continue;
     const { key, excluded } = entityKeyOfEntry(e, { directory });
     if (excluded) continue;
-    if (identityRelation(invKey, key) !== IDENTITY_RELATION.EXACT) continue;
+    if (identityRelationWithAliases(invKey, key, aliasIndex) !== IDENTITY_RELATION.EXACT) continue;
     charges.push({ entry: e, date: e.date, amount: e.amount });
   }
 

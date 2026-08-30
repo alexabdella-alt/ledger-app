@@ -4,6 +4,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import TransactionDetailPanel from "../TransactionDetailPanel";
+import { validateAlias, aliasExplainer } from "../../lib/vendorAlias";
 
 export default function VendorsView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, setVendor1099, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
@@ -11,6 +12,7 @@ export default function VendorsView() {
             const [vSel, setVSel] = React.useState(null); // selected transaction id for the slide-in
             const fmt = fmtMoney;
             const selectedContact = vendorsSelectedContact; const setSelectedContact = setVendorsSelectedContact;
+            const [aliasDraft, setAliasDraft] = React.useState("");
             const editingId = vendorsEditingId; const setEditingId = setVendorsEditingId; const editDraft = vendorsEditDraft; const setEditDraft = setVendorsEditDraft;
             const yr = new Date().getFullYear();
             // GL-truth (§9): an expense DEBITS a 5–8xxx account. `type` is fallback-only for
@@ -149,13 +151,31 @@ export default function VendorsView() {
               return hay.includes(vq);
             });
 
+            // ── O111 — "THIS SUPPLIER ALSO GOES BY…" ──────────────────────────────
+            // A landlord's bank line can read FRANKLIN AVE PROPERTIES LP **RENT** while
+            // their invoice says Franklin Ave Properties. The purpose word is not part of
+            // the name, and no string rule can safely remove it — "Lone Star Restaurant
+            // SUPPLY" and "Bluebonnet Linen SERVICE" would go with it. So the person tells
+            // us, once, and we apply exactly what they said.
+            const addAlias = (v) => {
+              const others = (contacts || []).filter(c => c && c.id !== v.id);
+              const check = validateAlias(aliasDraft, { ...v, aliases: editDraft.aliases || [] }, others);
+              // ★ REFUSED IN THEIR WORDS, NAMING THE OTHER SUPPLIER WHERE THERE IS ONE —
+              // "Lone Star already goes by that name" is actionable; "invalid" is not.
+              if (!check.ok) { showNotification(check.message, "error"); return; }
+              setEditDraft(d => ({ ...d, aliases: [...(d.aliases || []), check.text] }));
+              setAliasDraft("");
+            };
+            const removeAlias = (name) => setEditDraft(d => ({ ...d, aliases: (d.aliases || []).filter(a => a !== name) }));
+
             const startEdit = (v) => {
               setEditingId(v.id||v.name);
-              setEditDraft({ payment_terms:v.payment_terms||"", email:v.email||"", phone:v.phone||"", website:v.website||"", payment_url:v.payment_url||"", notes:v.notes||"", tags:(v.tags||[]).join(", "), min_expected:v.min_expected||"", max_expected:v.max_expected||"" });
+              setEditDraft({ payment_terms:v.payment_terms||"", email:v.email||"", phone:v.phone||"", website:v.website||"", payment_url:v.payment_url||"", notes:v.notes||"", tags:(v.tags||[]).join(", "), min_expected:v.min_expected||"", max_expected:v.max_expected||"", aliases:Array.isArray(v.aliases)?v.aliases:[] });
+              setAliasDraft("");
             };
             const saveEdit = (v) => {
               if (editDraft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(editDraft.email).trim())) { showNotification("Please enter a valid email address.","error"); return; }
-              const draft = { ...editDraft, tags: editDraft.tags.split(",").map(t=>t.trim()).filter(Boolean), min_expected:parseFloat(editDraft.min_expected)||null, max_expected:parseFloat(editDraft.max_expected)||null };
+              const draft = { ...editDraft, tags: editDraft.tags.split(",").map(t=>t.trim()).filter(Boolean), min_expected:parseFloat(editDraft.min_expected)||null, max_expected:parseFloat(editDraft.max_expected)||null, aliases: Array.isArray(editDraft.aliases)?editDraft.aliases:[] };
               if (v.fromContact) {
                 const updated = { ...v, ...draft };
                 setContacts(prev => prev.map(c => c.id===v.id ? updated : c));
@@ -275,6 +295,32 @@ export default function VendorsView() {
                                     style={{ width:"100%", boxSizing:"border-box", background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 10px", color:"var(--sc-text)", fontSize:12, outline:"none" }} />
                                 </div>
                               ))}
+                              {/* ── O111 — OTHER NAMES THIS SUPPLIER GOES BY ────────────
+                                  Full width, above Notes, because it changes how the books
+                                  GROUP rather than being a contact detail. The copy never
+                                  says "alias" or "entity key": it says what it does. */}
+                              <div style={{ gridColumn:"1/-1" }}>
+                                <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:4 }}>Also appears as</div>
+                                <div style={{ fontSize:11, color:"var(--sc-text-mut)", marginBottom:6 }}>{aliasExplainer({ ...v, aliases: editDraft.aliases || [] })}</div>
+                                {(editDraft.aliases || []).length > 0 && (
+                                  <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
+                                    {(editDraft.aliases || []).map(a=>(
+                                      <span key={a} style={{ display:"inline-flex", alignItems:"center", gap:6, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border)", borderRadius:999, padding:"4px 10px", fontSize:11.5, color:"var(--sc-text-2)" }}>
+                                        {a}
+                                        <button onClick={()=>removeAlias(a)} title="Remove" style={{ background:"none", border:"none", color:"var(--sc-text-mut)", cursor:"pointer", fontSize:13, lineHeight:1, padding:0 }}>×</button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                <div style={{ display:"flex", gap:8 }}>
+                                  <input value={aliasDraft} onChange={e=>setAliasDraft(e.target.value)}
+                                    onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); addAlias(v); } }}
+                                    placeholder="e.g. FRANKLIN AVE PROPERTIES LP RENT"
+                                    style={{ flex:1, boxSizing:"border-box", background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 10px", color:"var(--sc-text)", fontSize:12, outline:"none" }} />
+                                  <button onClick={()=>addAlias(v)} disabled={!aliasDraft.trim()}
+                                    style={{ padding:"8px 14px", borderRadius:8, fontSize:12, fontWeight:600, background:aliasDraft.trim()?"var(--sc-border)":"transparent", border:"1px solid var(--sc-border-2)", color:aliasDraft.trim()?"var(--sc-text)":"var(--sc-text-mut)", cursor:aliasDraft.trim()?"pointer":"not-allowed" }}>Add</button>
+                                </div>
+                              </div>
                               <div style={{ gridColumn:"1/-1" }}>
                                 <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:4 }}>Notes</div>
                                 <input value={editDraft.notes||""} onChange={e=>setEditDraft(d=>({...d,notes:e.target.value}))} placeholder="Any notes about this vendor..."

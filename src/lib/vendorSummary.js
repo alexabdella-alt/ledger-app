@@ -28,6 +28,7 @@
 // vendor, while the NAME shown is a real string the user has seen.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { applyAlias } from "./vendorAlias.js";
 import { glIsExpense } from "./gl";
 
 // Does this row represent money spent WITH a vendor?
@@ -42,11 +43,15 @@ export function isVendorSpend(inv) {
 }
 
 // The tab's rows. `total` is what you SPENT — never spend plus its own settlement.
-export function buildVendorSummary(invoices = []) {
+// `aliasIndex` (O111) is optional: without it this behaves exactly as before. With it, a
+// supplier a person has told us goes by two names groups under ONE row — which is the whole
+// of what they asked for by adding the alias.
+export function buildVendorSummary(invoices = [], aliasIndex = null) {
   const map = new Map();
   for (const inv of invoices || []) {
     if (!isVendorSpend(inv)) continue;
-    const key = inv.vendor_key || inv.vendor || "Unknown";
+    const raw = inv.vendor_key || inv.vendor || "Unknown";
+    const key = aliasIndex ? applyAlias(raw, aliasIndex) : raw;
     if (!map.has(key)) {
       map.set(key, { key, name: inv.vendor || "Unknown", nameDate: "", total: 0, count: 0, lastDate: "", glAccounts: new Set(), projects: new Set() });
     }
