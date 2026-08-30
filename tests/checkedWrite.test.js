@@ -333,3 +333,47 @@ describe("★★ a delete is audited and described from what was written", () =>
     expect(claim).toMatch(/kept\.length/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ O17 — A PAYMENT POSTS IN TWO STEPS, AND THE THING THAT MAKES THAT SAFE WAS UNCHECKED.
+//
+// `markBillPaid` posts the GL movement (Dr A/P · Cr Cash) and THEN flips the paid flag. If
+// the second step fails, a compensating reversal removes the movement — that reversal is
+// the entire safety property. It was an unchecked `.update()` inside a `console.warn`
+// catch, and PostgREST reports no error for an update that matched nothing (C192), so "it
+// didn't throw" was never evidence it worked.
+//
+// ★★★ AND THE COPY MATTERED AS MUCH AS THE WRITE. The generic "please try again" invited a
+// SECOND payment on top of an orphaned movement — the O123 shape, in money instead of
+// reversals. A failure that cannot be retried must not be described as one.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ the payment compensation is checked, and says what it left behind", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const start = app.indexOf("let postedPaymentId = null;");
+  const fn = app.slice(start, app.indexOf("if (!dbId) return await fail", start));
+  const code = fn.split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*")).join("\n");
+
+  it("★ the reversal goes through a checked write and its verdict is consumed", () => {
+    expect(code).toMatch(/const c = await checkedRowUpdate\(\{/);
+    expect(code).toMatch(/compensationFailed = !c\.ok/);
+    expect(code).not.toMatch(/console\.warn\("\[markBillPaid\] compensation/);
+  });
+
+  it("★★ a failed compensation is audited AND sent to Sentry — it is a money-state break", () => {
+    expect(code).toMatch(/logAudit\("payment_compensation_failed"/);
+    expect(code).toMatch(/payment_compensation_failure/);
+  });
+
+  it("★★★ and it does NOT tell the user to try again", () => {
+    // Retrying would post a second payment movement on top of the orphan.
+    const msg = code.slice(code.indexOf("showNotification(compensationFailed"));
+    expect(msg.slice(0, 500)).toMatch(/Don't try again/);
+    expect(msg.slice(0, 500)).toMatch(/send this to your accountant/);
+    // the ordinary failure keeps its retry wording — the two paths are genuinely different
+    expect(msg.slice(0, 500)).toMatch(/Couldn't save the payment — please try again/);
+  });
+
+  it("★ the sentence describes the state of the books, not the error", () => {
+    expect(app).toMatch(/recorded the money leaving but couldn't finish marking/);
+  });
+});

@@ -6796,15 +6796,37 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       apply(snap);                                    // revert the optimistic change
       // Compensation: if the GL payment entry was already posted, reverse it so we
       // never leave a GL movement without the paid flag (atomic-by-compensation).
+      let compensationFailed = false;
       if (postedPaymentId) {
-        try {
-          await supabase.from("journal_entries")
-            .update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
-            .eq("id", postedPaymentId).eq("company_id", currentCompany.id);
-        } catch (e) { console.warn("[markBillPaid] compensation reverse failed:", e?.message || e); }
+        // ★★ THE COMPENSATION IS THE WHOLE OF `O17`'s SAFETY, AND IT WAS AN UNCHECKED WRITE
+        // INSIDE A `console.warn` CATCH. A payment posts in two steps — the GL movement,
+        // then the paid flag — and this reversal is what makes a failure between them
+        // recoverable. **If the reversal itself silently did nothing, the books held cash
+        // leaving for a bill still shown as unpaid, and the only trace was a console line
+        // nobody was reading.** PostgREST reports no error for an update that matched
+        // nothing (C192), so "it didn't throw" was never evidence it worked.
+        const c = await checkedRowUpdate({
+          supabase, table: "journal_entries", id: postedPaymentId, companyId: currentCompany.id,
+          patch: { deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null },
+          label: "paymentCompensation",
+        });
+        compensationFailed = !c.ok;
+        if (compensationFailed) {
+          // ★ THIS IS NOT A RETRY-ABLE FAILURE AND MUST NOT BE DESCRIBED AS ONE. The
+          // generic "please try again" would invite a SECOND payment entry on top of the
+          // orphan — the O123 shape, in money rather than in reversals.
+          logAudit("payment_compensation_failed",
+            `Recorded a payment movement for ${inv.vendor || "an entry"} that couldn't be undone after the rest failed — the books show the money leaving but the bill is still open`,
+            null, { entry_id: dbId ? String(dbId) : null, payment_entry_id: String(postedPaymentId), side });
+          try { Sentry.captureMessage("payment_compensation_failure", { level: "error",
+            tags: { kind: "payment_compensation_failure", side },
+            extra: { payment_entry_id: String(postedPaymentId), entry_id: dbId ? String(dbId) : null } }); } catch {}
+        }
         postedPaymentId = null;
       }
-      showNotification("Couldn't save the payment — please try again", "error");
+      showNotification(compensationFailed
+        ? `We recorded the money leaving but couldn't finish marking ${inv.vendor || "this bill"} as paid, and couldn't undo it either. Don't try again — send this to your accountant to correct.`
+        : "Couldn't save the payment — please try again", "error");
       try { Sentry.captureMessage("payment_persist_failure", { level: "error",
         tags: { kind: "payment_persist_failure", side },
         extra: { entry_id: dbId ? String(dbId) : null, new_status: newStatus, reason: reasonForLog } }); } catch {}
