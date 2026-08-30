@@ -29,6 +29,7 @@ import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompany
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
 import { classifyFailure, drainProgressCopy, FAILURE_KIND } from "./lib/intakeDrain";
+import { nameMatchCensus } from "./lib/nameMatch";
 import { isDegradedMode, degradedBannerCopy } from "./lib/aiFailure";
 import { runIntakeDrain } from "./lib/intakeDrainIo";
 import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
@@ -6830,6 +6831,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const deterministic = autoMatchBankLines(newBankTxns, openUniverse, { arCode: arCodeForMatch, apCode: apCodeForMatch, trace: matchTrace });
     try {
       console.info(`[bank-match] DETERMINISTIC matched: ${deterministic.length}/${newBankTxns.length}`, deterministic.map(m => ({ bank: m.bank_txn_id, inv: m.invoice_ids, side: m.match_type })));
+      // ★ THE EVIDENCE THE TIGHTEN-THE-BANK-RAIL DECISION ASKED FOR, and it only exists if a
+      // real drive prints it. The bank rail accepts a party name when either normalised name
+      // CONTAINS the other; the invoice rail demands exact equality. `substring` counts the
+      // matches that ONLY the loose rule permitted — if a full drive returns 0, tightening
+      // costs nothing observable and the decision is easy; if it returns a number, each one
+      // is a case to look at by hand BEFORE tightening. Nobody knows this number today.
+      console.info("[bank-match] name-agreement census:", nameMatchCensus(deterministic));
       console.info("[bank-match] candidates:", currentInvoices.filter(i => (arCodeForMatch && (String(i.secondary_gl_code)===String(arCodeForMatch)||String(i.gl_code)===String(arCodeForMatch))) || (apCodeForMatch && (String(i.secondary_gl_code)===String(apCodeForMatch)||String(i.gl_code)===String(apCodeForMatch)))).map(i => ({ id: i.id, vendor: i.vendor, amount: i.amount, type: i.type, gl: i.gl_code, off: i.secondary_gl_code })));
       console.info("[bank-match] bank lines:", newBankTxns.map(t => ({ id: t.id, vendor: t.vendor, amount: t.amount, type: t.type })));
       for (const r of matchTrace) console.info(`  · ${r.matched ? "✓ MATCHED" : "✗ no match"} — ${r.vendor} $${r.amount}${r.matched ? ` → ${r.invoiceId} (${r.side})` : ` — ${r.reason}`}`);

@@ -24,6 +24,7 @@
 
 import { buildPaymentEntry } from "./payments.js";
 import { normalizeName } from "./docDirection.js";
+import { NAME_MATCH, nameMatchKind } from "./nameMatch.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Deterministic high-confidence matcher (runs BEFORE the LLM pass). Pairs a bank line
@@ -63,6 +64,9 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
     // preference: if the hint finds nothing we relax and let the matched item's offset decide.
     const wantsAR = t.type === "revenue";
     const wantsAP = t.type === "expense";
+    // Records HOW the winning candidate's name agreed, for the census. Declared here so it
+    // is plainly in scope for the closure below rather than relying on hoisting.
+    let lastNameMatch = null;
     const matchesItem = (i, respectHint) => {
       if (used.has(String(i.id))) return false;
       const ar = itemAR(i), ap = itemAP(i);
@@ -76,7 +80,15 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
       const iNorm = normalizeName(i.vendor);
       if (!iNorm || iNorm.length < 2) return false;
       // Substring either direction so a parenthetical/suffix on either side still matches.
-      return iNorm === partyNorm || iNorm.includes(partyNorm) || partyNorm.includes(iNorm);
+      // ★ SAME PREDICATE, NOW REPORTING WHICH KIND OF AGREEMENT IT FOUND. The two rails
+      // disagree here — the invoice rail requires exact equality — and the decision to
+      // tighten was told to gather its own evidence first. `kind !== NONE` is true in
+      // precisely the cases the old inline expression was, so this changes nothing; it
+      // only records how much of the loose rule's extra reach is actually being used.
+      const kind = nameMatchKind(iNorm, partyNorm);
+      if (kind === NAME_MATCH.NONE) return false;
+      lastNameMatch = kind;
+      return true;
     };
     // Prefer a hint-consistent match; relax to either side only when the line had no hint.
     let cand = (openItems || []).find((i) => matchesItem(i, true));
@@ -112,6 +124,9 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
       amount_remaining: 0,
       auto_clear: true,
       deterministic: true,
+      // ★ EVIDENCE, NOT BEHAVIOUR: was this match one the strict rule would also have made?
+      // A drive that returns no `substring` matches makes tightening the bank rail free.
+      name_match: lastNameMatch,
       reasoning: `Exact amount $${amt.toFixed(2)} + party "${cand.vendor}" ≈ "${t.vendor || t.description}" (clears ${side.toUpperCase()})`,
     });
   }
