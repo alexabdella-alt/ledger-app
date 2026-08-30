@@ -123,3 +123,19 @@ const todayLocal = () => {
 };
 
 export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD };
+
+// ── HOW LONG AGO, IN WORDS A PERSON USES ─────────────────────────────────────
+// The Review screen rendered raw minutes, so a four-day-old document read
+// "5795m ago" — a number nobody converts in their head, on the screen whose job is to
+// tell a reviewer how stale something is. Pure; `null` in, `""` out.
+export function agoPhrase(minutes) {
+  if (minutes == null || minutes === "") return "";   // Number(null) is 0, which would read as "just now"
+  const m = Number(minutes);
+  if (!Number.isFinite(m) || m < 0) return "";
+  if (m < 1) return "just now";
+  if (m < 60) return `${Math.round(m)}m ago`;
+  const h = m / 60;
+  if (h < 48) return `${Math.round(h)}h ago`;
+  const d = Math.round(h / 24);
+  return `${d} day${d === 1 ? "" : "s"} ago`;
+}

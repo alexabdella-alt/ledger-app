@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { agoPhrase } from "../src/lib/format.js";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -92,7 +93,9 @@ describe("(c) a doc that errors / never books stays non-terminal and reconciliat
     const dropped = reconcileIntake(rows, { now: new Date(), stuckMinutes: 30 });
     const ids = dropped.map(d => d.id).sort();
     expect(ids).toEqual(["failed", "stuck"]);
-    expect(dropped.find(d => d.id === "failed").reason).toMatch(/failed/);
+    // The flagging is proven by `ids` above. The REASON now carries what was recorded
+    // rather than the category "processing failed" — see the O98/O115 block below.
+    expect(dropped.find(d => d.id === "failed").reason).toBe("AI extract crashed");
     expect(dropped.find(d => d.id === "stuck").reason).toMatch(/stuck/);
   });
   it("a 'received' row that was never advanced is flagged once it ages out", () => {
@@ -177,5 +180,64 @@ describe("★★ O97 — durable-first intake ordering", () => {
     const guard = fn.slice(fn.indexOf("durableDocId = await storeDocument"), fn.indexOf("durableDocId = await storeDocument") + 700);
     expect(guard).toMatch(/catch/);
     expect(guard).toMatch(/console\.error/);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE REVIEW SCREEN'S 21 IDENTICAL ROWS (live, 2026-08-29).
+//
+// Every one read: `status failed — processing failed`, `5795m ago`. Three defects on one
+// line, and all three are families this repo already has rules for:
+//   · the REASON was a category, not what happened — `detail` held the real cause and was
+//     discarded (O98/O115: describe from the record);
+//   · `5795m` is a number nobody converts in their head, on the screen whose job is to say
+//     how stale something is;
+//   · nothing distinguished a document that will retry ITSELF from one that can never be
+//     recovered — so a reviewer could not tell which of 21 rows actually needed them.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ the completeness rows say what happened, not what category it was", () => {
+  const NOW = new Date("2026-08-29T12:00:00Z");
+  const row = (over = {}) => ({
+    id: "r1", filename: "26_lone_star.pdf", status: "failed",
+    received_at: "2026-08-25T12:00:00Z", ...over,
+  });
+
+  it("THE LIVE ROW: the recorded reason survives instead of being replaced by 'processing failed'", () => {
+    const [d] = reconcileIntake([row({ detail: "Rate limit exceeded. You can make 60 AI requests per hour." })], { now: NOW });
+    expect(d.reason).toMatch(/Rate limit exceeded/);
+    expect(d.reason).not.toBe("processing failed");
+  });
+
+  it("falls back to the category ONLY when nothing was recorded", () => {
+    const [d] = reconcileIntake([row({ detail: null })], { now: NOW });
+    expect(d.reason).toBe("processing failed");
+  });
+
+  it("★ says whether the document can retry itself — the reviewer's actual question", () => {
+    // With stored bytes the drain picks it up (O97); without them, re-upload is the only
+    // thing that will ever help, and the two used to look identical.
+    const [withBytes] = reconcileIntake([row({ document_id: "doc-1" })], { now: NOW });
+    const [without] = reconcileIntake([row({ document_id: null })], { now: NOW });
+    expect(withBytes.resumable).toBe(true);
+    expect(without.resumable).toBe(false);
+  });
+});
+
+describe("★ agoPhrase — '5795m ago' is not a thing a person says", () => {
+  it("THE LIVE STRING: four days reads as four days", () => {
+    expect(agoPhrase(5795)).toBe("4 days ago");
+  });
+  it("scales through the units", () => {
+    expect(agoPhrase(0)).toBe("just now");
+    expect(agoPhrase(45)).toBe("45m ago");
+    expect(agoPhrase(90)).toBe("2h ago");
+    expect(agoPhrase(60 * 26)).toBe("26h ago");
+    expect(agoPhrase(60 * 24 * 1)).toBe("24h ago");
+    expect(agoPhrase(60 * 24 * 9)).toBe("9 days ago");
+  });
+  it("says nothing rather than something wrong", () => {
+    expect(agoPhrase(null)).toBe("");
+    expect(agoPhrase(-5)).toBe("");
+    expect(agoPhrase("x")).toBe("");
   });
 });

@@ -56,10 +56,16 @@ export function reconcileIntake(rows = [], { now = new Date(), stuckMinutes = 30
     if (isTerminalIntake(status)) continue;
     const ageMin = (nowMs - +new Date(r.received_at || r.created_at || now)) / 60000;
     let reason = null;
-    if (status === INTAKE_STATUS.FAILED) reason = "processing failed";
+    // ★ O98/O115 — SAY WHAT ACTUALLY HAPPENED, NOT WHAT CATEGORY IT FALLS IN. This read
+    // "processing failed" for every failure, discarding `detail` — which holds the real
+    // reason the pipeline recorded (a rate limit, an unreadable file). Twenty-one rows on
+    // the live Review screen all said the same four words, and the one thing a reviewer
+    // needs — WHY, and therefore whether it will clear on its own — was in the row the
+    // whole time.
+    if (status === INTAKE_STATUS.FAILED) reason = r.detail ? String(r.detail) : "processing failed";
     else if (status === INTAKE_STATUS.PROCESSING) { if (ageMin > stuckMinutes) reason = `stuck in processing (${Math.round(ageMin)}m)`; }
     else { if (ageMin > stuckMinutes) reason = `received but never recorded (${Math.round(ageMin)}m)`; }
-    if (reason) dropped.push({ id: r.id, filename: r.filename, status, received_at: r.received_at, age_minutes: Math.round(ageMin), reason, content_hash: r.content_hash || null, document_id: r.document_id || null });
+    if (reason) dropped.push({ id: r.id, filename: r.filename, status, received_at: r.received_at, age_minutes: Math.round(ageMin), reason, detail: r.detail || null, resumable: !!r.document_id, content_hash: r.content_hash || null, document_id: r.document_id || null });
   }
   return dropped;
 }

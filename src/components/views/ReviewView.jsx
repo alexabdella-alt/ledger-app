@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
+import { agoPhrase, initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { statementExceptionTarget, OPEN_RECONCILE_LABEL } from "../../lib/statementLifecycle";
 import { buildReviewQueue } from "../../lib/reviewQueue";
@@ -332,7 +332,22 @@ export default function ReviewView() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.filename || "document"}</div>
                   <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
-                    {d.received_at ? `Arrived ${fmtDate(d.received_at)}` : ""}{d.age_minutes != null ? ` · ${d.age_minutes}m ago` : ""} · status <strong style={{ color: "var(--sc-text)" }}>{d.status}</strong> — {d.reason}
+                    {d.received_at ? `Arrived ${fmtDate(d.received_at)}` : ""}{d.age_minutes != null ? ` · ${agoPhrase(d.age_minutes)}` : ""} — {d.reason}
+                    {/* ★ SAY WHETHER IT WILL CLEAR ON ITS OWN. A document whose FILE we
+                        stored is picked back up by the drain (O97); one that arrived before
+                        we stored bytes cannot be — and "Re-upload" is the only thing that
+                        will ever help it. Without this the two look identical and the
+                        reviewer cannot tell which of 21 rows needs them. */}
+                    {d.resumable === false && (
+                      <span style={{ display:"block", color:"var(--sc-warning)", marginTop:2 }}>
+                        We didn't keep a copy of this one, so it needs uploading again — we can't retry it for you.
+                      </span>
+                    )}
+                    {d.resumable === true && (
+                      <span style={{ display:"block", color:"var(--sc-text-2)", marginTop:2 }}>
+                        We still have this file and will keep retrying it — nothing to do unless it stays here.
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
