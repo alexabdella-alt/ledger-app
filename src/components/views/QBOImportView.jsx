@@ -242,13 +242,67 @@ export default function QBOImportView() {
     loadAllData && loadAllData();
   };
 
+  // ── UNDO AN IMPORT ───────────────────────────────────────────────────────────
+  // ★★ THIS CLAIMED SUCCESS WITHOUT LOOKING, AND COUNTED THE WRONG THING. The delete had
+  // no `.select()`, so a zero-row update — which PostgREST reports as no error at all —
+  // was indistinguishable from removing everything. It then announced
+  // `"Import undone — ${batch.imported_count} entries removed"` using the count STORED ON
+  // THE BATCH: the intent, not the outcome (§9). The audit row said the same wrong number.
+  //
+  // ★★★ AND MIGRATION `078`, APPLIED TODAY, TURNED THAT FROM LATENT INTO LIVE. The database
+  // now refuses to soft-delete an entry inside a signed-off month. A QuickBooks import
+  // spanning an attested period therefore CANNOT be undone — the trigger raises and the
+  // statement aborts — and the old code would have caught that, marked the batch `undone`
+  // anyway, and told the operator N entries were removed while every one of them was still
+  // in the books. **A guard I added this morning made an existing silent-success bug
+  // actively dangerous**, which is exactly the interaction a hardening pass is for.
+  //
+  // Now: the delete RETURNS its rows, the batch is only marked undone if entries actually
+  // went, and every number said out loud is counted from what came back.
   const undoImport = async (batch) => {
     setUndoing(batch.id);
     try {
-      await supabase.from("journal_entries").update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null }).eq("company_id", currentCompany.id).eq("import_batch_id", batch.id).is("deleted_at", null);
-      await supabase.from("qbo_imports").update({ status: "undone", undone_at: new Date().toISOString() }).eq("id", batch.id).eq("company_id", currentCompany.id);
-      logAudit && logAudit("qbo_import_undone", `Undid QuickBooks import ${batch.filename || ""} — removed ${batch.imported_count} entries (batch ${batch.id})`, batch, null);
-      showNotification(`Import undone — ${batch.imported_count} entries removed. ✓`);
+      const { data: removed, error } = await supabase.from("journal_entries")
+        .update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
+        .eq("company_id", currentCompany.id).eq("import_batch_id", batch.id).is("deleted_at", null)
+        .select("id");
+
+      if (error) {
+        // A signed-period refusal is not a fault the operator can fix by retrying, so it
+        // gets its own sentence and the database's own words (which are already written
+        // for a person — see `signed_period_error`).
+        const signed = /signed off by your accountant/i.test(error.message || "");
+        logAudit && logAudit("qbo_import_undo_failed", `Couldn't undo QuickBooks import ${batch.filename || ""} — ${error.message}`, batch, null);
+        showNotification(signed
+          ? `This import can't be undone: ${error.message}`
+          : `Couldn't undo the import — nothing was removed. ${error.message}`, "error");
+        setUndoing(null);
+        return;
+      }
+
+      const n = (removed || []).length;
+      if (!n) {
+        // Nothing matched. The batch stays as it is: marking it `undone` here would leave
+        // the record saying one thing and the books another, AND make a later, working
+        // undo impossible because the batch would no longer look undoable.
+        showNotification("Nothing to undo — those entries have already been removed.", "info");
+        loadRecent();
+        setUndoing(null);
+        return;
+      }
+
+      const { error: markErr } = await supabase.from("qbo_imports")
+        .update({ status: "undone", undone_at: new Date().toISOString() })
+        .eq("id", batch.id).eq("company_id", currentCompany.id);
+      if (markErr) {
+        // The entries ARE gone; only the label failed. Say exactly that — the books are
+        // correct and the list is stale, which is the opposite of the old failure.
+        logAudit && logAudit("qbo_import_undo_unmarked", `Removed ${n} entries but couldn't mark the batch undone — ${markErr.message}`, batch, null);
+        showNotification(`Removed ${n} ${n === 1 ? "entry" : "entries"}, but this import still shows as active in the list. Refresh — the entries are gone either way.`, "error");
+      } else {
+        logAudit && logAudit("qbo_import_undone", `Undid QuickBooks import ${batch.filename || ""} — removed ${n} entr${n === 1 ? "y" : "ies"} (batch ${batch.id})`, batch, null);
+        showNotification(`Import undone — ${n} ${n === 1 ? "entry" : "entries"} removed. ✓`);
+      }
       loadRecent(); loadAllData && loadAllData();
     } catch (e) { showNotification("Couldn't undo: " + (e?.message || e), "error"); }
     setUndoing(null);
