@@ -134,3 +134,37 @@ describe("★ already handled is not the same as not eligible", () => {
     expect(v({ name: "Ace", is_1099_exempt: true }, [paid(5000, 6250)]).verdict).toBe(VERDICT.MARKED_EXEMPT);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ AND IT HAS A READER — otherwise it would be exactly the O95 shape this codebase keeps
+// finding: a careful derivation that nothing consults, indistinguishable from not having
+// built it.
+// ═════════════════════════════════════════════════════════════════════════════
+import fs from "fs";
+import path from "path";
+
+describe("★★ the derivation reaches the screen", () => {
+  const tax = fs.readFileSync(path.join(process.cwd(), "src/components/views/TaxView.jsx"), "utf8");
+
+  it("★★★ the tax page counts from the plan, not from the flag", () => {
+    expect(tax).toMatch(/plan1099\(\{/);
+    expect(tax).toMatch(/const need1099 = plan\.outstanding/);
+    // the old flag count must be gone, not merely unused
+    expect(tax).not.toMatch(/c\.is1099 && !c\.is_1099_exempt/);
+  });
+
+  it("★★ and the sentence is the plan's own, so it cannot describe a different count", () => {
+    expect(tax).toMatch(/\{plan1099Copy\(plan\)\}/);
+    expect(tax).not.toMatch(/vendors? need 1099s this year/);
+  });
+
+  it("★ payments are matched on the SAME grouping key the vendor list uses (O111)", () => {
+    // A supplier known by two names must be one supplier here too, or their payments split
+    // and both halves fall under the threshold — a wrong answer that looks tidy.
+    expect(tax).toMatch(/r\.vendor_key \|\| r\.vendor/);
+  });
+
+  it("★ and only this year's rows are considered", () => {
+    expect(tax).toMatch(/startsWith\(String\(year\)\)/);
+  });
+});

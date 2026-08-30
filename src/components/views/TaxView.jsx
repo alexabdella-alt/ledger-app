@@ -2,9 +2,10 @@ import React from "react";
 import { fmtMoney } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE } from "../../lib/tax";
+import { plan1099, plan1099Copy } from "../../lib/form1099";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, supabase } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const lsKey = `cfai_tax_${currentCompany?.id || "x"}`;
@@ -76,7 +77,32 @@ export default function TaxView() {
   const deadlines = getTaxDeadlines(new Date());
   const deductions = deductionBreakdown(invoices, year, getAccountByRole);
   const totalDeductible = deductions.reduce((s, d) => s + (d.amount || 0), 0);
-  const need1099 = (contacts || []).filter(c => c.type === "vendor" && c.is1099 && !c.is_1099_exempt && !c.sent_1099_2025).length;
+  // ── 1099s ARE WORKED OUT, NOT COUNTED OFF A FLAG ─────────────────────────────
+  // This used to count `is1099` — a badge that was effectively defaulted on, so on one
+  // company nearly every supplier carried it: food, equipment, a utility, none of them
+  // reportable. A 1099 is filed with the IRS under the accountant's name, and that count is
+  // what tells them how much work there is.
+  //
+  // ★ THE VENDOR'S PAYMENTS COME FROM THE LEDGER, matched on the same grouping key the
+  // vendor list uses (O111), so a supplier known by two names is one supplier here too.
+  const roleOfCode = React.useCallback(
+    (code) => (CHART_OF_ACCOUNTS || []).find(a => String(a.code) === String(code))?.system_role || null,
+    [CHART_OF_ACCOUNTS]);
+  const plan = React.useMemo(() => {
+    const yearRows = (invoices || []).filter(i => String(i?.date || "").startsWith(String(year)));
+    const byName = new Map();
+    for (const r of yearRows) {
+      const k = String(r.vendor_key || r.vendor || "").toLowerCase();
+      if (!k) continue;
+      (byName.get(k) || byName.set(k, []).get(k)).push(r);
+    }
+    return plan1099({
+      contacts,
+      vendorRowsFor: (c) => byName.get(String(c.name || "").toLowerCase()) || [],
+      roleOfCode,
+    });
+  }, [invoices, contacts, year, roleOfCode]);
+  const need1099 = plan.outstanding;
 
   const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "18px 20px" };
 
@@ -186,7 +212,7 @@ export default function TaxView() {
         <div>
           <div style={{ fontSize: 13, fontWeight: 600 }}>1099 contractors</div>
           <div style={{ fontSize: 12, color: need1099 > 0 ? "var(--sc-warning)" : "var(--sc-text-2)", marginTop: 3 }}>
-            {need1099 > 0 ? `${need1099} vendor${need1099 !== 1 ? "s" : ""} need 1099s this year` : "No vendors currently flagged for 1099s"}
+            {plan1099Copy(plan)}
           </div>
         </div>
         <button onClick={() => setView("tax1099")} style={{ padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer" }}>Open 1099 tracker →</button>

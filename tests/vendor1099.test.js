@@ -30,13 +30,35 @@ describe("★★ the flag round-trips", () => {
     expect(app).toMatch(/is1099:\s*!!c\.is_1099/);
   });
 
-  it("★ and the readers all still ask for the same one name", () => {
-    // If a reader drifts back to `is_1099`, it silently reads a field the mapped object
-    // still happens to carry — and the two would diverge with nothing failing.
-    for (const src of [vendors, fs.readFileSync(path.join(ROOT, "src/components/views/TaxView.jsx"), "utf8")]) {
-      const code = src.split("\n").filter((l) => !/^\s*(\/\/|\*|\{\/\*)/.test(l)).join("\n");
-      expect(code).toMatch(/is1099/);
+  it("★ and NO reader drifts back to the snake_case column name", () => {
+    // The original defect: the column is `is_1099` and every reader asked for `is1099`, so
+    // a flag genuinely set in the database read back undefined. The rule is that the
+    // snake_case name appears ONLY at the two boundary points that talk to the database —
+    // the load mapping and the save payload — and nowhere a component can reach.
+    //
+    // ★ THIS USED TO REQUIRE `is1099` IN TaxView. It no longer reads the flag AT ALL: the
+    // 1099 count is now derived from what suppliers were actually paid and what they are
+    // (C256), which is strictly stronger than reading the correctly-named flag. Requiring
+    // the name would have blocked that — so the assertion names the PROPERTY (no component
+    // touches the raw column) rather than a specific reader.
+    const components = [];
+    (function walk(d) {
+      for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, f.name);
+        if (f.isDirectory()) walk(full);
+        else if (/\.jsx$/.test(f.name)) components.push(full);
+      }
+    })(path.join(ROOT, "src/components"));
+
+    const offenders = [];
+    for (const f of components) {
+      const code = fs.readFileSync(f, "utf8").split("\n").filter((l) => !/^\s*(\/\/|\*|\{\/\*)/.test(l)).join("\n");
+      if (/\bis_1099\b/.test(code)) offenders.push(path.relative(ROOT, f));
     }
+    expect(offenders).toEqual([]);
+
+    // The vendor list still shows the badge, so it still reads the mapped name.
+    expect(vendors.split("\n").filter((l) => !/^\s*(\/\/|\*|\{\/\*)/.test(l)).join("\n")).toMatch(/is1099/);
   });
 });
 
