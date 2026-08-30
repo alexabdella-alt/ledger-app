@@ -10,6 +10,7 @@ import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeE
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
+import { validateComment } from "./lib/anomalyNotes";
 import { checkedRowUpdate, checkedIdsUpdate, getWriteFailures, resetWriteFailures, writeFailureSentence } from "./lib/checkedWrite";
 import { planInvoiceArrival, ARRIVAL, ASK_REASON } from "./lib/invoicePayment";
 import { DIRECTORY_SEED } from "./lib/vendorDirectory";
@@ -1064,6 +1065,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     dismissedRecurringRef.current = new Set();
     // Anomalies, notifications, onboarding UI
     applyAnomalyRows([]); anomaliesLoadedRef.current = false; anomalyScanBusyRef.current = false;
+    setAnomalyComments([]);                 // §8 — company-scoped state is cleared on switch
     setStatementExceptions([]);   // C186
     setNotifications([]); setNotifOpen(false);
     setOnboardingUploadDone(false); setBusinessModalOpen(false);
@@ -1268,6 +1270,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // than re-inserting everything on the first scan.
       await loadNotifications(cid);
       await loadAnomalies(cid);
+      await loadAnomalyComments(cid);       // the owner's context on those flags
       await loadStatementExceptions(cid);   // C186 — pipeline exceptions for the CPA Review queue
 
     } catch(e) { console.error("loadAllData (secondary) error:", e); }
@@ -1940,18 +1943,64 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // their own anomalies would be self-attestation one anomaly at a time (the O83 separation-
   // of-duties line). The owner sees anomalies honestly in their trust panel but can't clear
   // them. Verified write (reload after).
-  const dismissAnomaly = async (id, reason) => {
+  const dismissAnomaly = async (id, reason, evidenceDocIds = []) => {
     const cid = currentCompany?.id;
     const trimmed = String(reason || "").trim();
     if (!trimmed) return { ok: false, error: "a reason is required to dismiss an anomaly" };
     if (!cid || !id) return { ok: false, error: "missing company/anomaly" };
+    // Evidence is OPTIONAL and stays optional (see `anomalyNotes.js`) — a hard requirement
+    // produces attachments chosen for being nearest, which is worse than none because it
+    // looks like support. Normalised to strings so the jsonb column holds one shape.
+    const docIds = (Array.isArray(evidenceDocIds) ? evidenceDocIds : []).map(String).filter(Boolean);
     try {
       const { error } = await supabase.from("anomalies")
-        .update({ status: "dismissed", dismissed_reason: trimmed, resolution: "dismissed", resolved_at: new Date().toISOString(), resolved_by: session?.user?.id || null })
+        .update({ status: "dismissed", dismissed_reason: trimmed, resolution: "dismissed", evidence_doc_ids: docIds, resolved_at: new Date().toISOString(), resolved_by: session?.user?.id || null })
         .eq("id", id).eq("company_id", cid);
-      if (error) return { ok: false, error: error.message };
-      logAudit("anomaly_dismissed", `Anomaly dismissed: ${trimmed}`, null, { anomaly_id: id, reason: trimmed });
+      // ★ THE DATABASE NOW HAS AN OPINION ABOUT THIS (`080`): a dismissal requires a
+      // reviewer and a reason. A non-reviewer's attempt comes back as an RLS refusal, and
+      // it is said in plain language rather than shown as a policy error — the UI already
+      // hides the button, so anyone reaching this is coming from somewhere else.
+      if (error) {
+        const denied = /row-level security|violates row-level|policy/i.test(error.message || "");
+        return { ok: false, error: denied ? "Only an accountant or admin on this company can dismiss a flag." : error.message };
+      }
+      logAudit("anomaly_dismissed", `Anomaly dismissed: ${trimmed}${docIds.length ? ` (${docIds.length} document${docIds.length === 1 ? "" : "s"} attached)` : ""}`, null, { anomaly_id: id, reason: trimmed, evidence_doc_ids: docIds });
       await loadAnomalies(cid);
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+  };
+
+  // ── THE OWNER'S HALF OF THE CARD — context WITHOUT a clear verb ───────────────
+  // The owner usually knows why a flagged charge is fine and had no way to say so; the
+  // card's only verb is one they are permanently not allowed to use. A comment never
+  // touches `status`, which is exactly what keeps the separation intact: they inform the
+  // judgement, the reviewer makes it. Append-only in the database (`080` grants SELECT and
+  // INSERT and nothing else) — an editable comment is not evidence of anything.
+  const [anomalyComments, setAnomalyComments] = useState([]);
+  const loadAnomalyComments = async (cid) => {
+    if (!cid) return;
+    try {
+      const { data, error } = await supabase.from("anomaly_comments")
+        .select("*").eq("company_id", cid).order("created_at", { ascending: true });
+      if (error) { console.warn("[anomaly] comments load failed:", error.message); return; }
+      setAnomalyComments(data || []);
+    } catch (e) { console.warn("[anomaly] comments load error:", e?.message || e); }
+  };
+  const addAnomalyComment = async (anomalyId, body) => {
+    const cid = currentCompany?.id;
+    const v = validateComment(body);
+    if (!v.ok) return { ok: false, error: v.error };
+    if (!cid || !anomalyId) return { ok: false, error: "missing company/anomaly" };
+    try {
+      // `.select()` for the same reason every write here has it: without it a write that
+      // stored nothing is indistinguishable from one that worked (C192).
+      const { data, error } = await supabase.from("anomaly_comments")
+        .insert({ company_id: cid, anomaly_id: anomalyId, body: v.text, author_id: session?.user?.id || null, author_name: session?.user?.email || null })
+        .select("id");
+      if (error) return { ok: false, error: error.message };
+      if (!data || !data.length) return { ok: false, error: "The note didn't save — please try again." };
+      logAudit("anomaly_commented", `Added context to a flagged item`, null, { anomaly_id: anomalyId });
+      await loadAnomalyComments(cid);
       return { ok: true };
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   };
@@ -7352,7 +7401,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, setVendor1099, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, applyCoaTemplate, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, removeEntry, removalPlanFor, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isViewer, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, statementExceptionsLoadFailed, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, runDrain, drainStatus, aiDegraded, setAiDegraded };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, setVendor1099, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, applyCoaTemplate, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, removeEntry, removalPlanFor, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isViewer, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, statementExceptionsLoadFailed, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, runDrain, drainStatus, aiDegraded, setAiDegraded };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // (`isPlatformAdmin` is derived once at the top of ERP, alongside the seat — C197.)

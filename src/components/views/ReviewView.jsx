@@ -5,6 +5,7 @@ import { agoPhrase, initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, t
 import { getAuthHeaders } from "../../lib/supabase";
 import { statementExceptionTarget, OPEN_RECONCILE_LABEL } from "../../lib/statementLifecycle";
 import { anomalyEvidence } from "../../lib/anomalies";
+import { commentsFor, evidencePrompt, validateComment, dismissalSummary } from "../../lib/anomalyNotes";
 import { buildReviewQueue } from "../../lib/reviewQueue";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
@@ -18,7 +19,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getOpenAP, getOpenAR, getUnpaidInvoices, getUnpaidReceivables, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomCOA, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded, statementExceptionsLoadFailed,
-    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, statementExceptions, offerReconciliation } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, statementExceptions, offerReconciliation } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -37,13 +38,32 @@ export default function ReviewView() {
   const [dismissFor, setDismissFor] = React.useState(null);
   const [dismissReason, setDismissReason] = React.useState("");
   const [dismissBusy, setDismissBusy] = React.useState(false);
+  // Documents attached to the dismissal being composed. OPTIONAL, always — see
+  // `anomalyNotes.js` for why a requirement would make this worse rather than stricter.
+  const [dismissDocs, setDismissDocs] = React.useState([]);
   const onDismissAnomaly = async (id) => {
     if (!dismissAnomaly || !dismissReason.trim()) return;
     setDismissBusy(true);
-    const r = await dismissAnomaly(id, dismissReason.trim());
+    const r = await dismissAnomaly(id, dismissReason.trim(), dismissDocs);
     setDismissBusy(false);
-    if (r && r.ok) { setDismissFor(null); setDismissReason(""); }
+    if (r && r.ok) { setDismissFor(null); setDismissReason(""); setDismissDocs([]); }
     else showNotification(`Couldn't dismiss — ${(r && r.error) || "unknown error"}`, "error");
+  };
+
+  // ── THE OWNER'S HALF: context without a clear verb ───────────────────────────
+  // Anyone on the company may add a note; only a reviewer may dismiss. A comment never
+  // touches `status`, so this adds knowledge without touching who decides.
+  const [commentFor, setCommentFor] = React.useState(null);
+  const [commentDraft, setCommentDraft] = React.useState("");
+  const [commentBusy, setCommentBusy] = React.useState(false);
+  const onAddComment = async (id) => {
+    const v = validateComment(commentDraft);
+    if (!v.ok) { showNotification(v.error, "error"); return; }
+    setCommentBusy(true);
+    const r = addAnomalyComment ? await addAnomalyComment(id, v.text) : { ok: false, error: "unavailable" };
+    setCommentBusy(false);
+    if (r && r.ok) { setCommentFor(null); setCommentDraft(""); }
+    else showNotification(`Couldn't save that note — ${(r && r.error) || "unknown error"}`, "error");
   };
 
   // Plain function (not useCallback): reconcileDroppedDocs is a fresh closure each ERP render,
@@ -307,20 +327,105 @@ export default function ReviewView() {
                         review act. The client sees anomalies reflected in their trust panel but
                         can't clear them (client-side dismissal = self-attestation per anomaly). */}
                     {isReviewer && dismissFor !== a.id && (
-                      <button onClick={() => { setDismissFor(a.id); setDismissReason(""); }}
+                      <button onClick={() => { setDismissFor(a.id); setDismissReason(""); setDismissDocs([]); }}
                         style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer", flexShrink: 0 }}>
                         Dismiss…
                       </button>
                     )}
                   </div>
+                  {/* ★★ THE COMMENT THREAD — DELIBERATELY NOT GATED ON `isReviewer`.
+                      Dismissing is a judgement and stays reviewer-only forever; a comment
+                      is not a clear action and never touches `status`. The owner is usually
+                      the only person who knows why a charge is fine, and until now the card
+                      offered them nothing to do but read it. They inform the judgement; the
+                      reviewer makes it. */}
+                  {(() => {
+                    const thread = commentsFor(anomalyComments, a.id);
+                    return (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--sc-border-2)" }}>
+                        {thread.length > 0 && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+                            {thread.map((c) => (
+                              <div key={String(c.id)} style={{ fontSize: 12, color: "var(--sc-text-2)", background: "var(--sc-surface-2)", borderRadius: 8, padding: "7px 10px" }}>
+                                <div style={{ color: "var(--sc-text)" }}>{c.body}</div>
+                                <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 3 }}>
+                                  {c.author_name || "someone on your team"}{c.created_at ? ` · ${agoPhrase(c.created_at)}` : ""}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {commentFor === a.id ? (
+                          <div>
+                            <textarea value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} rows={2}
+                              placeholder="What should the reviewer know about this?"
+                              style={{ width: "100%", padding: "9px 11px", borderRadius: 9, fontSize: 13, border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", background: "var(--sc-surface)", resize: "vertical", boxSizing: "border-box" }} />
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}>
+                              {/* Says what this does and, as importantly, what it does NOT do. */}
+                              <span style={{ fontSize: 11, color: "var(--sc-text-mut)" }}>This adds context. It doesn't clear the flag.</span>
+                              <span style={{ display: "flex", gap: 8 }}>
+                                <button onClick={() => { setCommentFor(null); setCommentDraft(""); }} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
+                                <button onClick={() => onAddComment(a.id)} disabled={commentBusy || !commentDraft.trim()}
+                                  style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", cursor: (commentBusy || !commentDraft.trim()) ? "not-allowed" : "pointer", background: (commentBusy || !commentDraft.trim()) ? "var(--sc-border)" : "var(--sc-accent)", color: (commentBusy || !commentDraft.trim()) ? "var(--sc-text-mut)" : "var(--sc-on-accent)" }}>
+                                  {commentBusy ? "Saving…" : "Add note"}
+                                </button>
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setCommentFor(a.id); setCommentDraft(""); }}
+                            style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>
+                            {thread.length ? "Add another note" : "Add a note"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {isReviewer && dismissFor === a.id && (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--sc-border-2)" }}>
                       <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginBottom: 6 }}>Dismissing records a reason and stops this flag from reappearing. (If you fix the underlying cause instead, it clears itself on the next check.)</div>
                       <textarea value={dismissReason} onChange={(e) => setDismissReason(e.target.value)} rows={2}
                         placeholder="Why is this acceptable? (required)…"
                         style={{ width: "100%", padding: "9px 11px", borderRadius: 9, fontSize: 13, border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", background: "var(--sc-surface)", resize: "vertical", boxSizing: "border-box" }} />
+                      {/* ★★ EVIDENCE — OPTIONAL, AND THE PROMPT READS THE AMOUNTS, NOT THE WORDS.
+                          A reason says what someone concluded; a document shows why. Requiring
+                          one would produce attachments chosen for being nearest, which is worse
+                          than none because it looks like support. Above a threshold we suggest;
+                          we never block. The suggestion is computed from the linked entries'
+                          amounts, so it cannot fire on a $12 charge whose title says "large". */}
+                      {(() => {
+                        const ev = anomalyEvidence(a, invoices);
+                        const p = evidencePrompt({ amounts: (ev.entries || []).map((e) => e.amount), attachedCount: dismissDocs.length });
+                        const lib = (docLibrary || []).slice(0, 60);
+                        return (
+                          <div style={{ marginTop: 10 }}>
+                            {p.suggest && (
+                              <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginBottom: 6 }}>{p.sentence}</div>
+                            )}
+                            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--sc-text-mut)", marginBottom: 5 }}>
+                              Attach supporting documents {dismissDocs.length > 0 ? `· ${dismissDocs.length} selected` : "· optional"}
+                            </div>
+                            {lib.length === 0 ? (
+                              <div style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>Nothing in the document library yet to attach.</div>
+                            ) : (
+                              <div style={{ maxHeight: 132, overflowY: "auto", border: "1px solid var(--sc-border)", borderRadius: 8, padding: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+                                {lib.map((d) => {
+                                  const on = dismissDocs.includes(String(d.id));
+                                  return (
+                                    <label key={String(d.id)} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--sc-text-2)", cursor: "pointer", padding: "3px 4px" }}>
+                                      <input type="checkbox" checked={on}
+                                        onChange={() => setDismissDocs((prev) => on ? prev.filter((x) => x !== String(d.id)) : [...prev, String(d.id)])} />
+                                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name || "document"}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-                        <button onClick={() => { setDismissFor(null); setDismissReason(""); }} style={{ padding: "8px 14px", borderRadius: 8, fontSize: 12, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
+                        <button onClick={() => { setDismissFor(null); setDismissReason(""); setDismissDocs([]); }} style={{ padding: "8px 14px", borderRadius: 8, fontSize: 12, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
                         <button onClick={() => onDismissAnomaly(a.id)} disabled={dismissBusy || !dismissReason.trim()}
                           style={{ padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", cursor: (dismissBusy || !dismissReason.trim()) ? "not-allowed" : "pointer", background: (dismissBusy || !dismissReason.trim()) ? "var(--sc-border)" : "var(--sc-warning)", color: (dismissBusy || !dismissReason.trim()) ? "var(--sc-text-mut)" : "var(--sc-on-accent)" }}>
                           {dismissBusy ? "Dismissing…" : "Dismiss"}
