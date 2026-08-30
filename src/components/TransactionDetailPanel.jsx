@@ -10,6 +10,7 @@ import { classifyBankReason } from "../lib/bankMatch";
 import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import { reversalIndex, reversalFor } from "../lib/ledger";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
+import { isDepreciableEntry, repairOfferCopy, validateRepair, DEFAULT_LIFE_YEARS } from "../lib/depreciationRepair";
 
 // Older bank/QBO entries stored the PROVENANCE ("Imported from bank statement") in the
 // reasoning field instead of the GL-choice rationale. classifyBankReason now treats a
@@ -103,10 +104,19 @@ function SourceDocPreview({ doc, onExpand }) {
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
-    setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer,
+    setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer, attachDepreciationToExistingAsset, isOwner, isAdmin,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
+  // ── O129 — SETTING UP DEPRECIATION FROM THE ENTRY ITSELF ─────────────────────
+  // The repair tool existed and had no button. The control it used to sit behind was
+  // removed for good reason — it asked for a raw journal-entry id on the page where you
+  // read your statements — so the fix is not to restore that box but to put the action on
+  // the thing that needs it, where the id is already known and nobody types anything.
+  const [depOpen, setDepOpen] = React.useState(false);
+  const [depYears, setDepYears] = React.useState(String(DEFAULT_LIFE_YEARS));
+  const [depSalvage, setDepSalvage] = React.useState("0");
+  const [depBusy, setDepBusy] = React.useState(false);
   const [srcDocPreview, setSrcDocPreview] = React.useState(null);
   const [srcUploading, setSrcUploading] = React.useState(false);
   const [payOpen, setPayOpen] = React.useState(false);
@@ -299,6 +309,55 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
             <div style={{ marginTop: 18 }}>
               {recodeOpen ? (
                 <div>
+                {/* ── O129 — EQUIPMENT WITH NO SCHEDULE ────────────────────────────
+                    Offered only on a DEBIT to a fixed-asset account: a credit is a disposal
+                    or a correction, and scheduling depreciation against one would be
+                    depreciating a removal. Anywhere else this would be a control that exists
+                    to be declined, which is how a screen teaches you to ignore it. */}
+                {(isOwner || isAdmin) && isDepreciableEntry(sel, [getAccountByRole?.("fixed_assets")?.code].filter(Boolean)) && (
+                  <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 10, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)" }}>
+                    <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginBottom: depOpen ? 10 : 8 }}>{repairOfferCopy(sel)}</div>
+                    {!depOpen ? (
+                      <button onClick={() => setDepOpen(true)} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", cursor: "pointer" }}>
+                        Set up depreciation
+                      </button>
+                    ) : (
+                      <div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginBottom: 4 }}>Years you'll use it</div>
+                            <input value={depYears} onChange={(e) => setDepYears(e.target.value)} inputMode="decimal"
+                              style={{ width: 90, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 9px", fontSize: 12, color: "var(--sc-text)", outline: "none" }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginBottom: 4 }}>Worth at the end</div>
+                            <input value={depSalvage} onChange={(e) => setDepSalvage(e.target.value)} inputMode="decimal"
+                              style={{ width: 110, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 9px", fontSize: 12, color: "var(--sc-text)", outline: "none" }} />
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+                          <button onClick={() => setDepOpen(false)} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
+                          <button disabled={depBusy} onClick={async () => {
+                            const v = validateRepair({ lifeYears: depYears, salvage: depSalvage, cost: sel.amount, inServiceDate: sel.date });
+                            if (!v.ok) { showNotification(v.message, "error"); return; }
+                            setDepBusy(true);
+                            const r = await (attachDepreciationToExistingAsset
+                              ? attachDepreciationToExistingAsset({ journalEntryId: sel.db_entry_id, usefulLifeMonths: v.usefulLifeMonths, salvageValue: v.salvageValue, inServiceDate: sel.date })
+                              : { ok: false, error: "unavailable" });
+                            setDepBusy(false);
+                            // The tool reports its own outcome, including "already linked" —
+                            // so this cannot claim a schedule it did not create (§9).
+                            if (r && r.ok) { setDepOpen(false); showNotification("Depreciation set up — it'll be written down automatically from here."); }
+                            else if (r && !r.skipped) showNotification(`Couldn't set that up — ${r?.error || "please try again"}`, "error");
+                          }} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", background: depBusy ? "var(--sc-border)" : "var(--sc-accent)", color: depBusy ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: depBusy ? "not-allowed" : "pointer" }}>
+                            {depBusy ? "Setting up…" : "Set it up"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                   <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 6, letterSpacing: 0.5 }}>RECODE GL ACCOUNT</div>
                   <select defaultValue={sel.gl_code} onChange={e => doRecode(sel, e.target.value)} style={{ width: "100%", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 9, padding: "10px 12px", fontSize: 13, color: "var(--sc-text)", outline: "none" }}>
                     {(CHART_OF_ACCOUNTS || []).filter(a => a.code >= "4000").map(a => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
