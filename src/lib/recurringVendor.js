@@ -75,14 +75,34 @@ export function classifyCadence(observations = []) {
 
   const n = obs.length;
   const periods = new Set(obs.map((o) => o.period));
-  const empty = { flatFee: false, n, periods: periods.size, perPeriod: 0, mean: 0, sd: 0, ratio: null };
+  const empty = { flatFee: false, n, periods: periods.size, perPeriod: 0, center: 0, mean: 0, sd: 0, ratio: null };
   if (n < MIN_OBSERVATIONS || periods.size < MIN_PERIODS) return empty;
 
   const mean = obs.reduce((s, o) => s + o.amount, 0) / n;
   if (!(mean > 0)) return empty;
+
+  // ★★ MEDIAN AND MEDIAN-ABSOLUTE-DEVIATION, NOT MEAN AND σ — AND A TEST ESTABLISHED THIS.
+  // With mean/σ, a weekly $145 vendor that also had TWO one-off $620 charges failed the
+  // flatness test, left the class entirely, and **every week of $145 noise came back**. A
+  // vendor is not un-flat because it once bought something else.
+  //
+  // ★ MEAN AND σ ARE THE WRONG STATISTICS FOR THIS QUESTION BY CONSTRUCTION: outliers are
+  // precisely what we are trying to EXCLUDE, and those two are precisely the statistics
+  // outliers move most. The median is unmoved by a couple of odd charges, so the class
+  // survives them and `atUsualAmount` then correctly treats the odd charges as not-the-
+  // pattern. Same reasoning as `typicalIntervalDays` using a median gap — one long break
+  // must not stretch the rhythm.
+  const sorted = obs.map((o) => o.amount).sort((a, b) => a - b);
+  const median = (xs) => {
+    const mid = Math.floor(xs.length / 2);
+    return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+  };
+  const center = median(sorted);
+  if (!(center > 0)) return empty;
+  const mad = median(sorted.map((x) => Math.abs(x - center)).sort((a, b) => a - b));
   const variance = obs.reduce((s, o) => s + (o.amount - mean) ** 2, 0) / (n - 1);
   const sd = Math.sqrt(variance);
-  const ratio = sd / mean;
+  const ratio = mad / center;
   const perPeriod = n / periods.size;
 
   return {
@@ -92,7 +112,9 @@ export function classifyCadence(observations = []) {
     // blast-radius control: the class definition and the rule change are one decision.
     flatFee: ratio <= FLAT_SD_RATIO && perPeriod > 1,
     n, periods: periods.size, perPeriod: Math.round(perPeriod * 100) / 100,
-    mean: r2(mean), sd: r2(sd), ratio: Math.round(ratio * 10000) / 10000,
+    // `center` is the value DECISIONS use (the typical charge). `mean`/`sd` are reported
+    // for the record and are deliberately NOT what the class test reads.
+    center: r2(center), mean: r2(mean), sd: r2(sd), ratio: Math.round(ratio * 10000) / 10000,
   };
 }
 
@@ -146,4 +168,73 @@ export function countMismatchCopy({ vendor, period, counts } = {}) {
   const who = vendor || "This supplier";
   const label = period || "this month";
   return `We have ${counts.invoices} ${who} invoice${counts.invoices === 1 ? "" : "s"} for ${label} but only ${counts.payments} payment${counts.payments === 1 ? "" : "s"} — one of them looks unpaid.`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O117 — THE DETECTION HALF. Spec §7.
+//
+// `findDuplicate` keys on same-vendor + same-amount inside a FIXED 7-day window. For a
+// vendor that bills weekly at a flat rate that is true EVERY WEEK, BY CONSTRUCTION — four
+// Bluebonnet cards in August alone. By `O122`, **a card you see every period is a bug
+// wearing a question mark**, so the fixed window makes the detector useless for exactly the
+// vendors it fires on most.
+//
+// ★★ BUT SUPPRESSION MUST NOT BECOME BLINDNESS, AND THAT IS THE LOAD-BEARING HALF. A
+// genuine double-charge to Bluebonnet has to survive. So the window is not removed and not
+// widened — **it is measured in the vendor's OWN RHYTHM instead of in days.** Two charges
+// seven days apart is Bluebonnet's rhythm; two charges three days apart is not, whatever
+// the calendar says.
+//
+// ★ THAT IS ADDING INFORMATION, NOT TUNING A THRESHOLD. The constraint against tuning
+// (spec §2) is about a window standing in for evidence we do not have. Here the vendor's
+// observed cadence IS evidence, and we were simply not using it.
+//
+// ★★ AND IT IS WHY THIS DOES NOT COUNT PER MONTH, WHICH IS WHAT THE SPEC ORIGINALLY SAID
+// (§7: "charged 6 times in August; they normally charge 4"). A weekly vendor legitimately
+// charges FIVE times in a month with five Mondays. A monthly count would fire on the
+// calendar rather than on the vendor — a category-1 card, which is precisely what this is
+// meant to remove. The rhythm framing says the same thing and cannot be fooled by month
+// length. Recorded as a deliberate deviation from the signed shape, not an oversight.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A gap shorter than this fraction of the vendor's own typical interval is off-rhythm.
+// Half is the natural split: it is the point at which a charge is closer to its neighbour
+// than to the vendor's normal spacing, so no calendar unit is being smuggled in.
+export const OFF_RHYTHM_FRACTION = 0.5;
+
+// The vendor's typical spacing, in days. MEDIAN of consecutive gaps, not mean — one long
+// holiday gap must not stretch the rhythm and start suppressing real double-charges.
+export function typicalIntervalDays(dates = []) {
+  const ds = [...new Set((dates || []).filter(Boolean).map((d) => String(d).slice(0, 10)))].sort();
+  if (ds.length < 2) return null;
+  const gaps = [];
+  for (let i = 1; i < ds.length; i++) {
+    const g = (Date.parse(ds[i]) - Date.parse(ds[i - 1])) / 86400000;
+    if (Number.isFinite(g) && g > 0) gaps.push(g);
+  }
+  if (!gaps.length) return null;
+  gaps.sort((a, b) => a - b);
+  const mid = Math.floor(gaps.length / 2);
+  return gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2;
+}
+
+// Is this pair closer together than the vendor's own rhythm allows?
+// No interval ⇒ NO OPINION, which must not read as "fine": the caller keeps the ordinary
+// fixed-window rule when this returns null.
+export function isOffRhythm(gapDays, intervalDays) {
+  const g = Math.abs(Number(gapDays));
+  const t = Number(intervalDays);
+  if (!Number.isFinite(g) || !Number.isFinite(t) || t <= 0) return null;
+  return g < t * OFF_RHYTHM_FRACTION;
+}
+
+// States the vendor's rhythm and this pair's spacing, and draws no conclusion about why —
+// the payroll gate's refusals are the reference standard (O115 doctrine).
+export function offRhythmCopy({ vendor, gapDays, intervalDays, amount } = {}) {
+  const who = vendor || "This supplier";
+  const g = Math.round(Math.abs(Number(gapDays) || 0));
+  const t = Math.round(Number(intervalDays) || 0);
+  const amt = amount == null ? "" : ` for $${Math.abs(Number(amount) || 0).toFixed(2)}`;
+  const when = g === 0 ? "twice on the same day" : `twice in ${g} day${g === 1 ? "" : "s"}`;
+  return `${who} charged ${when}${amt} — they normally charge about every ${t} days.`;
 }

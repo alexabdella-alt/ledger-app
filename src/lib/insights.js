@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { fmtSignedMoney, ymdLocal } from "./format";
+import { classifyCadence, typicalIntervalDays, isOffRhythm, offRhythmCopy, FLAT_SD_RATIO } from "./recurringVendor.js";
 
 // Normalize a vendor/contact name for fuzzy matching (lowercase, drop legal
 // suffixes and punctuation). Same spirit as the contacts unique-name handling.
@@ -246,10 +247,66 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
   // No signed-off-period special-casing: pairs must be within the window regardless of period,
   // which naturally excludes cross-month noise while still catching a real duplicate that
   // straddles a month boundary (e.g. Jan 30 + Feb 2).
+  // ── O117 — THE VENDOR'S OWN RHYTHM REPLACES THE FIXED WINDOW FOR THE FLAT-FEE CLASS ──
+  // Same-vendor + same-amount inside 7 days is true EVERY WEEK for a weekly flat-fee
+  // vendor, by construction — four Bluebonnet cards in August alone, and by O122 a card
+  // you see every period is a bug wearing a question mark.
+  //
+  // ★★ SUPPRESSION IS NOT BLANKET. A genuine double-charge must survive, so the window is
+  // measured in the VENDOR'S RHYTHM rather than in days: seven days apart is Bluebonnet's
+  // rhythm; three days apart is not. That adds information (their observed cadence) rather
+  // than tuning a threshold.
+  const flatFee = new Map();
+  {
+    const byVendor = {};
+    for (const i of expenses) {
+      const v = normVendor(i.vendor);
+      if (!v || !i.date) continue;
+      (byVendor[v] = byVendor[v] || []).push(i);
+    }
+    for (const [v, rows] of Object.entries(byVendor)) {
+      const cadence = classifyCadence(rows.map(r => ({ date: r.date, amount: r.amount })));
+      if (!cadence.flatFee) continue;
+      flatFee.set(v, { cadence, interval: typicalIntervalDays(rows.map(r => r.date)) });
+    }
+  }
+  // Is this charge the vendor's USUAL amount? A flat-fee vendor billing something else is
+  // not the expected pattern and keeps the ordinary rule.
+  const atUsualAmount = (inv, ff) => {
+    // The vendor's TYPICAL charge (median), not the mean — the mean is dragged by exactly
+    // the odd charges this test exists to exclude.
+    const center = ff && ff.cadence && ff.cadence.center;
+    if (!(center > 0)) return false;
+    return Math.abs(Math.abs(Number(inv.amount) || 0) - center) / center <= FLAT_SD_RATIO;
+  };
+
   const seen = new Set();
   for (const i of expenses) {
     const dup = findDuplicate(i, expenses.filter(x => String(x.id) !== String(i.id)), { windowDays: 7 });
     if (!dup) continue;
+
+    const ff = flatFee.get(normVendor(i.vendor));
+    if (ff && atUsualAmount(i, ff) && atUsualAmount(dup, ff)) {
+      const gap = Math.abs((new Date(i.date) - new Date(dup.date)) / 86400000);
+      const off = isOffRhythm(gap, ff.interval);
+      // On rhythm → this is what the vendor DOES. Say nothing.
+      if (off === false) continue;
+      // Off rhythm → still a card, but one that names the rhythm instead of restating
+      // that two identical charges exist, which for this vendor is not news.
+      if (off === true) {
+        const key = `${normVendor(i.vendor)}:${cents(i.amount)}:${[ymd(i.date), ymd(dup.date)].sort().join("+")}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        push({ id: `rhythm:${key}`, type: "duplicate_payment", severity: "high",
+          title: `${i.vendor} charged twice out of their usual rhythm`,
+          description: offRhythmCopy({ vendor: i.vendor, gapDays: gap, intervalDays: ff.interval, amount: i.amount }),
+          vendor: i.vendor, amount: Math.abs(Number(i.amount) || 0),
+          invoice_ids: [i.id, dup.id] });
+        continue;
+      }
+      // `off === null` — no usable interval, so no opinion. Falls through to the ordinary
+      // rule below rather than being silently treated as fine.
+    }
     // Content key: the vendor, the amount, and the two dates it happened on —
     // NOT the pair of row ids, which a re-run renumbers (C198·3b f3).
     const key = `${normVendor(i.vendor)}:${cents(i.amount)}:${[ymd(i.date), ymd(dup.date)].sort().join("+")}`;

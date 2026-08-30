@@ -54,9 +54,33 @@ describe("★ recognising the class", () => {
     expect(classifyCadence([{ date: "2026-07-06", amount: 145 }, { date: "2026-08-06", amount: 145 }]).flatFee).toBe(false);
   });
 
-  it("a price rise takes the vendor OUT of the class on its own", () => {
+  it("★ a price RISE does not silently become the vendor's usual amount", () => {
+    // ★★ THIS ASSERTION CHANGED WHEN THE STATISTIC DID, AND THE NEW ONE IS STRONGER.
+    // It used to read "a price rise takes the vendor OUT of the class", which was testing
+    // the MECHANISM (mean/σ moves) rather than the property. Under median/MAD the vendor
+    // correctly STAYS in the class — it is still a flat-fee weekly vendor, just at a new
+    // rate — and leaving the class would have restored every week of noise at the OLD
+    // price too.
+    //
+    // The property actually worth holding is that the new price is not yet the pattern,
+    // so charges at it keep the ordinary treatment until it becomes typical. That is
+    // mechanism-independent and is what protects against a change being absorbed silently.
     const risen = [...july.map(p => ({ date: p.date, amount: 145 })), { date: "2026-08-03", amount: 160 }, { date: "2026-08-10", amount: 160 }];
-    expect(classifyCadence(risen).ratio).toBeGreaterThan(FLAT_SD_RATIO);
+    const c = classifyCadence(risen);
+    expect(c.center).toBe(145);                       // the typical charge is still the old one
+    expect(Math.abs(160 - c.center) / c.center).toBeGreaterThan(FLAT_SD_RATIO);   // 160 is NOT it
+  });
+
+  it("★ and two odd charges do NOT destroy the classification — that restored all the noise", () => {
+    // The failure this whole statistic change came from: 8 weekly $145 charges plus two
+    // one-off $620s. Under mean/σ the vendor left the class and every $145 week started
+    // raising a duplicate card again. A vendor is not un-flat because it once bought
+    // something else.
+    const withOutliers = [...july, ...aug].map(p => ({ date: p.date, amount: 145 }))
+      .concat([{ date: "2026-08-19", amount: 620 }, { date: "2026-08-26", amount: 620 }]);
+    const c = classifyCadence(withOutliers);
+    expect(c.flatFee).toBe(true);
+    expect(c.center).toBe(145);
   });
 });
 
@@ -156,5 +180,96 @@ describe("★ the set planner in isolation", () => {
   it("declines to apply itself outside the class", () => {
     expect(planSetSettlement({ cadence: { flatFee: false }, periodPayments: [] }).action).toBe(SET_ACTION.NOT_APPLICABLE);
     expect(planSetSettlement({}).action).toBe(SET_ACTION.NOT_APPLICABLE);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §7 — THE DETECTION HALF. Spec §9 criteria §2 and §3, applied to the detector.
+//
+// `findDuplicate` keys on same-vendor + same-amount inside a FIXED 7-day window, which for
+// a weekly flat-fee vendor is true EVERY WEEK by construction. The fix measures the window
+// in the VENDOR'S OWN RHYTHM — and the half that matters is that a genuine double-charge
+// still survives it.
+// ═════════════════════════════════════════════════════════════════════════════
+import { runAnomalyDetection } from "../src/lib/insights.js";
+import { typicalIntervalDays, isOffRhythm, offRhythmCopy } from "../src/lib/recurringVendor.js";
+
+const exp = (id, date, amount, vendor = "Bluebonnet Linen Service") => ({
+  id, date, amount, vendor, gl_code: "6100", gl_name: "Rent & Occupancy",
+  status: "booked", type: "expense",
+});
+const NOW = new Date("2026-08-31T12:00:00Z");
+// Eight weekly $145 charges across July and August — the live shape.
+const weekly = ["2026-07-06","2026-07-13","2026-07-20","2026-07-27","2026-08-03","2026-08-10","2026-08-17","2026-08-24"]
+  .map((d, n) => exp(`w${n}`, d, 145));
+const dupCards = (rows) => runAnomalyDetection(rows, [], NOW, { frontier: "2026-08-31" })
+  .filter(a => a.type === "duplicate_payment");
+
+describe("★★ §7/§2 — the weekly card is gone", () => {
+  it("THE LIVE NOISE: eight weekly identical charges raise ZERO duplicate cards", () => {
+    // Four cards for Bluebonnet in August alone, every month, forever. By O122 a card you
+    // see every period is a bug wearing a question mark.
+    expect(dupCards(weekly)).toHaveLength(0);
+  });
+
+  it("★ a vendor we have NOT established still gets the ordinary rule", () => {
+    // Two charges, no cadence to speak of — the old behaviour must be untouched.
+    const pair = [exp("p1", "2026-08-10", 890, "Sharp Edge Cutlery"), exp("p2", "2026-08-12", 890, "Sharp Edge Cutlery")];
+    expect(dupCards(pair)).toHaveLength(1);
+  });
+});
+
+describe("★★★ §7/§3 — THE ANTI-VACUITY CHECK. A real double-charge must survive", () => {
+  it("TWO CHARGES THREE DAYS APART, on a weekly vendor, STILL RAISES A CARD", () => {
+    // ★ IF THIS DOES NOT FIRE, THE FIX IS WORSE THAN THE BUG — it will have made a genuine
+    // double-charge invisible on the vendor most likely to suffer one, which is the single
+    // most likely way a wrong implementation looks BETTER than a right one.
+    const cards = dupCards([...weekly, exp("extra", "2026-08-27", 145)]);   // 3 days after 08-24
+    expect(cards).toHaveLength(1);
+    expect(cards[0].severity).toBe("high");
+  });
+
+  it("★ and the card names the RHYTHM, not the fact that two identical charges exist", () => {
+    const cards = dupCards([...weekly, exp("extra", "2026-08-27", 145)]);
+    expect(cards[0].description).toMatch(/twice in 3 days/);
+    expect(cards[0].description).toMatch(/normally charge about every 7 days/);
+    // For this vendor "two charges for the same amount" is not news, so it must not be
+    // the sentence.
+    expect(cards[0].description).not.toMatch(/within a week/);
+    // Reports what was computed; supplies no theory of why.
+    expect(cards[0].description).not.toMatch(/fraud|error|mistake|should/i);
+  });
+
+  it("★ a flat-fee vendor charging an UNUSUAL amount keeps the ordinary rule", () => {
+    // ★★ THIS TEST WAS VACUOUS ON ITS FIRST WRITING AND THE MUTATION RUN CAUGHT IT.
+    // It used a 2-day gap, so removing the usual-amount scope still produced a card —
+    // just a different one — and the assertion `length >= 1` could not tell them apart.
+    // A SEVEN-day gap discriminates: it is ON the vendor's rhythm, so without the amount
+    // scope it would be SUPPRESSED, while with it the pair falls through to the ordinary
+    // fixed-window rule and fires. Two charges of an unfamiliar amount a week apart is
+    // exactly what the ordinary rule is for.
+    const cards = dupCards([...weekly, exp("odd1", "2026-08-19", 620), exp("odd2", "2026-08-26", 620)]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].description).toMatch(/within a week/);          // the ORDINARY card…
+    expect(cards[0].description).not.toMatch(/normally charge/);    // …not the rhythm one
+  });
+});
+
+describe("★ the rhythm primitives", () => {
+  it("takes the MEDIAN gap, so one long break doesn't stretch the rhythm", () => {
+    // Mean would be ~13 and start suppressing real double-charges; median stays 7.
+    expect(typicalIntervalDays(["2026-07-06","2026-07-13","2026-07-20","2026-09-01"])).toBe(7);
+  });
+  it("no interval means NO OPINION — which must not read as 'fine'", () => {
+    expect(isOffRhythm(3, null)).toBe(null);
+    expect(typicalIntervalDays(["2026-07-06"])).toBe(null);
+  });
+  it("splits at half the vendor's own spacing", () => {
+    expect(isOffRhythm(3, 7)).toBe(true);
+    expect(isOffRhythm(7, 7)).toBe(false);
+    expect(isOffRhythm(4, 7)).toBe(false);
+  });
+  it("same-day reads as same-day, not 'twice in 0 days'", () => {
+    expect(offRhythmCopy({ vendor: "X", gapDays: 0, intervalDays: 7 })).toMatch(/twice on the same day/);
   });
 });
