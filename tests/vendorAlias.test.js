@@ -157,3 +157,48 @@ describe("★ the asserted alias reaches every decision it should", () => {
     expect(fn).toMatch(/aliases: Array\.isArray\(contact\.aliases\)/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ THE ANTI-VACUITY CLAUSE THE RE-DRIVE CRITERIA NOW REQUIRE.
+//
+// "The alias made Franklin Ave attach" and "the matcher started merging everything" produce
+// the SAME observation on that one vendor. The criteria were amended to require that, with
+// the alias set, every OTHER specimen behaves exactly as it does without it — otherwise the
+// alias index is not scoped to the vendor it names and the merge is a coincidence.
+//
+// ★ Asserted here as well as in the drive doc, because a criterion nobody can run before the
+// drive is a criterion that gets discovered failing on the day.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ an alias changes ONE vendor and nothing else", () => {
+  const contacts = [contact("c1", "Franklin Ave Properties", ["FRANKLIN AVE PROPERTIES LP RENT"])];
+  const idx = buildAliasIndex(contacts);
+  const ctx = { cashCodes: ["1000"] };
+
+  const payment = (id, vendorDesc, amount, date) => ({
+    id, date, amount, source: "bank_import", status: "posted",
+    description: vendorDesc, gl_code: "1000", debit_credit: "credit", payment_status: "paid",
+  });
+
+  // The other four August specimens, each with its own real descriptor.
+  const others = [
+    ["Roma Cheese & Dairy Co.", "Roma Cheese & Dairy Co. – ACH DEBIT - ROMA CHEESE & DAIRY CO", 551.2],
+    ["Toast", "Toast – TOAST MERCHANT FEES AUGUST", 462.85],
+    ["Alamo Fire & Safety LLC", "Alamo Fire & Safety LLC – ACH DEBIT - ALAMO FIRE & SAFETY LLC", 425],
+    ["Bluebonnet Linen Service", "Bluebonnet Linen Service – ACH DEBIT - BLUEBONNET LINEN SERVICE", 145],
+  ];
+
+  it("★★★ every other specimen behaves identically with and without the alias", () => {
+    for (const [vendor, desc, amount] of others) {
+      const p = payment("p", desc, amount, "2026-08-03");
+      const inv = { id: "i", vendor, amount, date: "2026-08-01" };
+      const without = planInvoiceArrival(inv, [p], ctx);
+      const wit = planInvoiceArrival(inv, [p], { ...ctx, aliasIndex: idx });
+      expect([vendor, wit.action]).toEqual([vendor, without.action]);
+      expect([vendor, wit.reason || null]).toEqual([vendor, without.reason || null]);
+    }
+  });
+
+  it("★ and the index contains exactly the one merge a person asserted", () => {
+    expect([...idx.keys()]).toEqual(["franklin ave properties rent"]);
+  });
+});

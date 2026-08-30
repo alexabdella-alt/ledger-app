@@ -33,7 +33,7 @@ failure. Confirm `rate_limit` is clear for the hour before starting.
 |---|---|
 | the August bank statement | §0 — the payments must exist first |
 | Roma · Toast · Alamo Fire invoices | §1 — silent attach, and §5's positive count |
-| Franklin Ave invoice | §1 — the identity card, and that exact-key was not bypassed |
+| Franklin Ave invoice | §1 — the identity card with no alias, **and the silent attach once one is set** (`O111`) |
 | Hill Country invoice | §3 — the amounts-differ card |
 | Bluebonnet ×4 | §2 — the anti-vacuity check |
 
@@ -92,10 +92,34 @@ all**; the fourth should produce a **different** card. "Gone" does not mean "sil
 | **Roma Cheese & Dairy** | `duplicate_payment` | **NO CARD.** Silent attach | the matcher did not run, or identity did not resolve |
 | **Toast** | `duplicate_payment` | **NO CARD.** Silent attach | the directory canonicalisation is not reaching the invoice path |
 | **Alamo Fire & Safety** | `duplicate_payment` | **NO CARD.** Silent attach | the `and`/`&` comparison fix is not live |
-| **Franklin Ave Properties** | `duplicate_payment` | **A LIFECYCLE CARD — "we can't tell whether that's the same company."** NOT an attach, NOT a duplicate card | identity is over-matching (if it attached) or the plan is not reached (if unchanged) |
+| **Franklin Ave Properties** — *no alias set* | `duplicate_payment` | **A LIFECYCLE CARD — "we can't tell whether that's the same company."** NOT an attach, NOT a duplicate card | identity is over-matching (if it attached) or the plan is not reached (if unchanged) |
+| **Franklin Ave Properties** — *alias set* (`O111`) | — | **SILENT ATTACH.** The merge was asserted by a person, so there is nothing left to ask | the alias is not reaching `planInvoiceArrival` |
 
-**★ FRANKLIN AVE AUTO-ATTACHING IS A FAILURE, NOT A BONUS.** Its entity keys differ by a purpose
-suffix; attaching would mean the exact-key rule was bypassed. Silent success here is worse than the
+**★ FRANKLIN AVE AUTO-ATTACHING *WITHOUT AN ALIAS* IS A FAILURE, NOT A BONUS.** Its entity keys
+differ by a purpose suffix; attaching **on the string rules alone** would mean the exact-key rule was
+bypassed. Silent success here is worse than the
+
+> **★★★ AMENDED 2026-08-30, BEFORE THE DRIVE AND BEFORE ANY DATA — `O111` SHIPPED, SO THIS
+> CRITERION HAD TO SPLIT OR IT WOULD SCORE THE NEW BEHAVIOUR AS A FAILURE.**
+>
+> The original read *"attach would be a failure"* full stop, written when no alias mechanism
+> existed. It now depends on **whether a person has asserted that those two names are one
+> supplier** — and both branches must be checked, because each catches a different defect:
+>
+> · **no alias → still a card.** An unasserted merge must never happen. This is the original
+>   criterion, unweakened, and it remains the more important half.
+> · **alias set → silent attach.** Otherwise the feature is inert and the card would look
+>   like correct behaviour, which is `·3a`'s failure shape exactly.
+>
+> **★★ AND AN ANTI-VACUITY CLAUSE COMES WITH IT, because "the alias made it attach" and "the
+> matcher started merging everything" produce the same observation on this one vendor:** with
+> the alias set, **Roma, Toast, Alamo Fire and Bluebonnet must behave exactly as they do
+> without it.** If any of them changes, the alias index is not scoped to the vendor it names
+> and the merge is a coincidence, not a mechanism.
+>
+> **Amending a pre-registered criterion is only legitimate because the FEATURE changed and no
+> result has been seen.** Nothing here is loosened: the original property — *an unasserted
+> merge must not happen* — is asserted in full, and a second property is added on top.
 card, because a wrong attach suppresses a real charge with nothing left on screen.
 
 ---
@@ -200,7 +224,11 @@ falling total with a flat category 2 means the teaching is not sticking — invi
 ## 6. WHAT THIS DRIVE DOES *NOT* PROVE — stated now, so it is not claimed later
 
 - **`O117` is not fixed** and Bluebonnet will still be noisy (§2 requires it).
-- **`O111` is not built**, so Franklin Ave still asks rather than attaching (§1 requires it).
+- **`O111` IS now built (C251), so this line is corrected rather than left to mislead:** Franklin
+  Ave asks **only while no alias is set**, and attaches once one is. §1 now checks both branches.
+  **Setting the alias is therefore a step of the drive, not an accident of the data** — run the
+  specimen once with it unset and once with it set, or the second branch goes untested and the
+  feature is unproven on live data.
 - **The A/R mirror is untested** — deliberately out of scope.
 - **Partial payments remain unbuilt.** The $18 case produces a *question*, not a partial settlement.
 - **A 36-invoice run does not clear** until `O113a` stops charging for refusals. **If the drive is
