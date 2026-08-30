@@ -2468,13 +2468,23 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     return ids;
   };
   // Restore soft-deleted journal entries (clears deleted_at) — used by Undo and admins.
+  //
+  // ★★ RETURNS WHETHER IT LANDED, because the caller ten lines below used to say
+  // "Restored ✓" without asking. That is the exact defect the DELETE path above was
+  // hardened against yesterday (O124(c)) — same function, same file, the opposite
+  // direction, and the mirror image went unnoticed because a failed undo LOOKS like a
+  // successful one: the rows are put back on screen either way, by local state.
+  //
+  // ★ AND `078` MADE IT REACHABLE RATHER THAN THEORETICAL. The database now refuses to
+  // clear `deleted_at` on an entry inside a signed month, so an Undo of a delete whose
+  // month was signed in the meantime raises — and used to land in a bare `console.error`.
   const restoreJournalEntries = async (ids) => {
-    if (!currentCompany?.id || !ids?.length) return;
-    const { error } = await supabase.from("journal_entries")
-      .update({ deleted_at: null, deleted_by: null })
-      .in("id", ids)
-      .eq("company_id", currentCompany.id);
-    if (error) console.error("restoreJournalEntries failed:", error.message);
+    if (!currentCompany?.id || !ids?.length) return false;
+    const r = await checkedIdsUpdate({
+      supabase, table: "journal_entries", ids, companyId: currentCompany.id,
+      patch: { deleted_at: null, deleted_by: null }, label: "restoreJournalEntries",
+    });
+    return !!r.ok;
   };
   // Back-compat name used across call sites.
   const deleteJournalEntry = softDeleteJournalEntry;
@@ -2514,7 +2524,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
 
     showNotification(`Deleted ${label} — tap Undo to restore`, "success", async () => {
-      if (allIds.length) await restoreJournalEntries(allIds);
+      // ★ THE SCREEN FOLLOWS THE DATABASE, NOT THE CLICK. Putting the rows back in local
+      // state first and then writing would show a restore that did not happen — and the
+      // next reload would take it away again, which is the worst order to learn it in.
+      const ok = await restoreJournalEntries(allIds);
+      if (!ok) {
+        logAudit("invoice_restore_failed", `Couldn't restore ${label} — it is still deleted`, null, { attempted: allIds.length }, byAI ? "AI Chat" : "owner");
+        showNotification(`Couldn't undo that — ${label} is still deleted. If the month has since been signed off, your accountant needs to reopen it.`, "error");
+        return;
+      }
       setInvoices(prev => { const have = new Set(prev.map(i => String(i.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
       logAudit("invoice_restored", `Restored ${items.length} entr${items.length===1?"y":"ies"}`, null, null);
       showNotification("Restored ✓");
@@ -2686,10 +2704,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
     const label = items.length === 1 ? (snaps[0].counterparty || "contract") : `${items.length} contracts`;
     showNotification(`Deleted ${label} — tap Undo to restore`, "success", async () => {
-      setContracts(prev => { const have = new Set(prev.map(c => String(c.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
-      if (currentCompany?.id) {
-        for (const s of snaps) { if (s.db_id) await supabase.from("contracts").update({ deleted_at: null, deleted_by: null }).eq("id", s.db_id).eq("company_id", currentCompany.id); }
+      // Same shape as the invoice undo above: write first, and only claim it once the
+      // database agrees. The old order put the contracts back on screen and THEN wrote,
+      // inside a loop whose result nobody read.
+      const dbIds = snaps.map((s) => s.db_id).filter(Boolean);
+      if (currentCompany?.id && dbIds.length) {
+        const r = await checkedIdsUpdate({
+          supabase, table: "contracts", ids: dbIds, companyId: currentCompany.id,
+          patch: { deleted_at: null, deleted_by: null }, label: "restoreContracts",
+        });
+        if (!r.ok) {
+          logAudit("contract_restore_failed", `Couldn't restore ${label} — still deleted`, null, { attempted: dbIds.length });
+          showNotification(`Couldn't undo that — ${label} is still deleted.`, "error");
+          return;
+        }
       }
+      setContracts(prev => { const have = new Set(prev.map(c => String(c.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
       logAudit("contract_restored", `Restored ${items.length} contract${items.length===1?"":"s"}`, null, null);
       showNotification("Restored ✓");
     });

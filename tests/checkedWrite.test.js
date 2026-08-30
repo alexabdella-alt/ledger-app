@@ -210,3 +210,66 @@ describe("★★ every checked-write call site names its payload `patch`", () =>
     expect(helper).toMatch(/export async function checkedRowUpdate\(\{[^}]*\bpatch\b/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ THE UNDO BUTTONS — the mirror of the delete bug, in the same function.
+//
+// `softDeleteInvoices` was hardened yesterday (O124(c)): it checks whether the delete
+// landed, restores the optimistically-removed rows when it did not, and says so. **The
+// Undo handler ten lines below it did none of that** — it wrote, ignored the result, put
+// the rows back in local state and said "Restored ✓".
+//
+// A failed undo is INVISIBLE by construction: local state puts the rows back on screen
+// whether or not the database agreed, so success and failure render identically until the
+// next reload takes them away again. That is the §9 pair at once — an invisible action, and
+// a sentence composed alongside the work instead of read from it.
+//
+// ★ `078` MOVED THIS FROM THEORETICAL TO REACHABLE: the database now refuses to clear
+// `deleted_at` inside a signed month.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ an Undo may not claim success it has not checked", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const strip = (t) => t.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+
+  it("restoreJournalEntries goes through a checked write and RETURNS the verdict", () => {
+    const fn = strip(app.slice(app.indexOf("const restoreJournalEntries"), app.indexOf("const deleteJournalEntry")));
+    expect(fn).toMatch(/checkedIdsUpdate\(/);
+    expect(fn).toMatch(/return !!r\.ok/);
+    expect(fn).not.toMatch(/\.update\(\{ deleted_at: null/);   // no raw unchecked update left
+  });
+
+  it("★★ the invoice Undo GATES on it — and writes BEFORE touching the screen", () => {
+    const undo = strip(app.slice(app.indexOf("Deleted ${label} — tap Undo to restore"), app.indexOf("const softDeleteInvoice =")));
+    const write = undo.indexOf("await restoreJournalEntries(allIds)");
+    const paint = undo.indexOf("setInvoices(prev");
+    const claim = undo.indexOf('showNotification("Restored ✓")');
+    expect(write).toBeGreaterThan(-1);
+    expect(write).toBeLessThan(paint);          // the screen follows the database, not the click
+    expect(undo).toMatch(/if \(!ok\) \{/);
+    expect(undo.indexOf("if (!ok)")).toBeLessThan(claim);
+  });
+
+  it("★ a refused Undo says what is still true, and names the likely cause", () => {
+    const undo = app.slice(app.indexOf("Deleted ${label} — tap Undo to restore"), app.indexOf("const softDeleteInvoice ="));
+    expect(undo).toMatch(/Couldn't undo that/);
+    expect(undo).toMatch(/is still deleted/);            // the state of the world, not "an error occurred"
+    expect(undo).toMatch(/signed off/);                  // the reason a person can act on
+    expect(undo).toMatch(/invoice_restore_failed/);      // and it is audited, not only toasted
+  });
+
+  it("★ the contracts Undo has the same shape — one fix, not one instance", () => {
+    const undo = strip(app.slice(app.indexOf("Deleted ${label} — tap Undo to restore", app.indexOf("softDeleteContracts"))));
+    const head = undo.slice(0, 1400);
+    // ★ ASSERT THE VERDICT IS CONSUMED, NOT MERELY THAT THE CALL APPEARS. The first version
+    // of this test matched `checkedIdsUpdate(` and survived a mutation that left the call
+    // in place behind `if (false)` — a checked write whose answer nobody reads is exactly
+    // the unchecked write it replaced, and a source scan cannot see reachability. Pinning
+    // the CONSUMPTION is what makes it a real assertion.
+    expect(head).toMatch(/const r = await checkedIdsUpdate\(/);
+    expect(head).toMatch(/if \(!r\.ok\) \{/);
+    expect(head.indexOf("checkedIdsUpdate(")).toBeLessThan(head.indexOf("setContracts(prev"));
+    expect(head).toMatch(/Couldn't undo that/);
+    // and no raw un-checked restore loop survives alongside it
+    expect(head).not.toMatch(/\.update\(\{ deleted_at: null/);
+  });
+});
