@@ -201,6 +201,21 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.vendor || "—"}</div>
                 <div style={{ fontSize: 12, color: "var(--sc-text-2)" }}>{fmtDate(sel.date)}</div>
+                {/* ★★ THE READER THE "KEPT ON FILE" PROMISE NEVER HAD. When an entry is dated
+                    into a month the accountant has signed off, one of the three choices is
+                    "record it in the current month instead", and the confirmation says the
+                    original date is kept on file. It was written to a field the write path
+                    dropped, and NOTHING displayed it even in principle — so the promise had
+                    no reader as well as no writer (§9). This is the reader; the stamp in
+                    `persistJournalEntry` is the writer. */}
+                {sel.import_metadata?.original_date && (
+                  <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>
+                    Originally dated {fmtDate(sel.import_metadata.original_date)}
+                    {sel.import_metadata.rebooked_from_signed_period
+                      ? " — moved here because that month was already signed off"
+                      : ""}
+                  </div>
+                )}
               </div>
             </div>
             <button onClick={close} style={{ background: "none", border: "none", color: "var(--sc-text-2)", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>

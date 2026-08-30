@@ -103,26 +103,80 @@ describe("★★ the tax figure is actually written", () => {
   it("★ a checked write stamps it AFTER the RPC returns", () => {
     // It cannot go in `p_meta`: the RPC discards every key outside its six named scalars.
     const post = code.indexOf('rpc("post_journal_entry"');
-    const stamp = code.indexOf('label: "salesTaxStamp"');
+    const stamp = code.indexOf('label: "entryMetaStamp"');
     expect(post).toBeGreaterThan(-1);
     expect(stamp).toBeGreaterThan(post);
-    expect(code).toMatch(/patch: \{ import_metadata: \{ tax_amount: taxAmt2 \} \}/);
+    expect(code).toMatch(/patch: \{ import_metadata: stamp \}/);
+    expect(code).toMatch(/taxAmt2 > 0 \? \{ tax_amount: taxAmt2 \}/);
   });
 
-  it("★ only when there IS tax — an empty stamp would be noise on every entry", () => {
-    expect(code).toMatch(/if \(newId && taxAmt2 > 0\)/);
+  it("★ only when there IS something to stamp — an empty write would be noise on every entry", () => {
+    expect(code).toMatch(/if \(newId && Object\.keys\(stamp\)\.length\)/);
   });
 
   it("★★ a failed stamp is SAID, not swallowed", () => {
     // The entry is correct either way, so this cannot fail silently into a mismatch the
     // accountant then has to explain. It is audited and it is on screen.
-    const after = code.slice(code.indexOf('label: "salesTaxStamp"'));
+    const after = code.slice(code.indexOf('label: "entryMetaStamp"'));
     expect(after.slice(0, 900)).toMatch(/if \(!r\.ok\)/);
-    expect(after.slice(0, 900)).toMatch(/logAudit\("sales_tax_stamp_failed"/);
+    expect(after.slice(0, 900)).toMatch(/logAudit\("entry_meta_stamp_failed"/);
     expect(after.slice(0, 900)).toMatch(/showNotification\(/);
   });
 
   it("★ and the message says what the accountant will see, not what broke", () => {
     expect(app).toMatch(/may see a sales-tax mismatch that isn't real/);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ THE SECOND O95 VICTIM ON THE SAME PATH, AND IT IS A BROKEN PROMISE TO THE USER.
+//
+// An entry dated into a signed month offers three choices; one is "record it in the current
+// month instead", and the confirmation says **"the original date is kept on file"**.
+// `rebookedIntoOpenMonth` duly builds `original_date` — onto the invoice object, which
+// `persistJournalEntry` never forwarded into `p_meta`, and which the RPC would have dropped
+// anyway. So the date was kept nowhere.
+//
+// ★ AND IT HAD NO READER EITHER: nothing in `src/` displayed `original_date` even in
+// principle, so fixing only the write would have produced a field that is stored, correct,
+// and invisible — the rule this project keeps relearning is that a write needs a named
+// reader, and here BOTH were missing.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ 'the original date is kept on file' is now true", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const panel = fs.readFileSync(path.join(process.cwd(), "src/components/TransactionDetailPanel.jsx"), "utf8");
+  const start = app.indexOf("const persistJournalEntry");
+  const code = app.slice(start, app.indexOf("const persistMultiLineEntry", start))
+    .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+
+  it("★ the invoice's own metadata is carried into the stamp", () => {
+    expect(code).toMatch(/const carried = \(invoice && invoice\.import_metadata\) \|\| \{\}/);
+    expect(code).toMatch(/carried\.original_date \? \{ original_date: carried\.original_date \}/);
+    expect(code).toMatch(/carried\.rebooked_from_signed_period/);
+  });
+
+  it("★★ nothing is added to `p_meta` any more — that is where these went to die", () => {
+    // A key placed in p_meta is written NOWHERE, and the comment describing it becomes a
+    // description of an intention. Both fields now travel by the checked update instead.
+    const meta = code.slice(code.indexOf("const meta = {"), code.indexOf("rpc(\"post_journal_entry\""));
+    expect(meta).not.toMatch(/tax_amount/);
+    expect(meta).not.toMatch(/original_date/);
+  });
+
+  it("★ the stamp only fires when there is something to say", () => {
+    expect(code).toMatch(/if \(newId && Object\.keys\(stamp\)\.length\)/);
+  });
+
+  it("★★ a failed stamp does not repeat the promise it just failed to keep", () => {
+    // The old message talked only about sales tax. On the rebook path that would have left
+    // the toast still claiming the date was kept — the §9 defect, inside the fix for it.
+    expect(app).toMatch(/couldn't record its original date of/);
+    expect(app).toMatch(/It's in the activity log, not on the entry\./);
+  });
+
+  it("★★★ AND THERE IS A READER — the panel shows it", () => {
+    expect(panel).toMatch(/sel\.import_metadata\?\.original_date/);
+    expect(panel).toMatch(/Originally dated /);
+    expect(panel).toMatch(/moved here because that month was already signed off/);
   });
 });

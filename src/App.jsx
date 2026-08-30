@@ -1449,11 +1449,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // (upload, AR issue, bills) stores a real due date used by AR/AP aging. Column exists
         // (migration 003) — no migration needed.
         due_date: invoice.due_date || deriveDueDate(entryDate, invoice.payment_terms || invoice.terms) || null,
-        // Captured sales tax on this invoice — persisted INDEPENDENT of how it was
-        // booked, so the accuracy control (O59 third net) can cross-foot "tax the
-        // invoice charged" against the Sales-Tax-Payable GL and catch tax mis-booked
-        // to revenue (the Riverside class). 0/absent when there's no tax line.
-        ...((Number(invoice.tax_amount) || 0) > 0 ? { tax_amount: Number(invoice.tax_amount) } : {}),
+        // ▶ `tax_amount` AND `original_date` ARE NOT HERE ANY MORE, AND MUST NOT COME BACK.
+        // `post_journal_entry` cherry-picks six named scalars out of `p_meta` and silently
+        // discards everything else (`O95`), so a key added here is written nowhere and the
+        // comment describing it becomes a description of an intention. Both are stamped by
+        // the checked update below, after the post. Leaving them here "for clarity" is how
+        // this looked correct for as long as the RPC has existed.
       };
 
       // ── Atomic, balance-validated post (migration 010) ──
@@ -1479,17 +1480,34 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // Same follow-up-checked-update shape ·3c used for payroll and depreciation, for
         // the same reason: changing the RPC's contract is its own decision (`O95`).
         const taxAmt2 = Number(invoice.tax_amount) || 0;
-        if (newId && taxAmt2 > 0) {
+        // ── AND THE SECOND `O95` VICTIM ON THIS PATH, WHICH IS A BROKEN PROMISE ──────
+        // When an entry is dated into a signed month, one of the three choices is "record
+        // it in the current month instead", and the toast says **"the original date is kept
+        // on file"**. `rebookedIntoOpenMonth` duly builds `original_date` — onto the invoice
+        // object, which `persistJournalEntry` never forwarded into `p_meta`, and which the
+        // RPC would have dropped had it done so. **So the date was kept nowhere, and the
+        // sentence was a claim about a write that did not happen** (§9).
+        const carried = (invoice && invoice.import_metadata) || {};
+        const stamp = {
+          ...(taxAmt2 > 0 ? { tax_amount: taxAmt2 } : {}),
+          ...(carried.original_date ? { original_date: carried.original_date } : {}),
+          ...(carried.rebooked_from_signed_period ? { rebooked_from_signed_period: carried.rebooked_from_signed_period } : {}),
+        };
+        if (newId && Object.keys(stamp).length) {
           const r = await checkedRowUpdate({
             supabase, table: "journal_entries", id: newId, companyId: currentCompany.id,
-            patch: { import_metadata: { tax_amount: taxAmt2 } }, label: "salesTaxStamp",
+            patch: { import_metadata: stamp }, label: "entryMetaStamp",
           });
           // ★ A FAILED STAMP FAILS LOUD, NOT SAFE. The entry is correct either way, but the
           // control total then reads 0 against a real liability and blocks sign-off with a
           // mismatch nobody can explain — so say what happened rather than logging it.
           if (!r.ok) {
-            logAudit("sales_tax_stamp_failed", `Booked the invoice, but couldn't record the ${fmtMoney(taxAmt2)} of sales tax for the accuracy check`, null, { entry_id: String(newId), tax_amount: taxAmt2 });
-            showNotification(`Saved — but we couldn't record this invoice's sales tax for the monthly cross-check. Your accountant may see a sales-tax mismatch that isn't real.`, "error");
+            logAudit("entry_meta_stamp_failed", `Booked the entry, but couldn't record ${Object.keys(stamp).join(", ")}`, null, { entry_id: String(newId), fields: Object.keys(stamp) });
+            // The sentence names the consequence for THIS entry, so it cannot promise the
+            // original date is on file when the write that would have put it there failed.
+            showNotification(stamp.original_date
+              ? `Saved in the current month — but we couldn't record its original date of ${stamp.original_date}. It's in the activity log, not on the entry.`
+              : `Saved — but we couldn't record this invoice's sales tax for the monthly cross-check. Your accountant may see a sales-tax mismatch that isn't real.`, "error");
           }
         }
         return newId;
