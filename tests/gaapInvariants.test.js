@@ -8,6 +8,9 @@ import { buildPayrollEntry } from "../src/lib/payroll.js";
 import { buildPrepaidCapitalizeEntry, buildPrepaidAmortizeEntry } from "../src/lib/prepaid.js";
 import { buildAccruedLiabilityEntry } from "../src/lib/accruedLiabilities.js";
 import { fiscalYearStart, fiscalYearSplit, computeNetIncome } from "../src/lib/reports.js";
+import { buildBankLineEntry } from "../src/lib/bankMatch.js";
+import fs from "fs";
+import path from "path";
 
 // ════════════════════════════════════════════════════════════════════════════
 // GAAP INVARIANT GUARDRAIL — the standing CI spec for every economic event.
@@ -85,6 +88,25 @@ const EVENTS = [
   { name: "12 · lease commencement (ASC 842)",       lines: [{ code: C.rou, debit: 10000, credit: 0 }, { code: C.leaseCurr, debit: 0, credit: 4000 }, { code: C.leaseLT, debit: 0, credit: 6000 }], movesNI: false },
   { name: "13 · payroll (real builder, net→cash, payroll taxes payable)", lines: buildPayrollEntry({ gross: 1000, netPay: 800, employerTaxes: 76.5, salariesCode: C.wages, payrollTaxExpCode: C.payrollTax, cashCode: C.cash, payrollTaxesPayableCode: C.payrollTaxesPayable }).lines, movesNI: true },
   { name: "16 · sales tax on AR invoice (real builder)", lines: buildArInvoiceEntry({ subtotal: 100, taxRate: 0.07, arCode: C.ar, revenueCode: C.revenue, salesTaxCode: C.salesTax }).lines, movesNI: true },
+  // ── 3 · A BANK STATEMENT LINE (real builder) ─────────────────────────────────
+  // ★★★ THE HIGHEST-VOLUME BOOKING PATH IN THE PRODUCT WAS NOT IN THIS GUARDRAIL. Statements
+  // are the main way transactions enter the books — every drive to date has been
+  // statement-shaped — and `buildBankLineEntry` was tested for its SHAPE in five files while
+  // no test ever ran it through Dr=Cr, the accounting equation, or the net-income rules.
+  // A builder that produces most of the ledger belongs in the file that checks the ledger.
+  ...[
+    { n: "3 · bank line — money out (expense)", txn: { amount: 120, type: "expense", gl_code: C.expense, gl_name: "Software", date: "2026-06-19", vendor: "Vendor" } },
+    { n: "3b · bank line — money in (revenue)", txn: { amount: 900, type: "revenue", gl_code: C.revenue, gl_name: "Sales", date: "2026-06-19", vendor: "Customer" } },
+  ].map(({ n, txn }) => {
+    const e = buildBankLineEntry(txn, { offsetCode: C.cash, offsetName: "Cash" });
+    // The builder returns a FLATTENED row (primary + offset), which is what
+    // `persistJournalEntry` posts as two lines. Expanded here the same way the write path
+    // does, so the invariants run on what actually reaches the books.
+    const lines = e.debit_credit === "credit"
+      ? [{ code: e.secondary_gl_code, debit: e.amount, credit: 0 }, { code: e.gl_code, debit: 0, credit: e.amount }]
+      : [{ code: e.gl_code, debit: e.amount, credit: 0 }, { code: e.secondary_gl_code, debit: 0, credit: e.amount }];
+    return { name: n, lines, movesNI: true };
+  }),
 ];
 
 describe("(a) every economic event's entry balances (debits = credits)", () => {
@@ -176,5 +198,60 @@ describe("(d) only revenue (4xxx) and expense (5xxx–8xxx) accounts move net in
       const bsOnly = e.lines.filter(l => !isRevenue(l.code) && !isExpense(l.code));
       expect(netIncome(bsOnly)).toBe(0);
     }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ WHICH WAY THE MONEY WENT MUST COME FROM THE STATEMENT, NOT FROM A FLAG.
+//
+// `buildBankLineEntry` decides debit-or-credit from `txn.type === "revenue"`, and §9 spends
+// a page on why deriving truth from a denormalized status flag is the root cause of the O73
+// bank-matching class: a `type` string that drifts starves the matcher and flips behaviour.
+//
+// ★ TODAY IT IS SAFE, AND ONLY BY VIRTUE OF SOMETHING UPSTREAM: `bank_statement_lines` has a
+// `direction` column ('in'/'out') and NO `type` column, so the pipeline's
+// `l.type || (l.direction === "in" ? "revenue" : "expense")` always falls through to the
+// statement's own answer. **A guard that is correct because of a schema nobody is thinking
+// about is a guard nobody has tested** — the same shape as the reversal check that worked
+// only because a query upstream filtered deleted rows.
+//
+// So: pin that the direction the books get is the direction the STATEMENT reported. If a
+// `type` column ever appears on those lines, or a caller starts passing one, this fails
+// rather than silently booking money the wrong way round.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ a bank line's direction follows the statement", () => {
+  const line = (direction) => ({ date: "2026-06-19", amount: 250, direction, description: "ACH", vendor: "V" });
+  // The pipeline's own derivation, quoted from App.jsx so the two cannot drift apart.
+  const typeFromLine = (l) => l.type || (l.direction === "in" ? "revenue" : "expense");
+
+  it("★★★ money IN becomes revenue, money OUT becomes an expense", () => {
+    expect(typeFromLine(line("in"))).toBe("revenue");
+    expect(typeFromLine(line("out"))).toBe("expense");
+  });
+
+  it("★★★ and the entry moves cash the way the statement says", () => {
+    const inEntry = buildBankLineEntry({ ...line("in"), type: typeFromLine(line("in")), gl_code: C.revenue }, { offsetCode: C.cash, offsetName: "Cash" });
+    const outEntry = buildBankLineEntry({ ...line("out"), type: typeFromLine(line("out")), gl_code: C.expense }, { offsetCode: C.cash, offsetName: "Cash" });
+    // Money in: cash is DEBITED (the primary leg is a credit to revenue).
+    expect(inEntry.debit_credit).toBe("credit");
+    // Money out: the expense is DEBITED and cash credited.
+    expect(outEntry.debit_credit).toBe("debit");
+  });
+
+  it("★★ the statement's own column is the only source — there is no `type` to override it", () => {
+    // `bank_statement_lines` has `direction` and no `type`. If that ever changes, the
+    // pipeline's `l.type ||` would take precedence over the statement and could book money
+    // backwards; this is the tripwire for that day.
+    const mig = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/058_bank_statements.sql"), "utf8");
+    const table = mig.slice(mig.indexOf("bank_statement_lines"), mig.indexOf(");", mig.indexOf("bank_statement_lines")));
+    expect(table).toMatch(/direction\s+text\s+check \(direction in \('in','out'\)\)/);
+    expect(table).not.toMatch(/^\s*type\s+text/m);
+  });
+
+  it("★ a line with no direction at all is treated as money out, not as revenue", () => {
+    // The conservative default: booking an unknown line as an expense understates income and
+    // shows up in review. Booking it as revenue inflates income and looks like good news,
+    // which is the direction nobody checks.
+    expect(typeFromLine({ date: "2026-06-19", amount: 250 })).toBe("expense");
   });
 });
