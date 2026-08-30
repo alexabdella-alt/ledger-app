@@ -81,3 +81,45 @@ describe("★ the import path's other guards are still in place", () => {
     expect(view).toMatch(/storeDocument\(/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE CALLER SWEEP `078` DEMANDED — every site that does something the new guard can now
+// refuse, checked for whether it notices.
+//
+// ★★ AN UNDO THAT FAILS SILENTLY IS THE WORST BUTTON IN THE PRODUCT. Both user-facing
+// Undos were unchecked updates inside `console.warn` catches, so a zero-row write (never an
+// error in PostgREST) and a refusal both left the toast dismissed, the entry still in the
+// books, and the person believing they had undone it. §9: an invisible action will be
+// repeated — and here the repeat is another Void, which is how one invoice was reversed
+// three times.
+//
+// `078` made it REACHABLE rather than merely possible: the database now refuses to remove
+// an entry in a signed month, so an Undo on anything posted into one lands straight in that
+// catch.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ every Undo says so when it fails", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+
+  it("the reversal Undo is checked and audited", () => {
+    expect(app).toMatch(/label: "reverse:undo"/);
+    expect(app).toMatch(/reversal_undo_failed/);
+  });
+
+  it("the booked-on-dismiss Undo is checked and audited", () => {
+    expect(app).toMatch(/label: "dismiss-book:undo"/);
+    expect(app).toMatch(/booked_on_dismiss_undo_failed/);
+  });
+
+  it("★ neither swallows the failure into a console warning any more", () => {
+    const code = app.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    expect(code).not.toMatch(/console\.warn\("\[reverse\] undo failed/);
+    expect(code).not.toMatch(/console\.warn\("\[dismiss\] undo failed/);
+  });
+
+  it("★★ and each says the BOOKS still hold the entry — not that nothing happened", () => {
+    // The person needs to know the state they are actually in. "Couldn't undo" alone
+    // leaves them guessing whether the entry is there.
+    expect(app).toMatch(/the correction is still in your books/);
+    expect(app).toMatch(/the transaction is still in your books/);
+  });
+});

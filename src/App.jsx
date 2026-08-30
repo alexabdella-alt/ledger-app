@@ -2623,12 +2623,25 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!revId) return null;                           // failure already toasted; caller must not claim success
     try { await loadAllData(); } catch {}              // original + reversal both visible, net zero
     showNotification(`Reversed ${snap.vendor || "entry"} — tap Undo to restore`, "success", async () => {
-      try {
-        await supabase.from("journal_entries")
-          .update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
-          .eq("id", revId).eq("company_id", currentCompany.id);
-        await loadAllData();
-      } catch (e) { console.warn("[reverse] undo failed:", e?.message || e); }
+      // ★★ AN UNDO THAT FAILS SILENTLY IS THE WORST BUTTON IN THE PRODUCT. This was an
+      // unchecked update inside a `console.warn` catch: a zero-row write (no error in
+      // PostgREST) and a refusal both left the toast dismissed, the reversal still in the
+      // books, and the person believing they had undone it. §9 — an action whose effect is
+      // invisible will be repeated, and here the repeat is another Void.
+      //
+      // ★ AND `078` MADE IT REACHABLE: the database now refuses to remove an entry in a
+      // signed month, so an Undo on a reversal posted into one raises — straight into that
+      // silent catch. Found by the caller sweep, not by a failure.
+      const undoRes = await checkedRowUpdate({
+        supabase, table: "journal_entries", id: revId, companyId: currentCompany.id,
+        patch: { deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null },
+        label: "reverse:undo",
+      });
+      if (!undoRes.ok) {
+        logAudit("reversal_undo_failed", `Couldn't undo the correction for ${snap.vendor || "entry"} (${undoRes.reason})`, null, { journal_entry_id: String(revId), reason: undoRes.reason });
+        showNotification("Couldn't undo that — the correction is still in your books. Nothing was lost; try removing it from the transaction itself.", "error");
+      }
+      try { await loadAllData(); } catch {}
       logAudit("entry_reversal_undone", `Undid reversal of ${snap.vendor || "entry"}`, null, { reversal_id: String(revId) });
       showNotification("Restored ✓");
     });
@@ -6355,11 +6368,18 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     if (!jeId) { showNotification("Couldn't book the dismissed transaction — please try again", "error"); return; }
     logAudit("bank_line_booked_on_dismiss", `Booked ${entry.vendor || "transaction"} ${fmtMoney(entry.amount)} directly after dismissing a proposed match`, null, { je_id: String(jeId), amount: entry.amount, type: entry.type });
     showNotification(`Booked ${entry.vendor || "transaction"} as a new transaction ✓`, "success", async () => {
-      try {
-        await supabase.from("journal_entries").update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
-          .eq("id", jeId).eq("company_id", currentCompany.id);
-        await loadAllData();
-      } catch (e) { console.warn("[dismiss] undo failed:", e?.message || e); }
+      // Same shape as the reversal undo above, same reason: an unchecked write in a warn-only
+      // catch means a refused or zero-row undo is indistinguishable from a successful one.
+      const undoRes = await checkedRowUpdate({
+        supabase, table: "journal_entries", id: jeId, companyId: currentCompany.id,
+        patch: { deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null },
+        label: "dismiss-book:undo",
+      });
+      if (!undoRes.ok) {
+        logAudit("booked_on_dismiss_undo_failed", `Couldn't undo the booking for ${entry.vendor || "transaction"} (${undoRes.reason})`, null, { journal_entry_id: String(jeId), reason: undoRes.reason });
+        showNotification("Couldn't undo that — the transaction is still in your books. Nothing was lost; you can remove it from the transaction itself.", "error");
+      }
+      try { await loadAllData(); } catch {}
       showNotification("Removed ✓");
     });
   };
