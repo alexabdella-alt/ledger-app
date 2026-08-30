@@ -17,7 +17,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ## OPEN LEDGER — every tracked, unshipped item
 
-**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **TOTAL OPEN: 68** — 4 before the first client · 13 around launch · 16 after launch · 25 known problems · 9 sequenced · 1 unproven. **Last refreshed: 2026-08-29** (long session: O97 step 2 · O123 · O124 · O126 · O115 · O128 · O119 · O96 · O125 · O129 · O121 · O98 · O130 · O117 · O127 · the Vendors-tab leak — sixteen items. The O123 repair turned out to be already done.)
+**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **TOTAL OPEN: 67** — 4 before the first client · 12 around launch · 16 after launch · 25 known problems · 9 sequenced · 1 unproven. **Last refreshed: 2026-08-29** (long session: O97 step 2 · O123 · O124 · O126 · O115 · O128 · O119 · O96 · O125 · O129 · O121 · O98 · O130 · O117 · O127 · the Vendors-tab leak — sixteen items. The O123 repair turned out to be already done.)
 
 > **The counts above are DERIVED, not typed** — `- [ ]` lines per section. Three were wrong when this was checked: "Known problems" said 38 against a real 36; "Sequenced next" said 8 against 10; and "After launch" said 16 correctly but **twelve of its items were buried inside a single run-on bullet**, so the number was right and the list was unreadable, which is its own kind of stale. A printed count cannot be wrong, only old — and nothing about it invites correction (§6).
 
@@ -34,7 +34,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [x] **10 · DONE 2026-08-29 — and it was broken in both directions, not just defaulted wrong · 1099s: off by default, on when the accountant says so** — **the flag never displayed** (saved in the database under one name, read on screen under another, so it always showed "not flagged" and the count of vendors needing a 1099 was always zero) **and setting it never saved** (the badge flipped, an audit note was written, and nothing reached the database — gone on the next reload). **The audit note is the nasty part: the record said you'd marked a vendor and the database said you hadn't.** Now it saves for real, and if the save fails the badge goes back rather than showing something the books don't hold. **Still deliberately not guessed** — whether a vendor actually needs a 1099 (services vs goods, their company type, the $600 floor) is a later piece of work; guessing it means wrong filings under your name.
 - [ ] **12 · Push a month of INVOICES through, at volume** — every test so far has been bank-statement-shaped, but a new client arrives with invoices and receipts. **Gate: before we call the product demo-ready.** Also proves three things from the last release that are shipped-but-unproven (see below). ~1 session.
 
-### Around launch week — 13 open
+### Around launch week — 12 open
 
 *Ship near launch; none of these stop the first client.*
 
@@ -44,7 +44,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **Document library, four parts** — every upload path files a document · type derived, not guessed · document date · search by name/type/date.
 - [ ] **Accept payroll PDFs** — the drop zone advertises PDF and payroll rejects it.
 - [ ] **Cross-tenant security probe becomes an automated test** *(s4)* — right now it's the memory of an afternoon.
-- [ ] **Graceful degradation when the AI provider is down** + credit monitoring.
+- [x] **DONE 2026-08-29 · Graceful degradation when the AI provider is down + credit monitoring** — every failure used to show the same line: *"AI service error (429 Too Many Requests)"*. Jargon, and it hid **four different problems that need four different answers.** The one that mattered: **running out of credit looked exactly like being briefly rate-limited** — but one clears itself in an hour and the other never clears until someone pays, and we'd have kept silently retrying it. Now each says what it is, in your words: *"We've hit our own hourly limit, which clears in about 22 minutes. Everything you sent is saved and will carry on automatically — there's nothing to re-send."* It never tells you to try again, because the system does that itself. **And when document reading is genuinely paused, a banner says so** — uploads still work and everything is kept. The original complaint was never the outage; it was the silence.
 - [ ] **QuickBooks import hardening.**
 - [ ] **Plain-language sweep of the Activity feed** + the documents icon on the trust panel.
 - [ ] **Reconcile: prefill the ending balance on the exception path too.**
