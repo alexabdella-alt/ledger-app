@@ -19,9 +19,23 @@ const TONE = {
 
 // One status row. `state`: "ok" (green ✓), "info" (neutral, e.g. awaiting sign-off),
 // or "attention" (amber •). Never red — this is reassurance, not alarm.
-function Line({ state, title, text }) {
+//
+// ★★ `kind` SEPARATES TWO THINGS THAT WERE SHARING A SHAPE. "Reviewed" and "Nothing wrong"
+// are EARNED states — green only when verified, which is the no-vacuous-pass rule this
+// panel was hardened around. "Documents" is a QUEUE: empty means nothing is waiting, which
+// is not an achievement and must not get a celebratory ✓.
+//
+// The semantics were already right; the PICTURE was wrong. A hollow grey dot sitting in a
+// column of green ticks reads as "pending" — the operator himself misread it — so an empty
+// queue looked like unfinished work. A queue now gets a TRAY, which says "nothing in here"
+// rather than "not done yet", and escalates to amber with the same tray when something is
+// actually waiting. Neither may ever show a tick: that is the vacuous pass this panel
+// exists to refuse.
+function Line({ state, title, text, kind = "state" }) {
   const c = state === "ok" ? "var(--sc-success)" : state === "attention" ? "var(--sc-warning)" : "var(--sc-text-mut)";
-  const glyph = state === "ok" ? "✓" : state === "attention" ? "•" : "◦";
+  const glyph = kind === "queue"
+    ? "⌷"
+    : state === "ok" ? "✓" : state === "attention" ? "•" : "◦";
   return (
     <div style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "11px 0" }}>
       <span style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, marginTop: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "var(--sc-on-accent)", background: c }}>{glyph}</span>
@@ -126,7 +140,7 @@ export default function TrustPanel({ loading = false }) {
 
       {/* The three nets, in plain language (tri-state markers: ok / info / attention) */}
       <div style={{ marginTop: 14, borderTop: "1px solid var(--sc-border)", paddingTop: 4 }}>
-        <Line state={lines.captured.state} title="Documents" text={lines.captured.text} />
+        <Line kind="queue" state={lines.captured.state} title="Documents" text={lines.captured.text} />
         <div style={{ borderTop: "1px solid var(--sc-border)" }} />
         <Line state={lines.reviewed.state} title="Reviewed" text={lines.reviewed.text} />
         <div style={{ borderTop: "1px solid var(--sc-border)" }} />

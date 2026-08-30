@@ -31,6 +31,47 @@ function refIds(anomaly) {
   return [];
 }
 
+// ── THE EVIDENCE BEHIND A CARD ───────────────────────────────────────────────
+// ★★ THE ASYMMETRY THIS FIXES IS EXACTLY BACKWARDS. The OWNER's trust panel gives each
+// anomaly a "View transaction →" link. The CPA REVIEW screen — where dismiss-with-reason
+// actually happens, and dismissal is permanently reviewer-only because it JUDGES a
+// condition acceptable — offered **Dismiss and nothing else.** So the person making the
+// call had the least context: asked whether two charges are a genuine double payment,
+// without being shown the two charges.
+//
+// The ids were on the row the whole time (`entity_refs`, or `invoice_ids` on a
+// freshly-detected one). This resolves them so the card can show the entries INLINE —
+// a duplicate judgment should be one glance, not a navigate-away-and-lose-your-place.
+//
+// ★ AND A REF THAT NO LONGER RESOLVES IS REPORTED, NOT DROPPED. `O87` finding (v) was
+// exactly this: detection-time ids stopped resolving after a reload, and code that
+// silently skipped them made three cards unplaceable with no sign anything was missing.
+// A card that says "2 linked entries, 1 we can't find" is honest; one that quietly shows
+// one entry is not.
+export function anomalyEvidence(anomaly, invoices = []) {
+  const ids = refIds(anomaly).map(String);
+  if (!ids.length) return { entries: [], missing: 0, total: 0 };
+  const byId = new Map();
+  for (const i of invoices || []) {
+    if (!i) continue;
+    byId.set(String(i.id), i);
+    if (i.db_entry_id != null) byId.set(String(i.db_entry_id), i);
+  }
+  const entries = [];
+  const seen = new Set();
+  let missing = 0;
+  for (const id of ids) {
+    const hit = byId.get(id);
+    if (!hit) { missing++; continue; }
+    const key = String(hit.db_entry_id ?? hit.id);
+    if (seen.has(key)) continue;          // one entry, however many refs point at it
+    seen.add(key);
+    entries.push(hit);
+  }
+  entries.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  return { entries, missing, total: ids.length };
+}
+
 // ── C198·3c — THE MONTHS A FINGERPRINT ITSELF ENCODES ────────────────────────
 // ONE parser, two consumers. The f3 content keys carry their subject's own dates —
 // `dup:<vendor>:<cents>:<dateA>+<dateB>`, `vendor_spike:<vendor>:<date>:<cents>`,

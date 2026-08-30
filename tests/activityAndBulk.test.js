@@ -115,3 +115,78 @@ describe("★★ bulk removal respects the sign-off boundary", () => {
     expect(books).toMatch(/Select all shown/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE REVIEW CARD'S EVIDENCE, and the trust panel's queue glyph.
+// ═════════════════════════════════════════════════════════════════════════════
+import { anomalyEvidence } from "../src/lib/anomalies.js";
+
+describe("★★ the reviewer can see what they're being asked to judge", () => {
+  const entries = [
+    { id: "1", db_entry_id: "e1", date: "2026-08-04", vendor: "Roma Cheese", amount: 551.2 },
+    { id: "2", db_entry_id: "e2", date: "2026-08-06", vendor: "Roma Cheese", amount: 551.2 },
+    { id: "3", db_entry_id: "e3", date: "2026-08-09", vendor: "Toast", amount: 120 },
+  ];
+
+  it("THE ASYMMETRY THIS CLOSES: the pair behind a duplicate flag, resolved", () => {
+    // Dismissing JUDGES a condition acceptable — a review act, permanently reviewer-only.
+    // The screen offered that judgement with no sight of the transactions, while the
+    // OWNER's panel linked to them. The person making the call had the least context.
+    const ev = anomalyEvidence({ entity_refs: ["e1", "e2"] }, entries);
+    expect(ev.entries.map(e => e.id)).toEqual(["1", "2"]);
+    expect(ev.missing).toBe(0);
+    expect(ev.total).toBe(2);
+  });
+
+  it("resolves a freshly-detected anomaly's ids too, not just a persisted row's", () => {
+    expect(anomalyEvidence({ invoice_ids: ["1", "3"] }, entries).entries).toHaveLength(2);
+  });
+
+  it("★★ a ref that no longer resolves is COUNTED, not silently dropped", () => {
+    // O87 finding (v) was exactly this: detection-time ids stopped resolving after a
+    // reload, and code that skipped them made three cards unplaceable with no sign
+    // anything was missing. "2 linked entries, 1 we can't find" is honest; quietly
+    // showing one is not.
+    const ev = anomalyEvidence({ entity_refs: ["e1", "gone"] }, entries);
+    expect(ev.entries).toHaveLength(1);
+    expect(ev.missing).toBe(1);
+    expect(ev.total).toBe(2);
+  });
+
+  it("one entry referenced twice is shown once", () => {
+    expect(anomalyEvidence({ entity_refs: ["1", "e1"] }, entries).entries).toHaveLength(1);
+  });
+
+  it("sorted oldest first — a duplicate judgment is about the gap between them", () => {
+    const ev = anomalyEvidence({ entity_refs: ["e2", "e1"] }, entries);
+    expect(ev.entries.map(e => e.date)).toEqual(["2026-08-04", "2026-08-06"]);
+  });
+
+  it("an anomaly with no refs asks for nothing", () => {
+    expect(anomalyEvidence({}, entries)).toMatchObject({ entries: [], missing: 0, total: 0 });
+  });
+
+  it("★ and the card actually renders them", () => {
+    const review = fs.readFileSync(path.join(process.cwd(), "src/components/views/ReviewView.jsx"), "utf8");
+    expect(review).toMatch(/anomalyEvidence\(a, invoices\)/);
+    expect(review).toMatch(/can no longer be found/);
+  });
+});
+
+describe("★ the trust panel's Documents row is a QUEUE, not an unearned tick", () => {
+  const panel = fs.readFileSync(path.join(process.cwd(), "src/components/views/TrustPanel.jsx"), "utf8");
+
+  it("queue rows get their own glyph", () => {
+    // The semantics were already right — an empty queue must NOT get a celebratory ✓,
+    // which would be the vacuous pass this panel exists to refuse. The PICTURE was wrong:
+    // a hollow grey dot among green ticks reads as "pending".
+    expect(panel).toMatch(/kind = "state"/);
+    expect(panel).toMatch(/kind === "queue"/);
+    expect(panel).toMatch(/<Line kind="queue"[^>]*title="Documents"/);
+  });
+
+  it("★ the EARNED rows are untouched — green only when verified", () => {
+    expect(panel).toMatch(/<Line state=\{lines\.reviewed\.state\} title="Reviewed"/);
+    expect(panel).toMatch(/<Line state=\{lines\.correct\.state\} title="Nothing wrong"/);
+  });
+});

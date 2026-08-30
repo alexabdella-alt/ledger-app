@@ -4,6 +4,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { agoPhrase, initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { statementExceptionTarget, OPEN_RECONCILE_LABEL } from "../../lib/statementLifecycle";
+import { anomalyEvidence } from "../../lib/anomalies";
 import { buildReviewQueue } from "../../lib/reviewQueue";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
@@ -271,6 +272,36 @@ export default function ReviewView() {
                         {a.title}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 3 }}>{a.detail}</div>
+                      {/* ★★ THE ENTRIES THE CARD IS ABOUT, INLINE. Dismissing JUDGES a
+                          condition acceptable — a review act — and this screen used to
+                          offer that judgement with no sight of the transactions, while the
+                          OWNER's panel linked to them. Exactly backwards: the person making
+                          the call had the least context. A duplicate judgment should be one
+                          glance, not a navigate-away. */}
+                      {(() => {
+                        const ev = anomalyEvidence(a, invoices);
+                        if (!ev.total) return null;
+                        return (
+                          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                            {ev.entries.map((e) => (
+                              <button key={String(e.id)} onClick={() => { setReturnTo({ view: "review", label: "Review" }); setSelectedInvoice(e); setView("detail"); }}
+                                style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", width: "100%", padding: "6px 9px", borderRadius: 7, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", cursor: "pointer", fontSize: 12, color: "var(--sc-text-2)" }}>
+                                <span style={{ fontFamily: "'DM Mono',monospace", flexShrink: 0 }}>{e.date ? fmtDate(e.date) : "—"}</span>
+                                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--sc-text)" }}>{e.vendor || e.description || "—"}</span>
+                                <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 600, flexShrink: 0 }}>{fmtMoney(e.amount)}</span>
+                                <span style={{ color: "var(--sc-gold)", flexShrink: 0 }}>→</span>
+                              </button>
+                            ))}
+                            {/* A ref that no longer resolves is REPORTED, not dropped — O87(v)
+                                was exactly this, and silence made three cards unplaceable. */}
+                            {ev.missing > 0 && (
+                              <div style={{ fontSize: 11, color: "var(--sc-text-mut)" }}>
+                                {ev.missing} of {ev.total} linked {ev.total === 1 ? "entry" : "entries"} can no longer be found — it may have been removed since this was flagged.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     {/* Reviewer-only, PERMANENTLY: dismissing judges a condition acceptable — a
                         review act. The client sees anomalies reflected in their trust panel but
