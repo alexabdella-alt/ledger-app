@@ -13,11 +13,12 @@ const money = fmtSignedMoney;
 export default function QBOImportView() {
   const {
     currentCompany, session, supabase, CHART_OF_ACCOUNTS, getAccountByRole, getAccountByCode,
-    invoices, isAdmin, logAudit, showNotification, setView, loadAllData, flagBookingVisibilityFailure,
+    invoices, isAdmin, logAudit, showNotification, setView, loadAllData, flagBookingVisibilityFailure, storeDocument,
   } = useERP();
 
   const [step, setStep] = React.useState("instructions"); // instructions|upload|columns|accounts|importing|summary
   const [fileName, setFileName] = React.useState("");
+  const [sourceFile, setSourceFile] = React.useState(null);   // the actual bytes, for the document library
   const [grid, setGrid] = React.useState(null);           // raw 2D array
   const [headerIndex, setHeaderIndex] = React.useState(-1);
   const [columns, setColumns] = React.useState([]);
@@ -51,6 +52,10 @@ export default function QBOImportView() {
     const v = validateUpload(file, "spreadsheet");   // size + type guard (CR-34)
     if (!v.ok) { showNotification(v.error, "error"); return; }
     setFileName(file.name);
+    // ★ KEEP THE FILE, NOT JUST ITS NAME. Everything downstream had only `fileName`, which
+    // is why this path stored no document: there was nothing left to store by the time the
+    // import ran.
+    setSourceFile(file);
     if (isQboBankFile(file.name)) {
       showNotification("That's a .qbo bank statement, not QuickBooks company data — opening the bank import instead.", "info");
       setView("bank");
@@ -152,6 +157,25 @@ export default function QBOImportView() {
       const { data } = await supabase.from("qbo_imports").insert({ company_id: cid, filename: fileName, row_count: rows.length, created_by: session?.user?.id || null }).select("id").single();
       batchId = data?.id || null;
     } catch {}
+
+    // ★★ FILE THE SOURCE DOCUMENT. Every other intake path stores its file; this one
+    // stored NOTHING, so a QuickBooks import produced journal entries with no retrievable
+    // source — and the document library's header promises "every uploaded file".
+    //
+    // ★ IT MATTERS MOST FOR THE THING THIS PRODUCT SELLS. A signed-off period is an
+    // attestation; the primary document behind a batch of entries has to exist in the
+    // system for that attestation to mean anything. A whole QuickBooks history arriving
+    // with no source file is the largest version of that gap available.
+    //
+    // Typed `other`: the `documents_document_type_check` constraint has no QuickBooks
+    // value, and widening a CHECK to file one document is the wrong trade — the tag
+    // carries the detail.
+    try {
+      if (sourceFile && storeDocument) {
+        await storeDocument(fileName, null, sourceFile.type || "text/csv", "other", null,
+                            ["qbo_import", batchId ? `batch:${batchId}` : "batch:unknown"], null, sourceFile);
+      }
+    } catch (e) { console.warn("[qbo] source document not stored:", e?.message || e); }
 
     let imported = 0, skipped = 0, failedN = parsed.failed.length, total = 0;
     const toBook = [];
