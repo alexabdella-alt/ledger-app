@@ -90,6 +90,28 @@ export function canAttestPeriod(role) {
   return role === "admin" || role === "accountant";
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ★★ O131 — DOES ANYONE ON THIS COMPANY HOLD THE ROLE AT ALL?
+//
+// An OWNER deliberately cannot attest: separating who keeps the books from who signs them
+// off is the point of the product when an accountant is involved, and the database enforces
+// it. **But one person holds one role, so a solo signup has nobody who can ever sign.** Their
+// home screen said *"Awaiting your accountant's sign-off"* — about an accountant who does not
+// exist — and would have said it forever, with nothing explaining why.
+//
+// ★ WHETHER a solo owner should be ABLE to attest is a product decision and is NOT decided
+// here. This only answers the factual question the copy needs either way: **is there anybody
+// who could?** Under every option on the table, promising a review that cannot arrive is
+// wrong — so this is safe to fix before the decision, and it forecloses none of it.
+//
+// `members` is the `company_users` shape: `{ role, accepted_at }`. An UNACCEPTED invite does
+// not count — an invitation is not a person, and counting it would put the promise back with
+// an extra step.
+// ─────────────────────────────────────────────────────────────────────────────
+export function companyHasAttester(members = []) {
+  return (members || []).some((m) => m && m.accepted_at && canAttestPeriod(m.role));
+}
+
 // Does a SPECIFIC period already have an active (non-revoked) sign-off? Pure. The card
 // keys its signed-vs-ready state on this per SELECTED month, so a month already attested
 // never renders "ready to sign off" + the primary button simultaneously (O83 contradictory

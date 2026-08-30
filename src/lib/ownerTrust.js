@@ -45,6 +45,12 @@ export function ownerTrustState({
   // were live. Medium/low anomalies do NOT affect the owner panel (they carry no urgency
   // for the owner). Plain-language only — the owner never sees "duplicate_payment HIGH".
   openHighAnomalies = 0,
+  // ★★ O131 — IS THERE ANYBODY WHO COULD SIGN THIS OFF? An owner deliberately cannot attest
+  // their own books, so a SOLO signup has nobody who can — and this line promised them a
+  // review that could never arrive, forever, with nothing saying why. Defaults TRUE so every
+  // existing caller and every accountant-led company is unaffected; only a caller that has
+  // actually checked the membership can turn it off.
+  hasAttester = true,
   // ★★ O121 — OPEN CLARIFICATION CARDS. Questions we have ASKED THE OWNER and they have
   // not answered yet, each holding a document that is therefore NOT in the books.
   //
@@ -147,9 +153,16 @@ export function ownerTrustState({
 
   // ── REVIEWED (from O50 sign-off). Factual: what's signed off; honest when nothing is. ──
   const signedLabel = monthLabel(reviewedThrough);
+  // ★ WHAT IS SIGNED IS A FACT AND IS SAID FIRST — a company that later loses its accountant
+  // has still genuinely had those months reviewed, and that does not stop being true.
   const reviewedText = signedLabel
     ? `Reviewed and signed off through ${signedLabel}.`
-    : "Awaiting your accountant's sign-off.";
+    : hasAttester
+      ? "Awaiting your accountant's sign-off."
+      // ★★ NO ATTESTER: the old sentence named a person who does not exist. This states the
+      // position and the ONE thing that changes it, and deliberately does not imply the books
+      // are wrong — they are not; nobody has reviewed them, which is a different fact.
+      : "Nobody has reviewed these yet — add your accountant and they can sign off each month.";
 
   // ── NOTHING WRONG (from confidence + accuracy + bank-match). The ONE owner nudge is a
   //    confidence flag (owner can answer it). An accuracy mismatch is honest-but-not-owner-

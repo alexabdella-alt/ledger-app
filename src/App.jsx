@@ -34,7 +34,7 @@ import { isDegradedMode, degradedBannerCopy } from "./lib/aiFailure";
 import { runIntakeDrain } from "./lib/intakeDrainIo";
 import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
 import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "./lib/controlTotals";
-import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod, isPeriodSignedOff } from "./lib/signoff";
+import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod, companyHasAttester, isPeriodSignedOff } from "./lib/signoff";
 import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, planEntryRemoval, REMOVAL } from "./lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
@@ -831,6 +831,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [intakeRows, setIntakeRows] = useState([]);
   const [intakeLoadOk, setIntakeLoadOk] = useState(true);   // O98 — did the document check run at all?
   const [signoffs, setSignoffs] = useState([]);
+  // O131 — is there anybody on this company who could sign a month off? Defaults TRUE so a
+  // failed or not-yet-run query never manufactures the claim "you have no accountant".
+  const [hasAttester, setHasAttester] = useState(true);
   // O83 Trap 2 — a booking held because it dates into a signed-off period: { invoice, period }.
   // The decision modal (reopen / rebook / CPA) reads this; null when nothing is held.
   const [pendingSignedPeriodBooking, setPendingSignedPeriodBooking] = useState(null);
@@ -4282,6 +4285,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       hasBooks,
       setupComplete,
       openHighAnomalies: openHighAnomalyCount,   // O83 — open HIGH anomaly ⇒ "Nothing wrong" can't be green
+      hasAttester,                               // O131 — don't promise a review nobody can give
       // O121 — questions we have asked the owner and they have not answered. Each holds a
       // document OUT of the books, so the header must not claim they are up to date.
       openClarifications: (clarificationQueue || []).length,
@@ -4418,14 +4422,23 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   // Load intake rows + sign-offs when the company changes (best-effort, pre-migration safe).
   useEffect(() => {
-    if (!currentCompany?.id) { setIntakeRows([]); setSignoffs([]); setIntakeLoadOk(true); return; }
+    if (!currentCompany?.id) { setIntakeRows([]); setSignoffs([]); setHasAttester(true); setIntakeLoadOk(true); return; }
     let cancelled = false;
     (async () => {
-      const [ir, so] = await Promise.all([
+      const [ir, so, mem] = await Promise.all([
         fetchIntakeRows(supabase, currentCompany.id),
         fetchSignoffs(supabase, currentCompany.id),
+        // O131 — an owner cannot attest their own books, so a SOLO company has nobody who
+        // ever can, and the trust panel promised them an accountant's review forever.
+        supabase.from("company_users").select("role, accepted_at").eq("company_id", currentCompany.id),
       ]);
       if (cancelled) return;
+      // ★ THE FAILURE DIRECTION IS DELIBERATE AND IS THE WHOLE REASON THIS IS NOT ONE LINE.
+      // A query that errored returns no rows, which is indistinguishable from a company with
+      // no accountant — and getting that backwards would tell an accountant-led client that
+      // nobody is reviewing their books. On any doubt we keep the existing sentence.
+      if (!mem.error && Array.isArray(mem.data)) setHasAttester(companyHasAttester(mem.data));
+      else setHasAttester(true);
       // O98 — record whether the load RAN. `[]` from a failed query and `[]` from a company
       // with no uploads are the same value and must not be the same claim.
       setIntakeLoadOk(!!ir.ok);
