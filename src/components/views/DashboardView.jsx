@@ -18,6 +18,7 @@ import { t } from "../../lib/theme";
 import { useDrillStack } from "../../lib/useDrillStack";
 import DrillNav from "../ui/DrillNav";
 import TransactionDetailPanel from "../TransactionDetailPanel";
+import { countByUrgency, queueBannerCopy, sortByUrgency } from "../../lib/cardUrgency";
 
 // Breadcrumb label for a dashboard drill layer (used by the shared onion-nav stack).
 const drillLabel = (l) => {
@@ -580,12 +581,31 @@ export default function DashboardView() {
                     })}
                   </div>
                   {/* Invoice clarification prompt */}
-                  {clarificationQueue.filter(c=>!c.resolved).length > 0 && (
-                    <div style={{ marginTop:12, background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ {clarificationQueue.filter(c=>!c.resolved).length} invoice{clarificationQueue.filter(c=>!c.resolved).length!==1?"s":""} need your input before booking — scroll down to review</div>
-                      <button onClick={()=>{ window.scrollTo({top:9999,behavior:"smooth"}); }} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Below ↓</button>
-                    </div>
-                  )}
+                  {/* ── O120 — WHICH QUESTIONS DESERVE TO STOP YOU ────────────────────
+                      Ten cards sat unanswered through the August drive while the header said
+                      the books were correct. The old line said "⚠ N invoices need your input
+                      — scroll down to review": a bare count and an instruction to scroll.
+                      **A count alone makes ten harmless questions look like ten problems**,
+                      which is how someone learns to ignore the number entirely.
+                      Now it separates the ones whose wrong answer books SILENTLY wrong from
+                      the ones you could see and undo — and the dangerous ones are ordered
+                      first so they cannot be buried behind the harmless ones. No modal: a
+                      pop-up per card turns a sitting into a gauntlet, which is the opposite
+                      of "batch the judgement to close". */}
+                  {(() => {
+                    const open = clarificationQueue.filter(c => !c.resolved);
+                    if (!open.length) return null;
+                    const { stops } = countByUrgency(open);
+                    const tone = stops > 0 ? "var(--sc-warning)" : "var(--sc-text-2)";
+                    return (
+                      <div style={{ marginTop:12, background: stops > 0 ? "var(--sc-warning-soft)" : "var(--sc-surface-2)", border:`1px solid ${stops > 0 ? "var(--sc-warning-soft)" : "var(--sc-border)"}`, borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+                        <div style={{ fontSize:13, color: tone }}>{stops > 0 ? "⚠ " : ""}{queueBannerCopy(open)}</div>
+                        <button onClick={()=>{ window.scrollTo({top:9999,behavior:"smooth"}); }} style={{ background:"transparent", border:`1px solid ${stops > 0 ? "var(--sc-warning)" : "var(--sc-border-2)"}`, color: tone, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>
+                          {stops > 0 ? "Answer these" : "Have a look"}
+                        </button>
+                      </div>
+                    );
+                  })()}
                   {/* Bank reconciliation review prompt — opens the matching detail */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="bank_statement"&&q.result?.needsReview>0) && (
                     <div style={{ marginTop:12, background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>

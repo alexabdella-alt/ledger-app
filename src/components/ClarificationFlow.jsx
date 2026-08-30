@@ -6,6 +6,7 @@ import { draftClientQuestion, answerToAccount, describeBooking, clarificationChi
 import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
 import { rightHalf } from "../lib/vendorIdentity";
 import { aiJson } from "../lib/aiJson";
+import { sortByUrgency } from "../lib/cardUrgency";
 
 const money = fmtSignedMoney;
 
@@ -722,7 +723,11 @@ export default function ClarificationFlow() {
           <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 1 }}>{pending > 0 ? `${pending} ${pending === 1 ? "item needs" : "items need"} a quick answer before I book ${pending === 1 ? "it" : "them"}.` : "All caught up ✓"}</div>
         </div>
       </div>
-      {clarificationQueue.map(item => <ClarificationCard key={item.id} item={item} />)}
+      {/* ★ O120 — DANGEROUS FIRST. A stable sort, so two cards of the same urgency stay in
+          the order their documents arrived; only the ones whose wrong answer books silently
+          wrong move up. Ordering rather than interrupting: a pop-up per card turns the
+          sitting this queue exists to enable into a gauntlet. */}
+      {sortByUrgency(clarificationQueue).map(item => <ClarificationCard key={item.id} item={item} />)}
     </div>
   );
 }
