@@ -112,6 +112,20 @@ describe("★★ 083 — the opening-balance backfill", () => {
     expect(body).toMatch(/'seed'/);
   });
 
+  it("★★ every check is SCOPED to what the migration did", () => {
+    // ★★★ VERIFY (c) SHIPPED UNSCOPED AND RETURNED A FALSE FAIL ON THE LIVE RUN. It asked
+    // whether EVERY opening-balance account is labelled `seed`, but pre-existing ones carry
+    // whatever origin they were created with — and one is `runtime` BY A RECORDED DECISION
+    // (073 left Franklin Ave's deliberately, because origin records how a row got here).
+    // VERIFY (b) two lines above scopes to rows this migration created; (c) did not. Two
+    // checks in one file, one scoped right and one not, and the unscoped one failed correct
+    // data. A false FAIL on a correct migration is the mirror of a false PASS on a broken one.
+    const checks = mig.slice(mig.indexOf("VERIFY (a)"));
+    const originCheck = checks.slice(checks.indexOf("VERIFY (c)"), checks.indexOf("VERIFY (d)"));
+    expect(originCheck).toMatch(/created_at > now\(\) - interval/);
+    expect(originCheck).not.toMatch(/where system_role = 'opening_balance_equity';/);
+  });
+
   it("★★ the verification checks for DUPLICATES, not just presence", () => {
     // "At least one" is not the check: a duplicate is the failure this insert could
     // plausibly cause, and byRole would resolve to whichever it read last.

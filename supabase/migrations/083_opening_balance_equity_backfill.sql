@@ -95,13 +95,28 @@ commit;
 -- ★ Otherwise they arrive in the O108 detector as seven accounts the system appears to have
 -- invented on its own — a deliberate backfill impersonating the exact hazard it prevents.
 --
+-- ★★★ THE FIRST VERSION OF THIS CHECK WAS WRONG AND RETURNED A FALSE FAIL ON THE LIVE RUN
+-- (10 seed / 1 "mislabelled"). It asked whether EVERY opening-balance account is labelled
+-- `seed` — but the pre-existing ones carry whatever origin they were created with, and at
+-- least one is `runtime` BY A RECORDED DECISION: `073` deliberately left Franklin Ave's
+-- `3400` as runtime, because origin records HOW A ROW GOT HERE, and relabelling it would
+-- erase the only durable evidence that the materialisation path ever fired on a real
+-- client's chart.
+--
+-- ★ SO THE CHECK ASSERTED A PROPERTY A DELIBERATE DECISION VIOLATES. Note that VERIFY (b)
+-- directly above scopes to the rows this migration created and (c) did not — **two checks in
+-- one file, one scoped right and one not, and the unscoped one failed correct data.** A
+-- false FAIL on a correct migration is the mirror of a false PASS on a broken one.
+--
 -- select
---   count(*) filter (where origin = 'seed')    as labelled_seed,
---   count(*) filter (where origin <> 'seed')   as mislabelled,
---   case when count(*) filter (where origin <> 'seed') = 0
---        then 'PASS - every opening-balance equity account is labelled seed'
---        else 'FAIL - some are labelled runtime and will read as invented' end as verdict
--- from public.accounts where system_role = 'opening_balance_equity';
+--   count(*)                                    as created_by_083,
+--   count(*) filter (where origin = 'seed')     as labelled_seed,
+--   case when count(*) = count(*) filter (where origin = 'seed')
+--        then 'PASS - every account 083 created is labelled seed'
+--        else 'FAIL - 083 created a row it did not label' end as verdict
+-- from public.accounts
+-- where system_role = 'opening_balance_equity'
+--   and created_at > now() - interval '2 hours';
 
 
 -- VERIFY (d) — re-running changes nothing. Run the migration a second time, then this.
