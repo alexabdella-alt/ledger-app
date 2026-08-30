@@ -157,7 +157,15 @@ end $$;
 -- ── (C) AFTER 081 ONLY — ★ DID IT BLOCK MORE THAN IT MEANT TO? ───────────────
 -- The `079` direction. An admin changing SOMEONE ELSE's role is the ordinary operation this
 -- guard must leave alone, and "it blocks too much" is the failure that surfaces only when a
--- real person tries to do their job. Expect PASS.
+-- real person tries to do their job. Without this, (A2) and (B) passing is equally
+-- consistent with "we closed the hole" and "we broke role management entirely".
+--
+-- ★★ IT CREATES THE SECOND MEMBER ITSELF. The first version required a company that already
+-- had an admin AND another member, and returned INCONCLUSIVE live because no company has
+-- two. **An inconclusive check is not a pass**, and the fix is to remove the dependency on
+-- the data happening to be shaped right — the seed row is inserted as the superuser (so RLS
+-- is not in the way) BEFORE the role switch, and the trigger under test fires on the UPDATE
+-- regardless. Everything rolls back.
 do $$
 declare v text; who text; n int; adm uuid; c uuid; victim uuid;
 begin
@@ -165,13 +173,22 @@ begin
   from public.company_users cu
   where cu.accepted_at is not null and cu.role in ('owner','admin')
   limit 1;
-  select cu.user_id into victim
-  from public.company_users cu
-  where cu.company_id = c and cu.user_id <> adm and cu.accepted_at is not null
-  limit 1;
-  if adm is null or victim is null then
-    raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - need a company with an admin AND a second member';
+  if adm is null then
+    raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - no owner/admin to act as';
   end if;
+
+  -- Any other real user who is not already in that company.
+  select au.id into victim
+  from auth.users au
+  where au.id <> adm
+    and not exists (select 1 from public.company_users x where x.company_id = c and x.user_id = au.id)
+  limit 1;
+  if victim is null then
+    raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - no second user account exists to add';
+  end if;
+
+  insert into public.company_users (company_id, user_id, role, accepted_at)
+  values (c, victim, 'viewer', now());
 
   perform set_config('request.jwt.claims', json_build_object('sub', adm::text, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
