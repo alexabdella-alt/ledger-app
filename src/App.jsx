@@ -2965,15 +2965,34 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     try {
       const { data: row } = await supabase.from("accounts").select("id").eq("company_id", currentCompany.id).eq("code", glCode).maybeSingle();
       if (row?.id) return row.id;
+      // ── O109 — THE ASSISTANT MAY RECOGNISE AN ACCOUNT, NEVER INVENT ONE ────────
+      // This is reached from the AI action path (`add_rule` / `set_contact_rule` /
+      // `add_recurring`), so **a number the model made up could mint a permanent account on
+      // a client's chart** — and the client asked a question in chat, not for their chart to
+      // be reorganised. It used to create whatever it was handed, audibly but silently to
+      // the user.
+      //
+      // ★★ THE SPLIT IS BETWEEN RECOGNISING AND INVENTING, and it is not "always refuse":
+      //   · a code in the CANONICAL chart but missing from this company is a RECOGNISABLE
+      //     account an older company simply predates (exactly what the `O35` audit found for
+      //     merchant fees on eight of eleven). Refusing it would break "make a rule for
+      //     Marketing" on a company that lacks 6300 — real work, refused for a bookkeeping
+      //     reason the person cannot see. It is created, and now SAID OUT LOUD, because §9's
+      //     rule is that an action whose effect is invisible will be repeated.
+      //   · a code in NEITHER chart is a number the model produced from nothing. **REFUSED.**
+      //     There is no reading under which inventing a general-ledger account on someone's
+      //     books is the right answer to a chat message.
       const def = CHART_OF_ACCOUNTS.find(a => a.code === glCode);
+      if (!def) {
+        logAudit("ai_account_invention_refused", `Refused to create account ${glCode} "${glName || glCode}" — it is not in the chart of accounts`, null, { code: glCode, name: glName || null, site: "resolveAccountId" });
+        showNotification(`I don't have an account numbered ${glCode} for you, and I won't add one on my own. Add it in Settings first, or tell me which existing account to use.`, "error");
+        return null;
+      }
       const { data: made, error } = await supabase.from("accounts")
         .insert(buildAccountInsert({ companyId: currentCompany.id, code: glCode, name: glName || def?.name || glCode, category: def?.category })).select("id").single();
       if (error || !made) { console.warn("[resolveAccountId] create failed:", error?.message); return null; }
-      // O108 finding 4, FIFTH SITE — found by the CI guard, not by reading. This one is
-      // reached from the AI action path (add_rule / set_contact_rule), so a model-proposed
-      // GL code can mint a permanent account on a client's chart. Loudest of the five, for
-      // that reason; behaviour unchanged.
-      logAudit("account_materialized", `Created account ${glCode} "${glName || def?.name || glCode}" while resolving a rule target — it was not in this company's chart`, null, { code: glCode, name: glName || def?.name || glCode, in_default_chart: !!def, site: "resolveAccountId" });
+      logAudit("account_materialized", `Created account ${glCode} "${glName || def?.name || glCode}" while resolving a rule target — it was not in this company's chart`, null, { code: glCode, name: glName || def?.name || glCode, in_default_chart: true, site: "resolveAccountId" });
+      showNotification(`Added ${glCode} ${def.name} to your chart of accounts — you didn't have one.`);
       return made.id;
     } catch (e) { console.warn("[resolveAccountId]", e?.message); return null; }
   };
