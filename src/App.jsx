@@ -758,8 +758,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
     const payload = {};
     for (const k of ["code", "name", "category", "active"]) if (updates[k] != null) payload[k] = updates[k];
-    const { error } = await supabase.from("accounts").update(payload).eq("id", account.db_id).eq("company_id", currentCompany.id);
-    if (error) { console.warn("[accounts] edit failed:", error.message); showNotification("Couldn't save — " + error.message, "error"); return false; }
+    const r = await checkedRowUpdate({
+      supabase, table: "accounts", id: account.db_id, companyId: currentCompany.id,
+      patch: payload, label: "persistAccountEdit",
+    });
+    if (!r.ok) { showNotification("Couldn't save that account change — nothing was updated. Please try again.", "error"); return false; }
     logAudit("coa_edited", `Account ${account.code} updated: ${updates.name || account.name}${updates.code && updates.code !== account.code ? ` (renumbered → ${updates.code})` : ""}`);
     await reloadAccounts();
     return true;
@@ -1327,9 +1330,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // Update the primary (debit/credit) line of each journal entry — check EVERY write.
       for (const inv of withDbId) {
         const isDebit = inv.debit_credit !== "credit";
+        // ▶ `.select("id")` rather than `checkedRowUpdate`: this is keyed on
+        // `journal_entry_id` + a debit/credit filter, not on the line's own `id`, so the
+        // helper's `.eq("id", …)` shape does not fit. The REQUIREMENT is the same — a
+        // recode that matched no line moved no money and must not report success.
         const q = supabase.from("journal_entry_lines").update({ account_id: acctRow.id }).eq("journal_entry_id", inv.db_entry_id);
-        const { error } = await (isDebit ? q.gt("debit", 0) : q.gt("credit", 0));
-        if (error) { console.error("[persistRecode] line update:", error.message); return false; }
+        const { data, error } = await (isDebit ? q.gt("debit", 0) : q.gt("credit", 0)).select("id");
+        if (error || !data || !data.length) {
+          console.error("[persistRecode] line update:", error?.message || "no line matched");
+          return false;
+        }
       }
       // O67 — TEACH THE LEARNING LAYER. A human correction (this recode, and the CPA override
       // that routes through here) is the highest-quality signal: overwrite the vendor→GL
@@ -1725,8 +1735,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     try {
       const { data: priorJEs } = await supabase.from("journal_entries").select("id")
         .eq("company_id", cid).eq("source", "opening_balance").is("deleted_at", null).eq("status", "posted").neq("id", jeId);
-      for (const je of (priorJEs || []))
-        await supabase.from("journal_entries").update({ deleted_at: new Date().toISOString(), deleted_by: session.user.id }).eq("id", je.id).eq("company_id", cid);
+      // ★ A FAILURE HERE LEAVES **TWO** OPENING ENTRIES — the whole starting position
+      // counted twice. Silent was the wrong default for the one write in the product whose
+      // failure doubles the balance sheet.
+      for (const je of (priorJEs || [])) {
+        const r = await checkedRowUpdate({
+          supabase, table: "journal_entries", id: je.id, companyId: cid,
+          patch: { deleted_at: new Date().toISOString(), deleted_by: session.user.id }, label: "supersedePriorOpening",
+        });
+        if (!r.ok) {
+          logAudit("opening_supersede_failed", `Couldn't retire the previous opening entry — your starting balances may now be counted twice`, null, { entry_id: String(je.id) });
+          showNotification("Saved the new opening balances, but couldn't remove the previous ones — please tell your accountant before relying on these figures.", "error");
+        }
+      }
       await supabase.from("opening_balances").delete().eq("company_id", cid).neq("journal_entry_id", jeId);
       await supabase.from("opening_balances").delete().eq("company_id", cid).is("journal_entry_id", null);  // legacy rows w/o a JE link
     } catch (e) {
@@ -2519,13 +2540,24 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
     const uid = session?.user?.id || null;
     const ids = [];
+    // ★★★ THIS FUNCTION'S RETURN VALUE IS WHAT EVERY CALLER GATES "✓ DELETED" ON, AND IT
+    // WAS BUILT FROM AN UNCHECKED WRITE. `mark` pushed the id whenever there was no error —
+    // and PostgREST reports NO error for an update that matched zero rows. So a delete that
+    // touched nothing (an id that no longer resolves, a row RLS filters out — the C191
+    // id-seam class) came back as a successful id, `allIds.length` passed, and the screen
+    // said "Deleted ✓".
+    //
+    // ★ THE GATE WAS CORRECT AND ITS INPUT WAS NOT. O124(c) hardened `softDeleteInvoices`
+    // to check `allIds.length`, and C240 built the partial-refusal report on the same list;
+    // both were reasoning about ids that could be phantoms. Same shape as the reversal guard
+    // that was only correct by virtue of something upstream — the guard is not where the
+    // defect was.
     const mark = async (jeId) => {
-      const { error } = await supabase.from("journal_entries")
-        .update({ deleted_at: new Date().toISOString(), deleted_by: uid })
-        .eq("id", jeId)
-        .eq("company_id", currentCompany.id);
-      if (error) console.error("softDeleteJournalEntry failed:", jeId, error.message);
-      else ids.push(jeId);
+      const r = await checkedRowUpdate({
+        supabase, table: "journal_entries", id: jeId, companyId: currentCompany.id,
+        patch: { deleted_at: new Date().toISOString(), deleted_by: uid }, label: "softDeleteJournalEntry",
+      });
+      if (r.ok) ids.push(jeId);
     };
     try {
       if (invoice?.db_entry_id) {
@@ -3323,11 +3355,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // created, so the books never hold a capitalized asset with no depreciation set up.
   // Best-effort with loud telemetry if the reversal itself fails (mirrors markBillPaid).
   const compensateCapitalization = async (jeId, finalInv, reason) => {
-    try {
-      await supabase.from("journal_entries")
-        .update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
-        .eq("id", jeId).eq("company_id", currentCompany.id);
-    } catch (e) { console.error("[compensateCapitalization] reverse failed:", e?.message || e); }
+    // Same shape as `markBillPaid`'s compensation (C245): this reversal is the only thing
+    // keeping the books from holding a capitalized asset with no depreciation set up, so it
+    // cannot be the one write nobody checks.
+    const comp = await checkedRowUpdate({
+      supabase, table: "journal_entries", id: jeId, companyId: currentCompany.id,
+      patch: { deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null },
+      label: "compensateCapitalization",
+    });
+    if (!comp.ok) {
+      logAudit("capitalization_rollback_failed", `Couldn't roll back a capitalization for ${finalInv.vendor || "an entry"} — the asset is in the books with no depreciation schedule`, null, { je_id: String(jeId) });
+      try { Sentry.captureMessage("capitalization_rollback_failure", { level: "error", tags: { kind: "capitalization_rollback_failure" }, extra: { je_id: String(jeId) } }); } catch {}
+    }
     setInvoices(prev => prev.filter(i => i.id !== finalInv.id && String(i.db_entry_id) !== String(jeId)));
     logAudit("fixed_asset_setup_failed",
       `Capitalization rolled back — couldn't create the asset/schedule for ${finalInv.vendor || ""} ${fmtMoney(finalInv.amount)}: ${reason || "unknown"}`,

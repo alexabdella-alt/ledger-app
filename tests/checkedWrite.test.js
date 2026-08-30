@@ -377,3 +377,64 @@ describe("★★ the payment compensation is checked, and says what it left behi
     expect(app).toMatch(/recorded the money leaving but couldn't finish marking/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★★ THE GATE WAS CORRECT AND ITS INPUT WAS NOT.
+//
+// `softDeleteJournalEntry` returns the ids it deleted, and EVERY caller gates "✓ Deleted"
+// on that list — O124(c) checked `allIds.length`, C240 built the partial-refusal report
+// from it. Both were reasoning about ids that could be phantoms, because `mark()` pushed an
+// id whenever there was no error, and PostgREST reports no error for an update that matched
+// zero rows (C192). An id that no longer resolves, or a row RLS filters out — the C191
+// id-seam class — came back as a successful delete.
+//
+// ★ SAME SHAPE AS THE REVERSAL GUARD THAT WAS ONLY CORRECT BY VIRTUE OF SOMETHING
+// UPSTREAM. Hardening a gate says nothing about the truthfulness of what it is handed.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★★ the ledger writes every 'done' message is built from", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const strip = (t) => t.split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*")).join("\n");
+
+  it("★★★ soft-delete only records an id when the row actually changed", () => {
+    const start = app.indexOf("const mark = async (jeId)");
+    const fn = strip(app.slice(start, app.indexOf("try {", start)));
+    expect(fn).toMatch(/checkedRowUpdate\(\{/);
+    expect(fn).toMatch(/if \(r\.ok\) ids\.push\(jeId\)/);
+    // the old shape — "no error" treated as success — must not come back
+    expect(fn).not.toMatch(/if \(error\)[\s\S]*else ids\.push/);
+  });
+
+  it("★★ a recode that matched no line does not report success", () => {
+    // Moving a transaction to a different account is the one operation where "it didn't
+    // throw" and "the money moved" are most easily confused.
+    const start = app.indexOf("const q = supabase.from(\"journal_entry_lines\")");
+    const fn = strip(app.slice(start, start + 700));
+    expect(fn).toMatch(/\.select\("id"\)/);
+    expect(fn).toMatch(/!data \|\| !data\.length/);
+  });
+
+  it("★★ a failed opening-balance supersede is SAID — it doubles the balance sheet", () => {
+    const start = app.indexOf("supersedePriorOpening");
+    const fn = strip(app.slice(Math.max(0, start - 600), start + 800));
+    expect(fn).toMatch(/checkedRowUpdate\(\{/);
+    // ★ PIN THE CONSUMPTION, NOT THE PRESENCE. `if (false) { logAudit(...) }` satisfied a
+    // match on the audit name alone — the third time today a source scan proved unable to
+    // see reachability. The verdict has to be read for the check to exist.
+    expect(fn).toMatch(/if \(!r\.ok\) \{\s*\n\s*logAudit\("opening_supersede_failed"/);
+    expect(app).toMatch(/counted twice/);
+  });
+
+  it("★ an account rename/renumber that saved nothing says so", () => {
+    const start = app.indexOf('label: "persistAccountEdit"');
+    expect(start).toBeGreaterThan(-1);
+    expect(app.slice(start, start + 400)).toMatch(/nothing was updated/);
+  });
+
+  it("★ the capitalization rollback is checked and escalated, like the payment one", () => {
+    const start = app.indexOf('label: "compensateCapitalization"');
+    expect(start).toBeGreaterThan(-1);
+    const after = app.slice(start, start + 700);
+    expect(after).toMatch(/capitalization_rollback_failed/);
+    expect(after).toMatch(/Sentry\.captureMessage/);
+  });
+});
