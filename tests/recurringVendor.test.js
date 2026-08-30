@@ -273,3 +273,43 @@ describe("★ the rhythm primitives", () => {
     expect(offRhythmCopy({ vendor: "X", gapDays: 0, intervalDays: 7 })).toMatch(/twice on the same day/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// "STOP FLAGGING LEGITIMATE REPEAT CHARGES AS DUPLICATES" — the launch-week item, closed
+// by measurement rather than by more code.
+//
+// ★ EVERY REAL CADENCE, CHECKED AT ONCE. The item was written about a MONTHLY vendor, and
+// monthly was already fine — `findDuplicate`'s window is 7 days, so charges 30 days apart
+// never matched (C181). Biweekly (14d) and semi-monthly (~15d) are outside it too.
+// **WEEKLY was the only cadence that fired**, because 7 days sits exactly on `<= 7`, and
+// that is what C220's rhythm rule suppressed.
+//
+// ★★ THE LAST CASE IS THE ONE THAT MAKES THE OTHER FOUR MEAN ANYTHING. Four zeroes are
+// equally consistent with "we correctly stay quiet" and "the detector is switched off".
+// A genuine double-charge must still produce exactly one card, or this whole block is a
+// vacuous pass.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ no legitimate recurring charge raises a duplicate card", () => {
+  const row = (id, date, amount, vendor) => ({ id, date, amount, vendor, gl_code: "6700", gl_name: "Insurance", status: "booked", type: "expense" });
+  const cards = (rows) => runAnomalyDetection(rows, [], new Date("2026-08-31T12:00:00Z"), { frontier: "2026-08-31" })
+    .filter(a => a.type === "duplicate_payment");
+
+  const CADENCES = {
+    "monthly insurance":    ["2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01"],
+    "biweekly payroll":     ["2026-07-03", "2026-07-17", "2026-07-31", "2026-08-14", "2026-08-28"],
+    "semi-monthly utility": ["2026-06-01", "2026-06-15", "2026-07-01", "2026-07-15", "2026-08-01", "2026-08-15"],
+    "weekly linen":         ["2026-07-06", "2026-07-13", "2026-07-20", "2026-07-27", "2026-08-03", "2026-08-10", "2026-08-17", "2026-08-24"],
+  };
+
+  for (const [name, dates] of Object.entries(CADENCES)) {
+    it(`${name} — zero cards`, () => {
+      expect(cards(dates.map((d, i) => row(`${name}${i}`, d, 145, "Acme Recurring")))).toHaveLength(0);
+    });
+  }
+
+  it("★★ AND A GENUINE DOUBLE-CHARGE STILL RAISES EXACTLY ONE — or the four above are vacuous", () => {
+    const weekly = CADENCES["weekly linen"].map((d, i) => row(`w${i}`, d, 145, "Acme Recurring"));
+    const withDouble = [...weekly, row("extra", "2026-08-26", 145, "Acme Recurring")];   // 2 days after 08-24
+    expect(cards(withDouble)).toHaveLength(1);
+  });
+});
