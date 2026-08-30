@@ -235,13 +235,28 @@ describe("the auto path and the manual path write the SAME entry", () => {
     expect(back[0].gross).toBe(12000);
   });
 
-  it("STRUCTURAL — PayrollView has exactly ONE builder call and ONE write call", () => {
+  it("STRUCTURAL — the payroll pipeline has exactly ONE builder call and ONE write call", () => {
     // The spec's hard constraint: auto-post must not grow a parallel posting path.
-    const src = fs.readFileSync(path.join(process.cwd(), "src/components/views/PayrollView.jsx"), "utf8");
+    //
+    // ★ O116 MOVED THIS PIPELINE FROM `PayrollView.jsx` INTO `App.jsx` so the Home queue
+    // could run it too, which means the file is no longer the right SCOPE — App.jsx writes
+    // many kinds of entry. Naively repointing made this read the whole file and demand ONE
+    // `persistMultiLineEntry` in a file that legitimately has eight: **a repointed test that
+    // now asserts something else is worse than a failing one.** So it is scoped to the
+    // payroll region and the assertion is unchanged.
+    const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const from = app.indexOf("const handlePayrollFile = async (file)");
+    const to = app.indexOf("const routeFileToType", from);
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    const src = app.slice(from, to);
     expect(src.match(/payrollEntryForImport\(/g) || []).toHaveLength(1);
     expect(src.match(/persistMultiLineEntry\(/g) || []).toHaveLength(1);
     expect(src).not.toMatch(/buildPayrollEntry\(/);          // no second builder
     expect(src).not.toMatch(/post_journal_entry/);           // no direct RPC
+    // And the view it moved OUT of must not have grown a copy.
+    const view = fs.readFileSync(path.join(process.cwd(), "src/components/views/PayrollView.jsx"), "utf8");
+    expect(view).not.toMatch(/persistMultiLineEntry\(/);
   });
 });
 

@@ -22,7 +22,10 @@ const stripComments = (src) => src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*
 // The surfaces that accept a file from a person. Each must file it.
 const INTAKE_SURFACES = [
   ["universal upload + contracts", "src/App.jsx"],
-  ["payroll register", "src/components/views/PayrollView.jsx"],
+  // ★ O116 moved the payroll PIPELINE into App.jsx so the Home queue could run it.
+  // The property is unchanged — every path that accepts a file stores it — only the file
+  // holding that path moved.
+  ["payroll register", "src/App.jsx"],
   ["QuickBooks import", "src/components/views/QBOImportView.jsx"],
 ];
 
@@ -41,7 +44,7 @@ describe("★★ every path that accepts a file stores it", () => {
     expect(qbo).toMatch(/sourceFile/);
     expect(qbo).toMatch(/storeDocument\([^)]*sourceFile\)/s);
 
-    const payroll = stripComments(read("src/components/views/PayrollView.jsx"));
+    const payroll = stripComments(read("src/App.jsx"));
     // Payroll already did this correctly — pinned so it stays that way.
     // ★ THE REGEX WAS `[^)]*` AND MY OWN LATER CHANGE BROKE IT: adding `(isPdf ? … : …)`
     // to the call put a `)` inside the argument list, which a negated-paren class cannot

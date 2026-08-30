@@ -282,7 +282,7 @@ describe("(i) THE ROUND TRIP — post → stamp → read back → extract → ga
 // Crude, and the only thing standing between the round trip and a false negative.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("(i) the REAL call site issues the stamp the round trip assumes", () => {
-  const src = fs.readFileSync(path.join(process.cwd(), "src/components/views/PayrollView.jsx"), "utf8");
+  const src = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
   const post = src.slice(src.indexOf("const postPayroll ="), src.indexOf("return (", src.indexOf("const postPayroll =")));
 
   it("stamps journal_entries with payrollImportMetadata, through a CHECKED write", () => {

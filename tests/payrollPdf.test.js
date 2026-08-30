@@ -42,6 +42,11 @@ describe("★★ payroll accepts the file an owner actually has", () => {
 import { payrollRequestBody, isPdfFile } from "../src/lib/payroll.js";
 
 describe("★★ a PDF register goes as a DOCUMENT, not as text", () => {
+  // ★ TWO FILES NOW, BECAUSE O116 SPLIT THEM: the PIPELINE moved to `App.jsx` (so the Home
+  // queue can run it), the file PICKER and drop zone are still the view's. Repointing both
+  // at App.jsx made the accept-list assertion read a file that has no picker in it — it
+  // would have gone green the moment someone deleted the picker entirely.
+  const pipeline = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
   const view = fs.readFileSync(path.join(process.cwd(), "src/components/views/PayrollView.jsx"), "utf8");
 
   it("★★ THE PDF PAYLOAD CARRIES THE FILE, NOT A STRING", () => {
@@ -82,8 +87,9 @@ describe("★★ a PDF register goes as a DOCUMENT, not as text", () => {
     // Hardcoded "text/csv" was harmless while only spreadsheets could arrive, and wrong
     // the moment a PDF can: the library would hold a PDF labelled a CSV, and the preview
     // reads that label.
-    expect(view).not.toMatch(/storeDocument\(file\.name, null, "text\/csv"/);
-    expect(view).toMatch(/file\.type \|\| \(isPdf \? "application\/pdf"/);
+    // The store call is part of the PIPELINE, which O116 moved to App.jsx.
+    expect(pipeline).not.toMatch(/storeDocument\(file\.name, null, "text\/csv"/);
+    expect(pipeline).toMatch(/file\.type \|\| \(isPdf \? "application\/pdf"/);
   });
 
   it("the file picker offers PDF, or the accept list contradicts the guard", () => {

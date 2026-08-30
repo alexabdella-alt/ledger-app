@@ -10,6 +10,7 @@ import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeE
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
+import { payrollRequestBody, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata } from "./lib/payroll";
 import { validateComment } from "./lib/anomalyNotes";
 import { buildAliasIndex, applyAlias, validateAlias, aliasExplainer } from "./lib/vendorAlias";
 import { checkedRowUpdate, checkedIdsUpdate, getWriteFailures, resetWriteFailures, writeFailureSentence } from "./lib/checkedWrite";
@@ -5366,8 +5367,199 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // CLIENT seat must never be walked into one: the file is still accepted and still
   // stashed (nothing is lost, the CPA picks it up on their next visit), but we say so
   // in plain language and stay put instead of navigating into a wall.
+  // ═══════════════════════════════════════════════════════════════════════════
+  // O116 — PAYROLL IS HANDLED, NOT HANDED OVER.
+  //
+  // This pipeline lived inside `PayrollView`, which is why a payroll file dropped on Home
+  // could only ever be ROUTED to that screen — the home promise is "drop anything here and
+  // we handle the rest", and payroll was the one thing that answered "go to this other
+  // page". Worse on the client seat: it was stashed unparsed for the accountant, so
+  // dropping a register did nothing at all until someone else opened a different screen.
+  //
+  // ★ MOVED, NOT COPIED. A second implementation is the ·3a failure — two halves of one
+  // contract drifting apart while both look tested. `PayrollView` now calls these from
+  // context, so the drop zone, the Home queue and the manual Post button all run the same
+  // code and cannot disagree about what a register does.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const handlePayrollFile = async (file) => {
+    if (!file) return;
+    const v = validateUpload(file, "payroll");   // size + type guard (CR-34) — PDF allowed here
+    if (!v.ok) { showNotification(v.error, "error"); return; }
+    if (!(await guardImport(file, "payroll"))) return;   // misroute guard (O37)
+    // O60 Phase 2: log the payroll file's arrival to the intake ledger.
+    const pIntakeId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+    logIntake && logIntake(pIntakeId, file, "payroll");
+    setPayrollProcessing(true);
+    logAudit("payroll_upload_started", `Uploading payroll file: ${file.name}`);
+    try {
+      // ★★ A PDF REGISTER GOES AS A DOCUMENT, NOT AS TEXT. `file.text()` on a PDF
+      // yields binary noise, which the model would have dutifully tried to parse —
+      // so the old path did not merely reject PDFs, it would have produced
+      // nonsense from one had it been let through. Same profile either way: the
+      // system prompt describing a payroll register is server-owned and does not
+      // care which container the register arrived in.
+      // The decision and the payload shape are pure (`payrollRequestBody`,
+      // `payroll.js`) so a test can assert what a PDF actually SENDS. Inline, the
+      // only possible test was a source scan — and a source scan passes on code
+      // that sends a PDF as text, which is precisely the bug.
+      const isPdf = isPdfFile(file);
+      const body = payrollRequestBody({
+        isPdf,
+        base64: isPdf ? await fileToBase64(file) : null,
+        text: isPdf ? "" : await file.text(),
+      });
+      const res = await fetch(AI_PROXY_URL, {
+        method:"POST", headers:getAuthHeaders(), body: JSON.stringify(body)
+      });
+      const d = await okAIResponse(res);
+      // C188 — robust extraction: a valid JSON object with ANY trailing text used to
+      // throw and kill the upload silently. Now we pull the first balanced JSON and, if
+      // it can't be read (null) or isn't a payroll payload (no total_gross), surface a
+      // USER-VISIBLE error instead of dying in the catch.
+      const parsed = aiJson(d, null);
+      if (!parsed || parsed.total_gross == null) {
+        showNotification("Couldn't read that payroll file — try a Gusto/ADP CSV export.", "error");
+        markIntake && markIntake(pIntakeId, INTAKE_STATUS.FAILED, { detail: "payroll parse: no readable payroll data in the AI response" });
+        setPayrollProcessing(false);
+        return;
+      }
+      // C198·3a — THE GATE. A standard register that proves itself posts itself;
+      // anything else (including a hallucinated extraction) falls back to the
+      // confirm card below with the failing reasons on it. The decision is
+      // audited either way, so "why didn't this auto-post?" always has an answer.
+      const register = registerFromParsedPayroll(parsed);
+      const history = payrollHistoryFromLedger(invoices, { salariesCode: payrollCodes().salariesCode });
+      const gate = payrollAutoPostGate(register, history);
+      const importRecord = { id:Date.now()+Math.random(), _intakeId: pIntakeId, _fileName: file?.name || null, _gate: gate, source:parsed.source||"Unknown", period:`${parsed.period_start} – ${parsed.period_end}`, period_start:parsed.period_start??null, period_end:parsed.period_end??null, pay_date:parsed.pay_date, total_gross:parsed.total_gross, total_net:parsed.total_net, total_withholdings:parsed.total_deductions??null, total_employer_taxes:parsed.total_employer_taxes, journal_entries:parsed.journal_entries||[], employees:parsed.employees||[], imported_at:new Date().toISOString(), file_name:file.name, posted:false };
+      setPayrollImports(prev => [importRecord, ...prev]);
+      logAudit("payroll_parsed", `${parsed.source} payroll parsed: ${fmtMoney(parsed.total_gross)} gross, ${(parsed.employees||[]).length} employees`);
+      logAudit("payroll_autopost_gate",
+        gate.pass
+          ? `${importRecord.source} register passed every shape check — posting without a confirm step`
+          : `${importRecord.source} register held for a person: ${gate.reasons.map(r => r.text).join(" ")}`,
+        null,
+        { pass: gate.pass, reasons: gate.reasons, prior_runs: history.length });
+      // ★ THE REAL MEDIA TYPE, NOT A HARDCODED ONE. This said "text/csv" always — harmless
+      // while only spreadsheets could get here, wrong the moment a PDF can: the library
+      // would store a PDF labelled as a CSV, and the preview reads that label.
+      storeDocument(file.name, null, file.type || (isPdf ? "application/pdf" : "text/csv"), "payroll", importRecord.id, ["payroll"], null, file);
+      if (gate.pass) {
+        await postPayroll(importRecord, { auto: true });   // marks the intake row RECORDED
+        setPayrollProcessing(false);
+        return;
+      }
+      markIntake && markIntake(pIntakeId, INTAKE_STATUS.HELD, { detail: "payroll imported — review/post in Payroll" });   // terminal: accounted for
+      // ★ O116 — THE HELD CASE MUST STILL BE AN OUTCOME, NOT A SILENCE. The gate refusing is
+      // the CORRECT result for a register that doesn't foot or is outside this company's
+      // norms — but without a word here, a client who dropped payroll on Home would see the
+      // file accepted and then nothing, forever, which is exactly what "handled" must not
+      // mean. The reasons come from the gate, so this cannot describe a hold that isn't the
+      // one that happened (§9).
+      const why = (gate.reasons || []).map(r => r.text).filter(Boolean).join(" ");
+      showNotification(navSeat.isReviewerSeat
+        ? `Payroll read — it needs a look before posting.${why ? " " + why : ""} It's waiting in Payroll.`
+        : `We've read your payroll and set it aside for your accountant to post.${why ? " " + why : ""}`,
+        "info");
+    } catch(e) { markIntake && markIntake(pIntakeId, INTAKE_STATUS.FAILED, { detail: `payroll parse error: ${e?.message||e}` }); console.error(e); }
+    setPayrollProcessing(false);
+  };
+  // Consume a file routed here from another importer's misroute warning (O37).
+  React.useEffect(() => {
+    if (pendingImportFile?.type === "payroll" && pendingImportFile.file) {
+      const f = pendingImportFile.file; setPendingImportFile(null); handlePayrollFile(f);
+    }
+  }, [pendingImportFile]);
+  // The SINGLE source for the preview, the manual Post button AND the C198·3a
+  // auto-post: the standard payroll entry built deterministically from the parsed
+  // totals (Dr Salaries / Dr Payroll Tax Exp / Cr Cash(net) / Cr Payroll Taxes
+  // Payable). Accounts resolve by ROLE (works whether payroll_tax is 6010 or a
+  // legacy 5101). The preview renders THIS, so what the user reviews is exactly
+  // what posts — and auto-post writes the identical entry, not a second one.
+  const payrollCodes = () => ({
+    salariesCode: getAccountByRole("salaries_wages")?.code || "6000",
+    payrollTaxExpCode: getAccountByRole("payroll_tax")?.code || "6010",
+    cashCode: getAccountByRole("cash")?.code || "1000",
+    payrollTaxesPayableCode: getAccountByRole("payroll_taxes_payable")?.code || "2101",
+  });
+  const payrollEntryFor = (imp) => payrollEntryForImport(imp, payrollCodes());
+  const acctName = (code) => (CHART_OF_ACCOUNTS.find(a => String(a.code) === String(code))?.name) || code;
+
+  // Was setInvoices-only → never persisted (vanished on refresh); now durable
+  // like every other event, posting the SAME entry shown in the preview.
+  // `auto` only changes the NARRATION and the audit wording — the entry, the
+  // write path and the intake close-out are byte-identical either way (C198·3a).
+  const postPayroll = async (imp, { auto = false } = {}) => {
+    const je = payrollEntryFor(imp);
+    if (!je || !je.balanced) { showNotification("Couldn't build the payroll entry — check the totals.", "error"); return; }
+    const jeId = await persistMultiLineEntry(je);   // cutoff-guarded; refuses unbalanced
+    if (!jeId) return;                              // failure already surfaced (e.g. pre-cutoff)
+    // C198·3c (i) — STAMP import_metadata, or the next register's norm check is blind.
+    // The canonical RPC drops every p_meta key it doesn't have a column for (see
+    // payrollImportMetadata), so this follow-up CHECKED update is the only thing that
+    // ever puts `kind:'payroll'` on the row payrollHistoryFromLedger reads. It runs
+    // BEFORE loadAllData so the reload carries the stamp into the in-memory ledger.
+    // A zero-row update is a FAILURE and says so out loud (checkedWrite.js) — the
+    // silent-write class that let ·3a ship inert for a whole release.
+    const stampRes = await checkedRowUpdate({
+      supabase, table: "journal_entries", id: jeId, companyId: currentCompany?.id,
+      patch: { import_metadata: payrollImportMetadata(imp) },
+      label: "payroll:stamp-import-metadata",
+    });
+    if (!stampRes.ok) {
+      // The ENTRY is correct and posted — only the norm history is lost. Say which,
+      // and don't dress it up: the next register will honestly report that it couldn't
+      // find a prior run rather than claiming there wasn't one (the O87 Q2 lesson).
+      logAudit("payroll_history_stamp_failed", `Payroll posted, but this run won't count toward this company's payroll norms (${stampRes.reason}) — the next register will still ask for a person.`, null, { journal_entry_id: String(jeId), reason: stampRes.reason });
+    }
+    setPayrollImports(prev => prev.map(p => p.id===imp.id ? {...p, posted:true} : p));
+    // C196(5) — the register is now REAL journal entries, so its intake row must say
+    // RECORDED (with the entry it became). Live: both May registers kept nagging
+    // "received but never recorded" after posting, because nothing closed the loop.
+    // Matched by the id we carried from parse time; falls back to filename+recent so a
+    // register routed here from another importer's drop zone is also closed out.
+    try {
+      if (imp._intakeId) {
+        markIntake && markIntake(imp._intakeId, INTAKE_STATUS.RECORDED, { detail: `payroll posted — ${fmtMoney(imp.total_gross)} gross`, journalEntryIds: [String(jeId)] });
+      } else if (currentCompany?.id && imp._fileName) {
+        const since = new Date(Date.now() - 30 * 86400000).toISOString();
+        const { data: rows } = await supabase.from("document_intake")
+          .select("id").eq("company_id", currentCompany.id).eq("filename", imp._fileName)
+          .gte("received_at", since).order("received_at", { ascending: false }).limit(1);
+        if (rows && rows[0]) markIntake && markIntake(rows[0].id, INTAKE_STATUS.RECORDED, { detail: `payroll posted — ${fmtMoney(imp.total_gross)} gross`, journalEntryIds: [String(jeId)] });
+      }
+    } catch (e) { console.warn("[payroll] intake close-out skipped:", e?.message || e); }
+    logAudit("payroll_posted", `${imp.source} payroll ${auto ? "auto-posted (register passed every shape check)" : "posted"}: ${fmtMoney(imp.total_gross)} gross → Dr Salaries/Tax · Cr Cash/Payroll Taxes Payable`, null, { auto, journal_entry_id: String(jeId) });
+    try { await loadAllData(); } catch {}           // surface the posted entry
+    // C198·3c — the outcome the operator reads must include the part that FAILED.
+    // The entry is in the books either way, so this is not an error toast; but a
+    // silent success line over a lost stamp is the C198·2b "Done"-over-the-stash
+    // failure again, and this commit exists to stop telling that kind of story.
+    showNotification((auto
+      ? payrollAutoPostNarration({ periodLabel: imp.period, net: imp.total_net, headcount: (imp.employees || []).length })
+      : `Payroll posted: ${fmtMoney(imp.total_gross)} gross ✓`)
+      + (stampRes.ok ? "" : " — we couldn't file it against this company's payroll history, so the next run will still need a person"));
+    return true;
+  };
   const routeFileToType = (type, file) => {
-    if (!navSeat.isReviewerSeat && (type === "bank_statement" || type === "payroll" || type === "qbo")) {
+    // ★★ O116 — PAYROLL IS NO LONGER HANDED OVER, ON EITHER SEAT.
+    //
+    // The home screen says "drop anything here and we'll handle the rest", and payroll was
+    // the one thing that answered "go to this other page" — or, on the CLIENT seat, "we've
+    // saved that for your accountant", which meant a dropped register **did nothing at all**
+    // until somebody else opened a different screen days later.
+    //
+    // It runs here now, on both seats, because the auto-post gate (·3a) already decides the
+    // hard part: a standard register that proves itself POSTS, and anything that doesn't is
+    // held for a person with the failing reasons attached. So the client gets an OUTCOME —
+    // their payroll is in the books — or an honest hold, and neither requires them to
+    // operate a screen they have no business operating.
+    //
+    // ▶ The other three keep routing DELIBERATELY. A bank statement opens a reconciliation
+    // a person drives; a contract needs terms confirmed; QuickBooks is a mapping exercise.
+    // Payroll is the one whose clean path is fully decided by a gate we already trust.
+    if (type === "payroll") { handlePayrollFile(file); return; }
+
+    if (!navSeat.isReviewerSeat && (type === "bank_statement" || type === "qbo")) {
       setPendingImportFile({ type, file });
       showNotification("Got it — we've saved that for your accountant to add to your books.");
       return;
@@ -5375,7 +5567,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (type === "bank_statement") { setView("bank"); handleBankFile(file); }
     else if (type === "contract") { setView("contracts"); handleContractFile(file); }
     else if (type === "invoice") { setView("add"); handleUniversalUpload([file]); }
-    else if (type === "payroll") { setPendingImportFile({ type: "payroll", file }); setView("payroll"); showNotification("Routed to Payroll Import ✓"); }
     else if (type === "qbo") { setPendingImportFile({ type: "qbo", file }); setView("onboard"); showNotification("Use the QuickBooks import here ✓"); }
   };
 
@@ -7623,7 +7814,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
 
-  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, setVendor1099, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, aliasIndex, validateAlias, aliasExplainer, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, applyCoaTemplate, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, removeEntry, removalPlanFor, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isViewer, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, statementExceptionsLoadFailed, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, runDrain, drainStatus, aiDegraded, setAiDegraded };
+  const erpCtx = { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyGaapAnswer, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, glDrilldown, setGlDrilldown, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, handlePayrollFile, postPayroll, payrollCodes, persistContact, setVendor1099, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, reconciliations, setReconciliations, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, cashFromBanks, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, aliasIndex, validateAlias, aliasExplainer, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, applyCoaTemplate, accountantDismissed, dismissAccountantStep, completeOnboarding, rejectInvoice, requestInfo, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, removeEntry, removalPlanFor, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isViewer, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, statementExceptionsLoadFailed, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, runDrain, drainStatus, aiDegraded, setAiDegraded };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // (`isPlatformAdmin` is derived once at the top of ERP, alongside the seat — C197.)

@@ -207,7 +207,28 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
     }
   });
 
-  it("a client's file still reaches intake — routeFileToType stashes instead of navigating", () => {
-    expect(app).toMatch(/if \(!navSeat\.isReviewerSeat && \(type === "bank_statement" \|\| type === "payroll" \|\| type === "qbo"\)\) \{[\s\S]{0,200}setPendingImportFile\(\{ type, file \}\);/);
+  it("★★ a client's file reaches intake and NEVER navigates them into the cockpit", () => {
+    // ★ THE PROPERTY, NOT THE MECHANISM. This used to assert that all three of bank /
+    // payroll / QBO were STASHED for the accountant — and O116 changed payroll to run in
+    // place, so the assertion failed on a change that honours everything it was protecting.
+    // Rewriting it to name the property instead: a client's drop must be ACCOUNTED FOR and
+    // must not throw them onto a reviewer screen. Stashing was one way to achieve that;
+    // processing it where it lands is a better one.
+    const route = app.slice(app.indexOf("const routeFileToType"), app.indexOf("const persistBankStatement"));
+
+    // Bank and QuickBooks still stash — both open a workbench a client has no business in.
+    expect(route).toMatch(/if \(!navSeat\.isReviewerSeat && \(type === "bank_statement" \|\| type === "qbo"\)\) \{[\s\S]{0,200}setPendingImportFile\(\{ type, file \}\);/);
+
+    // Payroll is HANDLED instead — and, critically, handled BEFORE the seat check, so the
+    // client path cannot fall through to a `setView` that would move them.
+    const payrollBranch = route.indexOf('if (type === "payroll") { handlePayrollFile(file); return; }');
+    expect(payrollBranch).toBeGreaterThan(-1);
+    expect(payrollBranch).toBeLessThan(route.indexOf("!navSeat.isReviewerSeat"));
+
+    // And every `setView` in this function is unreachable from the client seat, because the
+    // seat check returns above them.
+    const afterSeatCheck = route.slice(route.indexOf("!navSeat.isReviewerSeat"));
+    expect(afterSeatCheck).toMatch(/setView\("bank"\)/);          // they exist…
+    expect(route.slice(0, payrollBranch)).not.toMatch(/setView\(/); // …and none precedes the guard
   });
 });
