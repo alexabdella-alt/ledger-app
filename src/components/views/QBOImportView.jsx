@@ -154,9 +154,19 @@ export default function QBOImportView() {
     // Create the batch record first → its id is the import_batch_id.
     let batchId = null;
     try {
-      const { data } = await supabase.from("qbo_imports").insert({ company_id: cid, filename: fileName, row_count: rows.length, created_by: session?.user?.id || null }).select("id").single();
+      const { data, error } = await supabase.from("qbo_imports").insert({ company_id: cid, filename: fileName, row_count: rows.length, created_by: session?.user?.id || null }).select("id").single();
+      if (error) throw error;
       batchId = data?.id || null;
-    } catch {}
+    } catch (e) { console.error("[qbo] batch record not created:", e?.message || e); }
+    // ★★ NO BATCH RECORD MEANS NO UNDO. The undo works off the `qbo_imports` row, so an
+    // import that fails to create one is booked and then **cannot be undone in one click** —
+    // and this used to be an empty catch, so the person clicking Import learned nothing.
+    // The import still proceeds (the entries are correct and wanted); what changes is that
+    // they are told the safety net is missing BEFORE they need it.
+    if (!batchId) {
+      logAudit && logAudit("qbo_batch_record_failed", `QuickBooks import ran without a batch record — these entries cannot be undone as a group`, null, { filename: fileName, rows: rows.length });
+      showNotification("Importing — but we couldn't record this as an undoable batch, so you won't be able to reverse it in one click. Your accountant can still remove entries individually.", "error");
+    }
 
     // ★★ FILE THE SOURCE DOCUMENT. Every other intake path stores its file; this one
     // stored NOTHING, so a QuickBooks import produced journal entries with no retrievable

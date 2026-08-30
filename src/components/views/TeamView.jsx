@@ -7,6 +7,7 @@ export default function TeamView() {
   const { currentCompany, session, supabase, isOwner, logAudit, showNotification } = useERP();
   const [members, setMembers] = React.useState([]);
   const [invites, setInvites] = React.useState([]);
+  const [loadFailed, setLoadFailed] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState("viewer");   // the least-privilege default
   const [busy, setBusy] = React.useState(false);
@@ -16,15 +17,24 @@ export default function TeamView() {
   const load = React.useCallback(async () => {
     const cid = currentCompany?.id;
     if (!cid) return;
+    // ★★ THESE ARE READS, AND A SWALLOWED READ IS A FALSE STATEMENT ABOUT THE WORLD (O98).
+    // Both used to fail into an empty array, so a failed query rendered as **"nobody is on
+    // this team"** and **"no invites are outstanding"** — on the one screen whose entire job
+    // is to tell you who can reach your books. *"We couldn't ask"* and *"there is nobody"*
+    // are different answers and only one of them is ever true here.
+    let ok = true;
     try {
-      const { data: m } = await supabase.rpc("list_company_members", { p_company: cid });
+      const { data: m, error } = await supabase.rpc("list_company_members", { p_company: cid });
+      if (error) throw error;
       setMembers(Array.isArray(m) ? m : []);
-    } catch { /* RPC may be absent pre-migration */ }
+    } catch (e) { ok = false; console.error("[team] members load failed:", e?.message || e); }
     try {
-      const { data: inv } = await supabase.from("company_invites")
+      const { data: inv, error } = await supabase.from("company_invites")
         .select("*").eq("company_id", cid).eq("status", "pending").order("created_at", { ascending: false });
+      if (error) throw error;
       setInvites(Array.isArray(inv) ? inv : []);
-    } catch {}
+    } catch (e) { ok = false; console.error("[team] invites load failed:", e?.message || e); }
+    setLoadFailed(!ok);
   }, [currentCompany?.id, supabase]);
 
   React.useEffect(() => { load(); }, [load]);
@@ -82,6 +92,15 @@ export default function TeamView() {
         <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Team & invites</h1>
         <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Invite teammates as admins (full access) or members (upload, view, and ask the AI — no destructive changes).</div>
       </div>
+
+      {/* ★ SAY "WE COULDN'T ASK", NEVER SHOW AN EMPTY TEAM WE DID NOT CONFIRM. On the one
+          screen whose job is to tell you who can reach your books, a silently empty list is
+          the most reassuring possible way to be wrong. */}
+      {loadFailed && (
+        <div style={{ border: "1px solid var(--sc-warning)", background: "var(--sc-warning-soft)", borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "var(--sc-text)" }}>
+          We couldn't load your team just now, so this list may be incomplete — it is not a confirmation that nobody else has access. Try again in a moment.
+        </div>
+      )}
 
       {/* ── Invite form ── */}
       <div style={card}>

@@ -3427,6 +3427,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // compensates the capitalization JE when ok is false. Posting happens later via the
   // silent auto-post effect (autoPostDepreciation). Also the reusable path for back-filling an existing JE
   // (pass sourceJournalEntryId; this posts NO capitalization entry of its own).
+  // ── REMOVING A HALF-CREATED ASSET ────────────────────────────────────────────
+  // Called from BOTH failure paths in `createFixedAssetWithSchedule` — the schedule insert
+  // failing, and anything else throwing. One function because the two were byte-identical
+  // and only one of them got fixed the first time: a test looking for the checked version
+  // found the OTHER one and failed, which is how the second was noticed at all.
+  //
+  // ★ If this cannot remove the row, the books hold a fixed asset with NO depreciation
+  // schedule — it will never depreciate and nothing would have said why.
+  const rollbackFixedAsset = async (assetId, companyId) => {
+    if (!assetId || !companyId) return;
+    try {
+      const { data, error } = await supabase.from("fixed_assets")
+        .delete().eq("id", assetId).eq("company_id", companyId).select("id");
+      if (error || !data || !data.length) {
+        console.error("[fixed_asset] rollback failed:", error?.message || "no rows deleted");
+        logAudit("fixed_asset_rollback_failed", `Couldn't remove a half-created asset — it is in the books with no depreciation schedule`, null, { asset_id: String(assetId) });
+      }
+    } catch (e) { console.error("[fixed_asset] rollback failed:", e?.message || e); }
+  };
+
   const createFixedAssetWithSchedule = async ({ invoice, sourceJournalEntryId, usefulLifeMonths, salvageValue = 0, inServiceDate }) => {
     if (!currentCompany?.id) return { ok: false, error: "no active company" };
     const cost = Number(invoice.amount) || 0;
@@ -3469,7 +3489,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // Compensate inside the function: remove the asset row so we never leave an
         // asset with no schedule.
         console.error("depreciation_schedule insert:", schedErr.message);
-        try { await supabase.from("fixed_assets").delete().eq("id", assetId).eq("company_id", currentCompany.id); } catch (e) { console.error("[createFixedAssetWithSchedule] asset cleanup failed:", e?.message || e); }
+        await rollbackFixedAsset(assetId, currentCompany.id);
         return { ok: false, error: schedErr.message || "depreciation_schedule insert failed" };
       }
       logAudit("fixed_asset_created",
@@ -3478,7 +3498,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       return { ok: true, assetId };
     } catch (e) {
       console.error("createFixedAssetWithSchedule error:", e);
-      if (assetId) { try { await supabase.from("fixed_assets").delete().eq("id", assetId).eq("company_id", currentCompany.id); } catch {} }
+      // ★ THE ROLLBACK OF A HALF-CREATED ASSET. If it fails, the books hold a fixed asset
+      // with no depreciation schedule — it will never depreciate and nothing will say why.
+      // It was an empty catch inside a catch: two layers of not knowing.
+      if (assetId) await rollbackFixedAsset(assetId, currentCompany.id);
       return { ok: false, error: e?.message || String(e) };
     }
   };
