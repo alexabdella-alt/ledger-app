@@ -26,6 +26,76 @@ const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
 // Provide `employeeWithholdings` OR `netPay` (withholdings = gross − net). Returns a
 // balanced buildJournalEntry result, or null on invalid inputs.
+// ── ACCRUE-THEN-PAY: THE TWO-STEP VARIANT (§12's deferred payroll case) ──────
+//
+// The built case posts one entry and credits Cash for net pay — it ASSUMES the money has
+// already gone out, which is true when the register and the payment land together. It is
+// wrong whenever the pay period ENDS in one month and the money leaves in the next: the
+// expense belongs to the period worked, and the cash to the day it moved.
+//
+// ★★★ THE INVARIANT THAT MAKES THIS SAFE, AND THE ONLY ONE WORTH TESTING HARD: **the two
+// entries together must be exactly the one-step entry.** Same expense, same liability, same
+// cash, same totals. If accrue-then-pay produced a different net effect, a company would get
+// a different P&L for choosing a different bookkeeping convention on identical facts — which
+// is not a variant, it is a bug with a preference setting.
+//
+// ★ THE ACCRUAL CREDITS A LIABILITY INSTEAD OF CASH; THE DISBURSEMENT RELIEVES IT. Nothing
+// else changes: the employer tax is still expensed when incurred and the withholdings still
+// sit in Payroll Taxes Payable until remitted, because neither of those depends on when the
+// net pay physically left.
+
+// Step 1 — the period worked. Dr Salaries + Dr Payroll Tax Expense / Cr Payroll Liability
+// (net) + Cr Payroll Taxes Payable (withholdings + employer).
+export function buildPayrollAccrualEntry({
+  gross, employerTaxes = 0, employeeWithholdings = null, netPay = null,
+  salariesCode, payrollTaxExpCode, payrollLiabilityCode, payrollTaxesPayableCode,
+  date = null, description = "Payroll accrual", memo = null, meta = null,
+} = {}) {
+  const g = r2(gross);
+  const emp = r2(employerTaxes);
+  if (!(g > 0) || !salariesCode || !payrollLiabilityCode) return null;
+  if (emp < 0) return null;
+  const wh = employeeWithholdings != null ? r2(employeeWithholdings)
+           : netPay != null ? r2(g - r2(netPay)) : 0;
+  if (wh < 0 || wh > g) return null;
+  const net = r2(g - wh);
+  const payable = r2(wh + emp);
+  if (emp > 0 && !payrollTaxExpCode) return null;
+  if (payable > 0 && !payrollTaxesPayableCode) return null;
+
+  const lines = [{ code: salariesCode, debit: g, credit: 0 }];
+  if (emp > 0) lines.push({ code: payrollTaxExpCode, debit: emp, credit: 0 });
+  // ★ THE ONE DIFFERENCE FROM THE ONE-STEP ENTRY: the net is owed, not paid.
+  if (net > 0) lines.push({ code: payrollLiabilityCode, debit: 0, credit: net });
+  if (payable > 0) lines.push({ code: payrollTaxesPayableCode, debit: 0, credit: payable });
+
+  return buildJournalEntry({
+    lines, date, source: "payroll", description, memo,
+    meta: { ...(meta || { kind: "payroll_accrual" }), gross: g, net, withholdings: wh, employer_taxes: emp },
+  });
+}
+
+// Step 2 — the money moves. Dr Payroll Liability / Cr Cash.
+//
+// ★★ IT TOUCHES NO EXPENSE ACCOUNT, AND THAT IS THE POINT OF SPLITTING. If this entry could
+// move net income, the expense would land twice — once when accrued and once when paid — and
+// the P&L would be wrong by a full payroll in the month the money left.
+export function buildPayrollDisbursementEntry({
+  netPay, payrollLiabilityCode, cashCode,
+  date = null, description = "Payroll disbursement", memo = null, meta = null,
+} = {}) {
+  const net = r2(netPay);
+  if (!(net > 0) || !payrollLiabilityCode || !cashCode) return null;
+  return buildJournalEntry({
+    lines: [
+      { code: payrollLiabilityCode, debit: net, credit: 0 },
+      { code: cashCode, debit: 0, credit: net },
+    ],
+    date, source: "payroll", description, memo,
+    meta: { ...(meta || { kind: "payroll_disbursement" }), net },
+  });
+}
+
 export function buildPayrollEntry({
   gross, employerTaxes = 0, employeeWithholdings = null, netPay = null,
   salariesCode, payrollTaxExpCode, cashCode, payrollTaxesPayableCode,
