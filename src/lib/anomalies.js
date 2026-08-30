@@ -194,6 +194,65 @@ export function openHighAnomaliesInPeriod(rows = [], period, invoices = []) {
 // this the very next scan would re-open every note a sign-off just retired. A RESOLVED
 // one does NOT: if the condition genuinely recurs, it re-opens as a new event
 // (resolved means "was gone" — its return is real news).
+// ── ANOMALIES NOBODY DETECTS ─────────────────────────────────────────────────
+// ★★★ `reconcileAnomalies` AUTO-RESOLVES ANY OPEN ROW THE DETECTOR DID NOT JUST EMIT. That
+// is correct for everything the pure detector owns — the condition vanished from the ledger,
+// so the note should go — and it is FATAL for a note that comes from anywhere else: it would
+// be inserted, and resolved on the very next scan, forever.
+//
+// That is exactly why the opening-balance discrepancy was deferred rather than persisted
+// (C179): it needs the STATEMENT's stated opening, which is not in the ledger, so no pure
+// re-run over the ledger can re-detect it. Without this set, persisting it would produce a
+// note that flickers and never survives — indistinguishable from not building it.
+//
+// ★ SO THE RULE IS EXPLICIT AND NARROW: a type listed here is never auto-resolved. It must
+// carry its OWN resolve condition, and anything added here without one becomes a note that
+// can never be cleared — which is the opposite failure and just as bad.
+export const IMPERATIVE_ANOMALY_TYPES = new Set([
+  // Resolved when the opening balance is corrected or a reconciliation covers the period.
+  "opening_discrepancy",
+]);
+
+// ── THE OPENING-BALANCE DISCREPANCY, AS A DURABLE NOTE ───────────────────────
+// Today it lives in React state, so it is gone on a reload or a navigation — the same
+// in-memory class as O97's upload queue, on a finding that says the client's starting
+// position may be wrong.
+//
+// ★ THE FINGERPRINT IS THE ACCOUNT AND THE PERIOD START, not the amount. Re-uploading the
+// same statement must not create a second note, and the difference CHANGING is not a new
+// problem — it is the same problem, still there.
+export function openingDiscrepancyAnomaly({ companyId, accountCode, accountName, periodStart, stated, recorded, diff }) {
+  if (!companyId || !accountCode || !periodStart) return null;
+  const money = (n) => `$${Math.abs(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return {
+    company_id: companyId,
+    type: "opening_discrepancy",
+    // ★ MEDIUM, NOT HIGH, AND THAT IS A DECISION. HIGH blocks sign-off, and C179 established
+    // that a difference the outstanding-items chain fully explains is not an alarm — the
+    // opening banner frightening a client over a $275 uncleared check is the exact false
+    // alarm this product keeps removing. It is worth a reviewer's attention, not a block.
+    severity: "medium",
+    status: "open",
+    fingerprint: `opening:${accountCode}:${periodStart}`,
+    title: `Starting balance doesn't match the statement for ${accountName || accountCode}`,
+    detail: `The statement for ${periodStart} opens at ${money(stated)}, and the books show ${money(recorded)} — a difference of ${money(diff)}. This can be an uncleared item, or a starting balance that needs correcting.`,
+    entity_refs: [],
+  };
+}
+
+// Which open discrepancy notes a completed reconciliation settles. A reconciliation that
+// TIES for an account and period is the direct answer to "does the starting position agree"
+// — so it resolves the note rather than leaving it for someone to clear by hand.
+export function openingNotesSettledBy({ rows = [], accountCode, throughDate } = {}) {
+  if (!accountCode || !throughDate) return [];
+  return (rows || []).filter((r) =>
+    r && r.status === "open" && r.type === "opening_discrepancy" &&
+    String(r.fingerprint || "").startsWith(`opening:${accountCode}:`) &&
+    // Only periods at or before what the reconciliation covered. A later period's opening is
+    // a question this reconciliation did not answer.
+    String(r.fingerprint || "").split(":")[2] <= String(throughDate));
+}
+
 export function reconcileAnomalies({ detected = [], rows = [] } = {}) {
   const openByFp = new Map();
   const dismissedFps = new Set();
@@ -213,7 +272,13 @@ export function reconcileAnomalies({ detected = [], rows = [] } = {}) {
     else if (!dismissedFps.has(fp)) toInsert.push(d);
   }
   const toResolve = [];
-  for (const [fp, row] of openByFp) if (!detectedByFp.has(fp)) toResolve.push(row);
+  for (const [fp, row] of openByFp) {
+    if (detectedByFp.has(fp)) continue;
+    // ★ A ROW NOBODY DETECTS IS NOT A ROW WHOSE CONDITION WENT AWAY. Skipping these is what
+    // makes an imperative source possible at all; each one owns its own resolve.
+    if (IMPERATIVE_ANOMALY_TYPES.has(row.type)) continue;
+    toResolve.push(row);
+  }
 
   return { toInsert, toTouch, toResolve };
 }

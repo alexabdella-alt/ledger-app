@@ -21,7 +21,7 @@ import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, stat
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
-import { reconcileAnomalies, anomalyInsertRow, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE } from "./lib/anomalies";
+import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE } from "./lib/anomalies";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
@@ -5937,6 +5937,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             const disc = openingDiscrepancy({ statedOpening: der.openingBalance, recordedOpening: glCashAtPeriodStart });
             if (disc.mismatch) {
               setOpeningDiscrepancyFlag({ ...disc, periodStart: der.periodStart, accountCode: cashCode, accountName: acctName });
+              // ★★ AND PERSIST IT. Until now this finding lived in React state alone, so a
+              // reload or a navigation lost it — the O97 in-memory class, on a note that says
+              // the client's STARTING POSITION may be wrong. It is inserted imperatively
+              // because no pure re-run over the ledger can re-detect it: the statement's
+              // stated opening is not IN the ledger. `IMPERATIVE_ANOMALY_TYPES` is what stops
+              // the next scan resolving it a second later.
+              try {
+                const note = openingDiscrepancyAnomaly({
+                  companyId: currentCompany?.id, accountCode: cashCode, accountName: acctName,
+                  periodStart: der.periodStart, stated: disc.statedOpening, recorded: disc.recordedOpening, diff: disc.diff,
+                });
+                // ★ THE PARTIAL UNIQUE INDEX ON (company_id, fingerprint) WHERE status='open'
+                // IS THE DEDUPE. Re-uploading the same statement must not stack notes, and
+                // `ignoreDuplicates` means a second upload is a no-op rather than an error.
+                if (note) await supabase.from("anomalies").upsert(note, { onConflict: "company_id,fingerprint", ignoreDuplicates: true });
+              } catch (e) { console.warn("[opening] note not persisted:", e?.message || e); }
               logAudit("opening_balance_discrepancy", `Statement opening ${fmtSignedMoney(disc.statedOpening)} disagrees with recorded ${fmtSignedMoney(disc.recordedOpening)} for ${acctName} (off by ${fmtSignedMoney(disc.diff)})`, null, { accountCode: cashCode, diff: disc.diff });
               try { createNotification?.({ type: "reconciliation", title: "Opening balance doesn't match your statement", description: `Your books show a different starting balance than this statement for ${acctName}. Open Review to resolve.`, link_view: "review" }); } catch {}
             }
@@ -6103,6 +6119,28 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const stale = supersedableOpenReconciliations(openRows || [], { accountId: (account && account.id) || null, accountName: (account && account.name) || null, periodStart, periodEnd, keepId: rid });
       if (stale.length) await supabase.from("reconciliations").delete().in("id", stale.map(r => r.id)).eq("company_id", currentCompany.id);
     } catch { /* best-effort */ }
+    // ★★ A COMPLETED RECONCILIATION IS THE ANSWER TO "does the starting position agree", so it
+    // SETTLES any open opening-balance note for this account at or before the period it
+    // covered. Without this the note would be permanently open — an imperative anomaly is
+    // exempt from the detector's auto-resolve, so it must carry its own way out, or the fix
+    // for "it vanishes on reload" becomes "it can never be cleared", which is just as bad.
+    //
+    // ★ AT OR BEFORE, NOT ANY: a LATER period's opening is a question this reconciliation
+    // did not answer, and resolving it would clear a note nobody has looked at.
+    try {
+      const code = (account && account.gl_code) || null;
+      if (code) {
+        const settled = openingNotesSettledBy({ rows: anomalyRowsRef.current, accountCode: code, throughDate: periodEnd });
+        const ids = settled.map(r => r.id).filter(Boolean);
+        if (ids.length) {
+          const { data, error } = await supabase.from("anomalies")
+            .update({ status: "resolved", resolution: "auto", resolved_at: at })
+            .in("id", ids).eq("company_id", currentCompany.id).select("id");
+          if (error || !data || !data.length) console.error("[opening] note not settled:", error?.message || "no rows updated");
+          else { logAudit("opening_discrepancy_settled", `${data.length} starting-balance ${data.length === 1 ? "note" : "notes"} cleared — ${(account && account.name) || "the account"} reconciled through ${periodEnd}`, null, { anomaly_ids: ids }); await loadAnomalies(currentCompany.id); }
+        }
+      }
+    } catch (e) { console.warn("[opening] settle skipped:", e?.message || e); }
     logAudit("reconciliation_completed", `Auto-reconciled ${(account && account.name) || "account"} ${periodStart}→${periodEnd} via the statement pipeline — balance ${statementBalance}`, null, { account: (account && account.name), period: `${periodStart}→${periodEnd}`, balance: statementBalance, auto: true });
   };
 
