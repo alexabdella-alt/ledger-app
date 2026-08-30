@@ -12,6 +12,7 @@ import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
 import { validateUpload } from "../../lib/uploadGuard";
 import { normalizeBankParse } from "../../lib/openingBalanceProposal";
+import { aiJson } from "../../lib/aiJson";
 
 // ── CSV helpers (Chase / Bank of America / generic 3-column) ──
 const splitRow = (l) => { const out=[]; let cur="",q=false; for (const ch of l){ if(ch==='"'){q=!q;} else if(ch===","&&!q){out.push(cur);cur="";} else cur+=ch; } out.push(cur); return out.map(s=>s.trim().replace(/^"|"$/g,"")); };
@@ -543,11 +544,11 @@ export default function ReconView() {
           ] }] }),
         });
         const data = await okAIResponse(res);
-        const text = data.content?.find(b=>b.type==="text")?.text || "[]";
+
         // The parse profile now returns { opening_balance, period_start, transactions[] }
         // (165b075) — the SHARED normalizer accepts that OR a legacy bare array, so the
         // Reconcile flow can't go stale on the shape (O83 "can't read PDF" regression).
-        const { transactions: arr, statedOpening } = normalizeBankParse(JSON.parse(text.replace(/```json|```/g,"").trim()));
+        const { transactions: arr, statedOpening } = normalizeBankParse(aiJson(data, []));
         setStmtOpening(statedOpening != null && !isNaN(Number(statedOpening)) ? Number(statedOpening) : null);   // for the books-opening discrepancy flag (O83)
         const rows = (Array.isArray(arr)?arr:[]).map((t,i)=>({ id:"p_"+i+"_"+Math.random().toString(36).slice(2,6), date: normDate(t.date), description:(t.description||"Transaction").slice(0,140), amount: parseFloat(t.amount), _matchBook:null })).filter(r=>!isNaN(r.amount));
         if (!rows.length) showNotification && showNotification("Couldn't read transactions from that PDF — try a CSV export instead.","error");

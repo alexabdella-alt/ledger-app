@@ -5,6 +5,7 @@ import { callAIProxy } from "../lib/ai";
 import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
 import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
 import { rightHalf } from "../lib/vendorIdentity";
+import { aiJson } from "../lib/aiJson";
 
 const money = fmtSignedMoney;
 
@@ -438,9 +439,11 @@ function ClarificationCard({ item }) {
           content: "Choose the best GL account for the transaction described in the instructions. Return JSON: { gl_code, gl_name, reasoning }.",
         }],
       });
-      const raw = (data?.content?.find(b => b.type === "text")?.text || "").replace(/```json|```/g, "").trim();
-      const m = raw.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(m ? m[0] : raw);
+      // The hand-rolled `/\{[\s\S]*\}/` was GREEDY: given a reply containing two objects it
+      // spanned from the first "{" to the LAST "}", producing a string that is not JSON at
+      // all. `extractFirstJson` walks balanced braces instead.
+      const parsed = aiJson(data, null);
+      if (!parsed) throw new Error("no account");
       if (!parsed.gl_name) throw new Error("no account");
       let code = String(parsed.gl_code || "").trim();
       let name = String(parsed.gl_name).trim();

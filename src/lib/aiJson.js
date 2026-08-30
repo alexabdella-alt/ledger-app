@@ -51,3 +51,41 @@ export function extractFirstJson(text) {
   }
   return null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O99 — THE SAME FRAGILE PARSE, WRITTEN OUT NINETEEN TIMES.
+//
+// `JSON.parse((d.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim())`
+// appears verbatim across the upload, payroll, contract, QBO, onboarding and screening
+// paths. It breaks the moment the model adds a sentence after the JSON — which is what
+// killed the payroll parse mid-drive (C188) — and each copy has to be fixed separately.
+//
+// ★ THE MIGRATION PRESERVES BOTH EXISTING BEHAVIOURS EXACTLY, and that is deliberate:
+//   · **no text at all** → the caller's fallback, exactly as `||"{}"` did. An absent reply
+//     is not a parse failure, and turning it into one would convert benign no-ops into
+//     user-visible errors across a dozen flows at once.
+//   · **text that will not parse** → THROWS, exactly as `JSON.parse` did, so the existing
+//     try/catch still runs. Returning the fallback here would be the silent-failure trade
+//     this codebase spends most of its time undoing: garbage would read as "nothing found".
+// The ONLY change is that trailing prose now parses instead of exploding — the actual bug.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The text block of an Anthropic Messages response. One place that knows the shape.
+export function aiTextOf(data) {
+  const blocks = data && data.content;
+  if (!Array.isArray(blocks)) return "";
+  const block = blocks.find((b) => b && b.type === "text");
+  return (block && block.text) || "";
+}
+
+export function aiJson(data, fallback) {
+  const text = String(aiTextOf(data) || "").trim();
+  if (!text) return fallback;
+  const parsed = extractFirstJson(text);
+  if (parsed == null) {
+    // Named so a console line says WHICH call produced unreadable output, rather than the
+    // generic "unexpected non-whitespace character after JSON" that told us nothing.
+    throw new Error("The AI reply didn't contain readable data.");
+  }
+  return parsed;
+}

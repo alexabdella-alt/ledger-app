@@ -58,6 +58,7 @@ import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 // matching destructure in DashboardView outlived it. The planner itself stays — it is the
 // pure core `autoPostDepreciation` is built on and it is unit-tested.
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, depreciationDue, planDepreciationAutoPost } from "./lib/depreciation";
+import { aiJson, aiTextOf } from "./lib/aiJson";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
@@ -2222,7 +2223,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         slots: { PERIOD: formatPeriod(period), FIGURES: figures },
         messages: [{ role: "user", content: "Write the executive summary from the figures in the instructions." }],
       });
-      const text = data?.content?.find(b => b.type === "text")?.text?.trim();
+      const text = aiTextOf(data).trim();
       return text || null;
     } catch (e) { console.warn("[monthly_report] AI summary failed, using template:", e?.message || e); return null; }
   };
@@ -3726,7 +3727,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         })
       });
       const extractData = await okAIResponse(extractRes);
-      const extracted = JSON.parse((extractData.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
+      const extracted = aiJson(extractData, {});
 
       // Check if a rule exists for this vendor
       const rule = rules.find(r => r.vendor?.toLowerCase() === extracted.vendor?.toLowerCase());
@@ -3753,7 +3754,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         })
       });
       const codeData = await okAIResponse(codeRes);
-      const coding = JSON.parse((codeData.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
+      const coding = aiJson(codeData, {});
       setAiSuggestion(coding);
       showNotification("Invoice read and coded ✓");
     } catch(e) { showNotification("AI processing failed.", "error"); }
@@ -3845,7 +3846,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       })
     });
     const d = await okAIResponse(res);
-    const t = (d.content?.find(b=>b.type==="text")?.text||"");
+    const t = aiTextOf(d);
     // O44: route an unsure/unrecognized classification to "unknown" (held for review),
     // not a forced "invoice" guess. Recognizes invoice/receipt/bill positively.
     return classifyDocReply(t);
@@ -4486,16 +4487,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             })
           });
           const extractData = await okAIResponse(extractRes);
-          const rawText = (extractData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
-          // Handle both array and single-object responses gracefully
+          // Handle both array and single-object responses gracefully. The old double-try
+          // ("parse it; if that throws, parse the SAME string again") could never recover
+          // anything the first attempt missed — it was the identical call — so it was two
+          // ways of writing `catch { [] }`. `aiJson` does the recovery that was intended.
           let extractedList = [];
           try {
-            const parsed = JSON.parse(rawText);
+            const parsed = aiJson(extractData, []);
             extractedList = Array.isArray(parsed) ? parsed : [parsed];
-          } catch(e) {
-            // Try to recover if Claude returned a single object without brackets
-            try { extractedList = [JSON.parse(rawText)]; } catch(e2) { extractedList = []; }
-          }
+          } catch (e) { extractedList = []; }
 
           
           if (extractedList.length === 0) {
@@ -4534,8 +4534,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const codeData = await okAIResponse(codeRes);
           let codings = [];
           try {
-            const codeRaw = (codeData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim();
-            const parsed = JSON.parse(codeRaw);
+            const parsed = aiJson(codeData, []);
             codings = Array.isArray(parsed) ? parsed : [parsed];
           } catch(e) { codings = []; }
 
@@ -4908,7 +4907,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               })
             });
             const pd = await okAIResponse(parseRes);
-            rawTxns = JSON.parse((pd.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
+            rawTxns = aiJson(pd, []);
           } else {
             const parseRes = await fetch(AI_PROXY_URL, {
               method:"POST", headers:getAuthHeaders(),
@@ -4918,7 +4917,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               })
             });
             const pd = await okAIResponse(parseRes);
-            rawTxns = JSON.parse((pd.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
+            rawTxns = aiJson(pd, []);
           }
 
           // Categorize transactions
@@ -4934,7 +4933,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             })
           });
           const catData = await okAIResponse(catRes);
-          const categorized = JSON.parse((catData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
+          const categorized = aiJson(catData, []);
           // ONE stable, truthy id per parsed line, used for BOTH matching and booking
           // (bankTxns below reuses it verbatim). NEVER the categorizer's id:0 — that's
           // falsy, so a `t.id || …` fallback would silently regenerate a divergent id
@@ -5076,7 +5075,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             })
           });
           const d1 = await okAIResponse(res1);
-          const contract = JSON.parse((d1.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
+          const contract = aiJson(d1, {});
 
           // Generate all monthly entries in JS (no second API call needed)
           const monthlyEntries = [];
@@ -5136,7 +5135,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const explainData = await okAIResponse(explainRes);
           let unknownRecord;
           try {
-            const parsed = JSON.parse((explainData.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim());
+            const parsed = aiJson(explainData, {});
             unknownRecord = {
               id: Date.now()+Math.random(),
               name: item.name,
@@ -5523,7 +5522,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           })
         });
         const d = await okAIResponse(res);
-        const raw = JSON.parse((d.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
+        const raw = aiJson(d, []);
         fileContent = raw;
       } else {
         // CSV/Excel: read as text
@@ -5543,7 +5542,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           })
         });
         const d = await okAIResponse(res);
-        fileContent = JSON.parse((d.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
+        fileContent = aiJson(d, []);
       }
 
       // The parse profile returns the object shape { opening_balance, period_start,
@@ -5571,7 +5570,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       });
 
       const catData = await okAIResponse(categorizeRes);
-      const categorized = JSON.parse((catData.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
+      const categorized = aiJson(catData, []);
 
       // Apply vendor rules to any matches
       const withRules = categorized.map(t => {
@@ -6147,8 +6146,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
       const data1 = await okAIResponse(res1);
       if (!data1.content) throw new Error(`API error: ${JSON.stringify(data1)}`);
-      const raw1 = (data1.content?.find(b=>b.type==="text")?.text||"{}").replace(/```json|```/g,"").trim();
-      const contract = JSON.parse(raw1);
+      const contract = aiJson(data1, {});
 
       // Calculate lease term from dates if AI didn't return it
       let leaseTermMonths = contract.lease_term_months || 0;
@@ -6433,7 +6431,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       });
 
       const data = await okAIResponse(res);
-      const result = JSON.parse((data.content?.find(b => b.type === "text")?.text || "{}").replace(/```json|```/g, "").trim());
+      const result = aiJson(data, {});
       const matches = result.matches || [];
 
       const autoCleared = [...deterministic];   // deterministic matches always stand
@@ -6657,7 +6655,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       });
 
       const data = await okAIResponse(res);
-      const screened = JSON.parse((data.content?.find(b=>b.type==="text")?.text||"[]").replace(/```json|```/g,"").trim());
+      const screened = aiJson(data, []);
 
       // Merge AP data back into invoices
       setInvoices(prev => prev.map(inv => {

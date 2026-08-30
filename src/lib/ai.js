@@ -5,6 +5,7 @@ import { fmtSignedMoney, todayLocal } from "./format";
 import { fetchLedger } from "./ledger";
 import { executeAITool } from "./aiTools";
 import { classifyAIFailure } from "./aiFailure";
+import { aiTextOf } from "./aiJson";
 import {
   computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
   computeBurnRate, computeRunway, computeAR,
@@ -192,7 +193,7 @@ async function classifyIntent(userMessage, recentHistory) {
         { role: "user", content: userMessage }
       ]
     });
-    const t = (d.content?.find(b => b.type === "text")?.text || "").trim().toLowerCase();
+    const t = aiTextOf(d).trim().toLowerCase();
     if (t.includes("ledger")) return "ledger";
     if (t.includes("contacts")) return "contacts";
     if (t.includes("rules")) return "rules";
@@ -343,7 +344,7 @@ ${ledgerSection}`;
 
   // ── 5b. Legacy single-call path (no tools; ledger + financial snapshot in prompt) ──
   const data = await callAIProxy({ profile: "chat-brain-fallback", clientToday: todayLocal(), slots: { LEDGER_CONTEXT: buildContext(false) }, messages: baseMessages });
-  const text = data.content?.find(b => b.type === "text")?.text;
+  const text = aiTextOf(data);
   if (!text) throw new Error("AI returned an empty response. Check that the ai-proxy edge function and model are configured.");
   return parseAIReply(text);
 }
