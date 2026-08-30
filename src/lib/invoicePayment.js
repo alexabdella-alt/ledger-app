@@ -27,6 +27,8 @@ import { matchDirectory } from "./vendorDirectory.js";
 
 // ── AMOUNTS ──────────────────────────────────────────────────────────────────
 
+import { classifyCadence, planSetSettlement, SET_ACTION, periodOf } from "./recurringVendor.js";
+
 export const AMOUNT_RELATION = { EXACT: "exact", NEAR: "near", NONE: "none" };
 
 // Same tolerance as `autoMatchBankLines` (bankMatch.js), deliberately. One rule,
@@ -274,15 +276,97 @@ export const ASK_REASON = {
   // MULTIPLE_CANDIDATES made the card assert a false fact about the books, and a drive
   // whose output misstates its own failure cannot be diagnosed from that output.
   RECORD_FAILED: "record_failed",
+  // O127 — a flat-fee recurring vendor whose period does not balance: more invoices than
+  // charges. The only question worth asking about this class, and it is asked ONCE per
+  // period rather than once per delivery.
+  PERIOD_COUNT_MISMATCH: "period_count_mismatch",
 };
 
 // ★ ATTACH REQUIRES CERTAINTY ON BOTH AXES AND A SINGLE CANDIDATE.
 // Anything less asks. The asymmetry is the whole design: failing to attach asks a
 // question a human can answer, whereas wrongly attaching suppresses a real charge
 // with nothing left on screen to notice.
+// ── O127 — recognise the class, then settle by PERIOD COUNT rather than by date ─────
+// Takes the candidates the normal path already built (so identity resolution happens once,
+// in one place) plus every entry, because the cadence is a property of the vendor's whole
+// history and the period balance is a property of one month.
+function planFlatFeeSettlement(invoice, entries, ctx, candidates) {
+  const { cashCodes = [], directory = [] } = ctx || {};
+  const invKey = entityKeyOfInvoice(invoice, { directory });
+  const invPeriod = periodOf(invoice && invoice.date);
+  if (!invKey || !invPeriod) return { action: SET_ACTION.NOT_APPLICABLE };
+
+  // Every cash-settled charge from this vendor, whenever. Claimed ones INCLUDED: the
+  // cadence is what the vendor does, not what is still outstanding.
+  const charges = [];
+  for (const e of entries || []) {
+    if (!isLive(e)) continue;
+    if (String(e.id) === String(invoice.id)) continue;
+    if (!isCashSettled(e, { cashCodes })) continue;
+    const { key, excluded } = entityKeyOfEntry(e, { directory });
+    if (excluded) continue;
+    if (identityRelation(invKey, key) !== IDENTITY_RELATION.EXACT) continue;
+    charges.push({ entry: e, date: e.date, amount: e.amount });
+  }
+
+  const cadence = classifyCadence(charges);
+  if (!cadence.flatFee) return { action: SET_ACTION.NOT_APPLICABLE, cadence };
+
+  // The period's charges, and whether each is already spoken for. Matched back to the
+  // candidate list where one exists, so an attach still carries the same shape the rest of
+  // the pipeline consumes.
+  const byEntry = new Map((candidates || []).map((c) => [String(c.entry.db_entry_id ?? c.entry.id), c]));
+  const periodPayments = charges
+    .filter((c) => periodOf(c.date) === invPeriod)
+    .map((c) => ({
+      entry: c.entry,
+      claimed: hasAttachedInvoice(c.entry),
+      match: byEntry.get(String(c.entry.db_entry_id ?? c.entry.id)) || { entry: c.entry, entityKey: invKey, identity: IDENTITY_RELATION.EXACT, amount: { relation: AMOUNT_RELATION.EXACT, diff: 0, basis: "flat_fee" }, gapDays: null },
+    }));
+
+  // NOTE: no early NOT_APPLICABLE for an empty period. Once the class is recognised the
+  // set rule owns the decision — falling back to the pair rule here is what let an August
+  // invoice reach a July payment.
+  return { ...planSetSettlement({ cadence, periodPayments }), cadence };
+}
+
 export function planInvoiceArrival(invoice = {}, entries = [], ctx = {}) {
   const { candidates, excludedBy, invoiceEntityKey } = settlementCandidates(invoice, entries, ctx);
   const base = { candidates, excludedBy, invoiceEntityKey };
+
+  // ── O127 — THE FLAT-FEE RECURRING CLASS DOES NOT USE THE PAIR RULE ───────────
+  // ★★ AND IT IS CONSULTED **BEFORE** THE EMPTY-CANDIDATE RETURN, WHICH THE TESTS CAUGHT.
+  // For this class an empty candidate list is MEANINGFUL rather than absent: every charge
+  // in the period being already claimed is exactly the five-invoices-four-payments case,
+  // and it arrives here as zero candidates. Sitting below the early return, the set rule
+  // never ran for it — and worse, a period with no payments fell through to the PAIR rule,
+  // which happily reached back into the previous month and re-opened the whole bug.
+  // For a vendor billing the same amount on a regular cadence, identity and amount are
+  // constant, so `certain` is decided entirely by which payments the DATE WINDOW happened
+  // to admit. Live: `certain.length === 1` and ATTACH, where the single survivor was a
+  // payment from the previous month that cleared the boundary by ONE DAY.
+  //
+  // For this class we stop asking which payment an invoice belongs to — unanswerable from
+  // the data, and within a period the pairing is unobservable in the books — and ask
+  // whether the period BALANCES. See `recurringVendor.js`.
+  const setPlan = planFlatFeeSettlement(invoice, entries, ctx, candidates);
+  if (setPlan.action === SET_ACTION.ATTACH_UNCLAIMED) {
+    return { ...base, action: ARRIVAL.ATTACH, candidate: setPlan.candidate.match,
+             reason: null, basis: "flat_fee_period_set", setCounts: setPlan.counts, pairing: "set" };
+  }
+  if (setPlan.action === SET_ACTION.PAYABLE_AND_ASK) {
+    // Books the payable AND says so — the expense is real, the question is which charge
+    // covers it. Never silent, which is the whole point.
+    return { ...base, action: ARRIVAL.BOOK_PAYABLE, candidate: null,
+             reason: ASK_REASON.PERIOD_COUNT_MISMATCH, basis: "flat_fee_period_short",
+             setCounts: setPlan.counts, cadence: setPlan.cadence };
+  }
+
+
+  if (setPlan.action === SET_ACTION.PAYABLE_NO_CARD) {
+    return { ...base, action: ARRIVAL.BOOK_PAYABLE, candidate: null, reason: null,
+             basis: "flat_fee_no_charge_yet", setCounts: setPlan.counts };
+  }
 
   if (!candidates.length) {
     return { ...base, action: ARRIVAL.BOOK_PAYABLE, candidate: null, reason: null, basis: "no_candidate" };

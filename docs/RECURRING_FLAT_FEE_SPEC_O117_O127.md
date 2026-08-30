@@ -1,6 +1,7 @@
 # The flat-fee recurring vendor — design spec for `O117` + `O127`
 
-**Status: DRAFT, awaiting sign-off.** Design session 2026-08-29. No code written.
+**Status: BUILT 2026-08-29 (matching half). Detection half (§7) NOT built.**
+Design session + implementation, same day, on the operator's instruction ("build it").
 
 Signed: `[ ]` Alex (CPA) — date: ________
 
@@ -137,7 +138,16 @@ A vendor is **FLAT-FEE RECURRING** for a period when all three hold:
 |---|---|---|
 | **flat** — `amount_sd / amount_mean ≤ 0.02` over ≥ 4 charges | `amountBand()` | the amount carries no information |
 | **frequent** — more than one charge per period on average | `observation_count / distinct_months.length` | a vendor billing once a period has an unambiguous pairing already; leave it alone |
-| **established** — ≥ 4 charges across ≥ 2 periods | `observation_count`, `distinct_months` | two data points are a coincidence, not a cadence |
+| **established** — ≥ 4 charges (**≥ 1 period — see below**) | `observation_count` | two data points are a coincidence, not a cadence |
+
+> **★★ AMENDED DURING THE BUILD, BY A FAILING ACCEPTANCE CRITERION.** This originally read
+> "≥ 2 periods". §1's third criterion — *an August invoice must not reach a July payment
+> even when August has no payments at all* — **failed against it**: with only July in the
+> ledger the class went unrecognised, the invoice fell through to the pair rule, and it took
+> the 07-27 payment. **The recognition bar was re-opening the exact bug it sits in front
+> of.** The deciding argument is that the two errors are not symmetric — recognising too
+> eagerly declines a cross-period attach and books a visible payable; recognising too late
+> is the silent cross-period attach. The bar belongs on the side that fails loudly.
 
 **★ ALL THREE ARE DERIVABLE FROM BOOKED LEDGER ENTRIES DIRECTLY, so this must NOT depend on
 `vendor_state` being populated.** `vendor_state` is live but empty — Amendment B withholds
