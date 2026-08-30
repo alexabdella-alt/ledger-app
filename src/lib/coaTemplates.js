@@ -54,6 +54,14 @@ const UNIVERSAL = [
   // which is why they belong here and not in one industry's list.
   { code: "6520", name: "Merchant Processing Fees", category: "Expenses", system_role: "merchant_processing_fees" },
   { code: "6530", name: "Bank Service Charges", category: "Expenses", system_role: "bank_service_charges" },
+  // ★★ ADDED 2026-08-30 ON EVIDENCE, NOT ON A HUNCH. The live role audit (`O35`) found
+  // `opening_balance_equity` missing on SEVEN of eleven companies — it is absent from the
+  // seed function, and `O108` finding 3 recorded that the app creates it on demand at the
+  // first opening-balance post. **That works by accident**: it reaches the chart through
+  // `ensureAccount`, which is the materialise-mid-flight path this file exists to avoid.
+  // Every company that posts an opening balance needs it, so it belongs in the chart before
+  // anyone needs it rather than appearing under them while they use it.
+  { code: "3400", name: "Opening Balance Equity", category: "Equity", system_role: "opening_balance_equity" },
 ];
 
 const TEMPLATES = {

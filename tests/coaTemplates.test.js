@@ -259,6 +259,7 @@ describe("★★ accounts every business needs, that older companies predate", (
       const codes = planCoaTemplate(type, [], []).add.map((a) => a.code);
       expect([type, codes.includes("6520")]).toEqual([type, true]);
       expect([type, codes.includes("6530")]).toEqual([type, true]);
+      expect([type, codes.includes("3400")]).toEqual([type, true]);
     }
   });
 
@@ -267,12 +268,15 @@ describe("★★ accounts every business needs, that older companies predate", (
     // whose chart we should not be opinionated about. Card fees and bank charges are not an
     // opinion about the industry: every business has a bank account.
     const plan = planCoaTemplate("Other", [], []);
-    expect(plan.add.map((a) => a.code).sort()).toEqual(["6520", "6530"]);
+    // 3400 joined the list on live evidence: the O35 role audit found opening-balance equity
+    // missing on SEVEN of eleven companies, reaching the chart only via the create-on-demand
+    // path when someone posts an opening balance. That works by accident.
+    expect(plan.add.map((a) => a.code).sort()).toEqual(["3400", "6520", "6530"]);
   });
 
   it("★ a company that already has one gets only the other — never a duplicate", () => {
     const plan = planCoaTemplate("Other", [{ code: "6520", name: "Card Fees" }], []);
-    expect(plan.add.map((a) => a.code)).toEqual(["6530"]);
+    expect(plan.add.map((a) => a.code)).toEqual(["6530", "3400"]);
     // and the rename is theirs: we do not re-add 6520 to "correct" its name
     expect(plan.skipped.present).toContain("6520");
   });
@@ -288,6 +292,6 @@ describe("★★ accounts every business needs, that older companies predate", (
 
   it("★ the universal pair comes FIRST, so a partial failure lands the shared ones", () => {
     const codes = planCoaTemplate("Restaurant/Food", [], []).add.map((a) => a.code);
-    expect(codes.slice(0, 2)).toEqual(["6520", "6530"]);
+    expect(codes.slice(0, 3)).toEqual(["6520", "6530", "3400"]);
   });
 });
