@@ -76,11 +76,29 @@ describe("(O108) every materialisation site is AUDIBLE", () => {
         sites.push({ file: path.relative(process.cwd(), f), i: m.index, t });
       }
     }
-    // 5 in App.jsx + 1 in QBOImportView.jsx. writeShapes.js defines it; it does not call it.
-    expect(sites.length, `sites: ${sites.map((s) => s.file).join(", ")}`).toBe(6);
+    // 6 in App.jsx + 1 in QBOImportView.jsx. writeShapes.js defines it; it does not call it.
+    // Was 6 until the business-type chart templates (TIER 1 #6) added ONE. **The guard
+    // fired the moment that door opened, which is the whole point** — and it fired twice:
+    // the first attempt built rows separately for the pre-070 fallback, making TWO sites
+    // for one logical operation. Restructured to build once and strip the key, because one
+    // account-creating site should be one thing for this guard to account for.
+    expect(sites.length, `sites: ${sites.map((s) => s.file).join(", ")}`).toBe(7);
+
+    // ★★ THE AUDIT ACTION IS A NAMED SET, NOT ONE STRING — AND WIDENING IT IS DELIBERATE.
+    // `account_materialized` means "the system invented an account because it needed one
+    // mid-flight", which is the O108 concern. A business-type template is a different kind
+    // of door: a deliberate, batched setup applied when we learn what the business is,
+    // closer to the seed than to a materialisation. Making it emit `account_materialized`
+    // to satisfy this test would have been MISLABELLING THE EVENT TO PASS THE GUARD —
+    // the audit log would then say the system invented seven accounts on its own.
+    //
+    // So the requirement stays "every site is AUDIBLE" and the set is explicit, the way
+    // `NON_ATTESTING_EXCEPTIONS` is: adding a door means naming it here, on purpose.
+    const AUDIBLE = ["account_materialized", "coa_template_applied"];
     for (const s of sites) {
-      expect(s.t.slice(s.i, s.i + 900), `${s.file}@${s.i} has no account_materialized audit within 900 chars`)
-        .toMatch(/logAudit\("account_materialized"/);
+      const near = s.t.slice(s.i, s.i + 900);
+      expect(AUDIBLE.some((a) => near.includes(`logAudit("${a}"`)),
+        `${s.file}@${s.i} has no audit event from {${AUDIBLE.join(", ")}} within 900 chars`).toBe(true);
     }
   });
 

@@ -35,11 +35,24 @@ export function buildApprovalUpdate({ decision, at = null, actorUserId = null, r
 
 // accounts insert payload. Mirrors the correct shape used by addCustomAccount:
 // the real column is `category` (NOT NULL), not `account_type`.
-export function buildAccountInsert({ companyId, code, name, category = null }) {
+export function buildAccountInsert({ companyId, code, name, category = null, system_role = null, origin = null }) {
   return {
     company_id: companyId, code, name,
     category: category || "Expenses",
-    active: true, is_system: false, system_role: null,
+    active: true, is_system: false,
+    // ★ `system_role` HAS A READER, AND IT IS NOT `getAccountByRole`. O108's detector is
+    // `system_role is null and origin <> 'external'` — it means "invented at runtime by a
+    // materialisation path". A business-type template account is a deliberate, batched
+    // setup account, so leaving the role null would make it indistinguishable from the
+    // very thing that detector exists to find. Named here so the next reader of this shape
+    // knows why the field is set rather than assuming it is for lookups (§9).
+    system_role: system_role || null,
+    // `origin` (migration 070) defaults to 'runtime' precisely so an insert that forgets to
+    // say where it came from is treated as one of the materialisation doors. A template is
+    // a batch on one company on one day — 073's own definition of a seed operation — so it
+    // says so. Omitted (not null) when the caller has no opinion, so the column default
+    // still applies and pre-070 databases are unaffected.
+    ...(origin ? { origin } : {}),
   };
 }
 
