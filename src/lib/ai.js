@@ -4,6 +4,7 @@ import { formatProfileForPrompt } from "./clientProfile";
 import { fmtSignedMoney, todayLocal } from "./format";
 import { fetchLedger } from "./ledger";
 import { executeAITool } from "./aiTools";
+import { classifyAIFailure } from "./aiFailure";
 import {
   computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
   computeBurnRate, computeRunway, computeAR,
@@ -141,13 +142,25 @@ function parseAIReply(text) {
 // written so failures surface instead of being parsed as empty results.
 async function okAIResponse(res) {
   if (!res.ok) {
-    let detail = "";
-    try { const eb = await res.json(); detail = eb?.error?.message || eb?.error || eb?.message || JSON.stringify(eb); }
+    // ★★ CARRY THE STRUCTURE THROUGH THE THROW. This flattened everything into
+    // `AI service error (429 Too Many Requests): …` — jargon on an owner surface, and it
+    // discarded the fields the proxy had gone to the trouble of sending (`blocked_bucket`,
+    // `resets_in_minutes` — O113a). Four situations needing four different responses
+    // arrived as one string, so callers could only ever say one thing about them.
+    let body = null, detail = "";
+    try { body = await res.json(); detail = body?.error?.message || body?.error || body?.message || JSON.stringify(body); }
     catch { try { detail = await res.text(); } catch {} }
-    throw new Error(`AI service error (${res.status} ${res.statusText})${detail ? `: ${detail}` : ""}`);
+    const err = new Error(`AI service error (${res.status} ${res.statusText})${detail ? `: ${detail}` : ""}`);
+    err.status = res.status;              // `classifyFailure` (intakeDrain) already reads this
+    err.aiFailure = classifyAIFailure({ status: res.status, body, message: detail });
+    throw err;
   }
   const data = await res.json();
-  if (data?.error) throw new Error(`AI error: ${data.error.message || data.error}`);
+  if (data?.error) {
+    const err = new Error(`AI error: ${data.error.message || data.error}`);
+    err.aiFailure = classifyAIFailure({ status: 200, body: data, message: data.error.message || data.error });
+    throw err;
+  }
   return data;
 }
 
