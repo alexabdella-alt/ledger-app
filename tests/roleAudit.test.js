@@ -76,3 +76,54 @@ describe("★★ it reports and does not repair", () => {
     expect(sql).toMatch(/has history — set the role, never renumber/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ THE BACKFILL THE AUDIT PRODUCED — and the limit it does NOT close.
+//
+// The audit found `opening_balance_equity` missing on seven of eleven companies. `083` adds
+// it. But the TEMPLATE path (C254) only runs when someone saves their business profile, and
+// the SERVER SEED does not contain 3400 at all — so a new company that never completes that
+// step still relies on the create-on-demand door. That is a separate task, and the migration
+// says so rather than implying otherwise.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ 083 — the opening-balance backfill", () => {
+  const mig = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/083_opening_balance_equity_backfill.sql"), "utf8");
+  const body = mig.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+
+  it("★★ it is additive only — no rename, renumber, deactivate, or line moved", () => {
+    for (const verb of [/\bupdate\s+public\./i, /\bdelete\s+from/i, /\balter\s+table/i, /journal_entry_lines/i]) {
+      expect([verb.source, verb.test(body)]).toEqual([verb.source, false]);
+    }
+  });
+
+  it("★★★ it skips on the ROLE or the CODE, not just one", () => {
+    // A company may hold the account under a different number (charts get renumbered — the
+    // whole reason the app resolves by role), or hold 3400 under a different name. Either
+    // means it has one, and inserting would create a duplicate the role index would then
+    // silently pick between.
+    expect(body).toMatch(/a\.system_role = 'opening_balance_equity' or a\.code = '3400'/);
+  });
+
+  it("★★ and it labels itself `seed`, not the default `runtime`", () => {
+    // 070 defaults origin to 'runtime' DELIBERATELY, so an insert that doesn't say where it
+    // came from shows up in the O108 detector. A deliberate backfill left unlabelled would
+    // arrive as seven accounts the system appears to have invented on its own.
+    expect(body).toMatch(/origin\)/);
+    expect(body).toMatch(/'seed'/);
+  });
+
+  it("★★ the verification checks for DUPLICATES, not just presence", () => {
+    // "At least one" is not the check: a duplicate is the failure this insert could
+    // plausibly cause, and byRole would resolve to whichever it read last.
+    expect(mig).toMatch(/min\(n\) = 1 and max\(n\) = 1/);
+  });
+
+  it("★★★ and it states the limit it does NOT close", () => {
+    // The seed function still lacks 3400, so a company that never saves a business profile
+    // relies on the on-demand path. Editing that function requires starting from
+    // pg_get_functiondef (§6) — its own task, and bundling it here is how 063 nearly
+    // dropped 17 accounts.
+    expect(mig).toMatch(/DOES NOT TOUCH `seed_company_accounts`/);
+    expect(mig).toMatch(/Recorded as still open rather than quietly bundled/);
+  });
+});
