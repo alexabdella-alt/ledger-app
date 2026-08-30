@@ -2544,11 +2544,38 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const items = (list || []).filter(Boolean);
     if (!items.length) return;
     const snaps = items.map(i => ({ ...i }));
-    snaps.forEach(s => logAudit("invoice_deleted", `Deleted: ${s.vendor} $${s.amount} on ${s.date} (${s.gl_name||""})`, s, null, byAI ? "AI Chat" : "owner"));
     const idset = new Set(snaps.map(s => String(s.id)));
     setInvoices(prev => prev.filter(i => !idset.has(String(i.id))));
-    let allIds = [];
-    for (const inv of items) { const ids = await softDeleteJournalEntry(inv); allIds = allIds.concat(ids); }
+
+    // ★★ THE AUDIT ROWS USED TO BE WRITTEN HERE, BEFORE THE WRITE — so a refused delete
+    // left `Deleted: Roma $551.20` permanently in the audit trail beside the
+    // `invoice_delete_failed` row that contradicts it. **The audit trail is the one record
+    // an accountant is entitled to trust**, and it was being told what we intended rather
+    // than what happened (§9). They are now written per entry, after, and only for entries
+    // that actually went.
+    const results = [];
+    for (let i = 0; i < items.length; i++) {
+      const ids = await softDeleteJournalEntry(items[i]);
+      results.push({ snap: snaps[i], ids });
+    }
+    const gone = results.filter(r => r.ids.length);
+    const kept = results.filter(r => !r.ids.length);
+    const allIds = gone.flatMap(r => r.ids);
+    gone.forEach(({ snap: s }) => logAudit("invoice_deleted", `Deleted: ${s.vendor} $${s.amount} on ${s.date} (${s.gl_name||""})`, s, null, byAI ? "AI Chat" : "owner"));
+
+    // ★★ AND A PARTIAL REFUSAL WAS REPORTED AS A CLEAN SUCCESS. `allIds.length` is a
+    // BATCH-level test: delete five entries, have two refused because their month is signed,
+    // and it said "Deleted 5 entries ✓" while those two sat removed from the screen and
+    // present in the books. The Books screen pre-splits signed months, so this was reachable
+    // only from the AI chat path — which is exactly the caller with nobody checking its work.
+    if (kept.length) {
+      setInvoices(prev => {
+        const have = new Set(prev.map(i => String(i.id)));
+        return [...kept.map(r => r.snap).filter(s => !have.has(String(s.id))), ...prev];
+      });
+      logAudit("invoice_delete_failed", `Couldn't delete ${kept.length} of ${items.length} — left in the books`, null,
+        { attempted: items.length, refused: kept.length, vendors: kept.map(r => r.snap.vendor || null) }, byAI ? "AI Chat" : "owner");
+    }
     const label = items.length === 1 ? (snaps[0].vendor || "entry") : `${items.length} entries`;
 
     // ★★ O124(c) — SAY "DELETED" ONLY IF SOMETHING WAS DELETED. This function's own comment
@@ -2572,7 +2599,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       return [];
     }
 
-    showNotification(`Deleted ${label} — tap Undo to restore`, "success", async () => {
+    // The sentence counts what was WRITTEN, not what was asked for.
+    const doneLabel = kept.length
+      ? `Deleted ${gone.length} of ${items.length} — ${kept.length} left in your books (a signed-off month has to be reopened first)`
+      : `Deleted ${label} — tap Undo to restore`;
+    showNotification(doneLabel, kept.length ? "info" : "success", async () => {
       // ★ THE SCREEN FOLLOWS THE DATABASE, NOT THE CLICK. Putting the rows back in local
       // state first and then writing would show a restore that did not happen — and the
       // next reload would take it away again, which is the worst order to learn it in.

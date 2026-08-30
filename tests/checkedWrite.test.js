@@ -273,3 +273,63 @@ describe("★★ an Undo may not claim success it has not checked", () => {
     expect(head).not.toMatch(/\.update\(\{ deleted_at: null/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ THE AUDIT TRAIL MAY NOT RECORD AN INTENTION AS AN EVENT.
+//
+// `softDeleteInvoices` wrote its `invoice_deleted` audit rows BEFORE attempting the write.
+// A refused delete therefore left `Deleted: Roma $551.20` permanently in the audit trail,
+// beside the `invoice_delete_failed` row contradicting it. The audit trail is the one
+// record an accountant is entitled to trust, and it was being told what we INTENDED.
+//
+// The second defect is its sibling: `allIds.length` is a BATCH-level test, so five entries
+// with two refused reported "Deleted 5 entries ✓" while those two sat removed from the
+// screen and present in the books. Books pre-splits signed months; the AI chat path does
+// not — the caller with nobody checking its work.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ a delete is audited and described from what was written", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const fn = app.slice(app.indexOf("const softDeleteInvoices"), app.indexOf("const softDeleteInvoice ="));
+  const strip = (t) => t.split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*")).join("\n");
+  const code = strip(fn);
+
+  it("★★ the audit row is written AFTER the write, not before it", () => {
+    const write = code.indexOf("await softDeleteJournalEntry(items[i])");
+    const audit = code.indexOf('logAudit("invoice_deleted"');
+    expect(write).toBeGreaterThan(-1);
+    expect(audit).toBeGreaterThan(write);
+  });
+
+  it("★ and only for entries that actually went", () => {
+    // Auditing `snaps` would record every attempt; auditing `gone` records the outcome.
+    expect(code).toMatch(/const gone = results\.filter\(r => r\.ids\.length\)/);
+    expect(code).toMatch(/gone\.forEach\(\(\{ snap: s \}\) => logAudit\("invoice_deleted"/);
+    expect(code).not.toMatch(/snaps\.forEach\(s => logAudit\("invoice_deleted"/);
+  });
+
+  it("★★ a PARTIAL refusal is reported as partial, with a count of each side", () => {
+    expect(code).toMatch(/const kept = results\.filter\(r => !r\.ids\.length\)/);
+    expect(code).toMatch(/Deleted \$\{gone\.length\} of \$\{items\.length\}/);
+    expect(code).toMatch(/\$\{kept\.length\} left in your books/);
+  });
+
+  it("★ the refused rows go back on screen — they were removed optimistically", () => {
+    // Without this they vanish from the list while remaining in the books, and the next
+    // reload resurrects them: the worst order in which to learn it.
+    // ★★ PINS THE FIRST STATEMENT OF THE BLOCK, NOT THE PRESENCE OF A CALL. The first
+    // version matched `setInvoices(prev =>` anywhere in the block and SURVIVED a mutation
+    // that wrapped it in `if (false)` — the second time today a source scan proved unable
+    // to see reachability (the contracts Undo was the first). Asserting what the block
+    // BEGINS with kills that: a guarded call no longer starts it.
+    const body = code.slice(code.indexOf("if (kept.length) {") + "if (kept.length) {".length);
+    expect(body.trimStart().startsWith("setInvoices(prev =>")).toBe(true);
+    expect(body.slice(0, 700)).toMatch(/logAudit\("invoice_delete_failed"/);
+  });
+
+  it("★ the success sentence counts what was written, never what was asked for", () => {
+    // §9: every clause names a field of the outcome. `items.length` is the request.
+    const claim = code.slice(code.indexOf("const doneLabel"), code.indexOf("showNotification(doneLabel"));
+    expect(claim).toMatch(/gone\.length/);
+    expect(claim).toMatch(/kept\.length/);
+  });
+});
