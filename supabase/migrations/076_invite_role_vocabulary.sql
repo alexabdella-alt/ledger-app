@@ -114,10 +114,19 @@ commit;
 --     -- it was testing. Same shape as a query that cannot match anything reporting empty.
 --     when others then verdict := 'INCONCLUSIVE - the insert failed for another reason: ' || SQLERRM;
 --   end;
---   raise exception 'VERDICT: %', verdict;
+--   -- ★ THE MESSAGE LEADS WITH ITS OWN NATURE. The editor renders this in red under
+--   -- "Failed to run sql query", so a PASS shown that way is the description contradicting
+--   -- the outcome unless the first words explain the red. It confused the operator on the
+--   -- live run of this very file.
+--   raise exception 'CHECK RESULT (not an error — this rolled back on purpose): %', verdict;
 -- end $$;
 --
--- ▶ The `raise exception` is deliberate: it aborts the transaction (so the test row is
--- never committed) AND surfaces the verdict, which `raise notice` does not reliably do in
--- the Supabase editor (§6). Expect to see the VERDICT text as an error — read it, that IS
--- the result.
+-- ▶ The `raise exception` is deliberate and does TWO jobs at once: it aborts the
+-- transaction (so the probe row is never committed) AND surfaces the verdict, which
+-- `raise notice` does not reliably do in the Supabase editor (§6).
+--
+-- ▶▶ EXPECT RED. Supabase prints this as `Failed to run sql query: ERROR: P0001: …`.
+-- `P0001` is "a function raised this on purpose" — it is not a database error and nothing
+-- went wrong. READ THE MESSAGE: it is the result. (Live run 2026-08-29 returned
+-- `PASS - the constraint refused role=member`, and the red still prompted "what about that
+-- one that appeared to fail?" — which is why the message now leads with its own nature.)
