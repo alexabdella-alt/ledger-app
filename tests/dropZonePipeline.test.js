@@ -9,6 +9,7 @@ import {
 import { containsOwnerJargon } from "../src/lib/clarify.js";
 import { reconcileIntake } from "../src/lib/documentIntake.js";
 import { autoResolvableIntake } from "../src/lib/workbench.js";
+import { QUEUE_TONE, queueItemChip, queueItemTone } from "../src/lib/uploadQueueTile";
 
 // ════════════════════════════════════════════════════════════════════════════
 // C198·2 — the drop IS the pipeline (§11 ★ O86 (a)).
@@ -161,7 +162,12 @@ describe("C198·2b — the queue line tells the pipeline's truth", () => {
     const start = app2.indexOf("const soleAccount = autoBindAccount(bankAccounts);");
     const branch = app2.slice(start, app2.indexOf("// 0 or 2+ accounts", start));
     expect(branch).toMatch(/catch \(e\) \{[\s\S]{0,400}status:"error", type:"bank_statement", result:\{ routed:true, to:"pipeline", failed:true \}/);
-    expect(dash).toMatch(/item\.result\?\.failed && item\.result\?\.to==="pipeline" \? "Needs a look" : "Error"/);
+    // O97 moved the chip's wording into `uploadQueueTile.queueItemChip`, so the guarantee
+    // is asserted where it now lives — a pipeline failure still reads "Needs a look", and
+    // is still an ERROR tone rather than the WAITING one, because a throw from the pipeline
+    // is not a thing that resumes on its own.
+    expect(queueItemChip(QUEUE_TONE.ERROR, { result: { failed: true, to: "pipeline" } })).toBe("Needs a look");
+    expect(queueItemTone({ status: "error", result: { failed: true, to: "pipeline" } })).toBe(QUEUE_TONE.ERROR);
   });
 
   it("handleBankFile hands its outcome back (undefined when the pipeline didn't run)", () => {

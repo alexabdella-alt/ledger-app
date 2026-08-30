@@ -19,6 +19,7 @@ import { useDrillStack } from "../../lib/useDrillStack";
 import DrillNav from "../ui/DrillNav";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 import { countByUrgency, queueBannerCopy, sortByUrgency } from "../../lib/cardUrgency";
+import { QUEUE_TONE, queueIsSettled, queueItemChip, queueItemIcon, queueItemTone } from "../../lib/uploadQueueTile";
 
 // Breadcrumb label for a dashboard drill layer (used by the shared onion-nav stack).
 const drillLabel = (l) => {
@@ -472,7 +473,7 @@ export default function DashboardView() {
                 <div style={{ marginBottom:24 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
                     <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:2 }}>PROCESSING QUEUE</div>
-                    {uploadQueue.every(q=>q.status==="done"||q.status==="error") && (
+                    {queueIsSettled(uploadQueue) && (
                       <button onClick={()=>setUploadQueue([])} style={{ background:"none", border:"none", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer", padding:0 }}>Clear ×</button>
                     )}
                   </div>
@@ -486,16 +487,29 @@ export default function DashboardView() {
                       };
                       const tc = typeConfig[item.type] || { icon:"📄", label:"Document", color:"var(--sc-text-2)" };
                       const pendingReview = item.status==="done" && clarificationQueue.some(c => c.queueItemId === item.id && !c.resolved);
+                      // O97 — ONE reading of what this item's state means (`uploadQueueTile.js`).
+                      // Five style expressions used to decide that independently, which is how a
+                      // file that was merely waiting came to wear red on all five.
+                      const tone = queueItemTone(item, { pendingReview });
+                      const chip = queueItemChip(tone, item);
+                      const toneColor = tone===QUEUE_TONE.ERROR ? "var(--sc-error)"
+                        : tone===QUEUE_TONE.REVIEW ? "var(--sc-warning)"
+                        : tone===QUEUE_TONE.SUCCESS ? tc.color
+                        : "var(--sc-text-2)";            // ★ WAITING lands here: muted, not alarming.
+                      const toneBorder = tone===QUEUE_TONE.ERROR ? "var(--sc-error-soft)"
+                        : tone===QUEUE_TONE.REVIEW ? "var(--sc-warning-soft)"
+                        : tone===QUEUE_TONE.SUCCESS ? "var(--sc-success-soft)"
+                        : "var(--sc-border)";
                       return (
-                        <div key={item.id} style={{ background:"var(--sc-surface)", border:`1px solid ${item.status==="error"?"var(--sc-error-soft)":pendingReview?"var(--sc-warning-soft)":item.status==="done"?"var(--sc-success-soft)":"var(--sc-border)"}`, borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
+                        <div key={item.id} style={{ background:"var(--sc-surface)", border:`1px solid ${toneBorder}`, borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
                           {/* File icon */}
                           <div style={{ width:38, height:38, borderRadius:10, background:"var(--sc-border)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
-                            {item.status==="done" ? tc.icon : item.status==="error" ? "⚠" : "📄"}
+                            {queueItemIcon(tone, tc.icon)}
                           </div>
                           {/* Info */}
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontSize:13, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</div>
-                            <div style={{ fontSize:11, marginTop:3, color:item.status==="error"?"var(--sc-error)":item.status==="done"?tc.color:"var(--sc-text-2)" }}>
+                            <div style={{ fontSize:11, marginTop:3, color:toneColor }}>
                               {item.status==="classifying" && "⟳ Identifying document type..."}
                               {item.status==="processing" && `⟳ Processing as ${tc.label}...`}
                               {item.status==="error" && item.error}
@@ -567,14 +581,15 @@ export default function DashboardView() {
                                 {[0,1,2].map(i=><div key={i} style={{ width:5, height:5, borderRadius:"50%", background:"var(--sc-text-2)", animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
                               </div>
                             )}
-                            {item.status==="done" && pendingReview && (
-                              <span onClick={()=>{ document.getElementById("clarification-section")?.scrollIntoView({behavior:"smooth"}); }}
-                                style={{ fontSize:11, color:"var(--sc-warning)", background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:20, padding:"3px 10px", cursor:"pointer", fontWeight:600 }}>
-                                ⚠ Needs Review
+                            {chip && (
+                              <span
+                                onClick={tone===QUEUE_TONE.REVIEW ? ()=>{ document.getElementById("clarification-section")?.scrollIntoView({behavior:"smooth"}); } : undefined}
+                                style={{ fontSize:11, color:toneColor, background:tone===QUEUE_TONE.WAITING?"transparent":`var(--sc-${tone==="success"?"success":tone==="review"?"warning":"error"}-soft)`,
+                                         border:`1px solid ${toneBorder}`, borderRadius:20, padding:"3px 10px",
+                                         cursor:tone===QUEUE_TONE.REVIEW?"pointer":"default", fontWeight:tone===QUEUE_TONE.REVIEW?600:400 }}>
+                                {chip}
                               </span>
                             )}
-                            {item.status==="done" && !pendingReview && <span style={{ fontSize:11, color:"var(--sc-success)", background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", borderRadius:20, padding:"3px 10px" }}>Done</span>}
-                            {item.status==="error" && <span style={{ fontSize:11, color:"var(--sc-error)", background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:20, padding:"3px 10px" }}>{item.result?.failed && item.result?.to==="pipeline" ? "Needs a look" : "Error"}</span>}
                           </div>
                         </div>
                       );
