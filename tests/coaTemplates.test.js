@@ -33,10 +33,20 @@ describe("★★ the restaurant template gives a restaurant somewhere to put its
     expect(codes).toContain("6280");   // Kitchen Supplies & Smallwares
   });
 
-  it("does NOT re-add merchant fees or bank charges — the generic chart already has them", () => {
-    // 6520/6530 were blessed into the default chart at O108. Re-adding would collide.
+  it("does NOT re-add merchant fees or bank charges TO A COMPANY THAT ALREADY HAS THEM", () => {
+    // 6520/6530 were blessed into the default chart at O108, so a company seeded since then
+    // has them and re-adding would collide.
+    //
+    // ★ THE NAME NARROWED WHEN O112 LANDED, AND THE DISTINCTION IS THE WHOLE POINT. These
+    // two are now UNIVERSAL adds — every business needs them — so a company that predates
+    // the blessing DOES get them. `codes` here comes from a company holding the full default
+    // chart, which is why nothing is added. Read as a general rule ("we never add these")
+    // this test would look like a rejection of O112; it is the dedupe working.
     expect(codes).not.toContain("6520");
     expect(codes).not.toContain("6530");
+    // …and the same planner DOES add them to a company without them, so the two are not in
+    // conflict: the difference is the company, not the rule.
+    expect(planCoaTemplate("Restaurant/Food", [], []).add.map((a) => a.code)).toContain("6520");
   });
 });
 
@@ -226,5 +236,58 @@ describe("★★ Miscellaneous on a recognisable vendor is never auto-booked", (
     // A low-confidence Miscellaneous booking is below the floor AND a catch-all. The floor
     // is the more actionable answer, so it wins.
     expect(autoBookDecision({ ...alamoIce, confidence: 40 }).reason).toBe("below_confidence_floor");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ O112 — "WE RECOGNISE TOAST BUT THERE'S NO ACCOUNT FOR IT" TURNED OUT NOT TO BE A
+// DESIGN QUESTION.
+//
+// The item asked: create the account, ask first, or leave it parked? But `6520` and `6530`
+// are ALREADY in the default chart — `068` blessed them after a CPA created them by hand on
+// a real client. Every company created since gets them; the ten that don't are simply older
+// than that decision. So it is a BACKFILL, and the answer turns on WHEN, not WHETHER.
+//
+// ★★★ Materialising an account MID-BOOKING is the O108/O109 hazard — the system inventing a
+// line on a client's chart while nobody is looking. Adding one as a deliberate, audited
+// SETUP step is what this file already does safely. Same account, same code; **the
+// difference is entirely that a person is present.**
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ accounts every business needs, that older companies predate", () => {
+  it("★★★ a company with neither gets both, whatever its industry", () => {
+    for (const type of BUSINESS_TYPES) {
+      const codes = planCoaTemplate(type, [], []).add.map((a) => a.code);
+      expect([type, codes.includes("6520")]).toEqual([type, true]);
+      expect([type, codes.includes("6530")]).toEqual([type, true]);
+    }
+  });
+
+  it("★★ including 'Other', whose industry list is still deliberately empty", () => {
+    // "Other" adds nothing industry-specific on purpose — a business we cannot name is one
+    // whose chart we should not be opinionated about. Card fees and bank charges are not an
+    // opinion about the industry: every business has a bank account.
+    const plan = planCoaTemplate("Other", [], []);
+    expect(plan.add.map((a) => a.code).sort()).toEqual(["6520", "6530"]);
+  });
+
+  it("★ a company that already has one gets only the other — never a duplicate", () => {
+    const plan = planCoaTemplate("Other", [{ code: "6520", name: "Card Fees" }], []);
+    expect(plan.add.map((a) => a.code)).toEqual(["6530"]);
+    // and the rename is theirs: we do not re-add 6520 to "correct" its name
+    expect(plan.skipped.present).toContain("6520");
+  });
+
+  it("★★ they carry the roles the app resolves by, not just codes", () => {
+    // A code with no `system_role` is invisible to every getAccountByRole lookup — the O110
+    // finding. Adding the account without the role would have looked like a fix and been
+    // one only by coincidence of numbering.
+    const add = planCoaTemplate("Restaurant/Food", [], []).add;
+    expect(add.find((a) => a.code === "6520").system_role).toBe("merchant_processing_fees");
+    expect(add.find((a) => a.code === "6530").system_role).toBe("bank_service_charges");
+  });
+
+  it("★ the universal pair comes FIRST, so a partial failure lands the shared ones", () => {
+    const codes = planCoaTemplate("Restaurant/Food", [], []).add.map((a) => a.code);
+    expect(codes.slice(0, 2)).toEqual(["6520", "6530"]);
   });
 });

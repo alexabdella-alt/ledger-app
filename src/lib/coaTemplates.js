@@ -29,6 +29,33 @@
 
 // Codes are chosen to sit beside the generic account they refine, so a chart stays
 // readable when sorted: food cost next to 5000 COGS, linen next to 6250 Repairs.
+// ── O112 — ACCOUNTS EVERY BUSINESS NEEDS, THAT OLDER COMPANIES PREDATE ───────
+//
+// The question `O112` posed was: we now recognise Toast, Square and Stripe by name, but ten
+// of eleven companies have no account for card processing fees — **create it, ask, or leave
+// it parked?**
+//
+// ★★ IT TURNS OUT NOT TO BE A DESIGN QUESTION. `6520` and `6530` are ALREADY in the default
+// chart — `068` blessed them after a CPA created them by hand on a real client. So every
+// company created since gets them, and the ten that don't are simply older than that
+// decision. The question is a BACKFILL, and it has an answer the rest of this file already
+// established.
+//
+// ★★★ AND THE ANSWER TURNS ON *WHEN*, NOT *WHETHER*. Materialising an account MID-BOOKING
+// is the O108/O109 hazard — the system inventing a line on a client's chart while nobody is
+// looking. Adding one as a deliberate, audited SETUP step is what this whole file does
+// safely: additive, never renaming, never touching an account that carries transactions.
+// **Same account, same code — the difference is entirely that a person is present.**
+//
+// So: not created at booking time, not left parked forever. Added to the chart, once,
+// through the door that already exists for exactly this.
+const UNIVERSAL = [
+  // Any business can take a card payment or pay a bank charge; neither is industry-specific,
+  // which is why they belong here and not in one industry's list.
+  { code: "6520", name: "Merchant Processing Fees", category: "Expenses", system_role: "merchant_processing_fees" },
+  { code: "6530", name: "Bank Service Charges", category: "Expenses", system_role: "bank_service_charges" },
+];
+
 const TEMPLATES = {
   "Restaurant/Food": {
     add: [
@@ -113,6 +140,9 @@ export const templateFor = (businessType) => TEMPLATES[businessType] || null;
 export function planCoaTemplate(businessType, existing = [], usedCodes = []) {
   const tpl = templateFor(businessType);
   if (!tpl) return { add: [], hide: [], template: null, skipped: { present: [], inUse: [] } };
+  // ★ UNIVERSAL FIRST, INDUSTRY SECOND, and a code appearing in both is added once. The
+  // industry list wins on name if it ever collides, because it is the more specific claim.
+  const wanted = [...UNIVERSAL.filter(u => !tpl.add.some(a => a.code === u.code)), ...tpl.add];
 
   const have = new Set((existing || []).map((a) => String(a.code)));
   const used = new Set((usedCodes || []).map(String));
@@ -120,7 +150,7 @@ export function planCoaTemplate(businessType, existing = [], usedCodes = []) {
 
   const present = [];
   const add = [];
-  for (const acct of tpl.add) {
+  for (const acct of wanted) {
     // Never re-add a code the company already has — it may have been renamed, and the
     // rename is theirs.
     if (have.has(acct.code)) { present.push(acct.code); continue; }
