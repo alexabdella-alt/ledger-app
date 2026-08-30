@@ -214,6 +214,55 @@ export const STATEMENT_COMPLETED_AUDIT = "statement_completed_first_pass";
 // stash. EXACTLY one account = no ambiguity = auto-bind. Zero accounts (nothing
 // to bind) and 2+ (a real choice only a human can make) both decline. An account
 // without an id can't be bound to anything, so it doesn't count.
+// ─────────────────────────────────────────────────────────────────────────────
+// ★★ RECONCILE SHOULD NOT ASK FOR A STATEMENT IT ALREADY HOLDS.
+//
+// Opening Reconcile directly presents a CSV drop zone — and the parsed lines, the account,
+// the period and the stated ending balance are ALL already in `bank_statements` /
+// `bank_statement_lines` from the import. The handover path (`reconcileOffer`, C198·2) knew
+// that; the tab itself did not, so a CPA who navigates rather than following the link is
+// asked to re-upload a file the system read days ago — and ReconView carries a SECOND CSV
+// parser to read it with, which is the two-implementations-of-one-contract shape this
+// codebase keeps paying for.
+//
+// ★ WHAT IT OFFERS AND WHAT IT REFUSES TO OFFER: the newest statement for this account that
+// no COMPLETED reconciliation already covers. Offering a covered one would invite somebody
+// to redo a month that is finished — and `reconciliationCoversStatement` is the same
+// predicate the auto-complete path uses, so the two cannot drift into disagreeing about
+// what "already done" means.
+//
+// Pure. Returns null when there is genuinely nothing to offer, which is the case the upload
+// zone is legitimately for.
+// ─────────────────────────────────────────────────────────────────────────────
+export function statementToOffer({ statements = [], accountId = null, reconciliations = [] } = {}) {
+  const candidates = (statements || []).filter((s) => {
+    if (!s || String(s.status) === "superseded") return false;
+    if (!accountId || accountId === "manual") return false;   // a manual session has no statement
+    if (String(s.bank_account_id) !== String(accountId)) return false;
+    return !reconciliationCoversStatement(reconciliations, s);
+  });
+  if (!candidates.length) return null;
+  // Newest PERIOD, not newest upload: the month a person means to reconcile next is the
+  // latest one they have, regardless of the order the files happened to arrive in.
+  return candidates.slice().sort((a, b) => {
+    const p = String(b.period_end || "").localeCompare(String(a.period_end || ""));
+    return p !== 0 ? p : String(b.created_at || "").localeCompare(String(a.created_at || ""));
+  })[0];
+}
+
+// The sentence. Names the month and the count, because "use the statement we have" without
+// saying WHICH one is asking someone to trust a thing they cannot see.
+export function statementOfferCopy({ statement = null, lineCount = null, monthLabelText = null } = {}) {
+  if (!statement) return null;
+  const when = monthLabelText || statement.period_end || statement.period_start || null;
+  const n = Number.isFinite(Number(lineCount)) && Number(lineCount) > 0 ? Number(lineCount) : null;
+  // ★ NEVER INVENTS A COUNT. An unknown line count says less rather than guessing — the
+  // number is the whole reason to trust the offer.
+  return n
+    ? `We already have your ${when ? `${when} ` : ""}statement — ${n} transaction${n === 1 ? "" : "s"}, ready to check against your books.`
+    : `We already have your ${when ? `${when} ` : ""}statement, ready to check against your books.`;
+}
+
 export function autoBindAccount(bankAccounts = []) {
   const usable = (bankAccounts || []).filter((b) => b && b.id);
   return usable.length === 1 ? usable[0] : null;

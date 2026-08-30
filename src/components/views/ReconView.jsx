@@ -1,6 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { prefillEndingBalance, statementForPeriod, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
+import { prefillEndingBalance, statementForPeriod, statementOfferCopy, statementToOffer, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
+import { monthLabel } from "../../lib/ownerTrust";
 import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
 import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
 import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy, outstandingClearedCopy, MATCH_EXISTING_ACTION_LABEL } from "../../lib/workbench";
@@ -190,6 +191,61 @@ export default function ReconView() {
     const pre = prefillEndingBalance({ statement: st, current: statementBalance });
     if (pre != null) { setStatementBalance(pre); setPrefilledFromStatement(true); }
   }, [periodStatements, accountId, periodStart, periodEnd]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── ★★ THE STATEMENT WE ALREADY HAVE ────────────────────────────────────────
+  // The handover path (`reconcileOffer`) knew the statement was already parsed and stored;
+  // the TAB did not. So a CPA who navigates here rather than following the link is asked to
+  // re-upload a file we read days ago — and to feed it to a SECOND CSV parser living in this
+  // file. Same data, same account, same period, already in `bank_statement_lines`.
+  const offeredStatement = React.useMemo(
+    () => statementToOffer({ statements: periodStatements, accountId, reconciliations: reconciliations || [] }),
+    [periodStatements, accountId, reconciliations],
+  );
+  const [offeredCount, setOfferedCount] = React.useState(null);
+  React.useEffect(() => {
+    // ★ THE COUNT IS FETCHED, NEVER ASSUMED — it is the whole reason to trust the offer, and
+    // `statementOfferCopy` says less rather than inventing one when this stays null.
+    setOfferedCount(null);
+    if (!offeredStatement?.id || !currentCompany?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { count, error } = await supabase.from("bank_statement_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("company_id", currentCompany.id).eq("statement_id", offeredStatement.id);
+        if (!cancelled && !error) setOfferedCount(count);
+      } catch { /* pre-058 — the offer simply carries no count */ }
+    })();
+    return () => { cancelled = true; };
+  }, [offeredStatement?.id, currentCompany?.id]);
+
+  const useOfferedStatement = async () => {
+    if (!offeredStatement?.id || !currentCompany?.id) return;
+    try {
+      const { data: lines, error } = await supabase.from("bank_statement_lines")
+        .select("id, line_date, description, vendor, amount")
+        .eq("company_id", currentCompany.id).eq("statement_id", offeredStatement.id);
+      // ★ AN EMPTY OR FAILED READ MUST NOT LOOK LIKE A LOADED STATEMENT. Falling through to
+      // "0 transactions ready" would be the O98 shape on the surface whose whole job is to
+      // prove the books match the bank.
+      if (error || !lines || !lines.length) {
+        showNotification && showNotification("We couldn't open the statement we have on file — you can upload it instead.", "error");
+        return;
+      }
+      const rows = lines.map((l) => ({
+        id: "s_" + l.id, date: l.line_date, description: l.description || l.vendor || "Transaction",
+        amount: Number(l.amount) || 0, _matchBook: null,
+      }));
+      if (offeredStatement.period_start) setPeriodStart(offeredStatement.period_start);
+      if (offeredStatement.period_end) setPeriodEnd(offeredStatement.period_end);
+      const pre = prefillEndingBalance({ statement: offeredStatement, current: statementBalance });
+      if (pre != null) { setStatementBalance(pre); setPrefilledFromStatement(true); }
+      setBankTxns(rows); setStep("match"); setTimeout(() => runAutoMatch(rows), 50);
+    } catch (e) {
+      showNotification && showNotification("We couldn't open the statement we have on file — you can upload it instead.", "error");
+      console.warn("[recon] offered statement failed:", e?.message || e);
+    }
+  };
 
   const nameForUser = (uid) => {
     if (!uid) return "—";
@@ -731,6 +787,18 @@ export default function ReconView() {
         </div>
         <div style={{ marginBottom:18 }}>
           <div style={lbl}>UPLOAD YOUR BANK STATEMENT — PDF OR CSV</div>
+          {/* ★★ USE WHAT WE ALREADY HAVE. Shown ABOVE the drop zone and styled as the
+              primary action, because the upload is the fallback here, not the route. The
+              drop zone stays for a statement we genuinely do not hold. */}
+          {offeredStatement && bankTxns.length === 0 && (
+            <button onClick={useOfferedStatement}
+              style={{ width:"100%", marginBottom:12, textAlign:"left", background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold)", borderRadius:10, padding:"14px 16px", cursor:"pointer" }}>
+              <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)", lineHeight:1.45 }}>
+                {statementOfferCopy({ statement: offeredStatement, lineCount: offeredCount, monthLabelText: monthLabel(offeredStatement.period_end || offeredStatement.period_start) })}
+              </div>
+              <div style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:700, marginTop:6 }}>Use it →</div>
+            </button>
+          )}
           <label style={{ display:"block", border:`1.5px dashed ${bankTxns.length>0?"var(--sc-success)":"var(--sc-border-2)"}`, borderRadius:10, padding:"22px 16px", textAlign:"center", cursor: processing?"wait":"pointer", fontSize:13, color:"var(--sc-text-2)", background:bankTxns.length>0?"var(--sc-success-soft)":"var(--sc-bg)" }}>
             <input type="file" accept=".csv,.pdf" disabled={processing} style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; e.target.value=""; processFile(f); }} />
             <div style={{ fontSize:26, marginBottom:8, opacity:0.6 }}>{processing?"⟳":bankTxns.length>0?"✓":"📄"}</div>
