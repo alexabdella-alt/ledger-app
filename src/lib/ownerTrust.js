@@ -51,6 +51,11 @@ export function ownerTrustState({
   // existing caller and every accountant-led company is unaffected; only a caller that has
   // actually checked the membership can turn it off.
   hasAttester = true,
+  // ★★ O131 — WAS THE LATEST SIGN-OFF THE OWNER'S OWN? "Reviewed and signed off" and "you
+  // signed this yourself, nobody else has looked" are DIFFERENT FACTS, and the whole value of
+  // a sign-off is who stood behind it. A panel that renders them identically quietly upgrades
+  // a self-attestation into an accountant's review.
+  selfSigned = false,
   // ★★ O121 — OPEN CLARIFICATION CARDS. Questions we have ASKED THE OWNER and they have
   // not answered yet, each holding a document that is therefore NOT in the books.
   //
@@ -156,13 +161,18 @@ export function ownerTrustState({
   // ★ WHAT IS SIGNED IS A FACT AND IS SAID FIRST — a company that later loses its accountant
   // has still genuinely had those months reviewed, and that does not stop being true.
   const reviewedText = signedLabel
-    ? `Reviewed and signed off through ${signedLabel}.`
+    ? (selfSigned
+        // ★ SAYS WHO. Not a disclaimer — an accurate description of what was recorded, and
+        // the one thing a reader would want to know before relying on it.
+        ? `You signed these off yourself through ${signedLabel} — no accountant has reviewed them.`
+        : `Reviewed and signed off through ${signedLabel}.`)
     : hasAttester
       ? "Awaiting your accountant's sign-off."
       // ★★ NO ATTESTER: the old sentence named a person who does not exist. This states the
-      // position and the ONE thing that changes it, and deliberately does not imply the books
-      // are wrong — they are not; nobody has reviewed them, which is a different fact.
-      : "Nobody has reviewed these yet — add your accountant and they can sign off each month.";
+      // position and BOTH routes out of it — the operator's decision was that a solo owner may
+      // sign with an acknowledgement, so offering only "add your accountant" would now be a
+      // second incomplete sentence in the same place.
+      : "Nobody has reviewed these yet — you can sign them off yourself, or add your accountant.";
 
   // ── NOTHING WRONG (from confidence + accuracy + bank-match). The ONE owner nudge is a
   //    confidence flag (owner can answer it). An accuracy mismatch is honest-but-not-owner-

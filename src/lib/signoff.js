@@ -11,14 +11,14 @@
 //     survive; re-signing the same period clears the revocation.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SIGNOFF_COLS = "id, period, signed_by, signed_at, note, override_ack, override_reason, blockers_snapshot, revoked_at, revoked_by";
+const SIGNOFF_COLS = "id, period, signed_by, signed_at, note, override_ack, override_reason, blockers_snapshot, revoked_at, revoked_by, self_attested";
 
 // Sign off a period "reviewed through <period>" (YYYY-MM). Upsert so re-signing a
 // period after a fix updates who/when AND clears any prior revocation. When the
 // reviewer signed off over open blockers, `override` records the acknowledgment +
 // reason + the exact blockers overridden. Returns { ok, row?, error? } — ok ONLY
 // when the row is read back (the write actually committed).
-export async function persistSignoff(supabase, { companyId, period, signedBy, note = null, override = null }) {
+export async function persistSignoff(supabase, { companyId, period, signedBy, note = null, override = null, selfAttested = false }) {
   if (!supabase || !companyId || !period || !signedBy) {
     return { ok: false, error: "missing companyId / period / signedBy" };
   }
@@ -31,6 +31,11 @@ export async function persistSignoff(supabase, { companyId, period, signedBy, no
       override_reason: override && override.acknowledged ? (override.reason || null) : null,
       blockers_snapshot: override && override.acknowledged ? (override.blockers || null) : null,
       revoked_at: null, revoked_by: null,
+      // ★ O131 — WHICH KIND OF ATTESTATION THIS WAS. Migration `085`'s policy decides which
+      // path the row is allowed through, so this cannot be a client's opinion: a row marked
+      // true is only accepted from a solo owner, and one marked false only from a reviewer.
+      // Sending the wrong value gets the write REFUSED rather than silently misrecorded.
+      self_attested: !!selfAttested,
     };
     const { data, error } = await supabase
       .from("period_signoffs")
@@ -108,6 +113,34 @@ export function canAttestPeriod(role) {
 // not count — an invitation is not a person, and counting it would put the promise back with
 // an extra step.
 // ─────────────────────────────────────────────────────────────────────────────
+// ★★ THE SOLO EXCEPTION, AND IT IS DELIBERATELY NOT `canAttestPeriod`.
+//
+// Operator's decision, 2026-08-30: a solo owner may sign with an acknowledgement. But
+// `canAttestPeriod` also drives the SEAT (`nav.js isReviewerSeat`), so widening it would drop
+// a client into the CPA cockpit — ten workbench tabs the North Star exists to keep them out
+// of. **They get the sign-off ACTION, not the reviewer's seat**, so this is its own predicate
+// and a test pins that `canAttestPeriod('owner')` stays false.
+//
+// ★ AND IT IS CONDITIONAL, NOT A LOOSENING. The moment a real accountant joins, this returns
+// false again and the separation — the whole point of the product — is back. `053` met the
+// same case by PROMOTING the owner to admin, which was permanent and could not be undone
+// once `081` blocked self-role-changes; evaluating the condition each time is strictly
+// better than changing who somebody is.
+export function canSelfAttest({ role = null, hasAttester = true } = {}) {
+  return role === "owner" && !hasAttester;
+}
+
+// The sentence a person ticks. Plain language, and it states the two things that are
+// actually true and non-obvious: nobody else has checked, and the month locks.
+//
+// ★ THE LOCK CLAUSE IS NOT BOILERPLATE — migration `078` makes the database refuse changes
+// to a signed month. Someone who signs without knowing that discovers it when a correction
+// is rejected, which is the worst possible moment to learn it.
+export function selfAttestAcknowledgement(monthLabelText) {
+  const when = monthLabelText ? ` for ${monthLabelText}` : "";
+  return `I'm signing off these books${when} myself. No accountant has checked them, and once signed the figures can't be changed unless I reopen the month.`;
+}
+
 export function companyHasAttester(members = []) {
   return (members || []).some((m) => m && m.accepted_at && canAttestPeriod(m.role));
 }

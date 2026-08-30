@@ -75,3 +75,95 @@ describe("the failure direction is pinned in the caller", () => {
     expect(code.slice(at, at + 160)).toContain("setHasAttester(true)");  // …and doubt keeps the old sentence
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C272 — the operator's decision: a solo owner MAY sign, with an acknowledgement.
+// ─────────────────────────────────────────────────────────────────────────────
+import { canSelfAttest, selfAttestAcknowledgement } from "../src/lib/signoff";
+import { isReviewerSeat } from "../src/lib/nav";
+
+describe("O131 — the solo exception is conditional, and it is not a promotion", () => {
+  it("★ a solo owner may self-attest", () => {
+    expect(canSelfAttest({ role: "owner", hasAttester: false })).toBe(true);
+  });
+
+  it("★★ and the SEPARATION STILL HOLDS the moment anyone else can sign — the product's whole point", () => {
+    expect(canSelfAttest({ role: "owner", hasAttester: true })).toBe(false);
+  });
+
+  it("nobody else gains anything from it", () => {
+    expect(canSelfAttest({ role: "viewer", hasAttester: false })).toBe(false);
+    expect(canSelfAttest({ role: "accountant", hasAttester: false })).toBe(false);
+    expect(canSelfAttest({})).toBe(false);            // defaults must not grant
+  });
+
+  it("★★★ THE OWNER GETS THE ACTION, NOT THE CPA COCKPIT — canAttestPeriod is deliberately unchanged", () => {
+    // Widening canAttestPeriod would have been the one-line fix and would have dropped a
+    // client into the ten-tab reviewer workbench, which is the IA the product keeps them out of.
+    expect(canAttestPeriod("owner")).toBe(false);
+    expect(isReviewerSeat({ role: "owner" })).toBe(false);
+  });
+
+  it("the acknowledgement states BOTH non-obvious facts: nobody checked, and the month locks", () => {
+    const text = selfAttestAcknowledgement("March 2026");
+    expect(text).toMatch(/March 2026/);
+    expect(text).toMatch(/no accountant/i);
+    expect(text).toMatch(/can't be changed|cannot be changed/i);
+    expect(text).toMatch(/reopen/i);
+  });
+
+  it("the acknowledgement survives a missing month label rather than saying 'undefined'", () => {
+    expect(selfAttestAcknowledgement(null)).not.toMatch(/undefined|null/);
+  });
+});
+
+describe("O131 — a self-signed month is not reported as an accountant's review", () => {
+  const base = { controlTotals: { failed: [], allTie: true }, hasBooks: true, setupComplete: true };
+  const lineFor = (over) => String(ownerTrustState({ ...base, ...over }).lines.reviewed.text || "");
+
+  it("★★ says WHO signed it — the whole value of a sign-off is who stood behind it", () => {
+    const t = lineFor({ reviewedThrough: "2026-03", selfSigned: true, hasAttester: false });
+    expect(t).toMatch(/yourself/i);
+    expect(t).toMatch(/no accountant has reviewed/i);
+  });
+
+  it("★ and a real review still reads as one — without this, the fix is just relabelling everything", () => {
+    const t = lineFor({ reviewedThrough: "2026-03", selfSigned: false, hasAttester: true });
+    expect(t).toMatch(/Reviewed and signed off through/i);
+    expect(t).not.toMatch(/yourself/i);
+  });
+
+  it("the unsigned solo line now offers BOTH routes, since signing is one of them", () => {
+    const t = lineFor({ reviewedThrough: null, hasAttester: false });
+    expect(t).toMatch(/sign them off yourself/i);
+    expect(t).toMatch(/add your accountant/i);
+  });
+});
+
+describe("the write path enforces it rather than trusting the screen", () => {
+  const app = readFileSync("src/App.jsx", "utf8");
+  const code = app.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  const start = code.indexOf("const signOffPeriod = async");
+  const fn = code.slice(start, code.indexOf("const reopenPeriod", start));
+
+  it("★ signOffPeriod refuses a self-attestation without the acknowledgement", () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(fn.length).toBeGreaterThan(200);
+    expect(fn).toMatch(/selfAttesting && !acknowledged/);
+  });
+
+  it("★ and it records WHICH path was taken on the row, not alongside it", () => {
+    expect(fn).toMatch(/selfAttested: selfAttesting/);
+    expect(fn).toMatch(/self_attested: selfAttesting/);   // the audit row too
+  });
+
+  it("★★ the migration makes the flag un-lieable — the policy decides, not the client", () => {
+    const sql = readFileSync("supabase/migrations/085_solo_owner_self_attestation.sql", "utf8");
+    // A row marked self_attested is only accepted from a solo owner; one not marked, only
+    // from a reviewer. Without the CASE an owner could record an accountant's review.
+    expect(sql).toMatch(/when self_attested then public\.is_company_solo_owner\(company_id\)/);
+    expect(sql).toMatch(/else public\.is_company_reviewer\(company_id\)/);
+    // and an unaccepted invite must not count as a person who could review
+    expect(sql).toMatch(/accepted_at is not null[\s\S]{0,200}role in \('admin', 'accountant'\)/);
+  });
+});

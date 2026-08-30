@@ -1,6 +1,8 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { monthLabel } from "../../lib/ownerTrust";
+import { firstUnsignedMonth } from "../../lib/workbench";
+import { todayLocal } from "../../lib/format";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // O90 — OWNER TRUST PANEL (CR-27). The owner's at-a-glance "my books are handled
@@ -102,7 +104,7 @@ function TrustPanelNeutral({ headline, subtext }) {
 }
 
 export default function TrustPanel({ loading = false }) {
-  const { ownerTrust, onViewChange, setView, navSeat } = useERP();
+  const { ownerTrust, onViewChange, setView, navSeat, canSoloAttest, selfAttestAcknowledgement, signOffPeriod, signoffs, invoices } = useERP();
   // C197 — is this the CPA cockpit, or the client seat? (Absent context → cockpit,
   // so nothing regresses for any surface that renders the panel outside ERP.)
   const cockpit = navSeat ? navSeat.isReviewerSeat : true;
@@ -147,6 +149,27 @@ export default function TrustPanel({ loading = false }) {
         <Line state={lines.correct.state} title="Nothing wrong" text={lines.correct.text} />
       </div>
 
+      {/* ── O131 — THE SOLO OWNER'S SIGN-OFF ─────────────────────────────────────
+          An owner deliberately cannot attest when an accountant is involved, and one
+          person holds one role — so a solo signup had NO route to a signed month, ever.
+          Operator's decision (2026-08-30): let them sign with an acknowledgement.
+
+          ★ IT LIVES HERE AND NOT IN ReviewView BECAUSE AN OWNER HAS THE CLIENT SEAT AND
+          CANNOT OPEN ReviewView AT ALL. Putting the control on the reviewer's screen
+          would have rebuilt the team-invites failure exactly: the whole flow present and
+          the last step unreachable. They get the ACTION, not the cockpit — `navSeat` is
+          untouched, which is why `canAttestPeriod` was deliberately not widened.
+
+          ★★ AND IT APPEARS ONLY WHEN NOBODY ELSE CAN SIGN. `canSoloAttest` is recomputed
+          from live membership, so the moment a real accountant joins this disappears and
+          the separation is back with nobody changing a setting. */}
+      {canSoloAttest && <SoloSignOff
+        signOffPeriod={signOffPeriod}
+        acknowledgementFor={selfAttestAcknowledgement}
+        signoffs={signoffs}
+        invoices={invoices}
+      />}
+
       {/* At most ONE gentle nudge (owner-actionable — a clarification to answer).
           C197: the nudge points at the CPA's Review queue, which a client seat can't
           open — so for a client it renders as STATUS, not a button. Same words, no
@@ -162,6 +185,72 @@ export default function TrustPanel({ loading = false }) {
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)" }}>{lines.correct.text}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The solo owner's sign-off. Deliberately small and deliberately not a green button:
+// signing is a real commitment (migration `078` makes the database refuse changes to a
+// signed month), so the acknowledgement is the control and the button is only reachable
+// through it.
+// ─────────────────────────────────────────────────────────────────────────────
+function SoloSignOff({ signOffPeriod, acknowledgementFor, signoffs, invoices }) {
+  const [ack, setAck] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [problem, setProblem] = React.useState(null);
+
+  const months = React.useMemo(() => {
+    const set = new Set();
+    for (const i of invoices || []) {
+      const m = String(i && i.date || "").slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(m)) set.add(m);
+    }
+    return [...set];
+  }, [invoices]);
+  const period = firstUnsignedMonth({ months, signoffs: signoffs || [], fallback: todayLocal().slice(0, 7) });
+  const label = monthLabel(period);
+
+  // Nothing booked yet — there is no month to stand behind, and offering to sign off an
+  // empty period would be a control that exists to be declined.
+  if (!months.length || !period) return null;
+
+  const sign = async () => {
+    if (!ack || busy || !signOffPeriod) return;
+    setBusy(true); setProblem(null);
+    try {
+      const r = await signOffPeriod(period, { acknowledged: true });
+      // §9 — the message reads the RESULT. A refusal names what actually stopped it rather
+      // than a generic "try again", because most refusals here are things to act on.
+      if (!r || !r.ok) setProblem((r && (r.error || (r.blockers || [])[0])) || "we couldn't record that just now");
+      else setAck(false);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ marginTop: 14, border: "1px solid var(--sc-border)", borderRadius: 12, padding: "12px 14px", background: "var(--sc-surface-2, transparent)" }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text)", marginBottom: 6 }}>
+        Sign off {label} yourself
+      </div>
+      <label style={{ display: "flex", gap: 9, alignItems: "flex-start", cursor: "pointer", fontSize: 12, lineHeight: 1.5, color: "var(--sc-text-2)" }}>
+        <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
+        <span>{acknowledgementFor ? acknowledgementFor(label) : ""}</span>
+      </label>
+      <button
+        onClick={sign}
+        disabled={!ack || busy}
+        style={{ marginTop: 10, width: "100%", background: ack ? "var(--sc-gold-soft)" : "transparent",
+                 border: `1px solid ${ack ? "var(--sc-gold)" : "var(--sc-border)"}`, borderRadius: 10, padding: "9px 14px",
+                 fontSize: 13, fontWeight: 600, color: ack ? "var(--sc-text)" : "var(--sc-text-2)",
+                 cursor: ack && !busy ? "pointer" : "not-allowed" }}>
+        {busy ? "Recording…" : `Sign off ${label}`}
+      </button>
+      {problem && (
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--sc-error)", lineHeight: 1.45 }}>
+          We haven't signed anything off — {problem}
+        </div>
+      )}
     </div>
   );
 }
