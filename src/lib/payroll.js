@@ -417,3 +417,40 @@ export function planPayrollBankLines(standalone = [], ledger = [], { dateWindowD
   }
   return { rest, matched, incomplete };
 }
+
+// ── HOW A PAYROLL REGISTER IS SENT TO THE MODEL ──────────────────────────────
+// ★★ PURE, AND SEPARATED FROM THE VIEW FOR A REASON A MUTATION RUN EXPOSED. The branch
+// lived inline in `PayrollView`, so the only test possible was a scan of the source for
+// the strings `type: "document"` and `fileToBase64` — and setting `isPdf = false` left
+// every one of those strings present. **The test passed on code that sent a PDF as text**,
+// which is the exact behaviour it existed to prevent. A structural assertion cannot catch
+// a changed decision; a pure function can.
+//
+// WHY THE DECISION MATTERS: `file.text()` on a PDF yields binary noise. The old path did
+// not merely REJECT PDFs — had one been let through, the model would have been handed
+// garbage and would dutifully have parsed a payroll register out of it. Accepting the
+// format without changing how it is sent would have been worse than rejecting it.
+//
+// The SAME server-owned profile handles both: the system prompt describing a register does
+// not care which container the register arrived in, and forking it would create two things
+// to keep in step.
+export function payrollRequestBody({ isPdf = false, base64 = null, text = "" } = {}) {
+  if (isPdf) {
+    return {
+      profile: "parse-payroll",
+      slots: { PAYROLL: "" },   // the register is in the document block, not the slot
+      messages: [{ role: "user", content: [
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+        { type: "text", text: "Parse the payroll register in this document." },
+      ] }],
+    };
+  }
+  return {
+    profile: "parse-payroll",
+    slots: { PAYROLL: String(text || "").slice(0, 8000) },
+    messages: [{ role: "user", content: "Parse the payroll export text in the instructions." }],
+  };
+}
+
+export const isPdfFile = (file) =>
+  !!file && ((file.type === "application/pdf") || /\.pdf$/i.test(file.name || ""));

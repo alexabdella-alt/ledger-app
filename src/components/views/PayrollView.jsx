@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { payrollRequestBody, isPdfFile } from "../../lib/payroll";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -16,7 +17,7 @@ export default function PayrollView() {
             const fmt = fmtMoney;
             const handlePayrollFile = async (file) => {
               if (!file) return;
-              const v = validateUpload(file, "spreadsheet");   // size + type guard (CR-34)
+              const v = validateUpload(file, "payroll");   // size + type guard (CR-34) — PDF allowed here
               if (!v.ok) { showNotification(v.error, "error"); return; }
               if (!(await guardImport(file, "payroll"))) return;   // misroute guard (O37)
               // O60 Phase 2: log the payroll file's arrival to the intake ledger.
@@ -25,14 +26,24 @@ export default function PayrollView() {
               setPayrollProcessing(true);
               logAudit("payroll_upload_started", `Uploading payroll file: ${file.name}`);
               try {
-                const text = await file.text();
+                // ★★ A PDF REGISTER GOES AS A DOCUMENT, NOT AS TEXT. `file.text()` on a PDF
+                // yields binary noise, which the model would have dutifully tried to parse —
+                // so the old path did not merely reject PDFs, it would have produced
+                // nonsense from one had it been let through. Same profile either way: the
+                // system prompt describing a payroll register is server-owned and does not
+                // care which container the register arrived in.
+                // The decision and the payload shape are pure (`payrollRequestBody`,
+                // `payroll.js`) so a test can assert what a PDF actually SENDS. Inline, the
+                // only possible test was a source scan — and a source scan passes on code
+                // that sends a PDF as text, which is precisely the bug.
+                const isPdf = isPdfFile(file);
+                const body = payrollRequestBody({
+                  isPdf,
+                  base64: isPdf ? await fileToBase64(file) : null,
+                  text: isPdf ? "" : await file.text(),
+                });
                 const res = await fetch(AI_PROXY_URL, {
-                  method:"POST", headers:getAuthHeaders(),
-                  body: JSON.stringify({
-                    profile: "parse-payroll",   // model/max_tokens/system server-owned; payroll text via untrusted slot
-                    slots: { PAYROLL: text.slice(0,8000) },
-                    messages:[{role:"user", content:"Parse the payroll export text in the instructions."}]
-                  })
+                  method:"POST", headers:getAuthHeaders(), body: JSON.stringify(body)
                 });
                 const d = await okAIResponse(res);
                 // C188 — robust extraction: a valid JSON object with ANY trailing text used to
@@ -62,7 +73,10 @@ export default function PayrollView() {
                     : `${importRecord.source} register held for a person: ${gate.reasons.map(r => r.text).join(" ")}`,
                   null,
                   { pass: gate.pass, reasons: gate.reasons, prior_runs: history.length });
-                storeDocument(file.name, null, "text/csv", "payroll", importRecord.id, ["payroll"], null, file);
+                // ★ THE REAL MEDIA TYPE, NOT A HARDCODED ONE. This said "text/csv" always — harmless
+                // while only spreadsheets could get here, wrong the moment a PDF can: the library
+                // would store a PDF labelled as a CSV, and the preview reads that label.
+                storeDocument(file.name, null, file.type || (isPdf ? "application/pdf" : "text/csv"), "payroll", importRecord.id, ["payroll"], null, file);
                 if (gate.pass) {
                   await postPayroll(importRecord, { auto: true });   // marks the intake row RECORDED
                   setPayrollProcessing(false);
@@ -160,7 +174,7 @@ export default function PayrollView() {
                 <div onDragOver={e=>{e.preventDefault();setPayrollDragOver(true);}} onDragLeave={()=>setPayrollDragOver(false)}
                   onDrop={e=>{e.preventDefault();setPayrollDragOver(false);const f=e.dataTransfer.files[0];if(f)handlePayrollFile(f);}}
                   style={{border:`2px dashed ${payrollDragOver?"var(--sc-gold)":"var(--sc-border-2)"}`,borderRadius:14,padding:32,textAlign:"center",marginBottom:24,background:payrollDragOver?"var(--sc-gold-soft)":"var(--sc-surface-2)",transition:"all 0.2s",cursor:"pointer"}}
-                  onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".csv,.xlsx,.xls";i.onchange=e=>handlePayrollFile(e.target.files[0]);i.click();}}>
+                  onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".csv,.xlsx,.xls,.pdf";i.onchange=e=>handlePayrollFile(e.target.files[0]);i.click();}}>
                   {payrollProcessing ? <div style={{color:"var(--sc-gold)",fontSize:14}}>⏳ Parsing payroll data...</div> : (
                     <div>
                       <div style={{fontSize:28,marginBottom:8}}>💼</div>

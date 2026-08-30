@@ -23,7 +23,17 @@ const KINDS = {
   // bank / card statements — spreadsheets + PDF + plain text
   bank:        { exts: ["csv", "xls", "xlsx", "pdf", "txt"],
                  mimes: ["text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/pdf", "text/plain"] },
-  // payroll / QBO exports — spreadsheets + IIF + text
+  // ★ PAYROLL — spreadsheets AND PDF. Split out from `spreadsheet` rather than widening it,
+  // because QuickBooks shares that kind and a QBO import genuinely cannot read a PDF: it
+  // parses a grid. Widening the shared kind would have made the QBO screen accept a file it
+  // then fails on, which is a worse promise than the one being fixed.
+  //
+  // THE PROMISE THIS KEEPS: the home drop zone advertises PDF, and payroll rejected it —
+  // so a Gusto PDF summary, which is the artifact an owner ACTUALLY HAS, bounced off a
+  // product that had just told them to drop anything.
+  payroll:     { exts: ["csv", "xls", "xlsx", "iif", "txt", "pdf"],
+                 mimes: ["text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "application/pdf"] },
+  // QBO exports — spreadsheets + IIF + text. NO PDF (see above).
   spreadsheet: { exts: ["csv", "xls", "xlsx", "iif", "txt"],
                  mimes: ["text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain"] },
   // universal drop zone — everything above (image or data)

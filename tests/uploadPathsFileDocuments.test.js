@@ -43,7 +43,11 @@ describe("★★ every path that accepts a file stores it", () => {
 
     const payroll = stripComments(read("src/components/views/PayrollView.jsx"));
     // Payroll already did this correctly — pinned so it stays that way.
-    expect(payroll).toMatch(/storeDocument\([^)]*file\)/s);
+    // ★ THE REGEX WAS `[^)]*` AND MY OWN LATER CHANGE BROKE IT: adding `(isPdf ? … : …)`
+    // to the call put a `)` inside the argument list, which a negated-paren class cannot
+    // cross. It failed against CORRECT code. Matching to the call's END is the property
+    // actually being asserted — that the last argument is the File.
+    expect(payroll).toMatch(/storeDocument\([\s\S]*?null, file\);/);
   });
 
   it("★ QBO keeps the File object, which is why it could not store one before", () => {
