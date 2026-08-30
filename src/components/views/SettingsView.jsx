@@ -20,13 +20,35 @@ export default function SettingsView() {
               if (currentCompany?.id) {
                 const companyPatch = buildCompanyUpdate(draft);
                 try {
-                  const { error } = await supabase.from("companies").update(companyPatch).eq("id", currentCompany.id);
-                  if (error) { console.warn("[settings] save:", error.message); showNotification("Couldn't save settings — please try again", "error"); return; }
+                  // ★★ `.select("id")` IS THE POINT, NOT DECORATION. PostgREST reports NO error
+                  // for an update that matched zero rows, so `if (error)` alone passes a write
+                  // that changed nothing — and the two `set…` calls below then paint the new
+                  // values on screen, so the save LOOKS done and the next reload throws it away.
+                  // That is the O76 "screen doesn't refresh" complaint from the writing end:
+                  // the screen was right and the database never agreed.
+                  //
+                  // ▶ NOT `checkedRowUpdate`: that helper scopes every write by `company_id`,
+                  // and `companies` is keyed by `id` — it has no `company_id` column. Using it
+                  // here would match nothing and fail every save.
+                  const { data, error } = await supabase.from("companies").update(companyPatch).eq("id", currentCompany.id).select("id");
+                  if (error || !data || !data.length) {
+                    console.error("[settings] save failed:", error?.message || "no rows updated");
+                    showNotification("Couldn't save settings — nothing was changed. Please try again.", "error");
+                    return;
+                  }
                 } catch (e) { console.warn("[settings] save:", e?.message || e); showNotification("Couldn't save settings — please try again", "error"); return; }
                 // O75 self-identity aliases — separate guarded write so a pre-migration
                 // (no `aliases` column) degrades silently without failing the whole save.
-                try { await supabase.from("companies").update({ aliases: draft.aliases || null }).eq("id", currentCompany.id); }
-                catch (e) { console.warn("[settings] aliases not persisted (apply migration 046):", e?.message || e); }
+                // ▶ DELIBERATELY NON-BLOCKING, and now deliberately OBSERVABLE. The point of
+                // the separate write is that a database without the `aliases` column (pre-`046`)
+                // should not fail the whole save — but "we tolerate a missing column" had become
+                // "we cannot tell whether this ever saved", which is a different thing. It now
+                // reports, and does not block.
+                try {
+                  const { data, error } = await supabase.from("companies")
+                    .update({ aliases: draft.aliases || null }).eq("id", currentCompany.id).select("id");
+                  if (error || !data || !data.length) console.warn("[settings] aliases not persisted (apply migration 046):", error?.message || "no rows updated");
+                } catch (e) { console.warn("[settings] aliases not persisted (apply migration 046):", e?.message || e); }
                 // O76 display-sync: update the in-memory company so the top-nav header/wordmark
                 // (and anything reading currentCompany) reflects the new name/identity LIVE —
                 // not only after a refresh. The DB write above is the source of truth; this keeps

@@ -49,10 +49,24 @@ export default function TaxView() {
         work_from_home: !!next.workFromHome,
         filed_deadlines: next.filed || {},
       };
-      const { error } = await supabase.from("tax_settings").upsert(payload, { onConflict: "company_id,tax_year" });
-      if (error) console.warn("[tax_settings] save:", error.message);
-      else rowExists.current = true;
-    } catch (e) { console.warn("[tax_settings] save failed:", e?.message || e); }
+      // ★★ THIS USED TO FAIL TO A `console.warn` AND NOTHING ELSE. What is being saved here
+      // is the figures a person typed — estimated payments made, which deadlines are filed —
+      // so a silent failure means they enter their tax position, see no complaint, and find
+      // it gone next time they open the page. **A silent failure of the user's own typing is
+      // the worst kind**: they have no reason to suspect it and no way to notice.
+      const { data, error } = await supabase.from("tax_settings")
+        .upsert(payload, { onConflict: "company_id,tax_year" })
+        .select("company_id");
+      if (error || !data || !data.length) {
+        console.error("[tax_settings] save failed:", error?.message || "no rows written");
+        showNotification && showNotification("Couldn't save your tax figures — they haven't been kept. Please try again.", "error");
+        return;
+      }
+      rowExists.current = true;
+    } catch (e) {
+      console.error("[tax_settings] save failed:", e?.message || e);
+      showNotification && showNotification("Couldn't save your tax figures — they haven't been kept. Please try again.", "error");
+    }
   };
   const estPaid = Number(taxState.estPaid) || 0;
   const filed = taxState.filed || {};

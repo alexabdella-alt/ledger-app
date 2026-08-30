@@ -219,7 +219,25 @@ export default function QBOImportView() {
     }
 
     // Finalize the batch record + audit.
-    try { if (batchId) await supabase.from("qbo_imports").update({ imported_count: imported, skipped_count: skipped, failed_count: failedN, total_amount: Math.round(total * 100) / 100 }).eq("id", batchId).eq("company_id", cid); } catch {}
+    // ★★ THIS COUNTER IS NOT COSMETIC — THE UNDO READS IT. `imported_count` is what the
+    // undo path reports, so a batch whose counters never landed reads as 0 entries and the
+    // undo says it removed nothing (C235's bug, from the writing end). It was an EMPTY
+    // CATCH around an unchecked update: two ways of not knowing at once.
+    //
+    // ▶ Deliberately NON-BLOCKING: the entries are already booked and correct, and failing
+    // the whole import over a counter would be worse. But it is now LOUD and audited rather
+    // than swallowed, so "the undo reported nothing" has a trail leading back here.
+    try {
+      if (batchId) {
+        const { data, error } = await supabase.from("qbo_imports")
+          .update({ imported_count: imported, skipped_count: skipped, failed_count: failedN, total_amount: Math.round(total * 100) / 100 })
+          .eq("id", batchId).eq("company_id", cid).select("id");
+        if (error || !data || !data.length) {
+          console.error("[qbo] batch counters not saved:", error?.message || "no rows updated");
+          logAudit && logAudit("qbo_batch_counters_failed", `QuickBooks import booked ${imported} entries but the batch record didn't save its counts — undoing this import may report the wrong number`, null, { batch_id: batchId, imported, skipped, failed: failedN });
+        }
+      }
+    } catch (e) { console.error("[qbo] batch counters not saved:", e?.message || e); }
     logAudit && logAudit("qbo_import", `QuickBooks import: ${imported} entries booked, ${skipped} duplicates skipped, ${money(total)} total (batch ${batchId})`, null, { batch_id: batchId, imported, skipped, failed: failedN, total });
 
     // Post-booking visibility invariant (count level): entries inserted must equal
@@ -291,13 +309,19 @@ export default function QBOImportView() {
         return;
       }
 
-      const { error: markErr } = await supabase.from("qbo_imports")
+      // ★★ `.select("id")` ADDED 2026-08-30 — THIS WAS MY OWN C235 FIX, WITH THE SAME GAP
+      // IT WAS FIXING. C235 hardened the undo to stop claiming success without checking,
+      // and then checked only `error` — and PostgREST reports no error for an update that
+      // matched zero rows. A batch that failed to be marked undone would still have said
+      // "Import undone ✓", which is precisely the sentence C235 removed one line earlier.
+      // Found by a guard written afterwards, not by re-reading it.
+      const { data: marked, error: markErr } = await supabase.from("qbo_imports")
         .update({ status: "undone", undone_at: new Date().toISOString() })
-        .eq("id", batch.id).eq("company_id", currentCompany.id);
-      if (markErr) {
+        .eq("id", batch.id).eq("company_id", currentCompany.id).select("id");
+      if (markErr || !marked || !marked.length) {
         // The entries ARE gone; only the label failed. Say exactly that — the books are
         // correct and the list is stale, which is the opposite of the old failure.
-        logAudit && logAudit("qbo_import_undo_unmarked", `Removed ${n} entries but couldn't mark the batch undone — ${markErr.message}`, batch, null);
+        logAudit && logAudit("qbo_import_undo_unmarked", `Removed ${n} entries but couldn't mark the batch undone — ${markErr?.message || "no rows updated"}`, batch, null);
         showNotification(`Removed ${n} ${n === 1 ? "entry" : "entries"}, but this import still shows as active in the list. Refresh — the entries are gone either way.`, "error");
       } else {
         logAudit && logAudit("qbo_import_undone", `Undid QuickBooks import ${batch.filename || ""} — removed ${n} entr${n === 1 ? "y" : "ies"} (batch ${batch.id})`, batch, null);
