@@ -68,3 +68,44 @@ describe("★ and the prefill itself behaves", () => {
     expect(prefillEndingBalance({ statement: { stated_ending_balance: 0 }, current: "" })).toBe("0");
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// "RECONCILE READS SAVED STATEMENT LINES INSTEAD OF RE-READING THE FILE."
+//
+// ★ NARROWER THAN THE ITEM READS, once traced: the OFFERED route — from the pipeline or a
+// Review card — has read saved lines since C185. **Only a MANUAL start still demanded the
+// file**, and the saved statement was already being looked up on that very screen to
+// prefill the balance. So at the exact moment it asked for an upload, it knew it was
+// holding the statement and its parsed transactions.
+//
+// Live cost (O83): the operator uploaded the same statement THREE TIMES and hand-typed a
+// closing balance the database already held.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ a manual reconcile offers the statement we already hold", () => {
+  const view = fs.readFileSync(path.join(ROOT, "src/components/views/ReconView.jsx"), "utf8");
+
+  it("the upload screen looks for a saved statement for the chosen account and month", () => {
+    const block = view.slice(view.indexOf("We already have this statement") - 1200,
+                             view.indexOf("We already have this statement") + 900);
+    expect(block).toMatch(/statementForPeriod\(periodStatements, \{ accountId, periodStart, periodEnd \}\)/);
+  });
+
+  it("★★ and REUSES the offered route rather than growing a second one", () => {
+    // `offerReconciliation` is the same call the Review card makes. A separate
+    // "load a saved statement" path here would be a second implementation of loading,
+    // prefilling and jumping to the match step — three places to drift.
+    expect(view).toMatch(/offerReconciliation\(saved\)/);
+  });
+
+  it("★ it clears `offerTaken` first, or the second offer of a session is ignored", () => {
+    // The offered-path effect guards on `offerTaken` so a single offer runs once. Without
+    // resetting it, a CPA who has already taken one offer this session would click "Use it"
+    // and watch nothing happen — the invisible-action defect, in the one place a user has
+    // just been told we have their file.
+    expect(view).toMatch(/setOfferTaken\(false\); offerReconciliation\(saved\)/);
+  });
+
+  it("shows nothing when there is no saved statement — it never implies one exists", () => {
+    expect(view).toMatch(/if \(!saved \|\| !offerReconciliation\) return null;/);
+  });
+});

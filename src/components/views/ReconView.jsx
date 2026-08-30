@@ -73,7 +73,7 @@ export default function ReconView() {
     bankAccounts, invoices, setInvoices, reconciliations,
     currentCompany, session, supabase, bookToDb, logAudit, showNotification, loadAllData,
     CHART_OF_ACCOUNTS, setView, getAccountByRole, cashGlCodes, loadStatementExceptions,
-    reconcileOffer, setReconcileOffer,
+    reconcileOffer, setReconcileOffer, offerReconciliation,
   } = useERP();
 
   const fmt = fmtSignedMoney;
@@ -685,6 +685,35 @@ export default function ReconView() {
       <button onClick={()=>setStep("landing")} style={{ marginBottom:16, background:"none", border:"none", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer", padding:0 }}>← Back</button>
       <h1 style={{ fontSize:24, fontWeight:600, margin:"0 0 6px" }}>Start a match</h1>
       <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:22 }}>Upload your bank statement — we'll read it and match it to your books.</div>
+
+      {/* ★★ DON'T ASK FOR A FILE WE ALREADY HAVE. The saved statement was already being
+          looked up ON THIS SCREEN — `statementForPeriod` feeds the balance prefill a few
+          lines down — so at the exact moment we ask someone to upload it again, we know we
+          are holding it and its parsed lines.
+          The OFFERED route (from a pipeline or a Review card) has read saved lines since
+          C185; only a manual start still demanded the file. Live cost, O83: the operator
+          uploaded the same statement THREE TIMES and hand-typed a balance the database had.
+          `offerReconciliation` is the same call the Review card makes, so this reuses that
+          whole path rather than growing a second one. */}
+      {(() => {
+        const saved = statementForPeriod(periodStatements, { accountId, periodStart, periodEnd });
+        if (!saved || !offerReconciliation) return null;
+        return (
+          <div style={{ ...card, padding:"14px 18px", marginBottom:14, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", borderColor:"var(--sc-gold)" }}>
+            <div style={{ flex:"1 1 260px", minWidth:0 }}>
+              <div style={{ fontSize:13.5, fontWeight:600 }}>We already have this statement</div>
+              <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:2 }}>
+                {accountName || "This account"} · {(periodStart||"").slice(0,7)} — read when it was uploaded, with its transactions and closing balance.
+              </div>
+            </div>
+            <button onClick={()=>{ setOfferTaken(false); offerReconciliation(saved); }}
+              style={{ padding:"9px 16px", borderRadius:9, fontSize:13, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer", flexShrink:0 }}>
+              Use it →
+            </button>
+          </div>
+        );
+      })()}
+
       <div style={{ ...card, padding:24 }}>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:18 }}>
           <div>
