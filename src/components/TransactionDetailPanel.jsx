@@ -103,7 +103,7 @@ function SourceDocPreview({ doc, onExpand }) {
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
     invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
-    setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isMember,
+    setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
@@ -280,7 +280,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
             </div>
 
             {/* Recode is a data change — hidden for member-role users (Item 20). */}
-            {!isMember && (
+            {!isViewer && (
             <div style={{ marginTop: 18 }}>
               {recodeOpen ? (
                 <div>
@@ -315,7 +315,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   <button onClick={() => setPayOpen(true)} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Mark as Paid</button>
                 )}
                 <button onClick={() => { setReturnTo && setReturnTo(returnContext || null); setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Full entry →</button>
-                {!isMember && (
+                {!isViewer && (
                   // ★ DISABLED, NOT REFUSED-ON-CLICK, once a correction already exists.
                   // Refusing on click is strictly worse than not offering: it teaches that
                   // clicking is how you find out (O124/O126).

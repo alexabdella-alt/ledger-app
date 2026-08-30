@@ -8,7 +8,7 @@ export default function TeamView() {
   const [members, setMembers] = React.useState([]);
   const [invites, setInvites] = React.useState([]);
   const [email, setEmail] = React.useState("");
-  const [role, setRole] = React.useState("member");
+  const [role, setRole] = React.useState("viewer");   // the least-privilege default
   const [busy, setBusy] = React.useState(false);
   const [lastLink, setLastLink] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
@@ -89,8 +89,15 @@ export default function TeamView() {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <input style={{ ...input, flex: "1 1 240px" }} type="email" placeholder="teammate@company.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && sendInvite()} />
           <select style={input} value={role} onChange={e => setRole(e.target.value)}>
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
+            {/* ★★ THESE ARE THE ROLES THE DATABASE ACTUALLY ALLOWS.
+                `company_users_role_check` permits exactly owner | admin | accountant |
+                viewer. This offered "Member", which is in none of them — so `accept_invite`
+                inserted a role the check rejects and **the invite could not be accepted at
+                all.** The default option was the broken one. Pinned by a test that reads
+                the allowed set out of the schema, so the two cannot drift again. */}
+            <option value="viewer">Viewer — can see the books, can't change anything</option>
+            <option value="accountant">Accountant — can review and sign off a month</option>
+            <option value="admin">Admin — full access, can invite others</option>
           </select>
           <button onClick={sendInvite} disabled={busy} style={{ height: 40, padding: "0 18px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: busy ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: busy ? "default" : "pointer" }}>
             {busy ? "Creating…" : "Create invite"}
