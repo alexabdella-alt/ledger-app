@@ -122,6 +122,81 @@ export function buildDepreciationEntry({ amount, depExpCode, accumDepCode, date 
 // The full straight-line schedule: one entry per month over the useful life, starting
 // at inServiceDate. Returns { entries, total, monthly, months }. `total` === the
 // depreciable base exactly (last month absorbs the rounding remainder).
+// ── METHODS BEYOND STRAIGHT-LINE ─────────────────────────────────────────────
+// §12 listed these as a DELIBERATE deferral — "known, not silently missing" — with the
+// industry-standard case built first. Straight-line remains the default and nothing about it
+// changes; these are additive.
+//
+// ★★ ALL THREE PRODUCE A SCHEDULE THAT SUMS EXACTLY TO COST − SALVAGE. That is the invariant
+// that makes a method safe to add: an asset must be fully written down to its salvage value
+// and never past it, whatever curve it takes to get there. A method that over-depreciates
+// writes off value the business still owns; one that under-depreciates leaves a stub nobody
+// notices. **The last period absorbs rounding in every method, for the same reason.**
+export const DEPRECIATION_METHOD = {
+  STRAIGHT_LINE: "straight_line",
+  DECLINING_BALANCE: "declining_balance",   // double-declining, with the standard switch
+  UNITS_OF_PRODUCTION: "units_of_production",
+};
+
+// Per-period amounts for a method. Pure arithmetic — no dates, no accounts — so the shape of
+// the curve is testable on its own, separately from how it is posted.
+export function depreciationAmounts({ method = DEPRECIATION_METHOD.STRAIGHT_LINE, base = 0, periods = 0, rate = 2, unitsPerPeriod = [], totalUnits = 0 } = {}) {
+  const n = Math.max(0, Math.floor(Number(periods) || 0));
+  const b = r2(Number(base) || 0);
+  if (!(b > 0) || n === 0) return [];
+
+  if (method === DEPRECIATION_METHOD.UNITS_OF_PRODUCTION) {
+    // ★ USAGE-BASED, SO IT NEEDS THE USAGE. A machine that ran 40% of its expected hours has
+    // used 40% of its life; without the numbers there is nothing to compute and guessing a
+    // curve would be inventing the thing the method exists to measure.
+    const total = Number(totalUnits) || (unitsPerPeriod || []).reduce((s, u) => s + (Number(u) || 0), 0);
+    if (!(total > 0)) return [];
+    const out = [];
+    let posted = 0;
+    for (let k = 0; k < n; k++) {
+      const units = Number((unitsPerPeriod || [])[k]) || 0;
+      const amt = k === n - 1 ? r2(b - posted) : r2((b * units) / total);
+      posted = r2(posted + amt);
+      out.push(amt);
+    }
+    return out;
+  }
+
+  if (method === DEPRECIATION_METHOD.DECLINING_BALANCE) {
+    // Double-declining on the NET BOOK VALUE, with the standard switch to straight-line over
+    // the remaining periods once that is the larger figure.
+    //
+    // ★★ THE SWITCH IS NOT AN OPTIMISATION — WITHOUT IT THE ASSET NEVER FINISHES. Declining
+    // balance takes a fraction of what is left each period, so it approaches zero and never
+    // arrives; the schedule would end with a stub still on the books. Every textbook makes
+    // this switch for exactly that reason.
+    const r = (Number(rate) || 2) / n;
+    const out = [];
+    let remaining = b;
+    for (let k = 0; k < n; k++) {
+      const left = n - k;
+      const declining = r2(remaining * r);
+      const straight = r2(remaining / left);
+      const amt = k === n - 1 ? r2(remaining) : Math.max(declining, straight);
+      remaining = r2(remaining - amt);
+      out.push(amt);
+    }
+    return out;
+  }
+
+  // Straight line — unchanged, and the default for anything unrecognised. A method name we
+  // do not know must not silently produce a different curve.
+  const per = r2(b / n);
+  const out = [];
+  let posted = 0;
+  for (let k = 0; k < n; k++) {
+    const amt = k === n - 1 ? r2(b - posted) : per;
+    posted = r2(posted + amt);
+    out.push(amt);
+  }
+  return out;
+}
+
 export function buildDepreciationSchedule({ cost, salvage = 0, lifeMonths, inServiceDate, depExpCode, accumDepCode, assetLabel = "asset", assetId = null } = {}) {
   const base = depreciableBase(cost, salvage);
   const n = Math.max(0, Math.floor(Number(lifeMonths) || 0));

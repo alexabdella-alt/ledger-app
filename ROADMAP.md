@@ -76,7 +76,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **Year-end close** — actually post the closing entries and lock the year.
 - [ ] **Payroll: record the liability, then the payment** — two steps instead of one.
 - [ ] **Sales tax across multiple states / per-line rates.**
-- [ ] **More depreciation methods** — declining balance, units of production, MACRS.
+- [x] **DONE 2026-08-30 (two of three) · More depreciation methods** — **declining balance** (writes off more in the early years) and **units of production** (writes off by how much the thing was actually used) are built; straight-line is unchanged and still the default. **MACRS is deliberately left out** — it's a set of tax tables rather than a curve, and belongs with tax work. **The rule that makes any of them safe: every schedule writes the asset down to exactly what it'll be worth at the end — never more, never less.** Writing off too much removes value the business still owns; too little leaves a remainder nobody notices.
 - [ ] **Link older entries to their bank account** — the missing connection behind three separate symptoms.
 - [ ] **Reconcile becomes an exceptions-only screen** once the pipeline carries the clean path.
 - [ ] **Normalized reconciliation storage** — the proper relational shape; today's works.
