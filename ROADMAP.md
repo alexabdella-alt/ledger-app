@@ -17,21 +17,21 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ## OPEN LEDGER — every tracked, unshipped item
 
-**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **TOTAL OPEN: 73** — 8 before the first client · 13 around launch · 16 after launch · 25 known problems · 10 sequenced · 1 unproven. **Last refreshed: 2026-08-29** (long session: O97 step 2 · O123 · O124 · O126 · O115 · O128 · O119 · O96 · O125 · O129 · O121 · O98 · O130 · O117 · O127 · the Vendors-tab leak — sixteen items. The O123 repair turned out to be already done.)
+**What this is:** one place to see everything still to do, in plain language. Updated every session (see CLAUDE.md §6). If work is tracked anywhere in this file, it is on this list. **TOTAL OPEN: 71** — 6 before the first client · 13 around launch · 16 after launch · 25 known problems · 10 sequenced · 1 unproven. **Last refreshed: 2026-08-29** (long session: O97 step 2 · O123 · O124 · O126 · O115 · O128 · O119 · O96 · O125 · O129 · O121 · O98 · O130 · O117 · O127 · the Vendors-tab leak — sixteen items. The O123 repair turned out to be already done.)
 
 > **The counts above are DERIVED, not typed** — `- [ ]` lines per section. Three were wrong when this was checked: "Known problems" said 38 against a real 36; "Sequenced next" said 8 against 10; and "After launch" said 16 correctly but **twelve of its items were buried inside a single run-on bullet**, so the number was right and the list was unreadable, which is its own kind of stale. A printed count cannot be wrong, only old — and nothing about it invites correction (§6).
 
-### Before the first paying client — 8 open
+### Before the first paying client — 6 open
 
 *These block onboarding a real customer. Roughly two and a half weeks at four sessions a week.*
 
 - [ ] **11a · Turn on two-factor login** — Supabase, GitHub, Vercel and the app itself. Our operator login can reach every customer's books, so every other protection sits behind that one password. **Do this week.**
-- [ ] **11b · Check no secret key ships to the browser, and that document links expire** — search the built app, not just the source. **Before we invite more people in.**
+- [x] **11b · DONE 2026-08-29 · No secret key ships to the browser, and document links expire** — the built app contains exactly one key and it's the public one that's *meant* to ship (your data is protected by the database's own rules, not by hiding that key). Every link to a stored statement or receipt expires after an hour; nothing hands out a permanent one. **Both checks now run automatically with every test**, because a check you did once is a check that quietly stops being true. **The key check decodes the token rather than searching for text** — a leaked admin key would have been sitting there scrambled, and a plain search would have missed it.
 - [ ] **11c · Write down what the AI provider does with statement data** — retention and training terms, in writing. The one gap left in what we can honestly tell a client. **Before we invite more people in.**
 - [ ] **6 · Chart of accounts per business type** — a restaurant shouldn't be set up like a law firm. ~1 session.
 - [ ] **7 · Stop asking about things we already know** — one vendor has been queried seven months running with the right answer pre-filled. Also covers the "how sure are we" numbers being trustworthy. ~1 session.
 - [ ] **8 · Invite teammates + fix the role names** — also unlocks the last sign-off security test, which needs a second, non-operator account. ~1 session.
-- [ ] **10 · 1099s: off by default, on when the accountant says so** — ~quarter session.
+- [x] **10 · DONE 2026-08-29 — and it was broken in both directions, not just defaulted wrong · 1099s: off by default, on when the accountant says so** — **the flag never displayed** (saved in the database under one name, read on screen under another, so it always showed "not flagged" and the count of vendors needing a 1099 was always zero) **and setting it never saved** (the badge flipped, an audit note was written, and nothing reached the database — gone on the next reload). **The audit note is the nasty part: the record said you'd marked a vendor and the database said you hadn't.** Now it saves for real, and if the save fails the badge goes back rather than showing something the books don't hold. **Still deliberately not guessed** — whether a vendor actually needs a 1099 (services vs goods, their company type, the $600 floor) is a later piece of work; guessing it means wrong filings under your name.
 - [ ] **12 · Push a month of INVOICES through, at volume** — every test so far has been bank-statement-shaped, but a new client arrives with invoices and receipts. **Gate: before we call the product demo-ready.** Also proves three things from the last release that are shipped-but-unproven (see below). ~1 session.
 
 ### Around launch week — 13 open
