@@ -16,13 +16,22 @@ import {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("★★★ the split is the deliverable, not the total", () => {
-  it("★★ category 1 is a DEFECT COUNT and is never averaged into the rate", () => {
-    // Averaging is how a bug becomes "within tolerance". Its expected value is zero, so one
-    // occurrence fails the run however good the percentage looks.
+  it("★★ ONE defect fails the run, however small a share of the documents it is", () => {
+    // Averaging is how a bug becomes "within tolerance". A category-1 card's expected value
+    // is ZERO, so a single occurrence fails regardless of the percentage it works out to.
+    //
+    // ★ THE NUMBERS BELOW ARE A FIXTURE, NOT A MEASUREMENT — and saying so is the point of
+    // this comment. Describing this case as "a 1% failure rate" was read as a claim that
+    // one in a hundred records fails to save, which is not true of anything: the only time
+    // `record_failed` has ever been observed it fired on THREE OF THREE attempts (the
+    // `patch`/`values` parameter bug), and since that fix, never. The scenario is
+    // constructed to make the percentage look GOOD so the assertion has something to
+    // overrule; a large denominator is how you build that, not a claim about one.
     const r = cardRateReport({ cards: [{ reason: "record_failed" }], documentCount: 100 });
-    expect(r.rate).toBeCloseTo(0.01);           // 1% — comfortably under the 5% target
+    expect(r.total).toBe(1);
     expect(r.bugs).toBe(1);
-    expect(r.withinTarget).toBe(false);          // and it still fails
+    expect(r.rate).toBeLessThan(STEADY_TARGET_RATE);   // the percentage passes…
+    expect(r.withinTarget).toBe(false);                // …and the run fails anyway
   });
 
   it("★ a clean run inside the target passes", () => {
