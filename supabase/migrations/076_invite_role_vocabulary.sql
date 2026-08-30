@@ -42,7 +42,20 @@ update public.company_invites
 alter table public.company_invites drop constraint if exists company_invites_role_check;
 alter table public.company_invites
   add constraint company_invites_role_check
-  check (role in ('admin', 'accountant', 'viewer'));
+  check (role in ('admin', 'accountant', 'viewer'))
+  not valid;
+
+-- ★★ `NOT VALID` IS LOAD-BEARING, NOT A SHORTCUT — AND THE FIRST DRAFT OF THIS FILE WAS
+-- WRONG WITHOUT IT. A plain `add constraint … check` VALIDATES EVERY EXISTING ROW. 'member'
+-- was the invite form's DEFAULT, so accepted and revoked invites carrying it almost
+-- certainly exist — the ALTER would have failed, rolled back the whole transaction, and
+-- the operator would have pasted this and got an error.
+--
+-- It is also the semantically correct choice, not just the one that runs. Step (b)
+-- deliberately rewrites only PENDING rows: an accepted invite is HISTORY, and a constraint
+-- that forces us to rewrite history to be adopted is asking for the wrong thing. `NOT
+-- VALID` enforces on every future insert and update while leaving the record of what
+-- actually happened alone.
 
 commit;
 
@@ -86,17 +99,22 @@ commit;
 -- makes it safe, and a loose statement pasted alone would commit.
 --
 -- do $$
--- declare ok boolean := false;
+-- declare verdict text;
 -- begin
 --   begin
 --     insert into public.company_invites (company_id, email, role, invited_by)
 --     values ((select id from public.companies limit 1), 'verify-076@example.invalid', 'member',
 --             (select user_id from public.company_users limit 1));
---   exception when check_violation then ok := true;
+--     verdict := 'FAIL - role=member was ACCEPTED; the constraint is not doing its job';
+--   exception
+--     when check_violation then verdict := 'PASS - the constraint refused role=member';
+--     -- ★ ANY OTHER ERROR IS REPORTED AS ITSELF, NOT COUNTED AS A PASS **OR** A FAIL.
+--     -- A not-null violation (no company/user to borrow) would otherwise read as "the
+--     -- constraint did not fire" — a false FAIL from a test that never reached the thing
+--     -- it was testing. Same shape as a query that cannot match anything reporting empty.
+--     when others then verdict := 'INCONCLUSIVE - the insert failed for another reason: ' || SQLERRM;
 --   end;
---   raise exception 'VERDICT: %', case when ok
---     then 'PASS - the constraint refused role=member'
---     else 'FAIL - role=member was ACCEPTED; the constraint is not doing its job' end;
+--   raise exception 'VERDICT: %', verdict;
 -- end $$;
 --
 -- ▶ The `raise exception` is deliberate: it aborts the transaction (so the test row is
