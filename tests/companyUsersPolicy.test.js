@@ -115,9 +115,25 @@ describe("★★ the probe demonstrates the hole before it claims one", () => {
   });
 
   it("every block reports the role it ran as, and counts rows rather than trusting silence", () => {
-    expect((probe.match(/\[ran as: %\]/g) || []).length).toBe(3);
-    expect((probe.match(/get diagnostics n = row_count/g) || []).length).toBe(2);
-    // an unexpected error is never counted as a pass (the 076 rule)
-    expect((probe.match(/INCONCLUSIVE - failed for another reason/g) || []).length).toBe(2);
+    // ★ RELATIONAL, NOT A MAGIC NUMBER. The first version hard-coded "3 blocks", and went
+    // red the moment a fourth probe was added — a test that has to be edited whenever the
+    // thing it guards grows is a test that will eventually be edited to agree with a
+    // mistake. Tie it to the block count instead: EVERY block reports its role.
+    const blocks = (probe.match(/^do \$\$/gm) || []).length;
+    expect(blocks).toBeGreaterThanOrEqual(4);
+    expect((probe.match(/\[ran as: %\]/g) || []).length).toBe(blocks);
+    // ★★ EVERY ROW COUNT IS DECIDED ON — but NOT all the same way, and my first assertion
+    // flattened that. A probe testing a REFUSAL treats zero rows as PASS (the write did not
+    // happen, which is the point). A probe testing a CAPABILITY must treat zero rows as
+    // INCONCLUSIVE (nothing was exercised). Requiring one arm everywhere would have forced
+    // the wrong verdict onto half the file. What must hold universally is only that the
+    // count is never ignored.
+    const parts = probe.split("get diagnostics n = row_count;").slice(1);
+    expect(parts.length).toBeGreaterThanOrEqual(3);
+    for (const after of parts) expect(after.slice(0, 260)).toMatch(/if n = 1 then/);
+    // An unexpected error is never counted as a pass — the 076 rule. Every block that
+    // catches a refusal must also have an "it failed for another reason" arm.
+    const passOnRefusal = (probe.match(/when insufficient_privilege then/g) || []).length;
+    expect((probe.match(/INCONCLUSIVE - failed for another reason/g) || []).length).toBe(passOnRefusal);
   });
 });
