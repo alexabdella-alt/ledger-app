@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { filterDocuments, documentDate, documentDateLabel } from "../../lib/docLibrary";
 import { fmtDate } from "../../lib/format";
 import DocumentPreviewModal from "../DocumentPreviewModal";
 
@@ -21,11 +22,18 @@ function StoredImage({ supabase, path, base64, mediaType, style, alt }) {
 }
 
 export default function DocsView() {
-  const { docLibrary, docsFilterType, docsPreview, setDocsFilterType, setDocsPreview, supabase } = useERP();
+  const { docLibrary, docsFilterType, docsPreview, setDocsFilterType, setDocsPreview, supabase, invoices } = useERP();
+  const [query, setQuery] = React.useState("");
+  const [from, setFrom] = React.useState("");
+  const [to, setTo] = React.useState("");
   const preview = docsPreview; const setPreview = setDocsPreview;
   const filterType = docsFilterType; const setFilterType = setDocsFilterType;
   const types = ["all", ...new Set(docLibrary.map(d => d.type))];
-  const filtered = filterType === "all" ? docLibrary : docLibrary.filter(d => d.type === filterType);
+  // ★ THE HEADER SAID "stored and searchable" AND THERE WAS NO SEARCH INPUT.
+  // Filename + type + date range — deliberately NOT content search, because we do not hold
+  // the extracted text and a box that silently only looks at filenames while implying
+  // otherwise would be one more claim this screen does not keep.
+  const filtered = filterDocuments(docLibrary, { query, type: filterType, from: from || null, to: to || null }, invoices);
 
   const isImage = m => (m || "").startsWith("image");
   const isPdf = m => m === "application/pdf";
@@ -45,6 +53,22 @@ export default function DocsView() {
             <button key={t} onClick={() => setFilterType(t)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, background: filterType === t ? "var(--sc-gold)" : "var(--sc-border)", border: "none", color: filterType === t ? "var(--sc-surface)" : "var(--sc-text-2)", cursor: "pointer", textTransform: "capitalize" }}>{t}</button>
           ))}
         </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or type…"
+          style={{ flex: "1 1 240px", minWidth: 0, height: 36, borderRadius: 9, border: "1px solid var(--sc-border-2)", background: "var(--sc-surface)", color: "var(--sc-text)", padding: "0 12px", fontSize: 13 }} />
+        <label style={{ fontSize: 12, color: "var(--sc-text-2)", display: "flex", alignItems: "center", gap: 6 }}>From
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            style={{ height: 36, borderRadius: 9, border: "1px solid var(--sc-border-2)", background: "var(--sc-surface)", color: "var(--sc-text)", padding: "0 10px", fontSize: 13 }} /></label>
+        <label style={{ fontSize: 12, color: "var(--sc-text-2)", display: "flex", alignItems: "center", gap: 6 }}>To
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            style={{ height: 36, borderRadius: 9, border: "1px solid var(--sc-border-2)", background: "var(--sc-surface)", color: "var(--sc-text)", padding: "0 10px", fontSize: 13 }} /></label>
+        {(query || from || to) && (
+          <button onClick={() => { setQuery(""); setFrom(""); setTo(""); }}
+            style={{ height: 36, padding: "0 12px", borderRadius: 9, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", fontSize: 12, cursor: "pointer" }}>Clear</button>
+        )}
+        <span style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>{filtered.length} of {docLibrary.length}</span>
       </div>
 
       {preview && <DocumentPreviewModal doc={preview} onClose={() => setPreview(null)} />}
@@ -72,7 +96,18 @@ export default function DocsView() {
                 </div>
                 <div style={{ padding: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, wordBreak: "break-word" }}>{doc.name}</div>
-                  <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 8 }}>{doc.uploaded_at ? fmtDate(doc.uploaded_at) : ""}</div>
+                  {/* ★ THE DOCUMENT'S OWN DATE WHEN WE CAN DERIVE IT — a February statement
+                      uploaded in August used to read "Aug 25", so "find the January
+                      statement" meant "remember which day you uploaded it". A linked entry's
+                      date IS the economic date. **And it says which one it is showing**:
+                      "Feb 3" and "uploaded Aug 25" are different facts, and silently mixing
+                      them is worse than only ever showing the upload date. */}
+                  {(() => {
+                    const d = documentDate(doc, invoices);
+                    if (!d.date) return null;
+                    const suffix = documentDateLabel(d);
+                    return <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 8 }}>{suffix ? `${suffix} ${fmtDate(d.date)}` : fmtDate(d.date)}</div>;
+                  })()}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ fontSize: 10, background: "var(--sc-border)", color: "var(--sc-text-2)", borderRadius: 20, padding: "2px 8px", textTransform: "capitalize" }}>{doc.type}</span>
                     {(doc.tags || []).map(t => <span key={t} style={{ fontSize: 10, background: "var(--sc-surface-2)", color: "var(--sc-gold)", borderRadius: 20, padding: "2px 8px" }}>{t}</span>)}

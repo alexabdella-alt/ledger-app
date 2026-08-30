@@ -33,6 +33,7 @@ import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, plan
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { planCoaTemplate, coaTemplateCopy } from "./lib/coaTemplates";
+import { documentTypeFor } from "./lib/docLibrary";
 import { buildVendorSummary } from "./lib/vendorSummary";
 import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
@@ -4634,7 +4635,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // Store the document linked to the primary booked invoice, then — once the
           // entry's durable db_entry_id has resolved — re-link the document to it so the
           // Source Document section finds it after a refresh (it matches on db_entry_id).
-          await storeDocument(item.name, base64, mediaType, "invoice", primaryId, ["uploaded"], item.id, file);
+          // ★ THE TYPE IS DERIVED, NOT ASSUMED. This was hardcoded `"invoice"`, so a
+          // utility bill, a receipt and a register all filed as "Invoice" — and the
+          // library's filter chips implied a taxonomy the data did not have. `docType`
+          // came out of the classifier several hundred lines up and was already correct;
+          // it simply was not being used here. `documentTypeFor` maps it onto the column's
+          // CHECK vocabulary, and anything unrecognised stores as `other` rather than
+          // being rejected: a document we cannot label is still one we must keep.
+          await storeDocument(item.name, base64, mediaType, documentTypeFor(docType, "invoice"), primaryId, ["uploaded"], item.id, file);
           if (primaryId != null && bookPromises.length) {
             try {
               const jeIds = await Promise.all(bookPromises);
