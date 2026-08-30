@@ -4,6 +4,8 @@ import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
+import { planBulkRemoval } from "../../lib/signedPeriod";
+import { monthLabel as signedMonthLabel } from "../../lib/ownerTrust";
 import { classifyTxn, txnStatus } from "../../lib/txnPresent";
 import { pill } from "../../lib/ui";
 import TransactionDetailPanel from "../TransactionDetailPanel";
@@ -12,7 +14,7 @@ export default function BooksView() {
   const {
     invoices, setInvoices, markPaid, markBillPaid, loadAllData, getAccountByRole, persistRecode, logAudit,
     setSelectedInvoice, setView, CHART_OF_ACCOUNTS,
-    booksFilter, setBooksFilter,
+    booksFilter, setBooksFilter, softDeleteInvoices, signoffs, setDeleteConfirm,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
     reconciliations, docLibrary, storeDocument, fileToBase64,
   } = useERP();
@@ -22,6 +24,7 @@ export default function BooksView() {
 
   const [search, setSearch] = React.useState("");
   const [selId, setSelId] = React.useState(null);
+  const [picked, setPicked] = React.useState(() => new Set());   // bulk-removal selection
   const [selContract, setSelContract] = React.useState(null);
   const [payRowId, setPayRowId] = React.useState(null);
   const [payMethod, setPayMethod] = React.useState("ach");
@@ -143,7 +146,28 @@ export default function BooksView() {
       {/* ── CONTRACTS TABLE (filter = contracts) ── */}
       {filter==="contracts" && (
         <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          {/* ── BULK REMOVAL. `softDeleteInvoices` (batch write, ONE undo toast) has existed
+             since it was written and been wired to NO component — remediating the O83
+             double-book took scripted database access to remove 14 entries, because the
+             app could only do one at a time. That is a product you have to leave in order
+             to fix it. */}
+        {picked.size > 0 && (
+          <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", padding:"10px 14px", marginBottom:12, borderRadius:10, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)" }}>
+            <span style={{ fontSize:13, fontWeight:600 }}>{picked.size} selected</span>
+            <button onClick={()=>setPicked(new Set())} style={{ fontSize:12, background:"none", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"4px 10px", color:"var(--sc-text-2)", cursor:"pointer" }}>Clear</button>
+            <button onClick={()=>{
+              const chosen = rows.filter(r => picked.has(r.id));
+              const plan = planBulkRemoval(chosen, signoffs || [], { monthLabel: signedMonthLabel });
+              if (!plan.removable.length) { showNotification?.(plan.blocked || "Nothing here can be removed.", "error"); return; }
+              setDeleteConfirm({
+                // The confirmation names what will be LEFT BEHIND, before anything happens.
+                label: plan.blocked ? `${plan.confirm}\n\n${plan.blocked}` : plan.confirm,
+                onConfirm: async () => { await softDeleteInvoices(plan.removable); setPicked(new Set()); },
+              });
+            }} style={{ marginLeft:"auto", fontSize:12, fontWeight:600, background:"transparent", border:"1px solid var(--sc-error-soft)", borderRadius:7, padding:"5px 12px", color:"var(--sc-error)", cursor:"pointer" }}>Delete selected</button>
+          </div>
+        )}
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead><tr style={{ background:"var(--sc-surface-2)" }}>
               {["Counterparty","Type","Monthly","Term","Status",""].map((h,i)=>(
                 <th key={i} style={{ padding:"11px 16px", textAlign:h==="Monthly"?"right":"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1, fontWeight:600, borderBottom:"1px solid var(--sc-border)", whiteSpace:"nowrap" }}>{h.toUpperCase()}</th>
@@ -178,6 +202,14 @@ export default function BooksView() {
       <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, overflowX:"auto", overflowY:"clip" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", minWidth:760 }}>
           <thead><tr style={{ background:"var(--sc-bg)" }}>
+            {/* Selection column — no label; the header checkbox picks every VISIBLE row,
+                which is the filtered/searched set the person is actually looking at. */}
+            <th style={{ padding:"10px 0 10px 14px", width:28, borderBottom:"1px solid var(--sc-border)" }}>
+              <input type="checkbox" aria-label="Select all shown"
+                checked={rows.length > 0 && rows.every(r => picked.has(r.id))}
+                onChange={e=>setPicked(e.target.checked ? new Set(rows.map(r=>r.id)) : new Set())}
+                style={{ cursor:"pointer" }} />
+            </th>
             {["Date","Vendor","Description","GL Account","Amount","Status",""].map((h,i)=>{
               const sortable = h!=="";
               const active = sort.col===h;
@@ -196,7 +228,7 @@ export default function BooksView() {
           </tr></thead>
           <tbody>
             {rows.length===0 ? (
-              <tr><td colSpan={7} style={{ padding:0 }}>
+              <tr><td colSpan={8} style={{ padding:0 }}>
                 <div style={{ padding:"56px 32px", textAlign:"center" }}>
                   <div style={{ width:52, height:52, borderRadius:14, background:"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:24 }}>{search||filter!=="all"?"🔍":"📭"}</div>
                   <div style={{ fontSize:15, fontWeight:600, color:"var(--sc-text)", marginBottom:6 }}>{search||filter!=="all"?"No matching transactions":"No transactions yet"}</div>
@@ -216,6 +248,11 @@ export default function BooksView() {
                 <React.Fragment key={inv.id}>
                   <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"var(--sc-gold-soft)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", opacity: (inv.status==="voided"||reversedInfo)?0.55:1, textDecoration: reversedInfo?"line-through":"none", textDecorationColor: reversedInfo?"var(--sc-error)":undefined, transition:"background 0.1s" }}
                     onMouseEnter={e=>{ if(selId!==inv.id) e.currentTarget.style.background="var(--sc-surface-2)"; }} onMouseLeave={e=>{ if(selId!==inv.id) e.currentTarget.style.background="var(--sc-surface)"; }}>
+                    <td onClick={e=>e.stopPropagation()} style={{ padding:"0 0 0 14px", width:28 }}>
+                      <input type="checkbox" aria-label={`Select ${inv.vendor || "transaction"}`} checked={picked.has(inv.id)}
+                        onChange={()=>setPicked(prev => { const n = new Set(prev); n.has(inv.id) ? n.delete(inv.id) : n.add(inv.id); return n; })}
+                        style={{ cursor:"pointer" }} />
+                    </td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
                     <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor||"—"}</span></div></td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>

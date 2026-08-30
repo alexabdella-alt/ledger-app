@@ -6691,10 +6691,18 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     if (!confirmed) return await fail("re-read did not confirm the new status");
 
     const refStr = ref ? ` · ref ${ref}` : "", noteStr = note ? ` · note: ${note}` : "";
-    const glStr = postedPaymentId ? ` · GL ${side === "ar" ? "Dr Cash/Cr AR" : "Dr AP/Cr Cash"} posted` : "";
+    // ★ THE GL NOTATION MOVES OUT OF THE HUMAN SENTENCE AND INTO THE STRUCTURED RECORD.
+    // Home renders `audit_log.detail` VERBATIM, so this tail — `· GL Dr AP/Cr Cash posted`
+    // — was appearing on the owner's activity feed, which is the one screen that assumes
+    // no accounting knowledge at all. The audit trail loses nothing: it lands in
+    // `after_state` beside the payment's entry id, which is where a CPA reads it anyway.
+    // (The feed ALSO scrubs — see `activityFeed.js`. Fixing only this line would fix this
+    // instance and leave the class: any future audit detail with debit/credit wording
+    // surfaces on Home exactly the same way.)
+    const glPosted = postedPaymentId ? (side === "ar" ? "Dr Cash/Cr AR" : "Dr AP/Cr Cash") : null;
     logAudit(side === "ar" ? "invoice_collected" : "invoice_paid",
-      `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · $${(inv.amount || 0).toFixed(2)} via ${methodPretty(method)}${refStr}${noteStr}${glStr}`,
-      { payment_status: snap.payment_status }, { payment_status: newStatus, method, reference: ref, notes: note, by: who, payment_entry_id: postedPaymentId ? String(postedPaymentId) : null });
+      `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · $${(inv.amount || 0).toFixed(2)} via ${methodPretty(method)}${refStr}${noteStr}`,
+      { payment_status: snap.payment_status }, { payment_status: newStatus, method, reference: ref, notes: note, by: who, payment_entry_id: postedPaymentId ? String(postedPaymentId) : null, gl_posted: glPosted });
     return true;
   };
 

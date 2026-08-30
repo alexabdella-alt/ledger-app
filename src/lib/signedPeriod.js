@@ -81,6 +81,47 @@ export function planEntryRemoval(entry, signoffs = [], { monthLabel = null } = {
   };
 }
 
+// ── BULK REMOVAL (the Books multi-select) ────────────────────────────────────
+// `softDeleteInvoices` — batch write, ONE Undo toast — has existed since C-something and
+// been wired to NO component. The cost is on record: remediating the O83 double-book took
+// **scripted database access** to remove 14 entries, because the app could only delete one
+// at a time. That is the shape of a product that makes you leave it to fix it.
+//
+// ★★ A SELECTION CAN STRADDLE THE SIGN-OFF BOUNDARY, AND THAT IS THE WHOLE DIFFICULTY.
+// O130 settled the single-entry rule: an open month is a draft (remove it), a signed month
+// is attested (post a dated correction). A batch may contain both — and the two need
+// genuinely different treatment, so the honest answer is to do the removable ones as one
+// undoable batch and SAY what was left, rather than quietly applying either rule to
+// everything.
+//
+// ▶ THE SIGNED ONES ARE NOT SILENTLY CORRECTED IN BULK. A correction is a new dated entry
+// that changes this month's numbers; posting several without the person seeing each one is
+// exactly the invisible-action class (§9). They are named and left for the single-entry
+// path, which shows the confirmation O130 wrote.
+export function planBulkRemoval(entries = [], signoffs = [], { monthLabel = null } = {}) {
+  const removable = [];
+  const signed = [];
+  for (const e of entries || []) {
+    if (!e) continue;
+    const period = signedPeriodForDate(e.date, signoffs, { source: e.source });
+    if (period) signed.push({ entry: e, period });
+    else removable.push(e);
+  }
+  const label = (p) => (typeof monthLabel === "function" ? monthLabel(p) : null) || p;
+  const months = [...new Set(signed.map((s) => label(s.period)))].sort();
+
+  const n = removable.length;
+  const confirm = n
+    ? `Remove ${n} ${n === 1 ? "entry" : "entries"}? You'll have 30 seconds to undo, and your accountant can restore them later.`
+    : null;
+  // Says what will be LEFT BEHIND and why, before anything happens — not afterwards.
+  const blocked = signed.length
+    ? `${signed.length} of these ${signed.length === 1 ? "is" : "are"} in ${months.length === 1 ? months[0] : "months"} your accountant has signed off, so we won't change ${months.length === 1 ? "it" : "them"} in bulk. Open ${signed.length === 1 ? "that one" : "those"} individually and we'll record a correction dated today instead.`
+    : null;
+
+  return { removable, signed, months, confirm, blocked };
+}
+
 // Option (b): rebook the entry into the CURRENT open month (date-adjust for a cash-basis
 // straggler) — KEEP the document's original date in metadata so nothing is lost, and stamp
 // why. Pure; returns a NEW invoice object (never mutates the input).
