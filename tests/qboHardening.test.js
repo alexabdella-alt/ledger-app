@@ -123,3 +123,59 @@ describe("★★ every Undo says so when it fails", () => {
     expect(app).toMatch(/the transaction is still in your books/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE SWEEP'S THIRD FIND — a BACKGROUND job that could raise an INTERACTIVE dialog.
+//
+// `persistMultiLineEntry` holds an entry dated into a signed month and pops a confirmation:
+// correct for someone who has JUST dropped a document into a closed period, and asked to
+// choose. **`autoPostDepreciation` runs on every company load with nobody watching.** A
+// depreciation row falling in a signed month would have popped a decision about something
+// the user never did, got no answer, left the row `pending`, and done it again on the next
+// load — forever.
+//
+// ★ `078` IS WHY IT MATTERS NOW: the database refuses that insert regardless, so the
+// client-side hold is the only thing between a background job and a raw trigger error.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★★ an automatic poster never asks a question nobody is there to answer", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  // ★ SLICED TO THE NEXT TOP-LEVEL DECLARATION. My first cut ended at `const ensureAccount`,
+  // which appears EARLIER in the file (a nested helper in `persistJournalEntry`), so
+  // `indexOf` returned a position BEFORE the start and the slice was empty — three tests
+  // failed against correct code. An end anchor has to be after the start.
+  const wStart = app.indexOf("const persistMultiLineEntry");
+  const writer = app.slice(wStart, app.indexOf("const ensureAccountIdForCode", wStart));
+
+  it("the multi-line writer takes a `background` flag", () => {
+    expect(writer).toMatch(/\{ background = false \} = \{\}/);
+  });
+
+  it("★★ in the background it AUDITS and returns, instead of raising the dialog", () => {
+    const held = writer.slice(writer.indexOf("if (heldPeriodML)"));
+    const skip = held.indexOf("signed_period_booking_skipped");
+    const prompt = held.indexOf("setPendingSignedPeriodBooking");
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(prompt);            // the background branch returns first
+    expect(held).toMatch(/if \(background\) \{/);
+  });
+
+  it("★ the interactive path is untouched — a person who just acted still gets the choice", () => {
+    expect(writer).toMatch(/setPendingSignedPeriodBooking\(\{ invoice: entry, period: heldPeriodML, multiLine: true \}\)/);
+  });
+
+  it("★★ depreciation is the ONE caller that passes it, and it COUNTS what it skipped", () => {
+    // A row that can never post while its month stays signed would otherwise be retried on
+    // every load with nobody told why — the silent-forever-retry shape.
+    expect(app).toMatch(/persistMultiLineEntry\(je, \{ background: true \}\)/);
+    const dep = app.slice(app.indexOf("persistMultiLineEntry(je, { background: true })"));
+    expect(dep.slice(0, 400)).toMatch(/incomplete\.push\(row\)/);
+  });
+
+  it("★ every OTHER caller stays interactive — the flag is opt-in, not a default", () => {
+    // If `background` were the default, every user-initiated booking would silently skip a
+    // closed month instead of offering the choice: the opposite bug, and a quieter one.
+    const calls = [...app.matchAll(/persistMultiLineEntry\((?!\s*entry)[^;]*?\)/g)].map((m) => m[0]);
+    const backgrounded = calls.filter((c) => c.includes("background: true"));
+    expect(backgrounded).toHaveLength(1);
+  });
+});

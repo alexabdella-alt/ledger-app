@@ -1488,7 +1488,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // the per-line expansion (which posted each line as its own 2-line JE and so
   // double-counted multi-line entries — revenue/expense landing on both a primary
   // and an offset leg). Refuses unbalanced entries before hitting the DB.
-  const persistMultiLineEntry = async (entry) => {
+  // `background: true` means NO HUMAN IS WATCHING. See the signed-period branch below —
+  // an automatic poster must never raise an interactive confirmation.
+  const persistMultiLineEntry = async (entry, { background = false } = {}) => {
     if (!currentCompany?.id || !session?.user?.id) return null;
     if (!entry || !entry.balanced) { console.error("persistMultiLineEntry: refusing unbalanced/empty entry", entry); showNotification("Entry doesn't balance — not posted.", "error"); return null; }
     if (cutoffDate && entry.source !== "opening_balance" && isBeforeCutoff(entry.date, cutoffDate)) {
@@ -1500,6 +1502,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // (deferred-revenue recognition, lease, payroll, sales-tax) dated into a signed month is held.
     const heldPeriodML = entry?._signedPeriodAck ? null : signedPeriodForDate(entry.date, signoffs, { source: entry.source });
     if (heldPeriodML) {
+      // ★★ A BACKGROUND POSTER MUST NOT HIJACK AN INTERACTIVE DIALOG. This prompt is
+      // written for someone who has JUST dropped a document into a closed month — it asks
+      // them to choose. `autoPostDepreciation` runs on every company load with nobody
+      // watching, so a depreciation row falling in a signed month would pop a decision
+      // about something the user never did, get no answer, leave the row `pending`, and
+      // **do it again on the next load, forever**.
+      //
+      // ★ AND `078` IS WHY THIS MATTERS NOW: the database refuses that insert regardless,
+      // so the client-side hold is the only thing standing between a background job and a
+      // raw trigger error. Found by the caller sweep `078`'s own rule demands.
+      if (background) {
+        logAudit("signed_period_booking_skipped", `Skipped an automatic entry dated ${entry.date} — ${heldPeriodML} is signed off`, null, { period: heldPeriodML, date: entry.date, source: entry.source || null });
+        return null;
+      }
       setPendingSignedPeriodBooking({ invoice: entry, period: heldPeriodML, multiLine: true });
       logAudit("signed_period_booking_held", `Held a multi-line entry dated ${entry.date} into signed period ${heldPeriodML} — awaiting decision`, null, { date: entry.date, period: heldPeriodML });
       return null;
@@ -3269,8 +3285,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         meta: { kind: "depreciation", asset_id: row.asset_id, period: row.period_index },
       });
       if (!je) { incomplete.push(row); continue; }   // couldn't build → treat as incomplete, don't guess
-      const jeId = await persistMultiLineEntry(je);
-      if (!jeId) continue;
+      // ★ THE ONLY BACKGROUND CALLER. Everything else that posts a multi-line entry is
+      // something a person just did; this runs on company load.
+      const jeId = await persistMultiLineEntry(je, { background: true });
+      if (!jeId) {
+        // Counted, not silently skipped: a row that can never post while its month stays
+        // signed would otherwise be retried on every load with nobody told why.
+        incomplete.push(row);
+        continue;
+      }
       // C198·3c (i, blast radius) — the SAME follow-up stamp the payroll path needs, for the
       // same reason. `depreciationAlreadyPosted` derives idempotency from a LIVE JE carrying
       // import_metadata {kind:'depreciation', asset_id, period} — and post_journal_entry drops
