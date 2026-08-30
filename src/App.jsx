@@ -1627,12 +1627,37 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // refresh). Bank balances flow through the SAME entry (bank-as-source-of-truth).
   const openingPosted = openingBalances.some(b => b.posted);
 
+  // ── `companies` IS KEYED BY `id` AND HAS NO `company_id` COLUMN ───────────────
+  // `checkedRowUpdate` scopes every write by `company_id`, so it cannot be used here — it
+  // would match nothing and fail every save. This is the same contract in the right shape:
+  // `.select("id")` makes the affected rows observable, because PostgREST reports NO error
+  // for an update that matched none.
+  const updateCompanyRow = async (companyId, patch, label) => {
+    try {
+      const { data, error } = await supabase.from("companies").update(patch).eq("id", companyId).select("id");
+      if (error || !data || !data.length) {
+        console.error(`[${label}] company update failed:`, error?.message || "no rows updated");
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.error(`[${label}] company update failed:`, e?.message || e);
+      return false;
+    }
+  };
+
   const saveCutoffDate = async (date) => {
     if (!currentCompany?.id) return false;
     if (openingPosted) { showNotification("Cutoff is locked — opening balances are already posted", "error"); return false; }
     setCutoffDate(date || null);
-    try { await supabase.from("companies").update({ cutoff_date: date || null }).eq("id", currentCompany.id); }
-    catch (e) { console.warn("[cutoff] save:", e?.message || e); }
+    // ★ THE CUTOFF IS LOAD-BEARING (§12): no transaction may be dated before it, and the
+    // whole starting position is one entry AT it. A cutoff that silently failed to save
+    // leaves the screen showing one date and every guard enforcing another.
+    if (!(await updateCompanyRow(currentCompany.id, { cutoff_date: date || null }, "cutoff"))) {
+      setCutoffDate(cutoffDate || null);        // put the old value back on screen
+      showNotification("Couldn't save that start date — nothing was changed. Please try again.", "error");
+      return false;
+    }
     logAudit("cutoff_date_set", `Cutoff (Day One) set to ${date || "—"}`, null, { cutoff: date || null });
     return true;
   };
@@ -1787,7 +1812,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         const decision = resolveAdoptedBalance({ existingBalance: acct.current_balance, endingBalance: p.endingBalance });
         if (decision.action === "set") {
           try {
-            await supabase.from("bank_accounts").update({ current_balance: decision.value }).eq("id", acct.id).eq("company_id", currentCompany.id);
+            const r = await checkedRowUpdate({
+              supabase, table: "bank_accounts", id: acct.id, companyId: currentCompany.id,
+              patch: { current_balance: decision.value }, label: "bankBalanceFromStatement",
+            });
+            // The screen follows the database: painting first would show a balance the bank
+            // record does not hold, and the next load would quietly revert it.
+            if (!r.ok) { showNotification("Couldn't save that account's balance — please try again.", "error"); return; }
             setBankAccounts(prev => prev.map(b => b.id === acct.id ? { ...b, current_balance: decision.value } : b));
             logAudit("bank_balance_from_statement", `Set ${acct.name || p.accountName} balance to ${fmtSignedMoney(decision.value)} (statement ending balance) on opening confirm`, null, { accountId: acct.id, balance: decision.value });
           } catch (e) { console.warn("[bank_accounts] current_balance update failed:", e?.message || e); }
@@ -2025,15 +2056,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // looks like support. Normalised to strings so the jsonb column holds one shape.
     const docIds = (Array.isArray(evidenceDocIds) ? evidenceDocIds : []).map(String).filter(Boolean);
     try {
-      const { error } = await supabase.from("anomalies")
+      const { data: dismissed, error } = await supabase.from("anomalies")
         .update({ status: "dismissed", dismissed_reason: trimmed, resolution: "dismissed", evidence_doc_ids: docIds, resolved_at: new Date().toISOString(), resolved_by: session?.user?.id || null })
-        .eq("id", id).eq("company_id", cid);
+        .eq("id", id).eq("company_id", cid).select("id");
       // ★ THE DATABASE NOW HAS AN OPINION ABOUT THIS (`080`): a dismissal requires a
       // reviewer and a reason. A non-reviewer's attempt comes back as an RLS refusal, and
       // it is said in plain language rather than shown as a policy error — the UI already
       // hides the button, so anyone reaching this is coming from somewhere else.
-      if (error) {
-        const denied = /row-level security|violates row-level|policy/i.test(error.message || "");
+      if (error || !dismissed || !dismissed.length) {
+        // ★ ZERO ROWS IS A REFUSAL TOO. `080`'s policy filters a non-reviewer's dismissal
+        // out with `USING`, which yields no error and no rows — so without this, the card
+        // would say "dismissed", vanish from the screen, and be back on the next load.
+        const denied = !error || /row-level security|violates row-level|policy/i.test(error.message || "");
         return { ok: false, error: denied ? "Only an accountant or admin on this company can dismiss a flag." : error.message };
       }
       logAudit("anomaly_dismissed", `Anomaly dismissed: ${trimmed}${docIds.length ? ` (${docIds.length} document${docIds.length === 1 ? "" : "s"} attached)` : ""}`, null, { anomaly_id: id, reason: trimmed, evidence_doc_ids: docIds });
@@ -2305,7 +2339,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setCompanySettings(prev => ({ ...prev, businessType, fiscalYearEnd }));
     setBusinessModalOpen(false);
     if (!cid) return;
-    try { await supabase.from("companies").update({ business_type: businessType, fiscal_year_end: fiscalYearEnd }).eq("id", cid); } catch (e) { console.warn("[onboarding] save profile:", e?.message || e); }
+    // `fiscal_year_end` drives the retained-earnings split on the balance sheet, so a
+    // silent failure here is a wrong figure later, not just a missing preference.
+    if (!(await updateCompanyRow(cid, { business_type: businessType, fiscal_year_end: fiscalYearEnd }, "onboarding-profile"))) {
+      showNotification("Couldn't save your business details — please try again.", "error");
+      return;
+    }
     await applyCoaTemplate(businessType);
   };
 
@@ -2379,7 +2418,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const cid = currentCompany?.id;
     setCompanySettings(prev => ({ ...prev, onboardingComplete: true }));
     if (!cid) return;
-    try { await supabase.from("companies").update({ onboarding_complete: true }).eq("id", cid); } catch (e) { console.warn("[onboarding] complete:", e?.message || e); }
+    // A silent failure here means onboarding greets them again on every load, with no
+    // explanation and nothing they can do about it.
+    if (!(await updateCompanyRow(cid, { onboarding_complete: true }, "onboarding-complete"))) {
+      setCompanySettings(prev => ({ ...prev, onboardingComplete: false }));
+      showNotification("Couldn't finish setting up — please try again.", "error");
+    }
   };
 
   // Refs kept current for the scans (avoid stale closures). Declared AFTER the

@@ -84,6 +84,8 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ### Known problems, not yet scheduled — 24 open
 
+- [x] **DONE 2026-08-30 · Saves that don't check whether they saved** — the database doesn't complain when an update changes nothing, so `did that error?` looks like a check and isn't one. **In one day this produced nine separate bugs**, including both Undo buttons, a payment that couldn't be undone, and a fix written that same morning that had the very flaw it was fixing. **Five more fixed here**, chosen because a silent failure would change a number or make you repeat work: your books' start date, a bank balance taken from a statement, your business details (which drive a figure on the balance sheet), finishing setup (a silent failure means setup greets you forever), and dismissing a flag. **A rule now refuses any new save that doesn't check** — with exceptions allowed only where it's written down why nobody needs to know it failed, and a further check that deletes an exception once it's no longer used.
+
 *Real defects and debt. Each has an id so it can't get lost.*
 
 - [x] **DONE — settled and shipped, the item was stale (checked 2026-08-30) · Decide how we identify a vendor for each kind of record** — bank lines carry a messy bank description that needs cleaning up; invoices, payroll and manual entries already carry a clean vendor name and need none. One rule was being used for all four, and it silently fails on two of them. **Nothing else on the vendor-recognition work moves until this is settled.**
