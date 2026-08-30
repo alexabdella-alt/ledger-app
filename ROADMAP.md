@@ -123,7 +123,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 - [ ] **O101 · Third-party penetration test** *(s6)* — before strangers at scale.
 - [ ] **O107 · Find out why the slow screens are slow** — measure and report the causes first; propose fixes after, not before. Its own session, not part of the calibration work.
 - [ ] **O14 · No way to test screens** — only logic is covered; a screen can crash with a green suite.
-- [ ] **O17 · Payments post in two steps instead of one** — a crash between them leaves a half-recorded payment.
+- [x] **MUCH SAFER 2026-08-30 (the two steps remain) · O17 · Payments post in two steps instead of one** — recording a payment writes the money movement first, then marks the bill paid. If the second half failed, an automatic undo removed the first — **and that undo was itself unchecked**, so if it quietly did nothing, your books showed the money leaving while the bill still looked unpaid, with no sign anywhere. **Worse, the message said "please try again"** — and trying again would have recorded the payment a second time on top of the stranded one. Now the undo is verified, and if it can't be done the screen says exactly that: we recorded the money leaving, couldn't finish, couldn't undo it, **don't try again — send this to your accountant.** *(Making the two steps genuinely one is still open; this removes the way it could fail silently.)*
 - [ ] **O35 · Accounts numbered differently across older companies.**
 - [ ] **O76 · Screens that don't refresh after a change** — fix as a class, not screen by screen.
 - [ ] **O89 · The main app file is 7,000 lines.**
