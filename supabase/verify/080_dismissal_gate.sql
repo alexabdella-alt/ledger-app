@@ -55,8 +55,14 @@ end $$;
 -- every other update" — the `079` failure exactly. Auto-resolve, sign-off expiry, reopen
 -- and last_seen bumps all run as whoever is logged in, including an OWNER, who is NOT a
 -- reviewer. This is the check that proves they were not collateral damage.
+--
+-- ★★ AND IT COUNTS THE ROWS, WHICH THE FIRST DRAFT DID NOT. Under RLS an UPDATE whose
+-- `USING` clause hides the row touches ZERO rows and raises NOTHING — so "no exception"
+-- would have been reported as PASS by a probe that never reached the thing it was testing.
+-- That is the same vacuous-pass shape as a guard whose input is always empty. A silent
+-- zero-row result is INCONCLUSIVE here, never a pass.
 do $$
-declare v text; who text; a uuid; c uuid; u uuid;
+declare v text; who text; n int; a uuid; c uuid; u uuid;
 begin
   select cu.company_id, cu.user_id into c, u
   from public.company_users cu
@@ -76,9 +82,65 @@ begin
 
   begin
     update public.anomalies set last_seen_at = now() where id = a;
-    v := 'PASS - ordinary anomaly housekeeping still works';
+    get diagnostics n = row_count;
+    if n = 1 then v := 'PASS - ordinary anomaly housekeeping still works';
+    else v := 'INCONCLUSIVE - the update matched ' || n || ' rows, so nothing was actually tested';
+    end if;
   exception when others then
     v := 'FAIL - a non-dismissal update was blocked: ' || SQLERRM;
+  end;
+
+  raise exception 'CHECK RESULT (not an error - this rolled back on purpose): % [ran as: %]', v, who;
+end $$;
+
+
+-- ── (f) ★★ THE REVIEWER HALF — provable TODAY, without a new account ─────────
+-- I recorded this as unprovable from the operator's login, and that is true as far as it
+-- goes: `is_platform_admin()` resolves the email from `auth.uid()`, so borrowing the
+-- OPERATOR's user id gets the Support-Mode bypass and `is_company_reviewer` returns true
+-- whatever their company role is.
+--
+-- ★ BUT THE BYPASS IS KEYED ON WHICH USER WE BORROW, NOT ON WHO IS SITTING AT THE EDITOR.
+-- Borrow a member who is NOT the platform admin and NOT admin/accountant — an OWNER of
+-- their own company qualifies, since `is_company_reviewer` is admin-or-accountant only —
+-- and give the dismissal a PERFECTLY GOOD REASON. The only thing left that can refuse it
+-- is the reviewer test.
+--
+-- If no such member exists this reports INCONCLUSIVE and the check genuinely still belongs
+-- to TIER 1 #8. It does not guess.
+do $$
+declare v text; who text; n int; a uuid; c uuid; u uuid; r text;
+begin
+  select cu.company_id, cu.user_id, cu.role into c, u, r
+  from public.company_users cu
+  join auth.users au on au.id = cu.user_id
+  where cu.accepted_at is not null
+    and cu.role not in ('admin','accountant')
+    and lower(au.email) <> 'alexabdella@gmail.com'
+  limit 1;
+  if c is null then
+    raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - no non-platform-admin, non-reviewer member exists yet; this check belongs to TIER 1 #8';
+  end if;
+
+  insert into public.anomalies (company_id, type, severity, status, fingerprint, title, detail)
+  values (c, 'verify_080_probe', 'low', 'open', 'verify-080-' || gen_random_uuid()::text, 'probe', 'probe')
+  returning id into a;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u::text, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  who := current_user;
+
+  begin
+    -- A GOOD reason on purpose: if this is refused, only the reviewer test can have done it.
+    update public.anomalies
+       set status = 'dismissed', dismissed_reason = 'verify-080 probe with a valid reason'
+     where id = a;
+    get diagnostics n = row_count;
+    if n = 1 then v := 'FAIL - a non-reviewer (' || r || ') dismissed a flag';
+    else v := 'INCONCLUSIVE - the update matched ' || n || ' rows, so nothing was tested';
+    end if;
+  exception when others then
+    v := 'PASS - a non-reviewer (' || r || ') was refused: ' || SQLERRM;
   end;
 
   raise exception 'CHECK RESULT (not an error - this rolled back on purpose): % [ran as: %]', v, who;
