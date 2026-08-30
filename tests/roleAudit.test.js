@@ -80,7 +80,7 @@ describe("★★ it reports and does not repair", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 // ★★ THE BACKFILL THE AUDIT PRODUCED — and the limit it does NOT close.
 //
-// The audit found `opening_balance_equity` missing on seven of eleven companies. `083` adds
+// The audit found `opening_balance_equity` missing on NINE of eleven companies. `083` adds
 // it. But the TEMPLATE path (C254) only runs when someone saves their business profile, and
 // the SERVER SEED does not contain 3400 at all — so a new company that never completes that
 // step still relies on the create-on-demand door. That is a separate task, and the migration
@@ -107,7 +107,7 @@ describe("★★ 083 — the opening-balance backfill", () => {
   it("★★ and it labels itself `seed`, not the default `runtime`", () => {
     // 070 defaults origin to 'runtime' DELIBERATELY, so an insert that doesn't say where it
     // came from shows up in the O108 detector. A deliberate backfill left unlabelled would
-    // arrive as seven accounts the system appears to have invented on its own.
+    // arrive as accounts the system appears to have invented on its own.
     expect(body).toMatch(/origin\)/);
     expect(body).toMatch(/'seed'/);
   });

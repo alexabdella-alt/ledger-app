@@ -34,7 +34,7 @@ begin;
 -- DELIBERATELY, so that an insert which does not say where it came from is, by definition,
 -- one of the materialise-mid-flight doors and shows up in the `O108` detector. This backfill
 -- is a deliberate setup operation — the opposite of that — and must say so, or it would
--- arrive in the audit as seven accounts the system appears to have invented on its own.
+-- arrive in the audit as accounts the system appears to have invented on its own.
 insert into public.accounts (company_id, code, name, category, system_role, active, is_system, origin)
 select c.id, '3400', 'Opening Balance Equity', 'Equity', 'opening_balance_equity', true, true, 'seed' 
 from public.companies c
