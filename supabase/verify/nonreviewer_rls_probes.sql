@@ -105,13 +105,21 @@ end $$;
 
 
 -- ── (3) s4 — THE CROSS-TENANT READ, AS A SCRIPT RATHER THAN A MEMORY ─────────
--- ★★ THE ANTI-VACUITY HALF IS THE POINT, AND IT IS WHY THIS IS NOT JUST "expect 0".
+-- ★★ THE ANTI-VACUITY HALF IS THE POINT, AND IT ALREADY EARNED ITS PLACE ON THE FIRST RUN.
 -- "0 rows of the other company" is equally consistent with *the wall holds* and with *the
 -- query matched nothing for an unrelated reason* — an empty result and a broken query look
--- identical. So it ALSO counts the borrower's OWN company and requires that to be > 0.
--- Without that, this check would pass on an empty database, a typo, or a failed role switch.
+-- identical. So this ALSO counts the borrower's OWN rows and refuses to pass on zero.
+--
+-- Live 2026-08-30 it returned **INCONCLUSIVE - saw 0 of their rows AND 0 of my own**: the
+-- only non-platform-admin member owns a company with no entries yet. Without the guard it
+-- would have printed PASS and s4 would have been closed on a probe that proved nothing.
+--
+-- ★ SO THE PROBE GIVES THE BORROWER A ROW OF THEIR OWN, INSIDE THE TRANSACTION IT ROLLS
+-- BACK. That is not a workaround for a missing fixture — it is what makes the check
+-- self-contained: `mine > 0` now means "RLS let this user see a row that genuinely exists
+-- in their company", which is the exact counterpart of `theirs = 0`. Nothing is committed.
 do $$
-declare v text; who text; mine int; theirs int; u uuid; a uuid; b uuid;
+declare v text; who text; mine int; theirs int; u uuid; a uuid; b uuid; seeded uuid;
 begin
   select cu.user_id, cu.company_id into u, a
   from public.company_users cu
@@ -123,10 +131,12 @@ begin
     raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - no non-platform-admin member exists';
   end if;
 
-  -- A company the borrower is NOT a member of, that actually holds entries.
+  -- A company the borrower is NOT a member of, that actually holds entries. Without the
+  -- `having` this could pick an empty company and "prove" isolation against nothing.
   select je.company_id into b
   from public.journal_entries je
   where je.company_id <> a
+    and je.deleted_at is null
     and not exists (select 1 from public.company_users x where x.company_id = je.company_id and x.user_id = u)
   group by je.company_id
   having count(*) > 0
@@ -134,6 +144,12 @@ begin
   if b is null then
     raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - no other tenant with entries to probe against';
   end if;
+
+  -- The borrower's own row, so the positive half of the check is real. Dated far in the
+  -- future and rolled back; `2099-01` cannot collide with a signed period.
+  insert into public.journal_entries (company_id, entry_date, description, source, status)
+  values (a, date '2099-01-01', 'verify probe - rolled back', 'manual', 'posted')
+  returning id into seeded;
 
   perform set_config('request.jwt.claims', json_build_object('sub', u::text, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
