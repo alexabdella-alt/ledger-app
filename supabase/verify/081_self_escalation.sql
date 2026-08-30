@@ -51,6 +51,62 @@ begin
 end $$;
 
 
+-- ── (A2) THE SAME CHECK, BUT WITH AN ACTUAL PROMOTION ────────────────────────
+-- ★★ (A) RAN LIVE AND RETURNED `FAIL - a admin promoted THEMSELVES to admin`. The specimen
+-- it borrowed was ALREADY an admin, so the role did not change: it proves the role column
+-- is self-writable and **does not demonstrate ESCALATION**, which is one inference further
+-- than the observation. Recorded rather than quietly re-run, because "the update was
+-- permitted" and "a viewer can become an admin" are different claims and only the second is
+-- the finding.
+--
+-- This one requires the borrowed member to be BELOW admin, so a success is a real promotion.
+do $$
+declare v text; who text; n int; u uuid; c uuid; r text;
+begin
+  select cu.user_id, cu.company_id, cu.role into u, c, r
+  from public.company_users cu
+  join auth.users au on au.id = cu.user_id
+  where cu.accepted_at is not null
+    and cu.role not in ('owner','admin')
+    and lower(au.email) <> 'alexabdella@gmail.com'
+  limit 1;
+  if u is null then
+    -- ★ AND THE OWNER CASE IS STILL WORTH TESTING even with no viewer on the books: an owner
+    -- promoting themselves to `admin` is not a privilege gain in most respects, but it DOES
+    -- make them a reviewer — which is O93's hole exactly.
+    select cu.user_id, cu.company_id, cu.role into u, c, r
+    from public.company_users cu
+    join auth.users au on au.id = cu.user_id
+    where cu.accepted_at is not null and cu.role = 'owner'
+      and lower(au.email) <> 'alexabdella@gmail.com'
+    limit 1;
+  end if;
+  if u is null then
+    raise exception 'CHECK RESULT (not an error): INCONCLUSIVE - no member below admin to promote';
+  end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u::text, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  who := current_user;
+
+  begin
+    update public.company_users set role = 'admin' where user_id = u and company_id = c and role <> 'admin';
+    get diagnostics n = row_count;
+    if n = 1 then
+      v := 'FAIL - a ' || r || ' promoted THEMSELVES to admin' ||
+           case when r = 'owner' then ' (and is now a reviewer, so can sign off their own books)' else '' end;
+    else
+      v := 'PASS - the self-promotion matched no rows';
+    end if;
+  exception
+    when insufficient_privilege then v := 'PASS - refused: ' || SQLERRM;
+    when others then v := 'INCONCLUSIVE - failed for another reason: ' || SQLERRM;
+  end;
+
+  raise exception 'CHECK RESULT (not an error - this rolled back on purpose): % [ran as: %]', v, who;
+end $$;
+
+
 -- ── (B) CAN A STRANGER JOIN A COMPANY THEY WERE NEVER INVITED TO? ────────────
 -- The serious one. BEFORE 081: expect FAIL. AFTER: expect PASS.
 do $$
