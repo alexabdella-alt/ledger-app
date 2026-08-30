@@ -141,3 +141,90 @@ describe("★ the copy describes the plan, never the intent", () => {
     expect(coaTemplateCopy({ ...plan, hide: ["4200"] })).toMatch(/tidied away 1/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TIER 1 #7's HARD-FAIL TEST — the other half of the same promise.
+//
+// The roadmap states the joint acceptance test verbatim: *the first document a new signup
+// uploads books correctly OR asks a smart question* — never a silent wrong bucket, and
+// **"a Miscellaneous fallback on a recognizable vendor is a hard fail."**
+//
+// ★ THE TWO HALVES ARE ONE PROMISE. The template gives a restaurant somewhere correct to
+// put CO2 tanks; this stops the system quietly using the "we couldn't tell" bucket when it
+// can name the vendor. Either alone leaves the promise unkept.
+// ═════════════════════════════════════════════════════════════════════════════
+import { autoBookDecision, isCatchAllAccount, hasNamedVendor } from "../src/lib/confidenceFlag.js";
+
+describe("★★ Miscellaneous on a recognisable vendor is never auto-booked", () => {
+  const alamoIce = { vendor: "Alamo Ice & Beverage", amount: 168.4, confidence: 92,
+                     gl_code: "7100", gl_name: "Miscellaneous Expense" };
+
+  it("THE LIVE SPECIMEN: Alamo Ice at 92% confidence does NOT auto-book", () => {
+    // Nothing here tripped the confidence floor, because the model was confident about the
+    // WRONG THING — it was sure it did not know.
+    const d = autoBookDecision(alamoIce);
+    expect(d.autoBook).toBe(false);
+    expect(d.reason).toBe("catch_all_account_named_vendor");
+  });
+
+  it("★ the holding account counts too — 7150 means the same thing", () => {
+    expect(autoBookDecision({ ...alamoIce, gl_code: "7150", gl_name: "Uncategorized Expense" }).autoBook).toBe(false);
+  });
+
+  it("★ and a RENUMBERED chart is caught by the words themselves", () => {
+    expect(isCatchAllAccount({ gl_code: "9910", gl_name: "Miscellaneous Expense" })).toBe(true);
+    expect(isCatchAllAccount({ gl_code: "9911", gl_name: "Uncategorised Costs" })).toBe(true);
+    expect(isCatchAllAccount({ system_role: "uncategorized_expense" })).toBe(true);
+  });
+
+  it("★★ it does NOT fire on a small amount — the hard-fail test says nothing about size", () => {
+    // Checked before the materiality flag on purpose: a $12 Miscellaneous booking on a
+    // named vendor is the same defect as a $1,200 one.
+    expect(autoBookDecision({ ...alamoIce, amount: 12 }).reason).toBe("catch_all_account_named_vendor");
+  });
+
+  it("★ an UNNAMED line still books — asking about it would be the noise O122 forbids", () => {
+    // A bank line with no readable counterparty genuinely has nothing better available.
+    for (const vendor of ["", null, "  ", "8842"]) {
+      const d = autoBookDecision({ ...alamoIce, vendor });
+      expect(d.autoBook, `vendor ${JSON.stringify(vendor)} should still auto-book`).toBe(true);
+    }
+    expect(hasNamedVendor({ vendor: "Roma Cheese" })).toBe(true);
+    expect(hasNamedVendor({ vendor: "884213" })).toBe(false);
+  });
+
+  it("a REAL account still books normally — this blocks one bucket, not the feature", () => {
+    expect(autoBookDecision({ ...alamoIce, gl_code: "5010", gl_name: "Food Cost" }).autoBook).toBe(true);
+    expect(autoBookDecision({ ...alamoIce, gl_code: "6280", gl_name: "Kitchen Supplies & Smallwares" }).autoBook).toBe(true);
+  });
+
+  it("★★ it is checked BEFORE the materiality flag, so the REASON is the catch-all one", () => {
+    // ★ THIS TEST EXISTS BECAUSE A MUTATION DIDN'T BITE. Moving the check after the
+    // materiality flag left every assertion green — my fixture sat at 92% confidence,
+    // where none of `shouldFlagForReview`'s conditions fire, so the ordering could not
+    // matter for it. The comment in the source claimed the ordering was load-bearing and
+    // nothing established that.
+    //
+    // At 80% on a material amount BOTH rules apply. Either blocks the auto-book, so the
+    // outcome is identical — what differs is the REASON, and the reason is what the card
+    // says and what a future reader diagnoses from. "We put this in Miscellaneous and can
+    // name the vendor" is the more specific and more actionable of the two.
+    // 85% on $6,000 trips condition 3 of `shouldFlagForReview` (large amount, less-than-
+    // high confidence) while staying above the ask floor — so both rules genuinely apply.
+    const d = autoBookDecision({ vendor: "Alamo Ice & Beverage", amount: 6000, confidence: 85,
+                                 gl_code: "7100", gl_name: "Miscellaneous Expense" });
+    expect(d.autoBook).toBe(false);
+    expect(d.reason).toBe("catch_all_account_named_vendor");
+    // …and the same transaction on a REAL account falls through to the materiality flag,
+    // which proves the two rules genuinely overlap here rather than one being unreachable.
+    const real = autoBookDecision({ vendor: "Alamo Ice & Beverage", amount: 6000, confidence: 85,
+                                    gl_code: "5010", gl_name: "Food Cost" });
+    expect(real.reason).toBe("flagged_uncertain_material");
+  });
+
+  it("★ the floor still reports FIRST — the reason must be the most specific true one", () => {
+    // A low-confidence Miscellaneous booking is below the floor AND a catch-all. The floor
+    // is the more actionable answer, so it wins.
+    expect(autoBookDecision({ ...alamoIce, confidence: 40 }).reason).toBe("below_confidence_floor");
+  });
+});

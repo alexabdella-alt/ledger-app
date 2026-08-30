@@ -69,10 +69,49 @@ export function shouldFlagForReview(txn = {}, opts = {}) {
 // Missing amount → can't book, so ask. Returns { autoBook, reason }.
 // NOTE: an explicit vendor RULE and the learned-vendor confidence boost are applied by the
 // caller BEFORE this (they raise confidence / short-circuit), so a known vendor books through.
+// ── TIER 1 #7 — "MISCELLANEOUS ON A RECOGNISABLE VENDOR IS A HARD FAIL" ─────
+// The joint acceptance test for cold start, verbatim from the roadmap: *the first document
+// a new signup uploads books correctly OR asks a smart question* — never a silent wrong
+// bucket. `7100 Miscellaneous` and `7150 Uncategorized` are the two buckets that mean
+// "we could not tell", and **a confident booking into a bucket that means uncertainty is a
+// contradiction in terms.**
+//
+// ★ THE LIVE SPECIMEN: `Alamo Ice & Beverage` — CO2 tanks and bagged ice, a vendor any
+// human reads at a glance — auto-booked to `7100`. Nothing about that was low-confidence
+// enough to trip the floor, because the model was confident about the WRONG THING: it was
+// sure it did not know.
+//
+// ▶ IT BLOCKS AUTO-BOOKING, NOT BOOKING. The entry is still recorded — a fact still books
+// (Rule 1) — it just goes to the human with the question instead of past them. And it is
+// scoped to a vendor we can NAME: an unnamed line genuinely has nothing better available,
+// and asking about it would be the noise `O122` forbids.
+const CATCH_ALL_ROLES = new Set(["miscellaneous_expense", "uncategorized_expense"]);
+const CATCH_ALL_CODES = new Set(["7100", "7150"]);
+
+export function isCatchAllAccount({ gl_code = null, gl_name = null, system_role = null } = {}) {
+  if (system_role && CATCH_ALL_ROLES.has(String(system_role))) return true;
+  if (gl_code && CATCH_ALL_CODES.has(String(gl_code).trim())) return true;
+  // Name-based fallback for a renumbered chart — the words themselves are the signal.
+  return /\b(miscellaneous|uncategori[sz]ed)\b/i.test(String(gl_name || ""));
+}
+
+// Do we know who this is? A name with letters in it is a vendor a human could look up.
+export function hasNamedVendor(txn = {}) {
+  const v = String(txn.vendor || "").trim();
+  return v.length >= 3 && /[a-z]{3}/i.test(v);
+}
+
 export function autoBookDecision(txn = {}, { askFloor = AI_CONFIDENCE_ASK_FLOOR, ...opts } = {}) {
   const conf = txn.confidence == null ? 100 : num(txn.confidence);
   if (!(Math.abs(num(txn.amount)) > 0)) return { autoBook: false, reason: "missing_amount" };
   if (conf < askFloor) return { autoBook: false, reason: "below_confidence_floor" };
+  // ★★ A CONFIDENT BOOKING INTO A BUCKET THAT MEANS "WE COULDN'T TELL" IS A CONTRADICTION.
+  // Checked AFTER the floor so the reason is the most specific true one, and BEFORE the
+  // materiality flag so a small Miscellaneous booking is caught too — the hard-fail test
+  // says nothing about the amount.
+  if (isCatchAllAccount(txn) && hasNamedVendor(txn)) {
+    return { autoBook: false, reason: "catch_all_account_named_vendor" };
+  }
   if (shouldFlagForReview(txn, opts).flagged) return { autoBook: false, reason: "flagged_uncertain_material" };
   return { autoBook: true, reason: "confident" };
 }
