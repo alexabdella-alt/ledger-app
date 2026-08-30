@@ -14,6 +14,7 @@ import { payrollRequestBody, isPdfFile, payrollEntryForImport, payrollAutoPostGa
 import { validateComment } from "./lib/anomalyNotes";
 import { buildAliasIndex, applyAlias, validateAlias, aliasExplainer } from "./lib/vendorAlias";
 import { planOpeningRedo, redoAuditDetail } from "./lib/openingRedo";
+import { usableExtraction, extractionToStore, EXTRACTION_VERSION, cacheHitCopy } from "./lib/extractionCache";
 import { checkedRowUpdate, checkedIdsUpdate, getWriteFailures, resetWriteFailures, writeFailureSentence } from "./lib/checkedWrite";
 import { planInvoiceArrival, ARRIVAL, ASK_REASON } from "./lib/invoicePayment";
 import { DIRECTORY_SEED } from "./lib/vendorDirectory";
@@ -2992,6 +2993,41 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     } catch (e) { console.warn("[resolveContactId]", e?.message); return null; }
   };
   // gl_code → accounts.id, creating the account if missing (mirrors persistRecode).
+  // ── REUSING WHAT WE ALREADY READ FROM A DOCUMENT (O113 proposal 3) ───────────
+  // Identical bytes re-uploaded used to re-run the whole pipeline. C193 already hashes every
+  // document to dedupe the library, so the key costs nothing new.
+  //
+  // ★ ONLY THE BYTE-DERIVED ANSWERS COME BACK — what kind of document it is, and what was on
+  // it. The ACCOUNT it belongs to is never reused: that depends on the company's chart, which
+  // changes, and reusing it would book a re-uploaded document to a chart that no longer
+  // exists — silently, and looking identical to a correct answer.
+  const priorExtraction = async (contentHash) => {
+    if (!contentHash || !currentCompany?.id) return null;
+    try {
+      const { data } = await supabase.from("documents")
+        .select("id, name, extraction, extraction_version")
+        .eq("company_id", currentCompany.id).eq("content_hash", contentHash)
+        .not("extraction", "is", null).limit(1).maybeSingle();
+      if (!data) return null;
+      const check = usableExtraction(data);
+      // A miss REPORTS why. "We re-read it" and "we had nothing usable" are different facts,
+      // and a stale-version miss is the one worth seeing after a prompt change.
+      if (!check.ok) { console.info(`[extraction] re-reading — ${check.reason}`); return null; }
+      return { doc: data, ...check };
+    } catch (e) { console.warn("[extraction] cache lookup skipped:", e?.message || e); return null; }
+  };
+  const storeExtraction = async (documentId, { classify = null, extract = null } = {}) => {
+    const payload = extractionToStore({ classify, extract });
+    if (!documentId || !payload) return;
+    // Best-effort and non-blocking: a failure here costs one AI call next time, nothing more.
+    // It is logged rather than swallowed so "the cache never hits" has somewhere to look.
+    const r = await checkedRowUpdate({
+      supabase, table: "documents", id: documentId, companyId: currentCompany?.id,
+      patch: { extraction: payload, extraction_version: EXTRACTION_VERSION }, label: "storeExtraction",
+    });
+    if (!r.ok) console.warn("[extraction] not stored — the next upload of these bytes will re-read them");
+  };
+
   const resolveAccountId = async (glCode, glName) => {
     if (!currentCompany?.id || !glCode) return null;
     const live = getAccountByCode(glCode)?.db_id;
