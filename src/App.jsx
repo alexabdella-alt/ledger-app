@@ -1461,7 +1461,39 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         p_company_id: currentCompany.id, p_entry_date: entryDate, p_description: description,
         p_source: source, p_created_by: session.user.id, p_lines: lines, p_meta: meta,
       });
-      if (!rpcErr) return rpcData?.id || rpcData?.entry?.id || null;
+      if (!rpcErr) {
+        const newId = rpcData?.id || rpcData?.entry?.id || null;
+        // ── O95 — THE TAX FIGURE HAS TO BE STAMPED AFTER THE FACT ────────────────
+        // `p_meta` above carries `tax_amount`, and `post_journal_entry` cherry-picks six
+        // named scalars out of it and discards everything else — so this key has NEVER
+        // reached the database, and the comment where it is built ("persisted INDEPENDENT
+        // of how it was booked") has been describing an intention.
+        //
+        // ★★ AND THE COST IS NOT THAT THE CHECK DID NOTHING — IT IS THAT IT DID THE
+        // OPPOSITE. `sales_tax_tie` compares "tax the invoices charged" against the
+        // Sales-Tax-Payable balance. With the charged figure stuck at 0: correctly-booked
+        // tax credits the liability and MISMATCHES, raising an accuracy flag that blocks
+        // sign-off on books that are right — while tax mis-booked into revenue leaves both
+        // sides at 0, TIES, and the one failure the net exists to catch passes silently.
+        //
+        // Same follow-up-checked-update shape ·3c used for payroll and depreciation, for
+        // the same reason: changing the RPC's contract is its own decision (`O95`).
+        const taxAmt2 = Number(invoice.tax_amount) || 0;
+        if (newId && taxAmt2 > 0) {
+          const r = await checkedRowUpdate({
+            supabase, table: "journal_entries", id: newId, companyId: currentCompany.id,
+            patch: { import_metadata: { tax_amount: taxAmt2 } }, label: "salesTaxStamp",
+          });
+          // ★ A FAILED STAMP FAILS LOUD, NOT SAFE. The entry is correct either way, but the
+          // control total then reads 0 against a real liability and blocks sign-off with a
+          // mismatch nobody can explain — so say what happened rather than logging it.
+          if (!r.ok) {
+            logAudit("sales_tax_stamp_failed", `Booked the invoice, but couldn't record the ${fmtMoney(taxAmt2)} of sales tax for the accuracy check`, null, { entry_id: String(newId), tax_amount: taxAmt2 });
+            showNotification(`Saved — but we couldn't record this invoice's sales tax for the monthly cross-check. Your accountant may see a sales-tax mismatch that isn't real.`, "error");
+          }
+        }
+        return newId;
+      }
 
       // A real posting failure (e.g. unbalanced) must surface and stop — only
       // fall back to the legacy inserts if the RPC simply isn't deployed yet.
