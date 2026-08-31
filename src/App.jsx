@@ -1185,7 +1185,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data: banks } = await supabase
         .from("bank_accounts").select("*, accounts(code)").eq("company_id", cid).eq("active", true);
       if (banks) {
-        const mappedBanks = banks.map(b => ({ id: b.id, name: b.name, type: b.type, gl_code: b.accounts?.code, institution: b.institution||"", last4: b.last4||"", current_balance: Number(b.current_balance)||0 }));
+        const mappedBanks = banks.map(b => ({ id: b.id, name: b.name, type: b.type, gl_code: b.accounts?.code, institution: b.institution||"", last4: b.last4||"", current_balance: Number(b.current_balance)||0,
+        // Carried so `isPlaceholderBank` can ask whether a person ever saved this row rather
+        // than guessing from its name (onboarding.js).
+        created_at: b.created_at || null, updated_at: b.updated_at || null }));
         setBankAccounts(mappedBanks);
       }
 

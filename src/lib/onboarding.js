@@ -26,7 +26,29 @@
 //  user names "Primary Checking" with $0 and no details — is indistinguishable from
 //  the seed by fields alone; it resolves once statement transactions carry a
 //  bank_account_id linkage. See the O83 Issue-3 investigation.)
+// ★★ HAS A PERSON EVER SAVED THIS ROW? `bank_accounts` carries a `set_updated_at` trigger,
+// so `updated_at` moves past `created_at` on the first update and stays there. The seeded row
+// is INSERTed once and never touched, so the two timestamps are identical — meaning the fact
+// we want is already recorded and needed no new column.
+//
+// ★ TOLERANCE, not equality: both timestamps come from the same `now()` on insert, but a
+// second's slack costs nothing and protects against clock precision. And an UNPARSEABLE or
+// missing pair returns FALSE — *we do not know that anyone edited it*, which keeps the old
+// heuristic in charge rather than quietly declaring every account real.
+export function bankEverEdited(b = {}) {
+  const created = Date.parse(b.created_at || "");
+  const updated = Date.parse(b.updated_at || "");
+  if (!Number.isFinite(created) || !Number.isFinite(updated)) return false;
+  return updated - created > 1000;
+}
+
 export function isPlaceholderBank(b = {}) {
+  // ★★ THE RESIDUAL THIS CLOSES: a REAL account genuinely called "Primary Checking", with no
+  // bank name, no last four and no balance yet, was indistinguishable from the row we seed at
+  // company setup — so the onboarding step "add your bank account" could never be ticked off,
+  // and nothing on screen explained why. Editing it was the user's own assertion that it is
+  // theirs; the code simply had no way to hear it.
+  if (bankEverEdited(b)) return false;
   const nm = (b.name || "").trim().toLowerCase();
   const noDetails = !(b.institution || "").trim() && !(b.last4 || "").trim();
   const noBalance = !Number(b.current_balance);   // 0 / blank / NaN — no balance entered
