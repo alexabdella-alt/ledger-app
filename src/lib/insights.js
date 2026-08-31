@@ -386,9 +386,33 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
 
   // 5. Large single transaction (> $2,500, not capitalized).
   const isCapitalized = i => String(i.gl_code || "")[0] === "1" || i.needs_depreciation || i.capitalized;
+  // ★★★ NOT LARGE IF THIS VENDOR ALWAYS CHARGES THIS MUCH. Monthly rent was flagged EVERY
+  // MONTH — "if it's equipment or software lasting over a year, it may need to be
+  // capitalized", asked of the most predictable expense a business has. That is O122's rule
+  // exactly: a card the user sees every month is a bug wearing a question mark.
+  //
+  // ★★ AND IT GENERALISES THE PAYROLL EXEMPTION RATHER THAN ADDING A SECOND SPECIAL CASE.
+  // `isSystemPostedEntry` was added because payroll tripped this same detector; the real
+  // property in both cases is that **a vendor with an established history at this magnitude
+  // is not a surprise**. `vendor_spike` already owns "this vendor charged unusually much" —
+  // this detector is for a large charge we have no history for.
+  //
+  // Two priors at similar size is the bar: one is a coincidence, two is a pattern. "Similar"
+  // is within 25%, so an established $4,200 landlord is exempt while a first $48,000 invoice
+  // from a $1,500 supplier is not.
+  const priorSimilar = (i) => {
+    const key = normVendor(i.vendor);
+    if (!key) return 0;
+    const amt = Math.abs(Number(i.amount) || 0);
+    if (!(amt > 0)) return 0;
+    return expenses.filter((x) => x !== i
+      && normVendor(x.vendor) === key
+      && String(x.date || "") < String(i.date || "")
+      && Math.abs(Math.abs(Number(x.amount) || 0) - amt) <= amt * 0.25).length;
+  };
   for (const i of expenses.filter(x => within(x.date, 95) && !isSystemPostedEntry(x))) {   // C196(4)
     const amt = Number(i.amount) || 0;
-    if (amt > 2500 && !isCapitalized(i)) {
+    if (amt > 2500 && !isCapitalized(i) && priorSimilar(i) < 2) {
       push({ id: `large_txn:${normVendor(i.vendor)}:${subjectKey(i)}`, type: "large_transaction", severity: "medium",
         title: `Large charge: ${money(amt)} to ${i.vendor}`,
         description: `${money(amt)} to ${i.vendor} on ${String(i.date)}. If it's equipment or software lasting over a year, it may need to be capitalized rather than expensed.`,
