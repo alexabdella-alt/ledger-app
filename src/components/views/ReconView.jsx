@@ -76,6 +76,7 @@ export default function ReconView() {
     currentCompany, session, supabase, bookToDb, logAudit, showNotification, loadAllData,
     CHART_OF_ACCOUNTS, setView, getAccountByRole, cashGlCodes, loadStatementExceptions,
     reconcileOffer, setReconcileOffer, offerReconciliation,
+    removeEntry, removalPlanFor,
   } = useERP();
 
   const fmt = fmtSignedMoney;
@@ -437,12 +438,29 @@ export default function ReconView() {
   };
   const ignoreBank = (t) => { setBankTxns(prev=>prev.map(x=>x.id===t.id?{...x,_ignored:true,_matchBook:null}:x)); queueSave(); };
   const markOutstanding = (b) => { setOutstanding(p=>({...p,[b.id]:true})); queueSave(); };
-  const voidBook = (b) => {
-    // Destructive — confirm before removing a booked entry (O83: the void option sits next to
-    // a client-visible sort-out prompt; a mis-click must not silently delete a real entry).
-    if (typeof window !== "undefined" && window.confirm && !window.confirm(`Remove "${b.vendor}" (${fmt(b.amount)}) from your books? This voids the entry.`)) return;
-    setInvoices(prev=>prev.map(i=>i.id===b.id?{...i,status:"voided",voided_at:new Date().toISOString(),voided_reason:"Voided during reconciliation"}:i));
-    logAudit && logAudit("invoice_voided",`Voided ${b.vendor} ${fmt(b.amount)} during reconciliation`,b,null); queueSave();
+  const voidBook = async (b) => {
+    // ★★★ THIS USED TO CHANGE NOTHING BUT THE SCREEN. It set `status:"voided"` in LOCAL STATE
+    // only, wrote an audit row saying the entry was voided, and never touched the database —
+    // so the entry came straight back on the next reload, and the reconciliation was computed
+    // against books that did not match what was stored. Worse than a no-op: the audit trail
+    // recorded a removal that never happened, and `flattenJournalEntries` hardcodes
+    // `status: "booked"` anyway, so nothing on reload could have honoured the local flag.
+    //
+    // ★★ IT NOW GOES THROUGH `removeEntry` — the single funnel (O130) that decides between a
+    // soft delete and a dated reversal based on whether the month has been signed off. That
+    // decision is not this screen's to make, and it is the one that keeps a signed month from
+    // being quietly rewritten.
+    const plan = removalPlanFor ? removalPlanFor(b) : null;
+    const question = plan?.confirm || `Remove "${b.vendor}" (${fmt(b.amount)}) from your books?`;
+    if (typeof window !== "undefined" && window.confirm && !window.confirm(question)) return;
+    const r = removeEntry ? await removeEntry(b) : { ok: false };
+    // §9 — the sentence reads the result. `removeEntry` owns its own success toast and Undo,
+    // so this only speaks when it did NOT land.
+    if (!r || !r.ok) {
+      showNotification && showNotification("We couldn't remove that entry, so it's still in your books.", "error");
+      return;
+    }
+    queueSave();
   };
 
   const addToBooks = (t, gl) => {

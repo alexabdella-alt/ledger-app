@@ -71,7 +71,12 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         secondary_gl_name: offsetLine?.accounts?.name,
         debit_credit: primaryIsDebit ? "debit" : "credit",
         project: primaryLine?.project || offsetLine?.project || "General",   // read back the per-line project (retag persistence)
-        status: "booked", booked_at: e.created_at, source: e.source,
+        // ★★ THE ROW CARRIES THE ENTRY'S REAL STATUS. This hardcoded "booked", so a DB-level
+        // `status = 'voided'` was invisible to every derivation — net income, GL balances and
+        // the trial balance all counted a voided entry. `deleted_at` was carried (C207); this
+        // was the other half of the same omission, and it is the shape that guard exists for:
+        // a filter is only as good as the field reaching it.
+        status: e.status === "voided" ? "voided" : "booked", booked_at: e.created_at, source: e.source,
         payment_status: e.payment_status || "unpaid",
         approval_status: e.approval_status || undefined,
         approved_at: e.approved_at || undefined,
@@ -129,7 +134,12 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
           secondary_gl_name: isDebit ? primaryCredit?.accounts?.name : primaryDebit?.accounts?.name,
           debit_credit: isDebit ? "debit" : "credit",
           project: l.project || "General",   // read back the per-line project (retag persistence)
-          status: "booked", booked_at: e.created_at, source: e.source,
+          // ★★ THE ROW CARRIES THE ENTRY'S REAL STATUS. This hardcoded "booked", so a DB-level
+        // `status = 'voided'` was invisible to every derivation — net income, GL balances and
+        // the trial balance all counted a voided entry. `deleted_at` was carried (C207); this
+        // was the other half of the same omission, and it is the shape that guard exists for:
+        // a filter is only as good as the field reaching it.
+        status: e.status === "voided" ? "voided" : "booked", booked_at: e.created_at, source: e.source,
           // Read the canonical payment state back (was hardcoded "unpaid" — which
           // silently discarded a saved "paid"/"collected" on every refresh for
           // multi-line bills). Payment state lives on the entry, shared by all lines.
