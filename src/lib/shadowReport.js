@@ -147,9 +147,28 @@ export function shadowReport({
   // §4.2 — every DISAGREE itemised and individually resolved. Unresolved ones are the
   // outstanding human work, and they are counted, not assumed away.
   const resolved = new Set((resolvedDisagreements || []).map(String));
+  // ★★ ITEMISED, NOT AGGREGATED. Amendment A §4.2 is explicit: *"Any DISAGREE is itemised and
+  // reviewed one at a time. Not aggregated, not rate-limited."* The first version reported a
+  // COUNT — which is the one thing the amendment forbids, because a count cannot be resolved.
+  // Each item carries what a person needs to make the (a)/(b)/(c) call without leaving the
+  // screen: the supplier as it appeared, the month, what the books say, and what the ladder
+  // proposed instead.
+  const seenDisagree = new Set();
   const disagreeLines = list.flatMap((r) => (r.rows || [])
     .filter((x) => x?.verdict === "disagree")
-    .map((x) => ({ line: String(x.journal_entry_line_id), descriptor: x.descriptor_display, entityKey: x.entity_key })));
+    .map((x) => ({
+      line: String(x.journal_entry_line_id),
+      descriptor: x.descriptor_display,
+      entityKey: x.entity_key,
+      period: x.period || null,
+      attestedAccountId: x.attested_account_id || null,
+      proposedAccountId: x.proposed_account_id || null,
+      basis: x.propose_basis || null,
+      tier: x.tier || null,
+    })))
+    // The pass runs twice over identical input, so every disagreement appears twice. Reporting
+    // it twice would make the itemised list contradict the count beside it.
+    .filter((d) => (seenDisagree.has(d.line) ? false : (seenDisagree.add(d.line), true)));
   const unresolvedDisagreements = disagreeLines.filter((d) => !resolved.has(d.line));
 
   const blockers = [];
@@ -199,7 +218,13 @@ export function shadowReportCopy(report) {
         .join("; ");
       lines.push(`${counts.park} of ${scored} parked in Uncategorized — ${why}.`);
     }
-    if (counts.disagree) lines.push(`${counts.disagree} of ${scored} proposed a different account from the one on the signed books. Each needs reviewing on its own.`);
+    if (counts.disagree) {
+      lines.push(`${counts.disagree} of ${scored} proposed a different account from the one on the signed books. Each needs reviewing on its own:`);
+      // ★ NAMED, so the list can be worked rather than merely counted.
+      for (const d of report.unresolvedDisagreements || []) {
+        lines.push(`   · ${d.descriptor || d.entityKey || "a supplier"}${d.period ? ` (${d.period})` : ""} — books say ${d.attestedAccountId || "—"}, the ladder proposed ${d.proposedAccountId || "—"}`);
+      }
+    }
   }
   lines.push(`Months covered that have been signed off: ${attestedCovered.length ? attestedCovered.join(", ") : "none"}.`);
 
@@ -210,6 +235,11 @@ export function shadowReportCopy(report) {
   } else {
     lines.push("Not ready. Outstanding:");
     for (const b of blockers) lines.push(`· ${b}`);
+    // ★ A MERGE CANDIDATE CANNOT BE CONFIRMED WITHOUT SEEING THE NAMES. "2 supplier keys
+    // covering more than one name" is unanswerable; the names are the whole question.
+    for (const m of report.mergeCandidates || []) {
+      lines.push(`   · one supplier key covers: ${m.descriptors.map((x) => `“${x}”`).join(" and ")} — same business?`);
+    }
   }
   return lines.join("\n");
 }
