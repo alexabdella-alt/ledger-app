@@ -49,11 +49,24 @@ const calcASC842 = (monthlyPayment, termMonths, annualIBR) => {
   const nonCurrentPortion = leaseLiability - currentPortion;
   const straightLineMonthly = monthlyPayment; // for operating lease, SL expense = cash payment when payments are level
 
+  // ★★★ THE NON-CURRENT PORTION IS THE PLUG, AND IT HAS TO BE.
+  // The commencement entry is Dr ROU asset / Cr current / Cr non-current, so those three
+  // figures MUST tie. Rounding each of them independently does not guarantee that: current +
+  // non-current equals the liability exactly in float, but two separate roundings can land a
+  // cent apart from the rounded liability. Found by sweeping 180 payment/term/rate
+  // combinations — e.g. $1,500 × 24 months @ 5% produced **Dr 34,190.85 against Cr 34,190.84**.
+  //
+  // ★★ AND THE FAILURE MODE IS SILENCE, WHICH IS WHY IT SURVIVED: `buildJournalEntry` REFUSES
+  // an unbalanced entry, so the lease commencement simply never posted — no wrong number on a
+  // report, just a missing one. Making the residual absorb the rounding is both the standard
+  // accounting treatment and the only version that ties by construction.
+  const rl = Math.round(leaseLiability * 100) / 100;
+  const rc = Math.round(currentPortion * 100) / 100;
   return {
-    leaseLiability:    Math.round(leaseLiability * 100) / 100,
-    rouAsset:          Math.round(rouAsset * 100) / 100,
-    currentPortion:    Math.round(currentPortion * 100) / 100,
-    nonCurrentPortion: Math.round(nonCurrentPortion * 100) / 100,
+    leaseLiability:    rl,
+    rouAsset:          rl,                  // ROU asset = lease liability at commencement
+    currentPortion:    rc,
+    nonCurrentPortion: Math.round((rl - rc) * 100) / 100,
     straightLineMonthly: Math.round(straightLineMonthly * 100) / 100,
     schedule, // full amortization schedule for reference
   };
