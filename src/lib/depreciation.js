@@ -212,12 +212,19 @@ export function buildDepreciationSchedule({ cost, salvage = 0, lifeMonths, inSer
     const isLast = k === n - 1;
     const amt = isLast ? r2(base - posted) : perMonth;   // last month absorbs rounding
     posted = r2(posted + amt);
-    entries.push(buildDepreciationEntry({
+    const je = buildDepreciationEntry({
       amount: amt, depExpCode, accumDepCode,
       date: addMonthsClampedYMD(inServiceDate, k),
       description: `Depreciation — ${assetLabel} (${k + 1}/${n})`,
       meta: { kind: "depreciation", asset_id: assetId != null ? String(assetId) : null, period: k + 1, of: n },
-    }));
+    });
+    // ★ A ZERO-AMOUNT MONTH IS NOT A SCHEDULE ROW. `buildDepreciationEntry` returns null when
+    // the amount rounds to nothing — which happens for a sub-dollar asset over a long life,
+    // where per-month is under half a cent. Pushing that null put a HOLE in the array, and
+    // both consumers walk it directly (`persistMultiLineEntry(je)` and a `.map(je => je.…)`),
+    // so the schedule would have thrown rather than degraded. The correct schedule for such an
+    // asset is one real entry in the final month, which is exactly what this produces.
+    if (je) entries.push(je);
   }
   return { entries, total: r2(posted), monthly: perMonth, months: n };
 }
