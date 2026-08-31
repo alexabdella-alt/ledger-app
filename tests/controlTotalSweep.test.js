@@ -93,23 +93,20 @@ describe("★★★ and the checks actually FIRE — a control that never fires 
     expect(run(broken).checks.find((c) => c.key === "trial_balance").ties).toBe(false);
   });
 
-  it("★★★ BUT A ONE-SIDED TWO-LINE ENTRY IS INVISIBLE TO IT — a real limit of the tie-out, pinned", () => {
-    // `flattenJournalEntries` collapses a 2-line entry into ONE row carrying the primary
-    // amount, and DERIVES the offset from that same number — so the discrepancy is discarded
-    // before the check can see it, and the row is balanced by construction.
-    //
-    // ★★ THE CONSEQUENCE, STATED PLAINLY: the check billed as "the fundamental tie-out" cannot
-    // fail on the commonest entry shape. It is not currently reachable — `post_journal_entry`
-    // and `buildJournalEntry` both enforce balance at write time — but **the whole point of a
-    // control total is to catch what the write path missed**, and the QuickBooks import
-    // inserts rows directly rather than through the RPC.
-    //
-    // Pinned rather than fixed: the repair is in `flattenJournalEntries` or in what the control
-    // is fed, both core reporting paths, and that is a deliberate change rather than a rider.
-    // If this test ever starts FAILING, the limit has been fixed and the comment should go.
+  it("★★★ AND A ONE-SIDED TWO-LINE ENTRY IS CAUGHT TOO — the limit C289 pinned is now closed", () => {
+    // It used to be invisible: `flattenJournalEntries` collapsed a 2-line entry into ONE row
+    // carrying the primary amount and DERIVED the offset from it, so the discrepancy was
+    // discarded before the check could see it — and "the fundamental tie-out" could not fail
+    // on the commonest shape in the ledger. The row now carries the offset leg's OWN amount.
     const broken = ledger();
     broken.push(entry("bad2", "2026-03-15", [["6100", 500, 0], [CODES.cash, 0, 499]]));
-    expect(run(broken).checks.find((c) => c.key === "trial_balance").ties).toBe(true);
+    expect(run(broken).checks.find((c) => c.key === "trial_balance").ties).toBe(false);
+  });
+
+  it("★★ and a BALANCED two-line entry still ties — the fix must not flag correct books", () => {
+    const fine = ledger();
+    fine.push(entry("ok2", "2026-03-15", [["6100", 500, 0], [CODES.cash, 0, 500]]));
+    expect(run(fine).checks.find((c) => c.key === "trial_balance").ties).toBe(true);
   });
 
   it("★★ a payables balance that does not match the open bills is caught", () => {

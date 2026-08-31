@@ -63,6 +63,16 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
       mapped.push({
         id: e.id, vendor, vendor_key, description: e.description,
         amount: (primaryIsDebit ? primaryLine?.debit : primaryLine?.credit) || 0,
+        // ★★★ THE OFFSET LEG'S OWN AMOUNT. Every consumer used to DERIVE the offset from the
+        // primary amount — so a two-line entry that did not balance was made balanced by the
+        // flattening, and the discrepancy was discarded before anything could see it. That is
+        // why `trial_balance`, billed as "the fundamental tie-out", could not fail on the
+        // commonest entry shape in the ledger (C289).
+        //
+        // ★ Carried, not enforced: for every balanced entry this equals `amount` exactly, so
+        // nothing changes. It only differs when an entry is genuinely one-sided — which the
+        // write paths prevent, and which a control total exists to catch when they don't.
+        secondary_amount: ((offsetLine?.debit || 0) > 0 ? offsetLine?.debit : offsetLine?.credit) || 0,
         date: e.entry_date,
         type: glIsRevenue(primaryCode) ? "revenue" : "expense",
         gl_code: primaryCode || offsetLine?.accounts?.code,

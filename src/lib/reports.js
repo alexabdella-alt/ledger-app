@@ -334,7 +334,11 @@ export function glAccountBalance(code, invoices, { asOf = null } = {}) {
     const primaryIsDebit = legPrimaryIsDebit(i);   // no revenue force-credit — Dr Revenue subtracts (CR-2)
     if (i.gl_code === code) bal += signed(primaryIsDebit, amt);
     // Offset leg only for simple 2-line entries (multi-line rows are pre-expanded).
-    if (!String(i.id).includes("_") && i.secondary_gl_code === code) bal += signed(!primaryIsDebit, amt);
+    // Same fix as the trial balance: the offset leg carries its own amount. Identical for
+    // every balanced entry; only a one-sided entry moves, and it should.
+    if (!String(i.id).includes("_") && i.secondary_gl_code === code) {
+      bal += signed(!primaryIsDebit, i.secondary_amount != null ? num(i.secondary_amount) : amt);
+    }
   }
   return r2(bal);
 }
@@ -425,7 +429,13 @@ export function trialBalance(invoices, { includeVoided = false } = {}) {
     const side = i.debit_credit === "credit" ? "credit" : "debit";
     add(i.gl_code, i.gl_name, side, amt);
     const isExpanded = String(i.id).includes("_");
-    if (!isExpanded && i.secondary_gl_code) add(i.secondary_gl_code, i.secondary_gl_name, side === "debit" ? "credit" : "debit", amt);
+    // ★★★ THE OFFSET LEG POSTS ITS OWN AMOUNT, not a copy of the primary's. Deriving it
+    // made every two-line entry balance by construction, so this check — "the fundamental
+    // tie-out" — could not fail on the commonest shape in the ledger (C289). `secondary_amount`
+    // equals `amount` for every balanced entry, so nothing moves; it differs only when an
+    // entry is genuinely one-sided, which is precisely what a control total is for.
+    const offsetAmt = i.secondary_amount != null ? num(i.secondary_amount) : amt;
+    if (!isExpanded && i.secondary_gl_code) add(i.secondary_gl_code, i.secondary_gl_name, side === "debit" ? "credit" : "debit", offsetAmt);
   }
   const accounts = Object.values(acct)
     .map(a => { const net = r2(a.debit - a.credit); return { code: a.code, name: a.name, debit: net > 0 ? net : 0, credit: net < 0 ? -net : 0 }; })

@@ -193,3 +193,47 @@ describe("★★ a KNOWN LIMIT, pinned so it cannot become a surprise", () => {
     expect(s.priorNet + s.currentNet).toBe(-100);     // the divergence, stated
   });
 });
+
+describe("★★★ a one-sided two-line entry is now visible to the derivations", () => {
+  const oneSided = (d, c) => ([{
+    id: "lopsided", company_id: "c", entry_date: "2026-03-01", description: "V – x",
+    source: "manual", status: "posted", deleted_at: null,
+    journal_entry_lines: [
+      { id: "ls_0", account_id: "a", debit: d, credit: 0, accounts: { code: "6100", name: "x" } },
+      { id: "ls_1", account_id: "b", debit: 0, credit: c, accounts: { code: "1000", name: "cash" } },
+    ],
+  }]);
+
+  it("★★ the flattened row carries the offset leg's OWN amount", () => {
+    const [row] = flattenJournalEntries(oneSided(500, 499));
+    expect(row.amount).toBe(500);
+    expect(row.secondary_amount).toBe(499);
+  });
+
+  it("★★★ so the trial balance no longer balances by construction", () => {
+    const tb = trialBalance(flattenJournalEntries(oneSided(500, 499)));
+    expect(tb.balanced).toBe(false);
+    expect(Math.abs(tb.difference)).toBeCloseTo(1, 2);
+  });
+
+  it("★★ and the GL balances reflect what each leg actually says", () => {
+    const inv = flattenJournalEntries(oneSided(500, 499));
+    expect(glAccountBalance("6100", inv)).toBe(500);
+    expect(glAccountBalance("1000", inv)).toBe(-499);
+  });
+
+  it("★★★ a BALANCED entry is unchanged — the fix must move nothing that was right", () => {
+    const inv = flattenJournalEntries(oneSided(500, 500));
+    expect(inv[0].secondary_amount).toBe(500);
+    expect(trialBalance(inv).balanced).toBe(true);
+    expect(glAccountBalance("6100", inv)).toBe(500);
+    expect(glAccountBalance("1000", inv)).toBe(-500);
+  });
+
+  it("★ a row with no secondary_amount at all falls back to the primary — older callers are safe", () => {
+    // Anything constructing rows by hand (tests, the AI path, a fixture) has no such field.
+    const hand = [{ id: "h1", date: "2026-03-01", amount: 250, gl_code: "6100", secondary_gl_code: "1000", debit_credit: "debit", status: "booked" }];
+    expect(glAccountBalance("1000", hand)).toBe(-250);
+    expect(trialBalance(hand).balanced).toBe(true);
+  });
+});
