@@ -5,6 +5,7 @@ import { fmtSignedMoney, todayLocal } from "./format";
 import { fetchLedger } from "./ledger";
 import { executeAITool } from "./aiTools";
 import { classifyAIFailure } from "./aiFailure";
+import { readBudgetHeaders, recordBudget } from "./aiBudget";
 import { aiTextOf } from "./aiJson";
 import {
   computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
@@ -154,8 +155,18 @@ async function okAIResponse(res) {
     const err = new Error(`AI service error (${res.status} ${res.statusText})${detail ? `: ${detail}` : ""}`);
     err.status = res.status;              // `classifyFailure` (intakeDrain) already reads this
     err.aiFailure = classifyAIFailure({ status: res.status, body, message: detail });
+    // ★ A REFUSAL IS ALSO A READING. A 429 names the bucket that ran out, so we know that
+    // one is at zero — and knowing it here is what lets the surface say "we've read as much
+    // as we can this hour" instead of leaving the count stale at its last healthy value.
+    if (res.status === 429 && body?.blocked_bucket) {
+      recordBudget(body.blocked_bucket === "upload" ? { upload: 0 } : { ai: 0 });
+    }
     throw err;
   }
+  // ★ THE READER `O113a` NEVER WROTE. The proxy computes the remaining budget to make its
+  // own decision and returns it anyway, exposed through CORS — and nothing consumed it, so
+  // the ceiling stayed something you could only discover by hitting it (O113b).
+  recordBudget(readBudgetHeaders(res.headers));
   const data = await res.json();
   if (data?.error) {
     const err = new Error(`AI error: ${data.error.message || data.error}`);
