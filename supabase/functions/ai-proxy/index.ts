@@ -68,12 +68,22 @@ serve(async (req) => {
     }
     if (!gate.allowed) {
       const blocked = gate.blocked_bucket;
-      // Say WHICH budget ran out and WHEN it resets. The window is a fixed clock hour
-      // (`date_trunc('hour', now())`, migration 021), so the wait is 55 minutes at :05
-      // and five at :55 — arbitrary, and previously invisible. Stating it is not a fix
-      // for that (O113c), but a caller that is told the reset time can stop retrying
-      // into a wall, and retries were the thing making it worse.
-      const resetsInMin = 60 - new Date().getUTCMinutes();
+      // Say WHICH budget ran out and WHEN it resets.
+      //
+      // ★★ THE LIMITER NOW KNOWS THE REAL ANSWER (migration `086`, O113c). The window is a
+      // ROLLING hour, so capacity returns when the oldest call ages out — usually a couple of
+      // minutes — and the function returns that number. Under the old clock hour the best
+      // anyone could say was "up to 59", and the wait was 55 minutes at :05 and five at :55:
+      // the same mistake at eleven times the cost, for no reason a person could see.
+      //
+      // ★ THE FALLBACK IS WHY THE DEPLOY ORDER IS NOT LOAD-BEARING. An un-migrated database
+      // returns no `resets_in_minutes`, and this still answers with the old clock-hour maths.
+      // `074` had to be applied before its deploy because the reverse called a function that
+      // did not exist; this one is safe in either order.
+      const rolling = Number(gate.resets_in_minutes);
+      const resetsInMin = Number.isFinite(rolling) && rolling >= 0
+        ? rolling
+        : 60 - new Date().getUTCMinutes();
       const msg = blocked === "upload"
         ? `Upload limit reached — ${UPLOAD_LIMIT} files per hour. This resets in about ${resetsInMin} minute(s).`
         : `AI request limit reached — ${AI_LIMIT} per hour, shared across everything the app asks the AI to do. This resets in about ${resetsInMin} minute(s).`;
