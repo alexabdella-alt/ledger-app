@@ -1127,9 +1127,45 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     try {
       setInvoices(mapped);
 
+      // ── ★★ ONE ROUND TRIP'S WAIT, NOT ELEVEN (O107 cause 1) ────────────────────
+      // These eleven reads were awaited one after another. None needs another's result —
+      // each fetches a table and sets its own state — so the wall-clock cost was the SUM
+      // of eleven latencies where it can be the MAXIMUM. Measured as roughly 1-3 seconds
+      // of pure waiting on every company load and every company switch.
+      //
+      // ★★ AND `allSettled`, NOT `all`, FOR A REASON THAT IS NOT SPEED: in the sequential
+      // version a single failing table STARVED EVERY TABLE AFTER IT — a documents error
+      // meant reconciliations, contracts and the audit log never loaded at all, silently.
+      // `Promise.all` would keep that flaw (first rejection discards the rest). Settled
+      // means each read succeeds or fails on its own merits, which is what the outer
+      // catch's "degrades gracefully" comment always claimed was happening.
+      const q = (b) => b;                                  // readability at the call sites
+      const settled = await Promise.allSettled([
+        q(supabase.from("contacts").select("*").eq("company_id", cid).eq("active", true).is("deleted_at", null).order("name")),
+        q(supabase.from("vendor_rules").select("*, contacts(name), accounts(code,name)").eq("company_id", cid).eq("active", true)),
+        q(supabase.from("companies").select("*").eq("id", cid).single()),
+        q(supabase.from("opening_balances").select("*, accounts(code, name)").eq("company_id", cid)),
+        q(supabase.from("bank_accounts").select("*, accounts(code)").eq("company_id", cid).eq("active", true)),
+        q(supabase.from("recurring_transactions").select("*, debit_account:debit_account_id(code,name), credit_account:credit_account_id(code,name), contacts(name)").eq("company_id", cid).order("next_date")),
+        q(supabase.from("ar_invoices").select("*, ar_invoice_lines(*), contacts(name)").eq("company_id", cid).order("created_at", { ascending: false })),
+        q(supabase.from("audit_log").select("*").eq("company_id", cid).order("created_at", { ascending: false }).limit(1000)),
+        q(supabase.from("documents").select("*").eq("company_id", cid).order("created_at", { ascending: false })),
+        q(supabase.from("reconciliations").select("*").eq("company_id", cid).order("created_at", { ascending: false })),
+        q(supabase.from("upload_log").select("id").eq("company_id", cid).eq("status", "done").limit(1)),
+      ]);
+      // A rejected read yields `{}` so every consumer below sees `data: undefined` and takes
+      // its existing "no data" branch — the same shape it would have seen before.
+      const [
+        contactsRes, rulesRes, coRes, obRes, banksRes, recRes, arRes, auditRes, docsRes, reconRes, ulRes,
+      ] = settled.map((r) => (r.status === "fulfilled" ? (r.value || {}) : {}));
+      // ★ The company may have been switched while all of that was in flight. Same guard the
+      // ledger fetch already makes above, for the same reason (CR-19): applying a previous
+      // company's contacts over the new one is exactly the bleed `resetCompanyState` exists
+      // to prevent.
+      if (currentCompany.id !== cid) return;
+
       // Load contacts
-      const { data: contactsData } = await supabase
-        .from("contacts").select("*").eq("company_id", cid).eq("active", true).is("deleted_at", null).order("name");
+      const { data: contactsData } = contactsRes;
       if (contactsData) {
         setContacts(contactsData.map(c => ({
           ...c, fromContact: true, type: c.type,
@@ -1146,10 +1182,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
 
       // Load vendor rules
-      const { data: rulesData } = await supabase
-        .from("vendor_rules")
-        .select("*, contacts(name), accounts(code,name)")
-        .eq("company_id", cid).eq("active", true);
+      const { data: rulesData } = rulesRes;
       if (rulesData) {
         setRules(rulesData.map(r => ({
           id: r.id, vendor: r.contacts?.name, gl_code: r.accounts?.code,
@@ -1158,7 +1191,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
 
       // Load company settings
-      const { data: co } = await supabase.from("companies").select("*").eq("id", cid).single();
+      const { data: co } = coRes;
       if (co) {
         setCompanySettings(mapCompanyRow(co));   // pure read-shape; pairs with buildCompanyUpdate (O13 round-trip)
         setCutoffDate(co.cutoff_date || null);
@@ -1168,8 +1201,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // refresh and drive the editor grid + the lock-after-post state. The opening
       // JE itself loads via the ledger (source='opening_balance').
       try {
-        const { data: obRows } = await supabase.from("opening_balances")
-          .select("*, accounts(code, name)").eq("company_id", cid);
+        const { data: obRows } = obRes;
         if (Array.isArray(obRows)) {
           setOpeningBalances(obRows.map(r => ({
             id: r.id, account_code: r.accounts?.code, account_name: r.accounts?.name,
@@ -1182,8 +1214,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // Chart of accounts is loaded/refreshed by the useAccounts hook.
 
       // Load bank accounts
-      const { data: banks } = await supabase
-        .from("bank_accounts").select("*, accounts(code)").eq("company_id", cid).eq("active", true);
+      const { data: banks } = banksRes;
       if (banks) {
         const mappedBanks = banks.map(b => ({ id: b.id, name: b.name, type: b.type, gl_code: b.accounts?.code, institution: b.institution||"", last4: b.last4||"", current_balance: Number(b.current_balance)||0,
         // Carried so `isPlaceholderBank` can ask whether a person ever saved this row rather
@@ -1193,10 +1224,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
 
       // Load recurring transactions
-      const { data: recData } = await supabase
-        .from("recurring_transactions")
-        .select("*, debit_account:debit_account_id(code,name), credit_account:credit_account_id(code,name), contacts(name)")
-        .eq("company_id", cid).order("next_date");
+      const { data: recData } = recRes;
       if (recData) {
         setRecurring(recData.map(r => ({
           id: r.id, name: r.name, vendor: r.contacts?.name||"", amount: r.amount,
@@ -1207,10 +1235,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
 
       // Load sent invoices (AR)
-      const { data: arData } = await supabase
-        .from("ar_invoices")
-        .select("*, ar_invoice_lines(*), contacts(name)")
-        .eq("company_id", cid).order("created_at", { ascending: false });
+      const { data: arData } = arRes;
       if (arData) {
         setSentInvoices(arData.map(ar => ({
           id: ar.id, invoice_number: ar.invoice_number,
@@ -1225,9 +1250,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
 
       // Load audit log
-      const { data: auditData } = await supabase
-        .from("audit_log").select("*").eq("company_id", cid)
-        .order("created_at", { ascending: false }).limit(1000);
+      const { data: auditData } = auditRes;
       if (auditData) {
         setAuditLog(auditData.map(a => ({
           id: a.id, ts: a.created_at, action: a.action,
@@ -1236,9 +1259,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
 
       // Load documents (metadata only — base64 file content is not stored)
-      const { data: docsData, error: docsErr } = await supabase
-        .from("documents").select("*").eq("company_id", cid)
-        .order("created_at", { ascending: false });
+      const { data: docsData, error: docsErr } = docsRes;
       if (docsErr) console.error("[documents] loadAllData fetch error:", docsErr.message, docsErr.details || "", docsErr.hint || "");
 
       if (docsData) {
@@ -1260,38 +1281,42 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
       // Load contracts
       // Load bank reconciliation sessions (table from migration 005)
-      const { data: reconData, error: reconErr } = await supabase
-        .from("reconciliations").select("*").eq("company_id", cid)
-        .order("created_at", { ascending: false });
+      const { data: reconData, error: reconErr } = reconRes;
       if (reconErr) console.warn("[reconciliations] load failed (apply migration 005?):", reconErr.message);
       if (reconData) setReconciliations(reconData);
 
-      await loadContractsFromDB();
-
-      // Load this company's learned AI profile (defensive — table may be absent).
-      clientProfileRef.current = await loadClientProfile(supabase, cid);
+      // Same treatment for the six helper loads: independent of one another, and of
+      // everything above. Settled so one absent table cannot starve the rest.
+      const helpers = await Promise.allSettled([
+        loadContractsFromDB(),
+        loadClientProfile(supabase, cid),
+        loadNotifications(cid),
+        loadAnomalies(cid),
+        loadAnomalyComments(cid),       // the owner's context on those flags
+        loadStatementExceptions(cid),   // C186 — pipeline exceptions for the CPA Review queue
+      ]);
+      if (helpers[1].status === "fulfilled") clientProfileRef.current = helpers[1].value;
+      for (const h of helpers) if (h.status === "rejected") console.warn("[loadAllData] a secondary load failed:", h.reason?.message || h.reason);
 
       // Onboarding: has at least one upload ever completed? (upload_log, migration 019)
-      try {
-        const { data: ul } = await supabase.from("upload_log")
-          .select("id").eq("company_id", cid).eq("status", "done").limit(1);
-        setOnboardingUploadDone(Array.isArray(ul) && ul.length > 0);
-      } catch { /* table may be absent */ }
+      const { data: ul } = ulRes;
+      setOnboardingUploadDone(Array.isArray(ul) && ul.length > 0);
 
       // Load persisted notifications + anomaly records (defensive). Anomaly SCANNING
       // (reconcile/insert/auto-resolve) and notification generation are driven by effects
       // below (so they read fresh state, not stale refs). Loading the rows FIRST lets the
       // reconcile see existing open/dismissed rows (dedup + dismissal suppression) rather
       // than re-inserting everything on the first scan.
-      await loadNotifications(cid);
-      await loadAnomalies(cid);
-      await loadAnomalyComments(cid);       // the owner's context on those flags
-      await loadStatementExceptions(cid);   // C186 — pipeline exceptions for the CPA Review queue
 
     } catch(e) { console.error("loadAllData (secondary) error:", e); }
     // The critical ledger loaded (we returned early otherwise), so views may now trust
     // the data. A secondary fetch failing (contacts/docs/etc.) degrades gracefully.
-    finally { setCompanyDataLoaded(true); }
+    //
+    // ★ BUT NOT FOR A COMPANY WE ARE NO LONGER ON. The mid-flight switch guard above returns
+    // from inside the `try`, which still runs this — and marking data "loaded" for a company
+    // that has been switched away from is precisely the false-emptiness the CR-18 comment at
+    // the top of this function refuses to allow. The incoming company's own load sets it.
+    finally { if (currentCompany.id === cid) setCompanyDataLoaded(true); }
   };
 
   // ── SUPABASE PERSISTENCE ──────────────────────────────────────
