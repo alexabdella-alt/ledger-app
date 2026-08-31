@@ -11,7 +11,12 @@ import {
 // duplicate is cleaned up — clearing is an event, not amnesia.
 // ════════════════════════════════════════════════════════════════════════════
 
-const NOW = new Date("2026-01-31T12:00:00Z");
+// ★★ LOCAL COMPONENTS, NOT A UTC INSTANT. `new Date("2026-01-31T12:00:00Z")` is noon UTC —
+// which is already 1am on 1 FEBRUARY in Auckland, so `thisMonth` (deliberately local, to match
+// how entry dates are stored) became "2026-02" and the January spike was never found. The
+// PRODUCT is right; this fixture was pinning a UTC instant while asserting a local-month
+// outcome, so the test passed or failed depending on where it ran.
+const NOW = new Date(2026, 0, 31, 12, 0, 0);
 // Two identical charges to the same vendor within a week → duplicate_payment (HIGH).
 const dupLedger = [
   { id: "je1", vendor: "Sysco", amount: 1200, date: "2026-01-10", gl_code: "5000", gl_name: "COGS" },
