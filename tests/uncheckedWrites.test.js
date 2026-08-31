@@ -68,11 +68,29 @@ function unchecked() {
       if (lines[i].trim().startsWith("//")) continue;
       const m = /\.from\("([a-z_]+)"\)/.exec(lines[i]);
       if (!m) continue;
-      const block = lines.slice(i, i + 5).join("\n");
+      // ★★ THE STATEMENT, NOT A FIXED WINDOW. A 5-line slice can borrow a `.select()` from
+      // the NEXT statement and clear a write that has none — which is exactly what it did
+      // for `persistBankAccounts`: its unchecked `.update()` sat two lines above an
+      // unrelated `.insert(...).select(...)`, and this guard reported the file clean.
+      // A guard that passes for the wrong reason is worse than no guard, because it is
+      // cited as evidence. The chain ends at the statement's own semicolon.
+      const rest = lines.slice(i, i + 12).join("\n");
+      const end = rest.indexOf(";");
+      const block = end === -1 ? rest : rest.slice(0, end);
       if (!/\.(update|upsert)\(/.test(block)) continue;
       if (/\.select\(/.test(block)) continue;
       const before = lines.slice(Math.max(0, i - 5), i + 1).join("\n");
       if (/checkedRowUpdate|checkedIdsUpdate/.test(before)) continue;
+      // ★ A READ-BACK IS A STRONGER CHECK THAN `.select()`, NOT A WEAKER ONE, so the guard
+      // must recognise it rather than force correct money-path code into a lint shape.
+      // `persistChatRetagProject` re-reads the same table and REJECTS unless every row
+      // carries the new value — that verifies the VALUE, where rows-affected only verifies
+      // that something was touched. Required together: a read-back nobody branches on is
+      // just a wasted query.
+      const after = lines.slice(i, i + 8).join("\n");
+      const reReads = new RegExp(`\\.from\\("${m[1]}"\\)[^;]*\\.select\\(`).test(after);
+      const branchesOnIt = /return \{ ok: false|throw |recordFailure|console\.error/.test(after);
+      if (reReads && branchesOnIt) continue;
       out.push({ rel, table: m[1], line: i + 1 });
     }
   }

@@ -1951,7 +1951,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // existing rows (uuid id) are updated. Best-effort and defensive.
   const persistBankAccounts = async (accts) => {
     const list = accts || bankAccounts;
-    if (!currentCompany?.id) return;
+    if (!currentCompany?.id) return { ok: false, failed: [] };
+    const failed = [];
     for (const a of list) {
       if (!String(a.name || "").trim()) continue; // skip empty placeholder rows
       const glId = getAccountByCode(a.gl_code)?.db_id || getAccountByRole("cash")?.db_id || null;
@@ -1963,13 +1964,37 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const isUuid = typeof a.id === "string" && a.id.includes("-");
       try {
         if (isUuid) {
-          await supabase.from("bank_accounts").update(row).eq("id", a.id).eq("company_id", currentCompany.id);
+          // ★ CHECKED. This was a bare `.update()` in a console.warn catch, and PostgREST
+          // reports NO error for an update that matched nothing — so a save that silently
+          // did nothing was indistinguishable from one that worked. What is being saved is
+          // the USER'S OWN TYPING (the account name, the bank, the last four digits, the
+          // balance), which is the worst thing to lose quietly: they have no reason to
+          // suspect it and no way to notice until the value is simply gone.
+          const r = await checkedRowUpdate({
+            supabase, table: "bank_accounts", id: a.id, companyId: currentCompany.id,
+            patch: row, label: "persistBankAccounts",
+          });
+          if (!r.ok) failed.push(a.name);
         } else {
           const { data, error } = await supabase.from("bank_accounts").insert(row).select("id").single();
-          if (!error && data?.id) setBankAccounts(prev => prev.map(x => x.id === a.id ? { ...x, id: data.id } : x));
+          if (error || !data?.id) failed.push(a.name);
+          else setBankAccounts(prev => prev.map(x => x.id === a.id ? { ...x, id: data.id } : x));
         }
-      } catch (e) { console.warn("[bank_accounts] persist failed:", e?.message || e); }
+      } catch (e) {
+        failed.push(a.name);
+        console.warn("[bank_accounts] persist failed:", e?.message || e);
+      }
     }
+    // §9 — say what actually happened, and name the accounts so the person knows which of
+    // their edits did not survive rather than being told "something went wrong".
+    if (failed.length) {
+      showNotification(
+        `We couldn't save ${failed.length === 1 ? failed[0] : `${failed.length} of your accounts`} — your changes are still on screen but haven't been stored. Try again.`,
+        "error",
+      );
+      logAudit("bank_account_save_failed", `Could not save: ${failed.join(", ")}`, null, { accounts: failed });
+    }
+    return { ok: failed.length === 0, failed };
   };
 
   // Create ONE bank-account source inline (O63) — used by the import account-picker so
