@@ -141,12 +141,24 @@ describe("★★★ every builder balances across awkward money, not just its on
     expect(n).toBeGreaterThan(20);
   });
 
-  it("bank lines, both directions", () => {
+  it("★★ bank lines, both directions — EXPANDED the way the write path posts them", () => {
+    // ★ `buildBankLineEntry` returns the flattened ROW (gl_code / secondary_gl_code /
+    // debit_credit), not a `{lines}` entry — so passing it straight to `expectBalanced`, which
+    // skips anything without lines, made this assertion VACUOUS. Found while sweeping the bank
+    // dedup. Expanded here exactly as `persistJournalEntry` posts it, which is the same thing
+    // `gaapInvariants` does.
+    let checked = 0;
     for (const amount of AMOUNTS) for (const type of ["expense", "revenue"]) {
       const txn = { id: "t1", date: "2026-08-04", vendor: "V", description: "d", amount: type === "revenue" ? amount : -amount, type, gl_code: type === "revenue" ? "4000" : "6100" };
-      expectBalanced(buildBankLineEntry(txn, { offsetCode: "1000", offsetName: "Cash" }), `bank ${type} ${amount}`);
+      const e = buildBankLineEntry(txn, { offsetCode: "1000", offsetName: "Cash" });
+      expect(e).toBeTruthy();
+      const lines = e.debit_credit === "credit"
+        ? [{ code: e.secondary_gl_code, debit: e.amount, credit: 0 }, { code: e.gl_code, debit: 0, credit: e.amount }]
+        : [{ code: e.gl_code, debit: e.amount, credit: 0 }, { code: e.secondary_gl_code, debit: 0, credit: e.amount }];
+      expectBalanced({ lines }, `bank ${type} ${amount}`);
+      checked++;
     }
-    expect(AMOUNTS.length).toBeGreaterThan(10);
+    expect(checked).toBe(AMOUNTS.length * 2);   // the sweep is real, not skipped
   });
 
   it("★ year-end close, including years that net to awkward figures", () => {
