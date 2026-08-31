@@ -248,3 +248,27 @@ describe("★★ and the trigger reaches a screen — otherwise it is the defect
     expect(card).not.toMatch(/PROCEED|STOP|AMBIGUOUS/);   // the verdict is the report's to word
   });
 });
+
+describe("★★ the run id must satisfy the column it is written to", () => {
+  const app = readFileSync("src/App.jsx", "utf8");
+  const code = app.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  const fn = code.slice(code.indexOf("const runShadowCalibration = async"), code.indexOf("const runDrain = async"));
+
+  it("★★★ it is a real uuid — `run_id` is a uuid column and a composed string killed the whole pass", () => {
+    // Live: `invalid input syntax for type uuid: "3a704760-…-2026-01-01-2026-08-28-a"`. Postgres
+    // rejected the first insert, so the run died before scoring a single line. The error copy
+    // did its job — it said the check could not finish rather than showing an empty result.
+    expect(fn).toMatch(/crypto\.randomUUID\(\)/);
+    expect(fn).not.toMatch(/runId: `\$\{runId\}/);        // no composed id
+    expect(fn).not.toMatch(/\$\{currentCompany\.id\}-\$\{from\}/);
+  });
+
+  it("★ both passes carry their own id, so a stored run can never be ambiguous", () => {
+    expect((fn.match(/runId: newRunId\(\)/g) || []).length).toBe(2);
+  });
+
+  it("★ and the migration really does type it as uuid — the reason this matters", () => {
+    const sql = readFileSync("supabase/migrations/072_calibration_shadow_records.sql", "utf8");
+    expect(sql).toMatch(/run_id\s+uuid\s+not null/);
+  });
+});

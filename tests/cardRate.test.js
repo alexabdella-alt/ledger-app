@@ -43,7 +43,7 @@ describe("★★★ the split is the deliverable, not the total", () => {
   it("★★ the copy leads with the split, because the total is the least informative number", () => {
     const r = cardRateReport({ cards: [{ reason: "identity_differs" }, { type: "vendor_spike" }], documentCount: 40 });
     const copy = cardRateCopy(r);
-    expect(copy).toMatch(/1 we got wrong · 1 teaching · 1 judgement|0 we got wrong · 1 teaching · 1 judgement/);
+    expect(copy).toMatch(/1 we got wrong · 1 teaching · 1 judgment|0 we got wrong · 1 teaching · 1 judgment/);
     expect(copy).toContain("2 cards across 40 documents");
   });
 
@@ -58,8 +58,8 @@ describe("★★★ the split is the deliverable, not the total", () => {
 });
 
 describe("★★ an unrecognised card is REPORTED, never defaulted", () => {
-  it("★★★ it does not silently become a judgement call", () => {
-    // Bucketing an unknown kind into "judgement" would flatter the number by exactly the
+  it("★★★ it does not silently become a judgment call", () => {
+    // Bucketing an unknown kind into "judgment" would flatter the number by exactly the
     // amount we do not understand — and a new card kind nobody classified is the most
     // likely place for a category-1 defect to hide.
     const r = categoryOf({ type: "some_new_card" });
@@ -108,7 +108,7 @@ describe("★★ the taxonomy covers what the product can actually emit", () => 
   });
 
   it("★ every entry carries a REASON, not just a number", () => {
-    // "Why is this a judgement call?" has to be answerable from the taxonomy, or the next
+    // "Why is this a judgment call?" has to be answerable from the taxonomy, or the next
     // person re-litigates each one from scratch.
     for (const [kind, entry] of Object.entries(CARD_TAXONOMY)) {
       expect([kind, typeof entry.why]).toEqual([kind, "string"]);

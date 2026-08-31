@@ -32,7 +32,7 @@ export const CARD_CATEGORY = {
 export const CATEGORY_LABEL = {
   1: "we got this wrong",
   2: "teaching us something, once",
-  3: "a judgement call worth making",
+  3: "a judgment call worth making",
 };
 
 // ── THE TAXONOMY ────────────────────────────────────────────────────────────
@@ -47,13 +47,13 @@ export const CARD_TAXONOMY = {
   identity_differs: { category: CARD_CATEGORY.TEACHING, why: "one supplier under two names; asked once, then remembered (O111)" },
   multiple_candidates: { category: CARD_CATEGORY.JUDGMENT, why: "genuinely several payments it could belong to" },
   period_count_mismatch: { category: CARD_CATEGORY.JUDGMENT, why: "a flat-fee vendor's period does not balance — five invoices against four charges" },
-  // ★ NOT a judgement about the ledger at all: a report that WE failed to record something.
+  // ★ NOT a judgment about the ledger at all: a report that WE failed to record something.
   // It is category 1 because its expected rate is zero and every occurrence is our defect.
   record_failed: { category: CARD_CATEGORY.BUG, why: "we couldn't save the link — our failure, never the client's question" },
 
   // ── anomalies ──
   duplicate_payment: { category: CARD_CATEGORY.JUDGMENT, why: "a true double-payment is worth stopping on (was category 1 on lifecycle pairs and weekly vendors until O114/O117)" },
-  large_transaction: { category: CARD_CATEGORY.JUDGMENT, why: "capitalise-or-expense on a big charge (was category 1 while it fired on payroll — fixed)" },
+  large_transaction: { category: CARD_CATEGORY.JUDGMENT, why: "capitalize-or-expense on a big charge (was category 1 while it fired on payroll — fixed)" },
   round_number: { category: CARD_CATEGORY.JUDGMENT, why: "an exact round amount can be an estimate booked as an actual (was category 1 while it fired on payroll — fixed)" },
   missing_recurring: { category: CARD_CATEGORY.JUDGMENT, why: "a regular supplier stopped billing (was category 1 while it measured against wall-clock instead of the books' period — fixed)" },
   category_spike: { category: CARD_CATEGORY.JUDGMENT, why: "spending in a category jumped" },
@@ -62,7 +62,7 @@ export const CARD_TAXONOMY = {
 
   // ── clarifications ──
   gl: { category: CARD_CATEGORY.JUDGMENT, why: "which account this belongs to — shrinks toward category 2 as vendors become known" },
-  gaap: { category: CARD_CATEGORY.JUDGMENT, why: "capitalise or expense — a real accounting judgement" },
+  gaap: { category: CARD_CATEGORY.JUDGMENT, why: "capitalize or expense — a real accounting judgment" },
   direction: { category: CARD_CATEGORY.TEACHING, why: "money in or out; the company's own identity settles it once" },
 };
 
@@ -72,7 +72,7 @@ export function cardKind(card = {}) {
 }
 
 // ★★ AN UNRECOGNISED CARD IS REPORTED AS UNRECOGNISED, NEVER DEFAULTED. Bucketing it into
-// "judgement" would flatter the number by exactly the amount we do not understand — and a
+// "judgment" would flatter the number by exactly the amount we do not understand — and a
 // new card kind nobody classified is the most likely place for a category-1 defect to hide.
 export function categoryOf(card = {}) {
   const kind = cardKind(card);
@@ -126,7 +126,7 @@ export function cardRateCopy(report = {}) {
 
   const pct = rate == null ? "—" : `${(rate * 100).toFixed(1)}%`;
   const parts = [`${total} card${total === 1 ? "" : "s"} across ${documentCount} document${documentCount === 1 ? "" : "s"} (${pct})`];
-  parts.push(`${bugs} we got wrong · ${teaching} teaching · ${judgment} judgement`);
+  parts.push(`${bugs} we got wrong · ${teaching} teaching · ${judgment} judgment`);
   if (unclassified.length) parts.push(`${unclassified.length} not classified — the rate is unreliable until they are`);
   if (bugs > 0) parts.push(`${bugs} card${bugs === 1 ? " is" : "s are"} a defect, not a question`);
   else if (mode === RATE_MODE.STEADY && withinTarget === false) parts.push(`above the ${(STEADY_TARGET_RATE * 100).toFixed(0)}% steady-state target`);

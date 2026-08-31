@@ -938,7 +938,7 @@ function ShadowCalibrationCard() {
     return (
       <div style={{ ...box, display:"flex", alignItems:"center", justifyContent:"space-between", gap:14 }}>
         <div>
-          <div style={{ fontSize:13, fontWeight:600 }}>Check how the new categorisation would have done</div>
+          <div style={{ fontSize:13, fontWeight:600 }}>Check how the new categorization would have done</div>
           <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:4, lineHeight:1.45 }}>
             Runs over months you have already signed off and compares its answers with yours. It changes nothing.
           </div>
@@ -950,7 +950,7 @@ function ShadowCalibrationCard() {
 
   return (
     <div style={box}>
-      <div style={{ fontSize:13, fontWeight:600, marginBottom:10 }}>Check how the new categorisation would have done</div>
+      <div style={{ fontSize:13, fontWeight:600, marginBottom:10 }}>Check how the new categorization would have done</div>
       <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", marginBottom:12 }}>
         <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={input} />
         <span style={{ fontSize:12, color:"var(--sc-text-2)" }}>to</span>

@@ -379,7 +379,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
     if (monthly && age >= 35) {
       push({ id: `missing_recurring:${k}`, type: "missing_recurring", severity: "medium",
         title: `${last.vendor} hasn't charged you in ${Math.round(age)} days`,
-        description: `${last.vendor} usually bills about monthly, but the last charge was ${Math.round(age)} days ago — a missed bill or a cancelled service?`,
+        description: `${last.vendor} usually bills about monthly, but the last charge was ${Math.round(age)} days ago — a missed bill or a canceled service?`,
         invoice_ids: [last.id] });
     }
   }

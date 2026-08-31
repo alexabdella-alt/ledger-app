@@ -4230,9 +4230,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // across runs an automatic fail — KNOWN is a persistent STATE, not a recomputation —
       // and a single pass cannot detect that at all. One run would look identical to two
       // agreeing runs, which is precisely the check that would then never fire.
-      const runId = `${currentCompany.id}-${from}-${to}`;
-      const first = await runShadowPass({ supabase, companyId: currentCompany.id, runId: `${runId}-a`, from, to });
-      const second = await runShadowPass({ supabase, companyId: currentCompany.id, runId: `${runId}-b`, from, to, dryRun: true });
+      // ★ `run_id` IS A `uuid` COLUMN (migration `072`). It was built as
+      // `companyId-from-to`, which is not one, so Postgres rejected the very first insert and
+      // the whole pass died before scoring a single line. Two real uuids: only the first pass
+      // writes, but the second carries its own so a stored run can never be ambiguous.
+      const newRunId = () => (typeof crypto !== "undefined" && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now().toString(16)}-0000-4000-8000-${Math.floor(Math.random() * 1e12).toString(16).padStart(12, "0").slice(0, 12)}`;
+      const first = await runShadowPass({ supabase, companyId: currentCompany.id, runId: newRunId(), from, to });
+      const second = await runShadowPass({ supabase, companyId: currentCompany.id, runId: newRunId(), from, to, dryRun: true });
       const attestedMonths = (signoffs || []).filter(so => so && !so.revoked_at).map(so => so.period);
       const report = shadowReport({ runs: [first, second], attestedMonths });
       setShadowResult({ report, copy: shadowReportCopy(report), at: new Date().toISOString() });
