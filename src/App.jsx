@@ -31,6 +31,7 @@ import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDrop
 import { classifyFailure, drainProgressCopy, FAILURE_KIND } from "./lib/intakeDrain";
 import { budgetCopy, getBudget } from "./lib/aiBudget";
 import { buildUploadedInvoice } from "./lib/uploadedInvoice";
+import { planLlmMatches } from "./lib/llmMatchFilter";
 import { runShadowPass } from "./lib/shadowIo";
 import { shadowReport, shadowReportCopy } from "./lib/shadowReport";
 import { nameMatchCensus } from "./lib/nameMatch";
@@ -6990,50 +6991,29 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       const result = aiJson(data, {});
       const matches = result.matches || [];
 
-      const autoCleared = [...deterministic];   // deterministic matches always stand
-      const queue = [];
-
-      for (const match of matches) {
-        if (match.match_type === "no_match" || !match.invoice_ids?.length) continue;
-        // Never let the LLM re-match a line or open item the deterministic pass already took.
-        if (handledBankIds.has(String(match.bank_txn_id))) continue;
-        match.invoice_ids = match.invoice_ids.filter(id => !handledInvIds.has(String(id)));
-        if (!match.invoice_ids.length) continue;
-
-        // Resolve the counterpart open items to DISPLAY (string-normalized against the OPEN
-        // universe). If none resolve, the proposal has no renderable counterpart — REFUSE it
-        // rather than ask the user to confirm a match against an invisible/settled entity (O83
-        // Feb: a 99% exact-amount proposal rendered an empty "MATCHING AGAINST" panel).
-        const matched_invoices = resolveMatchedInvoices(match.invoice_ids, openUniverse);
-        if (!matched_invoices.length) {
-          try { console.warn("[bank-match] dropped proposal — counterpart not in the open universe (unrenderable):", match.bank_txn_id, match.invoice_ids); } catch {}
-          continue;
-        }
-
-        const matchRecord = {
-          id: Date.now() + Math.random(),
-          bank_txn_id: match.bank_txn_id,
-          invoice_ids: match.invoice_ids,
-          match_type: match.match_type,
-          confidence: match.confidence,
-          amount_matched: match.amount_matched,
-          amount_remaining: match.amount_remaining,
-          reasoning: match.reasoning,
-          clearing_entry: match.clearing_entry,
-          auto_clear: match.auto_clear,
-          bank_txn: newBankTxns.find(t => String(t.id) === String(match.bank_txn_id)),  // string-tolerant: the LLM may echo the id with a different type
-          matched_invoices,
-          status: "pending",
-          created_at: new Date().toISOString(),
-        };
-
-        if (match.auto_clear) {
-          autoCleared.push(matchRecord);
-        } else {
-          queue.push(matchRecord);
-        }
+      // O89 — the ACCEPT/REFUSE rules moved to `llmMatchFilter.js` so they can be tested;
+      // this reads the model's answer and hands it over. Every rule in there exists because
+      // something went wrong once, and none of them could be exercised while they lived in a
+      // 126-line component function.
+      //
+      // ★★ ONE DELIBERATE BEHAVIOUR CHANGE, NOT A REFACTOR: the old loop never added an
+      // accepted bank line to `handledBankIds`, so TWO model proposals naming the same bank
+      // line (with different open items) were BOTH accepted — and `autoCleared` feeds
+      // `planBankImport`, so that clears the same money twice. Splitting one line across
+      // several proposals is not how partials are modelled here (`amount_remaining` lives
+      // INSIDE a match), so a second proposal for a line already taken is a model error, and
+      // it is now refused and counted.
+      const planned = planLlmMatches({
+        matches, deterministic, openUniverse, bankTxns: newBankTxns,
+        id: (n) => Date.now() + Math.random() + n,
+        createdAt: new Date().toISOString(),
+      });
+      const { autoCleared, queue, dropped } = planned;
+      // ★ DROPS ARE COUNTED NOW, NOT JUST WARNED ABOUT: a model proposing nothing usable and a
+      // model proposing nothing looked identical in the log.
+      if (dropped.length) {
+        try { console.info("[bank-match] proposals refused:", dropped.reduce((a, d) => ({ ...a, [d.reason]: (a[d.reason] || 0) + 1 }), {})); } catch {}
       }
-
       try { console.info(`[bank-match] LLM added: ${autoCleared.length - deterministic.length} · total autoCleared: ${autoCleared.length}`); } catch {}
       return { autoCleared, queue, deterministicCount: deterministic.length, llmCount: autoCleared.length - deterministic.length };
     } catch(e) {
