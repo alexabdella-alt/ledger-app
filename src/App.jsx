@@ -30,6 +30,7 @@ import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, 
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
 import { classifyFailure, drainProgressCopy, FAILURE_KIND } from "./lib/intakeDrain";
 import { budgetCopy, getBudget } from "./lib/aiBudget";
+import { buildUploadedInvoice } from "./lib/uploadedInvoice";
 import { runShadowPass } from "./lib/shadowIo";
 import { shadowReport, shadowReportCopy } from "./lib/shadowReport";
 import { nameMatchCensus } from "./lib/nameMatch";
@@ -4906,60 +4907,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           extractedList.forEach((extracted, idx) => {
             const coding = codings[idx] || {};
             const rule = rules.find(r => r.vendor?.toLowerCase()===extracted.vendor?.toLowerCase());
-            const isRevenue = extracted.type === "revenue";
-            const confidence = rule ? 99 : (coding.confidence || 75);
-            const finalCode = rule ? rule.gl_code : (coding.gl_code || (isRevenue ? rc("product_revenue") : rc("miscellaneous_expense")));
-            const finalName = rule ? rule.gl_name : (coding.gl_name || (isRevenue ? rn("product_revenue") : rn("miscellaneous_expense")));
-
-            const invoice = {
+            // O89 — the DECISION moved to `uploadedInvoice.js` so it can be tested; the I/O
+            // stayed here. `id` and `booked_at` are injected because a pure function must not
+            // read the clock, and that is also what lets a test assert every field.
+            const { invoice, finalCode, finalName, isRevenue } = buildUploadedInvoice({
+              extracted, coding, rule, rc, rn,
               id: Date.now() + Math.random() + idx,
-              vendor: extracted.vendor?.trim() || "Unknown",
-              description: extracted.description || "",
-              amount: parseFloat(extracted.amount) || 0,
-              // Sales tax pulled from the invoice → split to Sales Tax Payable (2350) at
-              // booking for revenue invoices (persistJournalEntry), never lumped into revenue.
-              tax_amount: parseFloat(extracted.tax_amount) || 0,
-              date: extracted.date || todayLocal(),
-              // Classify `type` from the GL code (same basis as flattenJournalEntries +
-              // the canonical layer) so the in-session row is never mis-slotted by an odd
-              // AI `type` and always shows in the transactions tab the moment it's booked.
-              type: glIsRevenue(finalCode) ? "revenue" : glIsExpense(finalCode) ? "expense" : (extracted.type || "expense"),
-              notes: extracted.notes || "",
-              invoice_number: extracted.invoice_number || "",
-              // O11: carry the extracted payment terms + derive a due date (Net 30 → date+30,
-              // Due on receipt → date). Shown on the row immediately and persisted by
-              // persistJournalEntry; AR/AP aging then ages from the real due date.
-              payment_terms: extracted.payment_terms || "",
-              due_date: deriveDueDate(extracted.date || todayLocal(), extracted.payment_terms) || null,
-              project: rule?.project || "General",
-              gl_code: finalCode,
-              gl_name: finalName,
-              secondary_gl_code: rule ? rc("accounts_payable") : (coding.secondary_gl_code || (isRevenue ? rc("accounts_receivable") : rc("accounts_payable"))),
-              secondary_gl_name: rule ? rn("accounts_payable") : (coding.secondary_gl_name || (isRevenue ? rn("accounts_receivable") : rn("accounts_payable"))),
-              debit_credit: isRevenue ? "credit" : "debit",
-              confidence,
-              // Use the AI's reasoning; if it omitted one, build a descriptive fallback
-              // from the extracted data (never a bare "Auto-coded").
-              reasoning: rule
-                ? `Applied your vendor rule for ${extracted.vendor?.trim() || "this vendor"} → ${finalName} (${finalCode}).`
-                : (coding.reasoning?.trim()
-                    || `Coded to ${finalName} (${finalCode}) — ${(extracted.description || extracted.vendor || "this purchase").toString().slice(0, 80)} from ${extracted.vendor?.trim() || "the vendor"}.`),
-              status: "booked",
-              booked_at: new Date().toISOString(),
-              source: "universal_upload",
-              // Plain-English clarifying questions the AI raised for the conversational flow
-              questions: Array.isArray(extracted.questions) ? extracted.questions : [],
-              confidence_score: extracted.confidence_score ?? null,
-              // Auto-create/update contact from the extracted details after booking
-              _contact: {
-                name: extracted.vendor?.trim() || "",
-                type: isRevenue ? "customer" : "vendor",
-                address: extracted.vendor_address || "", email: extracted.vendor_email || "",
-                phone: extracted.vendor_phone || "", website: extracted.vendor_website || "",
-                payment_terms: extracted.payment_terms || "", account_number: extracted.account_number || "",
-                tax_id: extracted.tax_id || "", gl_code: finalCode, gl_name: finalName,
-              },
-            };
+              bookedAt: new Date().toISOString(),
+              today: todayLocal(),
+            });
 
             // Meals: auto-apply the 50% deductibility rule (no question needed) and notify.
             if (invoice.type !== "revenue" && GAAP_MEALS_RE.test(`${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase())) {
