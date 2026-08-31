@@ -674,6 +674,14 @@ export default function ReviewView() {
                   AND when there's work (disabled + the specific blockers). This is the fix for the
                   card being hidden by the all-clear empty state. */}
               {ready && signOffCard}
+
+              {/* ── O102 — RUN THE CALIBRATION CHECK ─────────────────────────────
+                  The ladder computes what it WOULD have booked and books nothing; the report
+                  scores that against the signed criteria. Placed here because the person who
+                  reads the verdict is the one who signs the months it is scored against.
+                  ★ It runs the pass TWICE over identical input — a verdict that varies between
+                  runs is an automatic fail, and one pass cannot detect that at all. */}
+              {ready && canSignOff && <ShadowCalibrationCard />}
               {!ready ? (
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>Loading your review queue…</div>
               ) : (droppedCheckFailed || statementExceptionsLoadFailed) ? (
@@ -900,5 +908,70 @@ export default function ReviewView() {
                 </div>
               )}
             </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O102 — the shadow calibration check. Runs the ladder over a range and scores it.
+// It BOOKS NOTHING: a test asserts this component holds no booking primitive.
+// ─────────────────────────────────────────────────────────────────────────────
+function ShadowCalibrationCard() {
+  const { runShadowCalibration, shadowResult, invoices } = useERP();
+  const [open, setOpen] = React.useState(false);
+
+  // Default to the whole span the books cover, so the operator does not have to guess a
+  // range — and the report itself refuses to read a thin sample as a pass.
+  const span = React.useMemo(() => {
+    const dates = (invoices || []).map(i => String(i?.date || "").slice(0, 10)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    return dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null;
+  }, [invoices]);
+  const [from, setFrom] = React.useState(span?.from || "");
+  const [to, setTo] = React.useState(span?.to || "");
+  React.useEffect(() => { if (span && !from) { setFrom(span.from); setTo(span.to); } }, [span]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const running = !!shadowResult?.running;
+  const box = { background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"16px 20px", marginBottom:20 };
+  const input = { background:"var(--sc-bg)", border:"1px solid var(--sc-border)", borderRadius:8, padding:"6px 10px", fontSize:12, color:"var(--sc-text)" };
+
+  if (!open) {
+    return (
+      <div style={{ ...box, display:"flex", alignItems:"center", justifyContent:"space-between", gap:14 }}>
+        <div>
+          <div style={{ fontSize:13, fontWeight:600 }}>Check how the new categorisation would have done</div>
+          <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:4, lineHeight:1.45 }}>
+            Runs over months you have already signed off and compares its answers with yours. It changes nothing.
+          </div>
+        </div>
+        <button onClick={()=>setOpen(true)} style={{ flexShrink:0, fontSize:12, fontWeight:600, padding:"8px 16px", borderRadius:8, border:"1px solid var(--sc-border)", background:"transparent", color:"var(--sc-text)", cursor:"pointer" }}>Open</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={box}>
+      <div style={{ fontSize:13, fontWeight:600, marginBottom:10 }}>Check how the new categorisation would have done</div>
+      <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", marginBottom:12 }}>
+        <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={input} />
+        <span style={{ fontSize:12, color:"var(--sc-text-2)" }}>to</span>
+        <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={input} />
+        <button
+          onClick={()=>runShadowCalibration && runShadowCalibration({ from, to })}
+          disabled={running || !from || !to}
+          style={{ fontSize:12, fontWeight:600, padding:"7px 16px", borderRadius:8, border:"1px solid var(--sc-gold)", background:"var(--sc-gold-soft)", color:"var(--sc-text)", cursor: running || !from || !to ? "not-allowed" : "pointer" }}>
+          {running ? "Running…" : "Run the check"}
+        </button>
+      </div>
+      {/* §9 — every line below is read off the recorded result. There is no branch that can
+          describe a run that did not happen. */}
+      {shadowResult?.error && (
+        <div style={{ fontSize:12, color:"var(--sc-error)", lineHeight:1.5 }}>
+          The check couldn't finish, so there is nothing to read from it — {shadowResult.error}
+        </div>
+      )}
+      {shadowResult?.copy && (
+        <div style={{ fontSize:12.5, color:"var(--sc-text)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>{shadowResult.copy}</div>
+      )}
+    </div>
   );
 }

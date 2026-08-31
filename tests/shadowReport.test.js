@@ -213,3 +213,38 @@ describe("★★ the trigger exists — a runner nobody invokes is the same as n
     expect(fn).toMatch(/signoffs \|\| \[\]\)\.filter\(so => so && !so\.revoked_at\)/);
   });
 });
+
+describe("★★ and the trigger reaches a screen — otherwise it is the defect it was built to close", () => {
+  const view = readFileSync("src/components/views/ReviewView.jsx", "utf8");
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ")
+    .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  const code = strip(view);
+  const card = code.slice(code.indexOf("function ShadowCalibrationCard"));
+
+  it("a reviewer can run it", () => {
+    expect(code).toMatch(/<ShadowCalibrationCard \/>/);
+    expect(card).toMatch(/runShadowCalibration\(\{ from, to \}\)/);
+  });
+
+  it("★ it is on the REVIEWER's screen — the person who reads the verdict signs the months it scores against", () => {
+    expect(code).toMatch(/ready && canSignOff && <ShadowCalibrationCard \/>/);
+  });
+
+  it("★★ the card books nothing and queries nothing of its own", () => {
+    for (const forbidden of ["supabase", "persistJournalEntry", "persistMultiLineEntry", "post_journal_entry", "bookToDb", "persistRecode", ".insert(", ".update("]) {
+      expect(card).not.toContain(forbidden);
+    }
+  });
+
+  it("★★ a failed run says so — it never renders as an empty result", () => {
+    // A partial pass makes the denominator wrong, and a wrong denominator is how a weak
+    // result reads as a strong one. The error branch must exist and must be its own.
+    expect(card).toMatch(/shadowResult\?\.error &&/);
+    expect(card).toMatch(/couldn't finish, so there is nothing to read from it/);
+  });
+
+  it("★ and it renders the report's own copy rather than re-deriving a sentence", () => {
+    expect(card).toMatch(/shadowResult\?\.copy/);
+    expect(card).not.toMatch(/PROCEED|STOP|AMBIGUOUS/);   // the verdict is the report's to word
+  });
+});
