@@ -3260,7 +3260,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const aliasIndex = useMemo(() => buildAliasIndex(contacts), [contacts]);
 
   const persistContact = async (contact) => {
-    if (!currentCompany?.id) return;
+    if (!currentCompany?.id) return { ok: false, error: "no company", row: null };
     try {
       const base = {
         company_id: currentCompany.id, name: contact.name,
@@ -3310,7 +3310,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         console.error(`[contacts] persist FAILED for "${contact.name}" (company_id=${currentCompany.id}):`, error.message || error, error.details || "", error.hint || "");
       }
       if (!contact.db_id && data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
-    } catch(e) { console.error("persistContact error:", e); }
+      // ★ RETURNS A VERDICT NOW. It returned nothing, so every caller wanting to say "saved ✓"
+      // had to assume — and an assumed success on a write that silently did nothing is the
+      // class this codebase keeps finding. Existing callers ignore the value and are
+      // unaffected; the new ones gate their sentence on it.
+      return { ok: !error, error: error ? (error.message || String(error)) : null, row: data || null };
+    } catch(e) {
+      console.error("persistContact error:", e);
+      return { ok: false, error: e?.message || String(e), row: null };
+    }
   };
 
   // Auto-create or enrich a vendor/customer contact from an uploaded invoice's extracted details.

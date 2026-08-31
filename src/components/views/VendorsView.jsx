@@ -5,6 +5,7 @@ import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 import { validateAlias, aliasExplainer } from "../../lib/vendorAlias";
+import { suggestVendorMerges, suggestionCopy } from "../../lib/vendorSuggest";
 
 export default function VendorsView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatInput, chatInputRef, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, setVendor1099, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatInput, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
@@ -199,6 +200,19 @@ export default function VendorsView() {
                   <button onClick={()=>{ setChatOpen(true); }} style={{ padding:"9px 18px", borderRadius:10, fontSize:13, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>+ Add via Chat</button>
                 </div>
 
+                {/* ── O106 — THE SAME SUPPLIER UNDER A NEW NAME ────────────────────
+                    Linking two names has existed since O111; a person still had to NOTICE.
+                    This proposes the pairs and does nothing else: confirming writes an alias
+                    through the SAME path the vendor form uses, so there is one way a merge
+                    can happen and it always has a person behind it. */}
+                <VendorMergeSuggestions
+                  allVendors={allVendors}
+                  contacts={contacts}
+                  persistContact={persistContact}
+                  showNotification={showNotification}
+                  companyId={currentCompany?.id}
+                />
+
                 {allVendors.length===0 ? (
                   <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center" }}>
                     <div style={{ fontSize:32, marginBottom:12 }}>◈</div>
@@ -347,4 +361,103 @@ export default function VendorsView() {
                 )}
               </div>
             );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Suggested supplier merges. Suggest-only by construction: the ONLY write is the same
+// `persistContact` alias write the vendor form already performs.
+// ─────────────────────────────────────────────────────────────────────────────
+function VendorMergeSuggestions({ allVendors, contacts, persistContact, showNotification, companyId }) {
+  // ★ DISMISSALS ARE PER-DEVICE, AND THAT IS A DELIBERATE TRADE RATHER THAN AN OVERSIGHT.
+  // Storing them durably means a column or a schema hack; a dismissed suggestion reappearing
+  // on a new browser costs one glance, and NOTHING financial is held here. A CONFIRMED merge
+  // is durable, because it becomes an alias on the contact.
+  const storeKey = `cfai_mergeDismissed_${companyId || "none"}`;
+  const [dismissed, setDismissed] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(storeKey) || "[]"); } catch { return []; }
+  });
+  const [busy, setBusy] = React.useState(null);
+
+  const suggestions = React.useMemo(() => {
+    const names = (allVendors || []).map(v => v.name).filter(Boolean);
+    // Pairs already linked by an alias are answered, and so are pairs dismissed here.
+    const asserted = [...dismissed];
+    for (const c of contacts || []) {
+      for (const a of (Array.isArray(c.aliases) ? c.aliases : [])) {
+        const x = String(c.name || "").toLowerCase().trim();
+        const y = String(a || "").toLowerCase().trim();
+        asserted.push(x < y ? `${x}::${y}` : `${y}::${x}`);
+      }
+    }
+    return suggestVendorMerges(names, { asserted });
+  }, [allVendors, contacts, dismissed]);
+
+  if (!suggestions.length) return null;
+
+  const dismiss = (pair) => {
+    const k = pair.normalizedA < pair.normalizedB
+      ? `${pair.normalizedA}::${pair.normalizedB}` : `${pair.normalizedB}::${pair.normalizedA}`;
+    const next = [...dismissed, k];
+    setDismissed(next);
+    try { localStorage.setItem(storeKey, JSON.stringify(next)); } catch {}
+  };
+
+  const link = async (pair) => {
+    // The LONGER spelling becomes an alias of the shorter one: the short name is what a
+    // person calls the supplier, the long one is what a bank statement calls it.
+    const [keep, alias] = pair.a.length <= pair.b.length ? [pair.a, pair.b] : [pair.b, pair.a];
+    const contact = (contacts || []).find(c => String(c.name || "").trim() === String(keep).trim());
+    if (!contact) {
+      showNotification && showNotification(`We couldn't find "${keep}" in your vendor list to link it to.`, "error");
+      return;
+    }
+    const others = (contacts || []).filter(c => c.id !== contact.id);
+    const check = validateAlias(alias, contact, others);
+    if (!check.ok) { showNotification && showNotification(check.reason, "error"); return; }
+    setBusy(`${pair.a}|${pair.b}`);
+    try {
+      const r = await persistContact({ ...contact, aliases: [...(contact.aliases || []), check.text] });
+      // ★ §9 — THE SENTENCE READS THE RESULT. `persistContact` returned NOTHING until this
+      // change, so any caller saying "saved ✓" was assuming — and a merge that silently did
+      // not save would leave the two names split while the screen said they were joined.
+      if (!r || !r.ok) {
+        showNotification && showNotification(`We couldn't save that link — ${(r && r.error) || "please try again"}.`, "error");
+      } else {
+        showNotification && showNotification(`“${alias}” now counts as ${keep} ✓`);
+        dismiss(pair);   // only once it actually landed
+      }
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <div style={{ marginBottom:20, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"14px 18px" }}>
+      <div style={{ fontSize:11, letterSpacing:2, color:"var(--sc-text-2)", marginBottom:10 }}>
+        POSSIBLY THE SAME SUPPLIER
+      </div>
+      {suggestions.slice(0, 4).map((p) => {
+        const id = `${p.a}|${p.b}`;
+        return (
+          <div key={id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:14, padding:"8px 0", borderTop:"1px solid var(--sc-border)" }}>
+            <div style={{ fontSize:13, color:"var(--sc-text)", lineHeight:1.45 }}>{suggestionCopy(p)}</div>
+            <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+              <button onClick={()=>link(p)} disabled={busy===id}
+                style={{ fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:8, border:"1px solid var(--sc-gold)", background:"var(--sc-gold-soft)", color:"var(--sc-text)", cursor:busy===id?"wait":"pointer" }}>
+                {busy===id ? "Linking…" : "Yes, link them"}
+              </button>
+              <button onClick={()=>dismiss(p)} disabled={busy===id}
+                style={{ fontSize:12, padding:"6px 12px", borderRadius:8, border:"1px solid var(--sc-border)", background:"transparent", color:"var(--sc-text-2)", cursor:"pointer" }}>
+                No
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      {suggestions.length > 4 && (
+        <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:8 }}>
+          {suggestions.length - 4} more after these.
+        </div>
+      )}
+    </div>
+  );
 }

@@ -131,3 +131,43 @@ describe("it suggests and never decides", () => {
     expect(suggestionCopy(null)).toBe(null);
   });
 });
+
+describe("★★ the suggester now has a reader, and the merge is gated on the write landing", () => {
+  const view = readFileSync("src/components/views/VendorsView.jsx", "utf8");
+  const app = readFileSync("src/App.jsx", "utf8");
+  const strip = (t) => t
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+
+  it("★ it reaches a screen — a suggester nobody sees is the field-with-no-reader defect", () => {
+    expect(strip(view)).toMatch(/suggestVendorMerges\(names, \{ asserted \}\)/);
+    expect(strip(view)).toMatch(/suggestionCopy\(p\)/);
+  });
+
+  it("★★★ persistContact REPORTS now — it returned nothing, so any 'saved ✓' was an assumption", () => {
+    expect(strip(app)).toMatch(/return \{ ok: !error, error: error \? \(error\.message \|\| String\(error\)\) : null, row: data \|\| null \};/);
+  });
+
+  it("★★ and the confirmation is gated on that verdict, not on the click", () => {
+    const at = strip(view).indexOf("const r = await persistContact(");
+    expect(at).toBeGreaterThan(-1);
+    const after = strip(view).slice(at, at + 700);
+    expect(after).toMatch(/if \(!r \|\| !r\.ok\)/);
+    // A merge that did not save must not be recorded as answered, or the pair vanishes from
+    // the list while the two names stay split.
+    expect(after.indexOf("dismiss(pair)")).toBeGreaterThan(after.indexOf("if (!r || !r.ok)"));
+  });
+
+  it("★ the only write it performs is the alias write the vendor form already does", () => {
+    const at = strip(view).indexOf("function VendorMergeSuggestions");
+    const block = strip(view).slice(at);
+    expect(at).toBeGreaterThan(-1);
+    expect(block).not.toMatch(/supabase|\.insert\(|\.update\(|\.delete\(/);
+    expect((block.match(/persistContact\(/g) || []).length).toBe(1);
+  });
+
+  it("★ and it runs the same validation the form runs — one door for a merge", () => {
+    const at = strip(view).indexOf("function VendorMergeSuggestions");
+    expect(strip(view).slice(at)).toMatch(/validateAlias\(alias, contact, others\)/);
+  });
+});
