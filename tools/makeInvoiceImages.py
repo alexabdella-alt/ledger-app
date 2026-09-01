@@ -38,70 +38,118 @@ def font(name, size):
 
 BOLD, REG, MONO = "Arial Bold.ttf", "Arial.ttf", "Courier New.ttf"
 
-# ── the pile ────────────────────────────────────────────────────────────────
-# `expect` is what a competent bookkeeper would say — it is NOT shown to the app; it is the
-# answer key you score against afterwards.
-INVOICES = [
-    dict(vendor="Rio Grande Produce Co.", layout="invoice", num="RG-44182", date="08/04/2026",
-         terms="Net 15", items=[("Roma tomatoes, 40 lb case", 3, 38.50), ("Yellow onions, 50 lb", 2, 31.25),
-                                 ("Cilantro, 30 ct", 4, 12.00), ("Delivery", 1, 25.00)],
-         expect="Food cost / COGS"),
-    dict(vendor="Alamo Ice & Beverage", layout="invoice", num="AIB-9071", date="08/06/2026",
-         terms="Net 30", items=[("CO2 tank exchange, 20 lb", 4, 42.00), ("Bagged ice, 20 lb", 60, 3.10),
-                                 ("Fountain syrup, BIB cola", 6, 78.40)],
-         expect="COGS — this is drinks inventory, NOT equipment. The words 'tank' and "
-                "'exchange' read like equipment; a past drive put a vendor like this in "
-                "Miscellaneous. Watch this one."),
-    dict(vendor="Guadalupe Waste Services", layout="statement", num="000418822", date="Aug 1, 2026",
-         terms="Due on receipt", items=[("Commercial dumpster, 4 yd — monthly", 1, 385.00),
-                                        ("Extra pickup 07/22", 1, 65.00), ("Fuel surcharge", 1, 18.50)],
-         expect="Waste removal — an operating expense, not COGS"),
-    dict(vendor="Barton Springs Repair Co.", layout="invoice", num="8841", date="08/11/2026",
-         terms="Net 15", items=[("Service call — walk-in cooler", 1, 145.00),
-                                 ("Compressor capacitor", 1, 88.75), ("Labor, 2.5 hrs @ $95", 1, 237.50)],
-         expect="Repairs & maintenance. A REPAIR, not a capital improvement — it restores "
-                "the cooler, it does not extend its life"),
-    dict(vendor="Hill Country Milling Co.", layout="invoice", num="HC-20419", date="08/12/2026",
-         terms="Net 30", items=[("00 flour, 50 lb", 12, 34.80), ("Semolina, 50 lb", 4, 41.20),
-                                 ("Freight", 1, 62.00)],
-         expect="Food cost / COGS"),
-    dict(vendor="Lone Star Restaurant Supply", layout="invoice", num="LS-77310", date="08/13/2026",
-         terms="Net 30", items=[("Sheet pans, half size", 24, 11.40), ("Deli containers, 32 oz, case", 6, 44.90),
-                                 ("Nitrile gloves, case", 3, 58.00)],
-         expect="Operating supplies — NOT food cost, and NOT equipment at these amounts"),
-    dict(vendor="Texas Mutual Insurance", layout="statement", num="POL-4471902", date="08/01/2026",
-         terms="Auto-draft", items=[("Workers' compensation — August premium", 1, 890.00)],
-         expect="Insurance"),
-    dict(vendor="Half Moon Creative", layout="invoice", num="HM-1142", date="Aug 14, 2026",
-         terms="Net 30", items=[("Menu photography — half day", 1, 650.00), ("Retouching, 12 images", 1, 180.00)],
-         expect="Marketing / advertising"),
-    dict(vendor="CORNER MARKET #221", layout="receipt", num="TRX 88104", date="08/15/2026",
-         terms="", items=[("Lemons", 1, 14.88), ("Kosher salt 3lb", 2, 6.49),
-                          ("Paper towels 12pk", 1, 22.99), ("Sharpie 4pk", 1, 8.49)],
-         expect="A SMALL MIXED RECEIPT — some food, some supplies. A bookkeeper would not "
-                "split $52; watch whether it picks something sensible or asks"),
-    dict(vendor="Austin Municipal Utilities", layout="statement", num="ACCT 7719-004", date="08/02/2026",
-         terms="Due 08/25/2026", items=[("Electric service 07/01–07/31", 1, 1180.44),
-                                        ("Water & wastewater", 1, 296.10), ("Regulatory fee", 1, 14.20)],
-         expect="Utilities"),
-    dict(vendor="Bluebonnet Linen Service", layout="invoice", num="BLS-90233", date="08/17/2026",
-         terms="Weekly", items=[("Bar mops, 100 ct", 1, 62.00), ("Aprons, 40 ct", 1, 48.00),
-                                 ("Kitchen mats — rotation", 1, 35.00)],
-         expect="Laundry / linen. FLAT WEEKLY VENDOR — should be routine, never a duplicate flag"),
-    dict(vendor="Franklin Ave Properties LP", layout="statement", num="RENT-0826", date="08/01/2026",
-         terms="Due on the 1st", items=[("Base rent — August 2026", 1, 4200.00),
-                                        ("CAM reconciliation", 1, 312.75)],
-         expect="Rent & occupancy. LARGE AND ENTIRELY ROUTINE — must not be flagged as an "
-                "unusual charge"),
-    dict(vendor="Pecan Street Fire & Safety", layout="invoice", num="PS-3318", date="08/19/2026",
-         terms="Net 30", items=[("Hood suppression — semi-annual inspection", 1, 285.00),
-                                 ("Extinguisher recharge, 4 units", 1, 96.00)],
-         expect="Repairs & maintenance or a compliance expense — NOT capitalised"),
-    dict(vendor="Sabine Kitchen Equipment", layout="invoice", num="SKE-6620", date="08/21/2026",
-         terms="Net 30", items=[("Reach-in freezer, 49 cu ft", 1, 4285.00), ("Delivery & install", 1, 340.00)],
-         expect="THE ONE THAT SHOULD ASK. $4,625 of equipment lasting over a year — this is "
-                "the capitalise-or-expense question, and it SHOULD stop and ask"),
+# ── the month ───────────────────────────────────────────────────────────────
+# A real month is NOT fourteen unique vendors — it is the same suppliers arriving again and
+# again, with a handful of one-offs. That difference is the whole point of running this at
+# volume rather than at variety:
+#   · repeats test whether the questions TAPER as a vendor becomes familiar. A vendor asked
+#     about on the 4th and again on the 25th is a defect, not a question (O122).
+#   · volume tests what the queue does when the pile is longer than the hourly budget —
+#     behaviour that changed with the rolling window and has never been watched on a backlog.
+#
+# `expect` is what a competent bookkeeper would say. It is NOT shown to the app; it is the
+# answer key, to be read AFTER the run.
+
+RECURRING = [
+    # vendor, layout, days of the month, line items, expectation, invoice prefix
+    ("Rio Grande Produce Co.", "invoice", [4, 11, 18, 25],
+     [("Roma tomatoes, 40 lb case", 3, 38.50), ("Yellow onions, 50 lb", 2, 31.25),
+      ("Cilantro, 30 ct", 4, 12.00), ("Delivery", 1, 25.00)],
+     "Food cost / COGS", "RG"),
+    ("Hill Country Milling Co.", "invoice", [5, 12, 19, 26],
+     [("00 flour, 50 lb", 12, 34.80), ("Semolina, 50 lb", 4, 41.20), ("Freight", 1, 62.00)],
+     "Food cost / COGS", "HC"),
+    ("Alamo Ice & Beverage", "invoice", [6, 13, 20, 27],
+     [("CO2 tank exchange, 20 lb", 4, 42.00), ("Bagged ice, 20 lb", 60, 3.10),
+      ("Fountain syrup, BIB cola", 6, 78.40)],
+     "COGS — drinks inventory, NOT equipment. 'tank' and 'exchange' read like equipment; a "
+     "vendor of this shape once landed in Miscellaneous. AND it repeats weekly: if it asks "
+     "on the 6th that is fair, if it asks again on the 27th that is a defect", "AIB"),
+    ("Bluebonnet Linen Service", "invoice", [3, 10, 17, 24],
+     [("Bar mops, 100 ct", 1, 62.00), ("Aprons, 40 ct", 1, 48.00), ("Kitchen mats — rotation", 1, 35.00)],
+     "Laundry / linen. FLAT WEEKLY — identical every week, so it must never read as a "
+     "duplicate payment", "BLS"),
+    ("Sysco Central Texas", "invoice", [7, 21],
+     [("Mozzarella, 6/5 lb", 8, 41.90), ("Pepperoni, 2/12.5 lb", 4, 68.25),
+      ("Olive oil, 6/1 gal", 3, 96.00), ("Napkins, 6000 ct", 2, 54.30)],
+     "Food cost / COGS", "SYS"),
+    ("Corner Market #221", "receipt", [8, 15, 22, 29],
+     [("Lemons", 1, 14.88), ("Kosher salt 3lb", 2, 6.49), ("Paper towels 12pk", 1, 22.99),
+      ("Sharpie 4pk", 1, 8.49)],
+     "A SMALL MIXED RECEIPT — some food, some supplies. A bookkeeper would not split $60; "
+     "watch whether it picks something sensible or asks", "TRX"),
 ]
+
+MONTHLY = [
+    ("Franklin Ave Properties LP", "statement", 1,
+     [("Base rent — August 2026", 1, 4200.00), ("CAM reconciliation", 1, 312.75)],
+     "Rent & occupancy. LARGE AND ENTIRELY ROUTINE — must NOT be flagged as an unusual "
+     "charge (that is the C291 fix, met on realistic data)", "RENT"),
+    ("Austin Municipal Utilities", "statement", 2,
+     [("Electric service 07/01–07/31", 1, 1180.44), ("Water & wastewater", 1, 296.10),
+      ("Regulatory fee", 1, 14.20)], "Utilities", "ACCT"),
+    ("Texas Mutual Insurance", "statement", 1,
+     [("Workers' compensation — August premium", 1, 890.00)], "Insurance", "POL"),
+    ("Guadalupe Waste Services", "statement", 1,
+     [("Commercial dumpster, 4 yd — monthly", 1, 385.00), ("Extra pickup 07/22", 1, 65.00),
+      ("Fuel surcharge", 1, 18.50)], "Waste removal — operating expense, not COGS", "GWS"),
+    ("Lone Star Restaurant Supply", "invoice", 9,
+     [("Sheet pans, half size", 24, 11.40), ("Deli containers, 32 oz, case", 6, 44.90),
+      ("Nitrile gloves, case", 3, 58.00)],
+     "Operating supplies — NOT food cost, and NOT equipment at these amounts", "LS"),
+    ("Half Moon Creative", "invoice", 14,
+     [("Menu photography — half day", 1, 650.00), ("Retouching, 12 images", 1, 180.00)],
+     "Marketing / advertising", "HM"),
+    ("Gusto", "statement", 15,
+     [("Payroll — period ending 08/14", 1, 5500.00), ("Employer taxes", 1, 421.00),
+      ("Platform fee", 1, 46.00)],
+     "PAYROLL — should route to the payroll path, not be booked as a supplier bill", "GUS"),
+]
+
+ONE_OFFS = [
+    ("Barton Springs Repair Co.", "invoice", 11,
+     [("Service call — walk-in cooler", 1, 145.00), ("Compressor capacitor", 1, 88.75),
+      ("Labor, 2.5 hrs @ $95", 1, 237.50)],
+     "Repairs & maintenance. A REPAIR — it restores the cooler, it does not extend its life", "BSR"),
+    ("Pecan Street Fire & Safety", "invoice", 19,
+     [("Hood suppression — semi-annual inspection", 1, 285.00),
+      ("Extinguisher recharge, 4 units", 1, 96.00)],
+     "Repairs & maintenance or compliance — NOT capitalised", "PS"),
+    ("Sabine Kitchen Equipment", "invoice", 21,
+     [("Reach-in freezer, 49 cu ft", 1, 4285.00), ("Delivery & install", 1, 340.00)],
+     "THE ONE THAT SHOULD ASK. $4,625 of equipment lasting over a year — capitalise or "
+     "expense is a real judgement and it SHOULD stop", "SKE"),
+    ("Travis County Tax Office", "statement", 20,
+     [("Mixed beverage gross receipts tax — July", 1, 1043.88)],
+     "A TAX REMITTANCE, not an expense of the month it is paid in. Watch this one", "TCT"),
+    ("Zilker Pest Control", "invoice", 26,
+     [("Monthly service — kitchen & dry storage", 1, 145.00)],
+     "Repairs & maintenance / facilities", "ZPC"),
+    ("Waterloo Signs", "invoice", 27,
+     [("Window decal — new hours", 1, 240.00), ("Installation", 1, 95.00)],
+     "Marketing, or repairs — genuinely arguable at $335, so either is defensible", "WS"),
+]
+
+def wobble(items, k):
+    """Real invoices from one vendor are not identical week to week."""
+    out = []
+    for desc, qty, rate in items:
+        r = round(rate * (1 + ((hash((desc, k)) % 21) - 10) / 100.0), 2)
+        out.append((desc, qty, r))
+    return out
+
+INVOICES = []
+for vendor, layout, days, items, expect, pre in RECURRING:
+    for k, day in enumerate(days):
+        INVOICES.append(dict(vendor=vendor, layout=layout, num=f"{pre}-{40000 + hash((pre, day)) % 9000}",
+                             date=f"08/{day:02d}/2026", terms="Net 30" if layout == "invoice" else "",
+                             items=wobble(items, k), expect=expect))
+for vendor, layout, day, items, expect, pre in MONTHLY + ONE_OFFS:
+    date = "Aug 14, 2026" if pre == "HM" else f"08/{day:02d}/2026"
+    INVOICES.append(dict(vendor=vendor, layout=layout, num=f"{pre}-{10000 + hash((pre, day)) % 9000}",
+                         date=date, terms="Net 30" if layout == "invoice" else "Due on receipt",
+                         items=items, expect=expect))
+INVOICES.sort(key=lambda x: (x["date"][-4:], x["date"][:2], x["date"][3:5]))
 
 W, H = 1000, 1400
 INK, PAPER = (28, 28, 32), (252, 251, 248)
