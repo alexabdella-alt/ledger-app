@@ -19,3 +19,7 @@ supabase/.temp/
 # Full-source snapshot is redundant inside its own repo (git history IS the snapshot).
 # Rebuild on demand with `git archive` if a full-snapshot upload is ever needed.
 shadow-code.zip
+
+# Drive fixtures — regenerate with `python3 tools/makeInvoiceImages.py` rather than
+# committing 800KB of images. The GENERATOR is the artifact worth keeping.
+tools/drive-fixtures/
