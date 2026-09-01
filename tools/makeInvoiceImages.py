@@ -163,8 +163,8 @@ def draw_invoice(d, inv, subtotal, tax, total):
     d.text((640, 102), f"Date       {inv['date']}", font=font(MONO, 18), fill=INK)
     if inv["terms"]: d.text((640, 130), f"Terms      {inv['terms']}", font=font(MONO, 18), fill=INK)
     d.line([(60, 175), (940, 175)], fill=(180, 180, 190), width=2)
-    d.text((60, 200), "Bill to:  Franklin Ave Pizza LLC", font=font(REG, 17), fill=(90, 90, 100))
-    d.text((60, 224), "          1811 Franklin Ave, Austin TX 78702", font=font(REG, 17), fill=(90, 90, 100))
+    d.text((60, 200), "Bill to:  Red River Pizza Co.", font=font(REG, 17), fill=(90, 90, 100))
+    d.text((60, 224), "          2401 Red River St, Austin TX 78705", font=font(REG, 17), fill=(90, 90, 100))
     y = 300
     d.text((60, y), "DESCRIPTION", font=font(BOLD, 15), fill=(110, 110, 120))
     d.text((600, y), "QTY", font=font(BOLD, 15), fill=(110, 110, 120))
@@ -191,7 +191,7 @@ def draw_statement(d, inv, subtotal, tax, total):
     d.text((60, 175), f"Account  {inv['num']}", font=font(MONO, 18), fill=INK)
     d.text((60, 203), f"Statement date  {inv['date']}", font=font(MONO, 18), fill=INK)
     if inv["terms"]: d.text((60, 231), f"{inv['terms']}", font=font(MONO, 18), fill=INK)
-    d.text((60, 300), "Service address:  1811 Franklin Ave, Austin TX 78702", font=font(REG, 17), fill=(90, 90, 100))
+    d.text((60, 300), "Service address:  2401 Red River St, Austin TX 78705", font=font(REG, 17), fill=(90, 90, 100))
     y = 380
     for desc, qty, rate in inv["items"]:
         d.text((60, y), desc, font=font(REG, 19), fill=INK)
