@@ -45,7 +45,7 @@ import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, plan
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { planCoaTemplate, coaTemplateCopy } from "./lib/coaTemplates";
-import { documentTypeFor } from "./lib/docLibrary";
+import { documentTypeFor, isDurableDocId, PLACEHOLDER_DOCUMENT_TYPE, stampsOver } from "./lib/docLibrary";
 import { buildVendorSummary } from "./lib/vendorSummary";
 import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
@@ -613,9 +613,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     } catch (e) { console.warn("[documents] hash skipped:", e?.message || e); }
     if (contentHash) {
       try {
-        const { data: dupe } = await supabase.from("documents").select("id")
+        const { data: dupe } = await supabase.from("documents").select("id, document_type")
           .eq("company_id", currentCompany.id).eq("content_hash", contentHash).limit(1).maybeSingle();
         if (dupe?.id) {
+          // ★ STAMP THE TYPE WE NOW KNOW. O97 stores the bytes before classification, so
+          // the first row carries the placeholder; the SECOND call — same bytes, real type
+          // — used to return here and leave it. Without this the durable-first fix would
+          // have filed every invoice in the library as 'other' forever, which is O84(b)
+          // made worse rather than better. `stampsOver` keeps it monotone: only ever
+          // placeholder → specific, never a downgrade and never specific → specific.
+          if (stampsOver(dupe.document_type, type)) {
+            const r = await checkedRowUpdate({ supabase, table: "documents", id: dupe.id,
+              companyId: currentCompany.id, patch: { document_type: type }, label: "document_type_stamp" });
+            if (!r.ok) console.error("[documents] type stamp failed:", r.message || r.reason);
+          }
           // Already stored — skip the storage upload AND the insert, drop the optimistic card,
           // and hand back the EXISTING id so callers (bank_statements.document_id) link to it.
           setDocLibrary(prev => prev.filter(d => d.id !== doc.id));
@@ -4710,8 +4721,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // so identical bytes are recognised BEFORE we spend a single AI call on them.
         let durableDocId = null;
         try {
-          durableDocId = await storeDocument(item.name, base64, mediaType, "pending", null, [], item.id, file);
-          if (durableDocId) markIntake(item.intake_id, INTAKE_STATUS.PROCESSING, { documentId: String(durableDocId), detail: "file stored — safe to close the tab" });
+          // ★ THE TYPE IS UNKNOWN HERE AND THE COLUMN HAS NO WAY TO SAY SO. It is
+          // `NOT NULL DEFAULT 'other'` under a CHECK that allows seven values, so the
+          // literal `"pending"` this used to pass was REJECTED ON EVERY UPLOAD — the
+          // storage blob rolled back, nothing stored, and `document_intake.document_id`
+          // left null, so the drain's input has been permanently empty. `stampsOver`
+          // is what stops the placeholder becoming the answer.
+          const storedId = await storeDocument(item.name, base64, mediaType, PLACEHOLDER_DOCUMENT_TYPE, null, [], item.id, file);
+          // ★ AND A TRUTHY RETURN IS NOT A DURABLE ONE — `storeDocument` hands back an
+          // in-session float when the persist fails. Both bank-statement callers already
+          // guarded this; the caller whose whole point is durability did not, and told
+          // the person their file was safe to close the tab on.
+          durableDocId = isDurableDocId(storedId) ? storedId : null;
+          if (durableDocId) markIntake(item.intake_id, INTAKE_STATUS.PROCESSING, { documentId: durableDocId, detail: "file stored — safe to close the tab" });
         } catch (e) {
           // Never block processing on the store: the old behaviour (process, then store)
           // is strictly better than not processing at all. But it is LOUD, because a
@@ -4743,9 +4765,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // O97 — stamp the real type onto the already-stored document. Placed HERE, before
         // any routing branch returns, so a payroll/QBO file that leaves for another
         // importer does not sit in the library as `pending` forever.
+        // ★ THROUGH THE MAPPER, NOT RAW. `classifyFile` speaks the CLASSIFIER's vocabulary
+        // — `docType === "qbo"` is tested four lines below — and the column accepts seven
+        // values, none of them "qbo". This was the SAME defect as the placeholder literal,
+        // in the same feature, on the line that repairs it.
         if (durableDocId && docType) {
           checkedRowUpdate({ supabase, table: "documents", id: durableDocId, companyId: currentCompany.id,
-            patch: { document_type: docType }, label: "o97_stamp_doc_type" });
+            patch: { document_type: documentTypeFor(docType) }, label: "o97_stamp_doc_type" });
         }
 
         // O55: a PDF/image the AI classifier recognized as a payroll register or a

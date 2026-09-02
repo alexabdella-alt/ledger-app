@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { agoPhrase } from "../src/lib/format.js";
+import { DOCUMENT_TYPES, PLACEHOLDER_DOCUMENT_TYPE } from "../src/lib/docLibrary.js";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -155,11 +156,20 @@ describe("★★ O97 — durable-first intake ordering", () => {
     expect(store).toBeLessThan(classify);
   });
 
-  it("★ the first store does not wait for a document type — it stores `pending`", () => {
+  it("★ the first store does not wait for a document type — it stores the PLACEHOLDER", () => {
     // The type is an OUTPUT of classification. Requiring it before keeping the file is
     // exactly what forced the store to happen last.
-    const store = fn.slice(fn.indexOf("storeDocument("), fn.indexOf("storeDocument(") + 160);
-    expect(store).toContain('"pending"');
+    //
+    // ★★ THIS TEST USED TO ASSERT THE LITERAL `"pending"` AND PASSED THROUGHOUT THE WHOLE
+    // TIME THE FEATURE WAS BROKEN. `documents.document_type` is NOT NULL under a CHECK
+    // allowing seven values; "pending" is not one, so EVERY durable-first insert was
+    // rejected, the storage blob rolled back, and the queue this fix exists to create was
+    // empty from the day it shipped. The test verified the writer against itself and never
+    // asked whether the COLUMN would take the value — the ·3a shape, in a test that reads
+    // like coverage. It now asserts the property that actually matters.
+    const store = fn.slice(fn.indexOf("storeDocument("), fn.indexOf("storeDocument(") + 200);
+    expect(store).toContain("PLACEHOLDER_DOCUMENT_TYPE");
+    expect(DOCUMENT_TYPES).toContain(PLACEHOLDER_DOCUMENT_TYPE);
   });
 
   it("★ the stored document id is stamped onto the intake row", () => {
@@ -173,11 +183,13 @@ describe("★★ O97 — durable-first intake ordering", () => {
     // of storeDocument returns an existing id WITHOUT updating the type, so a later call
     // cannot fix it.
     expect(fn).toMatch(/o97_stamp_doc_type/);
-    expect(fn).toMatch(/document_type: docType/);
+    expect(fn).toMatch(/document_type: documentTypeFor\(docType\)/);   // the classifier's vocabulary is not the column's
   });
 
   it("★ a failed store must NOT block processing, and must NOT be silent", () => {
-    const guard = fn.slice(fn.indexOf("durableDocId = await storeDocument"), fn.indexOf("durableDocId = await storeDocument") + 700);
+    const at = fn.indexOf("storedId = await storeDocument");
+    expect(at).toBeGreaterThan(-1);      // an anchor that no longer matches slices from -1 and asserts nothing
+    const guard = fn.slice(at, at + 900);
     expect(guard).toMatch(/catch/);
     expect(guard).toMatch(/console\.error/);
   });

@@ -86,3 +86,43 @@ export function documentTypeFor(classified, fallback = "other") {
   if (ALIASES[t]) return ALIASES[t];
   return DOCUMENT_TYPES.includes(fallback) ? fallback : "other";
 }
+
+// ── DURABILITY OF A `storeDocument` RETURN ───────────────────────────────────
+// `storeDocument` hands back an OPTIMISTIC in-session id (`Date.now()+Math.random()`)
+// whenever the persist fails, so a truthy return says nothing about whether the row
+// landed. Two callers already guarded this with an inline regex and a comment; the O97
+// durable-first caller — the newest, and the one whose ENTIRE PURPOSE is durability —
+// did not, and claimed "file stored — safe to close the tab" off the fallback float.
+//
+// ★ ONE DEFINITION, because three copies of a uuid test is precisely the shape that let
+// the third site quietly omit it. A `documents.id` is a uuid; the fallback never is.
+export function isDurableDocId(id) {
+  return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+// ── THE PLACEHOLDER, AND WHY IT IS NOT ITS OWN VALUE ─────────────────────────
+// O97 stores the bytes BEFORE classification, so at write time the type is genuinely
+// unknown. It passed the literal `"pending"` — which is not in the CHECK constraint, so
+// EVERY durable-first insert was rejected, the storage upload was rolled back, and the
+// durable queue this was built to create has been empty since it shipped.
+//
+// ★ The column is `NOT NULL DEFAULT 'other'`, so "unknown" has no representation of its
+// own without a migration — and this file's own rule already settles the trade:
+// a document we cannot label is still a document we must KEEP. So the placeholder IS
+// 'other', and `stampsOver` below is what stops it staying that way.
+export const PLACEHOLDER_DOCUMENT_TYPE = "other";
+
+// May a newly-known type overwrite what is already stored? Only 'other' → specific.
+// Monotone by construction: nothing specific is ever downgraded, and a row that was
+// only ever 'other' because we had not looked yet gets the answer when we have it.
+export function stampsOver(storedType, incomingType) {
+  if (!incomingType || !DOCUMENT_TYPES.includes(incomingType)) return false;
+  // ★ NOT a downgrade guard — the storedType test below already refuses 'invoice' → 'other'.
+  // This one refuses 'other' → 'other': a document classification genuinely cannot label
+  // would otherwise issue a checked write setting the value it already holds, on every
+  // dedup, forever. Found by a mutation that survived: the line I had described as the
+  // downgrade guard could not have mattered for correctness, and the real reason to keep
+  // it is narrower than the comment first claimed.
+  if (incomingType === PLACEHOLDER_DOCUMENT_TYPE) return false;
+  return !storedType || storedType === PLACEHOLDER_DOCUMENT_TYPE;
+}
