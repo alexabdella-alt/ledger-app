@@ -34,7 +34,12 @@ select 'intake rows UNRESUMABLE', count(*)::text,
   from public.document_intake i, co
   where i.company_id = co.id and i.document_id is null and i.status in ('failed','received','processing')
 union all
-select 'AI budget used this hour', coalesce(max(r.count)::text, '(none)'),
-       'against a ceiling of 60'
-  from public.rate_limit r
-  where r.bucket = 'ai' and r.hour_bucket > now() - interval '24 hours';
+-- ★ `rate_limit` (021) IS DEAD SCHEMA SINCE `086`. The rolling window needs one row per
+-- call to compute a TRAILING count, so it writes `rate_limit_events`; the old hourly
+-- aggregate is never touched and reads as empty forever. A census pointed at it reports
+-- "no AI calls" beside 20 documents refused BY the AI limiter — a flat contradiction that
+-- looks like a product defect and is a stale table name.
+select 'AI calls this hour', coalesce(count(*)::text, '0'),
+       'against a ceiling of 60, trailing 60 minutes'
+  from public.rate_limit_events e
+  where e.bucket = 'ai' and e.at > now() - interval '1 hour';
