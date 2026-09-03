@@ -190,3 +190,17 @@ export function coaTemplateCopy(plan) {
   const tidied = plan.hide.length ? `, and tidied away ${plan.hide.length} you're unlikely to use` : "";
   return `${added}${tidied}. You can rename or change any of them in Settings.`;
 }
+
+// ── EVERY ACCOUNT THIS FILE CAN PUT ON A CHART ───────────────────────────────
+// ★ THE DESCRIPTION LAYER NEEDS TO KNOW THESE EXIST. `clarify.js` builds its account-name
+// vocabulary from `DEFAULT_CHART_OF_ACCOUNTS` and nothing else, so every account added
+// here was invisible to it: a bill correctly booked to Food Cost was DESCRIBED to the
+// owner as "a meal or travel expense", because the name missed the map and fell through
+// to the vocabulary of what a human TYPES, where "food" means a meal.
+//
+// The chart has TWO sources as of C223. A map built from one of them is not a map of the
+// chart — it is a map of where somebody last looked.
+export const TEMPLATE_ACCOUNTS = [
+  ...UNIVERSAL,
+  ...Object.values(TEMPLATES).flatMap((t) => t.add || []),
+];

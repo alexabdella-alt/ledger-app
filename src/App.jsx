@@ -8,7 +8,7 @@ import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
-import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon } from "./lib/clarify";
+import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
 import { payrollRequestBody, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata } from "./lib/payroll";
 import { validateComment } from "./lib/anomalyNotes";
@@ -3464,7 +3464,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
 
     // D) Vehicle operating costs (business-use percentage)
-    if (GAAP_VEHICLE_RE.test(text)) {
+    // ★ THE ACCOUNT DECIDES WHETHER THIS QUESTION IS EVEN COHERENT. `GAAP_VEHICLE_RE`
+    // matches the word "fuel", and a dumpster invoice's "Fuel surcharge" line asked a
+    // waste-services bill whether the VEHICLE is used for business (Red River drive).
+    // A charge booked to Waste Removal is not a vehicle expense however the text reads.
+    if (GAAP_VEHICLE_RE.test(text) && gaapQuestionFitsAccount("vehicle", invoice)) {
       const mk = pct => ({ label: pct===100?"100% business use":`Mixed — about ${pct}% business`, vehiclePct:pct, gl_code: invoice.gl_code, gl_name: invoice.gl_name,
         reasoning: pct===100 ? `Fully deductible — user confirmed 100% business use.`
           : `Business use ${pct}% — deductible portion ${fmtMoney(amt*pct/100)} of ${fmtMoney(amt)}; remainder is personal and not deductible.` });

@@ -62,6 +62,7 @@ export function draftClientQuestion(txn = {}) {
 // vendor→category signals the categorizer/ReconView use). Returns null when the answer is
 // too vague to disambiguate — so a still-ambiguous answer NEVER falsely resolves a flag.
 import { DEFAULT_CHART_OF_ACCOUNTS } from "./constants";
+import { TEMPLATE_ACCOUNTS } from "./coaTemplates";
 
 const ANSWER_MAP = [
   [/\binsurance\b|\bliability\b|\bworkers?[' ]?comp\b/, "insurance"],
@@ -138,6 +139,19 @@ const ROLE_PHRASE = {
   merchant_processing_fees: "card processing fees",
   bank_service_charges: "bank fees",
   uncategorized_expense: "something we haven't sorted yet",
+  // ★ THE BUSINESS-TYPE ACCOUNTS (C223). Without these the map resolves the role and then
+  // has no words for it, so a correctly-booked Beverage Cost still reads "a general
+  // business expense" — the honest fallback, but not the answer we actually have.
+  // Plain words only: an owner does not say "cost of sales - beverage".
+  food_cost: "food",
+  beverage_cost: "drinks",
+  paper_packaging: "packaging",
+  linen_laundry: "linen and laundry",
+  waste_removal: "trash pickup",
+  kitchen_supplies: "kitchen supplies",
+  licenses_permits: "a license or permit",
+  merchandise_cost: "inventory",
+  inventory_shrinkage: "inventory loss",
 };
 // A keyword the owner might type that round-trips back through answerToCategory to the
 // same role (so a chip built from a role resolves deterministically when clicked).
@@ -260,12 +274,45 @@ export function roleFromAccount(invoice = {}) {
   // caller wrote its own; a fourth hand-copy of the chart is the same mistake in a
   // different column. If an account is renamed in constants.js, this follows.
   if (ACCOUNT_NAME_ROLE.has(name)) return ACCOUNT_NAME_ROLE.get(name);
-  return answerToCategory(invoice.gl_name || "") || null;
+
+  // A name in NEITHER chart is a user's own account — renamed, renumbered, or invented —
+  // and the ask vocabulary is the only thing left that can read it. "Software
+  // Subscriptions" → software is exactly right, and dropping this fallback outright broke
+  // that (a real test, and it was correct to fail).
+  //
+  // ★★ BUT ONE SLICE OF THAT VOCABULARY IS WRONG BY CONSTRUCTION HERE, AND IT IS THE ONE
+  // THAT BIT. `answerToCategory` maps what a HUMAN TYPES, where "food" means lunch with a
+  // client. In an ACCOUNT NAME the same word means the opposite: a business's food, bar,
+  // catering, coffee or grill account is its COST OF SALES, not its entertainment. Live,
+  // "Food Cost" came back a meal; "Food Locker Deposit" still would.
+  //
+  // Travel words are unaffected — a custom "Travel Expenses" account still resolves — so
+  // this removes the wrong inference without removing the fallback's reason to exist. And
+  // a meals-flavoured custom account gets "a general business expense": vague and true,
+  // rather than specific and false.
+  const guessed = answerToCategory(invoice.gl_name || "") || null;
+  // ★ GUARD THE ANSWER, NOT THE INPUT. My first attempt tested the name against MEALS_RE
+  // and did nothing, because "food" is not in it — the word reaches travel_entertainment
+  // through a different table entirely. Checking what came BACK needs no theory about
+  // which vocabulary produced it.
+  if (guessed === "travel_entertainment" && !TRAVEL_NAME_RE.test(name)) return null;
+  return guessed;
 }
 
-// name (lowercased) → system_role, straight off the default chart.
+// Words that make an ACCOUNT genuinely about travel or entertainment. Food, bar, catering
+// and coffee are not among them: in an account name those are cost of sales.
+const TRAVEL_NAME_RE = /\b(travel|mileage|airfare|flight|hotel|lodging|entertainment|per[\s-]?diem)\b/i;
+
+// name (lowercased) → system_role, off EVERY account the app can put on a chart.
+//
+// ★★ TWO SOURCES, BECAUSE THE CHART HAS TWO SOURCES. This was built from the default chart
+// alone, so C223's business-type accounts — Food Cost, Beverage Cost, Kitchen Supplies,
+// Linen & Laundry — missed every lookup and fell through to the ask path's vocabulary,
+// where "Food Cost" contains "food" and comes back A MEAL. The books were right and the
+// owner was told something false, on every restaurant document. A map built from one of
+// two sources is not a map of the chart; it is a map of where somebody last looked.
 const ACCOUNT_NAME_ROLE = new Map(
-  (DEFAULT_CHART_OF_ACCOUNTS || [])
+  [...(DEFAULT_CHART_OF_ACCOUNTS || []), ...(TEMPLATE_ACCOUNTS || [])]
     .filter((a) => a && a.name && a.system_role)
     .map((a) => [String(a.name).toLowerCase().trim(), a.system_role]),
 );
@@ -305,4 +352,56 @@ export const OWNER_GLCODE_RE = /\b(?!(?:19|20|21)\d{2}\b)[1-8][0-9]{3}\b/;
 export function containsOwnerJargon(text) {
   const s = String(text || "");
   return OWNER_JARGON_RE.test(s) || OWNER_GLCODE_RE.test(s);
+}
+
+
+// ── WHEN THE ACCOUNT ALREADY SETTLES THE QUESTION ────────────────────────────
+// The GAAP questions and the large-charge detector both key on WORDS IN THE TEXT — the
+// §9 anti-pattern by name. Live specimens, both from the Red River drive:
+//   · a dumpster invoice carrying a "Fuel surcharge" line was asked whether THE VEHICLE
+//     is used for business. It is a waste service. No bookkeeper would ever ask that.
+//   · the monthly RENT was flagged as possibly needing to be capitalized.
+//
+// ★ ONE RULE FIXES BOTH, AND IT IS THE RULE THIS REPO ALREADY WROTE DOWN FOR O115:
+//   THE ACCOUNT FIXES THE CATEGORY; TEXT MAY ONLY REFINE WITHIN IT. A charge booked to
+//   Waste Removal is not a vehicle expense however many times the invoice says "fuel",
+//   and a charge booked to Rent & Occupancy is never a capital asset however large.
+//
+// ★★ TWO SEPARATE SETS, NOT ONE, AND THE DIFFERENCE IS LOAD-BEARING. Insurance can
+//   never be capitalized AND is exactly where the prepaid question belongs — a single
+//   "settled" set would have killed the best question in the drive ("how many months
+//   does this cover?" on a workers' comp premium). A question is nonsense for an account
+//   or it is not; that is a fact about the pair, not about the account alone.
+
+// The vehicle question can only be ABOUT a vehicle. Asked when the account is one, or
+// when we have no account to go on and the text is genuinely all there is.
+const VEHICLE_QUESTION_ROLES = new Set([
+  "vehicle_expense", "auto_expense", "miscellaneous_expense", "uncategorized_expense",
+]);
+
+// Accounts that can NEVER be a capital asset. Rent is consumed in the month; a utility
+// bill, a linen service, a payroll run and a license fee buy nothing you still own.
+export const NEVER_CAPITAL_ROLES = new Set([
+  "rent_occupancy", "utilities", "insurance", "salaries_wages", "payroll_tax",
+  "employee_benefits", "interest_expense", "bank_service_charges",
+  "merchant_processing_fees", "marketing_advertising", "professional_services",
+  "travel_entertainment", "food_cost", "beverage_cost", "paper_packaging",
+  "linen_laundry", "waste_removal", "licenses_permits", "merchandise_cost",
+  "shipping_fulfillment", "direct_labor", "cogs", "depreciation",
+]);
+
+// Would a competent bookkeeper ask this question about THIS account? `null` role means
+// the charge is not coded yet, and then the text really is all we have.
+export function gaapQuestionFitsAccount(gaapType, invoice = {}) {
+  const role = roleFromAccount(invoice);
+  if (!role) return true;
+  if (gaapType === "vehicle") return VEHICLE_QUESTION_ROLES.has(role);
+  if (gaapType === "asset" || gaapType === "capitalize") return !NEVER_CAPITAL_ROLES.has(role);
+  return true;
+}
+
+// The same question, for the large-charge anomaly — which does not name a gaapType but
+// asks the identical thing ("if it lasts over a year, it may need to be capitalized").
+export function couldBeCapital(invoice = {}) {
+  return gaapQuestionFitsAccount("asset", invoice);
 }

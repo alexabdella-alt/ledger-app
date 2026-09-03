@@ -6,6 +6,7 @@
 
 import { fmtSignedMoney, ymdLocal } from "./format";
 import { classifyCadence, typicalIntervalDays, isOffRhythm, offRhythmCopy, FLAT_SD_RATIO } from "./recurringVendor.js";
+import { couldBeCapital } from "./clarify";
 
 // Normalize a vendor/contact name for fuzzy matching (lowercase, drop legal
 // suffixes and punctuation). Same spirit as the contacts unique-name handling.
@@ -412,7 +413,14 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
   };
   for (const i of expenses.filter(x => within(x.date, 95) && !isSystemPostedEntry(x))) {   // C196(4)
     const amt = Number(i.amount) || 0;
-    if (amt > 2500 && !isCapitalized(i) && priorSimilar(i) < 2) {
+    // ★ AND THE ACCOUNT SETTLES IT BEFORE HISTORY DOES. C291 stopped this firing on the
+    // monthly rent by requiring two established priors — which is right for a vendor we
+    // know, and does nothing on a COLD START, where a first month has no priors at all.
+    // Live: a brand-new company's rent was flagged as possibly needing capitalizing on
+    // day one. Rent is consumed in the month; it can never be a capital asset, at any
+    // size, with or without history. The question is incoherent for the account, so the
+    // account is what should refuse it (the O115 rule, one detector over).
+    if (amt > 2500 && !isCapitalized(i) && couldBeCapital(i) && priorSimilar(i) < 2) {
       push({ id: `large_txn:${normVendor(i.vendor)}:${subjectKey(i)}`, type: "large_transaction", severity: "medium",
         title: `Large charge: ${money(amt)} to ${i.vendor}`,
         description: `${money(amt)} to ${i.vendor} on ${String(i.date)}. If it's equipment or software lasting over a year, it may need to be capitalized rather than expensed.`,
