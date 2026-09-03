@@ -25,7 +25,27 @@ const baseEntryId = (id) => String(id == null ? "" : id).split("_")[0];
 // (multi-line rows share one import_metadata). This is INDEPENDENT of how the tax
 // was booked, so if the tax leg was mis-posted to revenue, this still reports the
 // tax the invoice charged while the GL Sales-Tax-Payable shows short → a mismatch.
+//
+// ★★★ "REVENUE-BEARING" WAS IN THE COMMENT AND NOT IN THE CODE. `glIsRevenueCode` sat one
+// line above, defined and CALLED BY NOTHING, so every entry was counted — including
+// PURCHASE invoices. Sales Tax Payable is a liability for tax we COLLECT ON OUR OWN SALES
+// and remit; tax we pay a SUPPLIER is part of that expense and is owed to nobody. So on a
+// month of bills and no sales the check could only ever fail, and it is `severity: high`:
+// live, "$14.80 charged vs $0.00 owed" on books that were entirely correct, degrading the
+// trust panel and blocking a clean sign-off.
+//
+// ★ THAT IS THE DANGEROUS DIRECTION FOR A GUARD (079/C291): failing to catch a problem is
+// the obvious failure; firing on good work is the one that trains people to ignore it.
 function taxChargedOnInvoices(invoices = []) {
+  // An entry is revenue-bearing if ANY of its rows carries a 4xxx code. A sales-tax
+  // invoice is Dr A/R / Cr Revenue / Cr Sales Tax Payable, so it arrives as several
+  // expanded rows sharing one base id — the revenue leg may not be the row we are
+  // looking at when we first see the tax figure.
+  const revenueBearing = new Set();
+  for (const i of invoices) {
+    if (!isLiveEntry(i)) continue;
+    if (glIsRevenueCode(i && i.gl_code)) revenueBearing.add(baseEntryId(i.id));
+  }
   const seen = new Set();
   let total = 0;
   for (const i of invoices) {
@@ -33,7 +53,8 @@ function taxChargedOnInvoices(invoices = []) {
     const tax = Number(i && i.import_metadata && i.import_metadata.tax_amount) || 0;
     if (tax <= 0) continue;
     const base = baseEntryId(i.id);
-    if (seen.has(base)) continue;   // one tax figure per journal entry
+    if (!revenueBearing.has(base)) continue;   // tax we PAID is not tax we OWE
+    if (seen.has(base)) continue;              // one tax figure per journal entry
     seen.add(base);
     total += tax;
   }
