@@ -149,7 +149,7 @@ const ROLE_PHRASE = {
   linen_laundry: "linen and laundry",
   waste_removal: "trash pickup",
   kitchen_supplies: "kitchen supplies",
-  licenses_permits: "a license or permit",
+  taxes_licenses: "taxes or a license",
   merchandise_cost: "inventory",
   inventory_shrinkage: "inventory loss",
 };
@@ -386,7 +386,7 @@ export const NEVER_CAPITAL_ROLES = new Set([
   "employee_benefits", "interest_expense", "bank_service_charges",
   "merchant_processing_fees", "marketing_advertising", "professional_services",
   "travel_entertainment", "food_cost", "beverage_cost", "paper_packaging",
-  "linen_laundry", "waste_removal", "licenses_permits", "merchandise_cost",
+  "linen_laundry", "waste_removal", "taxes_licenses", "merchandise_cost",
   "shipping_fulfillment", "direct_labor", "cogs", "depreciation",
 ]);
 

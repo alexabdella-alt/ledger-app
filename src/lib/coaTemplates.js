@@ -64,6 +64,18 @@ const UNIVERSAL = [
   { code: "3400", name: "Opening Balance Equity", category: "Equity", system_role: "opening_balance_equity" },
 ];
 
+// ★ "TAXES & LICENSES", NOT "LICENSES & PERMITS" — the name is doing real work. A Texas
+// mixed beverage gross receipts tax is a tax on the restaurant's OWN sales and is a real
+// operating expense, and the chart has an account for payroll tax, one for income tax, one
+// for property tax (real estate only) and nothing for anything else. Live, on the Red River
+// drive, it landed in Licenses & Permits — the nearest thing that existed. That is the
+// Tier 1 #6 argument on a live document: miscategorization happens because the chart has
+// nowhere right to put something, and the categorizer is then blamed for picking second.
+//
+// IRS Schedule C line 23 is literally "Taxes and licenses", so this puts a gross receipts
+// tax, a franchise tax and a liquor license in the one place a preparer looks for all
+// three. Dedupe is by CODE, so an existing company keeps its own name for 6910 and gains
+// nothing duplicated — the rename reaches new companies only, and a rename is theirs.
 const TEMPLATES = {
   "Restaurant/Food": {
     add: [
@@ -73,7 +85,7 @@ const TEMPLATES = {
       { code: "6260", name: "Linen & Laundry", category: "Expenses", system_role: "linen_laundry" },
       { code: "6270", name: "Waste Removal", category: "Expenses", system_role: "waste_removal" },
       { code: "6280", name: "Kitchen Supplies & Smallwares", category: "Expenses", system_role: "kitchen_supplies" },
-      { code: "6910", name: "Licenses & Permits", category: "Expenses", system_role: "licenses_permits" },
+      { code: "6910", name: "Taxes & Licenses", category: "Expenses", system_role: "taxes_licenses" },
     ],
     // A restaurant does not sell subscriptions. Hidden only if unused.
     hide: ["4200"],
@@ -83,7 +95,7 @@ const TEMPLATES = {
       { code: "5010", name: "Merchandise Cost", category: "Expenses", system_role: "merchandise_cost" },
       { code: "5030", name: "Packaging & Shipping Supplies", category: "Expenses", system_role: "paper_packaging" },
       { code: "1450", name: "Inventory Shrinkage", category: "Expenses", system_role: "inventory_shrinkage" },
-      { code: "6910", name: "Licenses & Permits", category: "Expenses", system_role: "licenses_permits" },
+      { code: "6910", name: "Taxes & Licenses", category: "Expenses", system_role: "taxes_licenses" },
     ],
     hide: ["4200"],
   },
@@ -107,7 +119,7 @@ const TEMPLATES = {
       { code: "5110", name: "Subcontractor Costs", category: "Expenses", system_role: "subcontractor_costs" },
       { code: "5120", name: "Materials & Supplies", category: "Expenses", system_role: "job_materials" },
       { code: "5130", name: "Equipment Rental", category: "Expenses", system_role: "equipment_rental" },
-      { code: "6910", name: "Licenses & Permits", category: "Expenses", system_role: "licenses_permits" },
+      { code: "6910", name: "Taxes & Licenses", category: "Expenses", system_role: "taxes_licenses" },
       { code: "2150", name: "Retainage Payable", category: "Liabilities", system_role: "retainage_payable" },
     ],
     hide: ["4200"],
@@ -116,7 +128,7 @@ const TEMPLATES = {
     add: [
       { code: "5060", name: "Medical Supplies", category: "Expenses", system_role: "medical_supplies" },
       { code: "6710", name: "Malpractice Insurance", category: "Expenses", system_role: "malpractice_insurance" },
-      { code: "6910", name: "Licenses & Permits", category: "Expenses", system_role: "licenses_permits" },
+      { code: "6910", name: "Taxes & Licenses", category: "Expenses", system_role: "taxes_licenses" },
       { code: "1150", name: "Insurance Receivable", category: "Assets", system_role: "insurance_receivable" },
     ],
     hide: ["4200"],
