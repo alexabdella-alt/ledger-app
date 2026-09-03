@@ -405,3 +405,36 @@ export function gaapQuestionFitsAccount(gaapType, invoice = {}) {
 export function couldBeCapital(invoice = {}) {
   return gaapQuestionFitsAccount("asset", invoice);
 }
+
+
+// ── WHEN A MEALS KEYWORD MAY OVERRULE THE ACCOUNT ────────────────────────────
+// The 50%-deductibility rule is applied by testing description + vendor + notes against a
+// meals wordlist and then OVERWRITING whatever the coder decided. `\bbar\b` is in that
+// list, and so are restaurant, grill, catering, cafe and coffee.
+//
+// ★★★ WHICH MAKES IT MISFIRE HARDEST ON THE ONE BUSINESS THIS PRODUCT IS AIMED AT. Live,
+// on a restaurant: "Bar mops, 100 ct" from a LINEN service, and a supplier literally named
+// Lone Star RESTAURANT Supply — both dragged from their correct accounts to Travel &
+// Entertainment and stamped 50% deductible. A laundry bill and a case of sheet pans, taxed
+// as though somebody took a client to dinner.
+//
+// ★★ AND IT IS NOT A DISPLAY BUG LIKE ITS SIBLINGS. It moves the money, halves the
+// deduction, and overrules a VENDOR RULE — a mapping a human taught us — on a substring.
+//
+// The rule is the one the account already gives us: text may refine WITHIN an account, it
+// may not replace one. So the override applies only where there is nothing to overrule.
+const MEALS_OVERRIDE_ROLES = new Set([
+  "travel_entertainment",     // already there; the override only adds the 50%
+  "miscellaneous_expense",    // the coder had no better idea
+  "uncategorized_expense",
+]);
+
+export function mealsOverrideAllowed(invoice = {}, { fromRule = false } = {}) {
+  // ★ A HUMAN-TAUGHT MAPPING IS NEVER OVERRULED BY A WORDLIST. That is the whole premise
+  // of teaching the system a vendor, and O102 exists because the teaching must be worth
+  // something.
+  if (fromRule) return false;
+  const role = roleFromAccount(invoice);
+  if (!role) return true;                  // uncoded — the text really is all we have
+  return MEALS_OVERRIDE_ROLES.has(role);
+}

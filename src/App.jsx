@@ -8,7 +8,7 @@ import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
-import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount } from "./lib/clarify";
+import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount, mealsOverrideAllowed } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
 import { payrollRequestBody, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata } from "./lib/payroll";
 import { validateComment } from "./lib/anomalyNotes";
@@ -4959,7 +4959,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             });
 
             // Meals: auto-apply the 50% deductibility rule (no question needed) and notify.
-            if (invoice.type !== "revenue" && GAAP_MEALS_RE.test(`${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase())) {
+            // ★ ONLY WHERE THERE IS NOTHING TO OVERRULE. This used to overwrite the account
+            // unconditionally on a wordlist containing "bar", "restaurant", "grill" and
+            // "catering" — so a LINEN invoice reading "Bar mops" and a supplier named Lone
+            // Star RESTAURANT Supply were both booked to Travel & Entertainment at 50%
+            // deductible. It overruled the AI, the learned mapping and a vendor rule alike.
+            if (invoice.type !== "revenue"
+                && GAAP_MEALS_RE.test(`${invoice.description||""} ${invoice.vendor||""} ${invoice.notes||""}`.toLowerCase())
+                && mealsOverrideAllowed(invoice, { fromRule: !!rule })) {
               invoice.gl_code = rc("travel_entertainment");
               invoice.gl_name = rn("travel_entertainment");
               invoice.meals_pct = 50;
