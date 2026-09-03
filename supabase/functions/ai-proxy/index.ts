@@ -14,8 +14,33 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const AI_LIMIT = 60;       // AI requests / user / hour
-const UPLOAD_LIMIT = 20;   // file uploads / user / hour
+// ── THE BUDGET, AND WHAT EACH WINDOW IS ACTUALLY FOR (087) ───────────────────
+// THE THREAT IS ABUSE — a compromised or malicious authenticated account burning the key.
+// Not cost (a document is a couple of cents, so a request count is the wrong unit for it)
+// and not the upstream provider's limits (those are org-wide and per-minute; a per-user
+// hourly cap does not defend them at all). Per-actor is right for abuse; these numbers
+// are chosen for that threat and nothing else.
+//
+// ★ TWO WINDOWS, BOUNDING DIFFERENT THINGS. The HOUR bounds the burst rate. The DAY
+//   bounds TOTAL DAMAGE — with an hourly cap alone a stolen account runs the limit
+//   forever and nothing ever stops it, so the daily is the only real brake we have.
+//
+// ★★ AND THE NUMBERS ARE SET SO ORDINARY WORK NEVER MEETS THEM. Measured 2026-09-02:
+//   a document costs exactly 3 AI calls, so 300/hour is 100 documents an hour. A monthly
+//   close (40-80 documents) never sees a limit; a full onboarding (120-240) finishes in
+//   about two hours instead of twelve. The previous 60/hour refused a paying customer's
+//   first upload four minutes in, to protect roughly fifty cents.
+const AI_LIMIT = 300;            // AI requests / user / hour   (= 100 documents)
+const UPLOAD_LIMIT = 100;        // file uploads / user / hour
+// ★ Daily caps bound what a stolen account can cost in total: ~400 documents, tens of
+//   dollars — survivable, and large enough to notice.
+const AI_DAILY_LIMIT = 1200;     // AI requests / user / day    (= 400 documents)
+const UPLOAD_DAILY_LIMIT = 400;  // file uploads / user / day
+//
+// ★ HOURLY AND UPLOAD MOVE TOGETHER OR NEITHER MOVES (O113b). A document costs 3 AI calls
+//   and 1 upload, so 300/3 = 100 and 100/1 = 100: both walls sit at the SAME document
+//   count, deliberately. Raising one alone relocates the identical wall and changes
+//   nothing a person could observe.
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -56,8 +81,9 @@ serve(async (req) => {
     const isUpload = (req.headers.get("x-rate-kind") || "").toLowerCase() === "upload";
     const buckets = isUpload ? ["ai", "upload"] : ["ai"];
     const limits  = isUpload ? [AI_LIMIT, UPLOAD_LIMIT] : [AI_LIMIT];
+    const daily   = isUpload ? [AI_DAILY_LIMIT, UPLOAD_DAILY_LIMIT] : [AI_DAILY_LIMIT];
     const { data: gate, error: gateErr } = await admin.rpc("consume_rate_limit", {
-      p_user: user.id, p_buckets: buckets, p_limits: limits,
+      p_user: user.id, p_buckets: buckets, p_limits: limits, p_daily_limits: daily,
     });
     // FAIL CLOSED. If the limiter cannot answer we do not know the budget, and guessing
     // in the permissive direction is how a limiter becomes decorative under exactly the
@@ -84,10 +110,22 @@ serve(async (req) => {
       const resetsInMin = Number.isFinite(rolling) && rolling >= 0
         ? rolling
         : 60 - new Date().getUTCMinutes();
+      // ★ SAY WHICH WINDOW RAN OUT, AND SAY IT IN HOURS WHEN IT IS HOURS. A daily block is
+      // genuinely a long wait; reporting it in minutes ("resets in about 812 minute(s)")
+      // is a number nobody converts in their head, on the message whose only job is to
+      // let someone decide what to do next.
+      const perDay = gate.blocked_window === "day";
+      const wait = resetsInMin >= 120
+        ? `about ${Math.round(resetsInMin / 60)} hours`
+        : `about ${resetsInMin} minute(s)`;
+      const cap = blocked === "upload"
+        ? (perDay ? `${UPLOAD_DAILY_LIMIT} files per day` : `${UPLOAD_LIMIT} files per hour`)
+        : (perDay ? `${AI_DAILY_LIMIT} per day` : `${AI_LIMIT} per hour`);
       const msg = blocked === "upload"
-        ? `Upload limit reached — ${UPLOAD_LIMIT} files per hour. This resets in about ${resetsInMin} minute(s).`
-        : `AI request limit reached — ${AI_LIMIT} per hour, shared across everything the app asks the AI to do. This resets in about ${resetsInMin} minute(s).`;
-      return json({ error: msg, blocked_bucket: blocked, remaining: gate.remaining, resets_in_minutes: resetsInMin }, 429);
+        ? `Upload limit reached — ${cap}. This resets in ${wait}.`
+        : `AI request limit reached — ${cap}, shared across everything the app asks the AI to do. This resets in ${wait}.`;
+      return json({ error: msg, blocked_bucket: blocked, blocked_window: gate.blocked_window ?? "hour",
+                    remaining: gate.remaining, resets_in_minutes: resetsInMin }, 429);
     }
 
     // 3. Build the Anthropic Messages payload SERVER-SIDE from the profile registry.
