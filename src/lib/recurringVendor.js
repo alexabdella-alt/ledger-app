@@ -238,3 +238,64 @@ export function offRhythmCopy({ vendor, gapDays, intervalDays, amount } = {}) {
   const when = g === 0 ? "twice on the same day" : `twice in ${g} day${g === 1 ? "" : "s"}`;
   return `${who} charged ${when}${amt} — they normally charge about every ${t} days.`;
 }
+
+
+// ── IS THIS PAIR JUST THE VENDOR DOING WHAT THEY DO? ─────────────────────────
+// ONE definition, because there are already THREE places asking "is this a duplicate" and
+// only two of them had learned this rule. The anomaly detector (C220) and the invoice
+// matcher (C218) both suppress a recurring vendor's ordinary rhythm; the card raised
+// DURING UPLOAD never consulted history at all — `findDuplicate` reads vendor, amount and
+// a date window and nothing else. Live: Corner Market's Aug 8 ($65.12) and Aug 15 ($65.34)
+// grocery runs were offered as a possible duplicate, and would be every week forever.
+//
+// ★★ SUPPRESSION IS MEASURED IN THE VENDOR'S OWN RHYTHM, NOT IN DAYS. Seven days apart is
+// Bluebonnet's cadence; three days apart is not. That adds information we already hold
+// rather than tuning a threshold — and a GENUINE double-charge still surfaces.
+//
+// ▶ AND IT NEEDS `MIN_OBSERVATIONS` CHARGES TO SAY ANYTHING, which is exactly why this is
+// not the whole fix. On a cold-start bulk drop the pattern does not exist yet when the
+// second document is read, so the first few questions still fire. That half is answered by
+// deferring the question until the batch has landed — see `deferDuplicateAsk`.
+// ★ THE CALLER SUPPLIES THE VENDOR'S ROWS rather than this module deciding who the vendor
+// IS. There are already three implementations of vendor identity in this codebase (O125);
+// importing a fourth normalizer here would make the answer depend on a copy that has since
+// drifted from the one actually in use. The caller knows which rows are this vendor's.
+export function duplicateIsExpectedRhythm(invoice, dup, vendorRows = []) {
+  if (!invoice || !dup) return false;
+  const rows = (vendorRows || []).filter((r) => r && r.date);
+  const cadence = classifyCadence(rows.map((r) => ({ date: r.date, amount: r.amount })));
+  if (!cadence.flatFee) return false;
+
+  // A recurring vendor billing something UNUSUAL keeps the ordinary rule — the pattern
+  // vouches for the pattern, never for whatever else the vendor happens to send.
+  const center = cadence.center;
+  if (!(center > 0)) return false;
+  const atUsual = (inv) =>
+    Math.abs(Math.abs(Number(inv.amount) || 0) - center) / center <= FLAT_SD_RATIO;
+  if (!atUsual(invoice) || !atUsual(dup)) return false;
+
+  const gap = Math.abs((new Date(invoice.date) - new Date(dup.date)) / 86400000);
+  // `false` means ON rhythm — this is what the vendor does. `true` (off rhythm) and `null`
+  // (no usable interval) both keep the question, which is the safe direction.
+  return isOffRhythm(gap, typicalIntervalDays(rows.map((r) => r.date))) === false;
+}
+
+// ── AND THE HALF THAT ACTUALLY FIXES A COLD START ────────────────────────────
+// ★★★ THE SYSTEM ALREADY GETS THIS RIGHT — TEN MINUTES LATE. `runAnomalyDetection` runs
+// over the WHOLE ledger after a batch lands, and on the live 35-document drive it raised
+// ZERO duplicate anomalies for the three vendors whose upload cards had asked. So the
+// question was put to a person BEFORE the evidence that answers it had finished arriving,
+// and then answered correctly by the machine, unattended.
+//
+// ★★ THE RULE THIS RESTS ON IS ALREADY WRITTEN DOWN (`O120`): a question whose wrong
+// answer books SILENTLY wrong may interrupt; one whose wrong answer is visible and
+// undoable waits its turn. A missed double-charge is two identical rows sitting in the
+// ledger — visible, and removable — and the detector re-raises it within the same session
+// if it is real. So during a bulk drop the ask is deferred rather than blocking the book.
+//
+// ▶ A SINGLE document dropped on its own is NOT a batch: nothing further is coming, the
+// detector has all the evidence it will ever get, and asking immediately is right.
+export function deferDuplicateAsk({ batchSize = 1, sameVendorSoFar = 0 } = {}) {
+  if (batchSize <= 1) return false;                     // one file: no more evidence coming
+  return sameVendorSoFar < MIN_OBSERVATIONS;            // the pattern cannot be seen yet
+}

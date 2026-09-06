@@ -46,6 +46,8 @@ import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { planCoaTemplate, coaTemplateCopy } from "./lib/coaTemplates";
 import { documentTypeFor, isDurableDocId, PLACEHOLDER_DOCUMENT_TYPE, stampsOver } from "./lib/docLibrary";
+import { duplicateIsExpectedRhythm, deferDuplicateAsk } from "./lib/recurringVendor.js";
+import { normalizeName as normVendorName } from "./lib/docDirection";
 import { buildVendorSummary } from "./lib/vendorSummary";
 import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
@@ -4997,7 +4999,34 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
                   ex.vendor?.toLowerCase() === invoice.vendor?.toLowerCase()
                 )
               : null;
-            const dupExisting = dupByNumber || findDuplicate(invoice, invoices);
+            // ── (A) THE VENDOR'S OWN RHYTHM IS NOT A DUPLICATE ──────────────────────
+            // `findDuplicate` reads vendor, amount and a date window — nothing else. The
+            // anomaly detector and the invoice matcher both learned to suppress a recurring
+            // vendor's ordinary cadence; THIS path, the one a person actually sees during
+            // an upload, never consulted history at all. Live: Corner Market's Aug 8
+            // ($65.12) and Aug 15 ($65.34) grocery runs offered as a possible duplicate.
+            //
+            // ── (B) AND ON A BULK DROP THE EVIDENCE HAS NOT FINISHED ARRIVING ────────
+            // ★★★ The detector, running over the whole ledger after the batch lands, raised
+            // ZERO duplicate anomalies for the three vendors whose cards had asked. So the
+            // question was put to a person BEFORE the data that answers it existed, and the
+            // machine then answered it correctly and unattended. Deferring costs nothing we
+            // do not recover: a missed double-charge is two identical rows in the ledger —
+            // visible and removable — and the detector re-raises it in the same session.
+            const rawDup = dupByNumber || findDuplicate(invoice, invoices);
+            // Same-vendor rows, grouped the way the rest of the app groups them (O125), so
+            // this cannot disagree with the vendor list about who a supplier is.
+            const dupVendorKey = normVendorName(invoice.vendor);
+            const vendorRows = rawDup && dupVendorKey
+              ? invoices.filter(x => normVendorName(x?.vendor) === dupVendorKey)
+              : [];
+            // How many files are still in flight — a lone drop is not a batch, and nothing
+            // further is coming to change the answer.
+            const batchSize = (uploadQueueRef.current || []).length || 1;
+            const dupExisting = !rawDup ? null
+              : duplicateIsExpectedRhythm(invoice, rawDup, vendorRows) ? null
+              : deferDuplicateAsk({ batchSize, sameVendorSoFar: vendorRows.length }) ? null
+              : rawDup;
 
             // ── O114 — IS THIS INVOICE A SECOND DOCUMENT FOR A PAYMENT ALREADY BOOKED?
             // Asked BEFORE the duplicate check, because "you already paid this" and
