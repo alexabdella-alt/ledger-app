@@ -448,7 +448,7 @@ describe("(v) anomalySubjectPeriod places f3 date-pair fingerprints", () => {
     ];
     const found = runAnomalyDetection(dupes, [], new Date("2026-07-20")).find(a => a.type === "duplicate_payment");
     expect(found).toBeTruthy();
-    expect(found.fingerprint).toBe("dup:sysco:120000:2026-07-08+2026-07-10");
+    expect(found.fingerprint).toBe("dup:sysco:120000/120000:2026-07-08+2026-07-10");
     expect(anomalySubjectPeriod({ ...found, entity_refs: ["gone"] }, [])).toBe("2026-07");
   });
 });

@@ -35,7 +35,7 @@ describe("fingerprint stability — same condition re-detected yields ONE row", 
     // C198·3b (f3) — keyed on CONTENT (vendor · amount in cents · the two dates, sorted
     // so the pair stays symmetric), not on the two row ids. The old id-keyed recipe is
     // exactly what let a statement re-upload open a second card for the same charge.
-    expect(dupA.fingerprint).toBe("dup:sysco:120000:2026-01-10+2026-01-12");
+    expect(dupA.fingerprint).toBe("dup:sysco:120000/120000:2026-01-10+2026-01-12");
   });
 
   it("and survives the ledger renumbering the rows underneath it", () => {

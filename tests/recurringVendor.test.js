@@ -250,8 +250,12 @@ describe("★★★ §7/§3 — THE ANTI-VACUITY CHECK. A real double-charge mus
     // exactly what the ordinary rule is for.
     const cards = dupCards([...weekly, exp("odd1", "2026-08-19", 620), exp("odd2", "2026-08-26", 620)]);
     expect(cards).toHaveLength(1);
-    expect(cards[0].description).toMatch(/within a week/);          // the ORDINARY card…
-    expect(cards[0].description).not.toMatch(/normally charge/);    // …not the rhythm one
+    // ★ DISCRIMINATE ON THE TITLE, NOT ON A PHRASE IN THE BODY. This matched "within a
+    // week", which the ordinary card only says when the two amounts DIFFER — a property of
+    // the figures, not of which rule fired. C306 made the copy read both rows, and this
+    // went red on correct code. The titles are what actually separate the two rules.
+    expect(cards[0].title).toMatch(/Possible duplicate payment/);        // the ORDINARY card…
+    expect(cards[0].title).not.toMatch(/out of their usual rhythm/);     // …not the rhythm one
   });
 });
 

@@ -281,6 +281,36 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
     return Math.abs(Math.abs(Number(inv.amount) || 0) - center) / center <= FLAT_SD_RATIO;
   };
 
+  // ── THE PAIR IS THE SUBJECT, SO THE KEY MUST BE SYMMETRIC ───────────────────
+  // The loop visits every pair TWICE — once from each row — and the old key carried
+  // `cents(i.amount)`, the amount of whichever row we happened to arrive from.
+  // `findDuplicate` matches within 1%, so a pair with two DIFFERENT amounts produced two
+  // different keys and emitted TWO cards for one event. Live: Hill Country appeared twice,
+  // headed "$632.30" and "$629.04", both listing the same two rows.
+  //
+  // ★ BOTH amounts, sorted, so the key cannot depend on arrival order. What makes it
+  // symmetric is the SORT, not which comparator — any total order would do, and a mutation
+  // to plain lexicographic `.sort()` correctly changed nothing. The numeric comparator is
+  // kept because a key reading "62904/63230" is legible where "100000/99999" is not; it is
+  // NOT load-bearing, and the comment said it was until a surviving mutation said otherwise.
+  const pairKey = (a, b) =>
+    `${normVendor(a.vendor)}:${[cents(a.amount), cents(b.amount)].sort((x, y) => x - y).join("/")}`
+    + `:${[ymd(a.date), ymd(b.date)].sort().join("+")}`;
+
+  // ── AND THE SENTENCE READS BOTH ROWS (§9) ───────────────────────────────────
+  // "Two charges to X for $632.30" asserted the amounts were EQUAL while the card listed
+  // $629.04 and $632.30 directly beneath it. The detector's own tolerance is 1%, so unequal
+  // is the ORDINARY case — the copy was describing a stricter rule than the one that fired.
+  const duplicatePairCopy = (a, b) => {
+    const [first, second] = [a, b].sort((x, y) => String(x.date).localeCompare(String(y.date)));
+    const who = a.vendor || "this vendor";
+    if (cents(a.amount) === cents(b.amount)) {
+      return `Two charges to ${who} for ${money(a.amount)}, on ${ymd(first.date)} and ${ymd(second.date)} — could be a double payment.`;
+    }
+    return `Two charges to ${who} within a week — ${money(first.amount)} on ${ymd(first.date)} and `
+      + `${money(second.amount)} on ${ymd(second.date)}. Close enough in amount to be one payment made twice.`;
+  };
+
   const seen = new Set();
   for (const i of expenses) {
     const dup = findDuplicate(i, expenses.filter(x => String(x.id) !== String(i.id)), { windowDays: 7 });
@@ -295,7 +325,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
       // Off rhythm → still a card, but one that names the rhythm instead of restating
       // that two identical charges exist, which for this vendor is not news.
       if (off === true) {
-        const key = `${normVendor(i.vendor)}:${cents(i.amount)}:${[ymd(i.date), ymd(dup.date)].sort().join("+")}`;
+        const key = pairKey(i, dup);
         if (seen.has(key)) continue;
         seen.add(key);
         push({ id: `rhythm:${key}`, type: "duplicate_payment", severity: "high",
@@ -308,14 +338,14 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
       // `off === null` — no usable interval, so no opinion. Falls through to the ordinary
       // rule below rather than being silently treated as fine.
     }
-    // Content key: the vendor, the amount, and the two dates it happened on —
+    // Content key: the vendor, BOTH amounts, and the two dates it happened on —
     // NOT the pair of row ids, which a re-run renumbers (C198·3b f3).
-    const key = `${normVendor(i.vendor)}:${cents(i.amount)}:${[ymd(i.date), ymd(dup.date)].sort().join("+")}`;
+    const key = pairKey(i, dup);
     if (seen.has(key)) continue;
     seen.add(key);
     push({ id: `dup:${key}`, type: "duplicate_payment", severity: "high",
       title: `Possible duplicate payment to ${i.vendor}`,
-      description: `Two charges to ${i.vendor} for ${money(i.amount)} within a week — could be a double payment.`,
+      description: duplicatePairCopy(i, dup),
       // C195 — structured vendor/amount so pattern suppression can match a prior dismissal
       // without re-parsing prose. Not persisted (anomalyInsertRow maps only real columns).
       vendor: i.vendor, amount: Math.abs(Number(i.amount) || 0),
