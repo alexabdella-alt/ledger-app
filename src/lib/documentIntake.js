@@ -115,10 +115,25 @@ export async function fetchDroppedIntake(db, companyId, { now, stuckMinutes } = 
 export async function fetchIntakeRows(db, companyId) {
   if (!db || !companyId) return { ok: false, rows: [] };
   try {
+    // ★★ `received_at`, NOT `created_at` — THE TABLE HAS NO SUCH COLUMN (047). PostgREST
+    // errors on a select naming one, so this returned ok:false on every company, forever,
+    // and the completeness net has never once run. It surfaced as "we couldn't check your
+    // documents JUST NOW" — honest about the query (O98) and wrong about the duration: a
+    // permanent failure wearing transient clothing is one nobody investigates.
+    //
+    // ★ AND THE SECOND LAYER WOULD HAVE OUTLIVED THE FIRST. `staleIntakeRows` reads
+    // `r.received_at || r.created_at || now`, so even had the query succeeded, the column it
+    // actually wants was not being fetched — every row would age from `now`, the staleness
+    // window would never fire, and the net would report all-clear while doing nothing.
     const { data, error } = await db.from("document_intake")
-      .select("id, status, source, journal_entry_ids, created_at")
+      .select("id, status, source, journal_entry_ids, received_at")
       .eq("company_id", companyId);
-    if (error) return { ok: false, rows: [], error: error.message };
+    // ★ A CHECK THAT CANNOT RUN MUST SAY WHY. The caller records ok/not-ok and discards the
+    // message, so this failure had nowhere to be seen — invisible for as long as it existed.
+    if (error) {
+      console.error("[intake] completeness check could not run:", error.message);
+      return { ok: false, rows: [], error: error.message };
+    }
     return { ok: true, rows: data || [] };
   } catch (e) { return { ok: false, rows: [], error: String(e?.message || e) }; }
 }
