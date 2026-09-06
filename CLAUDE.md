@@ -239,6 +239,26 @@ Two-stage pipeline, both calls through the **`ai-proxy`** Edge Function (`supaba
 
 > **★★ PRODUCTION ACTIONS RUN ONLY ON EXPLICIT OPERATOR AUTHORIZATION (recorded 2026-08-11).** Deploys, data writes, migration applications and pushes are the **operator's** to trigger, not the assistant's to infer. **A command pasted back into the conversation is a QUESTION, not a green light.** Cost already paid: the operator said *"print only — I'll run it"*, then pasted the deploy command back; it was read as authorization and the `ai-proxy` deploy ran. No harm — the deploy was wanted, and it is idempotent — but the authorization was **inferred**, and checking the live state first ("has this already run?") is evidence-gathering, not consent. **When authorization is ambiguous, ASK.** One turn of friction against an unrequested production change is not a close call. This sits beside the migration rules deliberately: same class, same discipline.
 
+### Pushing to GitHub — SSH, not a token (2026-09-06)
+
+> **THE REMOTE IS `git@github.com:alexabdella-alt/ledger-app.git`.** It was HTTPS until the
+> stored token expired on 2026-09-01, at which point every `git push` from a non-interactive
+> shell died with `could not read Username … Device not configured` — the keychain held no
+> credential git could read, confirmed with `git credential-osxkeychain get`.
+>
+> **★ SIGNING INTO GITHUB DESKTOP DOES NOT FIX THE COMMAND LINE.** Desktop keeps its token in
+> its own store, so it can push while `git` cannot — which reads as "the repo is fine" and
+> sends you looking in the wrong place. Check with the credential helper, not with Desktop.
+>
+> **★★ SSH WAS THE RIGHT ANSWER AND A TOKEN WAS NOT: tokens expire, and that is exactly what
+> cost this session an hour.** `~/.ssh/id_ed25519`, public half added to the ACCOUNT's keys
+> (`github.com/settings/keys`) — not the repository's DEPLOY keys, which are per-repo and
+> need a separate write-access checkbox. Verify with `ssh -T git@github.com`, which answers
+> `Hi alexabdella-alt!` on success.
+>
+> **★ `gh` COULD NOT BE INSTALLED FROM HERE** — no bottle, so Homebrew builds from source and
+> the sandbox cannot reach `go.dev`. Do not retry it as a fix for this; SSH needs no CLI.
+
 ### Edge-function deploys (`ai-proxy`)
 
 > **★ THE WORKING COMMAND — pass the project ref EXPLICITLY.**
