@@ -23,7 +23,7 @@ import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, stat
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
-import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE } from "./lib/anomalies";
+import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
 import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
@@ -2132,7 +2132,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (!toInsert.length && !toResolve.length) return;   // no delta → no writes
       let inserted = [];
       if (toInsert.length) {
-        const { data, error } = await supabase.from("anomalies").insert(toInsert.map(d => anomalyInsertRow(cid, d))).select();
+        // ★ REFS ARE RESOLVED TO THEIR DURABLE ID BEFORE THEY ARE STORED. Detection ran on
+        // whatever is in memory, which right after a booking is an in-session float; a
+        // pointer that only works this session is not a pointer.
+        const { data, error } = await supabase.from("anomalies")
+          .insert(toInsert.map(d => anomalyInsertRow(cid, {
+            ...d, invoice_ids: durableRefs(d.invoice_ids, invoicesRef.current),
+          }))).select();
         if (error) { if (!/duplicate|unique|23505/i.test(error.message || "")) console.warn("[anomaly] insert:", error.message); }
         else if (Array.isArray(data)) inserted = data;
       }

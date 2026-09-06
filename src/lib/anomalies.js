@@ -72,6 +72,42 @@ export function anomalyEvidence(anomaly, invoices = []) {
   return { entries, missing, total: ids.length };
 }
 
+// ── A REF THAT MUST SURVIVE A RELOAD ────────────────────────────────────────
+// Detection runs on `invoicesRef.current`, and right after a booking session those are
+// IN-SESSION objects whose `id` is `Date.now() + Math.random()` (`buildUploadedInvoice`).
+// Persisting that id into `entity_refs` stores a pointer that is valid for minutes: on the
+// next load the ledger is keyed by DATABASE uuid, the float matches nothing, and the card
+// reports "1 of 1 linked entry can no longer be found" about an entry sitting right there.
+//
+// ★★ THAT IS THE `O87(v)` MECHANISM, AND IT COST MORE THAN A CONFUSING LINE. The same
+// dead-refs condition made `anomalyTouchesPeriod` under-count, and its only consumer is the
+// HIGH-blocks-sign-off gate — so a month could be signed off over an unresolved HIGH.
+// `C198·3c` taught both parsers to fall back to the fingerprint's own dates; this fixes the
+// refs themselves rather than the reading of them.
+//
+// ★ AN ID THAT RESOLVES TO NOTHING IS KEPT, NOT DROPPED. Dropping would shrink `total`, so
+// a genuinely removed entry would stop being reported — trading a visible wrong count for
+// an invisible one, which is the trade this file exists to refuse.
+export function durableRefs(ids = [], invoices = []) {
+  const byId = new Map();
+  for (const i of invoices || []) {
+    if (!i) continue;
+    byId.set(String(i.id), i);
+    if (i.db_entry_id != null) byId.set(String(i.db_entry_id), i);
+  }
+  const out = [];
+  const seen = new Set();
+  for (const raw of ids || []) {
+    const hit = byId.get(String(raw));
+    // The uuid when we can reach one, otherwise the id we were given, unchanged.
+    const id = String(hit?.db_entry_id ?? raw);
+    if (seen.has(id)) continue;      // several lines of one entry are one reference
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 // ── C198·3c — THE MONTHS A FINGERPRINT ITSELF ENCODES ────────────────────────
 // ONE parser, two consumers. The f3 content keys carry their subject's own dates —
 // `dup:<vendor>:<cents>:<dateA>+<dateB>`, `vendor_spike:<vendor>:<date>:<cents>`,
