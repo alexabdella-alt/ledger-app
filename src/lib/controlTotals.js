@@ -107,7 +107,10 @@ export function computeControlTotals({
 
   // 2. AP sub-ledger (sum of open bills) === GL Accounts Payable balance.
   if (codes.ap) {
-    const apSub = computeAP(invoices, { now }).total;
+    // ★ THE CODE IS PASSED SO BOTH SIDES COUNT THE SAME UNIVERSE. Without it the sub-ledger
+    // omits a capitalized purchase on terms that the GL balance includes, and the check
+    // fires on correct books — the C305/C291 direction, a guard firing on good work.
+    const apSub = computeAP(invoices, { now, apCode: codes.ap }).total;
     const apGl = glAccountBalance(codes.ap, invoices);
     checks.push(check("ap_tie", "Money you owe (payables)", apSub, "sum of open bills", apGl, "payables account balance"));
   }

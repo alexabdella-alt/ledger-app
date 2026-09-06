@@ -2425,6 +2425,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
       const payload = buildMonthlyReport(target, {
         invoices: live, cashBalance: glCashOnHand(invoices, cashGlCodes, { asOf: `${target}-31` }),
+        apCode: rc("accounts_payable"),   // one definition of "money you owe" (§12)
         reconciliations: reconciliationsRef.current,
         anomalies, onboardingComplete: companySettings.onboardingComplete,
         fiscalYearEnd: companySettings.fiscalYearEnd || "12-31",

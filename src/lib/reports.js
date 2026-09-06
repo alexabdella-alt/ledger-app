@@ -25,7 +25,41 @@ const ymOf = d => String(d || "").slice(0, 7);
 const isRev = i => i.gl_code ? glIsRevenue(i.gl_code) : i.type === "revenue";
 const isExp = i => i.gl_code ? glIsExpense(i.gl_code) : i.type === "expense";
 const arUnpaid = i => isRev(i) && i.payment_status !== "paid" && i.payment_status !== "collected";
-const apUnpaid = i => isExp(i) && i.payment_status !== "paid";
+// ── AN OPEN BILL IS ONE WITH AN A/P LEG, NOT ONE WHOSE DEBIT IS AN EXPENSE ──
+// This read `isExp(i) && !paid`, which derives openness from the entry's P&L CLASS — the
+// §9 anti-pattern by name (*side is the A/R-or-A/P OFFSET code on the leg, never the type*).
+//
+// ★★★ LIVE: Sabine posted `Dr 1500 Fixed Assets / Cr 2000 Accounts Payable` — correct, the
+// freezer is capitalized and the money is owed. A fixed-asset debit is not an expense, so
+// the bill was invisible to the open-bills list while its A/P credit sat in the GL balance,
+// and `ap_tie` diverged by exactly $4,625.00. **Buying equipment on terms is ordinary**, so
+// this broke for any client who finances anything.
+//
+// ★ ADDITIVE, DELIBERATELY. The expense rule stays and carries the overwhelming majority;
+// this only ADDS the non-expense purchase whose offset is A/P. Nothing that counted before
+// stops counting, so the change cannot subtract from a figure people already read.
+//
+// ★★ AND IT NEEDS THE COMPANY'S OWN A/P CODE (§4 — users renumber). Without one it behaves
+// exactly as before rather than guessing: "2xxx" would sweep in a loan-financed purchase,
+// which is a liability and NOT an open bill.
+const isApOffsetPurchase = (i, apCode) => {
+  if (!apCode) return false;
+  // ▶ SIMPLE ENTRIES ONLY. Flatten expands a multi-line entry into several rows that can
+  // share one offset, so counting them all would double the bill. `_` is this codebase's
+  // existing sentinel for an expanded row (glAccountBalance reads it the same way).
+  if (String(i.id ?? "").includes("_")) return false;
+  const ap = String(apCode);
+  // ★ THE OFFSET TEST ALREADY EXCLUDES THE A/P LEG ITSELF, so an explicit "and this row is
+  // not A/P" guard was removed after a mutation showed it could not change any outcome: a
+  // bill's A/P leg has the EXPENSE code as its offset, so it never reaches here. The line
+  // read as a check and was one only in appearance (C255's shape). The property is still
+  // pinned by a test — enforced by this test rather than by a second one.
+  return String(i.secondary_gl_code || "") === ap    // the offset IS Accounts Payable
+      && !isRev(i);                                  // a customer credit is not a bill
+};
+const apUnpaidWith = apCode => i =>
+  i.payment_status !== "paid" && (isExp(i) || isApOffsetPurchase(i, apCode));
+const apUnpaid = apUnpaidWith(null);
 // The amount OWED on a row: for a taxed AR invoice the receivable is the full incl-tax
 // A/R balance (carried as `ar_amount`), not the ex-tax revenue (`amount`). AP/untaxed
 // rows have no ar_amount → fall back to amount. Keeps AR aging/total tied to GL A/R.
@@ -308,7 +342,9 @@ function arApTotals(invoices, predicate, now) {
   return { total: r2(total), overdue: r2(overdue), count, overdueCount };
 }
 export function computeAR(invoices, { now = new Date() } = {}) { return arApTotals(invoices, arUnpaid, now); }
-export function computeAP(invoices, { now = new Date() } = {}) { return arApTotals(invoices, apUnpaid, now); }
+export function computeAP(invoices, { now = new Date(), apCode = null } = {}) {
+  return arApTotals(invoices, apCode ? apUnpaidWith(apCode) : apUnpaid, now);
+}
 
 // ── CANONICAL GL ACCOUNT BALANCE (single source of truth for any account) ────
 // (Normal-balance sign + leg helpers are defined once, up top — isDebitNormalCode /
@@ -618,7 +654,7 @@ const endOfMonth = (period) => {
 const pctChange = (c, p) => (p === 0 ? null : r1(((c - p) / Math.abs(p)) * 100)); // null = no prior basis
 const momLine = (c, p) => ({ current: r2(c), prior: r2(p), change: r2(c - p), changePct: pctChange(c, p) });
 
-export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false, fiscalYearEnd = "12-31" } = {}) {
+export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false, fiscalYearEnd = "12-31", apCode = null } = {}) {
   const live = (invoices || []).filter(isLiveEntry);
   const prior = priorPeriod(period);
   const monthEnd = endOfMonth(period);
@@ -661,7 +697,7 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   const burn = computeBurnRate(live, { asOf: curRange.to, excludePartialMonth: false });
   const runway = computeRunway(cash, burn);
 
-  const arT = computeAR(live, { now: monthEnd }), apT = computeAP(live, { now: monthEnd });
+  const arT = computeAR(live, { now: monthEnd }), apT = computeAP(live, { now: monthEnd, apCode });
 
   const kpis = computeKPIs(live, { cashBalance: cash, now: monthEnd })
     .map(k => ({ key: k.key, label: k.label, display: k.display, status: k.status, trend: k.trend, explanation: k.explanation }));
