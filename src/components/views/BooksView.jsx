@@ -41,6 +41,14 @@ export default function BooksView() {
 
   const fmt = fmtMoney;
   const filter = booksFilter || "all";
+  // A selection is about the rows you were LOOKING at. Carrying it across a filter change is
+  // how "3 selected" ends up sitting over a list those three rows are not in.
+  //
+  // ★ IT SITS BELOW `filter` BECAUSE IT MUST: a hook dep referencing a const declared later
+  // in the same scope is a temporal-dead-zone crash on mount. Written above it first, and
+  // caught by `noTdzInHookDeps` + the render sweep rather than by me — the second TDZ of the
+  // day, after `navSeat` reached for `view` in C312.
+  React.useEffect(() => { setPicked(new Set()); }, [filter]);
   const methodOpts = [["ach","ACH / Bank Transfer"],["check","Check"],["wire","Wire Transfer"],["card","Credit Card"],["zelle","Zelle"],["venmo","Venmo"],["paypal","PayPal"],["other","Other"]];
   const methodLabel = m => (methodOpts.find(([v])=>v===m)?.[1]) || (m?String(m).toUpperCase():"—");
   const needsReview = i => i.approval_status==="pending_approval" || i.approval_status==="flagged" || i.approval_status==="info_requested" || (i.confidence!=null && i.confidence<70);
@@ -157,27 +165,6 @@ export default function BooksView() {
           accident of the nav" is not a guarantee. Stated, so the guard can check it. */}
       {cockpit && filter==="contracts" && (
         <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
-          {/* ── BULK REMOVAL. `softDeleteInvoices` (batch write, ONE undo toast) has existed
-             since it was written and been wired to NO component — remediating the O83
-             double-book took scripted database access to remove 14 entries, because the
-             app could only do one at a time. That is a product you have to leave in order
-             to fix it. */}
-        {picked.size > 0 && (
-          <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", padding:"10px 14px", marginBottom:12, borderRadius:10, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)" }}>
-            <span style={{ fontSize:13, fontWeight:600 }}>{picked.size} selected</span>
-            <button onClick={()=>setPicked(new Set())} style={{ fontSize:12, background:"none", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"4px 10px", color:"var(--sc-text-2)", cursor:"pointer" }}>Clear</button>
-            <button onClick={()=>{
-              const chosen = rows.filter(r => picked.has(r.id));
-              const plan = planBulkRemoval(chosen, signoffs || [], { monthLabel: signedMonthLabel });
-              if (!plan.removable.length) { showNotification?.(plan.blocked || "Nothing here can be removed.", "error"); return; }
-              setDeleteConfirm({
-                // The confirmation names what will be LEFT BEHIND, before anything happens.
-                label: plan.blocked ? `${plan.confirm}\n\n${plan.blocked}` : plan.confirm,
-                onConfirm: async () => { await softDeleteInvoices(plan.removable); setPicked(new Set()); },
-              });
-            }} style={{ marginLeft:"auto", fontSize:12, fontWeight:600, background:"transparent", border:"1px solid var(--sc-error-soft)", borderRadius:7, padding:"5px 12px", color:"var(--sc-error)", cursor:"pointer" }}>Delete selected</button>
-          </div>
-        )}
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead><tr style={{ background:"var(--sc-surface-2)" }}>
               {["Counterparty","Type","Monthly","Term","Status",""].map((h,i)=>(
@@ -208,6 +195,39 @@ export default function BooksView() {
       )}
 
       {filter!=="contracts" && (<>
+      {/* ★★★ C318 — THIS BAR WAS INSIDE THE `filter==="contracts"` BRANCH AND THE CHECKBOXES
+          THAT FILL IT ARE IN THE MAIN TRANSACTIONS TABLE. So you could tick transactions and
+          there was NO BUTTON, while the button rendered only where there are no checkboxes.
+          C227 built the control and shipped it into the wrong branch.
+
+          ★★ AND IT WAS INVISIBLE FOR THE C195(7) REASON: in the contracts view `picked` is
+          always empty, so the bar never drew, so nothing looked broken. A control whose input
+          is always empty is indistinguishable from one with nothing to do.
+
+          ★ THE REACHABLE-AND-WORSE PATH: `picked` is component state and survived a filter
+          change, so ticking three rows and switching to Contracts DID draw the bar — "3
+          selected", over a table those three rows are not in. */}
+          {/* ── BULK REMOVAL. `softDeleteInvoices` (batch write, ONE undo toast) has existed
+             since it was written and been wired to NO component — remediating the O83
+             double-book took scripted database access to remove 14 entries, because the
+             app could only do one at a time. That is a product you have to leave in order
+             to fix it. */}
+        {picked.size > 0 && (
+          <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", padding:"10px 14px", marginBottom:12, borderRadius:10, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)" }}>
+            <span style={{ fontSize:13, fontWeight:600 }}>{picked.size} selected</span>
+            <button onClick={()=>setPicked(new Set())} style={{ fontSize:12, background:"none", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"4px 10px", color:"var(--sc-text-2)", cursor:"pointer" }}>Clear</button>
+            <button onClick={()=>{
+              const chosen = rows.filter(r => picked.has(r.id));
+              const plan = planBulkRemoval(chosen, signoffs || [], { monthLabel: signedMonthLabel });
+              if (!plan.removable.length) { showNotification?.(plan.blocked || "Nothing here can be removed.", "error"); return; }
+              setDeleteConfirm({
+                // The confirmation names what will be LEFT BEHIND, before anything happens.
+                label: plan.blocked ? `${plan.confirm}\n\n${plan.blocked}` : plan.confirm,
+                onConfirm: async () => { await softDeleteInvoices(plan.removable); setPicked(new Set()); },
+              });
+            }} style={{ marginLeft:"auto", fontSize:12, fontWeight:600, background:"transparent", border:"1px solid var(--sc-error-soft)", borderRadius:7, padding:"5px 12px", color:"var(--sc-error)", cursor:"pointer" }}>Delete selected</button>
+          </div>
+        )}
       {/* Table — contained: horizontal scroll instead of clipping the right edge (Status +
           action button were running off the page). overflowX:auto keeps it within the card. */}
       <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, overflowX:"auto", overflowY:"clip" }}>
