@@ -118,9 +118,16 @@ describe("O60 COVERAGE BOUNDARY (documented limit): a FALSELY-'recorded' doc is 
   it("a doc marked 'recorded' but linking ZERO journal entries is NOT caught by status-only reconciliation", async () => {
     // This is the honest boundary. reconcileIntake trusts the terminal mark — it checks the
     // intake STATUS, not whether a real JE actually exists. A pipeline bug that marks
-    // 'recorded' while booking nothing slips past THIS net. (Note: our own wiring can leave a
-    // recorded row with empty journal_entry_ids when db_entry_id resolves after the mark, so
-    // we deliberately do NOT flag recorded-with-no-JE here to avoid false positives.)
+    // 'recorded' while booking nothing slips past THIS net.
+    //
+    // ★★ THE PARENTHETICAL THAT USED TO SIT HERE WAS A DEFECT DESCRIBED AS A DESIGN CHOICE.
+    // It read: "our own wiring can leave a recorded row with empty journal_entry_ids when
+    // db_entry_id resolves after the mark, so we deliberately do NOT flag recorded-with-no-JE
+    // here to avoid false positives." That wiring WAS the O134 bug — every invoice, every
+    // time — and the comment turned it into a reason not to look. It is fixed (the caller
+    // now links the ids the write resolved to, and a document short of an entry is HELD, not
+    // recorded), so there are no such false positives left to avoid. What remains below is
+    // the genuine limit of a STATUS-only net, which is what `docs_recorded` exists to cover.
     const db = fakeDB();
     const id = await processDoc(db, "ghost_record", "book");
     db._tables.document_intake.find(r => r.id === id).journal_entry_ids = [];   // claims recorded, links nothing

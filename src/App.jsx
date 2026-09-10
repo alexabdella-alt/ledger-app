@@ -28,6 +28,7 @@ import { getTaxDeadlines, taxEstimate } from "./lib/tax";
 import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
+import { recordedEntryLinks } from "./lib/intakeEntryLinks";
 import { classifyFailure, drainProgressCopy, FAILURE_KIND } from "./lib/intakeDrain";
 import { budgetCopy, getBudget } from "./lib/aiBudget";
 import { buildUploadedInvoice } from "./lib/uploadedInvoice";
@@ -5240,12 +5241,37 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // CHECK vocabulary, and anything unrecognised stores as `other` rather than
           // being rejected: a document we cannot label is still one we must keep.
           await storeDocument(item.name, base64, mediaType, documentTypeFor(docType, "invoice"), primaryId, ["uploaded"], item.id, file);
-          if (primaryId != null && bookPromises.length) {
-            try {
-              const jeIds = await Promise.all(bookPromises);
-              if (jeIds[0]) await relinkDocsForInvoice(primaryId, jeIds[0]);
-            } catch (e) { console.warn("source-doc relink after booking failed:", e?.message || e); }
+          // ★★★ O134 — RESOLVE THE BOOKING PROMISES ONCE, AND USE THEM FOR BOTH THE
+          // DOCUMENT RELINK AND THE INTAKE ROW'S ENTRY LINK. These ids were already being
+          // awaited here and thrown away except for `jeIds[0]`, while the RECORDED stamp
+          // below built its own list from `highConfidence.map(i => i.db_entry_id)` — a read
+          // of the LOCAL invoice objects. `bookToDb` writes `db_entry_id` through
+          // `setInvoices(prev => prev.map(...))`, which builds NEW objects in state; the
+          // captured `highConfidence` array holds the originals and never gains the field.
+          // So the map yielded `undefined`, `.filter(Boolean)` emptied it, and
+          // `setIntakeStatus`'s `if (journalEntryIds && journalEntryIds.length)` guard
+          // skipped the patch entirely: recorded, unlinked, every invoice, every time.
+          //
+          // ★★ THE CONSEQUENCE WAS NOT COSMETIC — the `docs_recorded` control total counts
+          // recorded rows against recorded-rows-carrying-a-link, so it failed permanently
+          // on the invoice path, and a failed control total BLOCKS SIGN-OFF. A guard firing
+          // on correct books (the 079/C291 direction), unfixable from the UI.
+          //
+          // ★ AND IT IS C307's MECHANISM A SECOND TIME: an in-session object read where a
+          // durable id was needed. The fix needed no new plumbing — only the value in scope.
+          let jeIds = [];
+          if (bookPromises.length) {
+            try { jeIds = await Promise.all(bookPromises); }
+            catch (e) { console.warn("booking ids did not resolve:", e?.message || e); }
           }
+          if (primaryId != null && jeIds[0]) {
+            // Deliberately jeIds[0], not "the first id that resolved" — the document was
+            // linked to invoice[0]'s in-session id, so relinking it to a DIFFERENT invoice's
+            // entry would file the source document against the wrong transaction.
+            try { await relinkDocsForInvoice(primaryId, jeIds[0]); }
+            catch (e) { console.warn("source-doc relink after booking failed:", e?.message || e); }
+          }
+          const entryLinks = recordedEntryLinks({ bookedCount: highConfidence.length, bookedIds: jeIds, attached });
           logAudit("invoice_uploaded", `Uploaded ${item.name}: ${extractedList.length} invoice(s) extracted`);
           const firstBooked = highConfidence[0] || null;
           const firstReview = needsClarification[0]?.invoice || null;
@@ -5282,7 +5308,30 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // "nothing extracted". A card OUTRANKS it — anything unanswered keeps the row
           // HELD, and HELD is exactly what routes it to the CPA completeness net.
           if (needsClarification.length > 0) markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "awaiting clarification in review queue" });
-          else if (highConfidence.length > 0 || attached.length > 0) markIntake(item.intake_id, INTAKE_STATUS.RECORDED, { journalEntryIds: highConfidence.map(i => i.db_entry_id).filter(Boolean), detail: `${highConfidence.length} invoice(s) booked${attached.length ? `, ${attached.length} filed with a payment already recorded` : ""}` });
+          else if (entryLinks.expected > 0) {
+            // ★★★ RECORDED IS A CLAIM THAT EVERY TRANSACTION ON THIS DOCUMENT LANDED, AND IT
+            // MAY ONLY BE MADE WHEN WE HOLD AN ENTRY ID FOR EACH ONE. Terminal-and-unlinked is
+            // precisely what the completeness net cannot tell from a lie: the row stops being
+            // chased, and `docs_recorded` reports the absence forever. If anything is short,
+            // the row goes HELD — the same convention an unanswered card uses one line up —
+            // carrying the ids that DID land, so nothing is lost and a human sees the gap.
+            if (entryLinks.complete) {
+              markIntake(item.intake_id, INTAKE_STATUS.RECORDED, { journalEntryIds: entryLinks.ids, detail: `${highConfidence.length} invoice(s) booked${attached.length ? `, ${attached.length} filed with a payment already recorded` : ""}` });
+            } else {
+              markIntake(item.intake_id, INTAKE_STATUS.HELD, {
+                journalEntryIds: entryLinks.ids,
+                detail: `${entryLinks.ids.length} of ${entryLinks.expected} transaction(s) saved — ${entryLinks.missing} did not, so this document is not fully recorded`,
+              });
+              // ★ A FAILED STAMP SAYS SO. The books hold what they hold and are not wrong; what
+              // is wrong is that this file claims more than landed, and only a person can decide
+              // whether to re-send it. Naming the file is the whole point — "something failed"
+              // is not something anybody can act on.
+              logAudit("invoice_entry_link_incomplete",
+                `${item.name}: ${entryLinks.ids.length} of ${entryLinks.expected} transaction(s) saved. Held for review rather than marked recorded.`,
+                null, { intake_id: String(item.intake_id ?? ""), expected: entryLinks.expected, saved: entryLinks.ids.length });
+              showNotification(`${item.name}: ${entryLinks.ids.length} of ${entryLinks.expected} transaction(s) saved. We've held it for review rather than calling it done.`, "error");
+            }
+          }
           else markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "no transaction extracted — needs review" });
 
         } else if (docType === "bank_statement") {

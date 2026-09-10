@@ -74,6 +74,13 @@ function check(key, label, a, aLabel, b, bLabel, { tolerance = 0.02, ...extra } 
 }
 
 // Build the accuracy flag surfaced to the O50 queue for a non-tying control.
+//
+// ★★★ O134 — NOT EVERY CONTROL TOTAL COMPARES MONEY, AND THIS FORMATTED ALL OF THEM AS IF
+// IT DID. `docs_recorded` compares COUNTS, so 28 documents rendered as "$28.00" on the one
+// screen whose whole job is to name what is wrong — a figure with a currency symbol on it
+// that no amount of money anywhere in the check could produce. `unit` defaults to "money",
+// so the five money checks keep their exact wording and only a check that says otherwise
+// reads differently.
 function toAccuracyFlag(c) {
   return {
     kind: "accuracy",
@@ -81,12 +88,27 @@ function toAccuracyFlag(c) {
     severity: "high",
     title: c.label,
     // Plain-English, no debit/credit jargon (Cardinal Principle).
-    description: `These should match but don't: ${c.aLabel} is ${money(c.a)}, ${c.bLabel} is ${money(c.b)} — off by ${money(Math.abs(c.diff))}.`,
+    description: describeMismatch(c),
     a: c.a, b: c.b, diff: c.diff, amount: Math.abs(c.diff),
+    ...(c.unit ? { unit: c.unit } : {}),
     ...(c.recId ? { reconciliation_id: c.recId } : {}),
   };
 }
 const money = (n) => fmtMoney(n);   // canonical magnitude cents (guard-compliant)
+const plural = (noun, n) => (Math.abs(n) === 1 ? noun : `${noun}s`);
+
+// The sentence is derived from the FIGURES, never composed alongside them (§9). A count
+// check gets a sentence built for counts rather than the money sentence with the currency
+// stripped off — "off by 1" is a magnitude, and what a reader needs is which population is
+// short and by how many.
+function describeMismatch(c) {
+  if (c.unit === "count") {
+    const noun = c.noun || "item";
+    const n = Math.round(Math.abs(c.diff));
+    return `${n} of ${Math.round(c.a)} ${plural(noun, c.a)} ${n === 1 ? "has" : "have"} no ${c.countedThing || "entry"} behind ${n === 1 ? "it" : "them"}.`;
+  }
+  return `These should match but don't: ${c.aLabel} is ${money(c.a)}, ${c.bLabel} is ${money(c.b)} — off by ${money(Math.abs(c.diff))}.`;
+}
 
 // ── THE CONTROL TOTALS ───────────────────────────────────────────────────────
 // Returns { checks[], failed[], flags[], allTie }. `codes` = resolved account codes
@@ -155,7 +177,9 @@ export function computeControlTotals({
   const recorded = (intakeRows || []).filter((r) => r && r.status === "recorded");
   const recordedWithEntry = recorded.filter((r) => Array.isArray(r.journal_entry_ids) && r.journal_entry_ids.length > 0);
   if (recorded.length) {
-    checks.push(check("docs_recorded", "Every document marked booked has an entry", recorded.length, "documents booked", recordedWithEntry.length, "with an entry behind them", { tolerance: 0 }));
+    // ★ `unit: "count"` — these are DOCUMENTS, not dollars. Without it `toAccuracyFlag`
+    // rendered 28 documents as "$28.00" (O134).
+    checks.push(check("docs_recorded", "Every document marked booked has an entry", recorded.length, "documents booked", recordedWithEntry.length, "with an entry behind them", { tolerance: 0, unit: "count", noun: "document", countedThing: "entry" }));
   }
 
   const failed = checks.filter((c) => !c.ties);

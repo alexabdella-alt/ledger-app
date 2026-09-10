@@ -93,6 +93,31 @@ describe("AR / AP / docs-recorded / cash-recon control totals", () => {
     const c = findCheck(computeControlTotals({ invoices: [], intakeRows, codes: CODES }), "docs_recorded");
     expect(c.a).toBe(2); expect(c.b).toBe(1); expect(c.ties).toBe(false);
   });
+  // ★★ O134 — THESE ARE DOCUMENTS, NOT DOLLARS. `toAccuracyFlag` ran every figure through
+  // `fmtMoney` unconditionally, so 28 documents rendered as "$28.00" on the one screen whose
+  // whole job is to name what is wrong — a currency symbol on a quantity no money in the
+  // check could produce.
+  it("docs-recorded reads as a COUNT — no currency anywhere in the sentence a person sees", () => {
+    const intakeRows = [];
+    for (let i = 0; i < 28; i++) intakeRows.push({ id: `d${i}`, status: "recorded", journal_entry_ids: i < 27 ? [`je${i}`] : [] });
+    const flag = computeControlTotals({ invoices: [], intakeRows, codes: {} }).flags.find(f => f.key === "docs_recorded");
+    expect(flag.description).toBe("1 of 28 documents has no entry behind it.");
+    expect(flag.description).not.toMatch(/[$]/);
+    expect(flag.unit).toBe("count");
+  });
+  it("the count sentence pluralizes off the figures rather than guessing", () => {
+    const rows = (n, linked) => Array.from({ length: n }, (_, i) => ({ id: `d${i}`, status: "recorded", journal_entry_ids: i < linked ? [`je${i}`] : [] }));
+    const desc = (n, linked) => computeControlTotals({ invoices: [], intakeRows: rows(n, linked), codes: {} }).flags.find(f => f.key === "docs_recorded").description;
+    expect(desc(3, 1)).toBe("2 of 3 documents have no entry behind them.");
+    expect(desc(1, 0)).toBe("1 of 1 document has no entry behind it.");
+  });
+  it("the MONEY checks are untouched — a unit nobody sets still reads as currency", () => {
+    const reconciliations = [{ id: "r1", status: "complete", account_name: "Checking", books_balance: 5000, statement_balance: 5000.75 }];
+    const flag = computeControlTotals({ invoices: [], reconciliations, codes: CODES }).flags.find(f => f.key === "cash_recon");
+    expect(flag.description).toContain("$5,000.00");
+    expect(flag.description).toContain("off by $0.75");
+    expect(flag.unit).toBeUndefined();
+  });
   it("cash-recon control flags a completed reconciliation whose books ≠ statement", () => {
     const reconciliations = [{ id: "r1", status: "complete", account_name: "Checking", period_end: "2026-05-31", books_balance: 5000, statement_balance: 5000.75 }];
     const c = findCheck(computeControlTotals({ invoices: [], reconciliations, codes: CODES }), "cash_recon");
