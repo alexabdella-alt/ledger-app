@@ -3,6 +3,7 @@ import { fmtMoney } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE } from "../../lib/tax";
 import { plan1099, plan1099Copy } from "../../lib/form1099";
+import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
   const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase } = useERP();
@@ -88,20 +89,35 @@ export default function TaxView() {
   const roleOfCode = React.useCallback(
     (code) => (CHART_OF_ACCOUNTS || []).find(a => String(a.code) === String(code))?.system_role || null,
     [CHART_OF_ACCOUNTS]);
+  // ★★★ C316 — BOTH SIDES OF THIS LOOKUP MUST BE NORMALISED THE SAME WAY, AND THEY WERE
+  // NOT. The map was keyed on the row's `vendor_key` (O111's grouping key: legal suffixes,
+  // trailing periods and "&" all normalised away) and read with the CONTACT's raw name
+  // lower-cased. "Hill Country Milling Co." therefore looked up `hill country milling co.`
+  // against rows filed under `hill country milling` and found NOTHING — so the vendor's
+  // payments read as $0, fell under the $600 threshold, and were never reported.
+  //
+  // ★★ THE FAILURE DIRECTION IS THE DANGEROUS ONE: A MISSING 1099, SILENTLY. The plan says
+  // "nothing to file" for a supplier who is owed one, and there is no screen on which that
+  // absence looks like anything. C256's own note names this exact failure — "otherwise
+  // their payments split and both halves fall under the threshold, which is a wrong answer
+  // that looks tidy" — it got the ROW side right and the CONTACT side wrong.
+  const keyOf = React.useCallback((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase(), []);
   const plan = React.useMemo(() => {
     const yearRows = (invoices || []).filter(i => String(i?.date || "").startsWith(String(year)));
     const byName = new Map();
     for (const r of yearRows) {
-      const k = String(r.vendor_key || r.vendor || "").toLowerCase();
+      // `vendor_key` when flatten supplied one; otherwise derive it the SAME way rather
+      // than falling back to the raw string, which is the mismatch in miniature.
+      const k = r.vendor_key || keyOf(r.vendor);
       if (!k) continue;
       (byName.get(k) || byName.set(k, []).get(k)).push(r);
     }
     return plan1099({
       contacts,
-      vendorRowsFor: (c) => byName.get(String(c.name || "").toLowerCase()) || [],
+      vendorRowsFor: (c) => byName.get(keyOf(c.name)) || [],
       roleOfCode,
     });
-  }, [invoices, contacts, year, roleOfCode]);
+  }, [invoices, contacts, year, roleOfCode, keyOf]);
   const need1099 = plan.outstanding;
 
   const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "18px 20px" };

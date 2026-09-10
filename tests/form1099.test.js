@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
 import {
   plan1099, plan1099Copy, verdictFor, reportablePayments, entityStatus,
   paymentKindForRole, PAYMENT_KIND, ENTITY, VERDICT, IRS_1099_THRESHOLD,
 } from "../src/lib/form1099";
+import { vendorGroupKey } from "../src/lib/vendorIdentity";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // FULL 1099 ELIGIBILITY — derived, not ticked.
@@ -158,10 +160,64 @@ describe("★★ the derivation reaches the screen", () => {
     expect(tax).not.toMatch(/vendors? need 1099s this year/);
   });
 
-  it("★ payments are matched on the SAME grouping key the vendor list uses (O111)", () => {
-    // A supplier known by two names must be one supplier here too, or their payments split
-    // and both halves fall under the threshold — a wrong answer that looks tidy.
-    expect(tax).toMatch(/r\.vendor_key \|\| r\.vendor/);
+  // ★★★ THIS USED TO ASSERT THE EXPRESSION `r.vendor_key || r.vendor` — WHICH IS THE ROW
+  // HALF OF A TWO-SIDED LOOKUP, AND THE HALF THAT WAS ALREADY RIGHT. The CONTACT side read
+  // `c.name.toLowerCase()`, so the two never met and the test could not see it: it pinned
+  // the mechanism on one side of a boundary and called the contract proved. Rewritten to
+  // run the real `plan1099` over names that actually differ between the two normalisations.
+  it("★★ BOTH sides of the payment lookup normalise the same way — the real specimens", () => {
+    const roleOfCode = () => "professional_services";
+    // Every one of these is a live vendor name whose grouping key is NOT its lower-cased
+    // self: a legal suffix, a trailing period, an ampersand.
+    for (const name of ["Hill Country Milling Co.", "Roma Cheese & Dairy Co.", "Sabine Kitchen Equipment LLC"]) {
+      const rows = [{ vendor: name, vendor_key: vendorGroupKey(name), amount: 5000, gl_code: "6800", date: "2026-03-01" }];
+      const byKey = new Map([[rows[0].vendor_key, rows]]);
+      const plan = plan1099({
+        contacts: [{ id: "c1", name, type: "vendor", business_type: "sole_proprietor" }],
+        vendorRowsFor: (c) => byKey.get(vendorGroupKey(c.name)) || [],
+        roleOfCode,
+      });
+      // $5,000 of services to a sole proprietor is squarely reportable. If the lookup
+      // misses, payments read as $0, it falls under the $600 floor, and the vendor is
+      // SILENTLY never reported — which is the failure this test exists to prevent.
+      expect([name, plan.outstanding]).toEqual([name, 1]);
+      expect([name, plan.eligible.map((r) => r.verdict)]).toEqual([name, [VERDICT.ELIGIBLE]]);
+      expect([name, plan.eligible[0].payments.total]).toEqual([name, 5000]);
+    }
+  });
+
+  // ★★★ A COMPARISON AGAINST A CONSTANT THAT DOES NOT EXIST FAILS SILENTLY. Writing
+  // `VERDICT.REPORTABLE` (there is no such key) makes the test `undefined === "eligible"`,
+  // which is simply false — so the branch never runs, the badge never appears, the build
+  // is clean and the suite is green. I did exactly that in VendorsView while writing this
+  // commit, and only a test that RAN the badge caught it. This is the cheap general catch.
+  it("★★ every VERDICT.* referenced anywhere in src/ is a real key", () => {
+    const files = [];
+    const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+      const p = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(p); else if (/\.jsx?$/.test(p)) files.push(p);
+    });
+    walk("src");
+    const bad = [];
+    for (const f of files) {
+      const src = fs.readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+      for (const m of src.matchAll(/\bVERDICT\.([A-Z_]+)/g))
+        if (!(m[1] in VERDICT)) bad.push(`${f}: VERDICT.${m[1]}`);
+    }
+    expect(bad).toEqual([]);
+    // …and the check must have something to look at, or it passes by finding nothing.
+    const seen = files.flatMap((f) => [...fs.readFileSync(f, "utf8").matchAll(/\bVERDICT\.([A-Z_]+)/g)].map((m) => m[1]));
+    expect(seen.length).toBeGreaterThan(3);
+  });
+
+  it("★ and the Tax page wires it that way — both sides through the same helper", () => {
+    // The grep is the second line of defence, not the first: it pins that the screen uses
+    // one normaliser for the map key AND the lookup, which is what the case above proves
+    // matters. `r.vendor_key || r.vendor` passing was exactly the false comfort before.
+    expect(tax).toMatch(/const keyOf = React\.useCallback\(\(s\) => vendorGroupKey\(s\)/);
+    expect(tax).toMatch(/r\.vendor_key \|\| keyOf\(r\.vendor\)/);
+    expect(tax).toMatch(/byName\.get\(keyOf\(c\.name\)\)/);
+    expect(tax).not.toMatch(/String\(c\.name \|\| ""\)\.toLowerCase\(\)/);
   });
 
   it("★ and only this year's rows are considered", () => {

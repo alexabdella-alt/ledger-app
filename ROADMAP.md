@@ -178,6 +178,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 > **⚠ THIS LIST IS BEHIND.** Everything between 2026-08-29 and 2026-09-06 (C205–C310 — the honesty sweep, the unchecked-write class, the drain, O117/O127, the Red River fixes) shipped and was never added here. **A printout cannot be wrong, only old** (§6), and this one is: read the per-item statuses in the tables below, not this list, until it is rebuilt.
 
+- ✅ **The 1099 plan could not find most vendors' payments — a silently missing filing** (2026-09-10, C316) — two normalisations that never met; and the badge beside it was a button that wrote a field nobody reads
 - ✅ **The six screens the widening exposed, audited** (2026-09-10, C315) — a client's Transactions screen was showing a bank-reconciliation panel; two dead buttons, and a third that had been dead since C197 and was found by writing the check
 - ✅ **Payables and Receivables join the client seat — as "Bills to pay" and "Money owed to you"** (2026-09-10, C314) — and the jargon guard turned out to miss the plural, so "Payables" had always walked through it
 - ✅ **The client sees their own records again — Transactions, Customers, Vendors, Documents** (2026-09-10, C313) — C197 had cut them to two screens on evidence that was all about operating a workbench, not reading records

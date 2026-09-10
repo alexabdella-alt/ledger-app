@@ -62,31 +62,39 @@ describe("★★ the flag round-trips", () => {
   });
 });
 
-describe("★★ setting it actually writes, and says so when it doesn't", () => {
-  const body = app.slice(app.indexOf("const setVendor1099"), app.indexOf("const persistContact"));
-
-  it("finds the setter", () => expect(body.length).toBeGreaterThan(400));
-
-  it("★ writes through a CHECKED update — a zero-row write must not read as success", () => {
-    expect(body).toMatch(/checkedRowUpdate\(/);
-    expect(body).toMatch(/table: "contacts"/);
-    expect(body).toMatch(/patch: \{ is_1099: want \}/);
+// ════════════════════════════════════════════════════════════════════════════
+// ★★★ THE SETTER IS GONE (C316), AND THESE FOUR TESTS WENT WITH IT — SAY WHY.
+//
+// They pinned real properties of `setVendor1099`: that it wrote through a checked
+// update, that it put the badge back when the write failed, that neither toggle
+// mutated local state on its own. All correct, all now moot, because the FIELD it
+// wrote is read by nothing. C256 replaced the flag with a derivation and left the
+// writer behind; `contacts.is_1099` is consulted by neither the Tax page, nor
+// `form1099.js`, nor the AI context — all three read `is_1099_exempt` and
+// `business_type` instead.
+//
+// ★★ SO THE PROPERTY WORTH HOLDING CHANGED SHAPE: it is no longer "the write is
+// checked", it is "NOTHING WRITES THIS FIELD AS A DECISION". A test deleted along
+// with its subject is a guarantee lost quietly; this is the replacement, and it
+// fails the moment a setter comes back.
+// ════════════════════════════════════════════════════════════════════════════
+describe("★★ the retired flag stays retired", () => {
+  it("no component sets is_1099 — the badge is derived, not toggled", () => {
+    const files = fs.readdirSync("src/components/views").filter((f) => f.endsWith(".jsx"));
+    for (const f of ["../src/App.jsx", ...files.map((f) => `../src/components/views/${f}`)]) {
+      const src = fs.readFileSync(new URL(f, import.meta.url), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+      expect([f, /setVendor1099\s*\(/.test(src)]).toEqual([f, false]);
+      expect([f, /patch:\s*\{\s*is_1099:/.test(src)]).toEqual([f, false]);
+    }
   });
 
-  it("★★ REVERTS THE BADGE when the write fails, rather than showing a state the books lack", () => {
-    // The optimistic flip is what made the old bug invisible. Leaving it up on failure
-    // would reproduce exactly that — C194's false-success class, on a filing decision.
-    expect(body).toMatch(/1099_flag_write_failed/);
-    expect(body).toMatch(/is1099: before/);
-    expect(body).toMatch(/showNotification\(/);
-  });
-
-  it("★ NEITHER toggle mutates local state on its own any more", () => {
-    // Both call sites must go through the setter. A `setContacts` that flips the flag
-    // directly is the session-only write coming back.
-    const code = vendors.split("\n").filter((l) => !/^\s*(\/\/|\*|\{\/\*)/.test(l)).join("\n");
-    expect(code).not.toMatch(/setContacts\([^)]*is1099/);
-    expect(code.match(/setVendor1099\(/g) || []).toHaveLength(2);
+  it("★ the Vendors badge reads the DERIVATION — the same function the Tax page uses", () => {
+    const v = fs.readFileSync(new URL("../src/components/views/VendorsView.jsx", import.meta.url), "utf8");
+    expect(v).toMatch(/import \{[^}]*verdictFor[^}]*\} from "\.\.\/\.\.\/lib\/form1099"/);
+    expect(v).toMatch(/verdictFor\(vendor, reportablePayments\(rows, roleOfCode\)\)/);
+    // …and it is not a button any more: a control that changes nothing is worse than none.
+    expect(v).not.toMatch(/Flag for 1099|Unflag 1099/);
   });
 });
 
