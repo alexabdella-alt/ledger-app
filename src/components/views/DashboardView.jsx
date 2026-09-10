@@ -37,11 +37,27 @@ export default function DashboardView() {
   // every link out of it that lands in the workbench must become plain status text for
   // a client: a button that bounces you straight back is worse than no button at all.
   const cockpit = navSeat ? navSeat.isReviewerSeat : true;
-  // THE ONE DOOR from Home into the cockpit. Every workbench destination goes through
-  // it, and it simply refuses for a client seat — so a gated link can never fire from
-  // the client experience even if a future edit forgets to hide the button. Enforced by
-  // grep (tests/iaCollapse.test.js): no direct setView("bank"|"matching"|…) in this file.
-  const goCockpit = (viewId, before) => { if (!cockpit) return; if (before) before(); setView(viewId); };
+  // ★★★ THE ONE DOOR OUT OF HOME. Every destination goes through it, and it refuses
+  // anything THIS SEAT MAY NOT OPEN — so a gated link can never fire from the client
+  // experience even if a future edit forgets to hide the button. Enforced by grep
+  // (tests/iaCollapse.test.js): no direct setView("bank"|"matching"|…) in this file.
+  //
+  // ★★ IT ASKS THE SEAT'S VIEW LIST, NOT `cockpit` (C313). It used to refuse a client
+  // outright, which was right while a client could open exactly two screens — and
+  // became WRONG the moment Transactions, Customers, Vendors and Documents became
+  // theirs: the fallback at the anomaly cards is `setView("books")`, so a flat refusal
+  // would have left a client clicking a row on their own home page and getting nothing.
+  // Consulting `viewIds` means the door widens exactly as the seat does, with no second
+  // list to keep in step — which is the same reason the sidebar reads it too.
+  //
+  // ★ AND IT IS `navTo`, NOT `goCockpit`, BECAUSE THE NAME WAS THE DOCUMENTATION. A
+  // function still called "go to the cockpit" that now opens a client's own records is
+  // a comment that lies in the one place nobody re-reads.
+  const navTo = (viewId, before) => {
+    if (navSeat && !navSeat.viewIds.includes(viewId)) return;
+    if (before) before();
+    setView(viewId);
+  };
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   // Shared onion-layer drill navigation (drillStack) — drilling pushes a layer, Back pops
@@ -545,7 +561,7 @@ export default function DashboardView() {
                                 item.result.to === "pipeline" ? (
                                   cockpit ? (
                                     (item.result.exceptions || 0) > 0 ? (
-                                      <span onClick={()=>goCockpit("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
+                                      <span onClick={()=>navTo("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
                                         {statementSummaryCopy({ total:item.result.total||0, handled:(item.result.total||0)-(item.result.exceptions||0), needInput:item.result.exceptions||0 })} →
                                       </span>
                                     ) : (
@@ -562,7 +578,7 @@ export default function DashboardView() {
                                   // C197: a client can't open Bank Import, so they get the same truth
                                   // as status — what happened to their file and who has it next.
                                   cockpit ? (
-                                    <span onClick={()=>goCockpit("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
+                                    <span onClick={()=>navTo("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
                                       📄 Ready in Bank Import — review &amp; book your transactions there →
                                     </span>
                                   ) : (
@@ -570,7 +586,7 @@ export default function DashboardView() {
                                   )
                                 ) : (
                                   cockpit ? (
-                                    <span onClick={()=>goCockpit("matching")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open matching detail">
+                                    <span onClick={()=>navTo("matching")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open matching detail">
                                       ✓ Matched {item.result.matchedCount||0} of {item.result.txnCount||0} transactions — ${ (item.result.stillOpenTotal||0).toLocaleString("en-US",{minimumFractionDigits:2}) } in open items still unmatched{item.result.newBooked>0?` · ${item.result.newBooked} new booked`:""}{item.result.needsReview>0?` · ${item.result.needsReview} match${item.result.needsReview!==1?"es":""} to review`:""}
                                     </span>
                                   ) : (
@@ -638,21 +654,21 @@ export default function DashboardView() {
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="bank_statement"&&q.result?.needsReview>0) && (
                     <div style={{ marginTop:12, background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                       <div style={{ fontSize:13, color:"var(--sc-warning)" }}>{cockpit ? "⚠ Some bank transactions need your review before they're added" : "A few things from your statement need a second look — your accountant is on it."}</div>
-                      {cockpit && <button onClick={()=>goCockpit("matching")} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Matches →</button>}
+                      {cockpit && <button onClick={()=>navTo("matching")} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Matches →</button>}
                     </div>
                   )}
                   {/* Contract review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="contract") && (
                     <div style={{ marginTop:8, background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                       <div style={{ fontSize:13, color:"var(--sc-gold)" }}>{cockpit ? "📋 A contract is ready to record" : "📋 We've read your agreement — your accountant will record it."}</div>
-                      {cockpit && <button onClick={()=>goCockpit("contracts", ()=>setContractView("list"))} style={{ background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Contracts →</button>}
+                      {cockpit && <button onClick={()=>navTo("contracts", ()=>setContractView("list"))} style={{ background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", color:"var(--sc-gold)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Contracts →</button>}
                     </div>
                   )}
                   {/* Unknown docs review prompt */}
                   {uploadQueue.some(q=>q.status==="done"&&q.type==="unknown") && (
                     <div style={{ marginTop:8, background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                       <div style={{ fontSize:13, color:"var(--sc-error)" }}>{cockpit ? "❓ Some documents need accountant review" : "❓ We couldn't tell what one of your files was — your accountant will take a look."}</div>
-                      {cockpit && <button onClick={()=>goCockpit("review")} style={{ background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Now →</button>}
+                      {cockpit && <button onClick={()=>navTo("review")} style={{ background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>Review Now →</button>}
                     </div>
                   )}
                 </div>
@@ -801,7 +817,7 @@ export default function DashboardView() {
                 // C197: the transaction itself stays open to both seats (it's the client's own
                 // entry, reached from their own home page). The BOOKS fallback is cockpit-only —
                 // a client never gets bounced into the workbench because a lookup missed.
-                const openTxn = (a) => { const inv=(invoices||[]).find(i=>String(i.id)===String((a.invoice_ids||[])[0])); if(inv){ setReturnTo && setReturnTo({view:"home"}); setSelectedInvoice(inv); setView("detail"); } else { goCockpit("books"); } };
+                const openTxn = (a) => { const inv=(invoices||[]).find(i=>String(i.id)===String((a.invoice_ids||[])[0])); if(inv){ setReturnTo && setReturnTo({view:"home"}); setSelectedInvoice(inv); setView("detail"); } else { navTo("books"); } };
                 return (
                   <div style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
                     <div onClick={()=>setAnomExpanded(v=>!v)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
@@ -827,7 +843,7 @@ export default function DashboardView() {
                                       queue — not a one-click here. These clear themselves once the underlying
                                       cause is fixed (auto-resolve). */}
                                   {cockpit
-                                    ? <button onClick={()=>goCockpit("review")} style={{ fontSize:12, fontWeight:600, color:"var(--sc-warning)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Review →</button>
+                                    ? <button onClick={()=>navTo("review")} style={{ fontSize:12, fontWeight:600, color:"var(--sc-warning)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Review →</button>
                                     : <span style={{ fontSize:12, color:"var(--sc-text-2)" }}>Your accountant is taking a look at this.</span>}
                                 </div>
                               </div>
@@ -860,7 +876,7 @@ export default function DashboardView() {
                         {active.map((c,i)=>{
                           const ml = monthsLeft(c);
                           return (
-                            <div key={c.id||i} onClick={cockpit ? ()=>goCockpit("contracts", ()=>{ setSelectedContract(c); setContractView("detail"); }) : undefined}
+                            <div key={c.id||i} onClick={cockpit ? ()=>navTo("contracts", ()=>{ setSelectedContract(c); setContractView("detail"); }) : undefined}
                               onMouseEnter={cockpit ? (e=>e.currentTarget.style.background="var(--sc-surface-2)") : undefined} onMouseLeave={cockpit ? (e=>e.currentTarget.style.background="transparent") : undefined}
                               style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 20px", borderTop: i?"1px solid var(--sc-surface-2)":"none", cursor: cockpit?"pointer":"default" }}>
                               <div style={{ minWidth:0 }}>

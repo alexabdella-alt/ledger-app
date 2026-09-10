@@ -47,11 +47,27 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
   const client = { role: "owner" };
   const reviewer = { role: "accountant" };
 
-  it("the client seat's nav is Home and Reports, in that order — nothing else", () => {
-    expect(navItems(visibleNav(client))).toEqual(["home", "reports"]);
+  it("★ the client seat sees their own RECORDS — six rows, flat, in order (C313)", () => {
+    // ★★ C197 CUT THIS TO TWO AND THAT WAS MORE THAN THE EVIDENCE SUPPORTED. The O83
+    // failures were all about OPERATING a workbench (bank checkboxes, matching); none
+    // was about looking at your own records. "What did I spend", "who do I buy from",
+    // "where did my receipt go" are owner questions, and answering them with a locked
+    // door forces a client to ask their accountant to look things up for them.
+    expect(navItems(visibleNav(client))).toEqual(["home", "books", "customers", "vendors", "docs", "reports"]);
     expect(visibleNav(client).seat).toBe("client");
-    // …and no headings: a heading over a list of two is furniture.
+    // …and still no headings: six rows do not need to be sorted into piles.
     expect(visibleNav(client).sections.map(s => s.label)).toEqual([null]);
+  });
+
+  it("★ the line is VERB-shaped: records are the client's, jobs are the CPA's", () => {
+    const rows = navItems(visibleNav(client));
+    // Records you READ — yours.
+    for (const v of ["books", "customers", "vendors", "docs"]) expect([v, rows.includes(v)]).toEqual([v, true]);
+    // Jobs you OPERATE — the cockpit's, and the reason the collapse exists at all.
+    for (const v of ["bank", "recon", "matching", "payroll", "review", "send-invoice"]) {
+      expect([v, rows.includes(v)]).toEqual([v, false]);
+      expect([v, canSeeView(v, client)]).toEqual([v, false]);
+    }
   });
 
   it("the reviewer seat keeps the whole cockpit — nothing was removed to group it", () => {
@@ -108,8 +124,12 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     expect(clientOk).toEqual([...new Set(CLIENT_VIEW_IDS)].sort());
   });
 
-  it("every workbench sub-tab surface is gated for a client (the named ten)", () => {
-    const workbench = ["books", "contracts", "ap", "vendors", "customers", "send-invoice", "bank", "recon", "payroll", "docs"];
+  it("every surface that is a JOB rather than a record is gated for a client", () => {
+    // Narrowed by C313: `books`, `vendors`, `customers` and `docs` moved to the client
+    // side (records). What is left is the workbench — plus `ap`/`ar`/`contracts`, which
+    // are NOT yet the client's and are deliberately listed so that becoming so is a
+    // decision someone makes rather than something that quietly happens.
+    const workbench = ["contracts", "ap", "ar", "send-invoice", "bank", "recon", "matching", "payroll"];
     for (const v of workbench) {
       expect([v, canSeeView(v, client)]).toEqual([v, false]);
       expect([v, canSeeView(v, reviewer)]).toEqual([v, true]);
@@ -174,7 +194,8 @@ describe("(4) 'Preview as owner' renders the client seat without changing the ro
   });
   it("a platform admin previewing loses the Admin tab too (it's a preview, not a costume)", () => {
     const previewing = visibleNav({ role: "accountant", isPlatformAdmin: true, previewAsOwner: true });
-    expect(navItems(previewing)).toEqual(["home", "reports"]);
+    expect(navItems(previewing)).toEqual(navItems(visibleNav({ role: "owner" })));
+    expect(navItems(previewing)).not.toContain("admin");
   });
   it("switching back restores the cockpit — the role never moved", () => {
     expect(visibleNav({ ...reviewer, previewAsOwner: true }).seat).toBe("client");
@@ -183,7 +204,8 @@ describe("(4) 'Preview as owner' renders the client seat without changing the ro
     expect(canAttestPeriod(reviewer.role)).toBe(true);
   });
   it("preview does NOT let a client seat see more (it can only ever subtract)", () => {
-    expect(navItems(visibleNav({ role: "owner", previewAsOwner: true }))).toEqual(["home", "reports"]);
+    expect(navItems(visibleNav({ role: "owner", previewAsOwner: true })))
+      .toEqual(navItems(visibleNav({ role: "owner" })));
   });
   it("both toggle labels are plain language and say plainly that it's a preview", () => {
     expect(containsOwnerJargon(PREVIEW_AS_OWNER_ENTER_LABEL)).toBe(false);
@@ -240,9 +262,10 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
 
   // ONE DOOR, and the door itself refuses. Hiding the button is not enough — a hidden
   // button is one careless edit away from being visible again — so the invariant is
-  // structural: Home reaches the cockpit ONLY through goCockpit, which returns early
-  // for a client seat. (Same shape as the C192 `lineDbId` rule: grep-enforceable.)
-  it("Home has no direct link into a gated surface — every one goes through goCockpit", () => {
+  // structural: Home reaches every destination ONLY through `navTo`, which returns early
+  // for anything this seat's view list does not contain. (Same shape as the C192
+  // `lineDbId` rule: grep-enforceable.)
+  it("Home has no direct link out — every destination goes through the one door", () => {
     const GATED = /setView\("(bank|matching|review|contracts|books|recon|payroll|docs|ap|ar|send-invoice|vendors|customers)"\)/g;
     const lines = dash.split("\n");
     const direct = lines
@@ -250,10 +273,16 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
       .filter(([, line]) => GATED.test(line) && !line.trim().startsWith("//"))
       .map(([n, line]) => `${n}: ${line.trim().slice(0, 80)}`);
     expect(direct).toEqual([]);
-    expect(dash).toMatch(/const goCockpit = \(viewId, before\) => \{ if \(!cockpit\) return;/);
-    // …and the door is actually used for the surfaces the client must not reach.
+    // ★★ THE DOOR ASKS THE SEAT'S VIEW LIST, NOT WHETHER THIS IS THE COCKPIT (C313).
+    // A flat client refusal was right while a client had two screens and became wrong
+    // the moment they had six: the anomaly cards fall back to `setView("books")`, so a
+    // seat-shaped refusal would leave a client clicking a row on their own home page
+    // and getting nothing. One list, consulted by both the sidebar and this door.
+    expect(dash).toMatch(/const navTo = \(viewId, before\) => \{\s*\n\s*if \(navSeat && !navSeat\.viewIds\.includes\(viewId\)\) return;/);
+    expect(dash).not.toMatch(/const goCockpit =/);
+    // …and the door is actually used, for surfaces on both sides of the line.
     for (const v of ["bank", "matching", "review", "contracts", "books"]) {
-      expect([v, dash.includes(`goCockpit("${v}"`)]).toEqual([v, true]);
+      expect([v, dash.includes(`navTo("${v}"`)]).toEqual([v, true]);
     }
   });
 

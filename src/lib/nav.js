@@ -77,11 +77,38 @@ export const NAV_SECTIONS_REVIEWER = [
   ] },
 ];
 
-// The client's sidebar. Two rows, no headings — a heading over a list of two is
-// furniture. The seat boundary is unchanged from C197: everything workbench-
-// shaped is absent, not merely disabled.
+// ── THE CLIENT'S SIDEBAR (C313 widened it from two rows to six) ──────────────
+//
+// ★★★ C197 CUT THE CLIENT TO HOME + REPORTS ON EVIDENCE THAT DID NOT SUPPORT
+// THAT MUCH OF A CUT. The O83 finding was that a business owner cannot OPERATE a
+// workbench — the operator himself stalled on Bank Import's checkbox states and
+// could not find the Matching Engine — and every one of those failures was about
+// DOING a bookkeeping job. None of them was about LOOKING AT YOUR OWN RECORDS.
+//
+// ★★ "WHAT DID I SPEND", "WHO DO I BUY FROM", "WHERE DID MY RECEIPT GO" ARE OWNER
+// QUESTIONS, NOT BOOKKEEPER QUESTIONS — and answering them with a locked door was
+// the collapse over-applied. A client who can only see two screens has to ask
+// their accountant to look something up for them, which is precisely the
+// dependency this product exists to remove.
+//
+// ★ NOT LISTED, AND SAID SO RATHER THAN LEFT AMBIGUOUS: Payables and Receivables.
+// "Who do I owe" and "who owes me" are owner questions by the same argument, and
+// both screens are read-shaped — but they were not part of the decision that
+// widened this list, and a nav row nobody chose is how a boundary drifts. Left
+// for someone to decide out loud.
+//
+// So the line is not seat-shaped, it is VERB-shaped: **records you READ are
+// yours; workflows you OPERATE are the CPA's.** Transactions, Customers, Vendors
+// and Documents are records. Bank Import, Reconcile, Matching, Payroll and the
+// Review queue are jobs, and they stay in the cockpit.
+//
+// Flat, no headings: six rows do not need to be sorted into piles, and the whole
+// point of this seat is that it is simple.
 export const NAV_SECTIONS_CLIENT = [
-  { id: "top", label: null, items: [["home", "Home"], ["reports", "Reports"]] },
+  { id: "top", label: null, items: [
+    ["home", "Home"], ["books", "Transactions"], ["customers", "Customers"],
+    ["vendors", "Vendors"], ["docs", "Documents"], ["reports", "Reports"],
+  ] },
 ];
 
 // The Settings section. It is entered through the header gear rather than the
@@ -108,11 +135,16 @@ export const SETTINGS_VIEW_IDS = [
   "tax1099", "tax", "audit", "legal",
 ];
 
-// What the CLIENT seat may open. Home + Reports are the nav; `detail` is the
-// drill target BOTH client surfaces already push into (Home's activity feed and
-// a Reports drill open a single transaction), so gating it would leave dead rows
-// on screens the client is meant to use. Everything else is the cockpit.
-export const CLIENT_VIEW_IDS = ["home", "dashboard", "reports", "detail", ...SETTINGS_VIEW_IDS];
+// What the CLIENT seat may open: their own nav (see NAV_SECTIONS_CLIENT), plus
+// `detail` — the drill target every client surface pushes into (Home's activity
+// feed, a Reports drill, a row in Transactions all open one transaction), so
+// gating it would leave dead rows on screens the client is meant to use.
+// Everything absent from here is a job rather than a record.
+export const CLIENT_VIEW_IDS = [
+  "home", "dashboard", "reports", "detail",
+  "books", "customers", "vendors", "docs",
+  ...SETTINGS_VIEW_IDS,
+];
 
 // Every top-level view id the ERP router can render — the truth-table domain.
 export const ALL_VIEW_IDS = [

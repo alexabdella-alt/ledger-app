@@ -179,7 +179,7 @@ describe("C198·2b — the queue line tells the pipeline's truth", () => {
     expect(dash).toMatch(/item\.result\.to === "pipeline" \? \(/);
     expect(dash).toMatch(/dropZoneOutcomeCopy\(\{ total:item\.result\.total\|\|0/);      // owner seat
     expect(dash).toMatch(/statementSummaryCopy\(\{ total:item\.result\.total\|\|0/);     // cockpit
-    expect(dash).toMatch(/\(item\.result\.exceptions \|\| 0\) > 0 \? \([\s\S]{0,200}goCockpit\("bank"\)/);  // link only when there IS work
+    expect(dash).toMatch(/\(item\.result\.exceptions \|\| 0\) > 0 \? \([\s\S]{0,200}navTo\("bank"\)/);  // link only when there IS work
   });
 
   it("★ the stale stash sentence is UNREACHABLE for a pipeline result", () => {
