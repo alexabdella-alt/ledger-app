@@ -347,10 +347,17 @@ export function clarificationChips(invoice = {}, { minConfidence = 55 } = {}) {
 // not match "Payables", and a UI says the plural far more often than the singular —
 // capitalize/depreciate/amortize/accrue, "chart of accounts", and any bare
 // 4-digit GL code (1000–8999).
-export const OWNER_JARGON_RE = /\bGAAP\b|\bASC\b|\bdebit(ed|s)?\b|\bcredit(ed|s)?\b|journal entr|\bledger\b|\bpayables?\b|\breceivables?\b|deferred revenue|balance sheet|capitaliz|depreciat|amortiz|\baccru|chart of accounts|\bgeneral ledger\b|\bGL code\b|\bcontrol total|\breconcil|\btrial balance\b|\bconfidence\b/i;
+export const OWNER_JARGON_RE = /\bGAAP\b|\bASC\b|\bdebit(ed|s)?\b|\bcredit(ed|s)?\b(?!\s*card)|journal entr|\bledger\b|\bpayables?\b|\breceivables?\b|deferred revenue|balance sheet|capitaliz|depreciat|amortiz|\baccru|chart of accounts|\bgeneral ledger\b|\bGL code\b|\bcontrol total|\breconcil|\btrial balance\b|\bconfidence\b/i;
 // A bare 4-digit GL account code (1000–8999) — EXCEPT a plausible calendar year (1900–2199),
 // which legitimately appears in owner copy ("Reviewed through May 2026") and is not a GL code.
-export const OWNER_GLCODE_RE = /\b(?!(?:19|20|21)\d{2}\b)[1-8][0-9]{3}\b/;
+// ★★ AN IRS FORM NUMBER IS GL-CODE-SHAPED AND IS NOT A GL CODE (C315). "1099" is four
+// digits starting 1, so the bare-code guard flagged every string in the 1099 feature —
+// "Flag for 1099", "1099 exempt", the badge itself — as though we were showing an owner a
+// chart-of-accounts number. Excluded by name rather than by widening the shape, because
+// the shape is the whole point of this check. Other form numbers (1040, 1065, 1120) are
+// the same shape and are NOT excluded: none is used in the product today, and if one ever
+// is, this guard firing is the correct and visible way to find out.
+export const OWNER_GLCODE_RE = /\b(?!(?:19|20|21)\d{2}\b)(?!1099\b)[1-8][0-9]{3}\b/;
 export function containsOwnerJargon(text) {
   const s = String(text || "");
   return OWNER_JARGON_RE.test(s) || OWNER_GLCODE_RE.test(s);

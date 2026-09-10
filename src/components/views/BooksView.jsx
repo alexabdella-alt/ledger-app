@@ -15,11 +15,19 @@ export default function BooksView() {
     invoices, setInvoices, markPaid, markBillPaid, loadAllData, getAccountByRole, persistRecode, logAudit,
     setSelectedInvoice, setView, CHART_OF_ACCOUNTS,
     booksFilter, setBooksFilter, softDeleteInvoices, signoffs, setDeleteConfirm,
+    navSeat,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
     reconciliations, docLibrary, storeDocument, fileToBase64,
   } = useERP();
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
+  // ★★ C315 — THIS SCREEN BECAME CLIENT-FACING ON 2026-09-10 (C313) AND WAS WRITTEN FOR
+  // A CPA. `cockpit` gates the three things on it that are the CPA's job rather than the
+  // owner's record: hand-entering a transaction, the reconciliation history, and the
+  // ASC 842 contract detail. Two of those were also DEAD CONTROLS for a client — the
+  // route guard bounces them Home — which is O124's rule in navigation form: an action
+  // that refuses on click teaches you that clicking is how you find out.
+  const cockpit = navSeat ? navSeat.isReviewerSeat : true;
   const [showReconHistory, setShowReconHistory] = React.useState(false);
 
   const [search, setSearch] = React.useState("");
@@ -128,10 +136,10 @@ export default function BooksView() {
         </div>
         {/* C195(4) — MANUAL ENTRY IS REACHABLE. AddView was orphaned: hand-entering a transaction
             (e.g. a check written outside any statement) required direct SQL. This is its entry point. */}
-        <button onClick={()=>setView && setView("add")}
+        {cockpit && <button onClick={()=>setView && setView("add")}
           style={{ flexShrink:0, padding:"10px 18px", borderRadius:9, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer" }}>
           + Add entry
-        </button>
+        </button>}
       </div>
 
       {/* Search + filters */}
@@ -144,7 +152,10 @@ export default function BooksView() {
       </div>
 
       {/* ── CONTRACTS TABLE (filter = contracts) ── */}
-      {filter==="contracts" && (
+      {/* Contracts (ASC 842) — cockpit only. A client cannot reach this filter today (there
+          is no client nav row for it), but `booksFilter` is shared state and "unreachable by
+          accident of the nav" is not a guarantee. Stated, so the guard can check it. */}
+      {cockpit && filter==="contracts" && (
         <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
           {/* ── BULK REMOVAL. `softDeleteInvoices` (batch write, ONE undo toast) has existed
              since it was written and been wired to NO component — remediating the O83
@@ -295,8 +306,11 @@ export default function BooksView() {
       <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:10 }}>{rows.length} transaction{rows.length!==1?"s":""}{filter!=="all"?` · ${filter}`:""}</div>
       </>)}
 
-      {/* ── RECONCILIATION HISTORY ── */}
-      {(reconciliations||[]).length>0 && (
+      {/* ── RECONCILIATION HISTORY — COCKPIT ONLY (C315) ──
+          It was gated on nothing but "are there any", so an owner opening Transactions saw
+          a bank-reconciliation panel: the one workflow the North Star is most explicit about
+          keeping away from a client, sitting on their own records screen. */}
+      {cockpit && (reconciliations||[]).length>0 && (
         <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, marginTop:16, overflow:"hidden" }}>
           <div onClick={()=>setShowReconHistory(s=>!s)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
             <div style={{ fontSize:13, fontWeight:600 }}>🏦 Bank reconciliation history</div>
@@ -322,7 +336,7 @@ export default function BooksView() {
       )}
 
       {/* ── CONTRACT SLIDE-IN ── */}
-      {selContract && (() => {
+      {cockpit && selContract && (() => {
         const c = selContract;
         const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"var(--sc-gold)", icon:"📄" };
         const entries = c.journal_entries || [];
