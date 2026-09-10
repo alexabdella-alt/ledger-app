@@ -2,6 +2,7 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { verdictFor, reportablePayments, VERDICT } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
+import { applyAlias } from "../../lib/vendorAlias";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -10,7 +11,7 @@ import { validateAlias, aliasExplainer } from "../../lib/vendorAlias";
 import { suggestVendorMerges, suggestionCopy } from "../../lib/vendorSuggest";
 
 export default function VendorsView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view , navSeat } = useERP();
+  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view , navSeat , aliasIndex } = useERP();
   // ★★ C315 — CLIENT-FACING SINCE 2026-09-10 (C314). §11's standing directive: every
   // owner-facing surface assumes ZERO accounting knowledge, and "payables"/"receivables"
   // are the two words OWNER_JARGON_RE names by hand. The CPA keeps the terms (§9 exempts
@@ -31,7 +32,13 @@ export default function VendorsView() {
   const roleOfCode = React.useCallback(
     (code) => (CHART_OF_ACCOUNTS || []).find(a => String(a.code) === String(code))?.system_role || null,
     [CHART_OF_ACCOUNTS]);
-  const keyOf = React.useCallback((x) => vendorGroupKey(x) || String(x || "").trim().toLowerCase(), []);
+  // ★★ THE SAME KEY `buildVendorSummary` GROUPS ON, ALIASES INCLUDED. The summary applies
+  // the O111 alias index before grouping, so a join that skipped it would miss exactly the
+  // vendors a person has taken the trouble to merge by hand — the one case where being
+  // wrong is most visible to them.
+  const keyOf = React.useCallback(
+    (x) => applyAlias(vendorGroupKey(x) || String(x || "").trim().toLowerCase(), aliasIndex),
+    [aliasIndex]);
   // Same inputs as the Tax page, same function — the two cannot disagree by construction.
   const verdict1099 = React.useCallback((vendor) => {
     if (!vendor?.fromContact) return null;
@@ -57,7 +64,7 @@ export default function VendorsView() {
             // legacy no-gl_code rows — it LIES on A/P payment settlements (gl_code=A/P, type=
             // "expense"), which would otherwise double-count as vendor spend on top of the bill.
             const txnsForVendor = name => invoices
-              .filter(i => i.vendor?.toLowerCase()===(name||"").toLowerCase() && (i.gl_code ? glIsExpense(i.gl_code) : i.type==="expense") && i.status!=="voided")
+              .filter(i => (i.vendor_key||keyOf(i.vendor))===keyOf(name) && (i.gl_code ? glIsExpense(i.gl_code) : i.type==="expense") && i.status!=="voided")
               .sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
             const paidYTDfor = txns => txns.filter(i=>i.payment_status==="paid" && String(i.date||"").startsWith(String(yr))).reduce((s,i)=>s+(i.amount||0),0);
             const openAPfor = txns => txns.filter(i=>i.payment_status!=="paid").reduce((s,i)=>s+(i.amount||0),0);
@@ -157,22 +164,33 @@ export default function VendorsView() {
             // Merge ledger-derived vendors with contact book — GL-truth membership (§9): is this
             // vendor's first ledger row an expense (debits 5–8xxx)? `type` fallback only when the
             // row has no gl_code, so a settlement's stale type="expense" can't force-add a vendor.
-            const ledgerVendors = vendorSummary.filter(v => {
-              const ft = invoices.filter(i=>i.vendor?.toLowerCase()===v.name?.toLowerCase())[0];
-              return ft?.gl_code ? glIsExpense(ft.gl_code) : ft?.type==="expense";
-            });
+            // ★★★ C317 — THE CONTACT↔LEDGER JOIN RUNS ON THE GROUPING KEY, NOT ON THE
+            // DISPLAY NAME. `vendorSummary` groups on `vendor_key` and labels each group with
+            // the MOST RECENT display name (C210) — so a supplier billed as "Hill Country
+            // Milling Co." in January and "Hill Country Milling" in March is ONE group,
+            // labelled with the March spelling. Joining a contact to it by raw lower-cased
+            // name therefore missed, and the screen rendered that supplier TWICE: once as a
+            // contact with no spend, once as a ledger group with no contact details, with
+            // $1,700 sitting on the half that had no name to show.
+            //
+            // ★★ IT IS C316'S ASYMMETRY IN A SECOND PLACE — one side canonical, one side raw —
+            // and the label being UNSTABLE is what makes it worse than a narrow match: which
+            // contacts join depends on which spelling arrived last.
+            // `ledgerVendors` lived here: declared, filtered, and read by NOTHING. Removed
+            // rather than repaired (O96/C255) — dead plumbing that looks wired is worse than
+            // absent, and `isVendorSpend` already restricts the summary to expense movements.
 
             // Build unified vendor list: contacts take priority, ledger fills in the rest
             const contactVendors = contacts.filter(c => c.type==="vendor");
             const ledgerOnlyVendors = vendorSummary.filter(v =>
-              !contactVendors.find(c => c.name?.toLowerCase()===v.name?.toLowerCase())
+              !contactVendors.find(c => keyOf(c.name)===v.key)
             );
 
             const allVendors = [
               ...contactVendors.map(c => ({
                 ...c,
                 fromContact: true,
-                ledger: vendorSummary.find(v => v.name?.toLowerCase()===c.name?.toLowerCase()),
+                ledger: vendorSummary.find(v => v.key===keyOf(c.name)),
               })),
               ...ledgerOnlyVendors.map(v => ({
                 id: v.name, name: v.name, type:"vendor", fromContact: false, ledger: v,
