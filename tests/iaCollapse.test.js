@@ -47,22 +47,22 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
   const client = { role: "owner" };
   const reviewer = { role: "accountant" };
 
-  it("★ the client seat sees their own RECORDS — six rows, flat, in order (C313)", () => {
+  it("★ the client seat sees their own RECORDS — eight rows, flat, in order (C313/C314)", () => {
     // ★★ C197 CUT THIS TO TWO AND THAT WAS MORE THAN THE EVIDENCE SUPPORTED. The O83
     // failures were all about OPERATING a workbench (bank checkboxes, matching); none
     // was about looking at your own records. "What did I spend", "who do I buy from",
     // "where did my receipt go" are owner questions, and answering them with a locked
     // door forces a client to ask their accountant to look things up for them.
-    expect(navItems(visibleNav(client))).toEqual(["home", "books", "customers", "vendors", "docs", "reports"]);
+    expect(navItems(visibleNav(client))).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports"]);
     expect(visibleNav(client).seat).toBe("client");
-    // …and still no headings: six rows do not need to be sorted into piles.
+    // …and still no headings: eight rows do not need to be sorted into piles.
     expect(visibleNav(client).sections.map(s => s.label)).toEqual([null]);
   });
 
   it("★ the line is VERB-shaped: records are the client's, jobs are the CPA's", () => {
     const rows = navItems(visibleNav(client));
     // Records you READ — yours.
-    for (const v of ["books", "customers", "vendors", "docs"]) expect([v, rows.includes(v)]).toEqual([v, true]);
+    for (const v of ["books", "ap", "ar", "customers", "vendors", "docs"]) expect([v, rows.includes(v)]).toEqual([v, true]);
     // Jobs you OPERATE — the cockpit's, and the reason the collapse exists at all.
     for (const v of ["bank", "recon", "matching", "payroll", "review", "send-invoice"]) {
       expect([v, rows.includes(v)]).toEqual([v, false]);
@@ -106,6 +106,27 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     expect(navItems(visibleNav({ ...reviewer, inSettings: true }))).not.toContain("team");
   });
 
+  it("★★ every CLIENT label passes the zero-accounting-knowledge bar; the CPA's may be technical", () => {
+    // §11's standing directive: every owner-facing surface assumes ZERO accounting
+    // knowledge. "Payables" and "Receivables" are the two words OWNER_JARGON_RE names
+    // by hand — so the client's rows say what they mean instead.
+    for (const [, label] of visibleNav(client).sections.flatMap(s => s.items))
+      expect([label, containsOwnerJargon(label)]).toEqual([label, false]);
+    expect(navItems(visibleNav(client))).toContain("ap");          // …while still being those screens
+    const clientLabels = visibleNav(client).sections.flatMap(s => s.items).map(([, l]) => l);
+    expect(clientLabels).toContain("Bills to pay");
+    expect(clientLabels).toContain("Money owed to you");
+    // The cockpit keeps the accounting words — §9 exempts reviewer-facing copy, and a
+    // CPA reading "Bills to pay" instead of "Payables" is being talked down to.
+    const cpaLabels = visibleNav(reviewer).sections.flatMap(s => s.items).map(([, l]) => l);
+    expect(cpaLabels).toContain("Payables");
+    expect(cpaLabels).toContain("Receivables");
+    // ★ AND THE BAR ITSELF HAD A HOLE: `\bpayable\b` does not match "Payables", so the
+    // plural — which is what a UI actually says — walked straight through the guard.
+    expect(containsOwnerJargon("Payables")).toBe(true);
+    expect(containsOwnerJargon("Receivables")).toBe(true);
+  });
+
   it("★ activeNavItem highlights one row, and knows Contracts is a filter not a view", () => {
     expect(activeNavItem("dashboard")).toBe("home");        // the legacy id is still Home
     expect(activeNavItem("detail")).toBe("books");          // the drill belongs to Transactions
@@ -125,11 +146,11 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
   });
 
   it("every surface that is a JOB rather than a record is gated for a client", () => {
-    // Narrowed by C313: `books`, `vendors`, `customers` and `docs` moved to the client
-    // side (records). What is left is the workbench — plus `ap`/`ar`/`contracts`, which
-    // are NOT yet the client's and are deliberately listed so that becoming so is a
-    // decision someone makes rather than something that quietly happens.
-    const workbench = ["contracts", "ap", "ar", "send-invoice", "bank", "recon", "matching", "payroll"];
+    // Narrowed by C313/C314: `books`, `ap`, `ar`, `vendors`, `customers` and `docs` are
+    // the client's own records. What is left is genuinely a workbench — plus `contracts`
+    // and `send-invoice`, deliberately listed so that moving them is a decision someone
+    // makes rather than something that quietly happens.
+    const workbench = ["contracts", "send-invoice", "bank", "recon", "matching", "payroll"];
     for (const v of workbench) {
       expect([v, canSeeView(v, client)]).toEqual([v, false]);
       expect([v, canSeeView(v, reviewer)]).toEqual([v, true]);

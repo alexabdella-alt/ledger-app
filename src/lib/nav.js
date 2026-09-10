@@ -91,11 +91,13 @@ export const NAV_SECTIONS_REVIEWER = [
 // their accountant to look something up for them, which is precisely the
 // dependency this product exists to remove.
 //
-// ★ NOT LISTED, AND SAID SO RATHER THAN LEFT AMBIGUOUS: Payables and Receivables.
-// "Who do I owe" and "who owes me" are owner questions by the same argument, and
-// both screens are read-shaped — but they were not part of the decision that
-// widened this list, and a nav row nobody chose is how a boundary drifts. Left
-// for someone to decide out loud.
+// ★★★ AND THE CLIENT'S LABELS ARE NOT THE CPA'S (C314). "Payables" and
+// "Receivables" are the two words §11's standing directive exists for — every
+// owner-facing surface assumes ZERO accounting knowledge — and `OWNER_JARGON_RE`
+// names both explicitly. The screens are the same screens; only the words differ,
+// which costs nothing because this list was always separate from the cockpit's.
+// A test holds every client label to the jargon bar; the CPA's labels are exempt
+// by §9, which lets reviewer-facing copy stay technical.
 //
 // So the line is not seat-shaped, it is VERB-shaped: **records you READ are
 // yours; workflows you OPERATE are the CPA's.** Transactions, Customers, Vendors
@@ -106,8 +108,10 @@ export const NAV_SECTIONS_REVIEWER = [
 // point of this seat is that it is simple.
 export const NAV_SECTIONS_CLIENT = [
   { id: "top", label: null, items: [
-    ["home", "Home"], ["books", "Transactions"], ["customers", "Customers"],
-    ["vendors", "Vendors"], ["docs", "Documents"], ["reports", "Reports"],
+    ["home", "Home"], ["books", "Transactions"],
+    ["ap", "Bills to pay"], ["ar", "Money owed to you"],
+    ["customers", "Customers"], ["vendors", "Vendors"],
+    ["docs", "Documents"], ["reports", "Reports"],
   ] },
 ];
 
@@ -142,7 +146,7 @@ export const SETTINGS_VIEW_IDS = [
 // Everything absent from here is a job rather than a record.
 export const CLIENT_VIEW_IDS = [
   "home", "dashboard", "reports", "detail",
-  "books", "customers", "vendors", "docs",
+  "books", "ap", "ar", "customers", "vendors", "docs",
   ...SETTINGS_VIEW_IDS,
 ];
 
