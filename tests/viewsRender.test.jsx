@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
-import { renderViewError, VIEW_CONTEXT } from "./helpers/renderView.jsx";
+import { renderViewError, renderViewHtml, VIEW_CONTEXT } from "./helpers/renderView.jsx";
+import { POPULATED } from "./helpers/populatedFixture.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ★★★ O14 — "A SCREEN CAN CRASH WITH A GREEN SUITE." NOT ANY MORE.
@@ -52,6 +53,111 @@ describe("★★★ every screen renders without throwing", () => {
       expect(err && `${f} threw on render: ${err.message}`).toBeNull();
     });
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// C319 — AND AGAIN, WITH DATA IN THE COMPANY.
+//
+// ★★★ THE SWEEP ABOVE HANDS EVERY COLLECTION AN EMPTY ARRAY, SO NO ROW EVER
+// RENDERS. It catches a screen that throws on open — which it did, twice, on the
+// day it shipped — and leaves the majority of every screen unexercised: the row
+// bodies, the contact↔ledger joins, the per-row conditionals. C246 named that
+// limit in its own comment; this is the other half of it.
+//
+// ★★ THE FIXTURE IS SMALL AND DERIVED. Only the collections that drive rows are
+// populated; everything else still falls through to the Proxy, so this does not
+// become the "second copy of the app's state shape" the harness warns about. And
+// `vendorSummary` comes from the REAL builder over the REAL invoices, so a change
+// to grouping cannot leave a hand-written fixture quietly disagreeing with it.
+// ════════════════════════════════════════════════════════════════════════════
+describe("★★★ every screen renders with a company that has data in it", () => {
+  it("the fixture actually contains rows — an empty one would repeat the sweep above", () => {
+    expect(POPULATED.invoices.length).toBeGreaterThanOrEqual(5);
+    expect(POPULATED.contacts.length).toBeGreaterThanOrEqual(3);
+    // The C317 case is in there on purpose: two spellings of one supplier, so the join
+    // path runs rather than being skipped for want of a second row.
+    expect(POPULATED.vendorSummary.length).toBeLessThan(POPULATED.invoices.length);
+  });
+
+  // ★★★ BOTH SEATS, BECAUSE SINCE C313–C315 THE SEAT DECIDES WHAT A SCREEN RENDERS. A
+  // client sees different copy on Vendors and Customers, and BooksView hides three whole
+  // blocks from them. Rendering one seat leaves the other branch unexecuted — and the
+  // fixture had `navSeat` as the string "cockpit" (stale since C312 made it an object), so
+  // `navSeat.isReviewerSeat` read undefined and every screen was quietly being rendered in
+  // its CLIENT branch while the fixture claimed the opposite.
+  const SEATS = {
+    reviewer: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ["home", "books", "ap", "ar", "vendors", "customers", "docs", "reports", "detail", "review", "bank", "recon", "matching", "payroll", "contracts", "add"] },
+    client: { seat: "client", isReviewerSeat: false, sections: [], viewIds: ["home", "books", "ap", "ar", "vendors", "customers", "docs", "reports", "detail"] },
+  };
+
+  for (const [seatName, navSeat] of Object.entries(SEATS)) {
+    for (const f of viewFiles) {
+      it(`renders ${f} with data — ${seatName} seat`, async () => {
+        const mod = await import(path.join(viewsDir, f));
+        const err = renderViewError(mod.default, { ...POPULATED, navSeat, ...(VIEW_CONTEXT[f] || {}) });
+        expect(err && `${f} threw rendering real rows (${seatName}): ${err.stack?.split("\n").slice(0, 4).join(" | ")}`).toBeNull();
+      });
+    }
+
+    for (const f of TOP_LEVEL) {
+      it(`renders ${f} with data — ${seatName} seat`, async () => {
+        const mod = await import(path.join(process.cwd(), "src/components", f));
+        if (typeof mod.default !== "function") return;
+        const err = renderViewError(mod.default, { ...POPULATED, navSeat, ...(VIEW_CONTEXT[f] || {}) });
+        expect(err && `${f} threw rendering real rows (${seatName}): ${err.stack?.split("\n").slice(0, 4).join(" | ")}`).toBeNull();
+      });
+    }
+  }
+
+  // ★★★ THE ANTI-VACUITY CHECK, AND IT IS THE ONE THAT ACTUALLY EARNED ITS PLACE. "It did
+  // not throw" is satisfied just as well by a screen that rendered the WRONG BRANCH and drew
+  // nothing — which is exactly what was happening: `vendorsSelectedContact` was absent, the
+  // Proxy answered `[]`, `[]` is truthy, and every Vendors render took the detail pane. A
+  // crash planted in the row body survived the sweep. These assert the fixture's data
+  // reaches the page, so "the rows ran" is a fact rather than an assumption.
+  const REACHES = [
+    ["VendorsView.jsx", "Hill Country Milling"],
+    ["CustomersView.jsx", "Corner Market Catering"],
+    ["BooksView.jsx", "Bluebonnet Linen Service"],
+    ["DocsView.jsx", "invoice-jan.pdf"],
+    ["AuditView.jsx", "Hill Country Milling"],
+    ["ContractsView.jsx", "Franklin Ave Properties"],
+    ["RulesView.jsx", "Hill Country Milling"],
+    ["RecurringView.jsx", "Bluebonnet Linen Service"],
+  ];
+  for (const [f, needle] of REACHES) {
+    it(`★ ${f} actually renders its rows (not an empty or wrong branch)`, async () => {
+      const mod = await import(path.join(viewsDir, f));
+      const html = renderViewHtml(mod.default, { ...POPULATED, navSeat: SEATS.reviewer, ...(VIEW_CONTEXT[f] || {}) });
+      expect(html).toContain(needle);
+    });
+  }
+
+  it("★★★ C317 reaches the SCREEN — one row for one supplier, carrying the whole total", () => {
+    // ★★ "IT PAINTED" IS NOT "IT SHOWED THE RIGHT NUMBER". The sweep above is satisfied by a
+    // screen that drew a row with the wrong figure in it, so this asserts the figure. The
+    // fixture's two Hill Country spellings sum to $1,736.90, which exists only if the rows
+    // were grouped by key rather than by display name.
+    return import(path.join(viewsDir, "VendorsView.jsx")).then((mod) => {
+      const html = renderViewHtml(mod.default, { ...POPULATED, navSeat: SEATS.reviewer });
+      expect(html).toContain("1,736.90");                 // 824.60 + 912.30, grouped
+      expect(html).not.toContain("824.60");               // …not one half of it
+      // …and ONE row for that supplier, not a contact row plus a ledger-only row (the C317
+      // symptom, which is invisible to a totals check because each row's own sum is right).
+      expect(html.split("Hill Country Milling").length - 1).toBe(1);
+    });
+  });
+
+  // ★ WHAT THIS PAIR OF ASSERTIONS DOES NOT COVER, SAID PLAINLY: mutating the CONTACT↔LEDGER
+  // join (`ledger: undefined`) survives them, because `v.ledger` turns out to feed exactly
+  // one thing — a `lastDate` fallback. The figures on that screen come from `txnsForVendor`,
+  // which is C317's other half and is what these kill. Recorded rather than papered over: an
+  // assertion aimed at the wrong half is the ·3a shape, and I wrote one before checking.
+
+  it("★ the two seats are genuinely different, or this loop is one sweep run twice", () => {
+    expect(SEATS.reviewer.isReviewerSeat).not.toBe(SEATS.client.isReviewerSeat);
+    expect(SEATS.reviewer.viewIds.length).toBeGreaterThan(SEATS.client.viewIds.length);
+  });
 });
 
 describe("★ the harness itself cannot pass vacuously", () => {

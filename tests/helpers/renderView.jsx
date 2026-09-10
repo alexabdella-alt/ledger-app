@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React from "react";
 import { renderToString } from "react-dom/server";
+import fs from "node:fs";
 import { ERPContext } from "../../src/components/ERPContext";
 
 // ★ THE LOOKAHEAD IS LOAD-BEARING. Without `(?=[A-Z])` this matched `filteredInvoices`
@@ -25,21 +26,55 @@ import { ERPContext } from "../../src/components/ERPContext";
 // A camelCase verb prefix is only a verb when a capital follows it.
 const VERB = /^(set|on|handle|run|load|persist|book|mark|dismiss|open|close|show|add|delete|soft|reset|apply|approve|reject|create|save|toggle|go|enter|exit|resolve|reconcile|sign|reopen|offer|log|classify|process|check|accept|confirm|cancel|clear|update|remove|attach|export|import|navigate|fetch|refresh|send|post|void|restore|bump|seed|preview|complete|start|stop|pick|choose|select|search|sort|format|render|draft|ask|answer|submit|upload|download|print|copy|edit|view|switch|use|get|is|can|has|should|make|build|compute|derive|find|sum|count|guard|route|plan|drain|reevaluate)(?=[A-Z])/;
 
-// Callables whose names carry no verb prefix at all — a view CALLS these, so returning an
-// array would fail with "not a function". Listed explicitly because there is no rule that
-// distinguishes them from data by name.
+// ★★★ WHICH CONTEXT VALUES ARE FUNCTIONS IS READ OUT OF `App.jsx`, NOT GUESSED FROM THE
+// NAME (C319). The VERB regex catches `setX`/`handleX`/`markX`; a hand-written list covered
+// the rest — and a hand-written list of ~390 keys is wrong the moment somebody adds one.
+//
+// ★★ ITS INCOMPLETENESS WAS INVISIBLE UNTIL SCREENS RENDERED WITH ROWS IN THEM. With every
+// collection empty, the branches that CALL these were never reached, so `payrollCodes()` and
+// `acknowledgementFor(label)` never ran and the missing entries looked like nothing. The
+// populated sweep found both immediately — the C195(7) shape, in the test harness itself.
+//
+// ★ AND `[]` IS TRUTHY, WHICH IS HOW IT DEFEATED A GUARD: TrustPanel writes
+// `acknowledgementFor ? acknowledgementFor(label) : ""` — correct code, and an empty array
+// sails past the check and then fails to be callable. A default that is falsy would trade
+// this for a different lie (a view would render its "no data" branch); getting the TYPE
+// right is the only answer that is not a trade.
+const APP_SRC = fs.readFileSync(new URL("../../src/App.jsx", import.meta.url), "utf8");
+const DECLARED_FUNCTIONS = new Set([
+  ...[...APP_SRC.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/g)].map((m) => m[1]),
+  ...[...APP_SRC.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?[A-Za-z_$][\w$]*\s*=>/g)].map((m) => m[1]),
+  ...[...APP_SRC.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g)].map((m) => m[1]),
+]);
+
+// Kept for names a view CALLS that are not declared as functions in App.jsx — helpers passed
+// down, or renamed on the way through a prop. A shrinking list, not a growing one.
 const CALLABLES = new Set([
   "flagsForReview", "signOffReadinessFor", "glCashOnHand", "glAccountBalance",
   "accountHasTransactions", "removalPlanFor", "vendorSummary", "glBreakdown",
   "rc", "rn", "esc", "fmt",
+  // ★ IMPORTED HELPERS ARE THE DERIVATION'S KNOWN GAP: `DECLARED_FUNCTIONS` reads
+  // declarations in App.jsx, and a helper imported from `src/lib` and put straight into
+  // erpCtx has no declaration there to find. Listing an import's name as a CONSTANT would
+  // be wrong in the other direction, so these stay hand-listed — and the populated sweep is
+  // what surfaces a missing one, loudly, rather than a name-shape guess.
+  "selfAttestAcknowledgement",
+  // …and the name a child sees when the same value is passed down under a prop alias.
+  "acknowledgementFor",
 ]);
+const isCallable = (key) => VERB.test(key) || CALLABLES.has(key) || DECLARED_FUNCTIONS.has(key);
 
 // Values a view is likely to dereference further (`currentCompany.id`), or to compare.
 const OVERRIDES = {
   currentCompany: { id: "co_test", name: "Test Co", cutoff_date: "2026-01-01" },
   companySettings: { name: "Test Co" },
   session: { user: { id: "u_test", email: "test@example.com" } },
-  view: "dashboard", persistedView: "dashboard", navSeat: "cockpit",
+  view: "dashboard", persistedView: "dashboard",
+  // ★ `navSeat` WAS THE STRING "cockpit" — a fixture left over from when the seat WAS a
+  // string. Since C312 it is an object, so `navSeat.isReviewerSeat` read `undefined` and
+  // every screen in this sweep rendered its CLIENT branch while the fixture claimed the
+  // cockpit. Harmless here and exactly the shape of a fixture that quietly stops matching.
+  navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: [] },
   userRole: "admin", isOwner: true, isAdmin: true, isReviewer: true, isMember: false, isViewer: false,
   supportMode: false, companyDataLoaded: true, notification: null,
   inputStyle: {}, labelStyle: {},
@@ -94,20 +129,20 @@ export function emptyERPContext(extra = {}) {
     get(target, key) {
       if (key in target) return target[key];
       if (typeof key !== "string") return undefined;
-      if (VERB.test(key) || CALLABLES.has(key)) return noop;   // handler-shaped: callable and inert
+      if (isCallable(key)) return noop;                       // callable and inert
       return [];                             // everything else: an empty collection
     },
   });
 }
 
+// Renders one view inside the context and returns the HTML. Throws are the caller's.
+export function renderViewHtml(Component, extra = {}) {
+  return renderToString(
+    React.createElement(ERPContext.Provider, { value: emptyERPContext(extra) },
+      React.createElement(Component, null)));
+}
+
 // Renders one view inside the context. Returns the thrown Error, or null on success.
 export function renderViewError(Component, extra = {}) {
-  try {
-    renderToString(
-      React.createElement(ERPContext.Provider, { value: emptyERPContext(extra) },
-        React.createElement(Component, null)));
-    return null;
-  } catch (e) {
-    return e;
-  }
+  try { renderViewHtml(Component, extra); return null; } catch (e) { return e; }
 }

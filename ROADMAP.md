@@ -178,6 +178,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 > **⚠ THIS LIST IS BEHIND.** Everything between 2026-08-29 and 2026-09-06 (C205–C310 — the honesty sweep, the unchecked-write class, the drain, O117/O127, the Red River fixes) shipped and was never added here. **A printout cannot be wrong, only old** (§6), and this one is: read the per-item statuses in the tables below, not this list, until it is rebuilt.
 
+- ✅ **Screens are now rendered with data in them, in both seats** (2026-09-10, C319) — the sweep had never drawn a single row, and its first version still didn't: an absent key answered `[]`, which is truthy, so every Vendors render took the detail pane
 - ✅ **The bulk-removal button was in a branch where nothing can be selected** (2026-09-10, C318) — C227 built it and shipped it into the contracts filter; the checkboxes are in the transactions table
 - ✅ **One supplier was rendering as two rows on the Vendors tab** (2026-09-10, C317) — the contact↔ledger join used the display name, which by design is whichever spelling arrived last
 - ✅ **The 1099 plan could not find most vendors' payments — a silently missing filing** (2026-09-10, C316) — two normalisations that never met; and the badge beside it was a button that wrote a field nobody reads
