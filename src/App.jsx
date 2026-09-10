@@ -51,7 +51,7 @@ import { duplicateIsExpectedRhythm, deferDuplicateAsk } from "./lib/recurringVen
 import { normalizeName as normVendorName } from "./lib/docDirection";
 import { buildVendorSummary } from "./lib/vendorSummary";
 import { onboardingSteps } from "./lib/onboarding";
-import { visibleNav, isReviewerSeat, navRedirect, BOOKS_GROUP, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
+import { visibleNav, isReviewerSeat, navRedirect, activeNavItem, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
 import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
@@ -380,10 +380,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
   const [previewAsOwner, setPreviewAsOwner] = useState(false);
   const canPreviewAsOwner = isReviewerSeat({ role: userRole, isPlatformAdmin });
-  const navSeat = useMemo(
-    () => visibleNav({ role: userRole, isPlatformAdmin, previewAsOwner }),
-    [userRole, isPlatformAdmin, previewAsOwner]
-  );
 
   const [invoices, setInvoices] = useState([]);
   const invoicesRef = useRef([]); // always-current invoices for async lookups (e.g. doc relinking)
@@ -395,6 +391,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // View is lifted to AppWrapper so it survives remounts — never resets on refresh or tab switch
   const [view, setViewRaw] = useState(persistedView || "dashboard");
   const setView = (v) => { setViewRaw(v); onViewChange?.(v); };
+
+  // C312 — the SIDEBAR description. `inSettings` is derived from the current view so
+  // the setup rows are present exactly while you are standing in them (you arrive via
+  // the header gear, not the sidebar) and never sit over the nav the rest of the time.
+  const navSeat = useMemo(
+    () => visibleNav({ role: userRole, isPlatformAdmin, previewAsOwner, inSettings: SETTINGS_VIEW_IDS.includes(view) }),
+    [userRole, isPlatformAdmin, previewAsOwner, view]
+  );
 
   // Sync if persistedView changes (e.g. company switch)
   useEffect(() => {
@@ -8276,6 +8280,20 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                   {previewAsOwner ? PREVIEW_AS_OWNER_EXIT_LABEL : PREVIEW_AS_OWNER_ENTER_LABEL}
                 </button>
               )}
+              {/* Notifications — moved into the header with the sidebar (C312); it lived
+                  in the tab row, which no longer exists. */}
+              <button onClick={()=>setNotifOpen(o=>!o)} title="Notifications" aria-label="Notifications"
+                style={{ position:"relative", width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background: notifOpen?"var(--sc-gold-soft)":"transparent", border:"none", borderRadius:10, cursor:"pointer", color: notifOpen?"var(--sc-gold)":"var(--sc-text-mut)", transition:"all .15s" }}
+                onMouseEnter={e=>{ if(!notifOpen){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
+                onMouseLeave={e=>{ if(!notifOpen){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--sc-text-mut)"; }}}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink:0 }}>
+                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                  <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                </svg>
+                {unreadNotifs>0 && (
+                  <span style={{ position:"absolute", top:2, right:2, width:16, height:16, borderRadius:"50%", background:"var(--sc-error)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, border:"2px solid var(--sc-surface)" }}>{unreadNotifs>9?"9":unreadNotifs}</span>
+                )}
+              </button>
               <button onClick={()=>setView("settings")} title="Settings" aria-label="Settings"
                 style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px", borderRadius:9, background: SETTINGS_VIEWS.includes(view)?"var(--sc-gold-soft)":"transparent", border:`1px solid ${SETTINGS_VIEWS.includes(view)?"var(--sc-gold-line)":"var(--sc-border)"}`, color: SETTINGS_VIEWS.includes(view)?"var(--sc-gold)":"var(--sc-text-mut)", cursor:"pointer", transition:"all .15s" }}
                 onMouseEnter={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
@@ -8290,102 +8308,79 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
-          {/* Nav — C197: the tabs ARE the seat. Reviewer = the full cockpit;
-              client (and any reviewer previewing as owner) = Home + Reports. */}
-          {(() => {
-            const tabs = navSeat.tabs;
-            return (
-              <div style={{ display:"flex", width:"100%", borderBottom:"1px solid var(--sc-border)", padding:"0 20px", gap:4 }}>
-                {tabs.map(tab => {
-                  const isActive = tab.group.includes(view);
-                  const accent = tab.admin ? "var(--sc-warning)" : "var(--sc-gold)";
-                  return (
-                    <button key={tab.id}
-                      className={tab.admin ? undefined : (isActive?"sc-navtab active":"sc-navtab")}
-                      onClick={()=>{ if(tab.id==="books") setBooksFilter("all"); setView(tab.id); setVendorFilter("all"); }}
-                      onMouseEnter={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="var(--sc-warning-soft)"; }) : undefined}
-                      onMouseLeave={tab.admin ? (e=>{ if(!isActive) e.currentTarget.style.background="transparent"; }) : undefined}
-                      style={{ height:46, padding:"0 18px", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-                        background: tab.admin ? (isActive?"var(--sc-warning-soft)":"transparent") : "transparent",
-                        border: tab.admin ? "1px solid var(--sc-warning-soft)" : "none", borderBottomWidth: 2,
-                        borderBottom: isActive?`2px solid ${accent}`:"2px solid transparent",
-                        borderRadius: tab.admin ? "8px 8px 0 0" : 0,
-                        color: isActive?(tab.admin?"var(--sc-warning)":"var(--sc-text)"):"var(--sc-text-mut)", fontSize:14, fontWeight: isActive?600:500,
-                        fontFamily:"var(--sc-font-ui)", cursor:"pointer", transition:"all 0.12s" }}>
-                      {tab.label}
-                      {tab.id==="home" && clarificationQueue.filter(c=>!c.resolved).length>0 && (
-                        <span style={{ background:"var(--sc-warning)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{clarificationQueue.filter(c=>!c.resolved).length}</span>
-                      )}
-                      {tab.admin && adminFailedCount>0 && (
-                        <span title={`${adminFailedCount} failed upload${adminFailedCount!==1?"s":""} in 24h`} style={{ width:8, height:8, borderRadius:"50%", background:"var(--sc-error)", display:"inline-block", flexShrink:0 }} />
-                      )}
-                    </button>
-                  );
-                })}
-                {/* Notification bell (Item 55) — clean lucide-style icon, matched to
-                    the Settings gear (muted var(--sc-text-mut) → var(--sc-gold) on hover). */}
-                <button onClick={()=>setNotifOpen(o=>!o)} title="Notifications" aria-label="Notifications"
-                  style={{ marginLeft:"auto", alignSelf:"center", position:"relative", width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background: notifOpen?"var(--sc-gold-soft)":"transparent", border:"none", borderRadius:10, cursor:"pointer", color: notifOpen?"var(--sc-gold)":"var(--sc-text-mut)", transition:"all .15s" }}
-                  onMouseEnter={e=>{ if(!notifOpen){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
-                  onMouseLeave={e=>{ if(!notifOpen){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--sc-text-mut)"; }}}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink:0 }}>
-                    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-                  </svg>
-                  {unreadNotifs>0 && (
-                    <span style={{ position:"absolute", top:2, right:2, width:16, height:16, borderRadius:"50%", background:"var(--sc-error)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, border:"2px solid var(--sc-surface)" }}>{unreadNotifs>9?"9":unreadNotifs}</span>
-                  )}
-                </button>
-              </div>
-            );
-          })()}
-
-          {/* Sub-nav for Books / Reports / Settings */}
-          {(() => {
-            const SETTINGS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
-            let subs = null;
-            // C197: the workbench sub-tabs come from the SEAT. A client seat gets an
-            // empty list, so the row doesn't render at all — the surfaces don't merely
-            // refuse to open, they have no client-facing existence.
-            if (BOOKS_GROUP.includes(view)) subs = navSeat.booksSubtabs.length ? navSeat.booksSubtabs : null;
-            // Reports has its own in-screen sub-nav — no chrome sub-nav row here.
-            else if (SETTINGS.includes(view)) {
-              subs = [["settings","Company"],["coa","Chart of Accounts"],["opening-balances","Bank & Balances"],["rules","Rules"],["recurring","Recurring"],["tax","Taxes"],["tax1099","1099s"],["audit","Audit Trail"],["onboard","Import from QuickBooks"]];
-              if (isOwner) subs.splice(1, 0, ["team","Team"]);            // owner-only Team tab
-              if (isMember) subs = subs.filter(([id]) => ["tax","tax1099","audit"].includes(id)); // members: read-only settings only
-            }
-            if (!subs) return null;
-            // Payables badge = the SAME source the Payables tab lists (openPayables → live
-            // bills booked to A/P that are still unpaid). The old inline filter counted EVERY
-            // non-paid expense incl. direct cash expenses that were never payables → phantom
-            // count (e.g. "4" when the tab shows none). Now badge === tab, and 0 when clear.
-            const apUnpaid = openPayables(invoices).length;
-            const activeSub = (id) => {
-              if (id.startsWith("reports:")) return view==="reports" && (reportType||"pl")===id.split(":")[1];
-              if (id==="books:contracts") return view==="books" && booksFilter==="contracts";
-              if (id==="books") return (view==="books"||view==="detail") && booksFilter!=="contracts";
-              return view===id;
-            };
-            const go = (id) => {
-              if (id.startsWith("reports:")) { setReportType(id.split(":")[1]); setView("reports"); }
-              else if (id==="books:contracts") { setBooksFilter("contracts"); setView("books"); }
-              else if (id==="books") { if (booksFilter==="contracts") setBooksFilter("all"); setView("books"); }
-              else setView(id);
-            };
-            return (
-              <div style={{ display:"flex", background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", padding:"0 16px", gap:4, overflowX:"auto" }}>
-                {subs.map(([id,label])=>(
-                  <button key={id} onClick={()=>go(id)}
-                    className={activeSub(id)?"sc-subtab active":"sc-subtab"}
-                    style={{ padding:"8px 14px", background:"none", border:"none", borderBottom:activeSub(id)?"2px solid var(--sc-gold)":"2px solid transparent", color:activeSub(id)?"var(--sc-gold)":"var(--sc-text-mut)", fontSize:12, cursor:"pointer", whiteSpace:"nowrap", transition:"color 0.12s", display:"inline-flex", alignItems:"center", gap:6 }}>
-                    {label}
-                    {id==="ap" && apUnpaid>0 && <span style={{ fontSize:10, fontWeight:700, color:"var(--sc-warning)", background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:20, padding:"1px 7px", lineHeight:1.4 }}>{apUnpaid}</span>}
-                  </button>
-                ))}
-              </div>
-            );
-          })()}
         </div>
+
+        {/* ══ BODY — SIDEBAR + CONTENT (C312) ══════════════════════════════════
+            The nav used to be two horizontal rows: four tabs, and — only once you
+            had clicked "Books" — ten sub-tabs in a strip that scrolled sideways.
+            That shape is why the Matching Engine could not be found: it had no row
+            at all, and there was nowhere left to put one.
+
+            A column has room, so the hierarchy is gone: every destination this seat
+            may open is on screen at once, under a heading that says what it is for.
+            The rows themselves come from `navSeat.sections` — the same pure module
+            the route guard reads, so what is on screen and what may be opened can
+            never disagree. */}
+        <div style={{ display:"flex", flex:1, minHeight:0 }}>
+          {(() => {
+            // Payables badge = the SAME source the Payables screen lists (openPayables →
+            // live bills booked to A/P still unpaid). An older inline filter counted every
+            // non-paid expense including direct cash spend that was never a payable, so the
+            // badge showed a number the screen could not account for.
+            const apUnpaid = openPayables(invoices).length;
+            const openCards = clarificationQueue.filter(c => !c.resolved).length;
+            const badgeFor = (id) => (id === "home" && openCards > 0 ? openCards : id === "ap" && apUnpaid > 0 ? apUnpaid : null);
+            const active = activeNavItem(view, { booksFilter });
+            // ★ ONE RULE, WHERE THERE USED TO BE TWO. The old TAB handler reset the vendor
+            // filter on every click and forced `booksFilter` back to "all"; the old SUB-NAV
+            // handler cleared `booksFilter` only when it happened to be "contracts". So the
+            // SAME destination behaved differently depending on which row you took to get
+            // there — a row labelled Transactions could land you on a filtered list. The
+            // tab's rule wins because it is the predictable one: the row says Transactions,
+            // you get transactions.
+            const go = (id) => {
+              setVendorFilter("all");
+              if (id === "books:contracts") { setBooksFilter("contracts"); setView("books"); return; }
+              if (id === "books") { setBooksFilter("all"); setView("books"); return; }
+              setView(id);
+            };
+            return (
+              <nav aria-label="Main" style={{ width:212, flexShrink:0, background:"var(--sc-surface)", borderRight:"1px solid var(--sc-border)", overflowY:"auto", padding:"14px 0 24px" }}>
+                {navSeat.sections.map((section, si) => (
+                  <div key={section.id} style={{ marginTop: si ? 18 : 0 }}>
+                    {section.label && (
+                      <div style={{ padding:"0 20px 6px", fontSize:10, fontWeight:700, letterSpacing:1.1, textTransform:"uppercase", color:"var(--sc-text-ph)" }}>{section.label}</div>
+                    )}
+                    {section.items.map(([id, label]) => {
+                      const isActive = active === id;
+                      const admin = id === "admin";
+                      const accent = admin ? "var(--sc-warning)" : "var(--sc-gold)";
+                      const badge = badgeFor(id);
+                      return (
+                        <button key={id} onClick={()=>go(id)}
+                          className={isActive ? "sc-navtab active" : "sc-navtab"}
+                          onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.background = admin ? "var(--sc-warning-soft)" : "var(--sc-surface-2)"; }}
+                          onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.background = "transparent"; }}
+                          style={{ display:"flex", alignItems:"center", gap:8, width:"100%", textAlign:"left", padding:"7px 20px", minHeight:32,
+                            background: isActive ? (admin ? "var(--sc-warning-soft)" : "var(--sc-gold-soft)") : "transparent",
+                            border:"none", borderLeft:`3px solid ${isActive ? accent : "transparent"}`, paddingLeft:17,
+                            color: isActive ? (admin ? "var(--sc-warning)" : "var(--sc-gold)") : "var(--sc-text-mut)",
+                            fontSize:13, fontWeight: isActive ? 600 : 500, fontFamily:"var(--sc-font-ui)", cursor:"pointer", transition:"all .12s" }}>
+                          <span style={{ flex:1, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>
+                          {badge != null && (
+                            <span style={{ flexShrink:0, background:"var(--sc-warning)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{badge}</span>
+                          )}
+                          {admin && adminFailedCount>0 && (
+                            <span title={`${adminFailedCount} failed upload${adminFailedCount!==1?"s":""} in 24h`} style={{ width:8, height:8, borderRadius:"50%", background:"var(--sc-error)", flexShrink:0 }} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </nav>
+            );
+          })()}
 
         {/* Main Content */}
         <div ref={mainContentRef} id="main-content" style={{ flex:1, overflowY:"auto" }}>
@@ -8492,6 +8487,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           {view==="onboard" && <QBOImportView />}
           </div>
         </div>
+        </div>{/* /body row (C312) */}
       </div>
 
       {/* ── NOTIFICATION CENTER (Item 55) ──────────────────────────────────── */}

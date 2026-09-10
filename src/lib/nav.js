@@ -1,5 +1,6 @@
 // ════════════════════════════════════════════════════════════════════════════
-// C197 — IA COLLAPSE (★ NORTH STAR Phase 2). WHO SEES WHICH WALLS.
+// C197 / C312 — IA COLLAPSE (★ NORTH STAR Phase 2). WHO SEES WHICH WALLS,
+// AND — since C312 — HOW THE ONES THEY DO SEE ARE ARRANGED.
 //
 // Shadow's client persona has no bookkeeper role, so the workbench surfaces
 // (Bank Import, Reconcile, Matching, Payables, Payroll, Vendors, Documents…)
@@ -29,13 +30,75 @@ export const BOOKS_GROUP = [
   "detail", "contracts",
 ];
 
-// The Books sub-nav, in render order. Reviewer-only by construction: the client
-// seat gets an empty list, so these rows have no client-facing existence.
-export const BOOKS_SUBTABS = [
-  ["books", "Transactions"], ["books:contracts", "Contracts"], ["ap", "Payables"],
-  ["vendors", "Vendors"], ["customers", "Customers"], ["send-invoice", "Send Invoice"],
-  ["bank", "Bank Import"], ["recon", "Reconcile"], ["payroll", "Payroll"], ["docs", "Documents"],
+// ── THE COCKPIT SIDEBAR (C312) ───────────────────────────────────────────────
+//
+// ★★★ THE TEN BOOKS SUB-TABS WERE NOT TOO MANY DESTINATIONS. THEY WERE TEN
+// DESTINATIONS YOU COULD ONLY SEE AFTER CLICKING A TAB THAT DID NOT NAME THEM,
+// IN A ROW THAT SCROLLED SIDEWAYS. §11 records the cost twice on one drive: the
+// operator — who wrote the fixture — repeatedly could not find the Matching
+// Engine, and stalled on Bank Import. **Matching had no row at all**: it was
+// reachable only from a post-booking redirect and one conditional link on Home,
+// so on a day it had nothing to say there was no door to it.
+//
+// A horizontal strip is the wrong shape for a workbench: it has no room for
+// grouping, so hierarchy has to be spent on hiding things. A column has room, so
+// EVERY destination is on screen at once, under a heading that says what it is
+// for. Nothing was removed to achieve that — this moves walls, not machinery.
+//
+// ★★ THE GROUPS ARE THE DOMAIN'S OWN DIVISIONS, NOT A TIDYING. Money in and
+// money out are the two halves a bookkeeper actually thinks in, and putting them
+// side by side is what makes it obvious that Receivables had no row while
+// Payables did — an asymmetry that survived because nothing ever displayed the
+// pair together. (`ArView` is a real 315-line aging screen with AI narration and
+// it was unreachable; so was `MatchingView`. Both are listed here now.)
+//
+// Rows are [viewId, label]. `books:contracts` is a FILTER on the Transactions
+// view rather than a view of its own — kept in this list because the chrome's
+// go/active handlers already speak that dialect and a second convention would be
+// a second thing to keep in step.
+export const NAV_SECTIONS_REVIEWER = [
+  { id: "top", label: null, items: [
+    ["home", "Home"], ["review", "Review"], ["reports", "Reports"],
+  ] },
+  { id: "ledger", label: "Ledger", items: [
+    ["books", "Transactions"], ["books:contracts", "Contracts"],
+  ] },
+  { id: "money-in", label: "Money in", items: [
+    ["ar", "Receivables"], ["customers", "Customers"], ["send-invoice", "Send Invoice"],
+  ] },
+  { id: "money-out", label: "Money out", items: [
+    ["ap", "Payables"], ["vendors", "Vendors"],
+  ] },
+  { id: "bank", label: "Bank", items: [
+    ["bank", "Bank Import"], ["recon", "Reconcile"], ["matching", "Matching"],
+  ] },
+  { id: "records", label: "Records", items: [
+    ["payroll", "Payroll"], ["docs", "Documents"],
+  ] },
 ];
+
+// The client's sidebar. Two rows, no headings — a heading over a list of two is
+// furniture. The seat boundary is unchanged from C197: everything workbench-
+// shaped is absent, not merely disabled.
+export const NAV_SECTIONS_CLIENT = [
+  { id: "top", label: null, items: [["home", "Home"], ["reports", "Reports"]] },
+];
+
+// The Settings section. It is entered through the header gear rather than the
+// sidebar, and appended to the sidebar only while you are inside it — so you can
+// see where you are and leave by any route, without nine rows of setup sitting
+// over the nav every other minute.
+export const NAV_SECTION_SETTINGS = { id: "settings", label: "Settings", items: [
+  ["settings", "Company"], ["team", "Team"], ["coa", "Chart of Accounts"],
+  ["opening-balances", "Bank & Balances"], ["rules", "Rules"], ["recurring", "Recurring"],
+  ["tax", "Taxes"], ["tax1099", "1099s"], ["audit", "Audit Trail"],
+  ["onboard", "Import from QuickBooks"],
+] };
+
+// Flatten a section list to its view ids — for the guard, and so a test can ask
+// "what is on screen" without walking the shape.
+export const sectionViewIds = (sections) =>
+  sections.flatMap((s) => s.items.map(([id]) => id.split(":")[0]));
 
 // Settings lives behind the header gear, not the nav bar, and is NOT part of the
 // IA collapse — a client still owns their company profile, team, taxes and audit
@@ -59,17 +122,6 @@ export const ALL_VIEW_IDS = [
   ]),
 ];
 
-const CLIENT_TABS = [
-  { id: "home",    label: "Home",    group: ["home", "dashboard"] },
-  { id: "reports", label: "Reports", group: ["reports"] },
-];
-
-const REVIEWER_TABS = [
-  { id: "home",    label: "Home",    group: ["home", "dashboard", "add"] },
-  { id: "books",   label: "Books",   group: BOOKS_GROUP },
-  { id: "reports", label: "Reports", group: ["reports"] },
-  { id: "review",  label: "Review",  group: ["review"] },   // O50 — the CPA's trust-layer cockpit
-];
 
 // Is this session sitting in the REVIEWER seat (the cockpit) or the CLIENT seat?
 // - reviewer roles (admin / accountant) → cockpit, exactly as `canAttestPeriod`.
@@ -84,21 +136,44 @@ export function isReviewerSeat({ role = "owner", isPlatformAdmin = false, previe
 
 // THE nav description for a seat. Pure — the chrome renders straight from it.
 //   seat          "reviewer" | "client"
-//   tabs          the top-level tabs, in order (admin tab appended for platform admins)
-//   booksSubtabs  the Books sub-nav rows ([] for a client — the row must not render)
+//   sections      the sidebar, in render order: [{ id, label|null, items:[[viewId,label]] }]
 //   viewIds       every view id this seat may open
-export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsOwner = false } = {}) {
+//
+// `inSettings` appends the Settings section (see NAV_SECTION_SETTINGS) — passed by
+// the chrome from the CURRENT view, so setup rows are present exactly while you are
+// standing in them. Settings itself is NOT part of the seat boundary: a client owns
+// their own company profile, taxes and audit trail, and always has.
+export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsOwner = false, inSettings = false } = {}) {
   const reviewer = isReviewerSeat({ role, isPlatformAdmin, previewAsOwner });
-  const tabs = reviewer
-    ? [...REVIEWER_TABS, ...(isPlatformAdmin ? [{ id: "admin", label: "⚙ Admin", group: ["admin"], admin: true }] : [])]
-    : CLIENT_TABS;
+  const sections = [...(reviewer ? NAV_SECTIONS_REVIEWER : NAV_SECTIONS_CLIENT)];
+  // The Admin panel is its own unlabelled section at the foot — a platform-admin
+  // tool, deliberately not filed under any of the bookkeeping headings.
+  if (reviewer && isPlatformAdmin) sections.push({ id: "admin", label: null, items: [["admin", "⚙ Admin"]] });
+  if (inSettings) {
+    const items = NAV_SECTION_SETTINGS.items.filter(([id]) => {
+      if (id === "team") return role === "owner";                                   // owner-only, as before
+      return true;
+    });
+    sections.push({ ...NAV_SECTION_SETTINGS, items });
+  }
   return {
     seat: reviewer ? "reviewer" : "client",
     isReviewerSeat: reviewer,
-    tabs,
-    booksSubtabs: reviewer ? BOOKS_SUBTABS : [],
+    sections,
     viewIds: reviewer ? ALL_VIEW_IDS : CLIENT_VIEW_IDS,
   };
+}
+
+// Which section a view belongs to, for the sidebar's active row. `books:contracts`
+// is a filter, so the caller supplies `booksFilter` to tell the two apart; anything
+// unknown returns null and simply highlights nothing (never an error).
+export function activeNavItem(view, { booksFilter = "all" } = {}) {
+  const v = String(view || "");
+  if (v === "dashboard") return "home";
+  if (v === "detail") return "books";                       // the drill target belongs to Transactions
+  if (v === "books") return booksFilter === "contracts" ? "books:contracts" : "books";
+  if (v === "contracts") return "books:contracts";
+  return v;
 }
 
 // May this seat open this view? Unknown ids are treated as gated (fail closed).

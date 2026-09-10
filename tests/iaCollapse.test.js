@@ -2,18 +2,29 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import {
   visibleNav, isReviewerSeat, canSeeView, navRedirect,
-  ALL_VIEW_IDS, CLIENT_VIEW_IDS, BOOKS_GROUP, BOOKS_SUBTABS, SETTINGS_VIEW_IDS,
+  ALL_VIEW_IDS, CLIENT_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS,
+  NAV_SECTIONS_REVIEWER, NAV_SECTIONS_CLIENT, NAV_SECTION_SETTINGS, sectionViewIds, activeNavItem,
   GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL,
 } from "../src/lib/nav.js";
 import { canAttestPeriod } from "../src/lib/signoff.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
 
 // ════════════════════════════════════════════════════════════════════════════
-// C197 — IA COLLAPSE (★ NORTH STAR Phase 2). The client sees Home and Reports.
-// Everything workbench-shaped is the CPA's cockpit. These tests pin the WALL:
-// who sees which tabs, what happens to a stale link, and that the demo toggle
+// C197 / C312 — IA COLLAPSE (★ NORTH STAR Phase 2). The client sees Home and
+// Reports. Everything workbench-shaped is the CPA's cockpit. These tests pin the
+// WALL: who sees what, what happens to a stale link, and that the demo toggle
 // renders the client seat without touching the role.
+//
+// ★ C312 MOVED THE NAV FROM TABS TO A GROUPED SIDEBAR, AND SEVEN OF THESE WENT
+// RED — correctly, because their SUBJECT moved. They are repointed at the
+// PROPERTY each one protects (what a seat can reach, and that the chrome reads
+// the one helper), never at the shape that happened to carry it. A test quietly
+// dropped along with the mechanism it named is how a guarantee is lost while the
+// suite stays green.
 // ════════════════════════════════════════════════════════════════════════════
+
+// What a seat can actually click, flattened out of the sidebar sections.
+const navItems = (nav) => nav.sections.flatMap(s => s.items.map(([id]) => id));
 
 const CLIENT_ROLES = ["owner", "viewer", "member"];      // every non-reviewer role the DB allows (+ the app's dead "member")
 const REVIEWER_ROLES = ["admin", "accountant"];          // exactly is_company_reviewer (migration 051)
@@ -37,14 +48,55 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
   const reviewer = { role: "accountant" };
 
   it("the client seat's nav is Home and Reports, in that order — nothing else", () => {
-    expect(visibleNav(client).tabs.map(t => t.id)).toEqual(["home", "reports"]);
+    expect(navItems(visibleNav(client))).toEqual(["home", "reports"]);
     expect(visibleNav(client).seat).toBe("client");
+    // …and no headings: a heading over a list of two is furniture.
+    expect(visibleNav(client).sections.map(s => s.label)).toEqual([null]);
   });
 
-  it("the reviewer seat keeps the whole cockpit", () => {
-    expect(visibleNav(reviewer).tabs.map(t => t.id)).toEqual(["home", "books", "reports", "review"]);
-    expect(visibleNav({ ...reviewer, isPlatformAdmin: true }).tabs.map(t => t.id))
-      .toEqual(["home", "books", "reports", "review", "admin"]);
+  it("the reviewer seat keeps the whole cockpit — nothing was removed to group it", () => {
+    const items = navItems(visibleNav(reviewer));
+    // Every destination the flat ten-row sub-nav offered is still one click away…
+    for (const v of ["books", "books:contracts", "ap", "vendors", "customers", "send-invoice", "bank", "recon", "payroll", "docs"])
+      expect([v, items.includes(v)]).toEqual([v, true]);
+    // …plus the two that RENDERED A REAL SCREEN AND HAD NO ROW AT ALL. Matching was
+    // reachable only from a post-booking redirect (the O83 navigation failure) and
+    // Receivables not at all, while Payables had a row the whole time.
+    expect(items).toContain("matching");
+    expect(items).toContain("ar");
+    // …and the top-level tabs survive as the first, unlabelled section.
+    expect(visibleNav(reviewer).sections[0].items.map(([id]) => id)).toEqual(["home", "review", "reports"]);
+    expect(navItems(visibleNav({ ...reviewer, isPlatformAdmin: true }))).toContain("admin");
+    expect(navItems(visibleNav(reviewer))).not.toContain("admin");
+  });
+
+  it("★ every sidebar row is a view this seat may actually open (no row leads to a bounce)", () => {
+    // A nav row the guard then refuses is worse than no row: it teaches you that
+    // clicking is how you find out. Both seats, every row.
+    for (const opts of [client, reviewer, { ...reviewer, isPlatformAdmin: true }])
+      for (const v of sectionViewIds(visibleNav(opts).sections))
+        expect([opts.role, v, canSeeView(v, opts)]).toEqual([opts.role, v, true]);
+  });
+
+  it("★ the Settings rows appear only while you are standing in Settings", () => {
+    expect(navItems(visibleNav(reviewer))).not.toContain("coa");
+    const inSettings = visibleNav({ ...reviewer, inSettings: true });
+    expect(navItems(inSettings)).toContain("coa");
+    expect(inSettings.sections.at(-1).label).toBe("Settings");
+    // A client owns their own setup — Settings was never part of the seat boundary.
+    expect(navItems(visibleNav({ ...client, inSettings: true }))).toContain("tax");
+    // Team stays owner-only, exactly as the old sub-nav had it.
+    expect(navItems(visibleNav({ ...client, inSettings: true }))).toContain("team");
+    expect(navItems(visibleNav({ ...reviewer, inSettings: true }))).not.toContain("team");
+  });
+
+  it("★ activeNavItem highlights one row, and knows Contracts is a filter not a view", () => {
+    expect(activeNavItem("dashboard")).toBe("home");        // the legacy id is still Home
+    expect(activeNavItem("detail")).toBe("books");          // the drill belongs to Transactions
+    expect(activeNavItem("books", { booksFilter: "all" })).toBe("books");
+    expect(activeNavItem("books", { booksFilter: "contracts" })).toBe("books:contracts");
+    expect(activeNavItem("recon")).toBe("recon");
+    expect(activeNavItem("nonsense")).toBe("nonsense");     // highlights nothing; never throws
   });
 
   it("EVERY view id resolves the same way for both seats — the full table", () => {
@@ -62,11 +114,12 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
       expect([v, canSeeView(v, client)]).toEqual([v, false]);
       expect([v, canSeeView(v, reviewer)]).toEqual([v, true]);
     }
-    // …and the Books sub-nav itself has no client-facing existence (not "disabled" — absent).
-    expect(visibleNav(client).booksSubtabs).toEqual([]);
-    expect(visibleNav(reviewer).booksSubtabs).toEqual(BOOKS_SUBTABS);
-    expect(BOOKS_SUBTABS.map(([id]) => id)).toContain("bank");
-    expect(BOOKS_SUBTABS.map(([id]) => id)).toContain("recon");
+    // …and the workbench rows have no client-facing existence (not "disabled" — absent).
+    const clientRows = navItems(visibleNav(client));
+    for (const v of workbench) expect([v, clientRows.includes(v)]).toEqual([v, false]);
+    const reviewerRows = navItems(visibleNav(reviewer));
+    expect(reviewerRows).toContain("bank");
+    expect(reviewerRows).toContain("recon");
   });
 
   it("Home, Reports, the transaction drill and Settings stay open to a client", () => {
@@ -116,13 +169,12 @@ describe("(4) 'Preview as owner' renders the client seat without changing the ro
   it("a reviewer previewing gets the EXACT client nav", () => {
     const previewing = visibleNav({ ...reviewer, previewAsOwner: true });
     expect(previewing.seat).toBe("client");
-    expect(previewing.tabs).toEqual(visibleNav({ role: "owner" }).tabs);
-    expect(previewing.booksSubtabs).toEqual([]);
+    expect(previewing.sections).toEqual(visibleNav({ role: "owner" }).sections);
     expect(previewing.viewIds).toEqual(visibleNav({ role: "owner" }).viewIds);
   });
   it("a platform admin previewing loses the Admin tab too (it's a preview, not a costume)", () => {
     const previewing = visibleNav({ role: "accountant", isPlatformAdmin: true, previewAsOwner: true });
-    expect(previewing.tabs.map(t => t.id)).toEqual(["home", "reports"]);
+    expect(navItems(previewing)).toEqual(["home", "reports"]);
   });
   it("switching back restores the cockpit — the role never moved", () => {
     expect(visibleNav({ ...reviewer, previewAsOwner: true }).seat).toBe("client");
@@ -131,7 +183,7 @@ describe("(4) 'Preview as owner' renders the client seat without changing the ro
     expect(canAttestPeriod(reviewer.role)).toBe(true);
   });
   it("preview does NOT let a client seat see more (it can only ever subtract)", () => {
-    expect(visibleNav({ role: "owner", previewAsOwner: true }).tabs.map(t => t.id)).toEqual(["home", "reports"]);
+    expect(navItems(visibleNav({ role: "owner", previewAsOwner: true }))).toEqual(["home", "reports"]);
   });
   it("both toggle labels are plain language and say plainly that it's a preview", () => {
     expect(containsOwnerJargon(PREVIEW_AS_OWNER_ENTER_LABEL)).toBe(false);
@@ -148,11 +200,31 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
   const dash = fs.readFileSync(new URL("../src/components/views/DashboardView.jsx", import.meta.url), "utf8");
   const trust = fs.readFileSync(new URL("../src/components/views/TrustPanel.jsx", import.meta.url), "utf8");
 
-  it("App.jsx derives the seat and renders the tab row from visibleNav", () => {
+  it("App.jsx derives the seat and renders the SIDEBAR from visibleNav", () => {
     expect(app).toMatch(/from ["']\.\/lib\/nav["']/);
     expect(app).toMatch(/const navSeat = useMemo\(\s*\(\) => visibleNav\(/);
-    expect(app).toMatch(/const tabs = navSeat\.tabs;/);
-    expect(app).toMatch(/navSeat\.booksSubtabs/);
+    expect(app).toMatch(/navSeat\.sections\.map\(/);
+    // The old two-row chrome is gone, not merely unused — a second nav shape left in
+    // place is a second thing that can drift.
+    expect(app).not.toMatch(/navSeat\.tabs/);
+    expect(app).not.toMatch(/navSeat\.booksSubtabs/);
+  });
+
+  it("★ the sidebar's rows come from the helper, not from a second list in the chrome", () => {
+    // Every label a person reads must live in nav.js. A literal row assembled in JSX is
+    // exactly how the guard and the screen come to disagree about what exists.
+    //
+    // ★ SCOPED TO THE SIDEBAR BLOCK, NOT THE FILE. The first draft banned these strings
+    // anywhere in App.jsx and tripped on a misroute confirmation — "routed it to Bank
+    // Import" — which is a sentence about a destination, not a nav row. A guard that
+    // fails for a reason it does not mean is a guard nobody will trust.
+    const sidebar = app.slice(app.indexOf('<nav aria-label="Main"'), app.indexOf("</nav>"));
+    expect(sidebar.length).toBeGreaterThan(400);   // refuse to pass on a slice that found nothing
+    for (const label of ["Receivables", "Matching", "Bank Import", "Reconcile", "Payables"])
+      expect([label, sidebar.includes(`"${label}"`)]).toEqual([label, false]);
+    const nav = fs.readFileSync(new URL("../src/lib/nav.js", import.meta.url), "utf8");
+    for (const label of ["Receivables", "Matching", "Bank Import", "Reconcile", "Payables"])
+      expect([label, nav.includes(`"${label}"`)]).toEqual([label, true]);
   });
 
   it("the old hardcoded tab array is GONE (one source of truth, not two)", () => {
