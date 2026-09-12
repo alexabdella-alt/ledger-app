@@ -7,6 +7,8 @@ import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind } from "../lib/txnPresent";
 import { badge } from "../lib/ui";
 import { isDurableDocId } from "../lib/docLibrary";
+import { planRecodeSweep } from "../lib/recodeSweep";
+import { signedPeriodForDate } from "../lib/signedPeriod";
 import { classifyBankReason } from "../lib/bankMatch";
 import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import { reversalIndex, reversalFor } from "../lib/ledger";
@@ -104,11 +106,29 @@ function SourceDocPreview({ doc, onExpand }) {
 
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
-    invoices, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
+    invoices, signoffs, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
     setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer, attachDepreciationToExistingAsset, isOwner, isAdmin,
   } = useERP();
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
+  const [sweepOffer, setSweepOffer] = React.useState(null);   // O105 — the "also change the others?" offer
+  const [sweepBusy, setSweepBusy] = React.useState(false);
+  const runSweep = async () => {
+    if (!sweepOffer || !sweepOffer.eligible.length || sweepBusy) return;
+    setSweepBusy(true);
+    const { eligible, acct } = sweepOffer;
+    const ok = persistRecode ? await persistRecode(eligible.map(i => ({ ...i, gl_code: acct.code })), acct.code, acct.name) : false;
+    if (ok) {
+      const ids = new Set(eligible.map(i => String(i.id)));
+      setInvoices(prev => prev.map(i => ids.has(String(i.id)) ? { ...i, gl_code: acct.code, gl_name: acct.name } : i));
+      logAudit && logAudit("recode_sweep", `Recoded ${eligible.length} more ${eligible[0]?.vendor || ""} entries → ${acct.name}`, null, { count: eligible.length, gl_code: acct.code });
+      showNotification && showNotification(`Changed ${eligible.length} more ✓`);
+      setSweepOffer(null);
+    } else {
+      showNotification && showNotification("Couldn't change the others — nothing else was touched.", "error");
+    }
+    setSweepBusy(false);
+  };
   // ── O129 — SETTING UP DEPRECIATION FROM THE ENTRY ITSELF ─────────────────────
   // The repair tool existed and had no button. The control it used to sit behind was
   // removed for good reason — it asked for a raw journal-entry id on the page where you
@@ -125,7 +145,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   const [payDate, setPayDate] = React.useState(todayLocal());
   const srcFileRef = React.useRef(null);
 
-  React.useEffect(() => { setRecodeOpen(false); setPayOpen(false); }, [invoiceId]);
+  React.useEffect(() => { setRecodeOpen(false); setPayOpen(false); setSweepOffer(null); }, [invoiceId]);
 
   const sel = invoices.find(i => i.id === invoiceId) || null;
   if (!sel) return null;
@@ -180,6 +200,11 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
     if (ok) {
       logAudit && logAudit("recode", `Recoded ${inv.vendor} → ${acct.name}`, { gl_code: inv.gl_code }, { gl_code: acct.code, gl_name: acct.name });
       showNotification && showNotification(`Changed to ${acct.name} ✓`);
+      // O105 (C339) — offer the same change to this supplier's other entries on the account
+      // just left, in months nobody has signed. Signed months are counted, never moved.
+      const plan = planRecodeSweep({ rows: invoices, subject: inv, fromCode: before.gl_code, toCode: acct.code, toName: acct.name,
+        isSigned: (r) => !!signedPeriodForDate(r.date, signoffs, { source: r.source }) });
+      setSweepOffer(plan.sentence ? { ...plan, acct } : null);
     } else {
       setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, ...before } : i));
       showNotification && showNotification("Couldn't save that change — please try again.", "error");
@@ -312,6 +337,19 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
             {/* Recode is a data change — hidden for member-role users (Item 20). */}
             {!isViewer && (
             <div style={{ marginTop: 18 }}>
+              {sweepOffer && (
+                <div data-recode-sweep style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 10, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)" }}>
+                  <div style={{ fontSize: 12.5, color: "var(--sc-text)", marginBottom: sweepOffer.eligible.length ? 10 : 0 }}>{sweepOffer.sentence}</div>
+                  {sweepOffer.eligible.length > 0 && (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={runSweep} disabled={sweepBusy} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", background: sweepBusy ? "var(--sc-border)" : "var(--sc-accent)", color: sweepBusy ? "var(--sc-text-mut)" : "#fff", cursor: sweepBusy ? "default" : "pointer" }}>
+                        {sweepBusy ? "Changing…" : `Yes, change ${sweepOffer.eligible.length === 1 ? "it" : "them"}`}
+                      </button>
+                      <button onClick={() => setSweepOffer(null)} disabled={sweepBusy} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "none", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>No, just this one</button>
+                    </div>
+                  )}
+                </div>
+              )}
               {recodeOpen ? (
                 <div>
                 {/* ── O129 — EQUIPMENT WITH NO SCHEDULE ────────────────────────────
