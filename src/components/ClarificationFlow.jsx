@@ -177,8 +177,11 @@ function ClarificationCard({ item }) {
     const effInv = {
       ...baseInv, type: correctedType,
       gl_code: acct.code, gl_name: acct.name,
-      secondary_gl_code: isRev ? "1100" : "2000",
-      secondary_gl_name: isRev ? "Accounts Receivable" : "Accounts Payable",
+      // C340 — the OFFSET comes from the company's chart by ROLE (§4), not from "1100"/"2000"
+      // typed here. A renumbered A/R or A/P account would have sent every direction answer to
+      // a code the company does not have. Found by the jargon guard reading the literal names.
+      secondary_gl_code: (getAccountByRole?.(isRev ? "accounts_receivable" : "accounts_payable")?.code) || (isRev ? "1100" : "2000"),
+      secondary_gl_name: (getAccountByRole?.(isRev ? "accounts_receivable" : "accounts_payable")?.name) || (isRev ? "Money owed to you" : "Bills to pay"),
       debit_credit: isRev ? "credit" : "debit",
       questions: [],
     };
@@ -657,7 +660,7 @@ function ClarificationCard({ item }) {
             </div>
             {depOpt && (
               <div style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
-                <div style={{ fontSize: 11, letterSpacing: 1, fontWeight: 600, color: "var(--sc-text-2)", marginBottom: 10 }}>DEPRECIATION SCHEDULE · STRAIGHT-LINE</div>
+                <div style={{ fontSize: 11, letterSpacing: 1, fontWeight: 600, color: "var(--sc-text-2)", marginBottom: 10 }}>SPREADING THE COST OVER TIME</div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <label style={{ fontSize: 13, color: "var(--sc-text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
                     Useful life (years)
@@ -665,7 +668,7 @@ function ClarificationCard({ item }) {
                       style={{ width: 110, height: 36, borderRadius: 8, border: "1px solid var(--sc-border-2)", padding: "0 10px", fontSize: 14 }} />
                   </label>
                   <label style={{ fontSize: 13, color: "var(--sc-text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
-                    Salvage value ($)
+                    Worth at the end ($)
                     <input type="number" min="0" step="0.01" value={depSalvage} onChange={e => setDepSalvage(e.target.value)}
                       style={{ width: 130, height: 36, borderRadius: 8, border: "1px solid var(--sc-border-2)", padding: "0 10px", fontSize: 14 }} />
                   </label>

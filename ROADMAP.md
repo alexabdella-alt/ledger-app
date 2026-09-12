@@ -180,6 +180,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 > **⚠ THIS LIST IS BEHIND.** Everything between 2026-08-29 and 2026-09-06 (C205–C310 — the honesty sweep, the unchecked-write class, the drain, O117/O127, the Red River fixes) shipped and was never added here. **A printout cannot be wrong, only old** (§6), and this one is: read the per-item statuses in the tables below, not this list, until it is rebuilt.
 
+- ✅ **The question cards are under the plain-language bar too, and one of them had a typed-in account number** (2026-09-11, C340)
 - ✅ **Change one supplier entry's category and be offered the rest** (2026-09-11, C339) — the other entries in open months, by supplier not spelling; signed-off months are counted and never touched
 - ✅ **A document carries its own date** (2026-09-11, C337) — the column from 2026-08-29 finally has a writer: the invoice date read off the file, so "find the August receipt" works even for a file that links to nothing
 - ✅ **Four files nothing imported are gone, and the three deliberate holds are named** (2026-09-11, C336)

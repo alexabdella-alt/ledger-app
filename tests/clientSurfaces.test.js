@@ -163,7 +163,9 @@ describe("(2) client-visible copy assumes zero accounting knowledge", () => {
   // Every client screen passed this bar while the panel a client actually opens from
   // Transactions read "GL account · Offset account · AI confidence · AI REASONING ·
   // Recode GL account". A component rendered INSIDE a client view is a client surface.
-  const CLIENT_COMPONENTS = ["TransactionDetailPanel"];
+  // (TrustPanel lives under views/ and is a client screen's own child; it is scanned here
+  // by path rather than added to CLIENT_SCREENS, which is keyed by view id.)
+  const CLIENT_COMPONENTS = ["TransactionDetailPanel", "ClarificationFlow", "DocumentPreviewModal", "ChatRichOutput", "views/TrustPanel"];
   const readComponent = (name) => strip(fs.readFileSync(path.join(process.cwd(), "src/components", `${name}.jsx`), "utf8"));
   for (const file of CLIENT_COMPONENTS) {
     it(`${file} (rendered inside client views) — no owner jargon in the client half of its copy`, () => {
@@ -204,5 +206,18 @@ describe("(2) client-visible copy assumes zero accounting knowledge", () => {
     // …and the accounting sense still trips it.
     expect(containsOwnerJargon("we credited the account")).toBe(true);
     expect(containsOwnerJargon("debits and credits")).toBe(true);
+  });
+});
+
+// ── C340 — THE DIRECTION ANSWER'S OFFSET COMES FROM THE CHART, NOT FROM A TYPED CODE ──
+// Found by the jargon guard reading `"Accounts Receivable"` / `"Accounts Payable"` as copy:
+// they were the NAMES beside `"1100"` / `"2000"` typed into the clarification flow — §4's
+// one rule, broken on the card an owner answers. A renumbered A/R would have sent every
+// "we sent it" answer to a code the company does not have.
+describe("C340 — the clarification flow resolves the offset account by role", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), "src/components/ClarificationFlow.jsx"), "utf8");
+  it("secondary_gl_code / name come from getAccountByRole", () => {
+    expect(src).toMatch(/secondary_gl_code: \(getAccountByRole\?\.\(isRev \? "accounts_receivable" : "accounts_payable"\)\?\.code\)/);
+    expect(src).toMatch(/secondary_gl_name: \(getAccountByRole\?\.\(isRev \? "accounts_receivable" : "accounts_payable"\)\?\.name\)/);
   });
 });
