@@ -47,7 +47,7 @@ import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, plan
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { planCoaTemplate, coaTemplateCopy } from "./lib/coaTemplates";
-import { documentTypeFor, isDurableDocId, PLACEHOLDER_DOCUMENT_TYPE, stampsOver } from "./lib/docLibrary";
+import { documentTypeFor, isDurableDocId, PLACEHOLDER_DOCUMENT_TYPE, dedupePatch } from "./lib/docLibrary";
 import { duplicateIsExpectedRhythm, deferDuplicateAsk } from "./lib/recurringVendor.js";
 import { normalizeName as normVendorName } from "./lib/docDirection";
 import { buildVendorSummary } from "./lib/vendorSummary";
@@ -619,25 +619,43 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const hashBlob = file || (base64 ? b64ToBlob(base64, mediaType) : null);
       if (hashBlob) contentHash = await fileSha256Hex(hashBlob);
     } catch (e) { console.warn("[documents] hash skipped:", e?.message || e); }
+    // Prefer the invoice's durable db_entry_id if booking has already resolved by now;
+    // otherwise the in-session id is used and bookToDb's .then re-links it once it
+    // resolves. Read at the moment of each write (the dedupe stamp and the insert), because
+    // the file upload usually outlasts the booking RPC and a later read is a better one.
+    const effectiveLink = () => {
+      if (linkedId == null) return null;
+      const inv = (invoicesRef.current || []).find(i => String(i.id) === String(linkedId) || String(i.db_entry_id) === String(linkedId));
+      return inv?.db_entry_id ?? linkedId;
+    };
     if (contentHash) {
       try {
-        const { data: dupe } = await supabase.from("documents").select("id, document_type")
+        const { data: dupe } = await supabase.from("documents").select("id, document_type, linked_invoice_id")
           .eq("company_id", currentCompany.id).eq("content_hash", contentHash).limit(1).maybeSingle();
         if (dupe?.id) {
-          // ★ STAMP THE TYPE WE NOW KNOW. O97 stores the bytes before classification, so
-          // the first row carries the placeholder; the SECOND call — same bytes, real type
-          // — used to return here and leave it. Without this the durable-first fix would
-          // have filed every invoice in the library as 'other' forever, which is O84(b)
-          // made worse rather than better. `stampsOver` keeps it monotone: only ever
-          // placeholder → specific, never a downgrade and never specific → specific.
-          if (stampsOver(dupe.document_type, type)) {
+          // ★ STAMP WHAT WE NOW KNOW — THE TYPE **AND THE LINK**. O97 stores the bytes
+          // before classification, so the first row carries the placeholder and no link;
+          // the SECOND call — same bytes, real type, the invoice it belongs to — lands here.
+          // C300 stamped the type. It did not stamp the link, so every invoice document
+          // since then was stored UNLINKED: the relink after booking matched nothing, and
+          // Transactions showed "no source document" beside a library holding the file.
+          // `dedupePatch` keeps both monotone — placeholder → specific, null → link — and
+          // never re-points a row that already backs an entry.
+          const patch = dedupePatch(dupe, { type, linkedId: effectiveLink() });
+          if (Object.keys(patch).length) {
             const r = await checkedRowUpdate({ supabase, table: "documents", id: dupe.id,
-              companyId: currentCompany.id, patch: { document_type: type }, label: "document_type_stamp" });
-            if (!r.ok) console.error("[documents] type stamp failed:", r.message || r.reason);
+              companyId: currentCompany.id, patch, label: "document_dedupe_stamp" });
+            if (!r.ok) console.error("[documents] dedupe stamp failed:", r.message || r.reason);
           }
           // Already stored — skip the storage upload AND the insert, drop the optimistic card,
           // and hand back the EXISTING id so callers (bank_statements.document_id) link to it.
-          setDocLibrary(prev => prev.filter(d => d.id !== doc.id));
+          // The EXISTING card gets the same patch, so the in-session library agrees with the
+          // row it will reload as (and the relink below can find it by its link).
+          setDocLibrary(prev => prev.filter(d => d.id !== doc.id).map(d => String(d.id) !== String(dupe.id) ? d : {
+            ...d,
+            ...(patch.document_type ? { type: patch.document_type } : {}),
+            ...(patch.linked_invoice_id ? { linked_invoice_id: patch.linked_invoice_id } : {}),
+          }));
           if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
           return dupe.id;
         }
@@ -668,14 +686,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
 
     // ── 2. Insert the metadata row (with the storage path) ──
-    // Prefer the invoice's durable db_entry_id if booking has already resolved by
-    // now (the file upload above usually outlasts the booking RPC); otherwise the
-    // in-session id is used and bookToDb's .then re-links it once it resolves.
-    let effLinkedId = linkedId;
-    if (linkedId != null) {
-      const inv = (invoicesRef.current || []).find(i => String(i.id) === String(linkedId) || String(i.db_entry_id) === String(linkedId));
-      if (inv?.db_entry_id) effLinkedId = inv.db_entry_id;
-    }
+    const effLinkedId = effectiveLink();
     const payload = {
       company_id: currentCompany.id,
       name,

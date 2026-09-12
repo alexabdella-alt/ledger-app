@@ -126,3 +126,33 @@ export function stampsOver(storedType, incomingType) {
   if (incomingType === PLACEHOLDER_DOCUMENT_TYPE) return false;
   return !storedType || storedType === PLACEHOLDER_DOCUMENT_TYPE;
 }
+
+// ── THE DEDUPE STAMP IS ONE DECISION, NOT TWO HALVES ────────────────────────
+// O97 stores the bytes BEFORE classification (type = placeholder, link = null). The
+// invoice path then calls `storeDocument` again on the SAME bytes with the real type AND
+// the invoice it belongs to — and C193's content-hash dedupe hands back the existing row.
+// C300 taught that branch to stamp the TYPE it now knows. It never stamped the LINK.
+//
+// ★ SO EVERY INVOICE DOCUMENT SINCE C300 SHIPPED HAS `linked_invoice_id = NULL`: the row
+// exists (the Documents tab lists it), the entry exists (Transactions lists it), and the
+// one field that joins them was decided at a moment when nobody had computed it. The
+// relink that follows booking updates rows WHERE link = the in-session id — which matched
+// nothing, so it moved nothing, silently. A transaction opened from the list showed
+// "no source document attached" beside a library that plainly held the file.
+//
+// Same rule as `stampsOver`, applied to the link: only ever null → value. An existing
+// link is NEVER re-pointed here — the same bytes re-uploaded and booked a second time
+// (a genuine duplicate) must not move the document off the entry it already backs.
+export function linksOver(storedLink, incomingLink) {
+  if (incomingLink == null || incomingLink === "") return false;
+  return storedLink == null || storedLink === "";
+}
+
+// The full patch the dedupe branch should write to the EXISTING row. Empty when there is
+// nothing to say, so the caller can skip the write rather than issue a no-op.
+export function dedupePatch(existing = {}, { type, linkedId } = {}) {
+  const patch = {};
+  if (stampsOver(existing.document_type, type)) patch.document_type = type;
+  if (linksOver(existing.linked_invoice_id, linkedId)) patch.linked_invoice_id = String(linkedId);
+  return patch;
+}

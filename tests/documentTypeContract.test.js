@@ -58,7 +58,12 @@ describe("documents.document_type — every writer speaks the column's vocabular
     // tables, two vocabularies; only one has a constraint to honour.
     const src = code(APP);
     const patches = [...src.matchAll(/patch:\s*\{\s*document_type:\s*([^},]+)/g)].map(m => m[1].trim());
-    expect(patches.length).toBeGreaterThan(1);      // refuses to pass by matching nothing
+    // The dedupe stamp no longer writes `patch: { document_type: … }` inline — it builds
+    // its patch through `dedupePatch`, whose type half is `stampsOver`-gated and refuses
+    // any value outside DOCUMENT_TYPES (pinned below). So that site is covered by
+    // construction; what this scan still holds is every REMAINING inline patch.
+    expect(patches.length).toBeGreaterThan(0);      // refuses to pass by matching nothing
+    expect(src).toMatch(/const patch = dedupePatch\(dupe, /);
     const bad = patches.filter(v => {
       const lit = v.match(/^["'](.+)["']$/);
       if (lit) return !DOCUMENT_TYPES.includes(lit[1]);
