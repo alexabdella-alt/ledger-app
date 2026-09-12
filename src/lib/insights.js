@@ -5,8 +5,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { fmtSignedMoney, ymdLocal } from "./format";
-import { classifyCadence, typicalIntervalDays, isOffRhythm, offRhythmCopy, FLAT_SD_RATIO } from "./recurringVendor.js";
+import { classifyCadence, typicalIntervalDays, isOffRhythm, offRhythmCopy, countMismatchCopy, periodOf, FLAT_SD_RATIO } from "./recurringVendor.js";
 import { couldBeCapital } from "./clarify";
+import { hasAttachedInvoice } from "./invoicePayment.js";   // C332 — one definition of "this charge already carries its invoice"
 
 // Normalize a vendor/contact name for fuzzy matching (lowercase, drop legal
 // suffixes and punctuation). Same spirit as the contacts unique-name handling.
@@ -177,7 +178,7 @@ export function booksFrontier(invoices = [], now = new Date()) {
 const dayDiffYMD = (from, to) =>
   Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 
-export function runAnomalyDetection(invoices, recurring = [], now = new Date(), { frontier = null } = {}) {
+export function runAnomalyDetection(invoices, recurring = [], now = new Date(), { frontier = null, apCode = null } = {}) {
   const money = n => fmtSignedMoney(n);   // canonical cents (was ad-hoc whole-dollar)
   const daysAgo = d => (now - new Date(d)) / 86400000;
   const within = (d, days) => { const x = daysAgo(d); return x >= 0 && x <= days; };
@@ -350,6 +351,48 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
       // without re-parsing prose. Not persisted (anomalyInsertRow maps only real columns).
       vendor: i.vendor, amount: Math.abs(Number(i.amount) || 0),
       invoice_ids: [i.id, dup.id] });
+  }
+
+  // ── 2b. C332 — THE FLAT-FEE PERIOD DOES NOT BALANCE (the O117/O127 spec's step 4) ──
+  // "Book the payable and raise ONE card for the period" — the planner returned that
+  // decision (`PERIOD_COUNT_MISMATCH`) and the caller read only the booking half, so the
+  // card the spec's §3 calls the anti-vacuity check never existed in the product, and
+  // `countMismatchCopy` was written for it and called by nothing. Derived HERE, from the
+  // ledger, rather than raised at arrival time: an unpaid flat-fee bill in a period whose
+  // charges are all spoken for IS the condition, it survives a reload, and it resolves
+  // itself the moment the payment lands and clears the bill — no imperative insert, no
+  // answer required. `invoices` counts the bills we hold (attached to a charge, or open);
+  // `payments` counts the charges. More open bills than unclaimed charges → one card.
+  //
+  // ★ OPEN = THE OFFSET LEG IS ACCOUNTS PAYABLE (§9: never the `payment_status` flag).
+  // `flattenJournalEntries` reads a null status as "unpaid", so keying on the flag would
+  // have called every legacy bank line an open bill and raised this card on every
+  // flat-fee vendor's history. Without the company's A/P code the rule does not run —
+  // C309's rule: a guess at the code sweeps in loan-financed purchases; the honest
+  // answer without one is silence, and the caller (`App.jsx`) passes it.
+  const isOpenBill = (r) => apCode != null && String(r.secondary_gl_code) === String(apCode);
+  for (const [v, ff] of (apCode != null ? flatFee : new Map())) {
+    const byPeriod = {};
+    for (const i of expenses) {
+      if (normVendor(i.vendor) !== v || !atUsualAmount(i, ff)) continue;
+      const p = periodOf(i.date);
+      if (!p) continue;
+      (byPeriod[p] = byPeriod[p] || []).push(i);
+    }
+    for (const [period, rows] of Object.entries(byPeriod)) {
+      const open = rows.filter(isOpenBill);
+      const paid = rows.filter(r => !isOpenBill(r));
+      const attached = paid.filter(hasAttachedInvoice);
+      const unclaimed = paid.length - attached.length;
+      if (!open.length || open.length <= unclaimed) continue;
+      const vendor = rows[0].vendor;
+      const counts = { invoices: attached.length + open.length, payments: paid.length };
+      push({ id: `count:${v}:${period}`, type: "period_count_mismatch", severity: "medium",
+        title: `${vendor} — more invoices than payments this period`,
+        description: countMismatchCopy({ vendor, period, counts }),
+        vendor, amount: Math.abs(Number(open[0].amount) || 0),
+        invoice_ids: open.map(r => r.id) });
+    }
   }
 
   // 3. Unusual category — this month ≥ 50% above the prior-months average.

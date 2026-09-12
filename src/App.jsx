@@ -2161,7 +2161,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // vendor+amount within 60 days is downgraded to 'low' (LOW never blocks sign-off — the gate
       // counts HIGH-in-period only), so a legitimately recurring charge stops re-alarming monthly.
       const detected = applyPatternSuppression(
-        runAnomalyDetection(invoicesRef.current, recurringRef.current),
+        // C332 — the A/P code lets the flat-fee count rule tell an open bill from a charge by
+        // its OFFSET leg (§9); without it that rule stays silent rather than guessing.
+        runAnomalyDetection(invoicesRef.current, recurringRef.current, new Date(), { apCode: rc("accounts_payable") || null }),
         anomalyRowsRef.current
       );
       const { toInsert, toResolve } = reconcileAnomalies({ detected, rows: anomalyRowsRef.current });

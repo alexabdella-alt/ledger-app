@@ -317,3 +317,75 @@ describe("★★ no legitimate recurring charge raises a duplicate card", () => 
     expect(cards(withDouble)).toHaveLength(1);
   });
 });
+
+// ── C332 — THE SPEC's STEP 4 CARD EXISTS NOW; IT DID NOT ─────────────────────
+// `planInvoiceArrival` returned BOOK_PAYABLE + PERIOD_COUNT_MISMATCH and the caller read
+// only the booking half, so "book the payable AND raise one card" was half-wired: the
+// payable booked, the card never appeared, and `countMismatchCopy` — written for it — was
+// called by nothing (the C331 sweep's shape). The card is now DERIVED from the ledger by
+// the anomaly detector, so it survives a reload and resolves itself when the bill is paid.
+describe("★★ C332 — a flat-fee period with more open bills than unclaimed charges raises ONE card", () => {
+  // Shaped as the ledger shapes them: a charge is offset to CASH, an open bill to A/P —
+  // the offset leg decides (§9), never `payment_status`.
+  const AP = "2000";
+  const paid = (id, date, attached = true) => ({ ...exp(id, date, 145), secondary_gl_code: "1000", payment_status: "paid",
+    import_metadata: attached ? { invoice_attached: true } : {} });
+  const open = (id, date) => ({ ...exp(id, date, 145), secondary_gl_code: AP, payment_status: "unpaid" });
+  const julyPaid = ["2026-07-06","2026-07-13","2026-07-20","2026-07-27"].map((d, n) => paid(`j${n}`, d));
+  const augPaid = ["2026-08-03","2026-08-10","2026-08-17","2026-08-24"].map((d, n) => paid(`a${n}`, d));
+  const countCards = (rows, opts = {}) => runAnomalyDetection(rows, [], NOW, { frontier: "2026-08-31", apCode: AP, ...opts })
+    .filter(a => a.type === "period_count_mismatch");
+
+  it("★★ five August invoices against four August charges → exactly one card, naming the count", () => {
+    const cards = countCards([...julyPaid, ...augPaid, open("x", "2026-08-31")]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].description).toBe(countMismatchCopy({ vendor: "Bluebonnet Linen Service", period: "2026-08", counts: { invoices: 5, payments: 4 } }));
+    expect(cards[0].fingerprint).toBe("count:bluebonnet linen service:2026-08");   // `:YYYY-MM` tail → the sign-off sweep can place it
+    expect(cards[0].invoice_ids).toEqual(["x"]);
+    expect(cards[0].severity).toBe("medium");                                       // never blocks a sign-off
+  });
+
+  it("a balanced period raises none (§2 — the noise stays gone)", () => {
+    expect(countCards([...julyPaid, ...augPaid])).toHaveLength(0);
+  });
+
+  it("an open bill beside an UNCLAIMED charge is the matcher's job, not a card", () => {
+    // One August charge never got its invoice; the open bill is the invoice it is waiting
+    // to be matched to. Counts balance (4 invoices, 4 payments) — no card.
+    const rows = [...julyPaid, ...augPaid.slice(0, 3), paid("a3", "2026-08-24", false), open("x", "2026-08-31")];
+    expect(countCards(rows)).toHaveLength(0);
+  });
+
+  it("★ without the company's A/P code the rule is silent, never guessed (C309)", () => {
+    expect(countCards([...julyPaid, ...augPaid, open("x", "2026-08-31")], { apCode: null })).toHaveLength(0);
+  });
+
+  it("★ a legacy row with NO payment_status is not an open bill — the offset leg decides, not the flag", () => {
+    const legacy = { ...exp("L", "2026-08-31", 145), secondary_gl_code: "1000" };   // a cash charge, status never stamped
+    expect(countCards([...julyPaid, ...augPaid, legacy])).toHaveLength(0);
+  });
+
+  it("★ and it resolves itself: the bill paid → the condition is gone from the ledger", () => {
+    const rows = [...julyPaid, ...augPaid, { ...open("x", "2026-08-31"), secondary_gl_code: "1000", payment_status: "paid" }];
+    expect(countCards(rows)).toHaveLength(0);   // five paid charges → that is the DETECTOR's card (duplicate/rhythm), not this one
+  });
+
+  it("a vendor that is not flat-fee gets no such card, whatever its open bills", () => {
+    const varied = [["2026-07-06", 120], ["2026-07-20", 410], ["2026-08-03", 95], ["2026-08-17", 260]]
+      .map(([d, amt], n) => ({ ...exp(`v${n}`, d, amt, "Odd Jobs Co"), payment_status: "paid" }));
+    expect(countCards([...varied, { ...exp("o", "2026-08-30", 300, "Odd Jobs Co"), payment_status: "unpaid" }])).toHaveLength(0);
+  });
+});
+
+// The rule is silent without the A/P code, so the CALLER handing it over is the seam
+// (·3a): a mutation that stopped passing it survived every behavioural test above.
+import fs from "node:fs";
+describe("C332 — App.jsx hands the detector the company's A/P code", () => {
+  it("the one runAnomalyDetection call site passes apCode from the role, never a literal", () => {
+    const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+    const calls = [...app.matchAll(/runAnomalyDetection\(([^;]*?)\)\s*,?\s*\n/g)];
+    expect(calls.length).toBe(1);
+    expect(calls[0][1]).toMatch(/apCode: rc\("accounts_payable"\)/);
+  });
+});
