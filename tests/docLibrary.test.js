@@ -139,5 +139,9 @@ describe("C337 — the document's own date is derived from the reading, never gu
       .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
     expect(app).toMatch(/document_date: d\.document_date \|\| null/);
     expect(app).toMatch(/const docDate = documentDateFromExtraction\(extractedList\);\s*if \(docDate\) void checkedRowUpdate\(\{[^}]*table: "documents"[\s\S]{0,200}patch: \{ document_date: docDate \}/);
+    // C338 — and a bank statement is dated by its period end, where the statement row is
+    // persisted (`persistBankStatement`, which every bank path funnels through).
+    const bank = app.slice(app.indexOf("const persistBankStatement = async"), app.indexOf("const handleBankFile = async"));
+    expect(bank).toMatch(/patch: \{ document_date: periodEnd \}, label: "document_date_stamp"/);
   });
 });

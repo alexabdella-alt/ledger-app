@@ -6034,6 +6034,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // no opinion about the end, which is precisely the side July got wrong.)
       const { periodStart, periodEnd, periodEndSource } = statementPeriod(rawTxns, { statedStart: statedPeriodStart, statedEnd: statedPeriodEnd });
       if (periodEndSource === "span") console.info("[bank_statements] period_end inferred from the last transaction — the statement didn't state one");
+      // C338 — a statement's own date is its period end (stated, or the last transaction's).
+      // The same C337 stamp the invoice path makes, so "find the January statement" works
+      // from the Documents tab whether or not the run linked it to anything.
+      if (documentId && periodEnd && /^\d{4}-\d{2}-\d{2}$/.test(String(periodEnd))) {
+        void checkedRowUpdate({ supabase, table: "documents", id: documentId, companyId: currentCompany.id,
+          patch: { document_date: periodEnd }, label: "document_date_stamp" }).then(r => {
+            if (r?.ok) setDocLibrary(prev => prev.map(d => String(d.id) === String(documentId) ? { ...d, document_date: periodEnd } : d));
+          });
+      }
       const stmtRow = buildStatementRow({
         companyId: currentCompany.id,
         bankAccountId: (account && account.id) || null,
