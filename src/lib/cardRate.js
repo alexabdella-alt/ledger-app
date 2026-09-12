@@ -29,12 +29,6 @@ export const CARD_CATEGORY = {
   JUDGMENT: 3,   // a real bookkeeper stops on this. Forever, and RARE.
 };
 
-export const CATEGORY_LABEL = {
-  1: "we got this wrong",
-  2: "teaching us something, once",
-  3: "a judgment call worth making",
-};
-
 // ── THE TAXONOMY ────────────────────────────────────────────────────────────
 // Every card kind the product can emit, with the reason for its category. Kinds are the
 // anomaly `type`s (insights.js) and the lifecycle `ASK_REASON`s (invoicePayment.js).

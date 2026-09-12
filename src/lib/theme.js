@@ -60,15 +60,3 @@ export const t = {
   easeInOut: "var(--sc-ease-in-out)",
 };
 
-// Does the user prefer reduced motion? (used to skip count-up / draw animations)
-export function prefersReducedMotion() {
-  try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
-  catch { return false; }
-}
-
-// Semantic color for a signed money figure (gold is reserved for the hero/primary
-// figure; positive deltas are green, negative warm-red). Returns a token string.
-export function moneyColor(n, { positive = t.success, negative = t.error, zero = t.text } = {}) {
-  const v = Number(n) || 0;
-  return v > 0 ? positive : v < 0 ? negative : zero;
-}

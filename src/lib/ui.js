@@ -10,7 +10,6 @@
 import { t } from "./theme.js";
 
 // Spacing — one 4px rhythm. sp(3) → 12, sp(6) → 24. Use for padding/margin/gap.
-export const sp = (n) => n * 4;
 
 // Radius scale (numbers, for inline styles). Mirror of the --sc-r-* tokens.
 export const radius = { sm: 8, md: 12, card: 14, lg: 16, pill: 999 };
@@ -99,4 +98,3 @@ export const btn = (variant = "primary", size = "md") => {
 };
 
 // ── Divider ── one hairline.
-export const divider = { height: 1, background: t.border, border: "none", margin: 0 };

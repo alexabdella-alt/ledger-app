@@ -9,7 +9,6 @@
 // App wires the batched DB writes around it (one read + batched insert/resolve).
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
 export const isHighAnomaly = (a) => !!a && a.severity === "high";
 
 // The three ways an anomaly can close (migration 056 + 060). They must not blur:
