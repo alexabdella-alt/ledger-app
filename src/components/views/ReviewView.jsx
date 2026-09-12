@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { REVIEW_TOOLS } from "../../lib/nav";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { agoPhrase, initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -212,6 +213,21 @@ export default function ReviewView() {
   // ── SUMMARY + COMPLETENESS + NEEDS-REVIEW (the new O50 sections) ──
   const summaryAndSections = (
     <>
+      {/* ★★ THE REVIEW LAYER'S TOOLS (C320). The sidebar is the same for everyone; a
+          reviewer's extra is THIS screen, and the workbench — Bank Import, Reconcile,
+          Matching, Payroll — hangs off it rather than off the nav. Two of these had no
+          door at all once their nav rows went: this strip is that door. `REVIEW_TOOLS`
+          is one list shared with `activeNavItem`, so a CPA standing on Reconcile sees
+          Review highlighted rather than nothing. */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14, fontSize: 12 }}>
+        <span style={{ color: "var(--sc-text-2)", fontWeight: 600, letterSpacing: 1, fontSize: 10 }}>TOOLS</span>
+        {REVIEW_TOOLS.map(([id, label]) => (
+          <button key={id} onClick={() => setView(id)}
+            style={{ padding: "5px 12px", borderRadius: 8, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", color: "var(--sc-text)", fontSize: 12, cursor: "pointer" }}>
+            {label} →
+          </button>
+        ))}
+      </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 8 }}>
         {statCard("INCOMPLETE DOCS", summary.incompleteCount + summary.unknownCount, (summary.incompleteCount + summary.unknownCount) > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
         {statCard("FLAGGED TXNS", summary.flaggedCount, summary.flaggedCount > 0 ? "var(--sc-warning)" : "var(--sc-success)")}

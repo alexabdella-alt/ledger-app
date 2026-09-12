@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════════════
-// C197 / C312 — IA COLLAPSE (★ NORTH STAR Phase 2). WHO SEES WHICH WALLS,
-// AND — since C312 — HOW THE ONES THEY DO SEE ARE ARRANGED.
+// C197 / C312 / C320 — IA COLLAPSE (★ NORTH STAR Phase 2). WHO SEES WHICH WALLS,
+// AND HOW THE ONES THEY DO SEE ARE ARRANGED — one sidebar, plus a review layer.
 //
 // Shadow's client persona has no bookkeeper role, so the workbench surfaces
 // (Bank Import, Reconcile, Matching, Payables, Payroll, Vendors, Documents…)
@@ -30,89 +30,51 @@ export const BOOKS_GROUP = [
   "detail", "contracts",
 ];
 
-// ── THE COCKPIT SIDEBAR (C312) ───────────────────────────────────────────────
+// ── ONE SIDEBAR (C320) ────────────────────────────────────────────────────────
 //
-// ★★★ THE TEN BOOKS SUB-TABS WERE NOT TOO MANY DESTINATIONS. THEY WERE TEN
-// DESTINATIONS YOU COULD ONLY SEE AFTER CLICKING A TAB THAT DID NOT NAME THEM,
-// IN A ROW THAT SCROLLED SIDEWAYS. §11 records the cost twice on one drive: the
-// operator — who wrote the fixture — repeatedly could not find the Matching
-// Engine, and stalled on Bank Import. **Matching had no row at all**: it was
-// reachable only from a post-booking redirect and one conditional link on Home,
-// so on a day it had nothing to say there was no door to it.
+// ★★★ THE TWO SEATS ARE NOT TWO PRODUCTS. Operator, 2026-09-11: *"I don't think the
+// two views should really be too different. The owner needs to see all the info they
+// need — we're pretty much there. We don't need all these tabs in the other view. The
+// full view for the CPA is more just an over-the-top review."*
 //
-// A horizontal strip is the wrong shape for a workbench: it has no room for
-// grouping, so hierarchy has to be spent on hiding things. A column has room, so
-// EVERY destination is on screen at once, under a heading that says what it is
-// for. Nothing was removed to achieve that — this moves walls, not machinery.
+// C312 gave the CPA a fourteen-row grouped cockpit (Ledger · Money in · Money out ·
+// Bank · Records) and C313/C314 gave the owner eight plain rows. That was two navs
+// for one company's books. The owner's eight rows ARE the product; the CPA's extra
+// is a REVIEW LAYER — the queue, the sign-off, the exception tools — not a parallel
+// set of destinations.
 //
-// ★★ THE GROUPS ARE THE DOMAIN'S OWN DIVISIONS, NOT A TIDYING. Money in and
-// money out are the two halves a bookkeeper actually thinks in, and putting them
-// side by side is what makes it obvious that Receivables had no row while
-// Payables did — an asymmetry that survived because nothing ever displayed the
-// pair together. (`ArView` is a real 315-line aging screen with AI narration and
-// it was unreachable; so was `MatchingView`. Both are listed here now.)
+// ★★ SO: EVERYONE GETS THE SAME EIGHT ROWS, AND A REVIEWER GETS ONE MORE — Review.
+// The workbench screens (Bank Import, Reconcile, Matching, Payroll) keep existing and
+// stay openable by a reviewer, but they are reached FROM the review layer — Review's
+// tool strip, the exception cards, Home's routing — not from the sidebar. A tab that
+// exists so a CPA can wander to it is exactly the QBO-bookkeeper IA the North Star
+// names; a tool you reach from the card that needs it is the review layer working.
 //
-// Rows are [viewId, label]. `books:contracts` is a FILTER on the Transactions
-// view rather than a view of its own — kept in this list because the chrome's
-// go/active handlers already speak that dialect and a second convention would be
-// a second thing to keep in step.
-export const NAV_SECTIONS_REVIEWER = [
-  { id: "top", label: null, items: [
-    ["home", "Home"], ["review", "Review"], ["reports", "Reports"],
-  ] },
-  { id: "ledger", label: "Ledger", items: [
-    ["books", "Transactions"], ["books:contracts", "Contracts"],
-  ] },
-  { id: "money-in", label: "Money in", items: [
-    ["ar", "Receivables"], ["customers", "Customers"], ["send-invoice", "Send Invoice"],
-  ] },
-  { id: "money-out", label: "Money out", items: [
-    ["ap", "Payables"], ["vendors", "Vendors"],
-  ] },
-  { id: "bank", label: "Bank", items: [
-    ["bank", "Bank Import"], ["recon", "Reconcile"], ["matching", "Matching"],
-  ] },
-  { id: "records", label: "Records", items: [
-    ["payroll", "Payroll"], ["docs", "Documents"],
-  ] },
-];
-
-// ── THE CLIENT'S SIDEBAR (C313 widened it from two rows to six) ──────────────
+// ★ ONE VOCABULARY, TOO. With one nav there is one set of labels, and it is the plain
+// one: a CPA reading "Bills to pay" loses nothing, an owner reading "Payables" is
+// being asked to know something. §9 EXEMPTS reviewer copy from the jargon bar; it
+// never required jargon.
 //
-// ★★★ C197 CUT THE CLIENT TO HOME + REPORTS ON EVIDENCE THAT DID NOT SUPPORT
-// THAT MUCH OF A CUT. The O83 finding was that a business owner cannot OPERATE a
-// workbench — the operator himself stalled on Bank Import's checkbox states and
-// could not find the Matching Engine — and every one of those failures was about
-// DOING a bookkeeping job. None of them was about LOOKING AT YOUR OWN RECORDS.
-//
-// ★★ "WHAT DID I SPEND", "WHO DO I BUY FROM", "WHERE DID MY RECEIPT GO" ARE OWNER
-// QUESTIONS, NOT BOOKKEEPER QUESTIONS — and answering them with a locked door was
-// the collapse over-applied. A client who can only see two screens has to ask
-// their accountant to look something up for them, which is precisely the
-// dependency this product exists to remove.
-//
-// ★★★ AND THE CLIENT'S LABELS ARE NOT THE CPA'S (C314). "Payables" and
-// "Receivables" are the two words §11's standing directive exists for — every
-// owner-facing surface assumes ZERO accounting knowledge — and `OWNER_JARGON_RE`
-// names both explicitly. The screens are the same screens; only the words differ,
-// which costs nothing because this list was always separate from the cockpit's.
-// A test holds every client label to the jargon bar; the CPA's labels are exempt
-// by §9, which lets reviewer-facing copy stay technical.
-//
-// So the line is not seat-shaped, it is VERB-shaped: **records you READ are
-// yours; workflows you OPERATE are the CPA's.** Transactions, Customers, Vendors
-// and Documents are records. Bank Import, Reconcile, Matching, Payroll and the
-// Review queue are jobs, and they stay in the cockpit.
-//
-// Flat, no headings: six rows do not need to be sorted into piles, and the whole
-// point of this seat is that it is simple.
-export const NAV_SECTIONS_CLIENT = [
-  { id: "top", label: null, items: [
+// Rows are [viewId, label]. `books:contracts` was a filter row in the old cockpit and
+// is now reached from the Transactions screen itself.
+export const NAV_SECTIONS = [
+  { id: "main", label: null, items: [
     ["home", "Home"], ["books", "Transactions"],
     ["ap", "Bills to pay"], ["ar", "Money owed to you"],
     ["customers", "Customers"], ["vendors", "Vendors"],
     ["docs", "Documents"], ["reports", "Reports"],
   ] },
+];
+
+// The review layer — the ONE row a reviewer has that an owner does not. Everything
+// CPA-shaped hangs off this screen rather than off the sidebar.
+export const NAV_SECTION_REVIEW = { id: "review", label: null, items: [["review", "Review"]] };
+
+// ★ THE WORKBENCH SCREENS A REVIEWER CAN STILL OPEN, LISTED SO THE TOOL STRIP ON
+// THE REVIEW SCREEN AND THE ACTIVE-ROW LOGIC READ ONE LIST. None of these is a nav
+// row; each is a tool the review layer reaches for.
+export const REVIEW_TOOLS = [
+  ["bank", "Bank Import"], ["recon", "Reconcile"], ["matching", "Matching"], ["payroll", "Payroll"],
 ];
 
 // The Settings section. It is entered through the header gear rather than the
@@ -139,7 +101,7 @@ export const SETTINGS_VIEW_IDS = [
   "tax1099", "tax", "audit", "legal",
 ];
 
-// What the CLIENT seat may open: their own nav (see NAV_SECTIONS_CLIENT), plus
+// What the CLIENT seat may open: their own nav (see NAV_SECTIONS), plus
 // `detail` — the drill target every client surface pushes into (Home's activity
 // feed, a Reports drill, a row in Transactions all open one transaction), so
 // gating it would leave dead rows on screens the client is meant to use.
@@ -181,7 +143,9 @@ export function isReviewerSeat({ role = "owner", isPlatformAdmin = false, previe
 // their own company profile, taxes and audit trail, and always has.
 export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsOwner = false, inSettings = false } = {}) {
   const reviewer = isReviewerSeat({ role, isPlatformAdmin, previewAsOwner });
-  const sections = [...(reviewer ? NAV_SECTIONS_REVIEWER : NAV_SECTIONS_CLIENT)];
+  // Same rows for everyone; a reviewer gets the review layer on top (C320).
+  const sections = [...NAV_SECTIONS];
+  if (reviewer) sections.push(NAV_SECTION_REVIEW);
   // The Admin panel is its own unlabelled section at the foot — a platform-admin
   // tool, deliberately not filed under any of the bookkeeping headings.
   if (reviewer && isPlatformAdmin) sections.push({ id: "admin", label: null, items: [["admin", "⚙ Admin"]] });
@@ -206,9 +170,11 @@ export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsO
 export function activeNavItem(view, { booksFilter = "all" } = {}) {
   const v = String(view || "");
   if (v === "dashboard") return "home";
-  if (v === "detail") return "books";                       // the drill target belongs to Transactions
-  if (v === "books") return booksFilter === "contracts" ? "books:contracts" : "books";
-  if (v === "contracts") return "books:contracts";
+  if (v === "detail" || v === "add" || v === "contracts" || v === "books") return "books";   // all live under Transactions
+  if (v === "send-invoice") return "ar";                     // billing a customer belongs to Money owed to you
+  // A workbench tool is the review layer at work: the sidebar highlights Review, so a
+  // CPA on Reconcile can see where they are even though Reconcile has no row of its own.
+  if (REVIEW_TOOLS.some(([id]) => id === v)) return "review";
   return v;
 }
 

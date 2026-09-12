@@ -52,7 +52,7 @@ export default function CustomersView() {
                   </div>
 
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
-                    {[["Billed YTD", fmt(billedYTD), "var(--sc-success)"],[cockpit ? "Open receivables" : "Still owed to you", fmt(openAR), openAR>0?"var(--sc-warning)":"var(--sc-success)"],["Last invoice", lastDate, "var(--sc-text)"]].map(([k,val,col])=>(
+                    {[["Billed YTD", fmt(billedYTD), "var(--sc-success)"],["Still owed to you", fmt(openAR), openAR>0?"var(--sc-warning)":"var(--sc-success)"],["Last invoice", lastDate, "var(--sc-text)"]].map(([k,val,col])=>(
                       <div key={k} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:"14px 16px" }}>
                         <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:5 }}>{k}</div>
                         <div style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:col }}>{val}</div>
@@ -182,7 +182,7 @@ export default function CustomersView() {
                                 <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--sc-success)" }}>{fmt(billedYTD)}</div>
                               </div>}
                               {openAR>0 && <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{cockpit ? "OPEN RECEIVABLES" : "STILL OWED TO YOU"}</div>
+                                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>STILL OWED TO YOU</div>
                                 <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:overdueAR>0?"var(--sc-error)":"var(--sc-warning)" }}>{fmt(openAR)}</div>
                               </div>}
                               <button onClick={()=>isEditing?saveEdit(c):startEdit(c)} style={{ padding:"7px 14px", borderRadius:8, fontSize:12, background:isEditing?"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))":"var(--sc-border)", border:"1px solid var(--sc-border-2)", color:isEditing?"var(--sc-success)":"var(--sc-text-2)", cursor:"pointer" }}>

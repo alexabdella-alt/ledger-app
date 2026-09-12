@@ -92,8 +92,18 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
               <div>
                 {/* Header */}
                 <div style={{ marginBottom:24 }}>
-                  <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>{cockpit ? "ACCOUNTS RECEIVABLE" : "MONEY OWED TO YOU"}</div>
-                  <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>AR Management</h1>
+                  <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>MONEY OWED TO YOU</div>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
+                    {/* "AR Management" was the heading on a screen the sidebar calls "Money owed to
+                        you" — the jargon guard missed it (no regex word), a person would not. */}
+                    <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Money owed to you</h1>
+                    {/* ★ SEND INVOICE'S ONLY DOOR (C320). It lost its nav row with the rest of the
+                        cockpit and, unlike the others, nothing else led to it. Billing a customer
+                        belongs on the screen about what customers owe. Reviewer-only for now,
+                        because the client seat has never included it and widening that is a
+                        decision, not a rider — flagged in the commit rather than slipped in. */}
+                    {cockpit && <button onClick={()=>setView("send-invoice")} style={{ flexShrink:0, padding:"9px 16px", borderRadius:9, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer" }}>Send an invoice →</button>}
+                  </div>
                   <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Outstanding invoices you've issued to customers.</div>
                 </div>
 
@@ -132,7 +142,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center" }}>
                         <div style={{ fontSize:32, marginBottom:12 }}>📥</div>
                         <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No revenue invoices yet</div>
-                        <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>{cockpit ? "Upload invoices you've sent to customers — they'll appear here as outstanding receivables." : "Upload invoices you've sent to customers — anything they haven't paid yet shows up here."}</div>
+                        <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>Upload invoices you've sent to customers — anything they haven't paid yet shows up here.</div>
                       </div>
                     ) : (
                       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -189,7 +199,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                     <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:16 }}>Overdue invoices sorted by amount — largest first.</div>
                     {collectionsQueue.length===0 ? (
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:32, textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>
-                        {cockpit ? "✓ No overdue invoices — all receivables are current." : "✓ Nothing overdue — every customer is up to date."}
+                        ✓ Nothing overdue — every customer is up to date.
                       </div>
                     ) : (
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
@@ -278,7 +288,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                     {/* Aging detail table */}
                     {arOpen.length>0 && (
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
-                        <div style={{ padding:"14px 20px", borderBottom:"1px solid var(--sc-border)", fontSize:13, fontWeight:600 }}>{cockpit ? "All Open Receivables" : "Everything you're still owed"}</div>
+                        <div style={{ padding:"14px 20px", borderBottom:"1px solid var(--sc-border)", fontSize:13, fontWeight:600 }}>Everything you're still owed</div>
                         <table style={{ width:"100%", borderCollapse:"collapse" }}>
                           <thead><tr style={{ background:"var(--sc-surface-2)" }}>
                             {["Customer","Invoice Date","Due Date","Age","Amount","Status"].map(h=>(

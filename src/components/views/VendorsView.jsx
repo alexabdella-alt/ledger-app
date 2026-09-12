@@ -100,7 +100,7 @@ export default function VendorsView() {
 
                   {/* Stat cards */}
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
-                    {[["Paid YTD", fmt(paidYTD), "var(--sc-error)"],[cockpit ? "Open payables" : "Bills you still owe", fmt(openAP), openAP>0?"var(--sc-warning)":"var(--sc-success)"],["Last transaction", lastDate, "var(--sc-text)"]].map(([k,val,col])=>(
+                    {[["Paid YTD", fmt(paidYTD), "var(--sc-error)"],["Bills you still owe", fmt(openAP), openAP>0?"var(--sc-warning)":"var(--sc-success)"],["Last transaction", lastDate, "var(--sc-text)"]].map(([k,val,col])=>(
                       <div key={k} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:"14px 16px" }}>
                         <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:5 }}>{k}</div>
                         <div style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:col }}>{val}</div>
@@ -335,7 +335,7 @@ export default function VendorsView() {
                                 <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmt(paidYTD)}</div>
                               </div>}
                               {openAP>0 && <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{cockpit ? "OPEN PAYABLES" : "STILL OWED"}</div>
+                                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>STILL OWED</div>
                                 <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--sc-warning)" }}>{fmt(openAP)}</div>
                               </div>}
                               <button onClick={()=>isEditing?saveEdit(v):startEdit(v)} style={{ padding:"7px 14px", borderRadius:8, fontSize:12, background:isEditing?"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))":"var(--sc-border)", border:"1px solid var(--sc-border-2)", color:isEditing?"var(--sc-success)":"var(--sc-text-2)", cursor:"pointer" }}>

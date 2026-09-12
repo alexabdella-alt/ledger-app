@@ -3,7 +3,7 @@ import fs from "fs";
 import {
   visibleNav, isReviewerSeat, canSeeView, navRedirect,
   ALL_VIEW_IDS, CLIENT_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS,
-  NAV_SECTIONS_REVIEWER, NAV_SECTIONS_CLIENT, NAV_SECTION_SETTINGS, sectionViewIds, activeNavItem,
+  NAV_SECTIONS, NAV_SECTION_REVIEW, NAV_SECTION_SETTINGS, REVIEW_TOOLS, sectionViewIds, activeNavItem,
   GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL,
 } from "../src/lib/nav.js";
 import { canAttestPeriod } from "../src/lib/signoff.js";
@@ -70,20 +70,62 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     }
   });
 
-  it("the reviewer seat keeps the whole cockpit — nothing was removed to group it", () => {
-    const items = navItems(visibleNav(reviewer));
-    // Every destination the flat ten-row sub-nav offered is still one click away…
-    for (const v of ["books", "books:contracts", "ap", "vendors", "customers", "send-invoice", "bank", "recon", "payroll", "docs"])
-      expect([v, items.includes(v)]).toEqual([v, true]);
-    // …plus the two that RENDERED A REAL SCREEN AND HAD NO ROW AT ALL. Matching was
-    // reachable only from a post-booking redirect (the O83 navigation failure) and
-    // Receivables not at all, while Payables had a row the whole time.
-    expect(items).toContain("matching");
-    expect(items).toContain("ar");
-    // …and the top-level tabs survive as the first, unlabelled section.
-    expect(visibleNav(reviewer).sections[0].items.map(([id]) => id)).toEqual(["home", "review", "reports"]);
-    expect(navItems(visibleNav({ ...reviewer, isPlatformAdmin: true }))).toContain("admin");
-    expect(navItems(visibleNav(reviewer))).not.toContain("admin");
+  it("★★ ONE SIDEBAR: the reviewer's rows are the owner's rows plus Review, and nothing else (C320)", () => {
+    // Operator, 2026-09-11: "the two views should not be too different… the full view for
+    // the CPA is more just an over-the-top review." So the nav is the SAME eight rows for
+    // everyone and a reviewer gets exactly one more.
+    const owner = navItems(visibleNav(client));
+    const cpa = navItems(visibleNav(reviewer));
+    expect(cpa).toEqual([...owner, "review"]);
+    expect(navItems(visibleNav({ ...reviewer, isPlatformAdmin: true }))).toEqual([...owner, "review", "admin"]);
+    // …and there are no group headings any more; eight rows plus one do not need piles.
+    expect(visibleNav(reviewer).sections.map(s => s.label)).toEqual([null, null]);
+  });
+
+  it("★★ the workbench is NOT gone — it moved off the sidebar and behind the review layer", () => {
+    // "We don't need all these tabs" is about TABS. A reviewer can still OPEN every
+    // cockpit screen (the route guard is unchanged)…
+    for (const v of ["bank", "recon", "matching", "payroll", "contracts", "send-invoice", "add"])
+      expect([v, canSeeView(v, reviewer)]).toEqual([v, true]);
+    // …none of them is a sidebar row for ANY seat…
+    const rows = navItems(visibleNav({ ...reviewer, isPlatformAdmin: true }));
+    for (const v of ["bank", "recon", "matching", "payroll", "contracts", "send-invoice", "add"])
+      expect([v, rows.includes(v)]).toEqual([v, false]);
+    // …and the four review TOOLS are one list, read by the Review screen's strip and by
+    // activeNavItem alike, so a CPA on Reconcile sees Review lit rather than nothing.
+    expect(REVIEW_TOOLS.map(([id]) => id)).toEqual(["bank", "recon", "matching", "payroll"]);
+    for (const [id] of REVIEW_TOOLS) expect([id, activeNavItem(id)]).toEqual([id, "review"]);
+  });
+
+  it("★★★ every screen that lost its nav row still has a DOOR — the C312 lesson, made a rule", () => {
+    // Matching spent months reachable only from a post-booking redirect because its row
+    // had quietly never existed. Removing seven rows at once is exactly how that happens
+    // seven times, so this walks every cockpit screen and demands a setView somewhere OTHER
+    // than the sidebar it just left. Payroll and Send Invoice had NONE when the rows went;
+    // the Review tool strip and the "Send an invoice" button are those doors.
+    const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const views = fs.readdirSync(new URL("../src/components/views", import.meta.url)).filter(f => f.endsWith(".jsx"));
+    const bodies = [app, ...views.map(f => fs.readFileSync(new URL(`../src/components/views/${f}`, import.meta.url), "utf8"))]
+      .map(t => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " "));
+    // The sidebar block itself must not count as a door — that is the thing being removed.
+    const sidebarStart = app.indexOf('<nav aria-label="Main"'), sidebarEnd = app.indexOf("</nav>");
+    const appSansSidebar = app.slice(0, sidebarStart) + app.slice(sidebarEnd);
+    bodies[0] = appSansSidebar;
+    const joined = bodies.join("\n");
+    // The Review tool strip is rendered from REVIEW_TOOLS with `setView(id)` — a real door
+    // that a literal-string grep cannot see. It counts for exactly the four ids in that
+    // list, and only if the strip is genuinely rendered from the list rather than retyped.
+    const review = fs.readFileSync(new URL("../src/components/views/ReviewView.jsx", import.meta.url), "utf8");
+    const stripRenders = /REVIEW_TOOLS\.map\(\(\[id, label\]\) =>[\s\S]{0,200}setView\(id\)/.test(review);
+    expect(stripRenders).toBe(true);
+    const viaStrip = new Set(REVIEW_TOOLS.map(([id]) => id));
+    for (const v of ["bank", "recon", "matching", "payroll", "contracts", "send-invoice", "add"]) {
+      const literal = (joined.match(new RegExp(`(setView|navTo)\\("${v}"\\)`, "g")) || []).length;
+      expect([v, literal > 0 || viaStrip.has(v)]).toEqual([v, true]);
+    }
+    // ★ AND THE FACT THE FIRST RUN OF THIS TEST FOUND: Payroll's ONLY door is the strip.
+    // Pinned so that if the strip ever goes, this fails on Payroll by name.
+    expect((joined.match(/(setView|navTo)\("payroll"\)/g) || []).length).toBe(0);
   });
 
   it("★ every sidebar row is a view this seat may actually open (no row leads to a bounce)", () => {
@@ -106,33 +148,33 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     expect(navItems(visibleNav({ ...reviewer, inSettings: true }))).not.toContain("team");
   });
 
-  it("★★ every CLIENT label passes the zero-accounting-knowledge bar; the CPA's may be technical", () => {
-    // §11's standing directive: every owner-facing surface assumes ZERO accounting
-    // knowledge. "Payables" and "Receivables" are the two words OWNER_JARGON_RE names
-    // by hand — so the client's rows say what they mean instead.
-    for (const [, label] of visibleNav(client).sections.flatMap(s => s.items))
-      expect([label, containsOwnerJargon(label)]).toEqual([label, false]);
-    expect(navItems(visibleNav(client))).toContain("ap");          // …while still being those screens
-    const clientLabels = visibleNav(client).sections.flatMap(s => s.items).map(([, l]) => l);
-    expect(clientLabels).toContain("Bills to pay");
-    expect(clientLabels).toContain("Money owed to you");
-    // The cockpit keeps the accounting words — §9 exempts reviewer-facing copy, and a
-    // CPA reading "Bills to pay" instead of "Payables" is being talked down to.
-    const cpaLabels = visibleNav(reviewer).sections.flatMap(s => s.items).map(([, l]) => l);
-    expect(cpaLabels).toContain("Payables");
-    expect(cpaLabels).toContain("Receivables");
-    // ★ AND THE BAR ITSELF HAD A HOLE: `\bpayable\b` does not match "Payables", so the
-    // plural — which is what a UI actually says — walked straight through the guard.
+  it("★★ ONE VOCABULARY — every label, both seats, passes the zero-accounting-knowledge bar", () => {
+    // C314 gave the CPA "Payables"/"Receivables" and the owner "Bills to pay"/"Money owed to
+    // you", and pinned that the CPA KEEPS the accounting words. C320 reverses that on the
+    // operator's call: one nav, one set of labels, the plain one. §9 exempts reviewer copy
+    // from the jargon bar; it never required jargon, and a CPA reading "Bills to pay"
+    // loses nothing.
+    for (const opts of [client, reviewer, { ...reviewer, isPlatformAdmin: true }])
+      for (const [, label] of visibleNav(opts).sections.flatMap(s => s.items))
+        expect([label, containsOwnerJargon(label)]).toEqual([label, false]);
+    const labels = visibleNav(reviewer).sections.flatMap(s => s.items).map(([, l]) => l);
+    expect(labels).toContain("Bills to pay");
+    expect(labels).toContain("Money owed to you");
+    expect(labels).not.toContain("Payables");
+    expect(labels).not.toContain("Receivables");
+    // The bar itself still has teeth (the C314 plural fix).
     expect(containsOwnerJargon("Payables")).toBe(true);
     expect(containsOwnerJargon("Receivables")).toBe(true);
   });
 
-  it("★ activeNavItem highlights one row, and knows Contracts is a filter not a view", () => {
+  it("★ activeNavItem highlights one row, and every non-row screen lights the row it belongs to", () => {
     expect(activeNavItem("dashboard")).toBe("home");        // the legacy id is still Home
     expect(activeNavItem("detail")).toBe("books");          // the drill belongs to Transactions
-    expect(activeNavItem("books", { booksFilter: "all" })).toBe("books");
-    expect(activeNavItem("books", { booksFilter: "contracts" })).toBe("books:contracts");
-    expect(activeNavItem("recon")).toBe("recon");
+    expect(activeNavItem("add")).toBe("books");             // hand entry belongs to Transactions
+    expect(activeNavItem("contracts")).toBe("books");       // contracts are a filter on Transactions
+    expect(activeNavItem("books", { booksFilter: "contracts" })).toBe("books");
+    expect(activeNavItem("send-invoice")).toBe("ar");       // billing a customer → Money owed to you
+    expect(activeNavItem("recon")).toBe("review");          // a workbench tool is the review layer at work
     expect(activeNavItem("nonsense")).toBe("nonsense");     // highlights nothing; never throws
   });
 
@@ -155,12 +197,14 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
       expect([v, canSeeView(v, client)]).toEqual([v, false]);
       expect([v, canSeeView(v, reviewer)]).toEqual([v, true]);
     }
-    // …and the workbench rows have no client-facing existence (not "disabled" — absent).
+    // …and the workbench has no sidebar existence for ANYONE now (C320) — a reviewer reaches
+    // it from the review layer, a client cannot reach it at all.
     const clientRows = navItems(visibleNav(client));
     for (const v of workbench) expect([v, clientRows.includes(v)]).toEqual([v, false]);
     const reviewerRows = navItems(visibleNav(reviewer));
-    expect(reviewerRows).toContain("bank");
-    expect(reviewerRows).toContain("recon");
+    for (const v of workbench) expect([v, reviewerRows.includes(v)]).toEqual([v, false]);
+    expect(reviewerRows).toContain("review");
+    expect(clientRows).not.toContain("review");
   });
 
   it("Home, Reports, the transaction drill and Settings stay open to a client", () => {
@@ -263,10 +307,10 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
     // fails for a reason it does not mean is a guard nobody will trust.
     const sidebar = app.slice(app.indexOf('<nav aria-label="Main"'), app.indexOf("</nav>"));
     expect(sidebar.length).toBeGreaterThan(400);   // refuse to pass on a slice that found nothing
-    for (const label of ["Receivables", "Matching", "Bank Import", "Reconcile", "Payables"])
+    for (const label of ["Money owed to you", "Bills to pay", "Transactions", "Review"])
       expect([label, sidebar.includes(`"${label}"`)]).toEqual([label, false]);
     const nav = fs.readFileSync(new URL("../src/lib/nav.js", import.meta.url), "utf8");
-    for (const label of ["Receivables", "Matching", "Bank Import", "Reconcile", "Payables"])
+    for (const label of ["Money owed to you", "Bills to pay", "Transactions", "Review", "Bank Import", "Reconcile", "Matching", "Payroll"])
       expect([label, nav.includes(`"${label}"`)]).toEqual([label, true]);
   });
 
