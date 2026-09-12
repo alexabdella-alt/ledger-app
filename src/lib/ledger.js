@@ -99,7 +99,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         paid_at: e.paid_at || undefined,
         due_date: e.due_date || undefined,
         confidence: e.ai_confidence ?? 99,
-        reasoning: e.ai_reasoning || "Loaded from database",
+        reasoning: e.ai_reasoning || null,   // C328: no invented rationale — a payment, a clearing or an opening balance has none, and the screen shows none
         db_entry_id: e.id,
         import_metadata: e.import_metadata || null,   // carries reversal linkage (O8)
         // O123 — carried so `alreadyReversed`'s liveness filter means something. It tests
@@ -158,7 +158,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
           payment_method_used: e.payment_method || undefined,
           due_date: e.due_date || undefined,
           confidence: e.ai_confidence ?? 99,
-          reasoning: e.ai_reasoning || "Loaded from database",
+          reasoning: e.ai_reasoning || null,   // C328: no invented rationale — a payment, a clearing or an opening balance has none, and the screen shows none
           db_entry_id: e.id,
           import_metadata: e.import_metadata || null,   // carries reversal linkage (O8)
           deleted_at: e.deleted_at || null,   // O123 — see the simple-entry branch above

@@ -106,3 +106,40 @@ describe("★★ O125 — flattenJournalEntries stops deciding identity by punct
     expect(rows[0].vendor_key).not.toBe(rows[1].vendor_key);
   });
 });
+
+// ── C328 — AN ENTRY WITH NO RATIONALE CARRIES NONE, NOT A PLACEHOLDER ───────────
+// `flattenJournalEntries` filled an absent `ai_reasoning` with the literal "Loaded from
+// database". The detail panel gates its "why we booked it" block on the field being truthy
+// and then hands it to `classifyBankReason`, whose provenance filter knows "imported from…"
+// and nothing else — so a payment, a clearing or an opening balance rendered an
+// "AI REASONING" box reading, verbatim, "Loaded from database". A sentence about where a
+// row came from, in the slot for why it was booked (TIER 1 #7(b)).
+import { classifyBankReason } from "../src/lib/bankMatch";
+describe("C328 — no invented reasoning on a row that has none", () => {
+  const je = (extra = {}) => ({
+    id: "je-1", entry_date: "2026-08-04", description: "Payment – Roma Cheese & Dairy", source: "manual",
+    journal_entry_lines: [
+      { account_id: "a2", debit: 551.2, credit: 0, accounts: { code: "2000", name: "Accounts Payable" } },
+      { account_id: "a1", debit: 0, credit: 551.2, accounts: { code: "1000", name: "Cash" } },
+    ], ...extra,
+  });
+  it("flattens an entry without ai_reasoning to reasoning: null, so the panel's gate shows nothing", () => {
+    const rows = flattenJournalEntries([je()]);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.reasoning).toBeNull();
+    // the panel's gate: `sel.reasoning ? classifyBankReason(sel) : null`
+    expect(rows[0].reasoning ? classifyBankReason(rows[0]) : null).toBeNull();
+  });
+  it("keeps a real rationale verbatim", () => {
+    const rows = flattenJournalEntries([je({ ai_reasoning: "Weekly linen service — booked to Linen & Laundry." })]);
+    expect(rows[0].reasoning).toBe("Weekly linen service — booked to Linen & Laundry.");
+  });
+  it("the placeholder is gone from src/, and the panel would have shown it verbatim", () => {
+    // Demonstrated rather than asserted: the provenance filter does not know this string.
+    expect(classifyBankReason({ reasoning: "Loaded from database", gl_name: "Cash" })).toBe("Loaded from database");
+    const { readFileSync, readdirSync, statSync } = require("fs");
+    const walk = (d) => readdirSync(d).flatMap((f) => { const p = `${d}/${f}`; return statSync(p).isDirectory() ? walk(p) : [p]; });
+    const hits = walk(new URL("../src", import.meta.url).pathname).filter((p) => /\.(js|jsx)$/.test(p) && readFileSync(p, "utf8").includes("Loaded from database"));
+    expect(hits).toEqual([]);
+  });
+});
