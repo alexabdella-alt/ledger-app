@@ -82,7 +82,11 @@ describe("documents.document_type — every writer speaks the column's vocabular
     // ASSERTED against the stripped source (so prose cannot satisfy a code assertion).
     const i = APP.indexOf("O97 STEP 1");
     expect(i).toBeGreaterThan(-1);
-    const region = code(APP.slice(i, i + 2600));
+    // A count is a guess about how long code is (C260); the next call in the flow is where
+    // the region actually ends. (C329 inserted lines above the guard and the count missed.)
+    const j = APP.indexOf("classifyFile(base64, mediaType, item.name)", i);
+    expect(j).toBeGreaterThan(i);
+    const region = code(APP.slice(i, j));
     // The claim and the guard must both be present, and the guard must gate the claim.
     expect(region).toMatch(/durableDocId\s*=\s*isDurableDocId\(/);
     expect(region).toMatch(/if\s*\(durableDocId\)\s*markIntake/);

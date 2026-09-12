@@ -4767,6 +4767,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // ★ AND IT MAKES DEDUP CHEAPER, NOT WEAKER: C193's content hash is computed here,
         // so identical bytes are recognised BEFORE we spend a single AI call on them.
         let durableDocId = null;
+        // C329 — the content hash keys the extraction cache (C263) as well as the library
+        // dedupe; computed once here, so a re-upload is recognised before any AI call.
+        let contentHash = null;
+        try { if (file) contentHash = await fileSha256Hex(file); } catch (e) { console.warn("[extraction] hash skipped:", e?.message || e); }
+        let prior = null;
+        const reused = { classify: false, extract: false };
         try {
           // ★ THE TYPE IS UNKNOWN HERE AND THE COLUMN HAS NO WAY TO SAY SO. It is
           // `NOT NULL DEFAULT 'other'` under a CHECK that allows seven values, so the
@@ -4806,7 +4812,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           }
           docType = "bank_statement";   // bank or unrecognized spreadsheet → bank flow
         } else {
-          docType = await classifyFile(base64, mediaType, item.name);
+          // ★★ C329 — C263's CACHE WAS BUILT AND CALLED BY NOTHING. `priorExtraction` and
+          // `storeExtraction` were defined, pinned by tests that read their bodies, and
+          // never invoked — so identical bytes re-uploaded re-ran every AI call, and the
+          // cache could never hit because nothing had ever written to it. Wired here: the
+          // classification is a property of the bytes and is reused; the ACCOUNT never is.
+          prior = await priorExtraction(contentHash);
+          const cachedType = prior?.extraction?.classify;
+          if (cachedType) { docType = cachedType; reused.classify = true; }
+          else docType = await classifyFile(base64, mediaType, item.name);
         }
 
         // O97 — stamp the real type onto the already-stored document. Placed HERE, before
@@ -4819,6 +4833,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         if (durableDocId && docType) {
           checkedRowUpdate({ supabase, table: "documents", id: durableDocId, companyId: currentCompany.id,
             patch: { document_type: documentTypeFor(docType) }, label: "o97_stamp_doc_type" });
+          // C329 — a fresh classification of a non-invoice document is worth keeping too:
+          // the invoice branch stores classify+extract together, everything else only ever
+          // learned its kind. (A reused classification is already stored, by definition.)
+          if (docType !== "invoice" && !reused.classify) void storeExtraction(durableDocId, { classify: docType });
         }
 
         // O55: a PDF/image the AI classifier recognized as a payroll register or a
@@ -4914,6 +4932,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         markIntake(item.intake_id, INTAKE_STATUS.PROCESSING, { detail: `processing as ${docType}` });
 
         if (docType === "invoice") {
+          // C329 — a usable stored reading of these exact bytes skips the extraction call.
+          // What was ON the document is a property of the bytes; the direction, duplicate
+          // and coding decisions below still run on it fresh, against today's books.
+          const cachedExtract = Array.isArray(prior?.extraction?.extract) && prior.extraction.extract.length ? prior.extraction.extract : null;
+          let extractedList = [];
+          if (cachedExtract) {
+            extractedList = cachedExtract;
+            reused.extract = true;
+            showNotification(cacheHitCopy({ name: item.name }));
+          } else {
           // Extract ALL invoices in the document (handles single and multi-invoice PDFs)
           const extractRes = await fetch(AI_PROXY_URL, {
             method:"POST", headers:getAuthHeaders(),
@@ -4934,13 +4962,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // ("parse it; if that throws, parse the SAME string again") could never recover
           // anything the first attempt missed — it was the identical call — so it was two
           // ways of writing `catch { [] }`. `aiJson` does the recovery that was intended.
-          let extractedList = [];
           try {
             const parsed = aiJson(extractData, []);
             extractedList = Array.isArray(parsed) ? parsed : [parsed];
           } catch (e) { extractedList = []; }
+          // C329 — store the RAW reading against the durable document, before any coding
+          // touches it. `extractionToStore` cannot carry a coding, so this is safe by
+          // construction; `storeExtraction` is best-effort and reports its own failure.
+          if (durableDocId && extractedList.length) void storeExtraction(durableDocId, { classify: docType, extract: extractedList });
+          }
 
-          
           if (extractedList.length === 0) {
             setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:"Could not extract invoice data — try a clearer scan"} : q));
             logUploadUpdate(item.upload_log_id, { status:"error", error:"Could not extract invoice data — try a clearer scan" });

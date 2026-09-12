@@ -102,3 +102,61 @@ describe("★★ the store path cannot write a coding, in the app either", () =>
     expect(look).toMatch(/usableExtraction\(data\)/);
   });
 });
+
+// ── C329 — THE CACHE IS CALLED NOW. IT WAS NOT. ────────────────────────────────
+// `priorExtraction` and `storeExtraction` were defined in App.jsx, pinned by the two
+// source guards above — which read their BODIES — and invoked by nothing. So no document
+// ever had an extraction stored, and no lookup could ever hit: the feature C263 recorded as
+// shipped had the exact shape §11 spends pages on (a mechanism nobody triggers is
+// indistinguishable from one with nothing to do). Found while looking for a way to link
+// O136's unlinked documents from their own stored reading — there were none.
+describe("★★★ C329 — the extraction cache has callers, and they read what the writer wrote", () => {
+  const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const code = app.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  const start = code.indexOf("const processUploadItem = async");
+  const end = code.indexOf("const handleBankFile = async", start) > 0 ? code.indexOf("const handleBankFile = async", start) : code.length;
+  const proc = code.slice(start, end);
+  // The definitions read `const name = async (…)` — no `name(` — so every `name(` is a call.
+  const calls = (name) => (code.match(new RegExp(`\\b${name}\\(`, "g")) || []).length;
+
+  it("is scoped to a non-empty slice", () => { expect(start).toBeGreaterThan(0); expect(proc.length).toBeGreaterThan(1000); });
+
+  it("★★ each cache function has at least one CALL SITE — a defined function is not a wired one", () => {
+    expect(calls("priorExtraction")).toBeGreaterThanOrEqual(1);
+    expect(calls("storeExtraction")).toBeGreaterThanOrEqual(2);   // invoice branch + non-invoice classify
+  });
+
+  it("the lookup runs BEFORE the classify call and its answer replaces it", () => {
+    expect(proc).toMatch(/prior = await priorExtraction\(contentHash\);[\s\S]{0,200}if \(cachedType\) \{ docType = cachedType;[\s\S]{0,80}else docType = await classifyFile\(/);
+  });
+
+  it("a stored reading skips the extraction fetch; a fresh reading is stored before the empty-check can return", () => {
+    const inv = proc.slice(proc.indexOf('if (docType === "invoice") {'));
+    expect(inv).toMatch(/if \(cachedExtract\) \{\s*extractedList = cachedExtract;[\s\S]{0,200}\} else \{[\s\S]{0,400}fetch\(AI_PROXY_URL/);
+    const stored = inv.indexOf("void storeExtraction(durableDocId, { classify: docType, extract: extractedList })");
+    const emptyCheck = inv.indexOf("if (extractedList.length === 0) {");
+    expect(stored).toBeGreaterThan(0);
+    expect(stored).toBeLessThan(emptyCheck);
+  });
+
+  it("★ the caller reads the SAME keys the writer stores — the ·3a seam, crossed", () => {
+    // The writer keys on CACHEABLE; the caller spells the keys by hand. If either moved,
+    // every lookup would be a silent miss with nothing on screen to say so.
+    const stored = extractionToStore({ classify: "invoice", extract: [{ vendor: "Sysco", amount: 1002.98 }] });
+    const usable = usableExtraction({ extraction: stored, extraction_version: EXTRACTION_VERSION });
+    expect(usable.ok).toBe(true);
+    expect(proc).toContain("prior?.extraction?.classify");
+    expect(proc).toContain("prior?.extraction?.extract");
+    expect(usable.extraction.classify).toBe("invoice");
+    expect(usable.extraction.extract).toEqual([{ vendor: "Sysco", amount: 1002.98 }]);
+  });
+
+  it("the coding call is still made on a cache hit — the account is never reused", () => {
+    const inv = proc.slice(proc.indexOf('if (docType === "invoice") {'));
+    const hit = inv.indexOf("if (cachedExtract) {");
+    const coding = inv.indexOf('profile: "code-invoices-batch"');
+    expect(hit).toBeGreaterThan(0);
+    expect(coding).toBeGreaterThan(hit);            // reached after the branch, not inside the else
+    expect(inv.slice(hit, inv.indexOf("} else {", hit))).not.toContain("code-invoices-batch");
+  });
+});
