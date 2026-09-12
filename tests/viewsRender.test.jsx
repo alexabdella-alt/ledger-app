@@ -154,6 +154,19 @@ describe("★★★ every screen renders with a company that has data in it", ()
   // which is C317's other half and is what these kill. Recorded rather than papered over: an
   // assertion aimed at the wrong half is the ·3a shape, and I wrote one before checking.
 
+  it("★★ C334 — the Review screen's sign-off card carries the month's card rate (structure, not render)", () => {
+    // The sign-off card renders only after `refreshDropped()` resolves in an effect
+    // (`ready = companyDataLoaded && droppedLoaded`), and renderToString runs no effects —
+    // so this sweep has never drawn that card and cannot draw this line. Pinned as
+    // STRUCTURE instead: the reader call sits inside `signOffCard`, and its sentence is
+    // rendered from the report it computed (§9), not composed beside it.
+    const src = fs.readFileSync(path.join(viewsDir, "ReviewView.jsx"), "utf8");
+    const card = src.slice(src.indexOf("const signOffCard = ("), src.indexOf("{ready && signOffCard}"));
+    expect(card).toMatch(/const r = cardRateForPeriod\(\{ anomalies, clarificationQueue, intakeRows, period: signOffMonth/);
+    expect(card).toMatch(/subjectPeriodOf: \(a\) => anomalySubjectPeriod\(a, invoices\)/);
+    expect(card).toMatch(/\{cardRateCopy\(r\)\}/);
+  });
+
   it("★★ C326 — the Documents card names the entry a file became and offers the door, on the CLIENT seat", () => {
     // The fixture's document is linked to `je_i1`, which is invoice i1's durable id. The
     // card must name that entry and offer to open it — and `detail` is in the client's

@@ -133,3 +133,36 @@ export function cardRateCopy(report = {}) {
   else if (mode === RATE_MODE.ONBOARDING) parts.push("onboarding — no target set for this mode yet");
   return parts.join(" · ");
 }
+
+// ── THE READER (C334) ────────────────────────────────────────────────────────
+// C253 built the report and recorded the card rate as "measured now"; nothing in the
+// product ever called `cardRateReport` (the C331 sweep). A drive deliverable that only a
+// test invokes is a number nobody has seen. This is the rate for ONE reviewed month, from
+// what the product actually holds: the anomaly rows placed in that month (any status —
+// a dismissed card was still a card the reviewer had to read) plus the clarification
+// cards raised this session for documents dated in it, over the documents received in it.
+//
+// A clarification card arrives in one of five shapes; `clarificationCardKind` names each
+// so the taxonomy can grade it, and a shape it does not recognise comes back null — which
+// `cardRateReport` reports as unclassified rather than defaulting to "judgment".
+export function clarificationCardKind(item = {}) {
+  if (!item) return null;
+  if (item.isLifecycle) return (item.arrival && item.arrival.reason) || null;
+  if (item.isDuplicate) return "duplicate_payment";
+  if (item.directionFirst) return "direction";
+  if (item.gaap) return "gaap";
+  if (item.question || Array.isArray(item.options)) return "gl";
+  return null;
+}
+
+export function cardRateForPeriod({ anomalies = [], clarificationQueue = [], intakeRows = [], period, subjectPeriodOf = () => null, mode = RATE_MODE.STEADY } = {}) {
+  const p = String(period || "").slice(0, 7);
+  if (!p) return cardRateReport({ cards: [], documentCount: 0, mode });
+  const inPeriod = (d) => String(d || "").slice(0, 7) === p;
+  const cards = [
+    ...(anomalies || []).filter((a) => a && subjectPeriodOf(a) === p).map((a) => ({ kind: a.type })),
+    ...(clarificationQueue || []).filter((c) => c && inPeriod(c.invoice && c.invoice.date)).map((c) => ({ kind: clarificationCardKind(c) })),
+  ];
+  const documentCount = (intakeRows || []).filter((r) => r && inPeriod(r.received_at)).length;
+  return cardRateReport({ cards, documentCount, mode });
+}

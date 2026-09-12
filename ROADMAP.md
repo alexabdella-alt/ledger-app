@@ -180,6 +180,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 > **⚠ THIS LIST IS BEHIND.** Everything between 2026-08-29 and 2026-09-06 (C205–C310 — the honesty sweep, the unchecked-write class, the drain, O117/O127, the Red River fixes) shipped and was never added here. **A printout cannot be wrong, only old** (§6), and this one is: read the per-item statuses in the tables below, not this list, until it is rebuilt.
 
+- ✅ **The Review screen says how many questions the month cost, split by kind** (2026-09-11, C334) — the card-rate report built on 2026-08-30 finally has a reader; unrecognised cards are reported, never graded as judgment
 - ✅ **A flat-fee supplier's unbalanced month raises its one card** (2026-09-11, C332) — "5 invoices, 4 payments — one looks unpaid" now exists, derived from the books and gone by itself when the bill is paid; it had been specified, tested and never wired
 - ✅ **A function nobody calls now fails the suite** (2026-09-11, C331) — the guard that would have caught the extraction cache; its first run removed a cash helper that was exposed, unread, and computed the wrong number
 - ✅ **The transaction panel speaks plainly** (2026-09-11, C330) — "GL account / Offset account / AI confidence / Recode GL account" are gone from the slide-in and every "GL Account" column is "Category"; the jargon guard now covers components rendered inside client screens, and knows the word "GL"

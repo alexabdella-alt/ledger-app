@@ -125,3 +125,45 @@ describe("★★ the taxonomy covers what the product can actually emit", () => 
     for (const k of changed) expect([k, CARD_TAXONOMY[k].why]).toEqual([k, expect.stringMatching(/was category 1/)]);
   });
 });
+
+// ── C334 — THE REPORT HAS A READER NOW ─────────────────────────────────────────
+// C253 recorded the card rate as "measured now" and nothing in the product called
+// `cardRateReport` (the C331 sweep). `cardRateForPeriod` is what the Review screen renders
+// for the month under review, from the anomaly rows placed in it, the clarification cards
+// raised for documents dated in it, and the documents received in it.
+import { cardRateForPeriod, clarificationCardKind } from "../src/lib/cardRate.js";
+describe("C334 — cardRateForPeriod reads what the product holds", () => {
+  const subjectPeriodOf = (a) => a.period || null;
+  it("names every clarification-card shape the upload path produces, and null for one it does not know", () => {
+    expect(clarificationCardKind({ isLifecycle: true, arrival: { reason: "amount_differs" } })).toBe("amount_differs");
+    expect(clarificationCardKind({ isDuplicate: true })).toBe("duplicate_payment");
+    expect(clarificationCardKind({ directionFirst: true })).toBe("direction");
+    expect(clarificationCardKind({ gaap: true, gaapType: "capital" })).toBe("gaap");
+    expect(clarificationCardKind({ question: "What was this for?", options: [] })).toBe("gl");
+    expect(clarificationCardKind({ mystery: true })).toBeNull();
+  });
+  it("counts the month's anomalies (any status) and this session's cards for documents dated in it, over documents received in it", () => {
+    const r = cardRateForPeriod({
+      period: "2026-08",
+      anomalies: [{ type: "duplicate_payment", period: "2026-08", status: "dismissed" }, { type: "vendor_spike", period: "2026-07", status: "open" }],
+      clarificationQueue: [
+        { isLifecycle: true, arrival: { reason: "record_failed" }, invoice: { date: "2026-08-14" } },   // category 1
+        { question: "?", options: [], invoice: { date: "2026-08-20" } },                                  // gl → judgment
+        { question: "?", options: [], invoice: { date: "2026-09-02" } },                                  // next month — not counted
+      ],
+      intakeRows: [{ received_at: "2026-08-01T10:00:00Z" }, { received_at: "2026-08-15T10:00:00Z" }, { received_at: "2026-07-30T10:00:00Z" }],
+      subjectPeriodOf,
+    });
+    expect(r.documentCount).toBe(2);
+    expect(r.total).toBe(3);
+    expect(r.bugs).toBe(1);
+    expect(r.judgment).toBe(2);
+    expect(r.withinTarget).toBe(false);   // a category-1 card fails the run whatever the rate
+  });
+  it("an unrecognised card shape is REPORTED, never defaulted to judgment", () => {
+    const r = cardRateForPeriod({ period: "2026-08", clarificationQueue: [{ mystery: true, invoice: { date: "2026-08-03" } }],
+      intakeRows: [{ received_at: "2026-08-03" }], subjectPeriodOf });
+    expect(r.unclassified).toEqual(["(no kind)"]);
+    expect(cardRateCopy(r)).toMatch(/not classified/);
+  });
+});

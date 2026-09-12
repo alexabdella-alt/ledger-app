@@ -11,6 +11,8 @@ import { buildReviewQueue } from "../../lib/reviewQueue";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
 import { isPeriodSignedOff } from "../../lib/signoff";
+import { cardRateForPeriod, cardRateCopy } from "../../lib/cardRate";
+import { anomalySubjectPeriod } from "../../lib/anomalies";
 
 // O50 — CPA Review Dashboard. Consumes O60 (dropped/incomplete docs via reconcileDroppedDocs)
 // and O49 (low-confidence-and-material txns via flagsForReview) into one review surface.
@@ -652,6 +654,20 @@ export default function ReviewView() {
           </div>
         )}
       </div>
+      {/* ★ C334 — THE CARD RATE, SPLIT (O122). Built in C253 and read by nothing until now.
+          Reviewer-only, for the month under review: how many questions the product asked
+          per document, and which of them were defects. The split is the deliverable — a
+          falling total with a flat "teaching" count is the teaching not sticking. */}
+      {canSignOff && (() => {
+        const r = cardRateForPeriod({ anomalies, clarificationQueue, intakeRows, period: signOffMonth,
+          subjectPeriodOf: (a) => anomalySubjectPeriod(a, invoices) });
+        return (
+          <div data-card-rate={signOffMonth} style={{ marginTop: 10, fontSize: 12, color: "var(--sc-text-2)" }}>
+            <span style={{ fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", fontSize: 10.5, color: "var(--sc-text-mut)", marginRight: 8 }}>Questions asked · {signOffMonth}</span>
+            {cardRateCopy(r)}
+          </div>
+        );
+      })()}
       {/* WHY it's blocked — CPA-side, the specific unresolved preconditions + nets. */}
       {canSignOff && !canAttest && !monthSignedOff && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--sc-border)" }}>
