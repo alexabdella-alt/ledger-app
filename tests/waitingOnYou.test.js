@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
-import { PAYROLL_HOLD_PREFIX, payrollHoldDetail, heldPayrollCards, matchingCard, waitingOnYou, waitingCopy } from "../src/lib/waitingOnYou.js";
+import { PAYROLL_HOLD_PREFIX, payrollHoldDetail, heldPayrollCards, matchingCard, waitingOnYou, waitingCopy, heldRegistersToReload } from "../src/lib/waitingOnYou.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -85,5 +85,54 @@ describe("the copy is derived from the card, and assumes no accounting knowledge
     });
     expect(cards).toHaveLength(2);
     for (const c of cards) expect([c.kind, containsOwnerJargon(waitingCopy(c))]).toEqual([c.kind, false]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// O135 — A HELD REGISTER THAT IS NOT IN MEMORY ANY MORE. The Review card is durable;
+// the parsed register was not. The Payroll screen now lists every held row with no
+// in-memory register and rebuilds it from the stored file on request.
+// ════════════════════════════════════════════════════════════════════════════
+describe("O135 — which held registers need rebuilding from their stored file", () => {
+  const held = (id, filename) => ({ id, status: "held_for_review", detail: payrollHoldDetail(gate), filename, document_id: `doc_${id}` });
+
+  it("a held row with NO in-memory register is offered for reload", () => {
+    const r = heldRegistersToReload({ intakeRows: [held("i1", "aug.csv")], payrollImports: [], uploadQueue: [] });
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ intake_id: "i1", filename: "aug.csv", loading: false });
+    expect(r[0].reasons).toBe(gate[0].text);
+  });
+
+  it("★ a held row whose register IS in memory is NOT offered — that would be a second copy of the same hold", () => {
+    const r = heldRegistersToReload({ intakeRows: [held("i1", "aug.csv")], payrollImports: [{ id: 1, _intakeId: "i1" }], uploadQueue: [] });
+    expect(r).toEqual([]);
+  });
+
+  it("★ a row already being re-read shows as loading, not as a button to press again (the O123 shape)", () => {
+    const r = heldRegistersToReload({ intakeRows: [held("i1", "aug.csv")], payrollImports: [], uploadQueue: [{ id: 9, intake_id: "i1", status: "processing" }] });
+    expect(r[0].loading).toBe(true);
+    // …and a FINISHED queue item does not count as in flight.
+    const done = heldRegistersToReload({ intakeRows: [held("i1", "aug.csv")], payrollImports: [], uploadQueue: [{ id: 9, intake_id: "i1", status: "done" }] });
+    expect(done[0].loading).toBe(false);
+  });
+
+  it("★★ the reload goes through the stored file and the ORIGINAL intake id — no second arrival row", () => {
+    // A second `logIntake` for the same document would corrupt the population the
+    // completeness ledger independently owns (O60). `enqueueDrainedItem` carries the
+    // original id, and the reload must use it rather than starting a fresh arrival.
+    const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+    const fn = app.slice(app.indexOf("const reloadHeldIntake = async"), app.indexOf("const [shadowResult"));
+    expect(fn).toMatch(/fetchStoredFile\(\{ supabase, documentId: row\.document_id \}\)/);
+    expect(fn).toMatch(/enqueueDrainedItem\(\{ intakeId: row\.id,/);
+    expect(fn).not.toMatch(/logIntake\(/);
+    // …and it refuses, with a stated reason, when there is no stored file to rebuild from.
+    expect(fn).toMatch(/if \(!row\.document_id\) return \{ ok: false/);
+  });
+
+  it("★★ the fetch carries document_id, or the reload can never find the bytes", () => {
+    const src = fs.readFileSync(new URL("../src/lib/documentIntake.js", import.meta.url), "utf8");
+    const m = src.match(/export async function fetchIntakeRows[\s\S]*?\.select\("([^"]+)"\)/);
+    expect(m[1].split(",").map((c) => c.trim())).toContain("document_id");
   });
 });

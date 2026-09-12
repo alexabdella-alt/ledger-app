@@ -166,6 +166,20 @@ describe("★★★ every screen renders with a company that has data in it", ()
     });
   });
 
+  it("★★ O135 — a held register with no in-memory copy is SHOWN on Payroll, from the durable row", () => {
+    // The Review card points here. Before this, the screen said "No payroll imports yet"
+    // over a register that was held for a decision — the link opened onto nothing.
+    return import(path.join(viewsDir, "PayrollView.jsx")).then((mod) => {
+      const intakeRows = [{ id: "i7", status: "held_for_review", filename: "gusto-0831.csv", document_id: "d7",
+        detail: "payroll register held for a person: The register doesn't foot: gross $4,000.00 less withholdings $850.00 is $3,150.00, but it states net pay of $3,200.00." }];
+      const html = renderViewHtml(mod.default, { ...POPULATED, intakeRows, payrollImports: [], navSeat: SEATS.reviewer });
+      expect(html).toContain("gusto-0831.csv");
+      expect(html).toContain("doesn&#x27;t foot");          // the gate's own reason, escaped by React
+      expect(html).toContain("Load it to decide");
+      expect(html).not.toContain("No payroll imports yet");  // the empty state must not contradict the card above it
+    });
+  });
+
   it("★ the two seats are genuinely different, or this loop is one sweep run twice", () => {
     expect(SEATS.reviewer.isReviewerSeat).not.toBe(SEATS.client.isReviewerSeat);
     expect(SEATS.reviewer.viewIds.length).toBeGreaterThan(SEATS.client.viewIds.length);

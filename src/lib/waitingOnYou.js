@@ -78,3 +78,24 @@ export function waitingCopy(card) {
   if (card.kind === "matching_pending") return `${card.count} bank ${card.count === 1 ? "line needs" : "lines need"} a match decision the system couldn't make on its own.`;
   return "";
 }
+
+// ── O135 — A HELD REGISTER THAT IS NOT IN MEMORY ANY MORE ────────────────────
+//
+// `payrollImports` is React state; the intake row is durable. After a reload the
+// Review card (built from the row) still points at Payroll, and Payroll has nothing to
+// show — the O86(k) link-to-nowhere shape. The stored FILE is durable too (O97 step 1),
+// so the register can be rebuilt by putting those bytes back through the pipeline: it
+// parses again, the gate refuses again, and the hold lands in-session where the
+// override card can act on it. One AI call; no migration.
+//
+// This decides WHICH held rows need that — the ones with no in-memory register — and
+// which are already loading, so the button and the "Reading…" state cannot disagree.
+export function heldRegistersToReload({ intakeRows = [], payrollImports = [], uploadQueue = [] } = {}) {
+  const inMemory = new Set((payrollImports || []).map((p) => String(p && p._intakeId)).filter((x) => x && x !== "null" && x !== "undefined"));
+  const inFlight = new Set((uploadQueue || [])
+    .filter((q) => q && q.intake_id && q.status !== "done" && q.status !== "error")
+    .map((q) => String(q.intake_id)));
+  return heldPayrollCards(intakeRows)
+    .filter((c) => !inMemory.has(String(c.intake_id)))
+    .map((c) => ({ ...c, loading: inFlight.has(String(c.intake_id)) }));
+}

@@ -105,6 +105,10 @@ const OVERRIDES = {
   chatBottomRef: { current: null }, chatInputRef: { current: null }, mainContentRef: { current: null },
   fileStoreRef: { current: {} }, uploadActiveRef: { current: false },
   AP_PRIORITY: [], CHART_OF_ACCOUNTS: [], CONTRACT_TYPES: [],
+  // `uploadQueue` is DATA whose name starts with a verb — the VERB regex (`upload` + a
+  // capital) would hand it out as a function, and `.filter` on a function throws. The
+  // C246 false-failure class (filteredInvoices / openingBalances), one more instance.
+  uploadQueue: [], intakeRows: [], payrollImports: [],
 };
 
 const noop = () => undefined;

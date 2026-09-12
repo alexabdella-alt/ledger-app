@@ -126,7 +126,7 @@ export async function fetchIntakeRows(db, companyId) {
     // actually wants was not being fetched — every row would age from `now`, the staleness
     // window would never fire, and the net would report all-clear while doing nothing.
     const { data, error } = await db.from("document_intake")
-      .select("id, status, source, journal_entry_ids, received_at, filename, detail")
+      .select("id, status, source, journal_entry_ids, received_at, filename, detail, document_id")
       .eq("company_id", companyId);
     // ★ A CHECK THAT CANNOT RUN MUST SAY WHY. The caller records ok/not-ok and discards the
     // message, so this failure had nowhere to be seen — invisible for as long as it existed.
