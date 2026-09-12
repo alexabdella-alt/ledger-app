@@ -36,3 +36,42 @@ describe("C335 — router branches render, they do not redirect", () => {
     expect(files.length).toBeGreaterThan(20);
   });
 });
+
+// ── AND THE SAME QUESTION OF EVERY MODULE (C336) ──────────────────────────────
+// Three files in `src/components/ui/` — a Button, a Card, a StatCard from the C132
+// design-system pass — were imported by nothing for months. A module nobody imports is
+// the O137 shape at file scale. The three lib modules with no importer are DELIBERATE
+// holds and are named as such, so a fourth cannot join them quietly.
+import path from "node:path";
+describe("C336 — every module under src/ has an importer, or is a named hold", () => {
+  const HELD = {
+    "src/lib/accruedLiabilities.js": "§12 event #10's builder — tested, awaiting the month-end accrual flow",
+    "src/lib/apBackfill.js": "AP/AR historical backfill planners — a no-op on current data, kept for a real-client conversion",
+    "src/lib/vendorBackfill.js": "the O88 backfill — ▶ HOLD under Amendment B; runs only in tests until shadow mode says PROCEED",
+  };
+  const walk = (d) => fs.readdirSync(d).flatMap((f) => { const p = path.join(d, f); return fs.statSync(p).isDirectory() ? walk(p) : /\.(js|jsx)$/.test(f) ? [p] : []; });
+  const root = path.join(process.cwd(), "src");
+  const files = walk(root);
+  const texts = Object.fromEntries(files.map((f) => [f, fs.readFileSync(f, "utf8")]));
+  it("no module is imported by nothing, unless it is on the held list with a reason", () => {
+    const orphans = [];
+    for (const f of files) {
+      const rel = path.relative(process.cwd(), f);
+      if (/(^|\/)(main|App)\.jsx$/.test(rel)) continue;
+      const name = path.basename(f).replace(/\.jsx?$/, "");
+      const pat = new RegExp(`from\\s+["'][^"']*/${name}(\\.jsx?)?["']`);
+      const imported = files.some((g) => g !== f && pat.test(texts[g]));
+      if (!imported && !HELD[rel]) orphans.push(rel);
+    }
+    expect(orphans).toEqual([]);
+  });
+  it("every held module is still genuinely unimported — a stale hold is a licence left open", () => {
+    for (const rel of Object.keys(HELD)) {
+      const f = path.join(process.cwd(), rel);
+      const name = path.basename(f).replace(/\.jsx?$/, "");
+      const pat = new RegExp(`from\\s+["'][^"']*/${name}(\\.jsx?)?["']`);
+      expect([rel, files.some((g) => g !== f && pat.test(texts[g]))]).toEqual([rel, false]);
+    }
+  });
+});
+
