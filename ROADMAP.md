@@ -180,7 +180,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 > **⚠ THIS LIST IS BEHIND.** Everything between 2026-08-29 and 2026-09-06 (C205–C310 — the honesty sweep, the unchecked-write class, the drain, O117/O127, the Red River fixes) shipped and was never added here. **A printout cannot be wrong, only old** (§6), and this one is: read the per-item statuses in the tables below, not this list, until it is rebuilt.
 
-- ✅ **A transaction shows its invoice again** (2026-09-11, C324) — the dedupe branch stamped the document's type and forgot its link, so every invoice since 2026-09-01 was in the library and invisible from the entry; the attach button now repairs an existing file instead of claiming to
+- ✅ **A transaction shows its invoice again** (2026-09-11, C324) — the dedupe branch stamped the document's type and forgot its link, so every invoice since 2026-09-01 was in the library and invisible from the entry; the attach button now repairs an existing file instead of claiming to; C325 gates its ✓ on the record, so a repair that fails cannot read as done
 - ✅ **A held payroll register survives a reload** (2026-09-11, C323) — rebuilt from its stored file on request, so the Review card no longer opens onto an empty screen
 - ✅ **Review links from the issue to the tool; the strip is gone** (2026-09-11, C322) — and a register the payroll gate refused finally has a place to appear after a reload, quoting the gate's own reasons
 - ✅ **Sending an invoice is the owner's** (2026-09-11, C321) — a mutation showed a source grep can't tell a gated button from an open one; the door is now pinned on the rendered client page

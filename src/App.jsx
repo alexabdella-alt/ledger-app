@@ -642,10 +642,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // `dedupePatch` keeps both monotone — placeholder → specific, null → link — and
           // never re-points a row that already backs an entry.
           const patch = dedupePatch(dupe, { type, linkedId: effectiveLink() });
+          let stampOk = true;
           if (Object.keys(patch).length) {
             const r = await checkedRowUpdate({ supabase, table: "documents", id: dupe.id,
               companyId: currentCompany.id, patch, label: "document_dedupe_stamp" });
-            if (!r.ok) console.error("[documents] dedupe stamp failed:", r.message || r.reason);
+            stampOk = !!r.ok;
+            if (!r.ok) {
+              console.error("[documents] dedupe stamp failed:", r.message || r.reason);
+              // Visible, like the insert-failure path — a console line is not a report.
+              reportDocError(queueItemId, `the file is already stored but we couldn't ${patch.linked_invoice_id ? "link it to this transaction" : "label it"}.`);
+            }
           }
           // Already stored — skip the storage upload AND the insert, drop the optimistic card,
           // and hand back the EXISTING id so callers (bank_statements.document_id) link to it.
@@ -653,9 +659,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // row it will reload as (and the relink below can find it by its link).
           setDocLibrary(prev => prev.filter(d => d.id !== doc.id).map(d => String(d.id) !== String(dupe.id) ? d : {
             ...d,
-            ...(patch.document_type ? { type: patch.document_type } : {}),
-            ...(patch.linked_invoice_id ? { linked_invoice_id: patch.linked_invoice_id } : {}),
+            ...(stampOk && patch.document_type ? { type: patch.document_type } : {}),
+            ...(stampOk && patch.linked_invoice_id ? { linked_invoice_id: patch.linked_invoice_id } : {}),
           }));
+          // ★ A LINK THE CALLER ASKED FOR THAT DID NOT LAND IS NOT A SUCCESS FOR THAT CALLER.
+          // The row exists, so callers that only wanted the id (bank statements, the
+          // durable-first store — both pass no link) still get it. A caller that asked for
+          // a link gets the in-session fallback, which `isDurableDocId` refuses — so the
+          // attach button cannot say "attached ✓" over a file that is stored and unlinked,
+          // which is the exact false success O136 was found through.
+          if (!stampOk && patch.linked_invoice_id) return doc.id;
           if (queueItemId) setUploadQueue(prev => prev.map(q => q.id === queueItemId ? { ...q, docError: undefined } : q));
           return dupe.id;
         }

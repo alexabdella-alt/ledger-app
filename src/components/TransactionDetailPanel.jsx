@@ -6,6 +6,7 @@ import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind } from "../lib/txnPresent";
 import { badge } from "../lib/ui";
+import { isDurableDocId } from "../lib/docLibrary";
 import { classifyBankReason } from "../lib/bankMatch";
 import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import { reversalIndex, reversalFor } from "../lib/ledger";
@@ -158,8 +159,12 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
     setSrcUploading(true);
     try {
       const base64 = await fileToBase64(file);
-      await storeDocument(file.name, base64, file.type, inv.type || "invoice", inv.db_entry_id || inv.id, ["source"], null, file);
-      showNotification("Source document attached ✓");
+      const storedId = await storeDocument(file.name, base64, file.type, inv.type || "invoice", inv.db_entry_id || inv.id, ["source"], null, file);
+      // ★ GATED ON THE RECORD, NOT THE CLICK (C194's family). `storeDocument` hands back an
+      // in-session float when the persist fails — or, since O136, when the file was already
+      // in the library and the link to THIS transaction did not land. Both already raised
+      // their own error toast; a "✓" on top of it would be the contradiction.
+      if (isDurableDocId(storedId)) showNotification("Source document attached ✓");
     } catch (e) { console.error(e); showNotification("Couldn't attach document.", "error"); }
     setSrcUploading(false);
   };

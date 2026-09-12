@@ -161,3 +161,30 @@ describe("the detail panel still matches a document on either id", () => {
     expect(src).toMatch(/String\(d\.linked_invoice_id\) === String\(inv\?\.db_entry_id\)/);
   });
 });
+
+// ── THE ATTACH BUTTON MAY NOT SAY "✓" OVER A LINK THAT DID NOT LAND ─────────
+// Before O136 it said "Source document attached ✓" unconditionally — on a persist failure
+// (storeDocument returns an in-session float, and had ALREADY shown its own error toast)
+// and on a file already in the library (the dedupe branch returned early without linking).
+// The button the operator would reach for to repair O136 was itself broken by it.
+describe("the manual attach button is gated on the record, not the click", () => {
+  const panel = code(PANEL);
+  const start = panel.indexOf("const handleSourceUpload = async");
+  const end = panel.indexOf("const doRecode = async", start);
+  const fn = panel.slice(start, end);
+  it("is scoped to a non-empty slice", () => { expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start); });
+  it("reads storeDocument's return and shows ✓ only for a durable id", () => {
+    expect(fn).toMatch(/const storedId = await storeDocument\(/);
+    expect(fn).toMatch(/if \(isDurableDocId\(storedId\)\) showNotification\("Source document attached ✓"\)/);
+    expect(panel).toMatch(/import \{ isDurableDocId \} from "\.\.\/lib\/docLibrary"/);
+  });
+  it("storeDocument returns the in-session fallback when a REQUESTED link did not land on an existing row", () => {
+    const src = code(APP);
+    const s = src.indexOf("const storeDocument = async");
+    const e = src.indexOf("const [payrollImports, setPayrollImports]", s);
+    const body = src.slice(s, e);
+    expect(body).toMatch(/if \(!stampOk && patch\.linked_invoice_id\) return doc\.id;/);
+    // and the failure is REPORTED, not merely logged — the insert path's convention.
+    expect(body).toMatch(/if \(!r\.ok\) \{\s*console\.error\("\[documents\] dedupe stamp failed:"[\s\S]{0,300}reportDocError\(queueItemId,/);
+  });
+});
