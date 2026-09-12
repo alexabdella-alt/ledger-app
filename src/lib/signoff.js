@@ -167,3 +167,16 @@ export function latestReviewedThrough(signoffs = []) {
   }
   return max;
 }
+
+// ── WHAT A REPORT MAY CLAIM ABOUT ITSELF (O104's core promise, C343) ─────────
+// Every report is computed over every entry, signed or not. That is correct — the numbers
+// are the books — but a report that says nothing about attestation reads as surer than the
+// books are. One line, derived from the sign-off rows: through which month a person has
+// stood behind these figures, and whether that person was an accountant. Owner-plain.
+export function reportAttestationLine({ reviewedThrough = null, selfSigned = false, monthLabel = (p) => p } = {}) {
+  if (!reviewedThrough) return "No month has been signed off yet — these figures haven't been reviewed by anyone.";
+  const label = monthLabel(reviewedThrough) || reviewedThrough;
+  return selfSigned
+    ? `Signed off through ${label} by you — no accountant has reviewed them. Later months are still being checked.`
+    : `Reviewed and signed off through ${label}. Later months are still being checked.`;
+}

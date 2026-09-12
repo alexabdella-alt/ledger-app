@@ -30,3 +30,27 @@ describe("isPeriodSignedOff — the selected month's signed-vs-ready state (O83 
     expect(isPeriodSignedOff(undefined, "2026-01")).toBe(false);
   });
 });
+
+// ── C343 — O104's core promise: a report never sounds surer than the books ──────
+import { reportAttestationLine } from "../src/lib/signoff.js";
+import fs from "node:fs";
+describe("reportAttestationLine — one honest line on every report", () => {
+  const monthLabel = (p) => ({ "2026-07": "July 2026" }[p] || p);
+  it("says plainly when nobody has reviewed anything", () => {
+    expect(reportAttestationLine({})).toBe("No month has been signed off yet — these figures haven't been reviewed by anyone.");
+  });
+  it("names the month an accountant stood behind, and that later months are still open", () => {
+    expect(reportAttestationLine({ reviewedThrough: "2026-07", monthLabel }))
+      .toBe("Reviewed and signed off through July 2026. Later months are still being checked.");
+  });
+  it("★ a self-signed month says so — 'you signed it' and 'an accountant reviewed it' are different facts (C272)", () => {
+    expect(reportAttestationLine({ reviewedThrough: "2026-07", selfSigned: true, monthLabel }))
+      .toMatch(/^Signed off through July 2026 by you — no accountant has reviewed them\./);
+  });
+  it("the Reports screen renders it from the sign-off rows, on every report", () => {
+    const src = fs.readFileSync(new URL("../src/components/views/ReportsView.jsx", import.meta.url), "utf8");
+    expect(src).toMatch(/reportAttestationLine\(\{ reviewedThrough, selfSigned: ownerTrust\?\.selfSigned, monthLabel \}\)/);
+    // above the report-type pills, so it is on screen whichever report is open
+    expect(src.indexOf("reportAttestationLine({")).toBeLessThan(src.indexOf('["pl","P&L"]'));
+  });
+});
