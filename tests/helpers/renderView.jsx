@@ -93,7 +93,7 @@ const OVERRIDES = {
   contractView: "list", docsFilterType: "all", checkRunMode: null, legalTab: "terms",
   reconStatementBalance: "", reconAccount: null, bankStep: 1, qboStep: 1, uploadedFile: null,
   vendorFilter: "", auditSearch: "", auditActionFilter: "all", chatInput: "", askDraft: "",
-  netIncome: 0, totalRevenue: 0, totalExpenses: 0, glCash: 0, cashFromBanks: 0,
+  netIncome: 0, totalRevenue: 0, totalExpenses: 0, glCash: 0,
   reviewedThrough: null, openingBalAsOfDate: null, cutoffDate: "2026-01-01",
   openingPosted: false, preCutoffActivity: false, hasUnread: false, notifOpen: false,
   chatOpen: false, chatLoading: false, isAILoading: false, uploadProcessing: false,
