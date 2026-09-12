@@ -95,7 +95,6 @@ import ApView from "./components/views/ApView";
 import ArView from "./components/views/ArView";
 import ReviewView from "./components/views/ReviewView";
 import BankView from "./components/views/BankView";
-import InvoicesView from "./components/views/InvoicesView";
 import VendorsView from "./components/views/VendorsView";
 import CustomersView from "./components/views/CustomersView";
 import RulesView from "./components/views/RulesView";
@@ -8464,9 +8463,6 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           <div key={view} className="sc-rise" style={{ maxWidth:1296, margin:"0 auto", padding:"32px 48px" }}>
 
           {/* Top-level tab redirects (legacy → new consolidated views) */}
-          {view==="ledger" && (() => { setView("books"); return null; })()}
-          {view==="money-in" && (() => { setView("books"); return null; })()}
-          {view==="money-out" && (() => { setView("books"); return null; })()}
 
           {/* HOME (Dashboard) — renders for both "home" and legacy "dashboard" */}
           {(view==="home" || view==="dashboard") && <DashboardView />}
@@ -8490,7 +8486,6 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           {/* BANK FEED */}
           {view==="bank" && <BankView />}
 
-          {view==="invoices" && <InvoicesView />}
 
           {/* VENDORS */}
           {view==="vendors" && <VendorsView />}

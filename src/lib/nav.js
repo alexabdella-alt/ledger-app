@@ -24,8 +24,14 @@ import { canAttestPeriod } from "./signoff";
 
 // Every view id that lives BEHIND the "Books" tab (the workbench group). Kept
 // as one list so the tab's active-state, the sub-nav and the guard agree.
+// C335 — `invoices`, `ledger`, `money-in` and `money-out` are GONE. The last three were
+// `setView("books")` side effects called during render (C312 named them dead router
+// branches); `invoices` was a screen no seat had a row for since C315 repointed its one
+// live door. The AI's navigate map still aliases all four words to `books`, so a model
+// saying "ledger" lands where it always did — and a stale persisted view id falls to
+// Home through `navRedirect`, as any unknown id does.
 export const BOOKS_GROUP = [
-  "books", "invoices", "ledger", "ap", "ar", "money-in", "money-out", "matching",
+  "books", "ap", "ar", "matching",
   "bank", "recon", "send-invoice", "vendors", "customers", "payroll", "docs",
   "detail", "contracts",
 ];

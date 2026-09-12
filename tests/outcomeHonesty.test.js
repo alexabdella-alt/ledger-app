@@ -171,7 +171,8 @@ describe("★★ O124(c) — 'Deleted' is claimed only when something was delete
 
 describe("★ O126(A)/O130 — one removal control, on the surface you reach by clicking the thing", () => {
   const src = fs.readFileSync(path.join(process.cwd(), "src/components/TransactionDetailPanel.jsx"), "utf8");
-  const list = fs.readFileSync(path.join(process.cwd(), "src/components/views/InvoicesView.jsx"), "utf8");
+  // C335 — InvoicesView is gone (reachable from nowhere since C315); the LIST surface is Books.
+  const list = fs.readFileSync(path.join(process.cwd(), "src/components/views/BooksView.jsx"), "utf8");
 
   it("the detail panel offers removal at all — it used to offer only Void", () => {
     // The safe action was four steps deep behind "View all invoices for X →", a label that
@@ -195,7 +196,11 @@ describe("★ O126(A)/O130 — one removal control, on the surface you reach by 
   it("★ the confirmation comes from the SAME planner that performs the action", () => {
     // Or the modal could promise one outcome while the action performs the other — §9,
     // one layer up: describe from the decision, not alongside it.
-    for (const f of [src, list]) expect(f).toMatch(/removalPlanFor/);
+    expect(src).toMatch(/removalPlanFor/);
+    // The list surface (Books, since C335) removes in BULK through the bulk planner, whose
+    // sentence is the planner's own — the same property, one planner up.
+    expect(list).toMatch(/const plan = planBulkRemoval\(/);
+    expect(list).toMatch(/plan\.confirm/);
     const fn = src.slice(src.indexOf("const doRemove"), src.indexOf("return createPortal"));
     expect(fn).toMatch(/setDeleteConfirm/);
     expect(fn).toMatch(/plan\?\.confirm/);
