@@ -167,7 +167,7 @@ export default function ReportsView() {
                 : txns.reduce((s,i)=>s+i.amount,0);
               const scopeLabel = { vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project", bsacct:"Balance Sheet" }[drill.scope];
               const hideVendor = drill.scope==="vendor", hideGL = drill.scope==="gl";
-              const cols = ["Date", ...(hideVendor?[]:["Vendor"]), "Description", ...(hideGL?[]:["GL Account"]), "Amount", "Status"];
+              const cols = ["Date", ...(hideVendor?[]:["Vendor"]), "Description", ...(hideGL?[]:["Category"]), "Amount", "Status"];
               const crumbs = ["Reports", scopeLabel, drill.label];
               return (
                 <div className="sc-rise" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip", marginBottom:16 }}>
@@ -636,12 +636,12 @@ export default function ReportsView() {
                     {reportType==="gl" && !drill && (
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid var(--sc-border)", display:"flex", justifyContent:"space-between" }}>
-                          <div style={{ fontSize:14, fontWeight:600 }}>Expenses by GL Category</div>
+                          <div style={{ fontSize:14, fontWeight:600 }}>Expenses by category</div>
                           <div style={{ fontSize:12, color:"var(--sc-text-2)" }}>{rangeLabels[reportRange]}</div>
                         </div>
                         <table style={{ width:"100%", borderCollapse:"collapse" }}>
                           <thead><tr style={{ background:"var(--sc-surface-2)" }}>
-                            {["GL Account","Transactions","Amount","% of Expenses"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
+                            {["Category","Transactions","Amount","% of Expenses"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
                           </tr></thead>
                           <tbody>
                             {glRows.map((row,i)=>(

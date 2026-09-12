@@ -347,7 +347,7 @@ export function clarificationChips(invoice = {}, { minConfidence = 55 } = {}) {
 // not match "Payables", and a UI says the plural far more often than the singular —
 // capitalize/depreciate/amortize/accrue, "chart of accounts", and any bare
 // 4-digit GL code (1000–8999).
-export const OWNER_JARGON_RE = /\bGAAP\b|\bASC\b|\bdebit(ed|s)?\b|\bcredit(ed|s)?\b(?!\s*card)|journal entr|\bledger\b|\bpayables?\b|\breceivables?\b|deferred revenue|balance sheet|capitaliz|depreciat|amortiz|\baccru|chart of accounts|\bgeneral ledger\b|\bGL code\b|\bcontrol total|\breconcil|\btrial balance\b|\bconfidence\b/i;
+export const OWNER_JARGON_RE = /\bGAAP\b|\bASC\b|\bdebit(ed|s)?\b|\bcredit(ed|s)?\b(?!\s*card)|journal entr|\bledger\b|\bpayables?\b|\breceivables?\b|deferred revenue|balance sheet|capitaliz|depreciat|amortiz|\baccru|chart of accounts|\bgeneral ledger\b|\bGL\b|\bcontrol total|\breconcil|\btrial balance\b|\bconfidence\b/i;
 // A bare 4-digit GL account code (1000–8999) — EXCEPT a plausible calendar year (1900–2199),
 // which legitimately appears in owner copy ("Reviewed through May 2026") and is not a GL code.
 // ★★ AN IRS FORM NUMBER IS GL-CODE-SHAPED AND IS NOT A GL CODE (C315). "1099" is four

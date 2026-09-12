@@ -180,6 +180,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 > **⚠ THIS LIST IS BEHIND.** Everything between 2026-08-29 and 2026-09-06 (C205–C310 — the honesty sweep, the unchecked-write class, the drain, O117/O127, the Red River fixes) shipped and was never added here. **A printout cannot be wrong, only old** (§6), and this one is: read the per-item statuses in the tables below, not this list, until it is rebuilt.
 
+- ✅ **The transaction panel speaks plainly** (2026-09-11, C330) — "GL account / Offset account / AI confidence / Recode GL account" are gone from the slide-in and every "GL Account" column is "Category"; the jargon guard now covers components rendered inside client screens, and knows the word "GL"
 - ✅ **A re-dropped invoice is read once, not three times** (2026-09-11, C329) — the extraction cache built on 2026-08-30 had never been called; it is wired now, and the account is still decided fresh every time
 - ✅ **A payment no longer shows "AI REASONING: Loaded from database"** (2026-09-11, C328) — an entry with no rationale carries none, and the panel shows none
 - ✅ **The last four accounting words on owner screens are gone** (2026-09-11, C327) — "Trial Balance", "AR/AP Aging", the two TOTAL OUTSTANDING headings and "AI Confidence" now read in the sidebar's own vocabulary; the jargon guard's allow-list holds only proper names

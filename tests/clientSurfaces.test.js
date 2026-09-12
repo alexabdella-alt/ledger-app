@@ -91,13 +91,23 @@ describe("(2) client-visible copy assumes zero accounting knowledge", () => {
   const visibleStrings = (src) => {
     const out = new Set();
     for (const m of src.matchAll(/>([^<>{}]{4,110})</g)) out.add(m[1].trim());
-    for (const m of src.matchAll(/"([^"]{4,110})"/g)) if (/\s/.test(m[1])) out.add(m[1].trim());
+    // ★ WALK EVERY STRING LITERAL IN ORDER — double, single AND template — rather than
+    // pairing `"` characters naively. One `"` inside a '…' string or a template earlier in
+    // the file shifted every later pair by one, and the slide-in panel's `"GL account"`
+    // label came out as the gap BETWEEN two labels: a mutation restoring it survived.
+    for (const m of src.matchAll(/"((?:[^"\\\n]|\\.){4,110})"|'((?:[^'\\\n]|\\.){4,110})'|`(?:[^`\\]|\\.)*`/g)) {
+      const lit = m[1] ?? m[2];
+      if (lit != null && /\s/.test(lit)) out.add(lit.trim());
+    }
     // ★ A LABEL NEVER CONTAINS CODE PUNCTUATION. The quoted-literal sweep otherwise picks
     // up whatever sits between two unrelated quote characters — a run of style props came
     // back as `, fontSize:13 }}>{a.credit?fmt(a.credit):` and was reported as owner jargon
     // because it contains the word "credit". Filtering by SHAPE keeps the check mechanical;
     // adding that string to the allow-list would have hidden a class of noise instead.
-    return [...out].filter((t) => t && !/[{}<>=;]/.test(t));
+    // …and a fragment that BEGINS with a comma is the gap between two object-literal
+    // values (`"By Vendor", gl:"By Category"` yields `, gl:`), never a label. Same noise
+    // class, filtered by shape for the same reason.
+    return [...out].filter((t) => t && !/[{}<>=;]/.test(t) && !/^\s*,/.test(t));
   };
 
   // ★★ WHAT COUNTS AS "CLIENT COPY" — two things a client never sees have to come out
@@ -143,6 +153,21 @@ describe("(2) client-visible copy assumes zero accounting knowledge", () => {
   for (const [viewId, file] of Object.entries(CLIENT_SCREENS)) {
     it(`${file} (client view "${viewId}") — no owner jargon in the client half of its copy`, () => {
       const hits = clientHalf(read(file))
+        .filter((t) => containsOwnerJargon(t))
+        .filter((t) => !Object.keys(KNOWN_DEBT).some((k) => t.includes(k)));
+      expect(hits).toEqual([]);
+    });
+  }
+
+  // ★★ C330 — THE SLIDE-IN PANEL IS NOT A VIEW, AND THE OPERATOR'S SCREENSHOT WAS OF IT.
+  // Every client screen passed this bar while the panel a client actually opens from
+  // Transactions read "GL account · Offset account · AI confidence · AI REASONING ·
+  // Recode GL account". A component rendered INSIDE a client view is a client surface.
+  const CLIENT_COMPONENTS = ["TransactionDetailPanel"];
+  const readComponent = (name) => strip(fs.readFileSync(path.join(process.cwd(), "src/components", `${name}.jsx`), "utf8"));
+  for (const file of CLIENT_COMPONENTS) {
+    it(`${file} (rendered inside client views) — no owner jargon in the client half of its copy`, () => {
+      const hits = clientHalf(readComponent(file))
         .filter((t) => containsOwnerJargon(t))
         .filter((t) => !Object.keys(KNOWN_DEBT).some((k) => t.includes(k)));
       expect(hits).toEqual([]);

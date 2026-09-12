@@ -77,7 +77,7 @@ export default function CustomersView() {
                     <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid var(--sc-surface-2)" }}>All transactions ({cTxns.length})</div>
                     {cTxns.length===0 ? <div style={{ padding:32, textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>No transactions with this customer yet.</div> : (
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                        <thead><tr style={{ background:"var(--sc-bg)" }}>{["Date","Description","GL Account","Status","Amount"].map((h,i)=><th key={i} style={{ padding:"9px 16px", textAlign:i===4?"right":"left", fontSize:10, color:"var(--sc-text-2)", letterSpacing:1, fontWeight:600, borderBottom:"1px solid var(--sc-border)" }}>{h.toUpperCase()}</th>)}</tr></thead>
+                        <thead><tr style={{ background:"var(--sc-bg)" }}>{["Date","Description","Category","Status","Amount"].map((h,i)=><th key={i} style={{ padding:"9px 16px", textAlign:i===4?"right":"left", fontSize:10, color:"var(--sc-text-2)", letterSpacing:1, fontWeight:600, borderBottom:"1px solid var(--sc-border)" }}>{h.toUpperCase()}</th>)}</tr></thead>
                         <tbody>
                           {cTxns.map((i,idx)=>{
                             const collected = i.payment_status==="collected"||i.payment_status==="paid";

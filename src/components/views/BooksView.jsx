@@ -90,7 +90,7 @@ export default function BooksView() {
     "Date": i => i.date || "",
     "Vendor": i => (i.vendor||"").toLowerCase(),
     "Description": i => (i.description||"").toLowerCase(),
-    "GL Account": i => String(i.gl_code||""),
+    "Category": i => String(i.gl_code||""),
     "Amount": i => Math.abs(Number(i.amount)||0),
     "Status": i => statusKey(i),
   };
@@ -241,7 +241,7 @@ export default function BooksView() {
                 onChange={e=>setPicked(e.target.checked ? new Set(rows.map(r=>r.id)) : new Set())}
                 style={{ cursor:"pointer" }} />
             </th>
-            {["Date","Vendor","Description","GL Account","Amount","Status",""].map((h,i)=>{
+            {["Date","Vendor","Description","Category","Amount","Status",""].map((h,i)=>{
               const sortable = h!=="";
               const active = sort.col===h;
               const arrow = active ? (sort.dir==="asc"?"↑":"↓") : "↕";

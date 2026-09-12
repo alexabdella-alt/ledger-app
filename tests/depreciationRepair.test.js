@@ -115,7 +115,11 @@ describe("★★ it is reachable from the entry that needs it", () => {
   it("★★ and it reports the tool's OUTCOME, including 'already linked'", () => {
     // The tool is idempotent and says so; the panel must not claim a schedule it did not
     // create. `skipped` is the already-linked case and is deliberately not an error.
-    const offer = panel.slice(panel.indexOf("O129 — EQUIPMENT WITH NO SCHEDULE"), panel.indexOf("O129 — EQUIPMENT WITH NO SCHEDULE") + 4000);
+    // The block ends at the recode control that follows it — an anchor, not a character
+    // count (C260's rule; a count silently excludes whatever a later edit pushes past it).
+    const o = panel.indexOf("O129 — EQUIPMENT WITH NO SCHEDULE");
+    const offer = panel.slice(o, panel.indexOf("CHANGE CATEGORY", o));
+    expect(offer.length).toBeGreaterThan(500);
     expect(offer).toMatch(/if \(r && r\.ok\)/);
     expect(offer).toMatch(/!r\.skipped/);
   });

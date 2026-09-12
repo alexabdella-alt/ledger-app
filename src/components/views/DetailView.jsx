@@ -24,8 +24,8 @@ export default function DetailView() {
                   ["Type", selectedInvoice.type],
                   ["Project", selectedInvoice.project||"General"],
                   ["Amount", fmtMoney(selectedInvoice.amount)],
-                  ["GL Account", `${selectedInvoice.gl_code} — ${selectedInvoice.gl_name}`],
-                  ["Offset Account", `${selectedInvoice.secondary_gl_code} — ${selectedInvoice.secondary_gl_name}`],
+                  ["Category", `${selectedInvoice.gl_code} — ${selectedInvoice.gl_name}`],
+                  ["Against", `${selectedInvoice.secondary_gl_code} — ${selectedInvoice.secondary_gl_name}`],
                   ["How sure we were", `${selectedInvoice.confidence}%`],
                 ].map(([label,value])=>(
                   <div key={label} style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", borderBottom:"1px solid var(--sc-border)" }}>

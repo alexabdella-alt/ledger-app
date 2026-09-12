@@ -179,10 +179,10 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
     const ok = persistRecode ? await persistRecode([{ ...inv, gl_code: acct.code }], acct.code, acct.name) : false;
     if (ok) {
       logAudit && logAudit("recode", `Recoded ${inv.vendor} → ${acct.name}`, { gl_code: inv.gl_code }, { gl_code: acct.code, gl_name: acct.name });
-      showNotification && showNotification(`Recoded to ${acct.name} ✓`);
+      showNotification && showNotification(`Changed to ${acct.name} ✓`);
     } else {
       setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, ...before } : i));
-      showNotification && showNotification("Couldn't save the recode — please try again.", "error");
+      showNotification && showNotification("Couldn't save that change — please try again.", "error");
     }
   };
   // ── O123/O124 — IS THIS ENTRY ALREADY REVERSED? ──────────────────────────────
@@ -247,10 +247,10 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               <div>
                 {[
                   ["Description", sel.description || "—"],
-                  ["GL account", `${sel.gl_code || ""} ${sel.gl_name || ""}`],
-                  ["Offset account", sel.secondary_gl_code ? `${sel.secondary_gl_code} ${sel.secondary_gl_name || ""}` : "—"],
+                  ["Category", sel.gl_name || sel.gl_code || "—"],
+                  ["Against", sel.secondary_gl_code ? (sel.secondary_gl_name || sel.secondary_gl_code) : "—"],
                   ["Type", settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? "Revenue" : "Expense"],
-                  ["AI confidence", sel.confidence != null ? `${sel.confidence}%` : "—"],
+                  ["How sure we were", sel.confidence != null ? `${sel.confidence}%` : "—"],
                   sel.payment_status === "paid" ? ["Payment", `${methodLabel(sel.payment_method_used)}${sel.paid_at ? ` · ${fmtDate(sel.paid_at)}` : ""}${sel.payment_reference ? ` · ${sel.payment_reference}` : ""}`] : null,
                   (sel.payment_status === "paid" || sel.payment_status === "collected") ? ["How paid", (sel.auto_matched || sel.payment_method_used === "bank_transfer") ? `Auto-matched from bank statement${sel.matched_bank_date ? ` (${sel.matched_bank_date})` : ""}` : "Manually marked paid"] : null,
                 ].filter(Boolean).map(([k, v]) => (
@@ -263,7 +263,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   <div style={{ marginTop: 16, background: "var(--sc-gold-soft)", borderLeft: "3px solid var(--sc-gold)", borderRadius: "0 10px 10px 0", padding: "14px 16px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--sc-gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
-                      <div style={{ fontSize: 11, letterSpacing: 1.5, color: "var(--sc-gold)", fontWeight: 600 }}>AI REASONING</div>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, color: "var(--sc-gold)", fontWeight: 600 }}>WHY IT WAS BOOKED THIS WAY</div>
                     </div>
                     <div style={{ fontSize: 13, color: "var(--sc-text-2)", lineHeight: 1.6 }}>{displayReasoning(sel)}</div>
                   </div>
@@ -324,7 +324,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                     <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginBottom: depOpen ? 10 : 8 }}>{repairOfferCopy(sel)}</div>
                     {!depOpen ? (
                       <button onClick={() => setDepOpen(true)} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", cursor: "pointer" }}>
-                        Set up depreciation
+                        Spread the cost over time
                       </button>
                     ) : (
                       <div>
@@ -352,7 +352,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                             setDepBusy(false);
                             // The tool reports its own outcome, including "already linked" —
                             // so this cannot claim a schedule it did not create (§9).
-                            if (r && r.ok) { setDepOpen(false); showNotification("Depreciation set up — it'll be written down automatically from here."); }
+                            if (r && r.ok) { setDepOpen(false); showNotification("Done — the cost will be written down a little each month from here."); }
                             else if (r && !r.skipped) showNotification(`Couldn't set that up — ${r?.error || "please try again"}`, "error");
                           }} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", background: depBusy ? "var(--sc-border)" : "var(--sc-accent)", color: depBusy ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: depBusy ? "not-allowed" : "pointer" }}>
                             {depBusy ? "Setting up…" : "Set it up"}
@@ -363,14 +363,14 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   </div>
                 )}
 
-                  <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 6, letterSpacing: 0.5 }}>RECODE GL ACCOUNT</div>
+                  <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 6, letterSpacing: 0.5 }}>CHANGE CATEGORY</div>
                   <select defaultValue={sel.gl_code} onChange={e => doRecode(sel, e.target.value)} style={{ width: "100%", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 9, padding: "10px 12px", fontSize: 13, color: "var(--sc-text)", outline: "none" }}>
                     {(CHART_OF_ACCOUNTS || []).filter(a => a.code >= "4000").map(a => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
                   </select>
                   <button onClick={() => setRecodeOpen(false)} style={{ marginTop: 8, background: "none", border: "none", color: "var(--sc-text-2)", fontSize: 12, cursor: "pointer", padding: 0 }}>Cancel</button>
                 </div>
               ) : (
-                <button onClick={() => setRecodeOpen(true)} style={{ fontSize: 12, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 600 }}>Recode GL account</button>
+                <button onClick={() => setRecodeOpen(true)} style={{ fontSize: 12, color: "var(--sc-gold)", background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 600 }}>Change category</button>
               )}
             </div>
             )}
