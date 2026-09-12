@@ -25,15 +25,23 @@ export const DOC_DATE_SOURCE = {
   UPLOADED: "uploaded",   // all we know
 };
 
-// `invoices` are the flattened ledger rows; a document carries `linked_invoice_id`.
+// ── THE ENTRY A DOCUMENT BECAME ──────────────────────────────────────────────
+// `invoices` are the flattened ledger rows; a document carries `linked_invoice_id`, which
+// is the entry's durable id once booking resolved (or its in-session id until then). ONE
+// resolver, shared by the card's date and the card's door — the same lookup the detail
+// panel's `findSourceDoc` makes from the other side — so "dated by the entry" and "opens
+// the entry" cannot disagree about which entry that is.
+export function linkedEntryFor(doc = {}, invoices = []) {
+  const link = doc.linked_invoice_id;
+  if (link == null || link === "") return null;
+  const key = String(link);
+  return (invoices || []).find((i) => i && (String(i.db_entry_id) === key || String(i.id) === key)) || null;
+}
+
 export function documentDate(doc = {}, invoices = []) {
   if (doc.document_date) return { date: doc.document_date, source: DOC_DATE_SOURCE.DOCUMENT };
-  const link = doc.linked_invoice_id;
-  if (link != null && link !== "") {
-    const key = String(link);
-    const hit = (invoices || []).find((i) => i && (String(i.db_entry_id) === key || String(i.id) === key));
-    if (hit && hit.date) return { date: hit.date, source: DOC_DATE_SOURCE.LINKED };
-  }
+  const hit = linkedEntryFor(doc, invoices);
+  if (hit && hit.date) return { date: hit.date, source: DOC_DATE_SOURCE.LINKED };
   return { date: doc.uploaded_at || doc.created_at || null, source: DOC_DATE_SOURCE.UPLOADED };
 }
 

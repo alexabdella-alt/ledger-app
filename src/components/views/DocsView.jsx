@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { filterDocuments, documentDate, documentDateLabel } from "../../lib/docLibrary";
-import { fmtDate } from "../../lib/format";
+import { filterDocuments, documentDate, documentDateLabel, linkedEntryFor } from "../../lib/docLibrary";
+import { fmtDate, fmtMoney } from "../../lib/format";
 import DocumentPreviewModal from "../DocumentPreviewModal";
 
 // Renders an image from Supabase Storage via a short-lived signed URL (or the
@@ -22,7 +22,7 @@ function StoredImage({ supabase, path, base64, mediaType, style, alt }) {
 }
 
 export default function DocsView() {
-  const { docLibrary, docsFilterType, docsPreview, setDocsFilterType, setDocsPreview, supabase, invoices } = useERP();
+  const { docLibrary, docsFilterType, docsPreview, setDocsFilterType, setDocsPreview, supabase, invoices, setSelectedInvoice, setReturnTo, setView } = useERP();
   const [query, setQuery] = React.useState("");
   const [from, setFrom] = React.useState("");
   const [to, setTo] = React.useState("");
@@ -107,6 +107,22 @@ export default function DocsView() {
                     if (!d.date) return null;
                     const suffix = documentDateLabel(d);
                     return <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 8 }}>{suffix ? `${suffix} ${fmtDate(d.date)}` : fmtDate(d.date)}</div>;
+                  })()}
+                  {/* ★ WHAT THE DOCUMENT BECAME, AND A DOOR TO IT. "Where did my receipt go?"
+                      is an owner question, and until O136 the answer on this screen was a
+                      filename. The card names the entry it produced and opens it — the
+                      reverse of the detail panel's "source document", through the SAME
+                      resolver, so the two screens cannot point at different entries. */}
+                  {(() => {
+                    const inv = linkedEntryFor(doc, invoices);
+                    if (!inv) return null;
+                    return (
+                      <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <span>{inv.vendor} · {fmtMoney(inv.amount)}</span>
+                        <button onClick={(e) => { e.stopPropagation(); setReturnTo({ view: "docs", label: "Documents" }); setSelectedInvoice(inv); setView("detail"); }}
+                          style={{ fontSize: 11, fontWeight: 600, color: "var(--sc-gold)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Open the transaction →</button>
+                      </div>
+                    );
                   })()}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ fontSize: 10, background: "var(--sc-border)", color: "var(--sc-text-2)", borderRadius: 20, padding: "2px 8px", textTransform: "capitalize" }}>{doc.type}</span>

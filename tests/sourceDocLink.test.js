@@ -188,3 +188,24 @@ describe("the manual attach button is gated on the record, not the click", () =>
     expect(body).toMatch(/if \(!r\.ok\) \{\s*console\.error\("\[documents\] dedupe stamp failed:"[\s\S]{0,300}reportDocError\(queueItemId,/);
   });
 });
+
+// ── THE OTHER DIRECTION: A DOCUMENT SAYS WHICH ENTRY IT BECAME ──────────────
+import { linkedEntryFor } from "../src/lib/docLibrary";
+describe("the Documents card names the entry a file became and opens it (C326)", () => {
+  const doc = { id: "d1", linked_invoice_id: JE };
+  const rows = [{ id: JE, db_entry_id: JE, vendor: "Roma Cheese & Dairy", amount: 551.2, date: "2026-08-04" }];
+  it("resolves on the durable id and on the in-session id, like the panel's matcher", () => {
+    expect(linkedEntryFor(doc, rows)?.vendor).toBe("Roma Cheese & Dairy");
+    expect(linkedEntryFor({ linked_invoice_id: IN_SESSION }, [{ id: IN_SESSION, db_entry_id: JE, vendor: "x" }])?.vendor).toBe("x");
+    expect(linkedEntryFor({ linked_invoice_id: null }, rows)).toBeNull();
+    expect(linkedEntryFor({ linked_invoice_id: "nope" }, rows)).toBeNull();
+  });
+  it("the card's DATE and the card's DOOR come from one resolver, so they cannot name different entries", () => {
+    expect(documentDate(doc, rows)).toEqual({ date: "2026-08-04", source: DOC_DATE_SOURCE.LINKED });
+    const src = readFileSync(new URL("../src/lib/docLibrary.js", import.meta.url), "utf8");
+    const body = code(src);
+    const fn = body.slice(body.indexOf("export function documentDate"), body.indexOf("export function documentDateLabel"));
+    expect(fn).toMatch(/linkedEntryFor\(doc, invoices\)/);
+    expect(fn).not.toMatch(/\.find\(/);            // no second lookup of its own
+  });
+});

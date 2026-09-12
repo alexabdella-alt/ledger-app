@@ -154,6 +154,18 @@ describe("★★★ every screen renders with a company that has data in it", ()
   // which is C317's other half and is what these kill. Recorded rather than papered over: an
   // assertion aimed at the wrong half is the ·3a shape, and I wrote one before checking.
 
+  it("★★ C326 — the Documents card names the entry a file became and offers the door, on the CLIENT seat", () => {
+    // The fixture's document is linked to `je_i1`, which is invoice i1's durable id. The
+    // card must name that entry and offer to open it — and `detail` is in the client's
+    // view set, so the door is a real one for an owner, not a locked room (C321's lesson).
+    return import(path.join(viewsDir, "DocsView.jsx")).then((mod) => {
+      const html = renderViewHtml(mod.default, { ...POPULATED, navSeat: SEATS.client });
+      expect(html).toContain("Open the transaction");
+      expect(html).toContain("Hill Country Milling Co.");
+      expect(SEATS.client.viewIds).toContain("detail");
+    });
+  });
+
   it("★★ an OWNER sees the 'Send an invoice' door on Money owed to you (C321)", () => {
     // Permission without a door is a locked room. `send-invoice` is in the client's view
     // set; this asserts the button that reaches it actually renders for the CLIENT seat —
