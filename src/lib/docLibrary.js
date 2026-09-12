@@ -164,3 +164,15 @@ export function dedupePatch(existing = {}, { type, linkedId } = {}) {
   if (linksOver(existing.linked_invoice_id, linkedId)) patch.linked_invoice_id = String(linkedId);
   return patch;
 }
+
+// ── THE DOCUMENT'S OWN DATE, FROM WHAT WAS READ OFF IT (C337) ────────────────
+// The earliest well-formed invoice date on the document. Never the upload date, never
+// today, never a guess: an extraction with no usable date yields null and the card keeps
+// saying "uploaded <date>", which is the truth it can stand behind.
+export function documentDateFromExtraction(extracted = []) {
+  const dates = (extracted || [])
+    .map((ex) => String((ex && (ex.date || ex.invoice_date)) || "").slice(0, 10))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(new Date(d + "T00:00:00Z").getTime()));
+  if (!dates.length) return null;
+  return dates.sort()[0];
+}

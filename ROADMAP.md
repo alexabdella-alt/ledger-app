@@ -180,6 +180,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 > **⚠ THIS LIST IS BEHIND.** Everything between 2026-08-29 and 2026-09-06 (C205–C310 — the honesty sweep, the unchecked-write class, the drain, O117/O127, the Red River fixes) shipped and was never added here. **A printout cannot be wrong, only old** (§6), and this one is: read the per-item statuses in the tables below, not this list, until it is rebuilt.
 
+- ✅ **A document carries its own date** (2026-09-11, C337) — the column from 2026-08-29 finally has a writer: the invoice date read off the file, so "find the August receipt" works even for a file that links to nothing
 - ✅ **Four files nothing imported are gone, and the three deliberate holds are named** (2026-09-11, C336)
 - ✅ **Four screens that could not be reached are gone** (2026-09-11, C335) — three render-time redirects and an invoice list no seat had a door to, plus a view file nothing imported; the AI still understands the words
 - ✅ **The Review screen says how many questions the month cost, split by kind** (2026-09-11, C334) — the card-rate report built on 2026-08-30 finally has a reader; unrecognised cards are reported, never graded as judgment

@@ -113,3 +113,31 @@ describe("★★ (3) the type is derived, and an unknown one is kept rather than
     expect(code).not.toMatch(/storeDocument\(item\.name, base64, mediaType, "invoice"/);
   });
 });
+
+// ── C337 — `document_date` HAS A WRITER NOW ─────────────────────────────────────
+// Migration 077 added the column (applied 2026-08-29, "0 carrying a date"); `documentDate`
+// has read it since C263; `loadAllData` never mapped it and nothing wrote it. A reader
+// with no writer, in a column added for that reader — O95's shape, one table over.
+import { documentDateFromExtraction } from "../src/lib/docLibrary.js";
+import { readFileSync } from "node:fs";
+describe("C337 — the document's own date is derived from the reading, never guessed", () => {
+  it("takes the EARLIEST well-formed invoice date on the document", () => {
+    expect(documentDateFromExtraction([{ date: "2026-08-21" }, { invoice_date: "2026-08-04" }, { date: "2026-08-14" }])).toBe("2026-08-04");
+  });
+  it("yields null — not today, not the upload date — when nothing usable was read", () => {
+    expect(documentDateFromExtraction([])).toBeNull();
+    expect(documentDateFromExtraction([{ date: "Aug 4" }, { date: "2026-13-45" }, {}])).toBeNull();
+    expect(documentDateFromExtraction(null)).toBeNull();
+  });
+  it("the card prefers it, and says nothing about the upload when it has it", () => {
+    const d = documentDate({ document_date: "2026-08-04", uploaded_at: "2026-09-10" }, []);
+    expect(d).toEqual({ date: "2026-08-04", source: DOC_DATE_SOURCE.DOCUMENT });
+    expect(documentDateLabel(d)).toBeNull();
+  });
+  it("★ App.jsx carries the column on load and stamps it from the extraction (the two halves the column lacked)", () => {
+    const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+    expect(app).toMatch(/document_date: d\.document_date \|\| null/);
+    expect(app).toMatch(/const docDate = documentDateFromExtraction\(extractedList\);\s*if \(docDate\) void checkedRowUpdate\(\{[^}]*table: "documents"[\s\S]{0,200}patch: \{ document_date: docDate \}/);
+  });
+});

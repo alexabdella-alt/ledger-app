@@ -47,7 +47,7 @@ import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, plan
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { planCoaTemplate, coaTemplateCopy } from "./lib/coaTemplates";
-import { documentTypeFor, isDurableDocId, PLACEHOLDER_DOCUMENT_TYPE, dedupePatch } from "./lib/docLibrary";
+import { documentTypeFor, isDurableDocId, PLACEHOLDER_DOCUMENT_TYPE, dedupePatch, documentDateFromExtraction } from "./lib/docLibrary";
 import { duplicateIsExpectedRhythm, deferDuplicateAsk } from "./lib/recurringVendor.js";
 import { normalizeName as normVendorName } from "./lib/docDirection";
 import { buildVendorSummary } from "./lib/vendorSummary";
@@ -1330,6 +1330,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           ai_explanation: d.ai_explanation,
           entry_summary: d.entry_summary,
           linked_invoice_id: d.linked_invoice_id,
+          document_date: d.document_date || null,   // C337 — 077's column, read by `documentDate`, carried at last
         })));
       }
 
@@ -4975,6 +4976,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // touches it. `extractionToStore` cannot carry a coding, so this is safe by
           // construction; `storeExtraction` is best-effort and reports its own failure.
           if (durableDocId && extractedList.length) void storeExtraction(durableDocId, { classify: docType, extract: extractedList });
+          }
+          // C337 — THE DOCUMENT'S OWN DATE, DERIVED FROM THE READING. Migration 077 added
+          // `documents.document_date` and `documentDate` has read it since C263 — and nothing
+          // ever wrote it (the O95 shape: a reader with no writer). The earliest invoice
+          // date on the document IS the document's date; the card shows it even for a file
+          // that never links to an entry. Stamped whether the reading was fresh or reused.
+          if (durableDocId) {
+            const docDate = documentDateFromExtraction(extractedList);
+            if (docDate) void checkedRowUpdate({ supabase, table: "documents", id: durableDocId, companyId: currentCompany.id,
+              patch: { document_date: docDate }, label: "document_date_stamp" }).then(r => {
+                if (r?.ok) setDocLibrary(prev => prev.map(d => String(d.id) === String(durableDocId) ? { ...d, document_date: docDate } : d));
+              });
           }
 
           if (extractedList.length === 0) {
