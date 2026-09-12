@@ -89,7 +89,9 @@ describe("documents.document_type — every writer speaks the column's vocabular
     const region = code(APP.slice(i, j));
     // The claim and the guard must both be present, and the guard must gate the claim.
     expect(region).toMatch(/durableDocId\s*=\s*isDurableDocId\(/);
-    expect(region).toMatch(/if\s*\(durableDocId\)\s*markIntake/);
+    // C345 put a block behind the guard (the intake stamp AND the upload_log pointer); the
+    // property is unchanged — the claim is gated on the durable id.
+    expect(region).toMatch(/if\s*\(durableDocId\)\s*\{\s*markIntake/);
   });
 });
 
@@ -136,5 +138,12 @@ describe("documentTypeFor still maps the classifier's vocabulary rather than wid
     for (const v of ["bill", "statement", "payroll register", "expense", "nonsense", "", null, "pending"]) {
       expect(DOCUMENT_TYPES).toContain(documentTypeFor(v));
     }
+  });
+});
+
+describe("C345 — upload_log.document_id is written (it never was)", () => {
+  it("the durable-first block points the upload row at its stored file", () => {
+    const src = code(APP);
+    expect(src).toMatch(/if \(durableDocId\) \{\s*markIntake\([^;]*documentId: durableDocId[^;]*\);\s*logUploadUpdate\(item\.upload_log_id, \{ document_id: durableDocId \}\);/);
   });
 });

@@ -4796,7 +4796,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // guarded this; the caller whose whole point is durability did not, and told
           // the person their file was safe to close the tab on.
           durableDocId = isDurableDocId(storedId) ? storedId : null;
-          if (durableDocId) markIntake(item.intake_id, INTAKE_STATUS.PROCESSING, { documentId: durableDocId, detail: "file stored — safe to close the tab" });
+          if (durableDocId) {
+            markIntake(item.intake_id, INTAKE_STATUS.PROCESSING, { documentId: durableDocId, detail: "file stored — safe to close the tab" });
+            // C345 — `upload_log.document_id` has existed since migration 019 and was never
+            // written. It is the key that would have made O136's residue a JOIN instead of a
+            // reconstruction from filenames and timestamps; from here on every upload row
+            // points at its stored file.
+            logUploadUpdate(item.upload_log_id, { document_id: durableDocId });
+          }
         } catch (e) {
           // Never block processing on the store: the old behaviour (process, then store)
           // is strictly better than not processing at all. But it is LOUD, because a
