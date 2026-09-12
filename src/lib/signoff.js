@@ -155,6 +155,17 @@ export function isPeriodSignedOff(signoffs = [], period) {
   return (signoffs || []).some(s => s && !s.revoked_at && s.period === period);
 }
 
+// Every ACTIVE signed period, as YYYY-MM strings, sorted. Pure. (C344 — the creep report
+// reads only these months; a revoked sign-off is not a signed month.)
+export function activeSignedPeriods(signoffs = []) {
+  const out = new Set();
+  for (const s of signoffs || []) {
+    if (!s || s.revoked_at) continue;
+    if (typeof s.period === "string" && /^\d{4}-\d{2}$/.test(s.period)) out.add(s.period);
+  }
+  return [...out].sort();
+}
+
 // The latest "reviewed through" period, given the set of ACTIVE sign-offs. Pure.
 // (Just the max period string — YYYY-MM sorts lexicographically = chronologically.
 // Revoked rows are already excluded by fetchSignoffs; belt-and-suspenders here too.)
