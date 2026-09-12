@@ -6,6 +6,7 @@ import {
   NAV_SECTIONS, NAV_SECTION_REVIEW, NAV_SECTION_SETTINGS, REVIEW_TOOLS, sectionViewIds, activeNavItem,
   GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL,
 } from "../src/lib/nav.js";
+import { heldPayrollCards, matchingCard, PAYROLL_HOLD_PREFIX } from "../src/lib/waitingOnYou.js";
 import { canAttestPeriod } from "../src/lib/signoff.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
 
@@ -114,19 +115,25 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     const appSansSidebar = app.slice(0, sidebarStart) + app.slice(sidebarEnd);
     bodies[0] = appSansSidebar;
     const joined = bodies.join("\n");
-    // The Review tool strip is rendered from REVIEW_TOOLS with `setView(id)` — a real door
-    // that a literal-string grep cannot see. It counts for exactly the four ids in that
-    // list, and only if the strip is genuinely rendered from the list rather than retyped.
+    // ★★ THE STRIP IS GONE (C322): "link from the issues instead." Payroll's and Matching's
+    // doors are now CARDS on Review — built by the pure `waitingOnYou` from the durable
+    // intake row / the match queue, each carrying `goTo`, rendered with `setView(c.goTo)`.
+    // A literal grep cannot see that door, so it is proved across the seam: the module
+    // produces a card whose `goTo` is the screen, AND the screen renders cards from it.
     const review = fs.readFileSync(new URL("../src/components/views/ReviewView.jsx", import.meta.url), "utf8");
-    const stripRenders = /REVIEW_TOOLS\.map\(\(\[id, label\]\) =>[\s\S]{0,200}setView\(id\)/.test(review);
-    expect(stripRenders).toBe(true);
-    const viaStrip = new Set(REVIEW_TOOLS.map(([id]) => id));
+    expect(review).toMatch(/const waiting = waitingOnYou\(\{ intakeRows, matchQueue \}\)/);
+    expect(review).toMatch(/waiting\.map\(\(c\) =>[\s\S]{0,600}setView\(c\.goTo\)/);
+    expect(review).not.toMatch(/REVIEW_TOOLS/);            // no standing strip
+    const held = heldPayrollCards([{ id: "i1", status: "held_for_review", detail: `${PAYROLL_HOLD_PREFIX}it doesn't foot.`, filename: "gusto.csv" }]);
+    expect(held.map((c) => c.goTo)).toEqual(["payroll"]);
+    expect(matchingCard([{ id: "m1" }])?.goTo).toBe("matching");
+    const viaCard = new Set(["payroll", "matching"]);
     for (const v of ["bank", "recon", "matching", "payroll", "contracts", "send-invoice", "add"]) {
       const literal = (joined.match(new RegExp(`(setView|navTo)\\("${v}"\\)`, "g")) || []).length;
-      expect([v, literal > 0 || viaStrip.has(v)]).toEqual([v, true]);
+      expect([v, literal > 0 || viaCard.has(v)]).toEqual([v, true]);
     }
-    // ★ AND THE FACT THE FIRST RUN OF THIS TEST FOUND: Payroll's ONLY door is the strip.
-    // Pinned so that if the strip ever goes, this fails on Payroll by name.
+    // ★ AND THE FACT WORTH PINNING: Payroll's ONLY door is the card. If the card ever goes,
+    // this fails on Payroll by name rather than on a count.
     expect((joined.match(/(setView|navTo)\("payroll"\)/g) || []).length).toBe(0);
   });
 

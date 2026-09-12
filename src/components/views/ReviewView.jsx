@@ -1,6 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { REVIEW_TOOLS } from "../../lib/nav";
+import { waitingOnYou, waitingCopy } from "../../lib/waitingOnYou";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { agoPhrase, initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -20,7 +20,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, activeRecon, aiStep, aiSuggestion, allProjects, allVendorNames, apAgingLoading, apAgingNarration, apSettings, apView, applyMatch, applyRule, approveInvoice, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, basisNarration, basisNarrationLoading, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkRunMode, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, glBreakdown, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchProcessing, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalAsOfDate, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, qboData, qboDragOver, qboMapping, qboPreview, qboProcessing, qboStep, reconAccount, reconSessions, reconStatementBalance, recurring, recurringNewRec, rejectInvoice, reportDateFrom, reportDateTo, reportRange, reportType, rules, runAPEngine, runAPScreen, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, selectedPayments, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setActiveRecon, setAiStep, setAiSuggestion, setApAgingLoading, setApAgingNarration, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setBasisNarration, setBasisNarrationLoading, setChatHistory, setChatLoading, setChatOpen, setCheckRunMode, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchProcessing, setMatchQueue, setNotification, setOpeningBalAsOfDate, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setQboData, setQboDragOver, setQboMapping, setQboPreview, setQboProcessing, setQboStep, setReconAccount, setReconSessions, setReconStatementBalance, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSelectedPayments, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadProcessing, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadProcessing, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded, statementExceptionsLoadFailed,
-    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, statementExceptions, offerReconciliation } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, statementExceptions, offerReconciliation, intakeRows } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -86,6 +86,7 @@ export default function ReviewView() {
 
   const flagged = flagsForReview ? flagsForReview() : [];
   const accuracyFlags = (controlTotals && controlTotals.flags) || [];   // O59 third net
+  const waiting = waitingOnYou({ intakeRows, matchQueue });
   const { completeness, needsReview, unknown, accuracy, anomaly, statementException, summary } = buildReviewQueue({ droppedDocs: dropped, flaggedTxns: flagged, unknownDocs, accuracyFlags, anomalies, statementExceptions });
   // O83: attestation is a REVIEWER action (accountant/admin), NOT the client-owner.
   const canSignOff = !!isReviewer;
@@ -213,21 +214,23 @@ export default function ReviewView() {
   // ── SUMMARY + COMPLETENESS + NEEDS-REVIEW (the new O50 sections) ──
   const summaryAndSections = (
     <>
-      {/* ★★ THE REVIEW LAYER'S TOOLS (C320). The sidebar is the same for everyone; a
-          reviewer's extra is THIS screen, and the workbench — Bank Import, Reconcile,
-          Matching, Payroll — hangs off it rather than off the nav. Two of these had no
-          door at all once their nav rows went: this strip is that door. `REVIEW_TOOLS`
-          is one list shared with `activeNavItem`, so a CPA standing on Reconcile sees
-          Review highlighted rather than nothing. */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14, fontSize: 12 }}>
-        <span style={{ color: "var(--sc-text-2)", fontWeight: 600, letterSpacing: 1, fontSize: 10 }}>TOOLS</span>
-        {REVIEW_TOOLS.map(([id, label]) => (
-          <button key={id} onClick={() => setView(id)}
-            style={{ padding: "5px 12px", borderRadius: 8, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", color: "var(--sc-text)", fontSize: 12, cursor: "pointer" }}>
-            {label} →
-          </button>
-        ))}
-      </div>
+      {/* ★★ WAITING ON YOU — THE ISSUE LINKS TO THE TOOL (C322). This was a four-button
+          strip (C320); the operator's call was "get rid of the strip, link from the issues
+          instead." Each card here is something a person has to decide, says why in the
+          words the system recorded, and carries the ONE button that opens the tool where
+          the decision is made. Bank Import and Reconcile are already reached from the
+          statement-exception cards below; these cover Payroll and Matching. */}
+      {waiting.length > 0 && (
+        <div style={{ border: "1px solid var(--sc-gold-line)", background: "var(--sc-gold-soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-gold)", marginBottom: 8 }}>{waiting.length} {waiting.length === 1 ? "thing needs" : "things need"} a decision from you</div>
+          {waiting.map((c) => (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--sc-gold-line)" }}>
+              <div style={{ fontSize: 13, color: "var(--sc-text)" }}>{waitingCopy(c)}</div>
+              <button onClick={() => setView(c.goTo)} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{c.goToLabel} →</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 8 }}>
         {statCard("INCOMPLETE DOCS", summary.incompleteCount + summary.unknownCount, (summary.incompleteCount + summary.unknownCount) > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
         {statCard("FLAGGED TXNS", summary.flaggedCount, summary.flaggedCount > 0 ? "var(--sc-warning)" : "var(--sc-success)")}
