@@ -154,6 +154,18 @@ describe("★★★ every screen renders with a company that has data in it", ()
   // which is C317's other half and is what these kill. Recorded rather than papered over: an
   // assertion aimed at the wrong half is the ·3a shape, and I wrote one before checking.
 
+  it("★★ an OWNER sees the 'Send an invoice' door on Money owed to you (C321)", () => {
+    // Permission without a door is a locked room. `send-invoice` is in the client's view
+    // set; this asserts the button that reaches it actually renders for the CLIENT seat —
+    // a source grep sees `setView("send-invoice")` whether or not it sits behind
+    // `cockpit &&`, so only the rendered page can tell the two apart. A mutation gating
+    // the button back to the CPA survived every other test before this one existed.
+    return import(path.join(viewsDir, "ArView.jsx")).then((mod) => {
+      const html = renderViewHtml(mod.default, { ...POPULATED, navSeat: SEATS.client });
+      expect(html).toContain("Send an invoice");
+    });
+  });
+
   it("★ the two seats are genuinely different, or this loop is one sweep run twice", () => {
     expect(SEATS.reviewer.isReviewerSeat).not.toBe(SEATS.client.isReviewerSeat);
     expect(SEATS.reviewer.viewIds.length).toBeGreaterThan(SEATS.client.viewIds.length);

@@ -32,6 +32,7 @@ const CLIENT_SCREENS = {
   books: "BooksView", ap: "ApView", ar: "ArView",
   customers: "CustomersView", vendors: "VendorsView", docs: "DocsView",
   detail: "DetailView", reports: "ReportsView",
+  "send-invoice": "SendInvoiceView",   // an owner action as of C321 — so its copy and links are held to the bar too
 };
 
 const read = (name) => strip(fs.readFileSync(path.join(process.cwd(), VIEW_DIR, `${name}.jsx`), "utf8"));

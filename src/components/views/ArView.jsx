@@ -97,12 +97,11 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                     {/* "AR Management" was the heading on a screen the sidebar calls "Money owed to
                         you" — the jargon guard missed it (no regex word), a person would not. */}
                     <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Money owed to you</h1>
-                    {/* ★ SEND INVOICE'S ONLY DOOR (C320). It lost its nav row with the rest of the
-                        cockpit and, unlike the others, nothing else led to it. Billing a customer
-                        belongs on the screen about what customers owe. Reviewer-only for now,
-                        because the client seat has never included it and widening that is a
-                        decision, not a rider — flagged in the commit rather than slipped in. */}
-                    {cockpit && <button onClick={()=>setView("send-invoice")} style={{ flexShrink:0, padding:"9px 16px", borderRadius:9, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer" }}>Send an invoice →</button>}
+                    {/* ★ SEND INVOICE'S ONLY DOOR (C320), and an OWNER action (C321). It lost its
+                        nav row with the rest of the cockpit and nothing else led to it. Billing a
+                        customer belongs on the screen about what customers owe — for whoever is
+                        looking at it. */}
+                    {<button onClick={()=>setView("send-invoice")} style={{ flexShrink:0, padding:"9px 16px", borderRadius:9, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer" }}>Send an invoice →</button>}
                   </div>
                   <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Outstanding invoices you've issued to customers.</div>
                 </div>

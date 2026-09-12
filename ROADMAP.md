@@ -178,6 +178,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 > **⚠ THIS LIST IS BEHIND.** Everything between 2026-08-29 and 2026-09-06 (C205–C310 — the honesty sweep, the unchecked-write class, the drain, O117/O127, the Red River fixes) shipped and was never added here. **A printout cannot be wrong, only old** (§6), and this one is: read the per-item statuses in the tables below, not this list, until it is rebuilt.
 
+- ✅ **Sending an invoice is the owner's** (2026-09-11, C321) — a mutation showed a source grep can't tell a gated button from an open one; the door is now pinned on the rendered client page
 - ✅ **One sidebar for everyone; the CPA is the owner plus a Review layer** (2026-09-11, C320) — the fourteen-row cockpit is gone, the workbench hangs off the Review screen, and every screen that lost its row was checked for a door (Payroll and Send Invoice had none)
 - ✅ **Screens are now rendered with data in them, in both seats** (2026-09-10, C319) — the sweep had never drawn a single row, and its first version still didn't: an absent key answered `[]`, which is truthy, so every Vendors render took the detail pane
 - ✅ **The bulk-removal button was in a branch where nothing can be selected** (2026-09-10, C318) — C227 built it and shipped it into the contracts filter; the checkboxes are in the transactions table

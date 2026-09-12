@@ -63,8 +63,10 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     const rows = navItems(visibleNav(client));
     // Records you READ — yours.
     for (const v of ["books", "ap", "ar", "customers", "vendors", "docs"]) expect([v, rows.includes(v)]).toEqual([v, true]);
+    // Billing your own customer is the owner's too (C321) — reached from Money owed to you.
+    expect(canSeeView("send-invoice", client)).toBe(true);
     // Jobs you OPERATE — the cockpit's, and the reason the collapse exists at all.
-    for (const v of ["bank", "recon", "matching", "payroll", "review", "send-invoice"]) {
+    for (const v of ["bank", "recon", "matching", "payroll", "review"]) {
       expect([v, rows.includes(v)]).toEqual([v, false]);
       expect([v, canSeeView(v, client)]).toEqual([v, false]);
     }
@@ -192,7 +194,7 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     // the client's own records. What is left is genuinely a workbench — plus `contracts`
     // and `send-invoice`, deliberately listed so that moving them is a decision someone
     // makes rather than something that quietly happens.
-    const workbench = ["contracts", "send-invoice", "bank", "recon", "matching", "payroll"];
+    const workbench = ["contracts", "bank", "recon", "matching", "payroll"];
     for (const v of workbench) {
       expect([v, canSeeView(v, client)]).toEqual([v, false]);
       expect([v, canSeeView(v, reviewer)]).toEqual([v, true]);

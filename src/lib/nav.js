@@ -109,6 +109,10 @@ export const SETTINGS_VIEW_IDS = [
 export const CLIENT_VIEW_IDS = [
   "home", "dashboard", "reports", "detail",
   "books", "ap", "ar", "customers", "vendors", "docs",
+  // Billing your own customer is an OWNER capability (operator, 2026-09-11: "that should
+  // definitely be an owner capability, but ideally we will pretty much automate that").
+  // C320 left it reviewer-only out of caution about widening unasked; that was wrong.
+  "send-invoice",
   ...SETTINGS_VIEW_IDS,
 ];
 
