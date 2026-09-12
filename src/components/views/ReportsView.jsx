@@ -132,7 +132,7 @@ export default function ReportsView() {
             const fmt = fmtMoney;
             const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${reportDateFrom} → ${reportDateTo}` : "Custom Range" };
             // Friendly report name for the transaction detail back button.
-            const reportName = { pl:"Income Statement", balance:"Balance Sheet", trial:"Trial Balance", araging:"AR Aging", apaging:"AP Aging", kpis:"KPIs", vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project" }[reportType] || "Reports";
+            const reportName = { pl:"Income Statement", balance:"Balance Sheet", trial:"All account balances", araging:"Money owed to you", apaging:"Bills to pay", kpis:"KPIs", vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project" }[reportType] || "Reports";
             // Back from a drilled transaction returns to the line-item LIST it came from (the
             // drill state is preserved in ERP), so label the Back with that list, not the report.
             const reportReturn = { view:"reports", label:(plDrill?.vendor || plDrill?.name || drill?.label || reportName), reportType };
@@ -221,7 +221,7 @@ export default function ReportsView() {
 
                 {/* Controls */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
-                  {[["pl","P&L"],["balance","Balance Sheet"],["trial","Trial Balance"],["araging","AR Aging"],["apaging","AP Aging"],["kpis","KPIs"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"],["monthly","Monthly Reports"]].map(([id,label])=>(
+                  {[["pl","P&L"],["balance","Balance Sheet"],["trial","All account balances"],["araging","Money owed to you"],["apaging","Bills to pay"],["kpis","KPIs"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"],["monthly","Monthly Reports"]].map(([id,label])=>(
                     <button key={id} onClick={()=>{ setReportType(id); setPlDrill(null); setDrill(null); setDrillSel(null); }} style={pill(reportType===id)}>{label}</button>
                   ))}
                   <div style={{ flex:1 }} />
@@ -754,7 +754,7 @@ export default function ReportsView() {
                         <div className="sc-rise">
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:16, flexWrap:"wrap", gap:12 }}>
                             <div>
-                              <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:1, marginBottom:4 }}>{side==="ar"?"TOTAL OUTSTANDING RECEIVABLE":"TOTAL OUTSTANDING PAYABLE"}</div>
+                              <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:1, marginBottom:4 }}>{side==="ar"?"TOTAL OWED TO YOU":"TOTAL YOU OWE"}</div>
                               <div style={{ fontSize:30, fontWeight:700, fontFamily:"'DM Mono',monospace", color: side==="ar"?"var(--sc-success)":"var(--sc-error)" }}>{fmt(agingTotal)}</div>
                               <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:2 }}>{rep.count} open {side==="ar"?"invoice":"bill"}{rep.count!==1?"s":""}</div>
                             </div>

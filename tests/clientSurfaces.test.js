@@ -135,14 +135,9 @@ describe("(2) client-visible copy assumes zero accounting knowledge", () => {
     // Cardinal Principle is about not assuming CONCEPTS, not about refusing proper nouns.
     "Balance Sheet": "the statement's actual name",
     "Accrual basis": "the statement's actual name",
-    // These two are genuinely internal and belong in the roadmap's owner-jargon scrub
-    // (TIER 1 #7a), not here.
-    "Trial Balance": "→ TIER 1 #7a owner-jargon scrub",
-    "TOTAL OUTSTANDING RECEIVABLE": "→ TIER 1 #7a owner-jargon scrub",
-    "TOTAL OUTSTANDING PAYABLE": "→ TIER 1 #7a owner-jargon scrub",
-    // TIER 1 #7 names this one by hand: owner-visible AI reasoning leaks jargon, and
-    // "confidence" is in OWNER_JARGON_RE precisely because a score is not an explanation.
-    "AI Confidence": "→ TIER 1 #7 confidence calibration",
+    // (TIER 1 #7a's four — "Trial Balance", the two TOTAL OUTSTANDING headings and
+    // "AI Confidence" — were paid off in C327. An exemption whose string is gone is a
+    // licence left lying open, and the REACHED check below is what made them leave.)
   };
 
   for (const [viewId, file] of Object.entries(CLIENT_SCREENS)) {

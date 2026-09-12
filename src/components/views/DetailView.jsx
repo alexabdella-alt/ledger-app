@@ -26,7 +26,7 @@ export default function DetailView() {
                   ["Amount", fmtMoney(selectedInvoice.amount)],
                   ["GL Account", `${selectedInvoice.gl_code} — ${selectedInvoice.gl_name}`],
                   ["Offset Account", `${selectedInvoice.secondary_gl_code} — ${selectedInvoice.secondary_gl_name}`],
-                  ["AI Confidence", `${selectedInvoice.confidence}%`],
+                  ["How sure we were", `${selectedInvoice.confidence}%`],
                 ].map(([label,value])=>(
                   <div key={label} style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", borderBottom:"1px solid var(--sc-border)" }}>
                     <span style={{ fontSize:12, color:label==="Vendor"?"var(--sc-gold)":"var(--sc-text-2)", letterSpacing:0.5, fontWeight:label==="Vendor"?600:400 }}>{label}</span>
