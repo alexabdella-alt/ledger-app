@@ -175,7 +175,7 @@ the codebase (builder/function exists, tests pass, migration applied/committed).
 
 ---
 
-### RECENTLY SHIPPED — last 10
+### RECENTLY SHIPPED — newest first (complete from C311, 2026-09-10, onward)
 
 *Completion should be as visible as backlog.*
 
