@@ -1833,7 +1833,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     for (const [code, val] of Object.entries(bankSum)) {
       if (merged[code] == null || merged[code] === "" || Number(merged[code]) === 0) merged[code] = val;
     }
-    const { lines } = buildOpeningBalanceEntry(merged, { cutoffDate: cutoff, obeCode: OBE_CODE, accounts: CHART_OF_ACCOUNTS });
+    // C341 — the plug account by ROLE (§4). `083` backfilled `opening_balance_equity` on every
+    // company precisely so a chart holding it under another number resolves here; the literal
+    // is the fallback for a chart that has none, where `ensureAccountIdForCode` materialises it.
+    const obeCode = getAccountByRole(OBE_ROLE)?.code || OBE_CODE;
+    const { lines } = buildOpeningBalanceEntry(merged, { cutoffDate: cutoff, obeCode, accounts: CHART_OF_ACCOUNTS });
     if (!lines.length) { showNotification("Enter at least one opening balance first", "error"); return false; }
 
     // Edit = reverse/replace, done FAIL-SAFE (CR-16): POST THE NEW ENTRY FIRST, verify it,
@@ -1874,8 +1878,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         const aid = await ensureAccountIdForCode(code);
         if (aid) rows.push({ company_id: cid, account_id: aid, balance: bal, as_of_date: cutoff, journal_entry_id: jeId, posted: true });
       }
-      const obe = lines.find(l => l.code === OBE_CODE);
-      if (obe) { const aid = await ensureAccountIdForCode(OBE_CODE); if (aid) rows.push({ company_id: cid, account_id: aid, balance: (obe.credit || 0) - (obe.debit || 0), as_of_date: cutoff, journal_entry_id: jeId, posted: true }); }
+      const obe = lines.find(l => l.code === obeCode);
+      if (obe) { const aid = await ensureAccountIdForCode(obeCode); if (aid) rows.push({ company_id: cid, account_id: aid, balance: (obe.credit || 0) - (obe.debit || 0), as_of_date: cutoff, journal_entry_id: jeId, posted: true }); }
       if (rows.length) await supabase.from("opening_balances").insert(rows);
     } catch (e) { console.warn("[opening] rows insert:", e?.message || e); }
 

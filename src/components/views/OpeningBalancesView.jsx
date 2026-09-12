@@ -1,3 +1,4 @@
+import { OBE_CODE, OBE_ROLE } from "../../lib/openingBalances";
 import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -25,7 +26,7 @@ export default function OpeningBalancesView() {
             // enters only their known asset/liability (and optional equity) day-one balances,
             // and the app silently posts the balancing figure to OBE so the entry balances
             // without the user touching the equity side (how QuickBooks etc. handle this).
-            const OBE = "3400";
+            const OBE = getAccountByRole?.(OBE_ROLE)?.code || OBE_CODE;   // C341 — by role, the literal only as the fallback
             const totalAssets = CHART_OF_ACCOUNTS.filter(a=>a.category==="Assets").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
             const totalLiab = CHART_OF_ACCOUNTS.filter(a=>a.category==="Liabilities").reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);
             const totalEquity = CHART_OF_ACCOUNTS.filter(a=>a.category==="Equity"&&a.code!==OBE).reduce((s,a)=>s+(parseFloat(balances[a.code])||0),0);

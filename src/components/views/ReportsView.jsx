@@ -473,7 +473,9 @@ export default function ReportsView() {
                       // fiscal_year_end, floored at the cutoff. By construction priorNet+currentNet===ytdNet,
                       // so every total below (and the balance check) is unchanged — only the RE split changes.
                       const { priorNet: bsPriorNet, currentNet: bsCurrentNet } = fiscalYearSplit(bsInvoices, { asOf, fiscalYearEnd: companySettings?.fiscalYearEnd || "12-31", cutoffDate });
-                      const beginningRE = getBal("3100") + bsPriorNet;   // posted RE + prior-years' closed net
+                      // C341 — Retained Earnings by ROLE (§4); "3100" only as the fallback for a chart without one.
+                      const reCode = getAccountByRole?.("retained_earnings")?.code || "3100";
+                      const beginningRE = getBal(reCode) + bsPriorNet;   // posted RE + prior-years' closed net
                       const totalLiabEquity = totalLiabilities + totalEquityAccts + ytdNet;
                       const isBalanced = Math.abs(totalAssets - totalLiabEquity) < 1;
 
@@ -548,7 +550,7 @@ export default function ReportsView() {
                             <SectionTitle label="STOCKHOLDERS' EQUITY" />
 
                             {/* Paid-in capital accounts (Common Stock, APIC) — show all except Retained Earnings (3100) */}
-                            {bsEquity.filter(a => a.code !== "3100" && getBal(a.code) !== 0).map(a=>(
+                            {bsEquity.filter(a => a.code !== reCode && getBal(a.code) !== 0).map(a=>(
                               <div key={a.code} onClick={()=>setDrill({scope:"bsacct",value:a.code,label:a.name})} title="View transactions"
                                 onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                 style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid var(--sc-surface-2)",cursor:"pointer"}}>
