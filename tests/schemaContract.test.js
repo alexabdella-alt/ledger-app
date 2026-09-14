@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { randomUUID } from "node:crypto";
-import { buildApprovalUpdate, buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "../src/lib/writeShapes.js";
+import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "../src/lib/writeShapes.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // SCHEMA-CONTRACT / WRITE+READ-BACK LOCK.
@@ -114,26 +114,8 @@ describe("approval status — write + read-back persists approved_by as a uuid",
   let db;
   beforeEach(() => { db = makeDb({ journal_entries: [{ id: JE, company_id: CO, approval_status: null, approved_by: null }] }); });
 
-  it("approve persists approval_status + approved_by (the uuid actually lands)", () => {
-    const res = db.update("journal_entries", JE, buildApprovalUpdate({ decision: "approved", at: new Date().toISOString(), actorUserId: UID }));
-    expect(res.error).toBeNull();
-    expect(res.matched).toBe(1);
-    const row = db.get("journal_entries", JE);
-    expect(row.approval_status).toBe("approved");
-    expect(row.approved_by).toBe(UID);
-  });
-
-  it("reject records the rejecter in approved_by (no rejected_by column) + persists", () => {
-    const patch = buildApprovalUpdate({ decision: "rejected", at: new Date().toISOString(), actorUserId: UID, reason: "duplicate" });
-    expect(patch).not.toHaveProperty("rejected_by");
-    const res = db.update("journal_entries", JE, patch);
-    expect(res.error).toBeNull();
-    const row = db.get("journal_entries", JE);
-    expect(row.approval_status).toBe("rejected");
-    expect(row.approved_by).toBe(UID);
-    expect(row.rejection_reason).toBe("duplicate");
-    expect(row.payment_status).toBe("rejected");
-  });
+  // (C347 — the approve/reject writers were removed with the approval workflow, whose UI
+  //  had been gone since 2026-06-06. The uuid regression guard below stands on its own.)
 
   it("REGRESSION GUARD: writing an email to approved_by is rejected and persists nothing (the original bug)", () => {
     const res = db.update("journal_entries", JE, { approval_status: "approved", approved_by: "alex@example.com" });

@@ -93,3 +93,80 @@ describe("★★ the Vendors tab shows vendors, and only vendors", () => {
     expect(isVendorSpend({ gl_code: "5000", status: "voided" })).toBe(false);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★ C347 — "VIEW ALL TRANSACTIONS FOR X" OPENED ONTO THE UNFILTERED LIST.
+// C315 repointed DetailView's button at BooksView + `vendorFilter`; BooksView never read the
+// filter, and its only reader (InvoicesView) was deleted in C335. `filteredInvoices` sat on
+// the context, computed on every render, consumed by nothing. The scoper is a lib function
+// now so the resolution can be checked, and BooksView is rendered with it below.
+// ═════════════════════════════════════════════════════════════════════════════
+import { scopeInvoicesToVendor } from "../src/lib/vendorSummary.js";
+import { INVOICES, POPULATED } from "./helpers/populatedFixture.js";
+import { renderViewHtml } from "./helpers/renderView.jsx";
+import BooksView from "../src/components/views/BooksView.jsx";
+
+describe("★★ C347 — scoping the list to one supplier", () => {
+  const summary = buildVendorSummary(INVOICES);
+
+  it("★ the ROW's spelling finds the whole group, even when the Vendors tab labels it otherwise", () => {
+    // The group's label is the most RECENT spelling — "Hill Country Milling" (March). The
+    // detail page of the January row sets the filter to "Hill Country Milling Co.", which is
+    // NOT the label. Resolved by the row's KEY, both spellings come back — and the same key
+    // the Vendors tab groups by, so the two screens agree about who X is.
+    expect(summary.find(v => v.key === "hill country milling").name).toBe("Hill Country Milling");
+    const scoped = scopeInvoicesToVendor(INVOICES, "Hill Country Milling Co.");
+    expect(scoped.map(i => i.id).sort()).toEqual(["i1", "i2"]);
+    // …and by the label itself.
+    expect(scopeInvoicesToVendor(INVOICES, "Hill Country Milling").map(i => i.id).sort()).toEqual(["i1", "i2"]);
+  });
+
+  it("a supplier no row carries scopes to NOTHING, never to everything", () => {
+    expect(scopeInvoicesToVendor(INVOICES, "Sysco")).toEqual([]);
+  });
+
+  it("'all' is the whole list", () => {
+    expect(scopeInvoicesToVendor(INVOICES, "all")).toHaveLength(INVOICES.length);
+  });
+
+  it("★★ RENDERED: the Transactions screen shows only that supplier, names the scope, and offers the way out", () => {
+    const filteredInvoices = scopeInvoicesToVendor(INVOICES, "Hill Country Milling Co.");
+    const html = renderViewHtml(BooksView, { ...POPULATED, vendorFilter: "Hill Country Milling Co.", filteredInvoices });
+    expect(html).toContain("Hill Country Milling Co.");
+    expect(html).toContain("Hill Country Milling");
+    expect(html).not.toContain("Bluebonnet");
+    expect(html).not.toContain("Franklin Ave");
+    expect(html).toContain("Showing only");
+    expect(html).toContain("Show all suppliers");
+    // The mutation this exists for — BooksView reading `invoices` instead of the scope —
+    // puts Bluebonnet back on the page.
+  });
+
+  it("★ RENDERED: with no scope the list is whole and the scope chip is absent", () => {
+    const html = renderViewHtml(BooksView, { ...POPULATED, vendorFilter: "all", filteredInvoices: INVOICES });
+    expect(html).toContain("Bluebonnet");
+    expect(html).not.toContain("Showing only");
+  });
+
+  it("★ a scope that matches nothing says 'No matching transactions', not 'No transactions yet'", () => {
+    const html = renderViewHtml(BooksView, { ...POPULATED, vendorFilter: "Sysco", filteredInvoices: [] });
+    expect(html).toContain("No matching transactions");
+    expect(html).not.toContain("No transactions yet");
+  });
+});
+
+describe("★ C347 — the scope honours a confirmed alias (O111)", () => {
+  it("both names come back when a person has said they are one supplier", async () => {
+    const { buildAliasIndex } = await import("../src/lib/vendorAlias.js");
+    const rows = [
+      { id: "a", vendor: "Franklin Ave Properties", vendor_key: "franklin ave properties", amount: 2400, date: "2026-03-01", gl_code: "6100" },
+      { id: "b", vendor: "FRANKLIN AVE PROPERTIES LP RENT", vendor_key: "franklin ave properties rent", amount: 2400, date: "2026-02-01", gl_code: "6100" },
+      { id: "c", vendor: "Bluebonnet Linen Service", vendor_key: "bluebonnet linen service", amount: 145, date: "2026-03-09", gl_code: "6180" },
+    ];
+    const idx = buildAliasIndex([{ id: "c1", name: "Franklin Ave Properties", aliases: ["FRANKLIN AVE PROPERTIES LP RENT"] }]);
+    expect(scopeInvoicesToVendor(rows, "Franklin Ave Properties", idx).map(i => i.id).sort()).toEqual(["a", "b"]);
+    // …and without the alias the two stay apart, which is the whole point of O111 being a
+    // person's assertion rather than a guess.
+    expect(scopeInvoicesToVendor(rows, "Franklin Ave Properties", null).map(i => i.id)).toEqual(["a"]);
+  });
+});

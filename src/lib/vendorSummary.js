@@ -70,3 +70,23 @@ export function buildVendorSummary(invoices = [], aliasIndex = null) {
   }
   return [...map.values()].sort((a, b) => b.total - a.total);
 }
+
+// ── SCOPING THE TRANSACTIONS LIST TO ONE SUPPLIER (C347) ─────────────────────
+// DetailView's "View all transactions for X" sets the filter to the ROW's spelling — it has
+// nothing else — and that may not be the summary's label, which is the group's most RECENT
+// spelling (C210). So the group is resolved from a row carrying that spelling, by the same
+// key (under the alias index) the Vendors tab groups by — "view all for X" then shows exactly
+// the rows that tab counts for X, whatever spelling each carries.
+// A filter naming a vendor no row carries scopes to NOTHING rather than to everything —
+// an empty list says "nothing matches"; a full one would silently drop the scope.
+// (A first draft also looked the label up in `vendorSummary`; a surviving mutation showed
+// that clause could never matter — a label IS a row's spelling, so the row lookup already
+// covers it. Removed rather than left reading like a check.)
+export function scopeInvoicesToVendor(invoices = [], vendorFilter = "all", aliasIndex = null) {
+  if (!vendorFilter || vendorFilter === "all") return invoices || [];
+  const keyOf = (inv) => { const raw = inv.vendor_key || inv.vendor; return aliasIndex ? applyAlias(raw, aliasIndex) : raw; };
+  const sample = (invoices || []).find((inv) => inv && inv.vendor === vendorFilter);
+  if (!sample) return [];
+  const key = keyOf(sample);
+  return (invoices || []).filter((inv) => inv && keyOf(inv) === key);
+}

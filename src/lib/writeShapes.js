@@ -14,25 +14,6 @@
 // id, never their email.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Approval-workflow field set written to journal_entries via persistApStatus.
-// `actorUserId` MUST be the auth user's uuid (journal_entries.approved_by is uuid;
-// there is no rejected_by column — the rejecter is recorded in approved_by).
-export function buildApprovalUpdate({ decision, at = null, actorUserId = null, reason = null }) {
-  switch (decision) {
-    case "approved":
-      return { approval_status: "approved", approved_at: at, approved_by: actorUserId };
-    case "rejected":
-      return {
-        approval_status: "rejected", rejected_at: at, rejection_reason: reason,
-        approved_by: actorUserId, payment_status: "rejected",
-      };
-    case "info_requested":
-      return { approval_status: "info_requested" };
-    default:
-      return {};
-  }
-}
-
 // accounts insert payload. Mirrors the correct shape used by addCustomAccount:
 // the real column is `category` (NOT NULL), not `account_type`.
 export function buildAccountInsert({ companyId, code, name, category = null, system_role = null, origin = null }) {

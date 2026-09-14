@@ -18,7 +18,14 @@ export default function BooksView() {
     navSeat,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
     reconciliations, docLibrary, storeDocument, fileToBase64,
+    vendorFilter, setVendorFilter, filteredInvoices,
   } = useERP();
+  // ★ C347 — THE VENDOR DOOR. DetailView's "View all transactions for X" sets `vendorFilter`
+  // and lands here; until this read existed the list arrived UNFILTERED (the only reader,
+  // InvoicesView, was deleted in C335). The scoped list is `filteredInvoices`, resolved in
+  // App by the vendor's grouping key so every spelling of the supplier is in it.
+  const vendorScoped = !!vendorFilter && vendorFilter !== "all";
+  const scopedInvoices = vendorScoped && Array.isArray(filteredInvoices) ? filteredInvoices : invoices;
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
   // ★★ C315 — THIS SCREEN BECAME CLIENT-FACING ON 2026-09-10 (C313) AND WAS WRITTEN FOR
@@ -62,7 +69,7 @@ export default function BooksView() {
   const isRevenue = i => i.gl_code ? glIsRevenue(i.gl_code) : i.type==="revenue";
 
   // Filter + search
-  const base = invoices.filter(i => glPLType(i.gl_code) || i.type==="expense" || i.type==="revenue");
+  const base = scopedInvoices.filter(i => glPLType(i.gl_code) || i.type==="expense" || i.type==="revenue");
   const byFilter = base.filter(i => {
     if (filter==="revenue") return isRevenue(i);
     if (filter==="expenses") return isExpense(i);
@@ -158,6 +165,15 @@ export default function BooksView() {
           {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
         </div>
       </div>
+      {vendorScoped && (
+        /* The scope is SAID, and removable in place — a filtered list with nothing on screen
+           naming the filter reads as "where did everything go". */
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, padding:"8px 12px", borderRadius:9, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border)", fontSize:13 }}>
+          <span>Showing only <strong>{vendorFilter}</strong> · {rows.length} transaction{rows.length!==1?"s":""}</span>
+          <button onClick={()=>setVendorFilter && setVendorFilter("all")}
+            style={{ marginLeft:"auto", background:"none", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"4px 10px", fontSize:12, color:"var(--sc-text-2)", cursor:"pointer" }}>Show all suppliers ×</button>
+        </div>
+      )}
 
       {/* ── CONTRACTS TABLE (filter = contracts) ── */}
       {/* Contracts (ASC 842) — cockpit only. A client cannot reach this filter today (there
@@ -261,10 +277,10 @@ export default function BooksView() {
             {rows.length===0 ? (
               <tr><td colSpan={8} style={{ padding:0 }}>
                 <div style={{ padding:"56px 32px", textAlign:"center" }}>
-                  <div style={{ width:52, height:52, borderRadius:14, background:"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:24 }}>{search||filter!=="all"?"🔍":"📭"}</div>
-                  <div style={{ fontSize:15, fontWeight:600, color:"var(--sc-text)", marginBottom:6 }}>{search||filter!=="all"?"No matching transactions":"No transactions yet"}</div>
-                  <div style={{ fontSize:13, color:"var(--sc-text-mut)", marginBottom:20, maxWidth:340, marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>{search||filter!=="all"?"Try clearing your search or switching filters to see more.":"Upload an invoice, receipt, or bank statement and it'll appear here, fully coded."}</div>
-                  {!(search||filter!=="all") && (
+                  <div style={{ width:52, height:52, borderRadius:14, background:"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:24 }}>{search||filter!=="all"||vendorScoped?"🔍":"📭"}</div>
+                  <div style={{ fontSize:15, fontWeight:600, color:"var(--sc-text)", marginBottom:6 }}>{search||filter!=="all"||vendorScoped?"No matching transactions":"No transactions yet"}</div>
+                  <div style={{ fontSize:13, color:"var(--sc-text-mut)", marginBottom:20, maxWidth:340, marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>{search||filter!=="all"||vendorScoped?"Try clearing your search or switching filters to see more.":"Upload an invoice, receipt, or bank statement and it'll appear here, fully coded."}</div>
+                  {!(search||filter!=="all"||vendorScoped) && (
                     <button onClick={()=>setView("home")}
                       onMouseEnter={e=>e.currentTarget.style.background="var(--sc-gold-deep)"} onMouseLeave={e=>e.currentTarget.style.background="var(--sc-gold)"}
                       style={{ height:36, padding:"0 18px", borderRadius:8, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:14, fontWeight:500, cursor:"pointer", transition:"background 0.12s" }}>Upload a document →</button>
