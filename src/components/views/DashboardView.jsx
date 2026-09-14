@@ -13,7 +13,7 @@ import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONB
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
 import { ownerAnomalyLine } from "../../lib/ownerTrust";
-import ClarificationFlow from "../ClarificationFlow";
+import ClarificationFlow, { ClarificationStepper } from "../ClarificationFlow";
 import TrustPanel from "./TrustPanel";
 import HeldMailLine from "../HeldMailLine";
 import { t } from "../../lib/theme";
@@ -758,6 +758,7 @@ export default function DashboardView() {
               })()}
 
               {/* ── CLARIFICATION QUEUE (conversational flow) ── */}
+              <ClarificationStepper />
               <ClarificationFlow />
 
               {/* ── TAX DEADLINE ALERT (impossible to miss) ── */}

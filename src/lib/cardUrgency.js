@@ -42,8 +42,32 @@ const STOPS_ON = new Set([
   "direction",
 ]);
 
-export function urgencyOf(card = {}) {
+// ★★★ C374 — THE KIND IS READ OFF THE SHAPE THE PIPELINE ACTUALLY WRITES. From C264 to
+// C374 this read `card.kind || card.type || card.reason || card.field`, and no card the
+// pipeline builds carries ANY of those at the top level: a lifecycle card is
+// `{ isLifecycle: true, arrival: { reason } }`, a duplicate `{ isDuplicate: true }`, a
+// direction card `{ directionFirst: true }`. So every real card read as WAITS, the
+// "dangerous first" order never once fired, and the banner never named a kind — while its
+// tests passed on `{ kind: "lifecycle" }` fixtures nobody produces (·3a, in the guard for
+// O120). Found by rendering the stepper with the real shapes and watching the wrong card
+// come first. The literal-kind read stays as a fallback for callers that do name one.
+export function cardKind(card = {}) {
+  if (!card) return null;
+  if (card.isLifecycle) return String(card.arrival?.reason || "lifecycle");
+  if (card.isDuplicate) return "duplicate";
+  if (card.directionFirst) return "direction";
+  if (card.gaap) return "gaap";
   const kind = card.kind || card.type || card.reason || card.field || null;
+  if (kind) return String(kind);
+  if (card.invoice) return "gl";   // the plain category question carries only the invoice
+  return null;
+}
+
+export function urgencyOf(card = {}) {
+  // The three flags ARE the stopping kinds — a lifecycle card stops whatever its reason
+  // (a `record_failed` one answered "different purchase" mints a payable just the same).
+  if (card && (card.isLifecycle || card.isDuplicate || card.directionFirst)) return URGENCY.STOPS;
+  const kind = cardKind(card);
   if (kind && STOPS_ON.has(String(kind))) return URGENCY.STOPS;
   // ★ THE DEFAULT IS *WAITS*, DELIBERATELY. Getting this wrong in the "stops" direction
   // rebuilds the gauntlet the batch exists to avoid — and an unclassified card is far more

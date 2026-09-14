@@ -730,6 +730,81 @@ function ClarificationCard({ item }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ★★ THE STEPPER (C374) — THE QUESTIONS COME TO THE OWNER, ONE AT A TIME, IN THE MIDDLE
+// OF THE SCREEN. Operator, 2026-09-14: "wasn't there something about having the cards pop
+// up in the middle of the screen for the user to click through?" — there was (O120), and
+// C264 chose ORDERING over interrupting, on the reasoning that a pop-up per card turns a
+// sitting into a gauntlet. The operator's call is the other way, and the two are
+// reconciled here rather than traded: the stepper opens ONCE, when a batch has finished and
+// questions remain, and walks them in C264's urgency order — one card, "Question k of n",
+// Skip for now, Close. Every question can still be answered from the list below it, and
+// closing the stepper never loses one (the cards stay; the trust header keeps counting).
+//   · it opens only when the upload queue is IDLE — never mid-batch, when the next file may
+//     answer the question itself (C310: a card asked before the data that answers it arrived)
+//   · it opens once per SET of open cards — a close is remembered for that set; a new card
+//     arriving after a close is a new set and opens again
+//   · it never auto-opens on a reload with nothing new (the set is what changed, not the tab)
+// ─────────────────────────────────────────────────────────────────────────────
+export function ClarificationStepper() {
+  const { clarificationQueue, uploadQueue } = useERP();
+  const open = sortByUrgency((clarificationQueue || []).filter(c => !c.resolved));
+  const setKey = open.map(c => String(c.id)).sort().join("|");
+  const queueIdle = !(uploadQueue || []).some(q => q && (q.status === "pending" || q.status === "classifying" || q.status === "processing"));
+  const [dismissedKey, setDismissedKey] = React.useState(null);
+  const [currentId, setCurrentId] = React.useState(null);
+  const [visible, setVisible] = React.useState(false);
+
+  // Open when a set exists, the queue is idle, and this set was not closed.
+  React.useEffect(() => {
+    if (!setKey) { setVisible(false); setCurrentId(null); return; }
+    if (queueIdle && dismissedKey !== setKey) setVisible(true);
+  }, [setKey, queueIdle, dismissedKey]);
+
+  // Keep a current card; when it resolves, let its "✓" show, then move to the next.
+  const current = (clarificationQueue || []).find(c => String(c.id) === String(currentId)) || null;
+  React.useEffect(() => {
+    if (!visible) return;
+    if (current && !current.resolved) return;
+    const next = open[0] || null;
+    if (!next) return;
+    if (!current) { setCurrentId(next.id); return; }
+    const t = setTimeout(() => setCurrentId(next.id), 900);
+    return () => clearTimeout(t);
+  }, [visible, current, open.length, setKey]);
+
+  if (!visible || !current) return null;
+  const close = () => { setDismissedKey(setKey); setVisible(false); };
+  const skip = () => { const rest = open.filter(c => String(c.id) !== String(current.id)); if (rest.length) setCurrentId(rest[0].id); else close(); };
+  return <StepperPanel current={current} open={open} onSkip={skip} onClose={close} />;
+}
+
+// The panel itself — kept free of the open/close effects so a test can render it.
+export function StepperPanel({ current, open = [], onSkip, onClose }) {
+  const idx = Math.max(0, open.findIndex(c => String(c.id) === String(current.id)));
+  const total = open.length + (current.resolved ? 1 : 0);
+  const close = onClose || (() => {});
+  const skip = onSkip || (() => {});
+  return (
+    <div role="dialog" aria-modal="true" aria-label="A few quick questions" onClick={close}
+      style={{ position: "fixed", inset: 0, zIndex: 900, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "min(720px, 100%)", maxHeight: "90vh", overflowY: "auto", background: "var(--sc-bg)", borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.35)", padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text-2)" }}>Question {Math.min(idx + 1, total)} of {total}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {!current.resolved && open.length > 1 && (
+              <button onClick={skip} style={{ background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", borderRadius: 8, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Next question</button>
+            )}
+            <button onClick={close} aria-label="Close" style={{ background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", borderRadius: 8, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Later</button>
+          </div>
+        </div>
+        <ClarificationCard key={current.id} item={current} />
+        <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 8 }}>Closing this keeps the questions on your Home page — nothing is lost.</div>
+      </div>
+    </div>
+  );
+}
+
 export default function ClarificationFlow() {
   const { clarificationQueue } = useERP();
   if (!clarificationQueue || clarificationQueue.length === 0) return null;
