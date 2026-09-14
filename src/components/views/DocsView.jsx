@@ -28,12 +28,15 @@ export default function DocsView() {
   const [to, setTo] = React.useState("");
   const preview = docsPreview; const setPreview = setDocsPreview;
   const filterType = docsFilterType; const setFilterType = setDocsFilterType;
-  const types = ["all", ...new Set(docLibrary.map(d => d.type))];
+  const types = ["all", ...new Set((docLibrary || []).filter(d => !(d.tags || []).includes("email-source")).map(d => d.type))];
   // ★ THE HEADER SAID "stored and searchable" AND THERE WAS NO SEARCH INPUT.
   // Filename + type + date range — deliberately NOT content search, because we do not hold
   // the extracted text and a box that silently only looks at filenames while implying
   // otherwise would be one more claim this screen does not keep.
-  const filtered = filterDocuments(docLibrary, { query, type: filterType, from: from || null, to: to || null }, invoices);
+  // O82 — the raw email a document arrived in is stored as the audit record (tag
+  // `email-source`) and is not a document a person filed; it stays out of the grid.
+  const library = (docLibrary || []).filter(d => !(d.tags || []).includes("email-source"));
+  const filtered = filterDocuments(library, { query, type: filterType, from: from || null, to: to || null }, invoices);
 
   const isImage = m => (m || "").startsWith("image");
   const isPdf = m => m === "application/pdf";
@@ -46,7 +49,7 @@ export default function DocsView() {
         <div>
           <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>DOCUMENT LIBRARY</div>
           <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Documents</h1>
-          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Every uploaded file — invoices, contracts, bank statements, payroll — stored and searchable. {docLibrary.length} document{docLibrary.length !== 1 ? "s" : ""} stored.</div>
+          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Every uploaded file — invoices, contracts, bank statements, payroll — stored and searchable. {library.length} document{library.length !== 1 ? "s" : ""} stored.</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {types.map(t => (
@@ -68,12 +71,12 @@ export default function DocsView() {
           <button onClick={() => { setQuery(""); setFrom(""); setTo(""); }}
             style={{ height: 36, padding: "0 12px", borderRadius: 9, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", fontSize: 12, cursor: "pointer" }}>Clear</button>
         )}
-        <span style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>{filtered.length} of {docLibrary.length}</span>
+        <span style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>{filtered.length} of {library.length}</span>
       </div>
 
       {preview && <DocumentPreviewModal doc={preview} onClose={() => setPreview(null)} />}
 
-      {filtered.length === 0 && docLibrary.length > 0 ? (
+      {filtered.length === 0 && library.length > 0 ? (
         /* ★ "NO DOCUMENTS YET" IS A CLAIM ABOUT THE LIBRARY, AND A SEARCH THAT MATCHED
            NOTHING IS NOT EVIDENCE FOR IT. With 28 files stored and a typo in the box, the
            old copy told a person their documents did not exist. Two different facts, two
@@ -81,7 +84,7 @@ export default function DocsView() {
         <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 48, textAlign: "center" }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
           <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Nothing matches</div>
-          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginBottom: 14 }}>{docLibrary.length} document{docLibrary.length !== 1 ? "s are" : " is"} stored, but none match this search.</div>
+          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginBottom: 14 }}>{library.length} document{library.length !== 1 ? "s are" : " is"} stored, but none match this search.</div>
           <button onClick={() => { setQuery(""); setFrom(""); setTo(""); setFilterType("all"); }}
             style={{ height: 36, padding: "0 14px", borderRadius: 9, background: "var(--sc-gold)", border: "none", color: "var(--sc-surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Show all documents</button>
         </div>
@@ -138,7 +141,7 @@ export default function DocsView() {
                   })()}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ fontSize: 10, background: "var(--sc-border)", color: "var(--sc-text-2)", borderRadius: 20, padding: "2px 8px", textTransform: "capitalize" }}>{doc.type}</span>
-                    {(doc.tags || []).map(t => <span key={t} style={{ fontSize: 10, background: "var(--sc-surface-2)", color: "var(--sc-gold)", borderRadius: 20, padding: "2px 8px" }}>{t}</span>)}
+                    {(doc.tags || []).map(t => <span key={t} style={{ fontSize: 10, background: "var(--sc-surface-2)", color: "var(--sc-gold)", borderRadius: 20, padding: "2px 8px" }}>{t === "by-email" ? "by email" : t}</span>)}
                     {legacy && <span title="Uploaded before file storage was enabled" style={{ fontSize: 10, color: "var(--sc-text-mut)" }}>metadata only</span>}
                   </div>
                 </div>

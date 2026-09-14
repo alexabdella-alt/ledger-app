@@ -30,7 +30,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  inboundTokenOf, planInboundMessage, receiptCopy, replyBodyOf, INBOUND_STATUS,
+  inboundTokenOf, planInboundMessage, receiptCopy, replyBodyOf, classifyAttachment, INBOUND_STATUS,
 } from "../_shared/mailChannel.js";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
@@ -171,9 +171,15 @@ serve(async (req) => {
   }
 
   const intakeIds: string[] = [];
+  const attachmentDocIds: string[] = [];
   let saved = 0, kept = 0;
-  if (plan.status === INBOUND_STATUS.ACCEPTED) {
-    for (const [i, item] of plan.intake.entries()) {
+  // Attachments are STORED for an accepted message AND for a refused sender — the refused
+  // case is what "allow them" later releases (spec §2.2), and bytes we did not keep cannot be
+  // released. Intake rows are created only for an accepted message.
+  const storeAttachments = plan.status === INBOUND_STATUS.ACCEPTED || plan.status === INBOUND_STATUS.UNKNOWN_SENDER;
+  if (storeAttachments) {
+    const classified = plan.status === INBOUND_STATUS.ACCEPTED ? plan.intake : attachmentsMeta.map(classifyAttachment);
+    for (const [i, item] of classified.entries()) {
       const meta = attachmentsMeta[i];
       let bytes: Uint8Array;
       try { bytes = await fetchAttachmentBytes(emailId, meta); } catch (e) { console.error("[receive-mail] attachment fetch failed", e); continue; }
@@ -196,6 +202,8 @@ serve(async (req) => {
       } else {
         await admin.storage.from("documents").remove([path]).catch(() => {});
       }
+      attachmentDocIds.push(docId);
+      if (plan.status !== INBOUND_STATUS.ACCEPTED) continue;   // stored, held, no intake row
       if (!item.process) { kept++; continue; }
       // The same row a drop creates — same table, same status machine, same drain.
       const ins = await admin.from("document_intake").insert({
@@ -225,7 +233,7 @@ serve(async (req) => {
   const ins = await admin.from("inbound_messages").insert({
     company_id: companyId, provider: "resend", provider_message_id: emailId, from_email: String(d.from || ""), to_email: to,
     subject: d.subject || null, received_at: now, raw_document_id: rawDocId, attachment_count: attachmentsMeta.length,
-    intake_ids: intakeIds, status: plan.status, reply_to_outbound_id: replyToOutboundId, reply_text: replyText,
+    intake_ids: intakeIds, attachment_document_ids: attachmentDocIds, status: plan.status, reply_to_outbound_id: replyToOutboundId, reply_text: replyText,
     detail: plan.limitHit ? `rate limited (${plan.limitHit})` : null,
   }).select("id").single();
   if (ins.error) { console.error("[receive-mail] inbound_messages insert failed", ins.error); return ok({ error: "record failed" }, 500); }

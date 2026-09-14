@@ -32,13 +32,16 @@ create table if not exists public.inbound_messages (
   raw_document_id       uuid        references public.documents(id),
   attachment_count      integer     not null default 0,
   intake_ids            uuid[]      not null default '{}',
+  -- Every stored attachment, whether or not an intake row was made for it. For a refused
+  -- sender the bytes are stored and THIS is how "allow them" finds them (spec §2.2).
+  attachment_document_ids uuid[]    not null default '{}',
   status                text        not null,
   reply_to_outbound_id  uuid,                                  -- FK added in 090
   reply_text            text,
   detail                text,
   created_at            timestamptz not null default now(),
   constraint inbound_messages_status_check
-    check (status in ('accepted','unknown_sender','rate_limited','no_attachments','reply','unreadable')),
+    check (status in ('accepted','unknown_sender','rate_limited','no_attachments','reply','unreadable','ignored')),
   constraint inbound_messages_provider_uniq unique (provider, provider_message_id)
 );
 

@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import MailChannelSettings from "../MailChannelSettings";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -222,6 +223,9 @@ export default function SettingsView() {
                   <button onClick={()=>setBankAccounts(prev=>[...prev,{id:Date.now()+Math.random(),name:"",type:"checking",gl_code:getAccountByRole("cash")?.code,institution:"",current_balance:0}])}
                     style={{fontSize:12,background:"transparent",border:"1px dashed var(--sc-border-2)",borderRadius:8,padding:"7px 16px",color:"var(--sc-text-2)",cursor:"pointer"}}>+ Add Bank Account</button>
                 </div>
+
+                {/* O82 — the documents address (C351) */}
+                <MailChannelSettings />
 
                 {/* EXPORT YOUR DATA — safety net */}
                 <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:20,marginBottom:24}}>

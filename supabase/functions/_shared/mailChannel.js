@@ -91,6 +91,16 @@ export function bumpInboundCounters(counters = {}, now, limits = INBOUND_LIMITS)
   };
 }
 
+// One attachment: readable (→ an intake row) or kept-only, with the reason. Used by the
+// receiver at arrival and by the client when a held message is released — one rule.
+export function classifyAttachment(a = {}) {
+  const type = String(a.contentType || "").toLowerCase().split(";")[0].trim();
+  const size = Number(a.size || 0);
+  if (size > MAX_ATTACHMENT_BYTES) return { filename: a.filename, contentType: type, process: false, reason: "too_large" };
+  if (!READABLE_TYPES.has(type)) return { filename: a.filename, contentType: type, process: false, reason: "unreadable_type" };
+  return { filename: a.filename, contentType: type, process: true, reason: null };
+}
+
 // ── WHAT A MESSAGE BECOMES (spec §2.3) ──────────────────────────────────────
 // The receiver stores bytes and rows; THIS decides what rows. It never sees the bytes.
 //   attachments: [{ filename, contentType, size }]
@@ -112,13 +122,7 @@ export function planInboundMessage({
     // even if the person attached something. Phase A stores the reply text; a person acts.
     return { status: INBOUND_STATUS.REPLY, intake: [], replyToken, counters: bump.counters };
   }
-  const intake = (attachments || []).map((a) => {
-    const type = String(a.contentType || "").toLowerCase().split(";")[0].trim();
-    const size = Number(a.size || 0);
-    if (size > MAX_ATTACHMENT_BYTES) return { filename: a.filename, contentType: type, process: false, reason: "too_large" };
-    if (!READABLE_TYPES.has(type)) return { filename: a.filename, contentType: type, process: false, reason: "unreadable_type" };
-    return { filename: a.filename, contentType: type, process: true, reason: null };
-  });
+  const intake = (attachments || []).map(classifyAttachment);
   if (!intake.length) return { status: INBOUND_STATUS.NO_ATTACHMENTS, intake, replyToken: null, counters: bump.counters };
   return { status: INBOUND_STATUS.ACCEPTED, intake, replyToken: null, counters: bump.counters };
 }

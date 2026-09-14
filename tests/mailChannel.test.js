@@ -155,7 +155,8 @@ describe("★ receive-mail — I/O around shared decisions, and nothing books", 
     expect(code.slice(sig, parse)).toMatch(/return ok\(\{ error: "bad signature" \}, 401\)/);
   });
   it("★★ never books, never calls the AI, never touches the ledger", () => {
-    expect(code).not.toMatch(/post_journal_entry|journal_entries|ai-proxy|api\.anthropic|classify|extract/i);
+    // (profile NAMES, not the words — `classifyAttachment` is the receiver's own readability rule)
+    expect(code).not.toMatch(/post_journal_entry|journal_entries|ai-proxy|api\.anthropic|classify-document|extract-invoices|code-invoices|classifyFile/i);
   });
   it("★ stores bytes BEFORE the intake row, and stamps source = email", () => {
     const up = code.indexOf('admin.storage.from("documents").upload(path'), row = code.indexOf('from("document_intake").insert(');

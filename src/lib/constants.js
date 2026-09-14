@@ -84,6 +84,12 @@ const PROJECTS = ["General", "Marketing Campaign", "Office Renovation", "Product
 // NOTE: the AI model + max_tokens are SERVER-OWNED (ai-proxy/aiProfiles.js). The
 // client never chooses them — it sends only { profile, messages, slots }.
 const AI_PROXY_URL = "https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/ai-proxy";
+// O82 — the email channel. `send-mail` is the only path that sends from the app (it holds the
+// Resend key the way ai-proxy holds the Anthropic key). MAIL_DOMAIN is the domain the inbound
+// address lives under; NULL until a domain exists and is set at build time, and every email
+// surface renders its "not switched on yet" state while it is null rather than a broken address.
+const SEND_MAIL_URL = "https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/send-mail";
+const MAIL_DOMAIN = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_MAIL_DOMAIN) || null;
 
 // ── Business logic constants (single source of truth) ────────────────────────
 const CAPITALIZE_THRESHOLD = 2500;        // ASC 360 de-minimis: capitalize at/above this
@@ -111,6 +117,8 @@ const PLATFORM_ADMIN_EMAILS = ["alexabdella@gmail.com"];
 export {
   DEFAULT_CHART_OF_ACCOUNTS, PROJECTS,
   AI_PROXY_URL,
+  SEND_MAIL_URL,
+  MAIL_DOMAIN,
   CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE,
   IRS_1099_THRESHOLD, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW,
   AI_CONFIDENCE_ASK_FLOOR,

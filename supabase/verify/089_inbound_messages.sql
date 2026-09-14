@@ -1,7 +1,7 @@
 -- 089 VERIFY — one standalone statement per check.
 
 -- (a) columns
-select case when count(*) = 16 then 'PASS - 16 columns' else 'FAIL - ' || count(*) || ' columns' end as verdict
+select case when count(*) = 17 then 'PASS - 17 columns' else 'FAIL - ' || count(*) || ' columns' end as verdict
 from information_schema.columns where table_schema='public' and table_name='inbound_messages';
 
 -- (b) RLS on; members SELECT and UPDATE only — no member INSERT, no DELETE

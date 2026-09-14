@@ -14,6 +14,7 @@ import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
 import { ownerAnomalyLine } from "../../lib/ownerTrust";
 import ClarificationFlow from "../ClarificationFlow";
 import TrustPanel from "./TrustPanel";
+import HeldMailLine from "../HeldMailLine";
 import { t } from "../../lib/theme";
 import { useDrillStack } from "../../lib/useDrillStack";
 import DrillNav from "../ui/DrillNav";
@@ -339,6 +340,8 @@ export default function DashboardView() {
                   companyDataLoaded is the safe readiness signal — it guarantees the ledger +
                   reconciliations (the panel's inputs) are loaded, so no green flashes prematurely. */}
               <TrustPanel loading={!companyDataLoaded} />
+              {/* O82 — an email the sender wall held, awaiting a person (C351) */}
+              <HeldMailLine />
               {/* Depreciation is deterministic → it AUTO-POSTS when due (App.jsx autoPostDepreciation),
                   no owner nudge. (Removed the "N months due · Run depreciation now" prompt — accounting
                   machinery is Shadow's job, not the owner's; incomplete schedules flag to CPA review.) */}
