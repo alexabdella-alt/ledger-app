@@ -80,3 +80,34 @@ describe("onboardingSteps — per-step completion + all-done roll-up", () => {
     expect(s.requiredDone).toBe(4);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// O132 (C352) — THE STATEMENT COMES BEFORE THE OPENING BALANCE. The checklist asked for the
+// opening balance one step before the document that derives it, and a typed guess that
+// disagrees with the statement becomes a reconciliation mismatch the app refuses to
+// auto-adjust. Order and copy are one list, read by the checklist and pinned here.
+// ═════════════════════════════════════════════════════════════════════════════
+import fs from "node:fs";
+import path from "node:path";
+import { ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../src/lib/onboarding.js";
+import { containsOwnerJargon } from "../src/lib/clarify.js";
+
+describe("★ O132 — the first statement is asked for BEFORE the opening balance", () => {
+  it("upload precedes opening, and both are still required", () => {
+    expect(ONBOARDING_STEP_ORDER.indexOf("upload")).toBeLessThan(ONBOARDING_STEP_ORDER.indexOf("opening"));
+    expect(ONBOARDING_STEP_ORDER).toEqual(["biz", "bank", "upload", "opening"]);
+  });
+  it("the copy asks for a STATEMENT and says the opening comes from it", () => {
+    expect(ONBOARDING_STEP_COPY.upload.label).toMatch(/bank statement/i);
+    expect(ONBOARDING_STEP_COPY.opening.hint).toMatch(/from your first statement/i);
+    for (const c of Object.values(ONBOARDING_STEP_COPY)) {
+      expect(containsOwnerJargon(c.label)).toBe(false);
+      expect(containsOwnerJargon(c.hint)).toBe(false);
+    }
+  });
+  it("★ the checklist READS the order — it does not carry its own", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/views/DashboardView.jsx"), "utf8");
+    expect(src).toMatch(/const steps = ONBOARDING_STEP_ORDER\.map\(k => stepByKey\[k\]\)/);
+    expect(src).not.toMatch(/label:"Upload your first document"/);
+  });
+});

@@ -8,7 +8,7 @@ import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLo
 import { getAuthHeaders } from "../../lib/supabase";
 import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
-import { onboardingSteps, onboardingChecklistVisible } from "../../lib/onboarding";
+import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
 import { ownerAnomalyLine } from "../../lib/ownerTrust";
@@ -351,12 +351,15 @@ export default function DashboardView() {
                   ("not loaded" ≠ "not done"). Once loaded, an onboarded company has
                   onboardingComplete=true and this stays hidden; a genuinely-new one shows it. */}
               {onboardingChecklistVisible({ companyDataLoaded, onboardingComplete: companySettings.onboardingComplete }) && (() => {
-                const steps = [
-                  { key:"biz",     done: obHasBiz,     label:"Tell us about your business", hint:"Business type & fiscal year", go:()=>setBusinessModalOpen(true) },
-                  { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Bank Accounts",   go:()=>goToSection("settings","bank-accounts-section") },
-                  { key:"opening", done: obHasOpening, label:"Confirm your opening balances",   hint:"We'll pull your starting cash from a bank statement — or set it in Settings", go:()=>goToSection("opening-balances","opening-balances-section") },
-                  { key:"upload",  done: obHasUpload,  label:"Upload your first document",  hint:"Drag a doc onto the zone below", go:()=>document.getElementById("universal-upload")?.scrollIntoView({behavior:"smooth"}) },
-                ];
+                // O132 (C352) — the statement comes BEFORE the opening balance, because the
+                // statement is what answers it. Order and copy live in lib/onboarding.js.
+                const stepByKey = {
+                  biz:     { key:"biz",     done: obHasBiz,     label:"Tell us about your business", hint:"Business type & fiscal year", go:()=>setBusinessModalOpen(true) },
+                  bank:    { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Bank Accounts",   go:()=>goToSection("settings","bank-accounts-section") },
+                  upload:  { key:"upload",  done: obHasUpload,  ...ONBOARDING_STEP_COPY.upload,  go:()=>document.getElementById("universal-upload")?.scrollIntoView({behavior:"smooth"}) },
+                  opening: { key:"opening", done: obHasOpening, ...ONBOARDING_STEP_COPY.opening, go:()=>goToSection("opening-balances","opening-balances-section") },
+                };
+                const steps = ONBOARDING_STEP_ORDER.map(k => stepByKey[k]);
                 const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Optional", go:()=>{ setAccountantNotice(true); dismissAccountantStep(); }, optional:true };
                 const required = requiredDone;
                 if (obAllDone) {

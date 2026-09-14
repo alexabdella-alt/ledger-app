@@ -75,3 +75,23 @@ export function onboardingSteps({ companySettings = {}, bankAccounts = [], openi
 export function onboardingChecklistVisible({ companyDataLoaded = false, onboardingComplete = false } = {}) {
   return !!companyDataLoaded && !onboardingComplete;
 }
+
+// ── THE ORDER OF THE STEPS (O132, C352) ──────────────────────────────────────
+// The checklist used to ask for the opening balance at step 3 and the first upload at
+// step 4 — so the statement that DERIVES the opening (`deriveStatementOpening`, which prefers
+// the printed figure and raises a confirm card in Bank Import) arrived one step after the
+// person had been asked to invent the number. And a typed number that disagrees with the
+// statement is then a reconciliation MISMATCH the app correctly refuses to auto-adjust
+// (`resolveAdoptedBalance`), so guessing first cost more than a redundant step: it turned
+// the starting point into a question. The step's own hint already said "we'll pull your
+// starting cash from a bank statement". The order now says it too.
+//
+// One list, read by the checklist and pinned by a test, so the order cannot drift back.
+export const ONBOARDING_STEP_ORDER = ["biz", "bank", "upload", "opening"];
+
+// The copy for the two steps the order is about. Derived here so the hint that promises
+// "we'll read it from your statement" sits beside the order that makes that true.
+export const ONBOARDING_STEP_COPY = {
+  upload:  { label: "Upload your first bank statement", hint: "Drag it onto the zone below — we'll read your starting cash from it" },
+  opening: { label: "Confirm your opening balances",     hint: "We'll take them from your first statement — you just confirm. Or set them in Settings." },
+};
