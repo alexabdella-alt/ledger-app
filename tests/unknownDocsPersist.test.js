@@ -46,6 +46,10 @@ describe("the row and the record are one shape in both directions", () => {
   });
   it("the load asks for the document's name, and a float id is not a row id", () => {
     expect(UNKNOWN_DOC_SELECT).toMatch(/documents\(name\)/);
+    // the embed only resolves through a FOREIGN KEY — without one PostgREST errors and the
+    // load would silently do nothing (C308's shape); the baseline DDL carries it
+    const ddl = read("supabase/migrations/000_baseline_schema.sql");
+    expect(ddl).toMatch(/ADD CONSTRAINT unknown_documents_document_id_fkey FOREIGN KEY \(document_id\) REFERENCES public\.documents\(id\)/);
     expect(isDbUnknownDocId(UUID)).toBe(true);
     expect(isDbUnknownDocId(1757800000000.42)).toBe(false);
   });
