@@ -57,14 +57,20 @@ export const CLARIFICATION_HOLD_DETAIL = "awaiting clarification in review queue
 // Held-for-a-question rows whose question is NOT currently on screen. `liveIntakeIds` are
 // the intake ids that still have an unresolved card in this session — those are counted by
 // the queue itself, and counting them here too would double the number.
-export function heldQuestionRows(intakeRows = [], { liveIntakeIds = [], uploadQueue = [] } = {}) {
+// `bookedDocumentIds` — documents already linked to an entry. Before C367 an answered
+// question never moved its row, so live rows from that era still read "awaiting" over a
+// document that IS in the books; a linked document is proof the question was answered,
+// and it is excluded here rather than offered for a second booking.
+export function heldQuestionRows(intakeRows = [], { liveIntakeIds = [], uploadQueue = [], bookedDocumentIds = [] } = {}) {
   const live = new Set((liveIntakeIds || []).map(String));
+  const booked = new Set((bookedDocumentIds || []).map(String));
   const inFlight = new Set((uploadQueue || [])
     .filter((q) => q && q.intake_id && q.status !== "done" && q.status !== "error")
     .map((q) => String(q.intake_id)));
   return (intakeRows || [])
     .filter((r) => r && r.status === "held_for_review" && String(r.detail || "") === CLARIFICATION_HOLD_DETAIL)
     .filter((r) => !live.has(String(r.id)))
+    .filter((r) => !(r.document_id && booked.has(String(r.document_id))))
     .map((r) => ({
       kind: "question_held",
       id: `question_held:${r.id}`,

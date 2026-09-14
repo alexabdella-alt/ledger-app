@@ -37,6 +37,11 @@ describe("heldQuestionRows reads the durable record", () => {
     expect(heldQuestionRows([row()], { uploadQueue: [{ id: 9, intake_id: "r1", status: "processing" }] })[0].loading).toBe(true);
     expect(heldQuestionRows([row()], { uploadQueue: [{ id: 9, intake_id: "r1", status: "done" }] })[0].loading).toBe(false);
   });
+  it("a row whose document is already linked to an entry was answered — never offered again (pre-C367 residue)", () => {
+    expect(heldQuestionRows([row()], { bookedDocumentIds: ["d1"] })).toHaveLength(0);
+    expect(heldQuestionRows([row()], { bookedDocumentIds: ["other"] })).toHaveLength(1);
+    expect(heldQuestionRows([row({ document_id: null })], { bookedDocumentIds: ["d1"] })).toHaveLength(1);   // no document → cannot be proved answered
+  });
   it("the sentence reads the rows — count, and whether the file is still there to ask again", () => {
     expect(heldQuestionsCopy(heldQuestionRows([row()]))).toBe("1 document from earlier is still waiting for an answer from you — it isn't in your books until you answer.");
     expect(heldQuestionsCopy(heldQuestionRows([row(), row({ id: "r2", document_id: null })]))).toMatch(/2 documents from earlier .* 1 of them would need to be dropped again/);
@@ -53,7 +58,8 @@ describe("the wiring", () => {
   });
   it("the trust header counts held questions beside the in-session cards", () => {
     expect(app).toMatch(/openClarifications: \(clarificationQueue \|\| \[\]\)\.length \+ heldQuestions\.length/);
-    expect(app).toMatch(/const heldQuestions = useMemo\(\(\) => \{[\s\S]{0,400}heldQuestionRows\(intakeRows, \{ liveIntakeIds, uploadQueue \}\)/);
+    expect(app).toMatch(/const heldQuestions = useMemo\(\(\) => \{[\s\S]{0,700}heldQuestionRows\(intakeRows, \{ liveIntakeIds, uploadQueue, bookedDocumentIds \}\)/);
+    expect(app).toMatch(/const bookedDocumentIds = \(docLibrary \|\| \[\]\)\.filter\(d => d && d\.linked_invoice_id\)\.map\(d => d\.id\)/);
   });
   it("the live ids come from the cards' own upload items, so an on-screen question is never counted twice", () => {
     const i = app.indexOf("const heldQuestions = useMemo(");

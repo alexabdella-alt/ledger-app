@@ -4599,8 +4599,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const heldQuestions = useMemo(() => {
     const liveIntakeIds = (clarificationQueue || []).filter(c => !c.resolved)
       .map(c => (uploadQueue || []).find(q => q.id === c.queueItemId)?.intake_id).filter(Boolean);
-    return heldQuestionRows(intakeRows, { liveIntakeIds, uploadQueue });
-  }, [intakeRows, clarificationQueue, uploadQueue]);
+    // a document already linked to an entry was answered (pre-C367 rows never moved) — never re-asked
+    const bookedDocumentIds = (docLibrary || []).filter(d => d && d.linked_invoice_id).map(d => d.id);
+    return heldQuestionRows(intakeRows, { liveIntakeIds, uploadQueue, bookedDocumentIds });
+  }, [intakeRows, clarificationQueue, uploadQueue, docLibrary]);
   const ownerTrust = useMemo(() => {
     // "Is there anything to evaluate yet?" — the SAME signals the home setup checklist
     // uses, so the panel and the "0 of 4 done" card can never contradict. hasBooks =
