@@ -29,7 +29,7 @@ import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/wri
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
 import { recordedEntryLinks } from "./lib/intakeEntryLinks";
-import { payrollHoldDetail, heldPayrollCards, deferredToAccountantCards, CLARIFICATION_HOLD_DETAIL, heldQuestionRows, heldUnreadableRows, EXTRACT_FAILED_DETAIL, NOTHING_EXTRACTED_DETAIL, UNREADABLE_HOLD_PREFIX } from "./lib/waitingOnYou";
+import { payrollHoldDetail, heldPayrollCards, deferredToAccountantCards, signedPeriodHoldCards, signedPeriodHoldDetail, CLARIFICATION_HOLD_DETAIL, heldQuestionRows, heldUnreadableRows, EXTRACT_FAILED_DETAIL, NOTHING_EXTRACTED_DETAIL, UNREADABLE_HOLD_PREFIX } from "./lib/waitingOnYou";
 import { classifyFailure, drainProgressCopy, FAILURE_KIND } from "./lib/intakeDrain";
 import { budgetCopy, getBudget } from "./lib/aiBudget";
 import { buildUploadedInvoice } from "./lib/uploadedInvoice";
@@ -4317,6 +4317,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // landed; every answered card reports its outcome here; when the last card for that
   // upload resolves the row settles (RECORDED / HELD-deferred / REJECTED) — decided purely.
   const clarificationHoldsRef = useRef({});   // queueItemId → { intakeId, existingIds, outcomes: [] }
+  // ★ C373 — a document some of whose transactions did NOT land (a signed-month hold, an RPC
+  // refusal) is HELD "N of M saved"; when a later decision lands one, the row moves.
+  const partialHoldsRef = useRef({});          // queueItemId → { intakeId, ids, expected }
+  const settlePartialHold = (invoice, jeId) => {
+    const key = String(invoice?._queueItemId ?? "");
+    const hold = partialHoldsRef.current[key];
+    if (!hold || !hold.intakeId || !jeId) return { ok: false };
+    hold.ids = [...new Set([...hold.ids.map(String), String(jeId)])];
+    if (hold.ids.length >= hold.expected) {
+      markIntake(hold.intakeId, INTAKE_STATUS.RECORDED, { journalEntryIds: hold.ids, detail: `${hold.ids.length} transaction(s) recorded — the last after a decision about a signed month` });
+      delete partialHoldsRef.current[key];
+      return { ok: true, settled: true };
+    }
+    markIntake(hold.intakeId, INTAKE_STATUS.HELD, { journalEntryIds: hold.ids, detail: `${hold.ids.length} of ${hold.expected} transaction(s) saved — ${hold.expected - hold.ids.length} did not, so this document is not fully recorded` });
+    return { ok: true, settled: false };
+  };
   const settleClarification = (item, outcome) => {
     const key = String(item?.queueItemId ?? "");
     const hold = clarificationHoldsRef.current[key];
@@ -4625,7 +4641,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       setupComplete,
       openHighAnomalies: openHighAnomalyCount,   // O83 — open HIGH anomaly ⇒ "Nothing wrong" can't be green
       heldUnreadable: heldUnreadable.length,     // C369 — a file we could not read is not "accounted for"
-      heldForAccountant: heldPayrollCards(intakeRows).length + deferredToAccountantCards(intakeRows).length,   // C372
+      heldForAccountant: heldPayrollCards(intakeRows).length + deferredToAccountantCards(intakeRows).length + signedPeriodHoldCards(intakeRows).length,   // C372/C373
       hasAttester,                               // O131 — don't promise a review nobody can give
       // Was the month we are reporting as reviewed signed by the owner themselves? Read off
       // the ROW rather than inferred from `hasAttester`, because a company that has since
@@ -4771,7 +4787,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     logAudit("signed_period_reopened_for_booking", `Reopened ${held.period} to record ${held.invoice?.vendor || "an entry"} dated ${held.invoice?.date}`, null, { period: held.period, date: held.invoice?.date, vendor: held.invoice?.vendor });
     setPendingSignedPeriodBooking(null);
     const jeId = await repostHeldEntry(held.invoice, held.multiLine);
-    if (jeId) { await loadAllData(); showNotification(`Recorded in ${signedMonthLabel(held.period)} — that month is reopened for re-review`); }
+    if (jeId) { settlePartialHold(held.invoice, jeId); await loadAllData(); showNotification(`Recorded in ${signedMonthLabel(held.period)} — that month is reopened for re-review`); }
   };
   // (b) Rebook into the current OPEN month (date-adjust; the original date is kept in metadata).
   const rebookHeldIntoOpenMonth = async () => {
@@ -4780,13 +4796,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     logAudit("signed_period_rebooked_open", `Rebooked ${held.invoice?.vendor || "an entry"} out of signed ${held.period} into the open month (original date ${held.invoice?.date} kept)`, null, { period: held.period, original_date: held.invoice?.date, new_date: moved.date });
     setPendingSignedPeriodBooking(null);
     const jeId = await repostHeldEntry(moved, held.multiLine);
-    if (jeId) showNotification(`Recorded in the current month — the original date (${held.invoice?.date}) is kept on file.`);
+    if (jeId) { settlePartialHold(held.invoice, jeId); showNotification(`Recorded in the current month — the original date (${held.invoice?.date}) is kept on file.`); }
   };
   // (c) Send to the CPA review queue to decide — leave it UNBOOKED (never silently posted); notify.
   const sendHeldToCPA = async () => {
     const held = pendingSignedPeriodBooking; if (!held) return;
     logAudit("signed_period_sent_to_cpa", `Sent ${held.invoice?.vendor || "an entry"} dated ${held.invoice?.date} (signed ${held.period}) to accountant review`, null, { period: held.period, date: held.invoice?.date });
     try { createNotification?.({ type: "needs_review", title: `A ${signedMonthLabel(held.period) || "reviewed-month"} item needs your accountant`, description: `${held.invoice?.vendor || "An entry"} dated ${held.invoice?.date} falls in a reviewed month — your accountant should decide how to record it.`, link_view: "review" }); } catch {}
+    // C373 — the row says WHY it is held, so the reviewer's screen can list it after a reload.
+    const hold = partialHoldsRef.current[String(held.invoice?._queueItemId ?? "")];
+    if (hold?.intakeId) markIntake(hold.intakeId, INTAKE_STATUS.HELD, { journalEntryIds: hold.ids, detail: signedPeriodHoldDetail(signedMonthLabel(held.period) || held.period) });
     setPendingSignedPeriodBooking(null);
     showNotification("Sent to your accountant to decide.");
   };
@@ -5215,6 +5234,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               bookedAt: new Date().toISOString(),
               today: todayLocal(),
             });
+            invoice._queueItemId = item.id;   // C373 — so a later decision (a signed-month hold) can find the document's intake row
 
             // Meals: auto-apply the 50% deductibility rule (no question needed) and notify.
             // ★ ONLY WHERE THERE IS NOTHING TO OVERRULE. This used to overwrite the account
@@ -5572,6 +5592,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
                 journalEntryIds: entryLinks.ids,
                 detail: `${entryLinks.ids.length} of ${entryLinks.expected} transaction(s) saved — ${entryLinks.missing} did not, so this document is not fully recorded`,
               });
+              partialHoldsRef.current[String(item.id)] = { intakeId: item.intake_id, ids: [...(entryLinks.ids || [])], expected: entryLinks.expected };   // C373
               // ★ A FAILED STAMP SAYS SO. The books hold what they hold and are not wrong; what
               // is wrong is that this file claims more than landed, and only a person can decide
               // whether to re-send it. Naming the file is the whole point — "something failed"

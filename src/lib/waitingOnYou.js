@@ -182,6 +182,35 @@ export function deferredToAccountantCards(intakeRows = [], { uploadQueue = [] } 
       goToLabel: "Load it to decide",
     }));
 }
+// ── HELD OUT OF A SIGNED MONTH, SENT TO THE ACCOUNTANT (C373) ───────────────
+// An uploaded invoice dated into a signed-off month is held for a decision; the owner may
+// "send it to my accountant". That wrote a notification and left the invoice in the tab —
+// gone on reload, with the intake row saying "0 of 1 saved". The row now says WHY, the
+// reviewer sees it here, and loading it re-raises the same decision for someone who can
+// reopen the month.
+export const SIGNED_PERIOD_HOLD_PREFIX = "held out of a signed-off month, sent to your accountant: ";
+export const signedPeriodHoldDetail = (period) => `${SIGNED_PERIOD_HOLD_PREFIX}${period || "a signed month"}`;
+
+export function signedPeriodHoldCards(intakeRows = [], { uploadQueue = [] } = {}) {
+  const inFlight = new Set((uploadQueue || [])
+    .filter((q) => q && q.intake_id && q.status !== "done" && q.status !== "error")
+    .map((q) => String(q.intake_id)));
+  return (intakeRows || [])
+    .filter((r) => r && r.status === "held_for_review" && String(r.detail || "").startsWith(SIGNED_PERIOD_HOLD_PREFIX))
+    .map((r) => ({
+      kind: "signed_period_held",
+      id: `signed_period_held:${r.id}`,
+      intake_id: r.id,
+      filename: r.filename || "a document",
+      period: String(r.detail).slice(SIGNED_PERIOD_HOLD_PREFIX.length),
+      received_at: r.received_at || null,
+      reloadable: !!r.document_id,
+      loading: inFlight.has(String(r.id)),
+      action: "reload",
+      goToLabel: "Load it to decide",
+    }));
+}
+
 // The sentence C367's settle writes. Kept here (the reader) and imported by the writer.
 export const DEFERRED_DETAIL = "set aside for your accountant after a question";
 
@@ -191,6 +220,7 @@ export const DEFERRED_DETAIL = "set aside for your accountant after a question";
 export function waitingOnYou({ intakeRows = [], matchQueue = [], uploadQueue = [] } = {}) {
   const cards = heldPayrollCards(intakeRows);
   cards.push(...deferredToAccountantCards(intakeRows, { uploadQueue }));
+  cards.push(...signedPeriodHoldCards(intakeRows, { uploadQueue }));
   const m = matchingCard(matchQueue);
   if (m) cards.push(m);
   return cards;
@@ -203,6 +233,9 @@ export function waitingCopy(card) {
   if (card.kind === "deferred_to_accountant") return card.reloadable
     ? `${card.filename} was set aside for you after a question the owner couldn't answer — nothing is booked until you decide.`
     : `${card.filename} was set aside for you after a question, and we no longer have the file to ask it again — it will need to be dropped again.`;
+  if (card.kind === "signed_period_held") return card.reloadable
+    ? `${card.filename} is dated inside ${card.period}, which is signed off — the owner sent it to you. Nothing is booked until you reopen that month or move it.`
+    : `${card.filename} is dated inside ${card.period}, which is signed off, and we no longer have the file — it will need to be dropped again.`;
   if (card.kind === "matching_pending") return `${card.count} bank ${card.count === 1 ? "line needs" : "lines need"} a match decision the system couldn't make on its own.`;
   return "";
 }
