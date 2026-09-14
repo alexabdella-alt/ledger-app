@@ -96,6 +96,53 @@ export function heldQuestionsCopy(rows = []) {
   return `${head} — ${n - canReload} of them would need to be dropped again.`;
 }
 
+// ── A DOCUMENT WE COULD NOT READ, AFTER A RELOAD (C369) ─────────────────────
+// Three hold paths park a file a PERSON has to deal with — extraction found nothing, the
+// model could not extract it, or the file was unreadable/permanently refused — and every one
+// wrote a sentence to the intake row that nothing read back. HELD is terminal, so the
+// completeness net counted the file as "accounted for", the queue tile that said "Needs a
+// look" died with the tab, and after a reload the trust panel read "Everything you sent is
+// accounted for — nothing missing" over a document that had become nothing at all.
+export const EXTRACT_FAILED_DETAIL = "couldn't extract invoice data — held for review";
+export const NOTHING_EXTRACTED_DETAIL = "no transaction extracted — needs review";
+export const UNREADABLE_HOLD_PREFIX = "We couldn't read this one: ";
+
+export function isUnreadableHoldDetail(detail) {
+  const d = String(detail || "");
+  return d === EXTRACT_FAILED_DETAIL || d === NOTHING_EXTRACTED_DETAIL || d.startsWith(UNREADABLE_HOLD_PREFIX);
+}
+
+// Held-unreadable rows not represented by an upload tile in THIS session (the tile already
+// says "Needs a look" for those, and it carries the fuller sentence).
+export function heldUnreadableRows(intakeRows = [], { uploadQueue = [] } = {}) {
+  const onScreen = new Set((uploadQueue || []).filter((q) => q && q.intake_id).map((q) => String(q.intake_id)));
+  const inFlight = new Set((uploadQueue || [])
+    .filter((q) => q && q.intake_id && q.status !== "done" && q.status !== "error")
+    .map((q) => String(q.intake_id)));
+  return (intakeRows || [])
+    .filter((r) => r && r.status === "held_for_review" && isUnreadableHoldDetail(r.detail))
+    .filter((r) => !onScreen.has(String(r.id)) || inFlight.has(String(r.id)))
+    .map((r) => ({
+      kind: "unreadable_held",
+      id: `unreadable_held:${r.id}`,
+      intake_id: r.id,
+      filename: r.filename || "a document",
+      reason: String(r.detail || "").startsWith(UNREADABLE_HOLD_PREFIX) ? String(r.detail).slice(UNREADABLE_HOLD_PREFIX.length) : String(r.detail || ""),
+      received_at: r.received_at || null,
+      reloadable: !!r.document_id,
+      loading: inFlight.has(String(r.id)),
+    }));
+}
+
+export function heldUnreadableCopy(rows = []) {
+  const n = (rows || []).length;
+  if (!n) return "";
+  const names = rows.slice(0, 3).map((r) => r.filename).join(", ") + (n > 3 ? ` and ${n - 3} more` : "");
+  return n === 1
+    ? `We couldn't read ${names} — it isn't in your books. Try again, or send a clearer copy.`
+    : `We couldn't read ${n} documents (${names}) — they aren't in your books. Try again, or send clearer copies.`;
+}
+
 // Bank lines the matcher could not settle on its own. `matchQueue` is in-session state,
 // which is exactly when this matters: the pipeline just redirected to Matching once and
 // a person navigated away. One card, not one per line — the decision is made on the
