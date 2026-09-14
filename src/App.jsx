@@ -5701,9 +5701,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             id:Date.now()+Math.random(), booked_at:new Date().toISOString(),
             ...buildBankLineEntry(t, { offsetCode, offsetName }),   // direction by type + offset by account (card → Cr 2200)
           }));
+          // ★ C371 — THE COUNT THE TILE SHOWS IS THE COUNT THAT LANDED. `newBooked` read
+          // `newInvoices.length` — the intent — while each `bookToDb` was fired and forgotten;
+          // a refused line (signed month, cutoff, RPC) rolled itself back and the tile still
+          // said "N new booked". §9 by name: describe from the record.
+          let bookedNew = 0, refusedNew = 0;
           if (newInvoices.length > 0) {
             setInvoices(prev => [...newInvoices, ...prev]);
-            newInvoices.forEach(inv => bookToDb(inv));
+            const landed = await Promise.all(newInvoices.map(inv => bookToDb(inv)));
+            bookedNew = landed.filter(Boolean).length;
+            refusedNew = newInvoices.length - bookedNew;
+            if (refusedNew > 0) {
+              logAudit("bank_lines_not_booked", `${refusedNew} of ${newInvoices.length} new bank line(s) from ${item.name} could not be booked — they are not in the books`, null, { file: item.name, attempted: newInvoices.length, booked: bookedNew });
+              showNotification(`${refusedNew} of ${newInvoices.length} new transaction(s) from ${item.name} couldn't be booked — ${bookedNew} ${bookedNew === 1 ? "is" : "are"} in your books, ${refusedNew} ${refusedNew === 1 ? "is" : "are"} not.`, "error");
+            }
           }
 
           // Reconciliation summary numbers.
@@ -5749,11 +5760,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             logAudit("reconciliation_save_failed", `Reconciliation record could not be saved after matching ${matchedCount} of ${txnTotal} transactions: ${recSaveErr}`);
             showNotification("Your transactions were matched successfully but we couldn't save the reconciliation record — please contact support.", "error");
           } else {
-            logAudit("bank_reconciled", `Bank statement: matched ${matchedCount} of ${txnTotal} transactions · ${newInvoices.length} new booked · $${stillOpenTotal.toFixed(2)} open items remain`);
+            logAudit("bank_reconciled", `Bank statement: matched ${matchedCount} of ${txnTotal} transactions · ${bookedNew} new booked${refusedNew ? ` (${refusedNew} refused)` : ""} · $${stillOpenTotal.toFixed(2)} open items remain`);
           }
 
           const bankResult = {
-            reconciliation: true, txnCount: txnTotal, matchedCount, newBooked: newInvoices.length,
+            reconciliation: true, txnCount: txnTotal, matchedCount, newBooked: bookedNew, notBooked: refusedNew,
             needsReview: plan.review.length, stillOpenTotal,
           };
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", result: bankResult} : q));

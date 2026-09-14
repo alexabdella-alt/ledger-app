@@ -266,7 +266,9 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                   debit_credit:"credit", confidence:100, reasoning:`Invoice ${inv.invoice_number} paid`,
                   status:"booked", booked_at:new Date().toISOString(), source:"sent_invoice", payment_status:"collected"
                 };
-                setInvoices(prev=>[entry,...prev]); bookToDb(entry);
+                setInvoices(prev=>[entry,...prev]);
+                const jeId = await bookToDb(entry);   // C371 — the ✓ reads the write
+                if (!jeId) return;                    // the writer said why; nothing was marked
                 logAudit("invoice_paid",`Invoice ${inv.invoice_number} marked paid – ${fmt(amt)}`);
               }
               showNotification(`${inv.invoice_number} marked paid ✓`);

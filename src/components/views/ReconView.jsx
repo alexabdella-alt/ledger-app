@@ -463,7 +463,7 @@ export default function ReconView() {
     queueSave();
   };
 
-  const addToBooks = (t, gl) => {
+  const addToBooks = async (t, gl) => {
     const isRev = t.amount>0;
     const inv = {
       id: Date.now()+Math.random(), vendor: (t.description||"Bank transaction").slice(0,60), description: t.description||"Added during reconciliation",
@@ -474,7 +474,11 @@ export default function ReconView() {
       _added: { date:t.date, vendor:t.description, amount:t.amount, gl_code:gl.gl_code },
     };
     setInvoices(prev=>[inv, ...prev]);
-    bookToDb && bookToDb(inv);
+    // ★ C371 — the bank line is matched to this entry only once the entry is in the ledger.
+    // Unawaited, a refused booking rolled the row back while the line stayed matched to an
+    // id that pointed at nothing — a reconciliation resting on an entry that was never posted.
+    const jeId = bookToDb ? await bookToDb(inv) : null;
+    if (!jeId) { showNotification && showNotification("That entry wasn't added — the line is still unmatched.", "error"); return; }
     setBankTxns(prev=>prev.map(x=>x.id===t.id?{...x,_matchBook:inv.id,_auto:false,_conf:100,_added:inv._added}:x));
     setAddQuick(null);
     logAudit && logAudit("recon_add","Added "+inv.vendor+" "+fmt(inv.amount)+" during reconciliation",null,inv._added);

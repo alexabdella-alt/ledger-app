@@ -111,3 +111,36 @@ describe("softDeleteContracts writes first, removes only what landed, audits aft
     expect(undo).not.toMatch(/snaps\.filter\(/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C371 — three more bookings fired and forgotten, found by grepping `bookToDb(` for the
+// call sites nobody awaited: the pipeline's bank-line batch (its tile counted the ATTEMPT),
+// Send Invoice's legacy mark-paid, and Reconcile's "add to books" (which matched the bank
+// line to an entry that might never have posted).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("C371 — no booking is fired and forgotten", () => {
+  it("every bookToDb call site in src/ is awaited or returned", () => {
+    const files = ["src/App.jsx", "src/components/views/SendInvoiceView.jsx", "src/components/views/ReconView.jsx", "src/components/ClarificationFlow.jsx", "src/components/views/ReviewView.jsx", "src/components/views/RecurringView.jsx"];
+    for (const f of files) {
+      const src = fs.readFileSync(path.join(process.cwd(), f), "utf8").replace(/\/\/[^\n]*/g, "");
+      const calls = src.match(/[^\w.]bookToDb(?:\s*&&\s*bookToDb)?\s*\(/g) || [];
+      for (const c of calls) {
+        const at = src.indexOf(c);
+        const before = src.slice(Math.max(0, at - 40), at + 1);
+        expect(before, `${f}: ${before.trim()}`).toMatch(/(await|return|=>|\?)\s*$|\.map\($/);
+      }
+    }
+  });
+  it("the bank-line batch counts what LANDED, audits and says a shortfall", () => {
+    const body = fn("const unmatchedTxns = plan.standalone;", "const matchedCount = autoCleared.length");
+    ordered(body, "const landed = await Promise.all(newInvoices.map(inv => bookToDb(inv)));", "bookedNew = landed.filter(Boolean).length;", 'logAudit("bank_lines_not_booked"', "couldn't be booked");
+    expect(app).toMatch(/newBooked: bookedNew, notBooked: refusedNew,/);
+    expect(app).not.toMatch(/newBooked: newInvoices\.length/);
+  });
+  it("Send Invoice's legacy mark-paid and Reconcile's add-to-books gate on the id", () => {
+    const send = fs.readFileSync(path.join(process.cwd(), "src/components/views/SendInvoiceView.jsx"), "utf8");
+    ordered(send, "const jeId = await bookToDb(entry);", "if (!jeId) return;", 'logAudit("invoice_paid"', "marked paid ✓");
+    const recon = fs.readFileSync(path.join(process.cwd(), "src/components/views/ReconView.jsx"), "utf8");
+    ordered(recon, "const addToBooks = async (t, gl) => {", "const jeId = bookToDb ? await bookToDb(inv) : null;", "if (!jeId) {", "still unmatched", "return; }", "_matchBook:inv.id");
+  });
+});
