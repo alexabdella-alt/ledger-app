@@ -22,7 +22,7 @@ const _m0 = fmtMoney;
 export default function ReviewView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apSettings, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded, statementExceptionsLoadFailed,
-    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, statementExceptions, offerReconciliation, intakeRows } = useERP();
+    controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, statementExceptions, offerReconciliation, intakeRows, persistUnknownDocPatch } = useERP();
 
   // ── O60 dropped/incomplete docs (async) + O49 flagged txns (sync) → one queue ──
   const [dropped, setDropped] = React.useState([]);
@@ -780,7 +780,11 @@ export default function ReviewView() {
                       setInvoices(prev => [newInvoice, ...prev]);
                       const jeId = await bookToDb(newInvoice);   // rolls the row back and says why on a refusal
                       if (!jeId) return;
+                      // C364 — the marker is written to the row; the entry IS in the ledger, so a
+                      // lost marker is said (the C207 shape: don't press Post on it again).
+                      const mark = await persistUnknownDocPatch(doc, { posted: true });
                       setUnknownDocs(prev => prev.map(d => d.id===doc.id ? {...d, posted:true} : d));
+                      if (!mark?.ok) { showNotification(`Entry posted — but we couldn't record that it's been posted. Don't post it again.`, "error"); return; }
                       showNotification(`Entry posted: ${doc.document_type} · ${fmt(debitLine.debit)} ✓`);
                     };
 
@@ -885,10 +889,10 @@ export default function ReviewView() {
                                         setInvoices(prev => [newInvoice, ...prev]);
                                         const jeId = await bookToDb(newInvoice);   // C363 — same gate as postEntry
                                         if (!jeId) return;
-                                        setUnknownDocs(prev => prev.map(d => d.id===doc.id
-                                          ? { ...d, watch_matches: d.watch_matches.map((m,i) => i===mi ? {...m, posted:true} : m) }
-                                          : d
-                                        ));
+                                        const nextMatches = (doc.watch_matches || []).map((m,i) => i===mi ? {...m, posted:true} : m);
+                                        const mark = await persistUnknownDocPatch(doc, { watch_matches: nextMatches });   // C364
+                                        setUnknownDocs(prev => prev.map(d => d.id===doc.id ? { ...d, watch_matches: nextMatches } : d));
+                                        if (!mark?.ok) { showNotification(`Entry posted — but we couldn't record that it's been posted. Don't post it again.`, "error"); return; }
                                         showNotification(`Entry posted: ${doc.document_type} watch trigger ✓`);
                                       }}
                                       disabled={match.posted}

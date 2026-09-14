@@ -37,7 +37,7 @@ describe("Review — the document's Post button", () => {
     expect(i).toBeGreaterThan(0);
     const body = view.slice(i, view.indexOf("watch trigger ✓`)", i) + 20);
     ordered(body, "setInvoices(prev => [newInvoice, ...prev]);", "const jeId = await bookToDb(newInvoice);", "if (!jeId) return;",
-      "watch_matches: d.watch_matches.map(", "showNotification(`Entry posted: ${doc.document_type} watch trigger ✓`)");
+      "const nextMatches = (doc.watch_matches || []).map(", "showNotification(`Entry posted: ${doc.document_type} watch trigger ✓`)");
     // and the handler is async, or the await is a syntax error the build would catch — but
     // pin it: a sync handler with a stray `await` removed would fire-and-forget again
     expect(view.slice(i - 120, i)).toMatch(/onClick=\{async \(\) => \{/);
