@@ -109,6 +109,28 @@ describe("★★★ every screen renders with a company that has data in it", ()
     }
   }
 
+  // ★ C356 — NOTHING A SCREEN PAINTS MAY BE THE WORD "undefined". C354 found the full-page
+  // detail printing "Against undefined — undefined" and "undefined%" for a payment — a leak
+  // the crash sweep cannot see (it does not throw) and the jargon guard cannot see (it is
+  // not a string literal in the source). So every view is rendered with data in both seats
+  // and its TEXT is searched for the tokens a template literal leaks. A planted leak dies.
+  const LEAK_RE = /undefined|\bNaN\b|\[object Object\]|Invalid Date/;
+  const textOf = (html) => html.replace(/<[^>]+>/g, " ");
+  for (const [seatName, navSeat] of Object.entries(SEATS)) {
+    for (const f of viewFiles) {
+      it(`★ ${f} paints no leaked token — ${seatName} seat`, async () => {
+        const mod = await import(path.join(viewsDir, f));
+        const html = renderViewHtml(mod.default, { ...POPULATED, navSeat, ...(VIEW_CONTEXT[f] || {}) });
+        const m = textOf(html).match(LEAK_RE);
+        expect(m && `${f} (${seatName}) paints "${m[0]}": …${textOf(html).replace(/\s+/g, " ").match(new RegExp(`.{0,60}${m[0]}.{0,40}`))?.[0]}…`).toBeNull();
+      });
+    }
+  }
+  it("★ the leak check can fail — a planted template-literal leak is caught", () => {
+    const Leaky = () => <div>Against {String(undefined)} — {String(undefined)}</div>;
+    expect(textOf(renderViewHtml(Leaky, POPULATED))).toMatch(LEAK_RE);
+  });
+
   // ★★★ THE ANTI-VACUITY CHECK, AND IT IS THE ONE THAT ACTUALLY EARNED ITS PLACE. "It did
   // not throw" is satisfied just as well by a screen that rendered the WRONG BRANCH and drew
   // nothing — which is exactly what was happening: `vendorsSelectedContact` was absent, the
