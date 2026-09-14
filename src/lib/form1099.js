@@ -122,14 +122,23 @@ export function verdictFor(contact = {}, payments = { byKind: {}, total: 0 }, { 
   const goods = k[PAYMENT_KIND.GOODS] || 0;
   const unknown = k[PAYMENT_KIND.UNKNOWN] || 0;
 
-  if (reportableAmount < threshold && unknown <= 0) {
+  // ★ C355 — UNDER THE FLOOR IS UNDER THE FLOOR, WHATEVER WE COULD NOT CLASSIFY. This read
+  // `reportableAmount < threshold && unknown <= 0`, so a supplier paid $145 in an account
+  // we could not classify fell past BOTH the floor check and the needs-info check (which
+  // asks whether reportable + unknown reaches the floor) and landed on ELIGIBLE — a
+  // "Needs a 1099" badge over the sentence "was paid $0.00 for services, over the $600
+  // floor". A false filing is the failure direction this file exists to refuse. The most
+  // that unclassified money could add is itself; if even that stays under the floor, no
+  // 1099 is due and no question needs asking.
+  if (reportableAmount + unknown < threshold) {
     // Goods are not reportable at ANY amount, so a supplier paid only for goods is a clean
     // "no" rather than a threshold question — and saying which matters, because one changes
     // next year and the other does not.
     if (goods > 0 && reportableAmount === 0) {
       return { verdict: VERDICT.GOODS_ONLY, why: `${name} was paid for goods, which aren't reported on a 1099 at any amount.`, amount: goods };
     }
-    return { verdict: VERDICT.BELOW_THRESHOLD, why: `${name} was paid ${money(reportableAmount)} for services this year — under the $${threshold} reporting floor.`, amount: reportableAmount };
+    const evenCounting = unknown > 0 ? ` (even counting ${money(unknown)} we couldn't classify)` : "";
+    return { verdict: VERDICT.BELOW_THRESHOLD, why: `${name} was paid ${money(reportableAmount)} for services this year${evenCounting} — under the $${threshold} reporting floor.`, amount: reportableAmount };
   }
 
   // ★ AN UNCATEGORISED PAYMENT CANNOT BE RULED IN OR OUT. Saying "below the floor" while

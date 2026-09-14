@@ -71,11 +71,26 @@ describe("★★ goods are never reportable, at any amount", () => {
 });
 
 describe("★★ an unclassifiable payment cannot be ruled in OR out", () => {
-  it("★★★ 'below the floor' is never claimed while holding payments we couldn't classify", () => {
+  it("★★★ 'below the floor' is never claimed while holding payments we couldn't classify THAT COULD REACH IT", () => {
     // That would be a claim about a query rather than about the books.
     const r = v({ name: "Mystery Co" }, [paid(4000, 6200)]);   // utilities → unknown kind
     expect(r.verdict).toBe(VERDICT.NEEDS_INFO);
     expect(r.why).toMatch(/can't classify as goods or services/);
+  });
+  it("★★★ C355 — but an unclassified amount that could NOT reach the floor is UNDER it, not a filing", () => {
+    // Found by rendering the Vendors tab: a linen service (an LLC) paid $145 in an account
+    // the role map does not classify showed "Needs a 1099" over the sentence "was paid $0.00
+    // for services, over the $600 floor". It fell past the floor check (which required
+    // unknown to be zero) AND the needs-info check (which requires reportable + unknown to
+    // reach the floor), and landed on ELIGIBLE by default.
+    const r = v({ name: "Bluebonnet Linen Service", business_type: "llc" }, [paid(145, 6180)]);   // 6180 → no role → unknown
+    expect(r.verdict).toBe(VERDICT.BELOW_THRESHOLD);
+    expect(r.why).toMatch(/even counting \$145\.00 we couldn't classify/);
+    expect(r.verdict).not.toBe(VERDICT.ELIGIBLE);
+    // …and the same supplier at $700 unclassified is still a QUESTION, never a filing
+    expect(v({ name: "Bluebonnet Linen Service", business_type: "llc" }, [paid(700, 6180)]).verdict).toBe(VERDICT.NEEDS_INFO);
+    // …and real services over the floor from an LLC is still a filing (the fix must not blind it)
+    expect(v({ name: "Cleaners LLC", business_type: "llc" }, [paid(700, 6800)]).verdict).toBe(VERDICT.ELIGIBLE);
   });
 });
 
