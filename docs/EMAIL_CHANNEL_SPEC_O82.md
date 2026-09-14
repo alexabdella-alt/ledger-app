@@ -1,7 +1,11 @@
 # O82 — EMAIL FIRST: THE BOOKKEEPER YOU FORWARD THINGS TO
 
 **Design spec. Drafted 2026-09-14 at the operator's instruction (*"email first, write the spec"*).
-NOT approved, NOT built. No migration is written; the numbers below are reserved, not minted.**
+APPROVED the same day with four decisions: provider **Resend** · Phase A budget (the drain charges
+whoever opens the app) **accepted** · digest **opt-in** · Phase C (replies that act) **stays gated
+on `O81`**. The domain is still to be named (§10.1); everything reads it from `MAIL_DOMAIN`.
+BUILD STARTED: migrations `088`–`090` written (NOT applied), `_shared/mailChannel.js`,
+`receive-mail` and `send-mail` edge functions written (NOT deployed).**
 
 Same species as `docs/INVOICE_PAYMENT_SPEC_O114.md` and `docs/ACCEPT_AND_QUEUE_SPEC_O97.md`: a
 design session written before code, with acceptance criteria pre-registered so the result cannot be
@@ -355,13 +359,13 @@ Each is written before the build. A criterion that passes for the wrong reason i
 
 ## 10. DECISIONS FOR THE OPERATOR
 
-1. **Domain.** Inbound needs MX on a subdomain we control (`in.<domain>`); outbound needs SPF/DKIM on
-   the sending domain. Which domain?
-2. **Provider.** Resend / Postmark / SES — all fit §4.1. Preference?
-3. **Phase A budget.** The drain charges whoever opens the app. Acceptable for the first clients, or
-   does Phase A wait for a per-company budget?
-4. **Digest.** Weekly summary email on by default, or opt-in? (§4.2 says opt-in; it is a product call.)
-5. **Reply-to-question application.** Confirm Phase C stays gated on `O81` rather than shipping
-   "linen service" → recode from a reply.
+1. **Domain — OPEN.** Inbound needs MX on a subdomain we control (`in.<domain>`); outbound needs
+   SPF/DKIM on the sending domain. The app has no custom domain today (`O31`); `ledger-app-five.
+   vercel.app` cannot receive mail. **A domain must be bought or chosen before the first deploy**,
+   then set as the `MAIL_DOMAIN` secret and verified in Resend.
+2. **Provider — DECIDED: Resend** (2026-09-14).
+3. **Phase A budget — DECIDED: acceptable** (2026-09-14).
+4. **Digest — DECIDED: opt-in** (2026-09-14).
+5. **Reply-to-question application — DECIDED: Phase C stays gated on `O81`** (2026-09-14).
 
 Approval is a reply to this file, not a signature ritual — the `O114` convention.
