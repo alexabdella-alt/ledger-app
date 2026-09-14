@@ -58,7 +58,9 @@ describe("bookPrepaid reads each schedule row's result", () => {
   it("a failed month is counted, the stranded amount is named, and no ✓ is said", () => {
     expect(body).not.toMatch(/for \(const je of sched\.entries\) \{ await persistMultiLineEntry\(je\); \}/);
     ordered(body, "const id = await persistMultiLineEntry(je); if (!id) missed.push(je);", "if (missed.length) {",
-      'logAudit("prepaid_schedule_incomplete"', "will stay in Prepaid", "return;", "showNotification(`Recorded as prepaid — spread over ${months} months ✓`)");
+      'logAudit("prepaid_schedule_incomplete"', "will stay in Prepaid", "return capId;", "showNotification(`Recorded as prepaid — spread over ${months} months ✓`)");
+    // C367: the partial-schedule branch still returns the capitalization id — the document IS
+    // recorded, and a caller settling its intake row needs the entry that landed
   });
   it("the stranded figure is summed from the rows that did not post, not re-derived from the total", () => {
     expect(body).toMatch(/const stranded = missed\.reduce\(/);

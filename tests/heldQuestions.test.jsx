@@ -48,7 +48,7 @@ describe("heldQuestionRows reads the durable record", () => {
 describe("the wiring", () => {
   const app = read("src/App.jsx");
   it("the hold path writes the constant the reader matches on — one string, not two", () => {
-    expect(app).toMatch(/markIntake\(item\.intake_id, INTAKE_STATUS\.HELD, \{ detail: CLARIFICATION_HOLD_DETAIL \}\)/);
+    expect(app).toMatch(/markIntake\(item\.intake_id, INTAKE_STATUS\.HELD, \{ journalEntryIds: entryLinks\.ids, detail: CLARIFICATION_HOLD_DETAIL \}\)/);
     expect(app).not.toMatch(/detail: "awaiting clarification in review queue"/);
   });
   it("the trust header counts held questions beside the in-session cards", () => {

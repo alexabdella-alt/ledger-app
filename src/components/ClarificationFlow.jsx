@@ -167,7 +167,7 @@ function deriveSession(item) {
 function ClarificationCard({ item }) {
   const {
     setClarificationQueue, setInvoices, bookToDb, createOrUpdateContact,
-    logAudit, showNotification, applyGaapAnswer,
+    logAudit, showNotification, applyGaapAnswer, settleClarification,
     CHART_OF_ACCOUNTS, addCustomAccount, getAccountByRole, rules,
   } = useERP();
   // O75 correction UX — let the user override the fundamental type/direction on ANY
@@ -249,6 +249,19 @@ function ClarificationCard({ item }) {
     setClarificationQueue(prev => prev.map(c => c.id === item.id ? { ...c, resolved: true } : c));
     removeTimer.current = setTimeout(() => removeFromQueue(), 1900);
   };
+  // ★ C367 — WRITE FIRST, THEN THE SUCCESS STATE, THEN TELL THE INTAKE ROW. Every booking
+  // path here fired `bookToDb` unawaited and showed "✓ Booked" regardless (C194's family,
+  // inside the card the owner answers), and none of them told the document's intake row
+  // that its question was answered — so the row read "awaiting clarification" forever.
+  const bookAnswer = async (finalInv, successText) => {
+    setInvoices(prev => [finalInv, ...prev]);
+    const jeId = await bookToDb(finalInv);   // rolls the row back and says why on a refusal
+    if (!jeId) return false;                 // the card stays open — the refusal was said by the writer
+    if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+    settleClarification?.(item, { kind: "booked", jeId });
+    finishWithSuccess(successText);
+    return true;
+  };
   const total = questions.length;
   const atSummary = step >= total;
 
@@ -311,6 +324,7 @@ function ClarificationCard({ item }) {
 
   const rejectPersonal = () => {
     logAudit("invoice_rejected", `Skipped (personal): ${inv.vendor} · ${money(inv.amount)} — user marked not a business expense`, inv, null);
+    settleClarification?.(item, { kind: "skipped" });
     finishWithSuccess("Skipped — marked personal", "muted");
   };
 
@@ -332,13 +346,12 @@ function ClarificationCard({ item }) {
         null, { attached_to: String(ex.db_entry_id ?? ex.id ?? ""), exception_kind: MATCH_EXCEPTION_KIND,
                 // ★ attests DOCUMENT IDENTITY, never the account (CLAUDE.md §9).
                 attests_mapping: false });
+      settleClarification?.(item, { kind: "attached", jeId: ex.db_entry_id ?? null });   // C311: an attach is backed by the payment's entry
       finishWithSuccess("Filed with the payment we already recorded", "muted");
     } else if (value === "different") {
       const finalInv = { ...inv, confidence: 100, status: "booked" };
       logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — a separate purchase from the payment on ${ex.date || "an earlier date"})`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
-      if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      finishWithSuccess(describeBooking(finalInv));
+      bookAnswer(finalInv, describeBooking(finalInv));
     } else {
       // ★ DEFER — BOOKS NOTHING, and that is exactly what routes it. Nothing booked
       // leaves the document's intake row at `held_for_review` (App.jsx, the invoice
@@ -347,6 +360,7 @@ function ClarificationCard({ item }) {
       logAudit("invoice_deferred",
         `${inv.vendor} · ${money(inv.amount)} — set aside for the accountant: may be the same purchase as the payment on ${ex.date || "an earlier date"}. Nothing booked.`,
         null, { deferred_against: String(ex.db_entry_id ?? ex.id ?? ""), exception_kind: MATCH_EXCEPTION_KIND });
+      settleClarification?.(item, { kind: "deferred" });
       finishWithSuccess("Set aside for your accountant — nothing booked", "muted");
     }
   };
@@ -355,21 +369,18 @@ function ClarificationCard({ item }) {
     if (value === "skip") {
       // Same invoice — don't book it. Log to the audit trail as duplicate_skipped.
       logAudit("duplicate_skipped", `Skipped duplicate: ${inv.vendor} · ${money(inv.amount)}${inv.date ? ` on ${inv.date}` : ""} — same as an existing entry`, inv, null);
+      settleClarification?.(item, { kind: "skipped" });
       finishWithSuccess("Skipped — duplicate", "muted");
     } else if (value === "unsure") {
       // Not sure — book it but flag for review so it surfaces in the review queue.
       const finalInv = { ...inv, confidence: 100, status: "booked", approval_status: "flagged", duplicate_flag: true, duplicate_reason: "Possible duplicate — user wasn't sure" };
       logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (flagged: possible duplicate — needs review)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
-      if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      finishWithSuccess(`${describeBooking(finalInv)} Flagged as a possible duplicate.`);
+      bookAnswer(finalInv, `${describeBooking(finalInv)} Flagged as a possible duplicate.`);
     } else {
       // New charge — book it normally.
       const finalInv = { ...inv, confidence: 100, status: "booked" };
       logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — different charge)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
-      if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      finishWithSuccess(describeBooking(finalInv));
+      bookAnswer(finalInv, describeBooking(finalInv));
     }
   };
 
@@ -397,9 +408,7 @@ function ClarificationCard({ item }) {
     // Structured learning signal, keyed to the company (O64-68). Captured now; the full
     // learning store (decay curve, cross-vendor generalization) is the O64-68 build.
     if (answer) logAudit("ai_clarification_learned", `Learned for this business: "${answer}" → ${finalInv.vendor || "vendor"} booked as ${finalInv.gl_name}`, null, { vendor: finalInv.vendor, answer, gl_code: chosen.code, gl_name: chosen.name });
-    setInvoices(prev => [finalInv, ...prev]); bookToDb(finalInv);
-    if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-    finishWithSuccess(describeBooking(finalInv));
+    bookAnswer(finalInv, describeBooking(finalInv));
   };
 
   // ── Free-text booking ("describe it in your own words") ──
