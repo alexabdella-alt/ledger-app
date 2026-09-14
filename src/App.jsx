@@ -3572,7 +3572,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       total: amt, months, startDate, expenseCode: inv.gl_code, prepaidCode,
       label: inv.description || inv.gl_name || "Prepaid",
     });
-    for (const je of sched.entries) { await persistMultiLineEntry(je); }
+    // ★ C363 — each month's result is read. A schedule row that failed to post left its
+    // share stranded in Prepaid forever with the ✓ saying the whole spread was recorded.
+    const missed = [];
+    for (const je of sched.entries) { const id = await persistMultiLineEntry(je); if (!id) missed.push(je); }
+    if (missed.length) {
+      const stranded = missed.reduce((t, je) => t + (je.lines || []).reduce((u, l) => u + (Number(l.debit) || 0), 0), 0);
+      logAudit("prepaid_schedule_incomplete", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid, but ${missed.length} of ${sched.entries.length} monthly entries did not post — ${fmtMoney(stranded)} stays in Prepaid`, null, { vendor: inv.vendor, amount: amt, months, missed: missed.length, stranded, capitalize_entry_id: String(capId) });
+      try { await loadAllData(); } catch {}
+      showNotification(`Recorded as prepaid — but ${missed.length} of ${sched.entries.length} monthly entries couldn't be posted, so ${fmtMoney(stranded)} will stay in Prepaid until they're added. Tell your accountant.`, "error");
+      return;
+    }
 
     logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid (1300), amortizing over ${months} months`, null, { vendor: inv.vendor, amount: amt, gl_code: prepaidCode, months });
     try { await loadAllData(); } catch {}

@@ -747,7 +747,12 @@ export default function ReviewView() {
                     const fmt = fmtSignedMoney;
                     const totalDebits = (doc.journal_entry?.lines||[]).reduce((s,l)=>s+(l.debit||0),0);
 
-                    const postEntry = () => {
+                    // ★ C363 — "Entry posted ✓" put the entry in React state and never called
+                    // `bookToDb`: the C288/C360 shape on the Review screen's own post button.
+                    // The entry is written first; the document is marked posted and the ✓ said
+                    // only when the ledger has it. (The unknown-document record itself is
+                    // in-session — O97's class — so the marker is honest for this sitting.)
+                    const postEntry = async () => {
                       if (!doc.journal_entry) return;
                       // Build a ledger entry from the first debit line
                       const debitLine = doc.journal_entry.lines.find(l=>l.debit>0);
@@ -773,6 +778,8 @@ export default function ReviewView() {
                         payment_status: "unpaid",
                       };
                       setInvoices(prev => [newInvoice, ...prev]);
+                      const jeId = await bookToDb(newInvoice);   // rolls the row back and says why on a refusal
+                      if (!jeId) return;
                       setUnknownDocs(prev => prev.map(d => d.id===doc.id ? {...d, posted:true} : d));
                       showNotification(`Entry posted: ${doc.document_type} · ${fmt(debitLine.debit)} ✓`);
                     };
@@ -854,7 +861,7 @@ export default function ReviewView() {
                                       </div>
                                     )}
                                     <button
-                                      onClick={() => {
+                                      onClick={async () => {
                                         // Post the suggested entry for this match
                                         const newInvoice = {
                                           id: Date.now()+Math.random(),
@@ -876,6 +883,8 @@ export default function ReviewView() {
                                           payment_status: "unpaid",
                                         };
                                         setInvoices(prev => [newInvoice, ...prev]);
+                                        const jeId = await bookToDb(newInvoice);   // C363 — same gate as postEntry
+                                        if (!jeId) return;
                                         setUnknownDocs(prev => prev.map(d => d.id===doc.id
                                           ? { ...d, watch_matches: d.watch_matches.map((m,i) => i===mi ? {...m, posted:true} : m) }
                                           : d
