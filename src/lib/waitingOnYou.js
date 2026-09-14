@@ -46,6 +46,50 @@ export function heldPayrollCards(intakeRows = []) {
     }));
 }
 
+// ── A QUESTION THAT SURVIVES A RELOAD (C365) ────────────────────────────────
+// A document the pipeline declined to book because it needed an answer leaves its intake
+// row HELD with this sentence — and the card itself is React state (O121), so a reload
+// dropped the question while the row sat terminal and "accounted for". The trust header
+// then read green over a document nobody had booked: the O121 false green, one reload later.
+// The row is the record; this reads it. One constant, written by the hold path and read here.
+export const CLARIFICATION_HOLD_DETAIL = "awaiting clarification in review queue";
+
+// Held-for-a-question rows whose question is NOT currently on screen. `liveIntakeIds` are
+// the intake ids that still have an unresolved card in this session — those are counted by
+// the queue itself, and counting them here too would double the number.
+export function heldQuestionRows(intakeRows = [], { liveIntakeIds = [], uploadQueue = [] } = {}) {
+  const live = new Set((liveIntakeIds || []).map(String));
+  const inFlight = new Set((uploadQueue || [])
+    .filter((q) => q && q.intake_id && q.status !== "done" && q.status !== "error")
+    .map((q) => String(q.intake_id)));
+  return (intakeRows || [])
+    .filter((r) => r && r.status === "held_for_review" && String(r.detail || "") === CLARIFICATION_HOLD_DETAIL)
+    .filter((r) => !live.has(String(r.id)))
+    .map((r) => ({
+      kind: "question_held",
+      id: `question_held:${r.id}`,
+      intake_id: r.id,
+      filename: r.filename || "a document",
+      received_at: r.received_at || null,
+      // no stored file → cannot be re-asked from here; the sentence says so rather than
+      // offering a button that would fail on click (O124)
+      reloadable: !!r.document_id,
+      loading: inFlight.has(String(r.id)),
+    }));
+}
+
+export function heldQuestionsCopy(rows = []) {
+  const n = (rows || []).length;
+  if (!n) return "";
+  const canReload = rows.filter((r) => r.reloadable).length;
+  const head = n === 1
+    ? `1 document from earlier is still waiting for an answer from you`
+    : `${n} documents from earlier are still waiting for an answer from you`;
+  if (canReload === n) return `${head} — it isn't in your books until you answer.`;
+  if (canReload === 0) return `${head}, and we no longer have the file to ask again — please drop it again.`;
+  return `${head} — ${n - canReload} of them would need to be dropped again.`;
+}
+
 // Bank lines the matcher could not settle on its own. `matchQueue` is in-session state,
 // which is exactly when this matters: the pipeline just redirected to Matching once and
 // a person navigated away. One card, not one per line — the decision is made on the
