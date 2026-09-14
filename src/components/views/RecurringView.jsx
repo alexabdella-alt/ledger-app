@@ -5,11 +5,16 @@ import { initials, vendorColor, fmtDate , fmtMoney, todayLocal, ymdLocal } from 
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function RecurringView() {
-  const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apSettings, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { createRecurring, recordRecurringRun, AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apSettings, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
             const fmt = fmtMoney;
             const today = todayLocal();
             const due = recurring.filter(r=>r.active && r.next_date && r.next_date<=today);
-            const runRecurring = (r) => {
+            // ★ C360 — "POST NOW" POSTS. It used to put the entry in React state, advance
+            // `next_date` in React state, write an audit row saying it had posted, and say
+            // "Posted ✓" — and never write the journal entry. A reload then offered the same
+            // month again. Now: book through the single write path, and only on a durable id
+            // record the run on the rule and say so.
+            const runRecurring = async (r) => {
               const inv = {
                 id:Date.now()+Math.random(), vendor:r.vendor, description:r.description||r.name,
                 amount:r.amount, date:today, type:"expense", gl_code:r.gl_code, gl_name:r.gl_name,
@@ -18,6 +23,12 @@ export default function RecurringView() {
                 status:"booked", booked_at:new Date().toISOString(), source:"recurring", payment_status:"unpaid"
               };
               setInvoices(prev => [inv, ...prev]);
+              const jeId = await bookToDb(inv);
+              if (!jeId) {
+                setInvoices(prev => prev.filter(i => i.id !== inv.id));
+                showNotification(`${r.name} was NOT posted — the entry couldn't be written. Nothing changed.`, "error");
+                return;
+              }
               // Anchor to LOCAL midnight (not UTC) so the month/week add + ymdLocal readout stay
               // on the user's calendar day — the toISOString() readout day-shifted for non-UTC.
               const next = new Date(r.next_date + "T00:00:00");
@@ -25,17 +36,23 @@ export default function RecurringView() {
               else if (r.frequency==="monthly") next.setMonth(next.getMonth()+1);
               else if (r.frequency==="quarterly") next.setMonth(next.getMonth()+3);
               else if (r.frequency==="annual") next.setFullYear(next.getFullYear()+1);
-              setRecurring(prev => prev.map(x => x.id===r.id ? {...x, last_run:today, next_date:ymdLocal(next)} : x));
-              logAudit("recurring_posted", `Recurring posted: ${r.name} ${fmt(r.amount)}`);
-              showNotification(`Posted: ${r.name} ${fmt(r.amount)} ✓`);
+              const nextDate = ymdLocal(next);
+              const rec = await recordRecurringRun(r.id, { last_run: today, next_date: nextDate });
+              setRecurring(prev => prev.map(x => x.id===r.id ? {...x, last_run:today, next_date:nextDate} : x));
+              logAudit("recurring_posted", `Recurring posted: ${r.name} ${fmt(r.amount)}`, null, { journal_entry_id: jeId, next_date: nextDate, run_recorded: !!rec?.ok });
+              if (rec?.ok) showNotification(`Posted: ${r.name} ${fmt(r.amount)} ✓`);
+              else showNotification(`Posted ${r.name} ${fmt(r.amount)} — but we couldn't record the run on the rule, so it may show as due again after a reload. Don't post it twice.`, "error");
             };
             const newRec = recurringNewRec; const setNewRec = setRecurringNewRec;
-            const addRecurring = () => {
+            const addRecurring = async () => {
               if (!newRec.name) { showNotification("Please enter a name.","error"); return; }
               const amt = parseFloat(newRec.amount);
               if (isNaN(amt) || amt <= 0) { showNotification("Please enter a valid amount.","error"); return; }
-              const r = {...newRec, id:Date.now()+Math.random(), amount:amt, active:true, created_at:new Date().toISOString(), last_run:null};
-              setRecurring(prev => [r, ...prev]);
+              // Through the same verified insert the chat's add_recurring uses (C112) — the
+              // screen's version was a setState, and the rule vanished on reload.
+              const res = await createRecurring({ name: newRec.name, vendor: newRec.vendor, amount: amt, gl_code: newRec.gl_code, gl_name: newRec.gl_name, frequency: newRec.frequency, next_date: newRec.next_date || today, project: newRec.project });
+              if (!res?.ok) { showNotification(`Couldn't save that recurring transaction — ${res?.error || "the write didn't land"}. Nothing was created.`, "error"); return; }
+              const r = { ...newRec, amount: amt };
               logAudit("recurring_created", `Recurring created: ${r.name} ${fmt(r.amount)} ${r.frequency}`);
               setNewRec({name:"",vendor:"",amount:"",gl_code:getAccountByRole("rent_occupancy")?.code||"",gl_name:getAccountByRole("rent_occupancy")?.name||"",frequency:"monthly",next_date:today,project:"General"});
               showNotification(`Recurring "${r.name}" created ✓`);
