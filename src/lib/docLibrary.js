@@ -74,7 +74,15 @@ export function filterDocuments(docs = [], { query = "", type = "all", from = nu
     if (!terms.length) return true;
     // Every term must appear somewhere — so "roma jan" narrows rather than widens, which
     // is what a person means by typing two words.
-    const hay = `${norm(d.name)} ${norm(d.type)} ${norm((d.tags || []).join(" "))}`;
+    // ★ THE SEARCH READS WHAT THE CARD SHOWS. Since C326 the card names the entry the
+    // document became ("Sysco · $824.60"), and a person types what they can see. A phone
+    // photo is "IMG_4471.jpg"; the only word on its card that means anything is the
+    // supplier — so the linked entry's vendor and amount are searchable. This is NOT
+    // content search: nothing here reads the file, only the entry already on screen.
+    const inv = linkedEntryFor(d, invoices);
+    const amt = inv && Number.isFinite(Number(inv.amount)) ? Number(inv.amount) : null;
+    const linked = inv ? `${norm(inv.vendor)} ${amt == null ? "" : `${amt} ${amt.toFixed(2)}`}` : "";
+    const hay = `${norm(d.name)} ${norm(d.type)} ${norm((d.tags || []).join(" "))} ${linked}`;
     return terms.every((t) => hay.includes(t));
   });
 }

@@ -56,7 +56,7 @@ export default function DocsView() {
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or type…"
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name, supplier, amount or type…"
           style={{ flex: "1 1 240px", minWidth: 0, height: 36, borderRadius: 9, border: "1px solid var(--sc-border-2)", background: "var(--sc-surface)", color: "var(--sc-text)", padding: "0 12px", fontSize: 13 }} />
         <label style={{ fontSize: 12, color: "var(--sc-text-2)", display: "flex", alignItems: "center", gap: 6 }}>From
           <input type="date" value={from} onChange={e => setFrom(e.target.value)}
@@ -73,7 +73,19 @@ export default function DocsView() {
 
       {preview && <DocumentPreviewModal doc={preview} onClose={() => setPreview(null)} />}
 
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && docLibrary.length > 0 ? (
+        /* ★ "NO DOCUMENTS YET" IS A CLAIM ABOUT THE LIBRARY, AND A SEARCH THAT MATCHED
+           NOTHING IS NOT EVIDENCE FOR IT. With 28 files stored and a typo in the box, the
+           old copy told a person their documents did not exist. Two different facts, two
+           different sentences — and the second one offers the way out. */
+        <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 48, textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
+          <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Nothing matches</div>
+          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginBottom: 14 }}>{docLibrary.length} document{docLibrary.length !== 1 ? "s are" : " is"} stored, but none match this search.</div>
+          <button onClick={() => { setQuery(""); setFrom(""); setTo(""); setFilterType("all"); }}
+            style={{ height: 36, padding: "0 14px", borderRadius: 9, background: "var(--sc-gold)", border: "none", color: "var(--sc-surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Show all documents</button>
+        </div>
+      ) : filtered.length === 0 ? (
         <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 48, textAlign: "center" }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>📁</div>
           <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>No documents yet</div>

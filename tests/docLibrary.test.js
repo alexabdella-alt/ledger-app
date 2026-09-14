@@ -53,8 +53,26 @@ describe("★★ (2) the card shows the document's OWN date when we can derive i
 });
 
 describe("★★ (1) search — by name, type and date range", () => {
-  it("finds by filename", () => {
-    expect(filterDocuments(docs, { query: "roma" }, invoices).map(d => d.id)).toEqual(["d2"]);
+  it("finds by filename — AND by the supplier the card shows (C346)", () => {
+    // d2 is named after Roma; d1 is a statement LINKED to a Roma entry, so its card reads
+    // "Roma · …". A person types what they see, so "roma" finds both. (Before C346 this
+    // asserted ["d2"] alone — the search ignored the one word on the card that means
+    // anything for a file called IMG_4471.jpg.)
+    expect(filterDocuments(docs, { query: "roma" }, invoices).map(d => d.id).sort()).toEqual(["d1", "d2"]);
+  });
+
+  it("★ C346 — a phone photo with a meaningless filename is found by its supplier and its amount", () => {
+    const inv = [{ id: "9", db_entry_id: "e9", date: "2026-03-04", vendor: "Sysco Central Texas", amount: 824.6 }];
+    const photo = [{ id: "p", name: "IMG_4471.jpg", type: "receipt", linked_invoice_id: "e9", tags: [] }];
+    expect(filterDocuments(photo, { query: "sysco" }, inv)).toHaveLength(1);
+    expect(filterDocuments(photo, { query: "824.60" }, inv)).toHaveLength(1);   // as the card prints it
+    expect(filterDocuments(photo, { query: "824.6" }, inv)).toHaveLength(1);    // as a person might type it
+    expect(filterDocuments(photo, { query: "sysco 824" }, inv)).toHaveLength(1); // two words still NARROW
+    expect(filterDocuments(photo, { query: "bluebonnet" }, inv)).toHaveLength(0);
+    // ★ the negative case that keeps this honest: an UNLINKED photo is not findable by a
+    // supplier we never attached — the search reads the card, and that card has no supplier.
+    const unlinked = [{ ...photo[0], linked_invoice_id: null }];
+    expect(filterDocuments(unlinked, { query: "sysco" }, inv)).toHaveLength(0);
   });
 
   it("★ every term must match, so two words NARROW rather than widen", () => {
@@ -143,5 +161,32 @@ describe("C337 — the document's own date is derived from the reading, never gu
     // persisted (`persistBankStatement`, which every bank path funnels through).
     const bank = app.slice(app.indexOf("const persistBankStatement = async"), app.indexOf("const handleBankFile = async"));
     expect(bank).toMatch(/patch: \{ document_date: periodEnd \}, label: "document_date_stamp"/);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★ C346 — "NO DOCUMENTS YET" IS A CLAIM ABOUT THE LIBRARY, NOT ABOUT A SEARCH.
+// With files stored and a filter that matched none of them, the screen said the documents
+// did not exist. Rendered, not grepped: the filter state that produces the empty result is
+// the type chip (it lives in context, so the harness can set it).
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★ C346 — the two empty states are two different sentences", async () => {
+  const { renderViewHtml } = await import("./helpers/renderView.jsx");
+  const { default: DocsView } = await import("../src/components/views/DocsView.jsx");
+  const lib = [{ id: "d1", name: "roma.pdf", type: "invoice", uploaded_at: "2026-08-25", tags: [] }];
+
+  it("a library with nothing in it says so", () => {
+    const html = renderViewHtml(DocsView, { docLibrary: [], docsFilterType: "all", invoices: [] });
+    expect(html).toContain("No documents yet");
+    expect(html).not.toContain("Nothing matches");
+  });
+
+  it("★ a filter that matches nothing does NOT claim the library is empty", () => {
+    const html = renderViewHtml(DocsView, { docLibrary: lib, docsFilterType: "contract", invoices: [] });
+    expect(html).toContain("Nothing matches");
+    // renderToString separates adjacent JSX text with `<!-- -->`; strip before matching.
+    expect(html.replace(/<!-- -->/g, "")).toContain("1 document is stored");
+    expect(html).toContain("Show all documents");
+    expect(html).not.toContain("No documents yet");
   });
 });
