@@ -28,9 +28,18 @@ function walk(dir) {
 // guard counted those lines, which is how `filteredInvoices` — computed on every render,
 // read by nothing since C335 deleted its one consumer — passed it.
 const noDestructure = (t) => t.replace(/const\s*\{[^}]*\}\s*=\s*useERP\(\)\s*;?/g, " ");
-const OTHERS = noDestructure(walk(path.join(process.cwd(), "src"))
+const OTHERS_RAW = walk(path.join(process.cwd(), "src"))
   .filter((p) => !p.endsWith(path.join("src", "App.jsx")))
-  .map((p) => strip(fs.readFileSync(p, "utf8"))).join("\n"));
+  .map((p) => strip(fs.readFileSync(p, "utf8"))).join("\n");
+const OTHERS = noDestructure(OTHERS_RAW);
+// ★ C359 — A SAME-NAMED LOCAL IN ANOTHER FILE IS NOT A READER. `acctName` was declared in
+// App.jsx, read by nothing there, and passed this guard because PayrollView has its OWN
+// `acctName`. A context value reaches a view ONLY through a `useERP()` destructure, so a
+// name that no view destructures cannot be read outside App.jsx whatever else shares it.
+const DESTRUCTURED = new Set(
+  [...OTHERS_RAW.matchAll(/const\s*\{([^}]*)\}\s*=\s*useERP\(\)/g)]
+    .flatMap((m) => m[1].split(",").map((x) => x.split(":")[0].trim()).filter(Boolean)),
+);
 
 const ctxStart = APP.indexOf("const erpCtx = {");
 const ctxEnd = APP.indexOf("};", ctxStart);
@@ -45,8 +54,8 @@ const declared = [...new Set([
 ])];
 const refs = (name, text) => (text.match(new RegExp(`\\b${name}\\b`, "g")) || []).length;
 
-function unread(app = APP_SANS_CTX, others = OTHERS, names = declared) {
-  return names.filter((n) => refs(n, app) <= 1 && refs(n, others) === 0);
+function unread(app = APP_SANS_CTX, others = OTHERS, names = declared, destructured = DESTRUCTURED) {
+  return names.filter((n) => refs(n, app) <= 1 && !(destructured.has(n) && refs(n, others) > 0));
 }
 
 // ★ C348 — STATE NOBODY READS. `const [x, setX] = useState(…)` whose `x` is referenced
@@ -55,8 +64,8 @@ function unread(app = APP_SANS_CTX, others = OTHERS, names = declared) {
 // QuickBooks-import state set, three reconciliation values, two narration pairs — all
 // reset on every company switch and read by nothing since their screens moved to local state.
 const stateVars = [...APP.matchAll(/^\s+const \[([A-Za-z_]\w*), *set[A-Za-z_]\w*\] = useState/gm)].map((m) => m[1]);
-function unreadState(app = APP_SANS_CTX, others = OTHERS, names = stateVars) {
-  return names.filter((n) => refs(n, app) <= 1 && refs(n, others) === 0);
+function unreadState(app = APP_SANS_CTX, others = OTHERS, names = stateVars, destructured = DESTRUCTURED) {
+  return names.filter((n) => refs(n, app) <= 1 && !(destructured.has(n) && refs(n, others) > 0));
 }
 
 describe("every function declared in ERP has a reader", () => {
@@ -74,7 +83,10 @@ describe("every function declared in ERP has a reader", () => {
     expect(unread(planted, OTHERS + " ", [...declared, "plantedHelper"])).toEqual(["plantedHelper"]);
     // …and neither is a view destructuring it from useERP() — the C347 blind spot.
     const destructured = OTHERS + "\nconst { plantedHelper, invoices } = useERP();\n";
-    expect(unread(planted, noDestructure(destructured), [...declared, "plantedHelper"])).toEqual(["plantedHelper"]);
+    expect(unread(planted, noDestructure(destructured), [...declared, "plantedHelper"], new Set([...DESTRUCTURED, "plantedHelper"]))).toEqual(["plantedHelper"]);
+    // …and a same-named LOCAL in another file is not a reader either (C359's blind spot).
+    const shadowed = OTHERS + "\nfunction X(){ const plantedHelper = (c) => c; return plantedHelper(1); }\n";
+    expect(unread(planted, shadowed, [...declared, "plantedHelper"])).toEqual(["plantedHelper"]);
   });
 });
 
