@@ -17,6 +17,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const isDbInvoiceId = (id) => typeof id === "string" && UUID_RE.test(id);
 
 const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
+// `ar_invoices_status_check` — the column's vocabulary, restated once so a draft is stored as one.
+const AR_STATUSES = new Set(["draft", "sent", "partial", "paid", "void"]);
 
 // The header + line rows for `ar_invoices` / `ar_invoice_lines`. `total` is subtotal + tax,
 // computed here from the lines so the stored total can never disagree with the stored lines.
@@ -43,7 +45,7 @@ export function arInvoiceRows(inv, { companyId, customerId = null, userId = null
     subtotal,
     tax_amount: tax,
     total: money(subtotal + tax),
-    status: inv.status === "paid" ? "paid" : "sent",
+    status: AR_STATUSES.has(inv.status) ? inv.status : "sent",   // the column's own vocabulary; a draft stays a draft
     notes: inv.notes || null,
     paid_at: inv.paid_at || null,
     created_by: userId || null,

@@ -54,7 +54,7 @@ describe("★ the writer is wired and the reader is shared", () => {
     const hdr = view.indexOf('from("ar_invoices").insert(header)'), ln = view.indexOf('from("ar_invoice_lines").insert(');
     expect(hdr).toBeGreaterThan(0);
     expect(ln).toBeGreaterThan(hdr);
-    expect(view).toMatch(/const saved = await persistSent\(inv\)/);
+    expect(view).toMatch(/const saved = await persistSent\(inv, customerId\)/);
   });
   it("★ a failed persist is SAID, and does not claim the invoice will be there after a reload", () => {
     expect(view).toMatch(/invoice_persist_failed/);
@@ -66,5 +66,25 @@ describe("★ the writer is wired and the reader is shared", () => {
   it("the load reads through sentInvoiceFromRow and asks for the customer's email", () => {
     expect(app).toMatch(/setSentInvoices\(arData\.map\(sentInvoiceFromRow\)\)/);
     expect(app).toMatch(/ar_invoice_lines\(\*\), contacts\(name, email\)/);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// C353 — THE CUSTOMER IS RESOLVED TO A DATABASE ID BEFORE THE INVOICE IS SAVED, and a draft
+// is stored as a draft. `ensureCustomer` fired and did not wait, so the contact id at persist
+// time was an in-session float — a uuid column would have refused it, and a null came back
+// after a reload as an invoice with no customer name.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("★ C353 — customer id and draft status", () => {
+  it("a draft is stored as a draft; an unknown status is stored as sent", () => {
+    expect(arInvoiceRows({ ...inv, status: "draft" }, { companyId: "c1" }).header.status).toBe("draft");
+    expect(arInvoiceRows({ ...inv, status: "weird" }, { companyId: "c1" }).header.status).toBe("sent");
+  });
+  it("★ the send path AWAITS the customer's database id and hands it to the persist", () => {
+    const view = fs.readFileSync(path.join(process.cwd(), "src/components/views/SendInvoiceView.jsx"), "utf8");
+    expect(view).not.toMatch(/ensureCustomer\(\)/);
+    expect(view).toMatch(/const customerId = await resolveCustomerId\(\);[\s\S]{0,1200}await persistSent\(inv, customerId\)/);
+    // and it never hands a float to a uuid column: only a db_id or a uuid-shaped id is used
+    expect(view).toMatch(/existing\.db_id \|\| \(isDbInvoiceId\(existing\.id\) \? existing\.id : null\)/);
   });
 });

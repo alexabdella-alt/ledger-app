@@ -58,11 +58,10 @@ export default function SendInvoiceView() {
             // header goes in first and the lines against its id; a failure is SAID and the
             // invoice stays on screen in-session (as before), never claimed as saved.
             // Returns the invoice carrying its database id, or the input on failure.
-            const persistSent = async (inv) => {
+            const persistSent = async (inv, customerId = null) => {
               persistSentLocal(inv);
               if (!currentCompany?.id) return inv;
-              const customer = contacts.find(c => c.type === "customer" && String(c.name || "").trim().toLowerCase() === String(inv.customer || "").trim().toLowerCase());
-              const { header, lines } = arInvoiceRows(inv, { companyId: currentCompany.id, customerId: customer?.id || null, userId: session?.user?.id || null, taxAmount: inv.tax_amount || 0 });
+              const { header, lines } = arInvoiceRows(inv, { companyId: currentCompany.id, customerId, userId: session?.user?.id || null, taxAmount: inv.tax_amount || 0 });
               header.updated_at = new Date().toISOString();
               try {
                 let dbId = isDbInvoiceId(inv.id) ? inv.id : null;
@@ -92,9 +91,28 @@ export default function SendInvoiceView() {
               }
             };
 
-            // Add/refresh the customer in contacts so they show up in AR + future invoices.
-            const ensureCustomer = () => {
-              if (draft.customer?.trim()) createOrUpdateContact({ name: draft.customer.trim(), type: "customer", email: (draft.customer_email||"").trim() });
+            // ★ C353 — THE CUSTOMER IS RESOLVED TO A DATABASE ID BEFORE THE INVOICE IS SAVED.
+            // `ensureCustomer` fired `createOrUpdateContact` and did not wait, so the contact's
+            // id was an in-session float at persist time — `ar_invoices.customer_id` is a uuid,
+            // so the invoice insert would have FAILED on its own foreign key, and a row that did
+            // land with `customer_id: null` came back after a reload with NO customer name (the
+            // load maps the name from `contacts`). Awaited, through the same `persistContact`
+            // the vendor form uses; a contact we cannot resolve leaves the id null and is SAID.
+            const resolveCustomerId = async () => {
+              const name = (draft.customer || "").trim(); if (!name) return null;
+              const email = (draft.customer_email || "").trim();
+              const norm = (x) => String(x || "").trim().toLowerCase();
+              const existing = contacts.find(c => c.type === "customer" && norm(c.name) === norm(name));
+              const dbId = existing && (existing.db_id || (isDbInvoiceId(existing.id) ? existing.id : null));
+              if (dbId) return dbId;
+              const r = await persistContact({ ...(existing || {}), name, type: "customer", email: email || existing?.email || "" });
+              if (r?.ok && r.row?.id) {
+                setContacts(prev => existing
+                  ? prev.map(c => c.id === existing.id ? { ...c, db_id: r.row.id } : c)
+                  : [{ ...r.row, fromContact: true }, ...prev]);
+                return r.row.id;
+              }
+              return null;
             };
 
             // Book the issued invoice through the canonical multi-line path:
@@ -120,12 +138,12 @@ export default function SendInvoiceView() {
               return jeId;
             };
 
-            const saveDraft = () => {
-              const inv = {...draft, id: draft.id||Date.now()+Math.random(), updated_at:new Date().toISOString()};
+            const saveDraft = async () => {
+              const inv = {...draft, id: draft.id||Date.now()+Math.random(), status: draft.status || "draft", updated_at:new Date().toISOString()};
               if (!inv.created_at) inv.created_at = new Date().toISOString();
-              ensureCustomer();
-              persistSent(inv);
-              setSentInvoiceDraft(inv); setDraft(inv);
+              const customerId = await resolveCustomerId();
+              const saved = await persistSent(inv, customerId);
+              setSentInvoiceDraft(saved); setDraft(saved);
               logAudit("invoice_created",`Invoice ${inv.invoice_number} draft saved for ${inv.customer} ${fmt(total)}`);
               showNotification(`Invoice ${inv.invoice_number} saved ✓`);
             };
@@ -136,7 +154,7 @@ export default function SendInvoiceView() {
               if (!draft.customer?.trim()) { showNotification("Add a customer name first.", "error"); return; }
               if (!(draft.customer_email||"").trim()) { showNotification("Add the customer's email to send.", "error"); return; }
               if (!(subtotal > 0)) { showNotification("Add at least one line item with an amount.", "error"); return; }
-              ensureCustomer();
+              const customerId = await resolveCustomerId();
               const inv = {...draft, id: draft.id||Date.now()+Math.random(), status:"sent", sent_at:new Date().toISOString(), tax_rate: draft.tax_rate || "", tax_amount: taxAmount};
               if (!inv.created_at) inv.created_at = new Date().toISOString();
               // Book the A/R entry exactly once per invoice; keep it in sync on re-send.
@@ -147,7 +165,7 @@ export default function SendInvoiceView() {
                 if (!jeId) return;   // pre-cutoff issue date → blocked + toasted; don't send/persist
                 inv.ledger_id = jeId;
               }
-              const saved = await persistSent(inv); setSentInvoiceDraft(saved); setDraft(saved);
+              const saved = await persistSent(inv, customerId); setSentInvoiceDraft(saved); setDraft(saved);
               logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(subtotal)} · A/R booked`);
               const lineSummary = (inv.line_items||[]).map(l => `• ${l.description||"Item"} — ${fmt(l.amount)}`).join("\n");
               const subject = `Invoice ${inv.invoice_number} from ${companySettings.name||"Your Company"}`;
