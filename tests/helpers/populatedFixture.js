@@ -17,13 +17,23 @@
 import { buildVendorSummary } from "../../src/lib/vendorSummary.js";
 import { vendorGroupKey } from "../../src/lib/vendorIdentity.js";
 
-const ent = (id, vendor, amount, date, gl_code, gl_name, extra = {}) => ({
-  id, vendor, vendor_key: vendorGroupKey(vendor), amount, date, gl_code, gl_name,
-  type: Number(gl_code) >= 4000 && Number(gl_code) < 5000 ? "revenue" : "expense",
-  status: "booked", source: "universal_upload", db_entry_id: `je_${id}`,
-  payment_status: "unpaid", confidence: 92, reasoning: "Test reasoning.",
-  debit_credit: "debit", project: "General", ...extra,
-});
+// ★ C358 — EVERY ROW CARRIES ITS OFFSET LEG, THE WAY A REAL FLATTENED ROW DOES. An unpaid
+// bill is Dr Expense / Cr A/P (2000); a paid one and a sale settle to Cash (1000). Without
+// the offset, every screen that derives openness from the A/P leg (§9, C309) saw no bill as
+// open while the flag-based list showed three — "Bills to pay" rendered $0.00 over three
+// listed bills, and the sweep could not tell a product defect from its own fixture.
+const ent = (id, vendor, amount, date, gl_code, gl_name, extra = {}) => {
+  const revenue = Number(gl_code) >= 4000 && Number(gl_code) < 5000;
+  const paid = extra.payment_status === "paid";
+  const offset = revenue || paid ? { secondary_gl_code: "1000", secondary_gl_name: "Cash" } : { secondary_gl_code: "2000", secondary_gl_name: "Accounts Payable" };
+  return {
+    id, vendor, vendor_key: vendorGroupKey(vendor), amount, date, gl_code, gl_name,
+    type: revenue ? "revenue" : "expense",
+    status: "booked", source: "universal_upload", db_entry_id: `je_${id}`,
+    payment_status: "unpaid", confidence: 92, reasoning: "Test reasoning.",
+    debit_credit: "debit", project: "General", ...offset, ...extra,
+  };
+};
 
 // Two spellings of one supplier — the C317 case, so the join path actually runs.
 export const INVOICES = [
@@ -47,6 +57,9 @@ export const ACCOUNTS = [
   { id: "a3", code: "5010", name: "Food Cost", category: "Expenses", system_role: "food_cost", active: true },
   { id: "a4", code: "6100", name: "Rent & Occupancy", category: "Expenses", system_role: "rent_occupancy", active: true },
   { id: "a5", code: "4010", name: "Food Sales", category: "Revenue", system_role: "product_revenue", active: true },
+  { id: "a6", code: "1100", name: "Accounts Receivable", category: "Assets", system_role: "accounts_receivable", active: true },
+  { id: "a7", code: "6180", name: "Linen & Laundry", category: "Expenses", system_role: "linen_laundry", active: true },
+  { id: "a8", code: "6000", name: "Salaries & Wages", category: "Expenses", system_role: "salaries_wages", active: true },
 ];
 
 // ★★★ SELECTION KEYS MUST BE NULL, NOT ABSENT. The Proxy answers an unknown key with `[]`,
@@ -63,6 +76,12 @@ const NO_SELECTION = {
 // The POPULATED context. Anything not named here still falls through to the Proxy.
 export const POPULATED = {
   ...NO_SELECTION,
+  // ★ C358 — the role resolvers answer from the fixture's OWN chart, so `apCode`/`arCode`
+  // resolve the way they do in the app instead of falling to the harness's inert noop.
+  getAccountByRole: (role) => ACCOUNTS.find((a) => a.system_role === role) || null,
+  getAccountByCode: (code) => ACCOUNTS.find((a) => String(a.code) === String(code)) || null,
+  rc: (role) => (ACCOUNTS.find((a) => a.system_role === role) || {}).code || null,
+  rn: (role) => (ACCOUNTS.find((a) => a.system_role === role) || {}).name || null,
   invoices: INVOICES,
   filteredInvoices: INVOICES,
   contacts: CONTACTS,
