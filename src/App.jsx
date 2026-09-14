@@ -51,6 +51,7 @@ import { documentTypeFor, isDurableDocId, PLACEHOLDER_DOCUMENT_TYPE, dedupePatch
 import { duplicateIsExpectedRhythm, deferDuplicateAsk } from "./lib/recurringVendor.js";
 import { normalizeName as normVendorName } from "./lib/docDirection";
 import { buildVendorSummary, scopeInvoicesToVendor } from "./lib/vendorSummary";
+import { sentInvoiceFromRow } from "./lib/arInvoiceRows";
 import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, activeNavItem, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
@@ -1180,7 +1181,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         q(supabase.from("opening_balances").select("*, accounts(code, name)").eq("company_id", cid)),
         q(supabase.from("bank_accounts").select("*, accounts(code)").eq("company_id", cid).eq("active", true)),
         q(supabase.from("recurring_transactions").select("*, debit_account:debit_account_id(code,name), credit_account:credit_account_id(code,name), contacts(name)").eq("company_id", cid).order("next_date")),
-        q(supabase.from("ar_invoices").select("*, ar_invoice_lines(*), contacts(name)").eq("company_id", cid).order("created_at", { ascending: false })),
+        q(supabase.from("ar_invoices").select("*, ar_invoice_lines(*), contacts(name, email)").eq("company_id", cid).order("created_at", { ascending: false })),
         q(supabase.from("audit_log").select("*").eq("company_id", cid).order("created_at", { ascending: false }).limit(1000)),
         q(supabase.from("documents").select("*").eq("company_id", cid).order("created_at", { ascending: false })),
         q(supabase.from("reconciliations").select("*").eq("company_id", cid).order("created_at", { ascending: false })),
@@ -1270,16 +1271,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // Load sent invoices (AR)
       const { data: arData } = arRes;
       if (arData) {
-        setSentInvoices(arData.map(ar => ({
-          id: ar.id, invoice_number: ar.invoice_number,
-          customer: ar.contacts?.name||"", customer_email: "",
-          issue_date: ar.issue_date, due_date: ar.due_date, terms: ar.terms,
-          notes: ar.notes||"", status: ar.status,
-          line_items: (ar.ar_invoice_lines||[]).map(l => ({
-            id: l.id, description: l.description, qty: l.quantity,
-            rate: l.unit_rate, amount: l.amount
-          }))
-        })));
+        // C350 — one mapping, shared with the writer, so `ledger_id` survives a reload.
+        setSentInvoices(arData.map(sentInvoiceFromRow));
       }
 
       // Load audit log

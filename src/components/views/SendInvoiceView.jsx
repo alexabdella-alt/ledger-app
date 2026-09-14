@@ -5,6 +5,8 @@ import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
 import { newInvoiceDraft, emptyInvoiceLine, draftBase } from "../../lib/invoiceDraft";
+import { arInvoiceRows, isDbInvoiceId } from "../../lib/arInvoiceRows";
+import { checkedRowUpdate } from "../../lib/checkedWrite";
 
 export default function SendInvoiceView() {
   const { AP_PRIORITY, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apSettings, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, assertBookable, markBillPaid, persistMultiLineEntry, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
@@ -42,11 +44,49 @@ export default function SendInvoiceView() {
             const today = todayLocal();
 
             // Persist (insert or update) into the sent-invoices list.
-            const persistSent = (inv) => setSentInvoices(prev => {
+            const persistSentLocal = (inv) => setSentInvoices(prev => {
               const i = prev.findIndex(x => x.id === inv.id);
               if (i >= 0) { const u = [...prev]; u[i] = inv; return u; }
               return [inv, ...prev];
             });
+            // ★ C350 — WRITE THE INVOICE, NOT JUST THE STATE. `ar_invoices` was read on every
+            // load and written by nothing, so a sent invoice lived until the next reload. The
+            // header goes in first and the lines against its id; a failure is SAID and the
+            // invoice stays on screen in-session (as before), never claimed as saved.
+            // Returns the invoice carrying its database id, or the input on failure.
+            const persistSent = async (inv) => {
+              persistSentLocal(inv);
+              if (!currentCompany?.id) return inv;
+              const customer = contacts.find(c => c.type === "customer" && String(c.name || "").trim().toLowerCase() === String(inv.customer || "").trim().toLowerCase());
+              const { header, lines } = arInvoiceRows(inv, { companyId: currentCompany.id, customerId: customer?.id || null, userId: session?.user?.id || null, taxAmount: inv.tax_amount || 0 });
+              header.updated_at = new Date().toISOString();
+              try {
+                let dbId = isDbInvoiceId(inv.id) ? inv.id : null;
+                if (dbId) {
+                  const r = await checkedRowUpdate({ supabase, table: "ar_invoices", id: dbId, companyId: currentCompany.id, patch: header, label: "ar_invoice_update" });
+                  if (!r.ok) throw new Error("the invoice could not be updated");
+                  const del = await supabase.from("ar_invoice_lines").delete().eq("ar_invoice_id", dbId).eq("company_id", currentCompany.id).select("id");
+                  if (del.error) throw new Error(del.error.message);
+                } else {
+                  const ins = await supabase.from("ar_invoices").insert(header).select("id").single();
+                  if (ins.error || !ins.data?.id) throw new Error(ins.error?.message || "no id returned");
+                  dbId = ins.data.id;
+                }
+                if (lines.length) {
+                  const li = await supabase.from("ar_invoice_lines").insert(lines.map(l => ({ ...l, ar_invoice_id: dbId }))).select("id");
+                  if (li.error) throw new Error(li.error.message);
+                  if ((li.data || []).length !== lines.length) throw new Error(`${(li.data || []).length} of ${lines.length} lines saved`);
+                }
+                const saved = { ...inv, id: dbId };
+                setSentInvoices(prev => prev.map(x => x.id === inv.id ? saved : x));
+                return saved;
+              } catch (e) {
+                console.error("[ar_invoices] persist failed:", e);
+                logAudit("invoice_persist_failed", `Invoice ${inv.invoice_number} could not be saved — ${e?.message || "unknown error"}`);
+                showNotification(`Invoice ${inv.invoice_number} is in your books, but we couldn't save the invoice itself — it will not be here after a reload.`, "error");
+                return inv;
+              }
+            };
 
             // Add/refresh the customer in contacts so they show up in AR + future invoices.
             const ensureCustomer = () => {
@@ -103,7 +143,7 @@ export default function SendInvoiceView() {
                 if (!jeId) return;   // pre-cutoff issue date → blocked + toasted; don't send/persist
                 inv.ledger_id = jeId;
               }
-              persistSent(inv); setSentInvoiceDraft(inv); setDraft(inv);
+              const saved = await persistSent(inv); setSentInvoiceDraft(saved); setDraft(saved);
               logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(subtotal)} · A/R booked`);
               const lineSummary = (inv.line_items||[]).map(l => `• ${l.description||"Item"} — ${fmt(l.amount)}`).join("\n");
               const subject = `Invoice ${inv.invoice_number} from ${companySettings.name||"Your Company"}`;
@@ -176,6 +216,12 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                 // and persists payment_status='collected'. (Was a local flag flip that never
                 // hit the GL — so A/R was never cleared and the figure couldn't reconcile.)
                 const ok = await markBillPaid(inv.ledger_id, { side: "ar" });
+                if (ok && isDbInvoiceId(inv.id)) {
+                  // The invoice row follows the ledger: paid there, paid here. A failure is
+                  // reported — the books are right, and the list would be wrong after a reload.
+                  const r = await checkedRowUpdate({ supabase, table: "ar_invoices", id: inv.id, companyId: currentCompany.id, patch: { status: "paid", paid_at: new Date().toISOString() }, label: "ar_invoice_paid" });
+                  if (!r.ok) showNotification(`Payment recorded in your books, but the invoice list couldn't be updated — it may still show ${inv.invoice_number} as unpaid after a reload.`, "error");
+                }
                 if (ok) { try { await loadAllData(); } catch {} }
               } else {
                 // Legacy invoice issued before A/R booking existed — book revenue now.
