@@ -78,6 +78,10 @@ export function ownerTrustState({
   // completeness arithmetic above counted an unreadable file as "accounted for" and this
   // line read "nothing missing" over a document that had become nothing at all.
   heldUnreadable = 0,
+  // ★ C372 — DOCUMENTS WITH THE ACCOUNTANT TO DECIDE (a payroll register the gate refused, a
+  // question the owner set aside). Not the owner's task, and not in the books either — so
+  // this line may not say "nothing missing" over them, and the header may not read all-clear.
+  heldForAccountant = 0,
   // ★★ O98 — DID THE DOCUMENT CHECK ACTUALLY RUN? `intakeRows` arriving empty means one of
   // two things — nothing was uploaded, or we could not ask — and until now the panel could
   // not tell them apart. A failed load left `intakeRows` at `[]`, `outstanding` at 0, the
@@ -137,7 +141,8 @@ export function ownerTrustState({
   //    any file the owner uploaded fall through before becoming an entry? Honest "still
   //    processing"; never a false all-clear; neutral (not a gap) when nothing was uploaded. ──
   const unreadableCount = Math.max(0, Number(heldUnreadable) || 0);
-  const capturedOk = outstanding === 0 && unreadableCount === 0 && completenessChecked;
+  const accountantCount = Math.max(0, Number(heldForAccountant) || 0);
+  const capturedOk = outstanding === 0 && unreadableCount === 0 && accountantCount === 0 && completenessChecked;
   let capturedText, capturedStateVal;
   if (!completenessChecked) {
     // A claim about the QUERY, never about the books — and deliberately reassuring, because
@@ -149,6 +154,9 @@ export function ownerTrustState({
     capturedStateVal = "attention";
   } else if (unreadableCount > 0) {
     capturedText = `We couldn't read ${unreadableCount} ${plural(unreadableCount, "document", "documents")} you sent — ${plural(unreadableCount, "it isn't", "they aren't")} in your books yet.`;
+    capturedStateVal = "attention";
+  } else if (accountantCount > 0) {
+    capturedText = `${accountantCount} ${plural(accountantCount, "document is", "documents are")} with your accountant to decide — not in your books yet.`;
     capturedStateVal = "attention";
   } else if (pendingCount > 0) {
     capturedText = `Filing the ${pendingCount} ${plural(pendingCount, "document", "documents")} you just sent — almost done.`;
@@ -233,7 +241,7 @@ export function ownerTrustState({
   //    bug). Bank-not-matched / in-flight docs → in_progress; a short net or open anomaly →
   //    attention. ──
   let overall, headline;
-  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked || unreadableCount > 0) {   // C369 — an unread file is not "up to date"
+  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked || unreadableCount > 0 || accountantCount > 0) {   // C369/C372 — an unread or undecided file is not "up to date"
     // O121 — `asksOk` is gated HERE explicitly, for the same reason `anomaliesOk` is: the
     // clarification queue is not part of `evaluateSignOff`'s three doc/confidence/accuracy
     // nets, so without naming it the header would reach `all_clear` with questions open.

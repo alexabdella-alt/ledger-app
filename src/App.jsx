@@ -29,7 +29,7 @@ import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/wri
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
 import { recordedEntryLinks } from "./lib/intakeEntryLinks";
-import { payrollHoldDetail, CLARIFICATION_HOLD_DETAIL, heldQuestionRows, heldUnreadableRows, EXTRACT_FAILED_DETAIL, NOTHING_EXTRACTED_DETAIL, UNREADABLE_HOLD_PREFIX } from "./lib/waitingOnYou";
+import { payrollHoldDetail, heldPayrollCards, deferredToAccountantCards, CLARIFICATION_HOLD_DETAIL, heldQuestionRows, heldUnreadableRows, EXTRACT_FAILED_DETAIL, NOTHING_EXTRACTED_DETAIL, UNREADABLE_HOLD_PREFIX } from "./lib/waitingOnYou";
 import { classifyFailure, drainProgressCopy, FAILURE_KIND } from "./lib/intakeDrain";
 import { budgetCopy, getBudget } from "./lib/aiBudget";
 import { buildUploadedInvoice } from "./lib/uploadedInvoice";
@@ -4625,6 +4625,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       setupComplete,
       openHighAnomalies: openHighAnomalyCount,   // O83 — open HIGH anomaly ⇒ "Nothing wrong" can't be green
       heldUnreadable: heldUnreadable.length,     // C369 — a file we could not read is not "accounted for"
+      heldForAccountant: heldPayrollCards(intakeRows).length + deferredToAccountantCards(intakeRows).length,   // C372
       hasAttester,                               // O131 — don't promise a review nobody can give
       // Was the month we are reporting as reviewed signed by the owner themselves? Read off
       // the ROW rather than inferred from `hasAttester`, because a company that has since

@@ -83,3 +83,24 @@ describe("Home renders the card with the queue EMPTY (the state after a reload)"
     expect(html).not.toContain(">Try again<");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C372 — a document WITH THE ACCOUNTANT to decide (a refused payroll register, a question the
+// owner set aside) is not the owner's task, and not in the books either. The owner's line
+// said "nothing missing" over it and the header could read all-clear.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("C372 — accountant-held documents are not 'accounted for' either", () => {
+  const base = { controlTotals: { failed: [], allTie: true }, intakeRows: [{ id: "r1", status: "recorded", journal_entry_ids: ["je1"] }], completenessChecked: true, reviewedThrough: "2026-07", hasBooks: true, setupComplete: true };
+  it("the captured line names them and the header is not all-clear", () => {
+    const t = ownerTrustState({ ...base, heldForAccountant: 2 });
+    expect(t.lines.captured.text).toBe("2 documents are with your accountant to decide — not in your books yet.");
+    expect(t.lines.captured.ok).toBe(false);
+    expect(t.overall).toBe("attention");
+    expect(t.nudge).toBeNull();   // not the owner's task — no button to press
+    expect(ownerTrustState(base).lines.captured.text).toMatch(/accounted for/);
+  });
+  it("App feeds it from the same card builders Review renders (one definition of 'held for a person')", () => {
+    const app = read("src/App.jsx");
+    expect(app).toMatch(/heldForAccountant: heldPayrollCards\(intakeRows\)\.length \+ deferredToAccountantCards\(intakeRows\)\.length,/);
+  });
+});
