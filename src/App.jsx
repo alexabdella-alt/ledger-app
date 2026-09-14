@@ -54,6 +54,7 @@ import { normalizeName as normVendorName } from "./lib/docDirection";
 import { buildVendorSummary, scopeInvoicesToVendor } from "./lib/vendorSummary";
 import { sentInvoiceFromRow } from "./lib/arInvoiceRows";
 import { contactDbId } from "./lib/contactIds";
+import { findContactForName } from "./lib/contactMatch";
 import { unknownDocRow, unknownDocFromRow, isDbUnknownDocId, UNKNOWN_DOC_SELECT } from "./lib/unknownDocs";
 import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, activeNavItem, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
@@ -3422,14 +3423,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!data || !(data.name||"").trim()) { console.warn("[contacts] skipped — no vendor name in extracted data"); return; }
     const name = data.name.trim();
     const norm = s => (s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
-    const n = norm(name); if (!n) return;
+    const n = norm(name); if (!n) return;   // still the dedupe key for the in-flight race guard below
     const fields = {
       email: data.email||"", phone: data.phone||"", website: data.website||"",
       payment_terms: data.payment_terms||"", mailing_address: data.address||"",
       vendor_account_number: data.account_number||"", tax_id: data.tax_id||"",
       gl_code: data.gl_code||"", gl_name: data.gl_name||"",
     };
-    const existing = (contacts||[]).find(c => { const cn=norm(c.name); return cn && (cn===n || cn.includes(n) || n.includes(cn)); });
+    // ★ C366 — EXACT canonical key through the alias index (the Vendors tab's own join),
+    // never substring containment: "SYSCO FUEL" used to find "SYSCO" and pour its details in.
+    const existing = findContactForName(contacts, name, aliasIndex);
     if (existing) {
       // Update empty fields only — never overwrite existing data.
       const merged = { ...existing }; let changed = false;
