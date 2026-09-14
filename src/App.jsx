@@ -5930,7 +5930,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     payrollTaxesPayableCode: getAccountByRole("payroll_taxes_payable")?.code || "2101",
   });
   const payrollEntryFor = (imp) => payrollEntryForImport(imp, payrollCodes());
-  const acctName = (code) => (CHART_OF_ACCOUNTS.find(a => String(a.code) === String(code))?.name) || code;
 
   // Was setInvoices-only → never persisted (vanished on refresh); now durable
   // like every other event, posting the SAME entry shown in the preview.

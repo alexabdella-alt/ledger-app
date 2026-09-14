@@ -5,7 +5,7 @@ import { payrollRequestBody, isPdfFile } from "../../lib/payroll";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { AI_PROXY_URL } from "../../lib/constants";
+import { AI_PROXY_URL, DEFAULT_CHART_OF_ACCOUNTS } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
 import { payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata } from "../../lib/payroll";
 import { validateUpload } from "../../lib/uploadGuard";
@@ -21,7 +21,11 @@ export default function PayrollView() {
             // Not copied: a second implementation is the ·3a failure, two halves of one
             // contract drifting while both look tested. The drop zone below, the Home
             // queue and the Post button now run the same code.
-            const acctName = (code) => (CHART_OF_ACCOUNTS.find(a => String(a.code) === String(code))?.name) || code;
+            // An account the chart does not hold yet (the payroll taxes payable a first register
+            // materialises at post) is named from the canonical chart rather than shown as its
+            // own code twice — "2101 2101" told a CPA nothing about what the line was.
+            const acctName = (code) => (CHART_OF_ACCOUNTS.find(a => String(a.code) === String(code))?.name)
+              || (DEFAULT_CHART_OF_ACCOUNTS.find(a => String(a.code) === String(code))?.name) || "";
             const payrollEntryFor = (imp) => payrollEntryForImport(imp, payrollCodes());
             return (
               <div>
