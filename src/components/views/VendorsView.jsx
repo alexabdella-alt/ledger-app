@@ -229,18 +229,19 @@ export default function VendorsView() {
               setEditDraft({ payment_terms:v.payment_terms||"", email:v.email||"", phone:v.phone||"", website:v.website||"", payment_url:v.payment_url||"", notes:v.notes||"", tags:(v.tags||[]).join(", "), min_expected:v.min_expected||"", max_expected:v.max_expected||"", aliases:Array.isArray(v.aliases)?v.aliases:[] });
               setAliasDraft("");
             };
-            const saveEdit = (v) => {
+            // ★ C361 — write first, paint after. This painted the edit and fired the write
+            // unawaited; for a loaded contact the write was a silent no-op (`contactIds.js`),
+            // so terms and emails typed here vanished on the next reload with no sign.
+            const saveEdit = async (v) => {
               if (editDraft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(editDraft.email).trim())) { showNotification("Please enter a valid email address.","error"); return; }
               const draft = { ...editDraft, tags: editDraft.tags.split(",").map(t=>t.trim()).filter(Boolean), min_expected:parseFloat(editDraft.min_expected)||null, max_expected:parseFloat(editDraft.max_expected)||null, aliases: Array.isArray(editDraft.aliases)?editDraft.aliases:[] };
-              if (v.fromContact) {
-                const updated = { ...v, ...draft };
-                setContacts(prev => prev.map(c => c.id===v.id ? updated : c));
-                persistContact(updated);
-              } else {
-                const newC = { id:Date.now()+Math.random(), name:v.name, type:"vendor", ...draft, created_at:new Date().toISOString() };
-                setContacts(prev => [newC, ...prev]);
-                persistContact(newC);
-              }
+              const next = v.fromContact
+                ? { ...v, ...draft }
+                : { id:Date.now()+Math.random(), name:v.name, type:"vendor", ...draft, created_at:new Date().toISOString() };
+              const r = await persistContact(next);
+              if (!r?.ok) { showNotification(`We couldn't save ${v.name}'s details — nothing was changed. ${r?.error || ""}`.trim(), "error"); return; }
+              const saved = r.row?.id ? { ...next, db_id: r.row.id, fromContact: true } : next;
+              setContacts(prev => v.fromContact ? prev.map(c => c.id===v.id ? saved : c) : [saved, ...prev]);
               setEditingId(null);
             };
 

@@ -84,7 +84,8 @@ describe("★ C353 — customer id and draft status", () => {
     const view = fs.readFileSync(path.join(process.cwd(), "src/components/views/SendInvoiceView.jsx"), "utf8");
     expect(view).not.toMatch(/ensureCustomer\(\)/);
     expect(view).toMatch(/const customerId = await resolveCustomerId\(\);[\s\S]{0,1200}await persistSent\(inv, customerId\)/);
-    // and it never hands a float to a uuid column: only a db_id or a uuid-shaped id is used
-    expect(view).toMatch(/existing\.db_id \|\| \(isDbInvoiceId\(existing\.id\) \? existing\.id : null\)/);
+    // and it never hands a float to a uuid column: only a db_id or a uuid-shaped id is used —
+    // through the shared resolver (C361), which is what the inline copy here was a copy of
+    expect(view).toMatch(/const dbId = existing \? contactDbId\(existing\) : null;/);
   });
 });

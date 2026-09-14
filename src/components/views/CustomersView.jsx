@@ -120,14 +120,19 @@ export default function CustomersView() {
             ];
 
             const startEdit = (c) => { setEditingId(c.id||c.name); setEditDraft({ payment_terms:c.payment_terms||"", email:c.email||"", phone:c.phone||"", notes:c.notes||"", tags:(c.tags||[]).join(", "), min_expected:c.min_expected||"", max_expected:c.max_expected||"" }); };
-            const saveEdit = (c) => {
+            // ★ C361 — THIS FORM NEVER PERSISTED AT ALL. It wrote the edit into React state and
+            // closed; a customer's email, terms and notes lasted until the next reload. Now
+            // through the same `persistContact` the vendor form uses, gated on its verdict.
+            const saveEdit = async (c) => {
               if (editDraft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(editDraft.email).trim())) { showNotification("Please enter a valid email address.","error"); return; }
               const updates = { ...editDraft, tags:editDraft.tags.split(",").map(t=>t.trim()).filter(Boolean), min_expected:parseFloat(editDraft.min_expected)||null, max_expected:parseFloat(editDraft.max_expected)||null };
-              if (c.fromContact) {
-                setContacts(prev => prev.map(x => x.id===c.id ? {...x,...updates} : x));
-              } else {
-                setContacts(prev => [{ id:Date.now()+Math.random(), name:c.name, type:"customer", ...updates, created_at:new Date().toISOString() }, ...prev]);
-              }
+              const next = c.fromContact
+                ? { ...c, ...updates }
+                : { id:Date.now()+Math.random(), name:c.name, type:"customer", ...updates, created_at:new Date().toISOString() };
+              const r = await persistContact(next);
+              if (!r?.ok) { showNotification(`We couldn't save ${c.name}'s details — nothing was changed. ${r?.error || ""}`.trim(), "error"); return; }
+              const saved = r.row?.id ? { ...next, db_id: r.row.id, fromContact: true } : next;
+              setContacts(prev => c.fromContact ? prev.map(x => x.id===c.id ? saved : x) : [saved, ...prev]);
               setEditingId(null);
             };
 

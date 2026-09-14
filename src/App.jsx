@@ -53,6 +53,7 @@ import { duplicateIsExpectedRhythm, deferDuplicateAsk } from "./lib/recurringVen
 import { normalizeName as normVendorName } from "./lib/docDirection";
 import { buildVendorSummary, scopeInvoicesToVendor } from "./lib/vendorSummary";
 import { sentInvoiceFromRow } from "./lib/arInvoiceRows";
+import { contactDbId } from "./lib/contactIds";
 import { onboardingSteps } from "./lib/onboarding";
 import { visibleNav, isReviewerSeat, navRedirect, activeNavItem, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
@@ -1210,6 +1211,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (contactsData) {
         setContacts(contactsData.map(c => ({
           ...c, fromContact: true, type: c.type,
+          // ★ C361 — `persistContact` decides UPDATE-vs-UPSERT on `db_id`, and this mapping
+          // never set it, so every edit to a loaded contact was an upsert that the
+          // (company_id, name_key) index turned into ON CONFLICT DO NOTHING. Stamped here,
+          // and `contactDbId` reads the uuid `id` as a second net.
+          db_id: c.id,
           gl_code: null, gl_name: null,
           // ★★ TIER 1 #10 — THE 1099 FLAG NEVER SURVIVED A RELOAD, IN EITHER DIRECTION.
           // The column is `is_1099`; every reader in the UI asks for `is1099`. Spreading
@@ -3327,8 +3333,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         vendor_account_number: contact.vendor_account_number||null, tax_id: contact.tax_id||null,
       };
       const normKey = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const dbId = contactDbId(contact);
+      let conflictNoop = false;
       const run = async (payload) => {
-        if (contact.db_id) return await supabase.from("contacts").update(payload).eq("id", contact.db_id).select().single();
+        if (dbId) return await supabase.from("contacts").update(payload).eq("id", dbId).select().single();
         // New contact: upsert on the (company_id, name_key) unique index (migration 012)
         // so two concurrent uploads of the same vendor can't both insert.
         // ignoreDuplicates → ON CONFLICT DO NOTHING (never overwrites an existing row).
@@ -3341,6 +3349,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         }
         if (res.error || res.data) return res;
         // Conflict (row already existed) returned no row — fetch it to recover its id.
+        // ★ C361 — and SAY that nothing was written: the fields the caller handed us were
+        // dropped by ON CONFLICT DO NOTHING. For an invoice-driven enrichment that is the
+        // intended never-overwrite; for a form it is a lost edit, and `ok` must not be true.
+        conflictNoop = true;
         return await supabase.from("contacts").select("*")
           .eq("company_id", currentCompany.id).eq("name_key", normKey(payload.name)).maybeSingle();
       };
@@ -3353,7 +3365,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // Surface the real reason (RLS, NOT NULL, etc.) instead of failing silently.
         console.error(`[contacts] persist FAILED for "${contact.name}" (company_id=${currentCompany.id}):`, error.message || error, error.details || "", error.hint || "");
       }
-      if (!contact.db_id && data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
+      if (!dbId && data) setContacts(prev => prev.map(c => c.id===contact.id ? {...c, db_id: data.id} : c));
+      if (!error && conflictNoop) {
+        return { ok: false, error: `A contact named "${contact.name}" already exists — nothing was changed.`, row: data || null, conflict: true };
+      }
       // ★ RETURNS A VERDICT NOW. It returned nothing, so every caller wanting to say "saved ✓"
       // had to assume — and an assumed success on a write that silently did nothing is the
       // class this codebase keeps finding. Existing callers ignore the value and are
@@ -3387,8 +3402,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       
       if (!changed) return;
       setContacts(prev => prev.map(c => c.id===existing.id ? merged : c));
-      persistContact(merged);
-      logAudit("contact_updated", `Contact ${name} updated from invoice`, null, { name });
+      // ★ C361 — the audit row says "updated" only when the write landed; before this the
+      // enrichment of a LOADED contact was silently dropped and still audited as done.
+      persistContact(merged).then(r => {
+        if (r?.ok) logAudit("contact_updated", `Contact ${name} updated from invoice`, null, { name });
+        else console.warn(`[contacts] enrichment of "${name}" did not land: ${r?.error || "unknown"}`);
+      });
     } else {
       if (recentContactsRef.current.has(n)) {  return; }
       recentContactsRef.current.add(n);

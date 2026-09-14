@@ -149,8 +149,12 @@ describe("★★ the suggester now has a reader, and the merge is gated on the w
   });
 
   it("★★ and the confirmation is gated on that verdict, not on the click", () => {
-    const at = strip(view).indexOf("const r = await persistContact(");
-    expect(at).toBeGreaterThan(-1);
+    // Anchored inside the merge block: since C361 the vendor edit form ALSO awaits
+    // persistContact, earlier in the file, and a bare search would land on that one.
+    const block = strip(view).indexOf("function VendorMergeSuggestions");
+    const at = strip(view).indexOf("const r = await persistContact(", block);
+    expect(block).toBeGreaterThan(-1);
+    expect(at).toBeGreaterThan(block);
     const after = strip(view).slice(at, at + 700);
     expect(after).toMatch(/if \(!r \|\| !r\.ok\)/);
     // A merge that did not save must not be recorded as answered, or the pair vanishes from

@@ -6,6 +6,7 @@ import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
 import { newInvoiceDraft, emptyInvoiceLine, draftBase } from "../../lib/invoiceDraft";
 import { arInvoiceRows, isDbInvoiceId } from "../../lib/arInvoiceRows";
+import { contactDbId } from "../../lib/contactIds";
 import { checkedRowUpdate } from "../../lib/checkedWrite";
 import { MAIL_DOMAIN } from "../../lib/constants";
 
@@ -103,7 +104,7 @@ export default function SendInvoiceView() {
               const email = (draft.customer_email || "").trim();
               const norm = (x) => String(x || "").trim().toLowerCase();
               const existing = contacts.find(c => c.type === "customer" && norm(c.name) === norm(name));
-              const dbId = existing && (existing.db_id || (isDbInvoiceId(existing.id) ? existing.id : null));
+              const dbId = existing ? contactDbId(existing) : null;
               if (dbId) return dbId;
               const r = await persistContact({ ...(existing || {}), name, type: "customer", email: email || existing?.email || "" });
               if (r?.ok && r.row?.id) {

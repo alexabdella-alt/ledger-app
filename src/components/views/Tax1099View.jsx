@@ -55,25 +55,34 @@ export default function Tax1099View() {
   const needs = rows.filter(r => r.status.key==="needs");
 
   // ── Save vendor classification to the contact (create if missing) ──
-  const saveVendor = () => {
+  // ★ C361 — WRITE FIRST, PAINT AFTER, SAY ✓ ONLY ON THE RECORD. Both handlers below used to
+  // fire `persistContact` and announce "saved ✓" in the same breath; for a contact loaded
+  // from the database the write was silently dropped (see `contactIds.js`), so a CPA who
+  // answered "this vendor is an LLC" saw the tick and got the same question after a reload.
+  // This is the surface that decides what is filed with the IRS under the accountant's name.
+  const saveVendor = async () => {
     const e = editing; if(!e) return;
     const exempt = isExemptType(e.business_type);
     const existing = e.contact;
     const merged = existing
       ? { ...existing, business_type:e.business_type, ein_ssn:e.ein_ssn||existing.ein_ssn||null, mailing_address:e.mailing_address||existing.mailing_address||null, is_1099_exempt:exempt }
       : { id: Date.now()+Math.random(), name:e.name, type:"vendor", business_type:e.business_type, ein_ssn:e.ein_ssn||null, mailing_address:e.mailing_address||null, is_1099_exempt:exempt, created_at:new Date().toISOString() };
-    setContacts(prev => existing ? prev.map(c => c.id===existing.id ? merged : c) : [merged, ...prev]);
-    persistContact && persistContact(merged);
+    const r = await persistContact(merged);
+    if (!r?.ok) { showNotification(`We couldn't save ${e.name}'s details — nothing was changed. ${r?.error || ""}`.trim(), "error"); return; }
+    const saved = r.row?.id ? { ...merged, db_id: r.row.id } : merged;
+    setContacts(prev => existing ? prev.map(c => c.id===existing.id ? saved : c) : [saved, ...prev]);
     logAudit && logAudit("vendor_1099_updated", `Set business type for ${e.name}: ${TYPE_OPTIONS.find(t=>t.v===e.business_type)?.label||e.business_type}`, null, { vendor:e.name, business_type:e.business_type });
     setEditing(null);
     showNotification && showNotification("Vendor saved ✓");
   };
 
-  const markSent = (v) => {
+  const markSent = async (v) => {
     const c = v.contact;
     const merged = c ? { ...c, sent_1099_2025:true } : { id:Date.now()+Math.random(), name:v.name, type:"vendor", sent_1099_2025:true, business_type:"individual", created_at:new Date().toISOString() };
-    setContacts(prev => c ? prev.map(x=>x.id===c.id?merged:x) : [merged, ...prev]);
-    persistContact && persistContact(merged);
+    const r = await persistContact(merged);
+    if (!r?.ok) { showNotification(`We couldn't record that ${v.name}'s 1099 was sent — it still shows as needing one. ${r?.error || ""}`.trim(), "error"); return; }
+    const saved = r.row?.id ? { ...merged, db_id: r.row.id } : merged;
+    setContacts(prev => c ? prev.map(x=>x.id===c.id?saved:x) : [saved, ...prev]);
     logAudit && logAudit("1099_sent", `Marked 1099 as sent for ${v.name} (${taxYear})`, null, { vendor:v.name, taxYear });
     showNotification && showNotification(`Marked 1099 sent for ${v.name} ✓`);
   };
