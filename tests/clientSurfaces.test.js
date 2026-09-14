@@ -221,3 +221,26 @@ describe("C340 — the clarification flow resolves the offset account by role", 
     expect(src).toMatch(/secondary_gl_name: \(getAccountByRole\?\.\(isRev \? "accounts_receivable" : "accounts_payable"\)\?\.name\)/);
   });
 });
+
+// ★ C354 — the full-page detail (reachable from a Documents card since C326) printed the
+// literal word "undefined" for a payment's missing offset and confidence, and still headed
+// the rationale "AI REASONING" after C330 renamed the panel's.
+describe("★ C354 — DetailView renders nothing for a missing field, never 'undefined'", async () => {
+  const { renderViewHtml } = await import("./helpers/renderView.jsx");
+  const { POPULATED } = await import("./helpers/populatedFixture.js");
+  const { default: DetailView } = await import("../src/components/views/DetailView.jsx");
+  it("a payment row with no offset and no confidence shows neither, and no 'undefined'", () => {
+    const payment = { id: "p1", vendor: "Hill Country Milling Co.", description: "Payment", date: "2026-02-01", amount: 824.6, gl_code: "1000", gl_name: "Checking", type: "expense" };
+    const html = renderViewHtml(DetailView, { ...POPULATED, selectedInvoice: payment });
+    expect(html).not.toMatch(/undefined|null%/);
+    expect(html).not.toContain("How sure we were");
+    expect(html).not.toContain("Against");
+    expect(html).not.toContain("AI REASONING");
+  });
+  it("a booked bill still shows its category, offset and confidence", () => {
+    const bill = { ...POPULATED.invoices[0], secondary_gl_code: "2000", secondary_gl_name: "Accounts Payable", confidence: 92 };
+    const html = renderViewHtml(DetailView, { ...POPULATED, selectedInvoice: bill });
+    expect(html).toContain("2000 — Accounts Payable");
+    expect(html).toContain("92%");
+  });
+});

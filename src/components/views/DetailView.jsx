@@ -17,17 +17,21 @@ export default function DetailView() {
                 </div>
               </div>
               <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, padding:28 }}>
+                {/* ★ C354 — A MISSING FIELD RENDERS AS NOTHING, NOT AS "undefined — undefined".
+                    A payment, a clearing or an opening balance has no confidence and may carry
+                    no offset on the flattened row; this page (reachable from a Documents card
+                    since C326) printed the word `undefined` for both. A row is shown only when
+                    there is something to show. */}
                 {[
                   ["Vendor", selectedInvoice.vendor],
                   ["Description", selectedInvoice.description],
                   ["Date", fmtDate(selectedInvoice.date)],
-                  ["Type", selectedInvoice.type],
                   ["Project", selectedInvoice.project||"General"],
                   ["Amount", fmtMoney(selectedInvoice.amount)],
-                  ["Category", `${selectedInvoice.gl_code} — ${selectedInvoice.gl_name}`],
-                  ["Against", `${selectedInvoice.secondary_gl_code} — ${selectedInvoice.secondary_gl_name}`],
-                  ["How sure we were", `${selectedInvoice.confidence}%`],
-                ].map(([label,value])=>(
+                  ["Category", [selectedInvoice.gl_code, selectedInvoice.gl_name].filter(Boolean).join(" — ") || null],
+                  ["Against", [selectedInvoice.secondary_gl_code, selectedInvoice.secondary_gl_name].filter(Boolean).join(" — ") || null],
+                  ["How sure we were", selectedInvoice.confidence != null && selectedInvoice.confidence !== "" ? `${selectedInvoice.confidence}%` : null],
+                ].filter(([,value]) => value != null && value !== "").map(([label,value])=>(
                   <div key={label} style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", borderBottom:"1px solid var(--sc-border)" }}>
                     <span style={{ fontSize:12, color:label==="Vendor"?"var(--sc-gold)":"var(--sc-text-2)", letterSpacing:0.5, fontWeight:label==="Vendor"?600:400 }}>{label}</span>
                     <span style={{ fontSize:14, color:"var(--sc-text)", fontWeight:label==="Vendor"?600:500, textAlign:"right", maxWidth:"60%" }}>{value}</span>
@@ -35,7 +39,7 @@ export default function DetailView() {
                 ))}
                 {selectedInvoice.reasoning && (
                   <div style={{ marginTop:20, padding:"14px 16px", background:"var(--sc-gold-soft)", borderLeft:"3px solid var(--sc-gold)", borderRadius:"0 10px 10px 0" }}>
-                    <div style={{ fontSize:11, color:"var(--sc-gold)", marginBottom:8, letterSpacing:1.5, fontWeight:600 }}>AI REASONING</div>
+                    <div style={{ fontSize:11, color:"var(--sc-gold)", marginBottom:8, letterSpacing:1.5, fontWeight:600 }}>WHY IT WAS BOOKED THIS WAY</div>
                     <div style={{ fontSize:13, color:"var(--sc-text-2)", lineHeight:1.7 }}>{selectedInvoice.reasoning}</div>
                   </div>
                 )}
