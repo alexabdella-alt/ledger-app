@@ -49,6 +49,16 @@ function unread(app = APP_SANS_CTX, others = OTHERS, names = declared) {
   return names.filter((n) => refs(n, app) <= 1 && refs(n, others) === 0);
 }
 
+// ★ C348 — STATE NOBODY READS. `const [x, setX] = useState(…)` whose `x` is referenced
+// nowhere but its own declaration is a hook that costs a root re-render on every `setX`
+// (C297's cost) and can never change a pixel. The first run found TWENTY — a whole
+// QuickBooks-import state set, three reconciliation values, two narration pairs — all
+// reset on every company switch and read by nothing since their screens moved to local state.
+const stateVars = [...APP.matchAll(/^\s+const \[([A-Za-z_]\w*), *set[A-Za-z_]\w*\] = useState/gm)].map((m) => m[1]);
+function unreadState(app = APP_SANS_CTX, others = OTHERS, names = stateVars) {
+  return names.filter((n) => refs(n, app) <= 1 && refs(n, others) === 0);
+}
+
 describe("every function declared in ERP has a reader", () => {
   it("scans a real population", () => {
     expect(ctxStart).toBeGreaterThan(0);
@@ -65,5 +75,16 @@ describe("every function declared in ERP has a reader", () => {
     // …and neither is a view destructuring it from useERP() — the C347 blind spot.
     const destructured = OTHERS + "\nconst { plantedHelper, invoices } = useERP();\n";
     expect(unread(planted, noDestructure(destructured), [...declared, "plantedHelper"])).toEqual(["plantedHelper"]);
+  });
+});
+
+describe("★ C348 — every useState in ERP is READ somewhere, not merely set", () => {
+  it("scans a real population", () => { expect(stateVars.length).toBeGreaterThan(80); });
+  it("★★ no state value is referenced only by its own declaration", () => {
+    expect(unreadState()).toEqual([]);
+  });
+  it("★ the check can fail — a planted write-only state is caught, and a setter call is not a read", () => {
+    const planted = APP_SANS_CTX + "\n  const [plantedFlag, setPlantedFlag] = useState(false);\n  setPlantedFlag(true);\n";
+    expect(unreadState(planted, OTHERS, [...stateVars, "plantedFlag"])).toEqual(["plantedFlag"]);
   });
 });
