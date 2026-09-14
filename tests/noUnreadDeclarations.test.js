@@ -36,6 +36,8 @@ const OTHERS = noDestructure(OTHERS_RAW);
 // App.jsx, read by nothing there, and passed this guard because PayrollView has its OWN
 // `acctName`. A context value reaches a view ONLY through a `useERP()` destructure, so a
 // name that no view destructures cannot be read outside App.jsx whatever else shares it.
+// LIMIT, stated: a same-named local INSIDE App.jsx still counts as a reference (App.jsx
+// carries a second, unrelated `acctName`), so that particular case is not caught here.
 const DESTRUCTURED = new Set(
   [...OTHERS_RAW.matchAll(/const\s*\{([^}]*)\}\s*=\s*useERP\(\)/g)]
     .flatMap((m) => m[1].split(",").map((x) => x.split(":")[0].trim()).filter(Boolean)),
