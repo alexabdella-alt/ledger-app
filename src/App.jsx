@@ -1991,15 +1991,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     recurringScanTimer.current = setTimeout(() => { runRecurringScan(); runAnomalyScan(); }, 3000);
   };
   // "Yes, set it up" → create the recurring entry + feed the pattern back into the profile.
-  const acceptRecurringSuggestion = (s) => {
+  // ★ C362 — THE THIRD "ADD A RECURRING RULE" THAT NEVER WROTE ONE. The chat's add_recurring
+  // has persisted since C112, the Recurring screen's "+ Add" since C360, and this card on Home
+  // — "Yes, set it up" — was a `setRecurring` with a ✓. After a reload the rule was gone, the
+  // scan found the same pattern, the card came back, and each "yes" appended one more custom
+  // rule to the client profile. One writer now (`persistChatRecurring`, verified insert); a
+  // refused write keeps the card and says so.
+  const acceptRecurringSuggestion = async (s) => {
     if (!s) return;
-    const newRec = {
-      id: Date.now() + Math.random(), name: s.vendor, vendor: s.vendor,
-      amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name,
-      frequency: "monthly", next_date: todayLocal(),
-      project: "General", active: true, created_at: new Date().toISOString(), last_run: null,
-    };
-    setRecurring(prev => [newRec, ...prev]);
+    const res = await persistChatRecurring({
+      name: s.vendor, vendor: s.vendor, amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name,
+      frequency: "monthly", next_date: todayLocal(), project: "General",
+    });
+    if (!res?.ok) {
+      showNotification(`We couldn't set up ${s.vendor} as a recurring charge — nothing was created. ${res?.error || ""}`.trim(), "error");
+      return;
+    }
     logAudit("recurring_created", `Recurring set up from detected pattern: ${s.vendor} ~$${s.avgAmount}/mo → ${s.gl_name || s.gl_code}`, null, { vendor: s.vendor, amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name, frequency: "monthly" });
     try {
       clientProfileRef.current = addCustomRule(clientProfileRef.current, `Recurring pattern detected: ${s.vendor} ~${fmtApprox(s.avgAmount)}/mo → ${s.gl_name || s.gl_code}`);
@@ -3046,26 +3053,40 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!items.length) return;
     const uid = session?.user?.id || null;
     const snaps = items.map(c => ({ ...c }));
-    snaps.forEach(s => logAudit("contract_deleted", `Deleted contract: ${s.counterparty || s.contract_type || "contract"}`, s, null, byAI ? "AI Chat" : "owner"));
-    const idset = new Set(snaps.map(s => String(s.id)));
-    setContracts(prev => prev.filter(c => !idset.has(String(c.id))));
+    // ★ C362 — WRITE FIRST, THEN REMOVE FROM SCREEN, AND ONLY WHAT LANDED. This filtered the
+    // rows out of state, ran an UNCHECKED update per row (`error` only — zero rows counted
+    // as committed), and said "Deleted — tap Undo" whatever happened: O124(c) on contracts.
     let committed = 0, anyError = false;
-    if (currentCompany?.id) {
-      for (const s of snaps) {
-        if (!s.db_id) { committed++; continue; }   // session-only contract (never persisted) — already gone for good
-        const { error } = await supabase.from("contracts")
-          .update({ deleted_at: new Date().toISOString(), deleted_by: uid })
-          .eq("id", s.db_id).eq("company_id", currentCompany.id);
-        if (error) { console.error("softDeleteContracts failed:", error.message); anyError = true; }
-        else committed++;
-      }
+    const gone = [];
+    for (const s of snaps) {
+      if (!s.db_id) { committed++; gone.push(s); continue; }   // session-only contract (never persisted) — already gone for good
+      if (!currentCompany?.id) { anyError = true; continue; }
+      const r = await checkedRowUpdate({
+        supabase, table: "contracts", id: s.db_id, companyId: currentCompany.id,
+        patch: { deleted_at: new Date().toISOString(), deleted_by: uid }, label: "softDeleteContracts",
+      });
+      if (!r.ok) { anyError = true; continue; }
+      committed++; gone.push(s);
     }
-    const label = items.length === 1 ? (snaps[0].counterparty || "contract") : `${items.length} contracts`;
+    // The audit row says what happened, written after it did (C240): before this every
+    // snapshot was audited as deleted BEFORE the write, beside the failure that contradicted it.
+    gone.forEach(s => logAudit("contract_deleted", `Deleted contract: ${s.counterparty || s.contract_type || "contract"}`, s, null, byAI ? "AI Chat" : "owner"));
+    const idset = new Set(gone.map(s => String(s.id)));
+    setContracts(prev => prev.filter(c => !idset.has(String(c.id))));
+    if (anyError) {
+      const kept = snaps.length - gone.length;
+      logAudit("contract_delete_failed", `Couldn't delete ${kept} of ${snaps.length} contract${snaps.length===1?"":"s"} — still in place`, null, { attempted: snaps.length, deleted: gone.length });
+      showNotification(gone.length
+        ? `Removed ${gone.length} of ${snaps.length} — ${kept} couldn't be removed and ${kept === 1 ? "is" : "are"} still here.`
+        : `Couldn't remove ${snaps.length === 1 ? "that contract" : "those contracts"} — nothing was changed.`, "error");
+      if (!gone.length) return { ok: false, committed: 0 };
+    }
+    const label = gone.length === 1 ? (gone[0].counterparty || "contract") : `${gone.length} contracts`;
     showNotification(`Deleted ${label} — tap Undo to restore`, "success", async () => {
       // Same shape as the invoice undo above: write first, and only claim it once the
       // database agrees. The old order put the contracts back on screen and THEN wrote,
       // inside a loop whose result nobody read.
-      const dbIds = snaps.map((s) => s.db_id).filter(Boolean);
+      const dbIds = gone.map((s) => s.db_id).filter(Boolean);
       if (currentCompany?.id && dbIds.length) {
         const r = await checkedIdsUpdate({
           supabase, table: "contracts", ids: dbIds, companyId: currentCompany.id,
@@ -3077,8 +3098,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           return;
         }
       }
-      setContracts(prev => { const have = new Set(prev.map(c => String(c.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
-      logAudit("contract_restored", `Restored ${items.length} contract${items.length===1?"":"s"}`, null, null);
+      setContracts(prev => { const have = new Set(prev.map(c => String(c.id))); return [...gone.filter(s => !have.has(String(s.id))), ...prev]; });
+      logAudit("contract_restored", `Restored ${gone.length} contract${gone.length===1?"":"s"}`, null, null);
       showNotification("Restored ✓");
     });
     return { ok: !anyError && committed > 0, committed };   // caller gates "✓ removed" on this (O78)
@@ -3589,7 +3610,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const ri = { ...inv, confidence: 100, status: "booked", booked_at: new Date().toISOString(),
         source: "gaap_classification", reasoning: opt.reasoning || inv.reasoning };
       setInvoices(prev => [ri, ...prev]);
-      bookToDb(ri);
+      // ★ C362 — the ✓ reads the write. `bookToDb` rolls the optimistic row back on a refusal
+      // (cutoff, signed month, RPC) and the refusal is said by the writer; a ✓ on top of it
+      // was a success sentence about a booking that did not happen.
+      const jeId = await bookToDb(ri);
+      if (!jeId) return;
       if (ri._contact) createOrUpdateContact({ ...ri._contact, type: "customer", gl_code: ri.gl_code, gl_name: ri.gl_name });
       logAudit("invoice_booked", `${ri.vendor} · ${fmtMoney(ri.amount)} → ${ri.gl_name} (revenue recognized now)`, null, { vendor: ri.vendor, amount: ri.amount, gl_code: ri.gl_code });
       showNotification(`Booked to ${ri.gl_name} ✓`);
@@ -3908,8 +3933,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     } catch (e) { console.error("attachDepreciationToExistingAsset:", e); showNotification("Couldn't attach depreciation — see console.", "error"); return { ok: false, error: e?.message || String(e) }; }
   };
 
+  // ★ C362 — RETURNS A VERDICT, AND THE UPDATE IS CHECKED. `posted_entries` is the marker
+  // that stops a contract's entry being posted twice; the callers painted it into local
+  // state and fired this unawaited, so a lost write left the screen saying "posted" and the
+  // next load offering the same entry again (the C207 shape). The unchecked-write guard had
+  // excused `contracts` as "a failed edit leaves the contract visibly unchanged" — untrue
+  // for this marker, which is painted before the write. Excuse removed.
   const persistContract = async (contract) => {
-    if (!currentCompany?.id || !session?.user?.id) return;
+    if (!currentCompany?.id || !session?.user?.id) return { ok: false, error: "no company" };
     try {
       const payload = {
         company_id: currentCompany.id,
@@ -3936,19 +3967,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         posted_entries: contract.posted_entries || [],
       };
       if (contract.db_id) {
-        const { error } = await supabase.from("contracts")
-          .update(payload).eq("id", contract.db_id);
-        if (error) console.error("persistContract UPDATE error:", JSON.stringify(error));
-      } else {
         const { data, error } = await supabase.from("contracts")
-          .insert(payload).select("id").single();
-        if (error) console.error("persistContract INSERT error:", JSON.stringify(error));
-        else if (data?.id) {
-          
-          setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
-        }
+          .update(payload).eq("id", contract.db_id).eq("company_id", currentCompany.id).select("id");
+        if (error) { console.error("persistContract UPDATE error:", JSON.stringify(error)); return { ok: false, error: error.message || "update failed" }; }
+        if (!(data || []).length) { console.error("persistContract UPDATE matched no row:", contract.db_id); return { ok: false, error: "no contract row updated" }; }
+        return { ok: true, id: contract.db_id };
       }
-    } catch(e) { console.error("persistContract exception:", e); }
+      const { data, error } = await supabase.from("contracts")
+        .insert(payload).select("id").single();
+      if (error) { console.error("persistContract INSERT error:", JSON.stringify(error)); return { ok: false, error: error.message || "insert failed" }; }
+      if (data?.id) setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
+      return { ok: !!data?.id, id: data?.id || null, error: data?.id ? null : "no id returned" };
+    } catch(e) { console.error("persistContract exception:", e); return { ok: false, error: e?.message || String(e) }; }
   };
 
   const loadContractsFromDB = async () => {
@@ -4105,7 +4135,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!form.description || !form.amount || !form.date) { showNotification("Please fill all fields.", "error"); return; }
     if (!aiSuggestion) { showNotification("Waiting for AI coding.", "error"); return; }
 
-    const doBook = () => {
+    const doBook = async () => {
       if (!assertBookable(form.date)) return;   // pre-cutoff → reject up front, no optimistic add, no success toast
       const invoice = {
         id: Date.now(), ...form, vendor: form.vendor.trim(),
@@ -4134,9 +4164,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         return;
       }
       setInvoices(prev => [invoice, ...prev]);
+      // ★ C362 — write first; the form is cleared and the screen left only once the entry is
+      // in the books. Before this a refused booking cleared what the person had typed, sent
+      // them Home, and said "Booked ✓" over the writer's own refusal.
+      const jeId = await bookToDb(invoice);
+      if (!jeId) return;
       checkWatchTriggers([invoice], unknownDocs);
       logAudit("invoice_booked", `Manual entry: ${invoice.vendor} $${invoice.amount} → ${invoice.gl_name}${form.paidWithCash ? " (already paid — cash out)" : ""}`, null, invoice);
-      bookToDb(invoice);
       setForm({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General", invoice_number:"", paidWithCash:false });
       setAiSuggestion(null); setUploadedFile(null);
       setView("home");
@@ -7004,8 +7038,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       setContracts(prev => [saved, ...prev]);
       setSelectedContract(saved);
       setContractView("detail");
-      persistContract(saved);
+      const kept = await persistContract(saved);
       markIntake(contractIntakeId, INTAKE_STATUS.HELD, { detail: "contract imported — review/post in Contracts" });   // terminal: accounted for
+      if (!kept?.ok) {
+        showNotification(`Contract read — ${contract.journal_entries?.length||0} entries drafted — but we couldn't save it, so it will be gone if you reload. ${kept?.error || ""}`.trim(), "error");
+        return;
+      }
       showNotification(`Contract analyzed — ${contract.journal_entries?.length||0} journal entries generated ✓`);
     } catch(e) {
       const msg = e?.message || String(e);
@@ -7042,9 +7080,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const updatedContract = {...contract, posted_entries: [...(contract.posted_entries||[]), entryIdx]};
     setContracts(prev => prev.map(c => c.id===contract.id ? updatedContract : c));
     setSelectedContract(prev => prev ? ({...prev, posted_entries: [...(prev.posted_entries||[]), entryIdx]}) : prev);
-    persistContract(updatedContract);
+    const marker = await persistContract(updatedContract);
     // Reflect the single posted multi-line entry (no per-line expansion / double count).
     try { await loadAllData(); } catch {}
+    if (!marker?.ok) {
+      // The entry IS in the books; what failed is the record that it is. Said, because a
+      // reload will offer this entry again and the second click would post it twice.
+      logAudit("contract_posted_marker_failed", `Posted contract entry ${entryIdx} for ${contract.counterparty || contract.file_name} but couldn't record it as posted: ${marker?.error || "unknown"}`, null, { contract_id: contract.db_id || null, entryIdx, journal_entry_id: jeId });
+      showNotification(`Posted to the ledger — but we couldn't record that it's been posted. Don't post this entry again.`, "error");
+      return;
+    }
     showNotification(`Journal entry posted to ledger ✓`);
   };
 
@@ -7069,8 +7114,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const updatedContract = {...contract, posted_entries: allPosted};
     setContracts(prev => prev.map(c => c.id === contract.id ? updatedContract : c));
     setSelectedContract(prev => prev ? updatedContract : prev);
-    persistContract(updatedContract);
+    const marker = await persistContract(updatedContract);
     try { await loadAllData(); } catch {}
+    if (!marker?.ok) {
+      logAudit("contract_posted_marker_failed", `Posted ${posted.length} contract entries for ${contract.counterparty || contract.file_name} but couldn't record them as posted: ${marker?.error || "unknown"}`, null, { contract_id: contract.db_id || null, posted });
+      showNotification(`Posted ${posted.length} entr${posted.length === 1 ? "y" : "ies"} to the ledger — but we couldn't record that they've been posted. Don't post them again.`, "error");
+      return;
+    }
     showNotification(`✓ Posted ${posted.length} entr${posted.length === 1 ? "y" : "ies"} to ledger`);
   };
 

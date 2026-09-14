@@ -42,7 +42,6 @@ const EXCUSED = {
   journal_entries: "ONLY the review confidence bump; every ledger-changing write is checked",
   // Contract edit/soft-delete: both check `error` and surface it; the zero-row case leaves
   // the contract visibly unchanged in a list the user is looking at.
-  contracts: "a failed edit leaves the contract visibly unchanged on screen",
   // Learned vendor→GL profile. Best-effort learning: a lost write means the next correction
   // teaches it again.
   client_ai_profile: "learning signal; re-taught by the next correction",
