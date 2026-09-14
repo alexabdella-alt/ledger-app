@@ -18,7 +18,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { INTAKE_STATUS } from "./documentIntake";
 
-export const CLARIFICATION_DEFERRED_DETAIL = "set aside for your accountant after a question";
+import { DEFERRED_DETAIL } from "./waitingOnYou";
+// One string, owned by the reader (waitingOnYou) and re-exported for the writer.
+export const CLARIFICATION_DEFERRED_DETAIL = DEFERRED_DETAIL;
 
 export const ANSWER_OUTCOME = { BOOKED: "booked", ATTACHED: "attached", SKIPPED: "skipped", DEFERRED: "deferred" };
 

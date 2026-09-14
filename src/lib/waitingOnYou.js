@@ -159,10 +159,38 @@ export function matchingCard(matchQueue = []) {
   };
 }
 
+// ── SET ASIDE FOR THE ACCOUNTANT (C370) ─────────────────────────────────────
+// A lifecycle card answered "set aside for my accountant" books nothing and, since C367,
+// leaves the row HELD with this sentence — which promised the accountant would decide and
+// gave the accountant no screen. The card reads the row; its button re-reads the stored
+// file so the same question comes back on the reviewer's own Home (the O135 door).
+export function deferredToAccountantCards(intakeRows = [], { uploadQueue = [] } = {}) {
+  const inFlight = new Set((uploadQueue || [])
+    .filter((q) => q && q.intake_id && q.status !== "done" && q.status !== "error")
+    .map((q) => String(q.intake_id)));
+  return (intakeRows || [])
+    .filter((r) => r && r.status === "held_for_review" && String(r.detail || "") === DEFERRED_DETAIL)
+    .map((r) => ({
+      kind: "deferred_to_accountant",
+      id: `deferred:${r.id}`,
+      intake_id: r.id,
+      filename: r.filename || "a document",
+      received_at: r.received_at || null,
+      reloadable: !!r.document_id,
+      loading: inFlight.has(String(r.id)),
+      action: "reload",
+      goToLabel: "Load it to decide",
+    }));
+}
+// The sentence C367's settle writes. Kept here (the reader) and imported by the writer.
+export const DEFERRED_DETAIL = "set aside for your accountant after a question";
+
 // Everything on Review that is waiting on a person AND has a tool to open. Each entry is
-// {kind, goTo, goToLabel, …}; the screen renders the sentence and the one button.
-export function waitingOnYou({ intakeRows = [], matchQueue = [] } = {}) {
+// {kind, goTo, goToLabel, …} or {kind, action: "reload", intake_id, …}; the screen renders
+// the sentence and the one button.
+export function waitingOnYou({ intakeRows = [], matchQueue = [], uploadQueue = [] } = {}) {
   const cards = heldPayrollCards(intakeRows);
+  cards.push(...deferredToAccountantCards(intakeRows, { uploadQueue }));
   const m = matchingCard(matchQueue);
   if (m) cards.push(m);
   return cards;
@@ -172,6 +200,9 @@ export function waitingOnYou({ intakeRows = [], matchQueue = [] } = {}) {
 export function waitingCopy(card) {
   if (!card) return "";
   if (card.kind === "payroll_held") return `${card.filename} was held rather than posted — ${card.reasons}`;
+  if (card.kind === "deferred_to_accountant") return card.reloadable
+    ? `${card.filename} was set aside for you after a question the owner couldn't answer — nothing is booked until you decide.`
+    : `${card.filename} was set aside for you after a question, and we no longer have the file to ask it again — it will need to be dropped again.`;
   if (card.kind === "matching_pending") return `${card.count} bank ${card.count === 1 ? "line needs" : "lines need"} a match decision the system couldn't make on its own.`;
   return "";
 }

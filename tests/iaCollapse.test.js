@@ -121,8 +121,8 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     // A literal grep cannot see that door, so it is proved across the seam: the module
     // produces a card whose `goTo` is the screen, AND the screen renders cards from it.
     const review = fs.readFileSync(new URL("../src/components/views/ReviewView.jsx", import.meta.url), "utf8");
-    expect(review).toMatch(/const waiting = waitingOnYou\(\{ intakeRows, matchQueue \}\)/);
-    expect(review).toMatch(/waiting\.map\(\(c\) =>[\s\S]{0,600}setView\(c\.goTo\)/);
+    expect(review).toMatch(/const waiting = waitingOnYou\(\{ intakeRows, matchQueue, uploadQueue \}\)/);   // C370 widened the inputs
+    expect(review).toMatch(/waiting\.map\(\(c\) =>[\s\S]{0,1400}setView\(c\.goTo\)/);   // window widened in C370 — the reload branch sits before the goTo button
     expect(review).not.toMatch(/REVIEW_TOOLS/);            // no standing strip
     const held = heldPayrollCards([{ id: "i1", status: "held_for_review", detail: `${PAYROLL_HOLD_PREFIX}it doesn't foot.`, filename: "gusto.csv" }]);
     expect(held.map((c) => c.goTo)).toEqual(["payroll"]);
