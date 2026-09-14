@@ -136,9 +136,19 @@ function deriveSession(item) {
   if (!inv.vendor || inv.vendor === "Unknown")
     pre.push({ field: "vendor", type: "text", prompt: "Who is this receipt from?", default: inv.vendor === "Unknown" ? "" : (inv.vendor || "") });
 
+  // ★ C357 — A BUTTONS QUESTION WITH NO BUTTONS IS A DEAD CARD. The model is asked for
+  // options and usually gives them; when it does not, the card used to render the prompt
+  // and nothing to click, and the only way past was "Skip for now". A question without
+  // choices is asked in free text instead — the same input the category question uses.
   const aiMapped = aiQs
-    .filter(q => q.field === "business_purpose" || q.field === "personal")
-    .map(q => ({ field: q.field, type: "buttons", prompt: q.question, options: (q.options || []).map(o => ({ label: o, value: o })) }));
+    .filter(q => (q.field === "business_purpose" || q.field === "personal") && String(q.question || q.prompt || "").trim())
+    .map(q => {
+      const opts = (Array.isArray(q.options) ? q.options : []).map(o => String(o)).filter(Boolean);
+      const prompt = String(q.question || q.prompt).trim();
+      return opts.length >= 2
+        ? { field: q.field, type: "buttons", prompt, options: opts.map(o => ({ label: o, value: o })) }
+        : { field: q.field, type: "freetext", prompt };
+    });
 
   const aiCat = aiQs.find(q => q.field === "category");
   // Never surface raw confidence numbers in the conversational UI.
