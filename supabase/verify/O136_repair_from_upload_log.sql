@@ -33,14 +33,20 @@ cand as (
               and abs(extract(epoch from (je.created_at - l.completed_at))) < 180
   join public.journal_entry_lines jl on jl.journal_entry_id = je.id and jl.debit = l.amount
 )
-select document_id, name, vendor, amount, count(distinct entry_id) as candidate_entries,
-       min(entry_id::text) as entry_id, min(secs_apart) as secs_apart,
-       case when count(distinct entry_id) = 1 then 'LINKABLE - exactly one entry matches on file, vendor, amount and time'
-            when count(distinct entry_id) = 0 then 'NO MATCH - repair from the transaction''s attach button'
-            else 'AMBIGUOUS - ' || count(distinct entry_id) || ' entries match; leave for the attach button' end as verdict
-from cand
-group by document_id, name, vendor, amount
-order by verdict, name;
+-- ★ Starts from `unlinked` and LEFT JOINs the candidates, so a document with NO match is a
+-- row that says so. The first draft selected from `cand` alone, and its 'NO MATCH' branch
+-- was unreachable — every unmatched document was simply absent from the output, and a
+-- census that omits the rows it cannot repair reads as "all 28 are linkable".
+select x.document_id, x.name, max(c.vendor) as vendor, max(c.amount) as amount,
+       count(distinct c.entry_id) as candidate_entries,
+       min(c.entry_id::text) as entry_id, min(c.secs_apart) as secs_apart,
+       case when count(distinct c.entry_id) = 1 then 'LINKABLE - exactly one entry matches on file, vendor, amount and time'
+            when count(distinct c.entry_id) = 0 then 'NO MATCH - repair from the transaction''s attach button'
+            else 'AMBIGUOUS - ' || count(distinct c.entry_id) || ' entries match; leave for the attach button' end as verdict
+from unlinked x
+left join cand c on c.document_id = x.document_id
+group by x.document_id, x.name
+order by verdict, x.name;
 
 -- (b) BACKFILL — apply only after reading (a). Links a document to its entry ONLY where (a)
 -- said LINKABLE (exactly one candidate). Idempotent; a linked row is never re-pointed.
