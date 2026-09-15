@@ -80,7 +80,7 @@ describe("★ the bank-match notification is bankMatchStatus, not a second readi
   it("the generator calls bankMatchStatus on the live refs and no longer reads created_at", () => {
     const gen = app.slice(app.indexOf("const generateNotifications = () => {"), app.indexOf("// ── AUTOMATIC MONTHLY REPORTS"));
     expect(gen.length).toBeGreaterThan(400);
-    expect(gen).toMatch(/bankMatchStatus\(\{ reconciliations: reconciliationsRef\.current \|\| \[\], invoices: invoicesRef\.current \|\| \[\] \}\)/);
+    expect(gen).toMatch(/bankMatchStatus\(\{ reconciliations: reconciliationsRef\.current \|\| \[\], invoices: invoicesRef\.current \|\| \[\], checked: !loadFailuresRef\.current\.reconciliations \}\)/);   // C455 appended the verdict
     expect(gen).not.toMatch(/created_at \|\| r\.statement_date/);
     expect(gen).toMatch(/if \(bm\.overdue\)/);
   });

@@ -2536,7 +2536,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // (an abandoned session counted as a match) and nagged a company with no books at all,
       // while Home counted verified completions and stayed silent without books. Two readings
       // of one fact, on two surfaces a person sees in the same minute.
-      const bm = bankMatchStatus({ reconciliations: reconciliationsRef.current || [], invoices: invoicesRef.current || [] });
+      const bm = bankMatchStatus({ reconciliations: reconciliationsRef.current || [], invoices: invoicesRef.current || [], checked: !loadFailuresRef.current.reconciliations });   // C455
       if (bm.overdue) {
         createNotification({ type: "reconciliation", title: bm.days == null ? "Your books haven't been matched to your bank yet" : `Books not matched to your bank in ${bm.days} days`, description: "Drop your latest bank statement and we'll match it to your books.", link_view: "recon" });
       }
@@ -2753,6 +2753,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Refs kept current for the scans (avoid stale closures). Declared AFTER the
   // invoicesRef sync (top of the component) so the effects below see fresh data.
   const reconciliationsRef = useRef([]);
+  const loadFailuresRef = useRef({});   // C455 — the bell reads refs
+  useEffect(() => { loadFailuresRef.current = loadFailures || {}; }, [loadFailures]);
   const contactsRef = useRef([]);   // C435 — the bell's generator runs on a timer and reads refs
   useEffect(() => { contactsRef.current = contacts; }, [contacts]);
   const clarificationQueueRef = useRef([]);
@@ -4805,7 +4807,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // ── Bank-match freshness (O90 fourth signal) — ONE source shared by the owner panel AND the
   // dashboard bank-match reminder, so the two surfaces can never contradict ("books matched to
   // the bank?"). Absent/stale reconciliation counts as NOT matched (the false-green fix).
-  const bankMatch = useMemo(() => bankMatchStatus({ reconciliations, invoices }), [reconciliations, invoices]);
+  const bankMatch = useMemo(() => bankMatchStatus({ reconciliations, invoices, checked: !loadFailures.reconciliations }), [reconciliations, invoices, loadFailures.reconciliations]);   // C455 — a failed read is not "never matched"
 
   // ── O90 OWNER TRUST PROJECTION (CR-27) — the owner-facing view of the SAME trust data ──
   // A plain-language projection of completeness (O60) + confidence (O49) + accuracy (O59)

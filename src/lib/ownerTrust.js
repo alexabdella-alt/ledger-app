@@ -240,6 +240,10 @@ export function ownerTrustState({
     // plainly (no "control total" / "reconcile"), and DON'T fake green.
     correctText = "We're double-checking a couple of figures to make sure everything's right.";
     correctStateVal = "attention";
+  } else if (bankMatch && bankMatch.unchecked) {
+    // C455 — the reconciliations read did not run; neither "matched" nor "still matching" is known
+    correctText = "We couldn't check whether your books have been matched to your bank just now — reload to try again.";
+    correctStateVal = "info";
   } else if (bankOverdue) {
     // The false-green this fix closes: books can be internally consistent yet UNVERIFIED against
     // the bank. Say it plainly (no "reconcile" jargon) and don't claim "up to date".
@@ -249,7 +253,7 @@ export function ownerTrustState({
     correctText = "Nothing needs your attention — your books are correct and up to date.";
     correctStateVal = "ok";
   }
-  const correctOk = asksOk && confidenceOk && accuracyOk && !bankOverdue && anomaliesOk && anomaliesChecked;
+  const correctOk = asksOk && confidenceOk && accuracyOk && !bankOverdue && anomaliesOk && anomaliesChecked && !(bankMatch && bankMatch.unchecked);
 
   // ── Overall — never all_clear unless the three sign-off nets clear AND the books are matched
   //    to the bank AND no open HIGH anomaly AND nothing's mid-flight. Anomalies are NOT part
@@ -258,7 +262,7 @@ export function ownerTrustState({
   //    bug). Bank-not-matched / in-flight docs → in_progress; a short net or open anomaly →
   //    attention. ──
   let overall, headline;
-  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked || !signoffsChecked || !anomaliesChecked || unreadableCount > 0 || accountantCount > 0) {   // C369/C372 — an unread or undecided file is not "up to date"
+  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked || !signoffsChecked || !anomaliesChecked || (bankMatch && bankMatch.unchecked) || unreadableCount > 0 || accountantCount > 0) {   // C369/C372 — an unread or undecided file is not "up to date"
     // O121 — `asksOk` is gated HERE explicitly, for the same reason `anomaliesOk` is: the
     // clarification queue is not part of `evaluateSignOff`'s three doc/confidence/accuracy
     // nets, so without naming it the header would reach `all_clear` with questions open.

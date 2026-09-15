@@ -231,7 +231,11 @@ export function isVerifiedReconciliation(rec) {
   return Math.abs(Number(rec.statement_balance) || 0) > 0 || rec.statement_balance_verified === true;
 }
 
-export function bankMatchStatus({ reconciliations = [], invoices = [], now = new Date(), staleDays = 35 } = {}) {
+export function bankMatchStatus({ reconciliations = [], invoices = [], now = new Date(), staleDays = 35, checked = true } = {}) {
+  // C455 — O98 on the bank-match reminder: a FAILED reconciliations read is `[]`, the same
+  // value as a company never matched, and the reminder would say "haven't been matched to
+  // your bank" over a query that never ran. `checked: false` returns not-overdue and says so.
+  if (!checked) return { overdue: false, days: null, hasBooks: (invoices || []).some((i) => i && i.status !== "voided"), everReconciled: false, lastCompletedAt: null, unchecked: true };
   const completed = (reconciliations || []).filter(isVerifiedReconciliation);
   let lastCompletedAt = null;
   for (const r of completed) {
