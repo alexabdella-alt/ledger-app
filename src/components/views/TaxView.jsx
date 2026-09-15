@@ -1,6 +1,7 @@
 import React from "react";
 import { fmtMoney } from "../../lib/format";
 import { useERP } from "../ERPContext";
+import LoadFailedNotice from "../LoadFailedNotice";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE, filedKey } from "../../lib/tax";
 import { plan1099, plan1099Copy } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
@@ -14,16 +15,22 @@ export default function TaxView() {
   // Tax compliance state lives in Supabase (tax_settings). Falls back to the
   // legacy localStorage blob (and migrates it) or defaults until a row exists.
   const [taxState, setTaxState] = React.useState({ estPaid: 0, filed: {}, workFromHome: false });
+  // C417 — did the read of the saved figures RUN? On a failed read the screen showed $0 of
+  // estimated payments (and a "Still owed" inflated by the same amount), and a blur on the
+  // input would have saved that 0 OVER the real figure. False → the box is replaced by a
+  // notice and the save refuses.
+  const [loadOk, setLoadOk] = React.useState(true);
   const rowExists = React.useRef(false);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!currentCompany?.id) return;
-      let loaded = null;
+      let loaded = null; let ok = true;
       try {
         const { data, error } = await supabase.from("tax_settings")
           .select("*").eq("company_id", currentCompany.id).eq("tax_year", year).maybeSingle();
+        if (error) { ok = false; console.warn("[tax_settings] load failed:", error.message); }
         if (!error && data) {
           rowExists.current = true;
           loaded = {
@@ -32,8 +39,11 @@ export default function TaxView() {
             filed: (data.filed_deadlines && typeof data.filed_deadlines === "object" && !Array.isArray(data.filed_deadlines)) ? data.filed_deadlines : {},
           };
         }
-      } catch { /* table may not exist yet — fall through */ }
-      if (!loaded) {
+      } catch (e) { ok = false; console.warn("[tax_settings] load error:", e?.message || e); }
+      if (!cancelled) setLoadOk(ok);
+      // the device-local mirror stands in only for a company with NO row yet — never for a read
+      // that failed, where it could be stale against a figure the database holds
+      if (!loaded && ok) {
         try { const ls = JSON.parse(localStorage.getItem(lsKey)); if (ls) loaded = { estPaid: Number(ls.estPaid) || 0, filed: ls.filed || {}, workFromHome: !!ls.workFromHome }; } catch {}
       }
       if (!cancelled && loaded) setTaxState(loaded);
@@ -42,6 +52,7 @@ export default function TaxView() {
   }, [currentCompany?.id, year]);
 
   const save = async (next) => {
+    if (!loadOk) { showNotification && showNotification("We couldn't load your saved tax figures, so nothing can be changed here until the page reloads — nothing was saved.", "error"); return; }   // C417
     setTaxState(next);
     try { localStorage.setItem(lsKey, JSON.stringify(next)); } catch {} // keep a local mirror as a backup
     try {
@@ -151,9 +162,10 @@ export default function TaxView() {
             </div>
           ))}
         </div>
+        {!loadOk && <div style={{ marginTop: 14 }}><LoadFailedNotice what="saved tax figures" table="tax_settings" /></div>}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
           <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Estimated payments already made this year:</label>
-          <input type="number" defaultValue={estPaid || ""} placeholder="0" onBlur={e => save({ ...taxState, estPaid: parseFloat(e.target.value) || 0 })}
+          <input type="number" disabled={!loadOk} defaultValue={estPaid || ""} placeholder="0" onBlur={e => save({ ...taxState, estPaid: parseFloat(e.target.value) || 0 })}
             style={{ width: 140, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
           <span style={{ fontSize: 11, color: "var(--sc-text-mut)" }}>Updates "Still Owed" above.</span>
         </div>
