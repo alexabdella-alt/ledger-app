@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
+import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
@@ -18,7 +19,7 @@ export default function BooksView() {
     navSeat,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
     reconciliations, docLibrary, storeDocument, fileToBase64,
-    vendorFilter, setVendorFilter, filteredInvoices,
+    vendorFilter, setVendorFilter, filteredInvoices, companyDataLoaded,
   } = useERP();
   // ★ C347 — THE VENDOR DOOR. DetailView's "View all transactions for X" sets `vendorFilter`
   // and lands here; until this read existed the list arrived UNFILTERED (the only reader,
@@ -274,7 +275,9 @@ export default function BooksView() {
             })}
           </tr></thead>
           <tbody>
-            {rows.length===0 ? (
+            {!companyDataLoaded && rows.length===0 ? (
+              <tr><td colSpan={8} style={{ padding:0 }}><LoadingList what="your transactions" /></td></tr>
+            ) : rows.length===0 ? (
               <tr><td colSpan={8} style={{ padding:0 }}>
                 <div style={{ padding:"56px 32px", textAlign:"center" }}>
                   <div style={{ width:52, height:52, borderRadius:14, background:"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:24 }}>{search||filter!=="all"||vendorScoped?"🔍":"📭"}</div>

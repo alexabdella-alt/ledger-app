@@ -74,6 +74,22 @@ describe("★★ each records screen: a failed read shows the notice, a clean em
   }
 });
 
+// C428 — three more screens that read the ledger rather than a secondary table
+import BooksView from "../src/components/views/BooksView.jsx";
+import ApView from "../src/components/views/ApView.jsx";
+import ArView from "../src/components/views/ArView.jsx";
+describe("★ ledger screens show a loading line while the company loads, not their empty state (C428)", () => {
+  for (const [name, Comp, emptyRe] of [["BooksView", BooksView, /No transactions yet/], ["ApView", ApView, /No bills|no bills|all paid|Nothing to pay/i], ["ArView", ArView, /No revenue invoices yet/]]) {
+    it(name, () => {
+      const loading = renderViewHtml(Comp, ctxFor(name, { loadFailures: {}, companyDataLoaded: false, invoices: [], arView: "inbox" }));
+      expect(loading).toContain("data-loading-list");
+      expect(loading).not.toMatch(emptyRe);
+      const loaded = renderViewHtml(Comp, ctxFor(name, { loadFailures: {}, companyDataLoaded: true, invoices: [], arView: "inbox" }));
+      expect(loaded).not.toContain("data-loading-list");
+    });
+  }
+});
+
 describe("the wiring (source)", () => {
   const app = fs.readFileSync("src/App.jsx", "utf8");
   it("the settled reads are named in order, and the failures are recorded on the same pass", () => {
