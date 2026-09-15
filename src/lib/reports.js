@@ -580,10 +580,17 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
   // so "up 804% versus last month" fired on Home over two entries against one; a month
   // compared against a partial one is not a trend, and a prior month under $250 is not a
   // baseline. Compare the last two COMPLETE months, or say nothing.
+  // ★ C385 — "LAST MONTH" IS THE CALENDAR MONTH BEFORE, NOT THE LAST MONTH WITH DATA. The
+  // comparison used to take the two most recent months that had any expense, so a company
+  // with a quiet or not-yet-uploaded February read "Spending is up 804% versus last month"
+  // for March against JANUARY. A gap is not a baseline; the sentence names a month it did
+  // not compare. Adjacent calendar months only, or nothing.
   const thisMonth = today.slice(0, 7);
   const ms = Object.keys(monthExp).filter((m) => m < thisMonth).sort();
-  const curM = ms.length ? monthExp[ms[ms.length - 1]] : 0;
-  const prevM = ms.length > 1 ? monthExp[ms[ms.length - 2]] : null;
+  const lastM = ms.length ? ms[ms.length - 1] : null;
+  const priorYm = (ym) => { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+  const curM = lastM ? monthExp[lastM] : 0;
+  const prevM = lastM && monthExp[priorYm(lastM)] != null ? monthExp[priorYm(lastM)] : null;
   const burnUpPct = (prevM && prevM >= 250 && curM > prevM * 1.05) ? Math.round((curM / prevM - 1) * 100) : 0;
 
   // The FOUR key numbers live here (once) as the facts under the headline — they replaced the

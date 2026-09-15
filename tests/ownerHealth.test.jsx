@@ -53,6 +53,15 @@ describe("the month-over-month spend trend", () => {
     const up = [exp(1000, "2026-07-05", 1), exp(1500, "2026-08-05", 2)];
     expect(businessHealth(up, { cash: 100000, now: NOW }).concerns.find((c) => c.key === "burn")?.text).toBe("Spending is up 50% versus last month.");
   });
+  it("★ C385 — 'last month' is the calendar month before, not the last month with data", () => {
+    // June 1,000 · July empty · August 1,500 (now = Sept): July is the month before August
+    // and it has nothing in it, so there is no trend — NOT "up 50% versus last month" against June.
+    const gap = [exp(1000, "2026-06-05", 1), exp(1500, "2026-08-05", 2)];
+    expect(businessHealth(gap, { cash: 100000, now: NOW }).concerns.find((c) => c.key === "burn")).toBeUndefined();
+    // and the year boundary: Dec 1,000 → Jan 1,500 is adjacent
+    const yr = [exp(1000, "2025-12-05", 1), exp(1500, "2026-01-05", 2)];
+    expect(businessHealth(yr, { cash: 100000, now: NOW }).concerns.find((c) => c.key === "burn")?.text).toBe("Spending is up 50% versus last month.");
+  });
   it("a prior month under $250 is not a baseline", () => {
     const led = [exp(20, "2026-07-05", 1), exp(180, "2026-08-05", 2)];
     expect(businessHealth(led, { cash: 100000, now: NOW }).concerns.find((c) => c.key === "burn")).toBeUndefined();
