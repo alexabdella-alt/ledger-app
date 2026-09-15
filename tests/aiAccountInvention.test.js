@@ -59,7 +59,7 @@ describe("★★ a recognisable account is still created — and now SAID", () =
   it("★★★ creating one is announced, because an invisible action will be repeated (§9)", () => {
     // The old path created accounts audibly in the audit log and silently on screen. A
     // person who cannot see that their chart changed has no way to disagree with it.
-    expect(app).toMatch(/Added \$\{glCode\} \$\{def\.name\} to your chart of accounts — you didn't have one\./);
+    expect(app).toMatch(/Added \$\{def\.name\} to your categories — you didn't have one\./);
   });
 
   it("★ and it is still audited as a materialisation, with the O108 action name intact", () => {

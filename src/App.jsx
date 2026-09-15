@@ -3239,7 +3239,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         .insert(buildAccountInsert({ companyId: currentCompany.id, code: glCode, name: glName || def?.name || glCode, category: def?.category })).select("id").single();
       if (error || !made) { console.warn("[resolveAccountId] create failed:", error?.message); return null; }
       logAudit("account_materialized", `Created account ${glCode} "${glName || def?.name || glCode}" while resolving a rule target — it was not in this company's chart`, null, { code: glCode, name: glName || def?.name || glCode, in_default_chart: true, site: "resolveAccountId" });
-      showNotification(`Added ${glCode} ${def.name} to your chart of accounts — you didn't have one.`);
+      showNotification(`Added ${def.name} to your categories — you didn't have one.`);
       return made.id;
     } catch (e) { console.warn("[resolveAccountId]", e?.message); return null; }
   };
@@ -3658,7 +3658,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (inv._contact) createOrUpdateContact({ ...inv._contact, type: "customer" });
     logAudit("deferred_revenue_received", `Advance payment from ${inv.vendor || "customer"} ${fmtMoney(amount)} → Deferred Revenue (2300)`, null, { vendor: inv.vendor, amount });
     try { await loadAllData(); } catch {}
-    showNotification("Booked as deferred revenue (advance payment) ✓");
+    showNotification("Recorded as money received in advance ✓");
     return jeId;
   };
 
@@ -3711,7 +3711,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // capitalization JE) so we never leave a Dr Fixed Asset / Cr AP with no schedule —
       // same discipline as the payment-posting compensation. Never report success.
       if (!jeId) {
-        showNotification("Couldn't book the capitalization — nothing was posted. Please try again.", "error");
+        showNotification("Couldn't record that purchase — nothing was saved. Please try again.", "error");
         return;
       }
       const res = await createFixedAssetWithSchedule({
@@ -3722,7 +3722,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       });
       if (!res.ok) { await compensateCapitalization(jeId, finalInv, res.error); return; }
       settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId });
-      showNotification(`Capitalized & depreciation scheduled ✓`);
+      showNotification(`Recorded — its cost will be spread over time ✓`);
     } else {
       if (!jeId) return;   // the writer said why; the card was already removed, the row stays held
       settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId });
@@ -3987,12 +3987,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data: je, error: jeErr } = await supabase.from("journal_entries")
         .select("id, entry_date, description, deleted_at, journal_entry_lines(debit, credit, accounts(code, name))")
         .eq("id", jeId).eq("company_id", currentCompany.id).single();
-      if (jeErr || !je) { showNotification("Journal entry not found.", "error"); return { ok: false, error: "journal entry not found" }; }
+      if (jeErr || !je) { showNotification("That transaction couldn't be found.", "error"); return { ok: false, error: "journal entry not found" }; }
       if (je.deleted_at) { showNotification("That entry is voided/deleted.", "error"); return { ok: false, error: "entry voided/deleted" }; }
 
       const code = assetCode || rc("fixed_assets") || "1500";
+      const name = getAccountByCode?.(code)?.name || rn("fixed_assets") || null;
       const assetLine = (je.journal_entry_lines || []).find(l => l.accounts?.code === code && Number(l.debit) > 0);
-      if (!assetLine) { showNotification(`That entry has no debit to asset account ${code}.`, "error"); return { ok: false, error: `no debit to ${code}` }; }
+      if (!assetLine) { showNotification(`That transaction isn't a purchase of equipment (${name || code}), so there is no cost to spread.`, "error"); return { ok: false, error: `no debit to ${code}` }; }
       const cost = Number(assetLine.debit) || 0;
       const vendor = (je.description || "").split(" – ")[0] || je.description || "Asset";
       const inService = inServiceDate || je.entry_date;
@@ -4004,12 +4005,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (res.ok) {
         try { await loadAllData(); } catch {}
         logAudit("fixed_asset_backfilled", `Attached depreciation to existing entry ${jeId} — ${vendor} ${fmtMoney(cost)}, ${usefulLifeMonths}mo straight-line`, null, { je_id: jeId, asset_id: res.assetId, cost, life_months: usefulLifeMonths });
-        showNotification("Depreciation attached & scheduled ✓");
+        showNotification("Cost spread set up ✓");
       } else {
-        showNotification(`Couldn't attach depreciation: ${res.error || "unknown error"}`, "error");
+        showNotification(`Couldn't set up the cost spread: ${res.error || "unknown error"}`, "error");
       }
       return res;
-    } catch (e) { console.error("attachDepreciationToExistingAsset:", e); showNotification("Couldn't attach depreciation — see console.", "error"); return { ok: false, error: e?.message || String(e) }; }
+    } catch (e) { console.error("attachDepreciationToExistingAsset:", e); showNotification("Couldn't set up the cost spread — nothing was changed.", "error"); return { ok: false, error: e?.message || String(e) }; }
   };
 
   // ★ C362 — RETURNS A VERDICT, AND THE UPDATE IS CHECKED. `posted_entries` is the marker
@@ -4340,7 +4341,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const res = await insertIntake(supabase, row);
       if (!res.ok) {
         console.error("[document_intake] arrival log FAILED:", res.error);
-        showNotification("Heads up — we couldn't record this upload in the intake ledger. It may still process, but flag it if your books look short.", "error");
+        showNotification("Heads up — we couldn't log this upload. It may still process, but tell us if your books look short.", "error");
       }
     } catch (e) { console.error("[document_intake] logIntake error:", e); }
   };
@@ -5830,7 +5831,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           if (recSaveErr) {
             console.error("[reconciliations] save failed after retry:", recSaveErr);
             logAudit("reconciliation_save_failed", `Reconciliation record could not be saved after matching ${matchedCount} of ${txnTotal} transactions: ${recSaveErr}`);
-            showNotification("Your transactions were matched successfully but we couldn't save the reconciliation record — please contact support.", "error");
+            showNotification("Your transactions matched your bank, but we couldn't save the record of it — please contact support.", "error");
           } else {
             logAudit("bank_reconciled", `Bank statement: matched ${matchedCount} of ${txnTotal} transactions · ${bookedNew} new booked${refusedNew ? ` (${refusedNew} refused)` : ""} · $${stillOpenTotal.toFixed(2)} open items remain`);
           }
@@ -7215,7 +7216,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         showNotification(`Contract read — ${contract.journal_entries?.length||0} entries drafted — but we couldn't save it, so it will be gone if you reload. ${kept?.error || ""}`.trim(), "error");
         return;
       }
-      showNotification(`Contract analyzed — ${contract.journal_entries?.length||0} journal entries generated ✓`);
+      showNotification(`Agreement read — ${contract.journal_entries?.length||0} ${(contract.journal_entries?.length||0)===1?"entry":"entries"} prepared ✓`);
     } catch(e) {
       const msg = e?.message || String(e);
       markIntake(contractIntakeId, INTAKE_STATUS.FAILED, { detail: `contract analysis error: ${msg}` });   // non-terminal → surfaced

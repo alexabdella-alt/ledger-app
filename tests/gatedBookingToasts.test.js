@@ -86,7 +86,7 @@ describe("a contract entry's posted-marker is awaited, and a lost marker is said
   });
   it("a contract that could not be saved after analysis says it will be gone on reload", () => {
     const body = fn("const kept = await persistContract(saved);", null, 700);
-    ordered(body, "if (!kept?.ok) {", "gone if you reload", "return;", "Contract analyzed —");
+    ordered(body, "if (!kept?.ok) {", "gone if you reload", "return;", "Agreement read —");
   });
 });
 

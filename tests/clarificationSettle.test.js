@@ -82,7 +82,7 @@ describe("the wiring in App.jsx (source)", () => {
     expect((body.match(/settleClarification\(item, \{ kind: ANSWER_OUTCOME\.BOOKED, jeId/g) || []).length).toBe(5);
     expect(body).toMatch(/\} else \{\s*if \(!jeId\) return;[\s\S]{0,200}settleClarification\(item, \{ kind: ANSWER_OUTCOME\.BOOKED, jeId \}\);\s*showNotification\(`Booked to \$\{finalInv\.gl_name\} ✓`\)/);
     expect(app).toMatch(/showNotification\(`Recorded as prepaid — spread over \$\{months\} months ✓`\);\s*return capId;/);
-    expect(app).toMatch(/showNotification\("Booked as deferred revenue \(advance payment\) ✓"\);\s*return jeId;/);
+    expect(app).toMatch(/showNotification\("Recorded as money received in advance ✓"\);\s*return jeId;/);
   });
 });
 
