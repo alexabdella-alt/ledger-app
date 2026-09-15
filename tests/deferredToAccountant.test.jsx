@@ -44,6 +44,6 @@ describe("Review (source) — the screen only paints after an effect resolves, w
     const src = fs.readFileSync(path.join(process.cwd(), "src/components/views/ReviewView.jsx"), "utf8");
     expect(src).toMatch(/c\.action === "reload"\s*\?\s*\(c\.reloadable && <button disabled=\{c\.loading\} onClick=\{async \(\) => \{ const r = await reloadHeldIntake\(c\.intake_id\); if \(!r\?\.ok\) showNotification/);
     expect(src).toMatch(/waitingOnYou\(\{ intakeRows, matchQueue, uploadQueue \}\)/);
-    expect(src).toMatch(/reloadHeldIntake \} = useERP\(\)/);
+    expect(src).toMatch(/\breloadHeldIntake\b[^\n]*\} = useERP\(\)/);   // C442 appended three keys after it
   });
 });
