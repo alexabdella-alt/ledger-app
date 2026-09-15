@@ -20,3 +20,14 @@ describe("C450", () => {
     expect(src).toMatch(/Issue Date: \$\{esc\(draft\.issue_date \? fmtDate\(draft\.issue_date\) : ""\)\}/);
   });
 });
+
+// C451 — the SENT invoice carries the due date its terms imply, so the stored row and the A/R
+// entry can be told overdue; and the re-send sync writes the taxed total to the ledger row.
+describe("C451", () => {
+  it("the sent invoice's due_date is typed-or-derived, and the re-send sync uses the total", () => {
+    const src = fs.readFileSync("src/components/views/SendInvoiceView.jsx", "utf8");
+    expect(src).toMatch(/due_date: draft\.due_date \|\| deriveDueDate\(draft\.issue_date, draft\.terms\) \|\| ""\}/);
+    expect(src).toMatch(/\{\.\.\.e, amount:total, date:inv\.issue_date\|\|today/);
+    expect(src).not.toMatch(/\{\.\.\.e, amount:subtotal,/);
+  });
+});

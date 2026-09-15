@@ -4,7 +4,7 @@ import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, todayLocal, deriveDueDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
 import { newInvoiceDraft, emptyInvoiceLine, draftBase , invoiceSendBlockers, invoiceTotalOf, invoiceDueLabel } from "../../lib/invoiceDraft";
@@ -167,11 +167,12 @@ export default function SendInvoiceView() {
             const sendInvoiceOnce = async () => {
               if (sendBlockers.length) { showNotification(sendBlockers[0], "error"); return; }   // C412 — the same list the screen shows; the button is disabled, this is the net
               const customerId = await resolveCustomerId();
-              const inv = {...draft, id: draft.id||Date.now()+Math.random(), status:"sent", sent_at:new Date().toISOString(), tax_rate: draft.tax_rate || "", tax_amount: taxAmount};
+              const inv = {...draft, id: draft.id||Date.now()+Math.random(), status:"sent", sent_at:new Date().toISOString(), tax_rate: draft.tax_rate || "", tax_amount: taxAmount,
+                due_date: draft.due_date || deriveDueDate(draft.issue_date, draft.terms) || ""};   // C451 — the stored row and the A/R entry carry the due date the terms imply, so "overdue" can be told
               if (!inv.created_at) inv.created_at = new Date().toISOString();
               // Book the A/R entry exactly once per invoice; keep it in sync on re-send.
               if (inv.ledger_id) {
-                setInvoices(prev => prev.map(e => String(e.id)===String(inv.ledger_id) ? {...e, amount:subtotal, date:inv.issue_date||today, vendor:inv.customer, due_date:inv.due_date||undefined} : e));
+                setInvoices(prev => prev.map(e => String(e.id)===String(inv.ledger_id) ? {...e, amount:total, date:inv.issue_date||today, vendor:inv.customer, due_date:inv.due_date||undefined} : e));
               } else {
                 const jeId = await bookAR(inv);
                 if (!jeId) return;   // pre-cutoff issue date → blocked + toasted; don't send/persist
