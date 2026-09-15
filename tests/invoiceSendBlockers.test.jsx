@@ -36,12 +36,12 @@ describe("★★ rendered: the blockers are on screen and the button is disabled
   });
   it("the handler's guard is the same list (one function, two readers)", () => {
     const src = fs.readFileSync("src/components/views/SendInvoiceView.jsx", "utf8");
-    const i = src.indexOf("const sendInvoice = async () => {");
+    const i = src.indexOf("const sendInvoiceOnce = async () => {");   // C432 — the gated body
     expect(i).toBeGreaterThan(-1);
     expect(src.slice(i, i + 300)).toMatch(/if \(sendBlockers\.length\) \{ showNotification\(sendBlockers\[0\], "error"\); return; \}/);
     expect(src).not.toMatch(/Add a customer name first/);
     // both Send buttons (form and preview) are disabled by the same list — the preview site
     // does not render in SSR (showPreview is state), so it is held by count
-    expect((src.match(/disabled=\{sendBlockers\.length > 0\} data-send-blocked=/g) || []).length).toBe(2);
+    expect((src.match(/disabled=\{sendBlockers\.length > 0 \|\| sending\} data-send-blocked=/g) || []).length).toBe(2);   // C432 — and while a send is in flight
   });
 });
