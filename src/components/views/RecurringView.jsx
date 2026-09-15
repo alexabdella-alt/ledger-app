@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../../lib/plainWriteError";
 import { makeKeyedInFlight } from "../../lib/oneInFlight";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
@@ -56,7 +57,7 @@ export default function RecurringView() {
               // Through the same verified insert the chat's add_recurring uses (C112) — the
               // screen's version was a setState, and the rule vanished on reload.
               const res = await createRecurring({ name: newRec.name, vendor: newRec.vendor, amount: amt, gl_code: newRec.gl_code, gl_name: newRec.gl_name, frequency: newRec.frequency, next_date: newRec.next_date || today, project: newRec.project });
-              if (!res?.ok) { showNotification(`Couldn't save that recurring transaction — ${res?.error || "the write didn't land"}. Nothing was created.`, "error"); return; }
+              if (!res?.ok) { showNotification(`Couldn't save that recurring transaction — ${plainWriteError(res?.error, "the write didn't land")}. Nothing was created.`, "error"); return; }
               const r = { ...newRec, amount: amt };
               logAudit("recurring_created", `Recurring created: ${r.name} ${fmt(r.amount)} ${r.frequency}`);
               setNewRec({name:"",vendor:"",amount:"",gl_code:getAccountByRole("rent_occupancy")?.code||"",gl_name:getAccountByRole("rent_occupancy")?.name||"",frequency:"monthly",next_date:today,project:"General"});
@@ -136,8 +137,8 @@ export default function RecurringView() {
                               <td style={{padding:"12px 16px"}}>
                                 <div style={{display:"flex",gap:6}}>
                                   {isDue && <button onClick={()=>runRecurring(r)} style={{padding:"5px 12px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--sc-warning)",border:"none",color:"#000",cursor:"pointer"}}>Post</button>}
-                                  <button onClick={async()=>{ const res = await setRecurringActive(r, !r.active); if (!res?.ok) showNotification(`Couldn't ${r.active?"pause":"resume"} ${r.name} — nothing was changed. ${res?.error||""}`.trim(), "error"); }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer"}}>{r.active?"Pause":"Resume"}</button>
-                                  <button onClick={async()=>{ const res = await removeRecurring(r); if (!res?.ok) { showNotification(`Couldn't delete ${r.name} — nothing was changed. ${res?.error||""}`.trim(), "error"); return; } showNotification(`${r.name} deleted ✓`); }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid var(--sc-border-2)",color:"var(--sc-error)",cursor:"pointer"}}>×</button>
+                                  <button onClick={async()=>{ const res = await setRecurringActive(r, !r.active); if (!res?.ok) showNotification(`Couldn't ${r.active?"pause":"resume"} ${r.name} — nothing was changed. ${plainWriteError(res?.error, "")}`.trim(), "error"); }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer"}}>{r.active?"Pause":"Resume"}</button>
+                                  <button onClick={async()=>{ const res = await removeRecurring(r); if (!res?.ok) { showNotification(`Couldn't delete ${r.name} — nothing was changed. ${plainWriteError(res?.error, "")}`.trim(), "error"); return; } showNotification(`${r.name} deleted ✓`); }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid var(--sc-border-2)",color:"var(--sc-error)",cursor:"pointer"}}>×</button>
                                 </div>
                               </td>
                             </tr>

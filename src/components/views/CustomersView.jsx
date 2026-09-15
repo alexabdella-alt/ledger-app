@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
@@ -132,7 +133,7 @@ export default function CustomersView() {
                 ? { ...c, ...updates }
                 : { id:Date.now()+Math.random(), name:c.name, type:"customer", ...updates, created_at:new Date().toISOString() };
               const r = await persistContact(next);
-              if (!r?.ok) { showNotification(`We couldn't save ${c.name}'s details — nothing was changed. ${r?.error || ""}`.trim(), "error"); return; }
+              if (!r?.ok) { showNotification(`We couldn't save ${c.name}'s details — nothing was changed. ${plainWriteError(r?.error, "")}`.trim(), "error"); return; }
               const saved = r.row?.id ? { ...next, db_id: r.row.id, fromContact: true } : next;
               setContacts(prev => c.fromContact ? prev.map(x => x.id===c.id ? saved : x) : [saved, ...prev]);
               setEditingId(null);

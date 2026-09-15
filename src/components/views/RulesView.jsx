@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -43,7 +44,7 @@ export default function RulesView() {
                           <td style={{ padding:"14px 20px" }}><span style={{ background:"var(--sc-border)", padding:"4px 12px", borderRadius:20, fontSize:12, color:"var(--sc-gold)" }}>{rule.gl_code} · {rule.gl_name}</span></td>
                           <td style={{ padding:"14px 20px", fontSize:13, color:"var(--sc-text-2)" }}>{rule.project||"—"}</td>
                           <td style={{ padding:"14px 20px" }}>
-                            <button onClick={async()=>{ /* C397 — the screen wrote local state only; the rule came back on reload and kept coding the vendor. One writer with the chat (deleteVerified). */ const r = await removeRule(rule.vendor); if (!r?.ok) { showNotification(`Couldn't remove the rule for ${rule.vendor} — nothing was changed. ${r?.error || ""}`.trim(), "error"); return; } logAudit("rule_deleted", `Supplier rule removed: ${rule.vendor} → ${rule.gl_name || rule.gl_code}`, null, { vendor: rule.vendor, gl_code: rule.gl_code }); showNotification(`Rule for ${rule.vendor} removed ✓`); }} style={{ background:"none", border:"1px solid var(--sc-border-2)", color:"var(--sc-error)", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer" }}>Remove</button>
+                            <button onClick={async()=>{ /* C397 — the screen wrote local state only; the rule came back on reload and kept coding the vendor. One writer with the chat (deleteVerified). */ const r = await removeRule(rule.vendor); if (!r?.ok) { showNotification(`Couldn't remove the rule for ${rule.vendor} — nothing was changed. ${plainWriteError(r?.error, "")}`.trim(), "error"); return; } logAudit("rule_deleted", `Supplier rule removed: ${rule.vendor} → ${rule.gl_name || rule.gl_code}`, null, { vendor: rule.vendor, gl_code: rule.gl_code }); showNotification(`Rule for ${rule.vendor} removed ✓`); }} style={{ background:"none", border:"1px solid var(--sc-border-2)", color:"var(--sc-error)", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer" }}>Remove</button>
                           </td>
                         </tr>
                       ))}

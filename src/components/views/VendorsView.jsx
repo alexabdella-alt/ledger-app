@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import { verdictFor, reportablePayments, VERDICT } from "../../lib/form1099";
@@ -241,7 +242,7 @@ export default function VendorsView() {
                 ? { ...v, ...draft }
                 : { id:Date.now()+Math.random(), name:v.name, type:"vendor", ...draft, created_at:new Date().toISOString() };
               const r = await persistContact(next);
-              if (!r?.ok) { showNotification(`We couldn't save ${v.name}'s details — nothing was changed. ${r?.error || ""}`.trim(), "error"); return; }
+              if (!r?.ok) { showNotification(`We couldn't save ${v.name}'s details — nothing was changed. ${plainWriteError(r?.error, "")}`.trim(), "error"); return; }
               const saved = r.row?.id ? { ...next, db_id: r.row.id, fromContact: true } : next;
               setContacts(prev => v.fromContact ? prev.map(c => c.id===v.id ? saved : c) : [saved, ...prev]);
               setEditingId(null);
@@ -480,7 +481,7 @@ function VendorMergeSuggestions({ allVendors, contacts, persistContact, showNoti
       // change, so any caller saying "saved ✓" was assuming — and a merge that silently did
       // not save would leave the two names split while the screen said they were joined.
       if (!r || !r.ok) {
-        showNotification && showNotification(`We couldn't save that link — ${(r && r.error) || "please try again"}.`, "error");
+        showNotification && showNotification(`We couldn't save that link — ${plainWriteError(r && r.error, "please try again")}.`, "error");
       } else {
         showNotification && showNotification(`“${alias}” now counts as ${keep} ✓`);
         dismiss(pair);   // only once it actually landed

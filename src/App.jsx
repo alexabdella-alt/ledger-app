@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { settledFailures } from "./lib/loadFailures";
+import { plainWriteError } from "./lib/plainWriteError";
 import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
@@ -2061,7 +2062,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       frequency: "monthly", next_date: todayLocal(), project: "General",
     });
     if (!res?.ok) {
-      showNotification(`We couldn't set up ${s.vendor} as a recurring charge — nothing was created. ${res?.error || ""}`.trim(), "error");
+      showNotification(`We couldn't set up ${s.vendor} as a recurring charge — nothing was created. ${plainWriteError(res?.error, "")}`.trim(), "error");
       return;
     }
     logAudit("recurring_created", `Recurring set up from detected pattern: ${s.vendor} ~$${s.avgAmount}/mo → ${s.gl_name || s.gl_code}`, null, { vendor: s.vendor, amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name, frequency: "monthly" });
@@ -4075,7 +4076,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         logAudit("fixed_asset_backfilled", `Set up a cost spread for an existing entry — ${vendor} ${fmtMoney(cost)}, evenly over ${usefulLifeMonths} months`, null, { je_id: jeId, asset_id: res.assetId, cost, life_months: usefulLifeMonths });
         showNotification("Cost spread set up ✓");
       } else {
-        showNotification(`Couldn't set up the cost spread: ${res.error || "unknown error"}`, "error");
+        showNotification(`Couldn't set up the cost spread — nothing was changed. ${plainWriteError(res.error, "Please try again.")}`, "error");
       }
       return res;
     } catch (e) { console.error("attachDepreciationToExistingAsset:", e); showNotification("Couldn't set up the cost spread — nothing was changed.", "error"); return { ok: false, error: e?.message || String(e) }; }
@@ -4568,7 +4569,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!currentCompany?.id) return { ok: false, error: "no company" };
     const r = await createMailChannel(supabase, { companyId: currentCompany.id, fromName: companySettings?.name || currentCompany?.name || null });
     if (r.ok) { logAudit("mail_channel_created", `Documents address set up for ${companySettings?.name || currentCompany?.name || "this company"}`); await refreshMailState(); }
-    else showNotification(`Couldn't set up the documents address — ${r.error}`, "error");
+    else showNotification(`Couldn't set up the documents address — ${plainWriteError(r.error, "")}`, "error");
     return r;
   };
   const allowMailSender = async (email) => {
@@ -4585,14 +4586,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       logAudit("mail_message_released", `Allowed ${message.from_email} — ${r.intakeIds.length} document${r.intakeIds.length === 1 ? "" : "s"} queued from their email`);
       showNotification(`${message.from_email} can send documents now — ${r.intakeIds.length} saved from that email.`);
       await refreshMailState();   // the drain's poll picks the new intake rows up within minutes
-    } else showNotification(`Couldn't allow that sender — ${r.error}`, "error");
+    } else showNotification(`Couldn't allow that sender — ${plainWriteError(r.error, "")}`, "error");
     return r;
   };
   const ignoreHeldInbound = async (message) => {
     if (!currentCompany?.id) return { ok: false };
     const r = await ignoreInboundMessage(supabase, { companyId: currentCompany.id, message });
     if (r.ok) { logAudit("mail_message_ignored", `Ignored an email from ${message.from_email}`); await refreshMailState(); }
-    else showNotification(`Couldn't ignore that message — ${r.error}`, "error");
+    else showNotification(`Couldn't ignore that message — ${plainWriteError(r.error, "")}`, "error");
     return r;
   };
   // A send says "sent" only on the function's own verdict (C194).
@@ -4862,7 +4863,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       await expireAnomaliesForSignedPeriod(period);
       showNotification(selfAttesting ? `You signed off ${period} ✓` : overrideRec ? `Signed off ${period} with an override ✓` : `Signed off — reviewed through ${period} ✓`);
     } else {
-      showNotification(`Couldn't record the sign-off — ${res.error}`, "error");
+      showNotification(`Couldn't record the sign-off — ${plainWriteError(res.error, "")}`, "error");
     }
     return res.ok ? { ok: true, row: res.row } : { ok: false, error: res.error };
   };
@@ -4880,7 +4881,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       await reopenAnomaliesForRevokedPeriod(period);
       showNotification(`Reopened ${period} — sign-off revoked`);
     } else {
-      showNotification(`Couldn't reopen the period — ${res.error}`, "error");
+      showNotification(`Couldn't reopen the period — ${plainWriteError(res.error, "")}`, "error");
     }
     return res;
   };

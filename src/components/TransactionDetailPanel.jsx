@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../lib/plainWriteError";
 import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
 import { initials, vendorColor, fmtDate, fmtMoney, todayLocal } from "../lib/format";
@@ -391,7 +392,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                             // The tool reports its own outcome, including "already linked" —
                             // so this cannot claim a schedule it did not create (§9).
                             if (r && r.ok) { setDepOpen(false); showNotification("Done — the cost will be written down a little each month from here."); }
-                            else if (r && !r.skipped) showNotification(`Couldn't set that up — ${r?.error || "please try again"}`, "error");
+                            else if (r && !r.skipped) showNotification(`Couldn't set that up — nothing was changed. ${plainWriteError(r?.error, "Please try again.")}`, "error");
                           }} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", background: depBusy ? "var(--sc-border)" : "var(--sc-accent)", color: depBusy ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: depBusy ? "not-allowed" : "pointer" }}>
                             {depBusy ? "Setting up…" : "Set it up"}
                           </button>

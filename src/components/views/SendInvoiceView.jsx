@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -177,7 +178,7 @@ export default function SendInvoiceView() {
               if (canSendFromApp && isDbInvoiceId(saved.id)) {
                 const r = await sendChannelMail({ kind: "invoice", to: inv.customer_email, subject, text: body, related: { arInvoiceId: saved.id } });
                 if (r.ok) showNotification(`Invoice ${inv.invoice_number} sent to ${inv.customer_email} — A/R booked ✓`);
-                else showNotification(`Invoice ${inv.invoice_number} is in your books but was NOT sent — ${r.error || "the email didn't go out"}. Open it and use your own mail app instead.`, "error");
+                else showNotification(`Invoice ${inv.invoice_number} is in your books but was NOT sent — ${plainWriteError(r.error, "the email didn't go out")}. Open it and use your own mail app instead.`, "error");
                 return;
               }
               try { window.location.href = `mailto:${encodeURIComponent(inv.customer_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; } catch(e) { /* no mail client */ }

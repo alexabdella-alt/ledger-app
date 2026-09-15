@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { waitingOnYou, waitingCopy } from "../../lib/waitingOnYou";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -50,7 +51,7 @@ export default function ReviewView() {
     const r = await dismissAnomaly(id, dismissReason.trim(), dismissDocs);
     setDismissBusy(false);
     if (r && r.ok) { setDismissFor(null); setDismissReason(""); setDismissDocs([]); }
-    else showNotification(`Couldn't dismiss — ${(r && r.error) || "unknown error"}`, "error");
+    else showNotification(`Couldn't dismiss — nothing was changed. ${plainWriteError(r && r.error, "Please try again.")}`, "error");
   };
 
   // ── THE OWNER'S HALF: context without a clear verb ───────────────────────────
@@ -66,7 +67,7 @@ export default function ReviewView() {
     const r = addAnomalyComment ? await addAnomalyComment(id, v.text) : { ok: false, error: "unavailable" };
     setCommentBusy(false);
     if (r && r.ok) { setCommentFor(null); setCommentDraft(""); }
-    else showNotification(`Couldn't save that note — ${(r && r.error) || "unknown error"}`, "error");
+    else showNotification(`Couldn't save that note — nothing was changed. ${plainWriteError(r && r.error, "Please try again.")}`, "error");
   };
 
   // Plain function (not useCallback): reconcileDroppedDocs is a fresh closure each ERP render,
@@ -151,7 +152,7 @@ export default function ReviewView() {
   const onReopen = async (period = reviewedThrough) => {
     if (!reopenPeriod || !period) return;
     const r = await reopenPeriod(period);
-    if (!r.ok) showNotification(`Couldn't reopen — ${r.error}`, "error");
+    if (!r.ok) showNotification(`Couldn't reopen — ${plainWriteError(r.error, "")}`, "error");
   };
   // STABLE LOAD GATE: hold a single loading state until BOTH the company data (invoices — the
   // flag source) AND the first dropped-docs reconcile have loaded. "not loaded" is distinct
@@ -163,7 +164,7 @@ export default function ReviewView() {
     setBusyId(txn.id);
     const r = await reviewApprove(txn);
     setBusyId(null);
-    showNotification(r.ok ? "Approved — the AI's coding stands ✓" : `Couldn't approve — ${r.error}`, r.ok ? "success" : "error");
+    showNotification(r.ok ? "Approved — the AI's coding stands ✓" : `Couldn't approve — ${plainWriteError(r.error, "")}`, r.ok ? "success" : "error");
   };
   const onOverride = async (txn) => {
     if (!overrideCode) { showNotification("Pick an account to recode to first.", "error"); return; }
@@ -172,14 +173,14 @@ export default function ReviewView() {
     const r = await reviewOverride(txn, overrideCode, acct?.name);
     setBusyId(null);
     if (r.ok) { showNotification(`Recoded → ${acct?.name || overrideCode} ✓`, "success"); setOverrideFor(null); setOverrideCode(""); }
-    else showNotification(`Couldn't recode — ${r.error}`, "error");
+    else showNotification(`Couldn't recode — ${plainWriteError(r.error, "")}`, "error");
   };
   const onResolveDoc = async (item, resolution) => {
     setBusyId(item.id);
     const r = await resolveIntakeItem(item.id, resolution, resolution === "rejected" ? "Dismissed in CPA review" : "Acknowledged — handle in its queue");
     setBusyId(null);
     if (r.ok) { showNotification(resolution === "rejected" ? "Dismissed ✓" : "Acknowledged ✓", "success"); refreshDropped(); }
-    else showNotification(`Couldn't resolve — ${r.error}`, "error");
+    else showNotification(`Couldn't resolve — ${plainWriteError(r.error, "")}`, "error");
   };
   const openTxn = (txn) => { setReturnTo && setReturnTo({ view: "review", label: "Review" }); setSelectedInvoice && setSelectedInvoice(invoices.find(i => i.id === txn.id) || txn); setView && setView("detail"); };
 
@@ -203,7 +204,7 @@ export default function ReviewView() {
     const r = await reviewOverride(txn, mapped.gl_code, mapped.gl_name);   // same verified persistence path
     setBusyId(null);
     if (r.ok) { showNotification(`Resolved from the client's answer → ${mapped.gl_name} ✓`, "success"); setAskFor(null); setAskAnswer(""); }
-    else showNotification(`Couldn't resolve — ${r.error}`, "error");
+    else showNotification(`Couldn't resolve — ${plainWriteError(r.error, "")}`, "error");
   };
 
   const statCard = (label, value, tone) => (
@@ -229,7 +230,7 @@ export default function ReviewView() {
             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--sc-gold-line)" }}>
               <div style={{ fontSize: 13, color: "var(--sc-text)" }}>{waitingCopy(c)}</div>
               {c.action === "reload"
-                ? (c.reloadable && <button disabled={c.loading} onClick={async () => { const r = await reloadHeldIntake(c.intake_id); if (!r?.ok) showNotification(`Couldn't load ${c.filename}: ${r?.error || "unknown"}`, "error"); }} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{c.loading ? "Loading…" : `${c.goToLabel} →`}</button>)
+                ? (c.reloadable && <button disabled={c.loading} onClick={async () => { const r = await reloadHeldIntake(c.intake_id); if (!r?.ok) showNotification(`Couldn't load ${c.filename} — nothing was changed. ${plainWriteError(r?.error, "Please try again.")}`, "error"); }} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{c.loading ? "Loading…" : `${c.goToLabel} →`}</button>)
                 : <button onClick={() => setView(c.goTo)} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{c.goToLabel} →</button>}
             </div>
           ))}

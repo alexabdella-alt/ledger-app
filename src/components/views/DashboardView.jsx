@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../../lib/plainWriteError";
 import { homeWaitingList, waitingHeadline, WAIT } from "../../lib/homeWaiting";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
@@ -871,7 +872,7 @@ export function HomeWaitingList({ navTo }) {
     if (a.kind === "nav") { (doors[a.view] || (() => go(a.view)))(); return; }
     setBusy(item.id);
     try {
-      if (a.kind === "reload") { for (const id of a.intakeIds || []) { const r = await reloadHeldIntake(id); if (!r?.ok) showNotification(`Couldn't bring that back: ${r?.error || "unknown"}`, "error"); } }
+      if (a.kind === "reload") { for (const id of a.intakeIds || []) { const r = await reloadHeldIntake(id); if (!r?.ok) showNotification(`Couldn't bring that back — nothing was changed. ${plainWriteError(r?.error, "Please try again.")}`, "error"); } }
       else if (a.kind === "mail_allow") await releaseHeldInbound(a.message);
       else if (a.kind === "mail_ignore") await ignoreHeldInbound(a.message);
       else if (a.kind === "recurring_yes") await acceptRecurringSuggestion(a.suggestion);

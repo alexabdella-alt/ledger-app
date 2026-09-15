@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { glIsExpense } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
@@ -68,7 +69,7 @@ export default function Tax1099View() {
       ? { ...existing, business_type:e.business_type, ein_ssn:e.ein_ssn||existing.ein_ssn||null, mailing_address:e.mailing_address||existing.mailing_address||null, is_1099_exempt:exempt }
       : { id: Date.now()+Math.random(), name:e.name, type:"vendor", business_type:e.business_type, ein_ssn:e.ein_ssn||null, mailing_address:e.mailing_address||null, is_1099_exempt:exempt, created_at:new Date().toISOString() };
     const r = await persistContact(merged);
-    if (!r?.ok) { showNotification(`We couldn't save ${e.name}'s details — nothing was changed. ${r?.error || ""}`.trim(), "error"); return; }
+    if (!r?.ok) { showNotification(`We couldn't save ${e.name}'s details — nothing was changed. ${plainWriteError(r?.error, "")}`.trim(), "error"); return; }
     const saved = r.row?.id ? { ...merged, db_id: r.row.id } : merged;
     setContacts(prev => existing ? prev.map(c => c.id===existing.id ? saved : c) : [saved, ...prev]);
     logAudit && logAudit("vendor_1099_updated", `Set business type for ${e.name}: ${TYPE_OPTIONS.find(t=>t.v===e.business_type)?.label||e.business_type}`, null, { vendor:e.name, business_type:e.business_type });
@@ -80,7 +81,7 @@ export default function Tax1099View() {
     const c = v.contact;
     const merged = c ? { ...c, sent_1099_2025:true } : { id:Date.now()+Math.random(), name:v.name, type:"vendor", sent_1099_2025:true, business_type:"individual", created_at:new Date().toISOString() };
     const r = await persistContact(merged);
-    if (!r?.ok) { showNotification(`We couldn't record that ${v.name}'s 1099 was sent — it still shows as needing one. ${r?.error || ""}`.trim(), "error"); return; }
+    if (!r?.ok) { showNotification(`We couldn't record that ${v.name}'s 1099 was sent — it still shows as needing one. ${plainWriteError(r?.error, "")}`.trim(), "error"); return; }
     const saved = r.row?.id ? { ...merged, db_id: r.row.id } : merged;
     setContacts(prev => c ? prev.map(x=>x.id===c.id?saved:x) : [saved, ...prev]);
     logAudit && logAudit("1099_sent", `Marked 1099 as sent for ${v.name} (${taxYear})`, null, { vendor:v.name, taxYear });
