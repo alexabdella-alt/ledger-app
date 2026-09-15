@@ -11,7 +11,7 @@ const money = (n, sign) => {
   return v < 0 ? (sign ? "-" + s : "(" + s + ")") : s;
 };
 const pct = (p) => (p == null ? "—" : `${p > 0 ? "+" : ""}${p}%`);
-const pctColor = (p, goodUp = true) => (p == null || p === 0 ? "var(--sc-text-mut)" : (p > 0) === goodUp ? "var(--sc-success)" : "var(--sc-error)");
+const pctColor = (p, goodUp = true) => (p == null || p === 0 ? "#888" : (p > 0) === goodUp ? "var(--sc-success)" : "var(--sc-error)");
 const toneColor = (t) => t === "good" ? "var(--sc-success)" : t === "watch" ? "var(--sc-warning)" : "var(--sc-error)";
 const toneLabel = (t) => t === "good" ? "Healthy" : t === "watch" ? "Worth a look" : "Needs attention";
 
@@ -78,7 +78,7 @@ export default function MonthlyReportsPanel() {
       <div>
         <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginBottom: 16 }}>Your month-end figures — worked out from your books as they stand, so every number here matches your Home page and your P&L.</div>
         {reports.length === 0 && (
-          <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 32, textAlign: "center", color: "var(--sc-text-mut)" }}>
+          <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 32, textAlign: "center", color: "#888" }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>🗓️</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: "var(--sc-text)", marginBottom: 4 }}>No monthly reports yet</div>
             <div style={{ fontSize: 13 }}>Reports appear here for each month you have booked activity.</div>
@@ -93,17 +93,17 @@ export default function MonthlyReportsPanel() {
                   onMouseEnter={e => (e.currentTarget.style.background = "var(--sc-bg)")} onMouseLeave={e => (e.currentTarget.style.background = "var(--sc-surface)")}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 600, color: "var(--sc-text)" }}>{r.label || formatPeriod(r.period)}</div>
-                    <div style={{ fontSize: 12, color: "var(--sc-text-mut)", marginTop: 2 }}>{r.transaction_count ?? 0} transactions</div>
+                    <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>{r.transaction_count ?? 0} transactions</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: "var(--sc-text-mut)" }}>Revenue</div>
+                    <div style={{ fontSize: 11, color: "#888" }}>Revenue</div>
                     <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "'DM Mono',monospace" }}>{money(r.pl?.revenue?.current)}</div>
                   </div>
                   <div style={{ textAlign: "right", width: 120 }}>
-                    <div style={{ fontSize: 11, color: "var(--sc-text-mut)" }}>Net income</div>
+                    <div style={{ fontSize: 11, color: "#888" }}>Net income</div>
                     <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "'DM Mono',monospace", color: net >= 0 ? "var(--sc-success)" : "var(--sc-error)" }}>{money(net, true)}</div>
                   </div>
-                  <span style={{ color: "var(--sc-text-mut)", fontSize: 18 }}>›</span>
+                  <span style={{ color: "#888", fontSize: 18 }}>›</span>
                 </div>
               );
             })}
@@ -139,7 +139,7 @@ export default function MonthlyReportsPanel() {
   // Print-only HTML → basis for the CPA-reviewed PDF.
   const printReport = () => {
     const esc = s => String(s == null ? "" : s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-    const row = (name, c, p, ch, pc, bold) => `<tr style="${bold ? "font-weight:600;border-top:2px solid var(--sc-text);" : ""}"><td style="padding:6px 0;">${esc(name)}</td><td style="text-align:right;">${money(c)}</td><td style="text-align:right;color:var(--sc-text-mut);">${money(p)}</td><td style="text-align:right;">${money(ch, true)}</td><td style="text-align:right;color:var(--sc-text-mut);">${pc == null ? "—" : pc + "%"}</td></tr>`;
+    const row = (name, c, p, ch, pc, bold) => `<tr style="${bold ? "font-weight:600;border-top:2px solid #111;" : ""}"><td style="padding:6px 0;">${esc(name)}</td><td style="text-align:right;">${money(c)}</td><td style="text-align:right;color:#888;">${money(p)}</td><td style="text-align:right;">${money(ch, true)}</td><td style="text-align:right;color:#888;">${pc == null ? "—" : pc + "%"}</td></tr>`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(label)} — Financial Summary</title>
       <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:760px;margin:32px auto;padding:0 24px;line-height:1.5;}
       h1{font-size:24px;margin:0 0 4px;} h2{font-size:15px;border-bottom:1px solid #ddd;padding-bottom:6px;margin:28px 0 10px;}
@@ -178,14 +178,14 @@ export default function MonthlyReportsPanel() {
     <div style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px" }}>
       <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 4 }}>{lbl}</div>
       <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: color || "var(--sc-text)" }}>{val}</div>
-      {sub && <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{sub}</div>}
     </div>
   );
   const plRow = (name, line, indent, bold, goodUp = true) => (
     <tr style={{ borderTop: bold ? "2px solid var(--sc-border)" : "1px solid var(--sc-surface-2)", fontWeight: bold ? 700 : 400 }}>
       <td style={{ padding: "9px 12px", paddingLeft: indent ? 28 : 12 }}>{name}</td>
       <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "'DM Mono',monospace" }}>{money(line.current)}</td>
-      <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "'DM Mono',monospace", color: "var(--sc-text-mut)" }}>{money(line.prior)}</td>
+      <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "'DM Mono',monospace", color: "#888" }}>{money(line.prior)}</td>
       <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "'DM Mono',monospace", color: pctColor(line.changePct, goodUp) }}>{pct(line.changePct)}</td>
     </tr>
   );
@@ -211,7 +211,7 @@ export default function MonthlyReportsPanel() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ ...sectionTitle, marginBottom: 2 }}>Profit &amp; Loss</div>
-            <div style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>
+            <div style={{ fontSize: 12, color: "#888" }}>
               {isYtd
                 ? `Year to date · ${d.pl_ytd?.range?.from || ""} → ${label}`
                 : `${label} only`}
@@ -230,7 +230,7 @@ export default function MonthlyReportsPanel() {
           </div>
         </div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead><tr style={{ color: "var(--sc-text-mut)", fontSize: 11 }}>
+          <thead><tr style={{ color: "#888", fontSize: 11 }}>
             <th style={{ textAlign: "left", padding: "0 12px 8px" }}>LINE</th>
             <th style={{ textAlign: "right", padding: "0 12px 8px" }}>{plCurHead}</th>
             <th style={{ textAlign: "right", padding: "0 12px 8px" }}>{plPriorHead}</th>
@@ -276,7 +276,7 @@ export default function MonthlyReportsPanel() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div style={{ ...card, marginBottom: 0 }}>
           <div style={sectionTitle}>Top Vendors by Spend</div>
-          {(d.top_vendors || []).length === 0 && <div style={{ fontSize: 13, color: "var(--sc-text-mut)" }}>No vendor spend this month.</div>}
+          {(d.top_vendors || []).length === 0 && <div style={{ fontSize: 13, color: "#888" }}>No vendor spend this month.</div>}
           {(d.top_vendors || []).map((v, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: i ? "1px solid var(--sc-surface-2)" : "none", fontSize: 13 }}>
               <span>{v.vendor}</span><span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{money(v.total)}</span>
@@ -297,7 +297,7 @@ export default function MonthlyReportsPanel() {
           {d.anomalies.map((a, i) => (
             <div key={i} style={{ padding: "8px 0", borderTop: i ? "1px solid var(--sc-warning-soft)" : "none" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: a.severity === "high" ? "var(--sc-error)" : "var(--sc-warning)" }}>{a.title}</div>
-              {a.description && <div style={{ fontSize: 13, color: "var(--sc-text-mut)", marginTop: 2 }}>{a.description}</div>}
+              {a.description && <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>{a.description}</div>}
             </div>
           ))}
         </div>

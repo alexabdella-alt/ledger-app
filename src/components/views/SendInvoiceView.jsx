@@ -212,25 +212,25 @@ export default function SendInvoiceView() {
   .header{display:flex;justify-content:space-between;margin-bottom:40px}
   .company{font-size:22px;font-weight:700}
   .invoice-meta{text-align:right}
-  .invoice-number{font-size:28px;font-weight:700;color:var(--sc-gold)}
+  .invoice-number{font-size:28px;font-weight:700;color:#B9962E}
   table{width:100%;border-collapse:collapse;margin:24px 0}
-  th{background:var(--sc-text);padding:10px 12px;text-align:left;font-size:12px;letter-spacing:1px;text-transform:uppercase}
-  td{padding:10px 12px;border-bottom:1px solid var(--sc-border)}
+  th{background:#111;color:#fff;padding:10px 12px;text-align:left;font-size:12px;letter-spacing:1px;text-transform:uppercase}
+  td{padding:10px 12px;border-bottom:1px solid #e5e5e5}
   .totals{margin-left:auto;width:280px;margin-top:16px}
   .total-row{display:flex;justify-content:space-between;padding:6px 0}
   .grand-total{font-size:18px;font-weight:700;border-top:2px solid #111;padding-top:10px;margin-top:6px}
-  .footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--sc-border);color:#888;font-size:12px}
+  .footer{margin-top:40px;padding-top:20px;border-top:1px solid #e5e5e5;color:#888;font-size:12px}
 </style></head><body>
 <div class="header">
   <div>
     <div class="company">${esc(companySettings.name||"Your Company")}</div>
-    <div style="margin-top:4px;color:var(--sc-text-mut)">${esc(companySettings.address||"")} ${esc(companySettings.city||"")} ${esc(companySettings.state||"")}</div>
-    <div style="color:var(--sc-text-mut)">${companySettings.taxId?"EIN: "+esc(companySettings.taxId):""}</div>
+    <div style="margin-top:4px;color:#888">${esc(companySettings.address||"")} ${esc(companySettings.city||"")} ${esc(companySettings.state||"")}</div>
+    <div style="color:#888">${companySettings.taxId?"EIN: "+esc(companySettings.taxId):""}</div>
   </div>
   <div class="invoice-meta">
     <div class="invoice-number">${esc(draft.invoice_number)}</div>
     <div style="margin-top:8px"><strong>Bill To:</strong> ${esc(draft.customer)}</div>
-    <div style="color:var(--sc-text-mut)">${esc(draft.customer_email||"")}</div>
+    <div style="color:#888">${esc(draft.customer_email||"")}</div>
     <div style="margin-top:8px">Issue Date: ${esc(draft.issue_date)}</div>
     <div>Due Date: ${esc(draft.due_date||"On Receipt")}</div>
     <div>Terms: ${esc(draft.terms||"Net 30")}</div>
