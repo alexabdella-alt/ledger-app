@@ -53,3 +53,14 @@ describe("inReportRange", () => {
     expect(src).not.toMatch(/new Date\(inv\.date\)/);
   });
 });
+
+// C464 — the report window defaults once the company has loaded, not at mount.
+describe("C464", () => {
+  it("the default-period effect waits for companyDataLoaded", () => {
+    const src = fs.readFileSync("src/components/views/ReportsView.jsx", "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+    const i = src.indexOf('currentPeriodRange("fy"');
+    const eff = src.slice(src.lastIndexOf("React.useEffect(() => {", i), src.indexOf("]);", i) + 3);
+    expect(eff).toMatch(/if \(!companyDataLoaded\) return;/);
+    expect(eff).toMatch(/\}, \[companyDataLoaded\]\);/);
+  });
+});

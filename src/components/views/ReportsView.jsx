@@ -36,10 +36,15 @@ export default function ReportsView() {
   // always today (never a stale saved value from sessionStorage), "from" is the
   // fiscal-year start (respects fiscal_year_end + cutoff). The user can still change
   // the range while on the page; reopening Reports resets to the current period.
+  // C464 — ONCE THE COMPANY HAS LOADED, not at mount. A reload while on Reports ran this
+  // before the company row arrived, so the default period used the reset fiscal year end
+  // ("12-31") and no cutoff; when the real settings landed a second later the range stayed
+  // wrong until the person changed it (C427's shape on the report window).
   React.useEffect(() => {
+    if (!companyDataLoaded) return;
     const { from, to } = currentPeriodRange("fy", { fiscalYearEnd: companySettings?.fiscalYearEnd || "12-31", cutoffDate });
     setReportDateFrom(from); setReportDateTo(to); setReportRange("custom");
-  }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- run once on open
+  }, [companyDataLoaded]);   // eslint-disable-line react-hooks/exhaustive-deps -- once per company load
             // Date filter helper
             // C440 — decided on the date STRING (see lib/reportRange.js): `new Date("2026-09-01")`
             // is August 31 from any US zone, so the first of every month used to fall into the
