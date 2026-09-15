@@ -17,11 +17,13 @@ import React from "react";
 // none of them used it — copy-paste, paid for on every keypress.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// C444 — the owner's words (C377): "burn rate" is startup vocabulary a restaurant owner never
+// uses, and a suggested question teaches the person what the product expects them to say.
 const SUGGESTIONS = [
-  "What's my burn rate?",
-  "Show me unpaid bills",
-  "What's my P&L this month?",
-  "Did anything need my attention?",
+  "How much am I spending each month?",
+  "Which bills haven't I paid?",
+  "Did I make money this month?",
+  "Does anything need my attention?",
 ];
 
 export default function ChatComposer({ onSend, loading = false, showSuggestions = false, prefill = null }) {
