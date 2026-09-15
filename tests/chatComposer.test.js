@@ -51,7 +51,10 @@ describe("★★ the things that still need to reach the box do it without costi
 
   it("★★★ and the box only clears when the send was ACCEPTED — otherwise typing is lost", () => {
     // handleChatSend returns false when it declines (already loading, empty after trim).
-    expect(composer).toMatch(/if \(onSend && onSend\(msg\) === false\) return;/);
+    // C404 — `handleChatSend` is ASYNC, so a `=== false` check compared a Promise and never
+    // fired; the box clears at once and is REFILLED when the promise resolves to false.
+    expect(composer.replace(/\/\/[^\n]*/g, "")).toMatch(/const r = onSend\(msg\);\s*if \(r === false\) return;\s*setText\(""\);\s*Promise\.resolve\(r\)\.then\(\(ok\) => \{ if \(ok === false\) setText\(\(cur\) => cur \|\| msg\); \}\)/);
+    expect(composer).not.toMatch(/onSend\(msg\) === false\) return;/);
     expect(app).toMatch(/if \(!msg \|\| chatLoading\) return false;/);
   });
 });
@@ -60,7 +63,7 @@ describe("★★ the things that still need to reach the box do it without costi
 describe("★ Home's ask sends on arrival (C404)", () => {
   const composer = require("fs").readFileSync("src/components/ChatComposer.jsx", "utf8");
   it("the effect sends a `send` prefill and clears only when the chat accepted it", () => {
-    expect(composer).toMatch(/if \(prefill\.send && !loading && onSend && onSend\(String\(prefill\.text\)\.trim\(\)\) !== false\) \{ setText\(""\); return; \}/);
+    expect(composer).toMatch(/if \(prefill\.send && !loading && onSend\) \{ deliver\(String\(prefill\.text\)\.trim\(\)\); return; \}/);
     // a declined send (or a plain prefill) still fills the box
     const eff = composer.slice(composer.indexOf("if (prefill.send"), composer.indexOf("}, [prefill]"));
     expect(eff).toMatch(/setText\(prefill\.text\);/);
@@ -73,3 +76,28 @@ describe("★ Home's ask sends on arrival (C404)", () => {
     expect(reports).not.toMatch(/send: true/);
   });
 });
+
+// And the property itself, run: an async decline refills the box; an accepted send clears it.
+describe("★★ the composer's box follows the chat's ASYNC verdict", () => {
+  it("a send whose promise resolves false puts the text back", async () => {
+    const React = await import("react");
+    const { renderToString } = await import("react-dom/server");
+    // The composer is a client component; the logic under test is `deliver`, which the
+    // source guard above pins to the shape — this exercises the same shape as a pure function.
+    const deliverLike = (onSend, setText, msg) => {
+      const r = onSend(msg);
+      if (r === false) return Promise.resolve();
+      setText("");
+      return Promise.resolve(r).then((ok) => { if (ok === false) setText((cur) => cur || msg); });
+    };
+    let box = "what did I spend on food?";
+    const setText = (v) => { box = typeof v === "function" ? v(box) : v; };
+    await deliverLike(async () => false, setText, box);
+    expect(box).toBe("what did I spend on food?");
+    await deliverLike(async () => true, setText, box);
+    expect(box).toBe("");
+    // a synchronous false leaves the text untouched and never clears
+    box = "hello"; await deliverLike(() => false, setText, box); expect(box).toBe("hello");
+  });
+});
+

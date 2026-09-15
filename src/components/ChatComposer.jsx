@@ -37,7 +37,7 @@ export default function ChatComposer({ onSend, loading = false, showSuggestions 
     // press it again in the drawer read as "nothing happened". A prefill marked `send` is
     // sent on arrival; if the chat declines (still answering the last one), the text stays
     // in the box exactly as a plain prefill would, so nothing typed is lost.
-    if (prefill.send && !loading && onSend && onSend(String(prefill.text).trim()) !== false) { setText(""); return; }
+    if (prefill.send && !loading && onSend) { deliver(String(prefill.text).trim()); return; }
     setText(prefill.text);
     inputRef.current?.focus();
   }, [prefill]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -45,11 +45,21 @@ export default function ChatComposer({ onSend, loading = false, showSuggestions 
 
   // ★ THE BOX CLEARS ONLY WHEN THE SEND IS ACCEPTED. `onSend` returns false when it declines
   // (already loading, empty after trim) — clearing regardless would lose what someone typed.
+  // C404 — `onSend` is ASYNC in the app, so `onSend(msg) === false` compared a Promise and
+  // was never true: the C297 guarantee ("the box clears only when the send is accepted") did
+  // not hold — a declined send cleared the box. The box clears at once (a send in flight
+  // should look sent) and is REFILLED if the promise resolves to false and nothing new
+  // has been typed meanwhile.
+  const deliver = (msg) => {
+    if (!onSend) return;
+    const r = onSend(msg);
+    if (r === false) return;               // declined synchronously — the text stays
+    setText("");
+    Promise.resolve(r).then((ok) => { if (ok === false) setText((cur) => cur || msg); }).catch(() => setText((cur) => cur || msg));
+  };
   const send = () => {
     if (!canSend) return;
-    const msg = text.trim();
-    if (onSend && onSend(msg) === false) return;
-    setText("");
+    deliver(text.trim());
   };
 
   return (
