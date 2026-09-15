@@ -8810,7 +8810,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               <button onClick={()=>setView("home")} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer" }}>Review →</button>
             </div>
           )}
-          <div key={view} className="sc-rise" style={{ maxWidth:1296, margin:"0 auto", padding:"32px 48px" }}>
+          {/* C426 — keyed by the COMPANY as well as the view. A screen's own state (a bulk
+              selection, a search, an open edit form) is about the company it was made on;
+              keyed by view alone it survived a company switch, so three transactions ticked
+              on one company read "3 selected" over the next one's table. The same locality
+              rule as the composer's key (C297). */}
+          <div key={`${view}:${currentCompany?.id || "none"}`} className="sc-rise" style={{ maxWidth:1296, margin:"0 auto", padding:"32px 48px" }}>
 
           {/* Top-level tab redirects (legacy → new consolidated views) */}
 
