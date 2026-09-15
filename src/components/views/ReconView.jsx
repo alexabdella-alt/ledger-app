@@ -72,7 +72,7 @@ function suggestRole(desc, amount){
 }
 
 export default function ReconView() {
-  const {
+  const { BOOKABLE_ACCOUNTS,
     bankAccounts, invoices, setInvoices, reconciliations,
     currentCompany, session, supabase, bookToDb, logAudit, showNotification, loadAllData,
     CHART_OF_ACCOUNTS, setView, getAccountByRole, cashGlCodes, loadStatementExceptions,
@@ -1023,7 +1023,7 @@ export default function ReconView() {
                   <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", background:"var(--sc-bg)", padding:"10px", borderRadius:9 }}>
                     <span style={{ fontSize:12, color:"var(--sc-text-2)" }}>Add as:</span>
                     <select id={`gl_${t.id}`} defaultValue={gl.gl_code} style={{ ...inp, width:260 }}>
-                      {(CHART_OF_ACCOUNTS||[]).filter(a=>a.code>="4000").map(a=><option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
+                      {(BOOKABLE_ACCOUNTS||[]).filter(a=>a.code>="4000").map(a=><option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
                     </select>
                     <button onClick={()=>{ const code=document.getElementById(`gl_${t.id}`).value; const a=(CHART_OF_ACCOUNTS||[]).find(x=>x.code===code)||gl; addToBooks(t,{gl_code:a.code,gl_name:a.name}); }} style={{ padding:"9px 14px", borderRadius:8, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Add to books</button>
                     <button onClick={()=>setAddQuick(null)} style={{ padding:"9px 12px", borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Cancel</button>

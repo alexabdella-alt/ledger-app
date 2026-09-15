@@ -11,7 +11,7 @@ const FIELDS = [["date", "Date"], ["type", "Type"], ["num", "Num"], ["name", "Ve
 const money = fmtSignedMoney;
 
 export default function QBOImportView() {
-  const {
+  const { BOOKABLE_ACCOUNTS,
     currentCompany, session, supabase, CHART_OF_ACCOUNTS, getAccountByRole, getAccountByCode,
     invoices, isAdmin, logAudit, showNotification, setView, loadAllData, flagBookingVisibilityFailure, storeDocument, routeFileToType,
   } = useERP();
@@ -103,7 +103,7 @@ export default function QBOImportView() {
     return Object.values(m).sort((a, b) => b.total - a.total);
   }, [parsed.rows]);
 
-  const expenseAccts = (CHART_OF_ACCOUNTS || []).filter(a => a.category === "Expenses");
+  const expenseAccts = (BOOKABLE_ACCOUNTS || []).filter(a => a.category === "Expenses");   // C472
   const allAccts = (CHART_OF_ACCOUNTS || []);
 
   // ── The import ──

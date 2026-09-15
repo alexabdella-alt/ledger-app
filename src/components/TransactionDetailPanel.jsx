@@ -110,7 +110,7 @@ function SourceDocPreview({ doc, onExpand }) {
 
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
-    invoices, signoffs, CHART_OF_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
+    invoices, signoffs, CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
     setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer, attachDepreciationToExistingAsset, isOwner, isAdmin,
   } = useERP();
 
@@ -413,7 +413,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
 
                   <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 6, letterSpacing: 0.5 }}>CHANGE CATEGORY</div>
                   <select defaultValue={sel.gl_code} onChange={e => doRecode(sel, e.target.value)} style={{ width: "100%", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 9, padding: "10px 12px", fontSize: 13, color: "var(--sc-text)", outline: "none" }}>
-                    {(CHART_OF_ACCOUNTS || []).filter(a => a.code >= "4000").map(a => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
+                    {(BOOKABLE_ACCOUNTS || []).filter(a => a.code >= "4000").map(a => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
                   </select>
                   <button onClick={() => setRecodeOpen(false)} style={{ marginTop: 8, background: "none", border: "none", color: "var(--sc-text-2)", fontSize: 12, cursor: "pointer", padding: 0 }}>Cancel</button>
                 </div>
