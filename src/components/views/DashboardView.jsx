@@ -807,7 +807,7 @@ export default function DashboardView() {
                 return (
                   <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, overflow:"hidden" }}>
                     <div style={{ padding:"16px 24px", borderBottom:"1px solid var(--sc-border)", fontSize:14, fontWeight:600, color:"var(--sc-text)" }}>Activity</div>
-                    {shown.length===0 ? <div style={{ padding:"44px", textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>Nothing yet — drop a document above to get started.</div> :
+                    {shown.length===0 ? <div style={{ padding:"44px", textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>{companyDataLoaded ? "Nothing yet — drop a document above to get started." : "Loading your activity…"}</div> :
                       shown.map((it,idx)=>(
                         <div key={idx} onClick={()=>{ if(it.inv){ setReturnTo({view:"home",label:"Home"}); setSelectedInvoice(it.inv); setView("detail"); } }}
                           onMouseEnter={e=>{ if(it.inv) e.currentTarget.style.background="var(--sc-surface-2)"; }} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
