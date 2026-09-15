@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
-import { renderViewHtml, POPULATED } from "./helpers/renderView.jsx";
+import { renderViewHtml } from "./helpers/renderView.jsx";
+import { POPULATED } from "./helpers/populatedFixture.js";
 import TaxView from "../src/components/views/TaxView.jsx";
 
 // ═════════════════════════════════════════════════════════════════════════════

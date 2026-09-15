@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import { ownerTrustState } from "../src/lib/ownerTrust.js";
 import { reportAttestationLine } from "../src/lib/signoff.js";
-import { renderViewHtml, POPULATED } from "./helpers/renderView.jsx";
+import { renderViewHtml } from "./helpers/renderView.jsx";
+import { POPULATED } from "./helpers/populatedFixture.js";
 import ReportsView from "../src/components/views/ReportsView.jsx";
 
 // ═════════════════════════════════════════════════════════════════════════════
