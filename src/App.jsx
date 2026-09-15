@@ -91,6 +91,7 @@ import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { fetchLedger, resolveEntryDbId, alreadyReversed } from "./lib/ledger";
+import { settlementTargetsIn, liveSettlementsFor, flagAfterSettlementChange } from "./lib/settlementFlag";
 import { Sentry, setSentryUser, clearSentryUser, isSentryEnabled } from "./lib/sentry";
 import ChatComposer from "./components/ChatComposer";
 import ChatRichOutput from "./components/ChatRichOutput";
@@ -2919,6 +2920,29 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Soft-deletes a journal entry (sets deleted_at/deleted_by) so it vanishes from
   // every view but stays fully recoverable. Returns the DB entry ids touched so the
   // Undo toast can restore them. The audit_log keeps the immutable record.
+  // ── C466 — THE PAID FLAG FOLLOWS THE SETTLEMENT IT RECORDS ──────────────────
+  // `rows` are settlement rows just removed, reversed, or restored; `excludeIds` are the
+  // ids to treat as gone regardless of what the (possibly lagging) ledger says. For each
+  // bill or invoice they settle, the flag becomes what the LIVE settlements say. A lost
+  // write is audited: the GL is right either way, and the flag is the display hint.
+  const resyncSettledFlags = async (rows, { excludeIds = [], entries = null } = {}) => {
+    const targets = settlementTargetsIn(rows);
+    if (!targets.length) return true;
+    const ledger = entries || invoicesRef.current || [];
+    let allOk = true;
+    for (const t of targets) {
+      const remaining = liveSettlementsFor(ledger, t.targetId, { excludeIds }).length;
+      const status = flagAfterSettlementChange(t.kind, remaining);
+      const patch = remaining ? { payment_status: status } : { payment_status: status, paid_at: null, payment_method: null };
+      const r = await persistApStatus(t.targetId, patch);
+      if (!r.ok) {
+        allOk = false;
+        logAudit("settled_flag_resync_failed", `A payment was removed or restored, but its bill couldn't be marked ${status} (${r.error || `matched ${r.matched} rows`}) — "Bills to pay" may disagree with the balance until the next payment`, null, { target_entry_id: t.targetId, status, remaining });
+      }
+      setInvoices(prev => prev.map(i => String(i.db_entry_id || i.id) === t.targetId ? { ...i, payment_status: status, ...(remaining ? {} : { paid_at: null, payment_method_used: null, matched: false }) } : i));
+    }
+    return allOk;
+  };
   const softDeleteJournalEntry = async (invoice) => {
     if (!currentCompany?.id) return [];
     // SIGNED-PERIOD guard (O83 Trap 2): deleting/voiding an entry inside a signed month removes
@@ -2987,6 +3011,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (ids.length) {
       const idset = new Set(ids.map(String));
       setInvoices(prev => prev.filter(i => !idset.has(String(i.db_entry_id)) && !idset.has(String(i.id))));
+      // C466 — a deleted payment un-pays the bill it settled (unless another live one remains).
+      await resyncSettledFlags([invoice], { excludeIds: ids });
     }
     return ids;
   };
@@ -3088,6 +3114,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         return;
       }
       setInvoices(prev => { const have = new Set(prev.map(i => String(i.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
+      // C466 — a restored payment re-pays its bill. The snapshots are counted with the
+      // ledger because the ref lags the setInvoices above by a render.
+      await resyncSettledFlags(snaps, { entries: [...(invoicesRef.current || []), ...snaps] });
       logAudit("invoice_restored", `Restored ${items.length} entr${items.length===1?"y":"ies"}`, null, null);
       showNotification("Restored ✓");
     });
@@ -3199,6 +3228,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
     logAudit("entry_reversed", `Reversed ${invoice.vendor || orig.description || "entry"} · ${fmtMoney(invoice.amount || 0)}${reason ? ` — ${reason}` : ""}`,
       null, { reverses: String(origId), reversal_id: revId ? String(revId) : null }, byAI ? "AI Chat" : "owner");
+    // C466 — a reversed payment un-pays the bill it settled (the reversal is not in the
+    // ledger yet, so the settlement is excluded by id rather than found reversed).
+    await resyncSettledFlags([invoice], { excludeIds: [String(origId)] });
     return revId;
   };
 
@@ -3228,7 +3260,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (!undoRes.ok) {
         logAudit("reversal_undo_failed", `Couldn't undo the correction for ${snap.vendor || "entry"} (${undoRes.reason})`, null, { journal_entry_id: String(revId), reason: undoRes.reason });
         showNotification("Couldn't undo that — the correction is still in your books. Nothing was lost; try removing it from the transaction itself.", "error");
+        return;   // C466 — this fell through to "Restored ✓" after the error toast
       }
+      // C466 — the settlement stands alone again, so its bill is paid again. The reversal
+      // is excluded by id: the ledger still holds it until the reload below.
+      await resyncSettledFlags([snap], { excludeIds: [String(revId)] });
       try { await loadAllData(); } catch {}
       logAudit("entry_reversal_undone", `Undid reversal of ${snap.vendor || "entry"}`, null, { reversal_id: String(revId) });
       showNotification("Restored ✓");
