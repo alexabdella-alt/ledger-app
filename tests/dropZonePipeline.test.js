@@ -326,3 +326,14 @@ describe("C459", () => {
     expect(head.indexOf("!isDbId(account.id)")).toBeLessThan(head.indexOf('validateUpload(file, "bank")'));
   });
 });
+
+// C460 — Reconcile's account defaults to the first STORED account, never the placeholder.
+describe("C460", () => {
+  it("ReconView seeds from the first uuid account and adopts it when accounts arrive", () => {
+    const src = fs.readFileSync("src/components/views/ReconView.jsx", "utf8");
+    expect(src).toMatch(/const firstStored = \(bankAccounts\|\|\[\]\)\.find\(b => isDbId\(b\?\.id\)\) \|\| null;/);
+    expect(src).toMatch(/React\.useState\(firstStored\?\.id \|\| "manual"\)/);
+    expect(src).toMatch(/if \(accountId === "manual" && firstStored\) \{ setAccountId\(firstStored\.id\);/);
+    expect(src).not.toMatch(/React\.useState\(\(bankAccounts\|\|\[\]\)\[0\]\?\.id \|\| "manual"\)/);
+  });
+});

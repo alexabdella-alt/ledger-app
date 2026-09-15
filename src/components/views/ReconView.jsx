@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { isDbId } from "../../lib/contactIds";
 import { prefillEndingBalance, statementForPeriod, statementOfferCopy, statementToOffer, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
 import { monthLabel } from "../../lib/ownerTrust";
 import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
@@ -86,8 +87,16 @@ export default function ReconView() {
   const lastMonthEnd = ymdLocal(new Date(today.getFullYear(), today.getMonth(), 0));
 
   const [step, setStep] = React.useState("landing"); // landing | setup | match | summary | done
-  const [accountId, setAccountId] = React.useState((bankAccounts||[])[0]?.id || "manual");
-  const [accountName, setAccountName] = React.useState((bankAccounts||[])[0]?.name || "Primary Checking");
+  // C460 — the first STORED account, never the reset placeholder ({ id: "default" }) that sits
+  // in `bankAccounts` until the company's accounts arrive; and adopt the first real one when it
+  // does, if the person has not chosen. A session opened against the placeholder could not
+  // save (a non-uuid account id) — C194's gate said so, honestly, after the work.
+  const firstStored = (bankAccounts||[]).find(b => isDbId(b?.id)) || null;
+  const [accountId, setAccountId] = React.useState(firstStored?.id || "manual");
+  const [accountName, setAccountName] = React.useState(firstStored?.name || "Primary Checking");
+  React.useEffect(() => {
+    if (accountId === "manual" && firstStored) { setAccountId(firstStored.id); setAccountName(firstStored.name || "Primary Checking"); }
+  }, [firstStored?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [periodStart, setPeriodStart] = React.useState(lastMonthStart);
   const [periodEnd, setPeriodEnd] = React.useState(lastMonthEnd);
   const [statementBalance, setStatementBalance] = React.useState("");
