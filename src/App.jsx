@@ -1202,6 +1202,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // PREVIOUS company's entries while the screen showed the next one (the ids are the old
     // company's, and the writer is a member there, so nothing refuses it).
     setPendingAIActions(null); setPendingImportFile(null); setReconcileOffer(null); setShadowResult(null);
+    clarificationHoldsRef.current = {}; partialHoldsRef.current = {};   // C430 — hold records keyed by the OLD company's upload items
     setNotifications([]); setNotifOpen(false);
     setOnboardingUploadDone(false); setBusinessModalOpen(false);
   };
