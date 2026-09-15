@@ -1483,6 +1483,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!currentCompany?.id) return false;
     const targets = recodedInvoices || [];
     if (targets.length === 0) return false;
+    // C465 — a settlement (Dr A/P / Cr Cash, Dr Cash / Cr A/R) or an opening entry has no
+    // category line to move; recoding one would re-point its A/P or A/R leg and break the link
+    // to the bill it settles. Refused here as well as not offered in the panel.
+    const notRecodable = targets.find(inv => isSettlementEntry(inv) || inv?.source === "opening_balance");
+    if (notRecodable) { showNotification("That entry is a payment or a starting balance, so it has no category to change — change the category on the bill or invoice it settles.", "error"); return false; }
     // SIGNED-PERIOD guard (O83 Trap 2): a recode changes a signed month's account mix — block
     // it (reopen first). Any mutation of an attested period must be deliberate, never silent.
     const recBlocked = targets.find(inv => signedPeriodForDate(inv?.date, signoffs, { source: inv?.source }));

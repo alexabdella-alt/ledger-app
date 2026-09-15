@@ -351,7 +351,13 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   )}
                 </div>
               )}
-              {recodeOpen ? (
+              {/* C465 — a payment, a collection or an opening balance has no "category" to change:
+                  its lines are A/P-or-A/R and cash (or equity), and moving one would break the
+                  link to the bill it settles and teach the supplier the wrong account. The
+                  control is not offered on those rows (O124: not refused on click — absent). */}
+              {(settle || sel.source === "opening_balance") ? (
+                <div data-no-recode style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>{settle ? "A payment has no category of its own — change the category on the bill or invoice it settles." : "Starting balances are changed on the starting-balances screen, not here."}</div>
+              ) : recodeOpen ? (
                 <div>
                 {/* ── O129 — EQUIPMENT WITH NO SCHEDULE ────────────────────────────
                     Offered only on a DEBIT to a fixed-asset account: a credit is a disposal
