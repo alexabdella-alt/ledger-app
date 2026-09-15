@@ -54,7 +54,7 @@ describe("booking ✓ sentences follow the awaited write", () => {
     ordered(body, "setInvoices(prev => [ri, ...prev]);", "const jeId = await bookToDb(ri);", "if (!jeId) return;", "showNotification(`Booked to ${ri.gl_name} ✓`)");
   });
   it("manual entry — the form is cleared and Home is shown only once the entry is in the books", () => {
-    const body = fn("const doBook = async () => {", "// Duplicate invoice number check");
+    const body = fn("const doBookOnce = async () => {", "// Duplicate invoice number check");   // C433 — the gated body
     ordered(body, "const jeId = await bookToDb(invoice);", "if (!jeId) return;", "setForm({", 'setView("home")', "showNotification(`Booked to ${aiSuggestion.gl_name} ✓`)");
   });
 });
