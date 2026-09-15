@@ -39,7 +39,7 @@ import { planContractEntries } from "./lib/contractEntries";
 import { runShadowPass } from "./lib/shadowIo";
 import { shadowReport, shadowReportCopy } from "./lib/shadowReport";
 import { nameMatchCensus } from "./lib/nameMatch";
-import { isDegradedMode, degradedBannerCopy } from "./lib/aiFailure";
+import { isDegradedMode, degradedBannerCopy, chatFailureCopy } from "./lib/aiFailure";
 import { runIntakeDrain, fetchStoredFile } from "./lib/intakeDrainIo";
 import { loadMailChannel, loadHeldInbound, createMailChannel, addAllowedSender, releaseInboundMessage, ignoreInboundMessage, sendMailViaFunction } from "./lib/mailClient";
 import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
@@ -8343,16 +8343,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       if (!chatOpen) setHasUnread(true);
     } catch(e) {
       console.error("Chat error:", e);
-      const detail = e?.message || String(e);
-      const hint = /Failed to fetch|NetworkError/i.test(detail)
-        ? " (Couldn't reach the ai-proxy edge function — check your network or that the function is deployed.)"
-        : /401|403|token|auth/i.test(detail)
-          ? " (Authentication issue — try signing out and back in.)"
-          : /model|not_found|deprecat/i.test(detail)
-            ? " (The model may be unavailable — verify the ai-proxy model configuration.)"
-            : "";
-      setChatHistory(h => [...h, { role:"assistant", content:`⚠ I couldn't complete that request.\n\n${detail}${hint}`, id: Date.now()+1 }]);
-      showNotification("AI chat failed — see the chat panel for details.", "error");
+      // C414 — the bubble reads the classifier's owner sentence; the raw message and the
+      // operator hint go to the console and the audit row's meta, never the screen.
+      const fail = chatFailureCopy(e);
+      setChatHistory(h => [...h, { role:"assistant", content: fail.owner, id: Date.now()+1 }]);
+      try { logAudit("ai_chat_failed", `We couldn't answer a question in chat (${fail.kind.replace(/_/g, " ")})`, null, { kind: fail.kind, operator: fail.operator, message: String(e?.message || e) }); } catch {}
+      showNotification("I couldn't answer that — see the chat for what happened.", "error");
+      setChatLoading(false);
+      return false;   // C404 — a declined send keeps the text in the box, which the sentence promises
     }
     setChatLoading(false);
   };

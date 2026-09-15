@@ -78,7 +78,11 @@ export function classifyAIFailure({ status = null, body = null, message = "" } =
     };
   }
 
-  if (s === 500 || s === 502 || s === 503 || s === 504 || /overloaded|timeout|timed out|temporarily unavailable|fetch failed|network/.test(msg)) {
+  // C414 — "Failed to fetch" is the BROWSER's own wording for a dropped connection (Chrome,
+  // Safari), and the pattern matched only Node's "fetch failed". So a network blip during an
+  // upload classified UNKNOWN — permanent — and held the document for a person to look at,
+  // when the drain would have retried it a minute later.
+  if (s === 500 || s === 502 || s === 503 || s === 504 || /overloaded|timeout|timed out|temporarily unavailable|failed to fetch|fetch failed|networkerror|network/.test(msg)) {
     return {
       kind: AI_FAILURE.PROVIDER_BUSY, retryable: true, waitingHelps: true, resetsInMinutes: null,
       owner: "The document reader is busy right now. Everything you sent is saved and we'll keep trying — there's nothing to re-send.",
@@ -108,4 +112,29 @@ export function degradedBannerCopy(kind) {
   return kind === AI_FAILURE.OUT_OF_CREDIT
     ? "Document reading is paused — we're sorting it out on our end. You can still upload; everything is saved and will process as soon as it's back."
     : "Document reading is paused while we fix something on our end. You can still upload; everything is saved and will process once it's back.";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C414 — THE CHAT'S FAILURE SENTENCE, IN THE OWNER'S WORDS.
+//
+// The chat's catch printed `⚠ I couldn't complete that request.` followed by the RAW
+// error message — `AI service error (429 Too Many Requests): {"error":"rate_limited",…}` —
+// and hints written for the operator ("check that the ai-proxy edge function is deployed",
+// "verify the ai-proxy model configuration"). The classifier above already knew which of
+// four things had happened and carried an owner sentence on the thrown error; the chat
+// never read it, and its sentences are about DOCUMENTS ("we can't read documents right
+// now"), which is the wrong subject for a question that was typed. Same kinds, chat-shaped.
+// The operator detail goes to the console and the audit row's meta, never the bubble.
+// ─────────────────────────────────────────────────────────────────────────────
+export function chatFailureCopy(err) {
+  const f = err?.aiFailure || classifyAIFailure({ status: err?.status, message: err?.message || String(err || "") });
+  const mins = Number(f.resetsInMinutes);
+  const when = Number.isFinite(mins) && mins > 0 ? (mins < 60 ? `about ${Math.round(mins)} minute${Math.round(mins) === 1 ? "" : "s"}` : "about an hour") : null;
+  const owner =
+    f.kind === AI_FAILURE.OUR_LIMIT ? `I've hit my hourly limit for answering${when ? ` — it clears in ${when}` : ""}. Your question is still in the box; ask again then.`
+    : f.kind === AI_FAILURE.PROVIDER_BUSY ? "I couldn't reach the answering service just now — it's busy or the connection dropped. Your question is still in the box; try again in a moment."
+    : f.kind === AI_FAILURE.OUT_OF_CREDIT ? "I can't answer questions right now — this is on our side, not you. Your books are safe; try again later."
+    : f.kind === AI_FAILURE.NOT_CONFIGURED ? "I can't answer questions right now because something on our side needs fixing. Your books are safe; try again later."
+    : "I couldn't answer that just now, and I'm not sure why. Your question is still in the box — try again, and if it keeps happening, tell your accountant.";
+  return { kind: f.kind, owner, operator: f.operator || String(err?.message || err || ""), retryable: !!f.retryable };
 }
