@@ -347,7 +347,22 @@ function AppWrapper() {
     }}/>;
   }
 
-  if (!currentCompany) return null;
+  // C420 — reachable when the memberships loaded but none resolved to an openable company
+  // (a `companies` row the join could not read). A blank page says nothing; this says what
+  // to do.
+  if (!currentCompany) {
+    return (
+      <div style={{minHeight:"100vh",background:"var(--sc-bg)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",padding:24}}>
+        <div data-no-company-open style={{maxWidth:420,textAlign:"center",color:"var(--sc-text-2)",fontSize:14,lineHeight:1.6}}>
+          We couldn't open your company just now. Try again, or sign out and back in.
+          <div style={{marginTop:16,display:"flex",gap:10,justifyContent:"center"}}>
+            <button onClick={()=>loadCompanies(session)} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"var(--sc-gold)",border:"none",color:"var(--sc-on-accent)",cursor:"pointer"}}>Try again</button>
+            <button onClick={handleSignOut} style={{padding:"9px 22px",borderRadius:9,fontSize:13,background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer"}}>Sign out</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Sentry.ErrorBoundary fallback={<SentryFallback />}>
