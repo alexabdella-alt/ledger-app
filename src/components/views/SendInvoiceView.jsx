@@ -231,7 +231,7 @@ export default function SendInvoiceView() {
   </div>
   <div class="invoice-meta">
     <div class="invoice-number">${esc(draft.invoice_number)}</div>
-    <div style="margin-top:8px"><strong>Bill To:</strong> ${esc(draft.customer)}</div>
+    <div style="margin-top:8px"><strong>Bill To:</strong> ${esc(draft.customer)}${draft.customer_address ? `<br>${esc(draft.customer_address)}` : ""}</div>
     <div style="color:#888">${esc(draft.customer_email||"")}</div>
     <div style="margin-top:8px">Issue Date: ${esc(draft.issue_date ? fmtDate(draft.issue_date) : "")}</div>
     <div>Due Date: ${esc(invoiceDueLabel(draft, fmtDate))}</div>
@@ -322,6 +322,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                 <div style={{marginBottom:24}}>
                   <div style={{fontSize:11,letterSpacing:1,color:"var(--sc-text-mut)",fontWeight:600,marginBottom:4}}>BILL TO</div>
                   <div style={{fontSize:15,fontWeight:600,color:"var(--sc-text)"}}>{draft.customer||"—"}</div>
+                  {draft.customer_address && <div style={{fontSize:12,color:"var(--sc-text-2)",whiteSpace:"pre-line"}}>{draft.customer_address}</div>}
                   {draft.customer_email && <div style={{fontSize:12,color:"var(--sc-text-mut)"}}>{draft.customer_email}</div>}
                 </div>
                 <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -395,6 +396,11 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                         <div>
                           <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>EMAIL</div>
                           <input type="email" value={draft.customer_email} onChange={e=>setDraft(d=>({...d,customer_email:e.target.value}))} placeholder="customer@email.com"
+                            style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}/>
+                        </div>
+                        <div>
+                          <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>MAILING ADDRESS</div>
+                          <input value={draft.customer_address||""} onChange={e=>setDraft(d=>({...d,customer_address:e.target.value}))} placeholder="Street, city, state ZIP"
                             style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}/>
                         </div>
                         <div>

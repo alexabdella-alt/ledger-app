@@ -19,7 +19,7 @@ export function emptyInvoiceLine() {
 export function newInvoiceDraft({ invoiceNumber = "", salesTaxRate = 0, issueDate = null } = {}) {
   return {
     invoice_number: invoiceNumber,
-    customer: "", customer_email: "",
+    customer: "", customer_email: "", customer_address: "",   // C475 — printed under BILL TO
     issue_date: issueDate || todayLocal(),   // a new invoice's date defaults to today — local, not UTC
     due_date: "", notes: "", terms: "Net 30",
     line_items: [emptyInvoiceLine()],
@@ -88,6 +88,7 @@ export function customerDefaultsFor(contact, draft = {}) {
   if (!contact) return {};
   const out = {};
   if (!draft.customer_email && contact.email) out.customer_email = contact.email;
+  if (!draft.customer_address && contact.mailing_address) out.customer_address = contact.mailing_address;   // C475
   const days = _termsToDays(contact.payment_terms);
   if (days != null) {
     const opt = days === 0 ? "On Receipt" : `Net ${days}`;

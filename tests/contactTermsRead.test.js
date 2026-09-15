@@ -52,3 +52,16 @@ describe("C473 · the invoice draft takes the customer's saved terms and email",
     expect(INVOICE_TERM_OPTIONS).toEqual(["On Receipt", "Net 15", "Net 30", "Net 60", "Net 90"]);
   });
 });
+
+// C475 — the customer's saved mailing address goes on the invoice too, under BILL TO.
+describe("C475 · the invoice carries the customer's address", () => {
+  it("prefills from the contact and never overwrites a typed one", () => {
+    expect(customerDefaultsFor({ mailing_address: "1 Main St, Austin TX" }, { terms: "Net 30" })).toEqual({ customer_address: "1 Main St, Austin TX" });
+    expect(customerDefaultsFor({ mailing_address: "1 Main St" }, { terms: "Net 30", customer_address: "typed" })).toEqual({});
+  });
+  it("the printed template and the preview show it under Bill To", () => {
+    const src = fs.readFileSync("src/components/views/SendInvoiceView.jsx", "utf8");
+    expect(src).toMatch(/<strong>Bill To:<\/strong> \$\{esc\(draft\.customer\)\}\$\{draft\.customer_address \? `<br>\$\{esc\(draft\.customer_address\)\}` : ""\}/);
+    expect(src).toMatch(/\{draft\.customer_address && <div[^>]*>\{draft\.customer_address\}<\/div>\}/);
+  });
+});
