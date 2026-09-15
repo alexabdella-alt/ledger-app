@@ -1,12 +1,12 @@
 import React from "react";
 import { fmtMoney } from "../../lib/format";
 import { useERP } from "../ERPContext";
-import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE } from "../../lib/tax";
+import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE, filedKey } from "../../lib/tax";
 import { plan1099, plan1099Copy } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const lsKey = `cfai_tax_${currentCompany?.id || "x"}`;
@@ -65,6 +65,7 @@ export default function TaxView() {
         return;
       }
       rowExists.current = true;
+      setFiledDeadlines && setFiledDeadlines(next.filed || {});   // C388 — Home and the bell read this map
     } catch (e) {
       console.error("[tax_settings] save failed:", e?.message || e);
       showNotification && showNotification("Couldn't save your tax figures — they haven't been kept. Please try again.", "error");
@@ -163,7 +164,7 @@ export default function TaxView() {
       <div style={{ ...card, marginBottom: 16, padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--sc-surface-2)", fontSize: 13, fontWeight: 600 }}>Upcoming tax deadlines</div>
         {deadlines.map(d => {
-          const isFiled = !!filed[`${d.key}-${d.year}`];
+          const isFiled = !!filed[filedKey(d)];
           return (
             <div key={`${d.key}-${d.year}`} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--sc-surface-2)", opacity: isFiled ? 0.55 : 1 }}>
               <div style={{ width: 6, height: 38, borderRadius: 3, background: isFiled ? "var(--sc-text-mut)" : d.color, flexShrink: 0 }} />

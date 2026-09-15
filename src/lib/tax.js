@@ -54,8 +54,13 @@ export function getTaxDeadlines(now = new Date()) {
 }
 
 // The soonest deadline within `withinDays` (for the Home alert). null if none.
-export function nextUrgentDeadline(now = new Date(), withinDays = 30) {
-  return getTaxDeadlines(now).find(d => d.days <= withinDays && d.days >= 0) || null;
+// C388 — `filed` is the Taxes screen's map (`${key}-${year}` → true): a deadline the person
+// has marked filed is not due, so Home and the bell stop asking about it. Without this the
+// tick on the Taxes screen changed nothing anywhere else (O123: an action whose effect is
+// invisible will be repeated).
+export const filedKey = (d) => `${d.key}-${d.year}`;
+export function nextUrgentDeadline(now = new Date(), withinDays = 30, { filed = {} } = {}) {
+  return getTaxDeadlines(now).find(d => d.days <= withinDays && d.days >= 0 && !(filed && filed[filedKey(d)])) || null;
 }
 
 // The 12 authoritative deduction categories, keyed to the company's GL accounts by
