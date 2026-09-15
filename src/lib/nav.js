@@ -94,6 +94,17 @@ export const NAV_SECTION_SETTINGS = { id: "settings", label: "Settings", items: 
   ["onboard", "Import from QuickBooks"],
 ] };
 
+// C382 — the human name of a view id, read off the same rows the sidebar draws, so a
+// sentence about a screen ("Opened Reconcile") says what the sidebar says and never leaks
+// a route id ("Opened recon"). Rowless views carry their own name; an unknown id is null.
+const ROWLESS_LABELS = { dashboard: "Home", "send-invoice": "Send Invoice", detail: "the transaction", add: "New entry", admin: "Admin", matching: "Matching", contracts: "Contracts", legal: "Legal" };
+export function viewLabel(viewId) {
+  const v = String(viewId || "");
+  const rows = [...NAV_SECTIONS, NAV_SECTION_REVIEW, NAV_SECTION_SETTINGS].flatMap((s) => s.items).concat(REVIEW_TOOLS);
+  const hit = rows.find(([id]) => id === v);
+  return hit ? hit[1] : (ROWLESS_LABELS[v] || null);
+}
+
 // Flatten a section list to its view ids — for the guard, and so a test can ask
 // "what is on screen" without walking the shape.
 export const sectionViewIds = (sections) =>

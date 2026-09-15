@@ -59,7 +59,7 @@ import { findContactForName } from "./lib/contactMatch";
 import { unknownDocRow, unknownDocFromRow, isDbUnknownDocId, UNKNOWN_DOC_SELECT } from "./lib/unknownDocs";
 import { onboardingSteps } from "./lib/onboarding";
 import { notificationTarget } from "./lib/notificationDoor";
-import { visibleNav, isReviewerSeat, navRedirect, activeNavItem, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
+import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
 import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
@@ -8047,6 +8047,16 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             "opening-balances":"opening-balances", "bank-accounts":"opening-balances",
           };
           const target = viewAliases[String(action.view).toLowerCase().trim()] || action.view;
+          // C382 — the model names a screen; the SEAT decides whether it opens. A bare
+          // setView here used to say "Opened recon" and then have the route guard bounce
+          // an owner Home — the chat claiming a door it had just been refused (C381's bell,
+          // one surface over). A screen this seat may not open lands Home and the reply says
+          // whose it is; a screen that does not exist says so rather than "opened".
+          const seatOpts = { role: userRole, isPlatformAdmin, previewAsOwner };
+          if (!canSeeView(target, seatOpts)) {
+            setView("home");
+            actionSummary.push(ALL_VIEW_IDS.includes(target) ? GATED_VIEW_REDIRECT_COPY : "I couldn't find a screen by that name — here's your home page.");
+          } else {
           // Apply a Books filter when the AI specifies one (e.g. "show unpaid bills")
           if (target === "books") {
             const f = String(action.filter || "").toLowerCase().trim();
@@ -8059,7 +8069,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           }
           setView(target);
           if (target === "contracts") setContractView("list");
-          actionSummary.push(`Opened ${target}`);
+          actionSummary.push(`Opened ${viewLabel(target) || "that screen"}`);
+          }
         }
         // recode / retag_project are DESTRUCTIVE — never executed inline here; they are
         // staged behind the confirm gate and run by executeDestructiveAction on Confirm.
