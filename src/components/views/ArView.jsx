@@ -7,7 +7,7 @@ import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
 import { computeAR, isLiveEntry, glAccountBalance } from "../../lib/reports";
-import { isSettlementEntry } from "../../lib/bankMatch";
+import { receivableEntries, openReceivables } from "../../lib/receivables";
 import { aiTextOf } from "../../lib/aiJson";
 
 export default function ArView() {
@@ -33,10 +33,8 @@ export default function ArView() {
             // deposits showed as "awaiting collection" (O83 Feb), contradicting the GL-derived
             // total (which is $0). Excludes settlements so a collection JE isn't counted either.
             const arRoleCode = getAccountByRole("accounts_receivable")?.code;
-            const arEq = (a, b) => a != null && b != null && String(a) === String(b);
-            const hasArLeg = i => arRoleCode != null && (arEq(i.gl_code, arRoleCode) || arEq(i.secondary_gl_code, arRoleCode));
-            const arAll   = invoices.filter(i => isLiveEntry(i) && hasArLeg(i) && !isSettlementEntry(i));
-            const arOpen  = arAll.filter(i => i.payment_status !== "collected" && i.payment_status !== "paid");
+            const arAll   = receivableEntries(invoices, arRoleCode);   // C452 — one definition with the Customers screen
+            const arOpen  = openReceivables(invoices, arRoleCode);
             const arOverdue = arOpen.filter(i => i.due_date && i.due_date < today);
 
             // GL-derived AR Outstanding — the GL balance of Accounts Receivable, same
