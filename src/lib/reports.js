@@ -631,7 +631,7 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
   const concerns = [];
   if (!profitable) concerns.push({ key: "profit", severity: "high", text: `You've spent more than you've brought in this year (${money(net)}).` });
   // Don't re-state the burn number here — it's already in the facts row above; reference it.
-  if (runwayShort && !profitable) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: `At this pace your cash lasts about ${runway} month${runway === 1 ? "" : "s"}.`, actionLabel: "See where the money goes", actionView: "runway" });
+  if (runwayShort && !profitable) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: runway < 1 ? "There isn't a month of cash on hand to cover it." : `At this pace your cash lasts about ${runway} month${runway === 1 ? "" : "s"}.`, actionLabel: "See where the money goes", actionView: "runway" });
   if (overdue.length) concerns.push({ key: "ar", severity: overdueTotal >= 5000 ? "high" : "med", text: `${overdue.length} invoice${overdue.length > 1 ? "s are" : " is"} 60+ days overdue (${money(overdueTotal)}).`, actionLabel: "Chase overdue invoices", actionView: "ar" });
   if (burnUpPct) concerns.push({ key: "burn", severity: "med", text: `Spending is up ${burnUpPct}% versus last month.` });
 
@@ -639,9 +639,13 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
   const tone = concerns.some(c => c.severity === "high") ? "concern" : concerns.length ? "watch" : "good";
 
   const months = (n) => `${n} month${n === 1 ? "" : "s"}`;
+  // C384 — runway is floored, so cash below one month's spending reads "lasts about 0
+  // months", which a person reads as nonsense rather than as the warning it is. Under a
+  // month is said as what it means.
+  const lastsClause = runway < 1 ? " — and there isn't a month of cash on hand to cover it" : ` — at this pace your cash lasts about ${months(runway)}`;
   const lead = profitable
     ? `You're making money.${runwayInfinite ? "" : ` Your cash covers about ${months(runway)} of spending at the current pace, even before new sales.`}`
-    : `You're spending more than you're bringing in${runwayInfinite ? "" : ` — at this pace your cash lasts about ${months(runway)}`}.`;
+    : `You're spending more than you're bringing in${runwayInfinite ? "" : lastsClause}.`;
   const headline = !concerns.length
     ? `${lead} Everything looks healthy right now.`
     : `${lead} ${tone === "concern" ? "Needs attention" : "Heads up"}: ${concerns[0].text}`;

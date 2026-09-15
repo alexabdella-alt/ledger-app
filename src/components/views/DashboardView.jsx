@@ -757,7 +757,7 @@ export default function DashboardView() {
                     <div onClick={()=>setShowCommit(s=>!s)} style={{ padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
                       <div>
                         <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>📋 {active.length} active {active.length===1?"commitment":"commitments"} · {fmtMoney(monthly)}/mo total</div>
-                        <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>Leases &amp; recurring contracts (ASC 842)</div>
+                        <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>Leases and ongoing agreements</div>
                       </div>
                       <span style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:600 }}>{showCommit?"Hide":"Show"} {showCommit?"▲":"▼"}</span>
                     </div>
@@ -771,7 +771,7 @@ export default function DashboardView() {
                               style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 20px", borderTop: i?"1px solid var(--sc-surface-2)":"none", cursor: cockpit?"pointer":"default" }}>
                               <div style={{ minWidth:0 }}>
                                 <div style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{c.counterparty||"Contract"}</div>
-                                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{c.contract_type||"contract"}{ml!=null?` · ${ml} mo remaining`:""}</div>
+                                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{(CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]?.label) || c.contract_type || "Agreement"}{ml!=null?` · ${ml} ${ml===1?"month":"months"} left`:""}</div>
                               </div>
                               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                                 <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmtMoney(c.payment_amount||0)}/mo</span>
