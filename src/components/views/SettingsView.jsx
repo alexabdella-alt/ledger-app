@@ -220,7 +220,7 @@ export default function SettingsView() {
                     ))}
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingTop:10,borderTop:"1px solid var(--sc-surface-2)"}}>
-                    <div style={{fontSize:12,color:"var(--sc-text-2)"}}>Total cash across accounts</div>
+                    <div style={{fontSize:12,color:"var(--sc-text-2)"}}>Statement balances you entered, added up<div style={{fontSize:11,color:"var(--sc-text-mut)",marginTop:2}}>Your cash on hand on Home comes from your books, not from these figures.</div></div>   {/* C462 — §12: a bank's stated balance is the reconciliation target, never the displayed cash on hand */}
                     <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--sc-success)"}}>${bankAccounts.reduce((s,b)=>s+(parseFloat(b.current_balance)||0),0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
                   </div>
                   <button onClick={()=>setBankAccounts(prev=>[...prev,{id:Date.now()+Math.random(),name:"",type:"checking",gl_code:getAccountByRole("cash")?.code,institution:"",current_balance:0}])}
