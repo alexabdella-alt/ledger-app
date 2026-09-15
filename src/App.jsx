@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
 import { supabase, getAuthHeaders } from "./lib/supabase";
@@ -2524,7 +2525,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // Tax deadline within 30 days, with the estimated amount.
       const nextDue0 = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlinesRef.current });   // C388 — one reading with Home; a filed deadline is not due
       const est = nextDue0 ? taxEstimate(invoicesRef.current, new Date().getFullYear()) : null;
-      const nextDue = deadlineIsWaiting(nextDue0, est) ? nextDue0 : null;   // C434 — same rule as Home
+      const has1099s = nextDue0 && nextDue0.kind === "1099" ? plan1099ForYear({ invoices: invoicesRef.current, contacts: contactsRef.current || [], chart: CHART_OF_ACCOUNTS, year: nextDue0.year - 1 }).outstanding > 0 : true;   // C435
+      const nextDue = deadlineIsWaiting(nextDue0, est, { has1099s }) ? nextDue0 : null;   // C434/C435 — same rule as Home
       if (nextDue) {
         const amt = nextDue.est && est.quarterly > 0 ? ` — est. ${fmtApprox(est.quarterly)}` : "";
         createNotification({ type: "tax_deadline", title: `${nextDue.label} due in ${nextDue.days} day${nextDue.days === 1 ? "" : "s"}${amt}`, description: nextDue.plain, link_view: "tax" });
@@ -2751,6 +2753,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Refs kept current for the scans (avoid stale closures). Declared AFTER the
   // invoicesRef sync (top of the component) so the effects below see fresh data.
   const reconciliationsRef = useRef([]);
+  const contactsRef = useRef([]);   // C435 — the bell's generator runs on a timer and reads refs
+  useEffect(() => { contactsRef.current = contacts; }, [contacts]);
   const clarificationQueueRef = useRef([]);
   useEffect(() => { reconciliationsRef.current = reconciliations; }, [reconciliations]);
   useEffect(() => { clarificationQueueRef.current = clarificationQueue; }, [clarificationQueue]);

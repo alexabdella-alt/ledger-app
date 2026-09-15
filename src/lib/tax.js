@@ -32,10 +32,10 @@ export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid =
 export function getTaxDeadlines(now = new Date()) {
   const defs = [
     { m: 0, d: 15, label: "Q4 estimated tax payment", plain: "Pay your 4th-quarter estimated taxes for last year", form: "Form 1040-ES", url: "https://www.irs.gov/payments", est: true },
-    { m: 0, d: 31, label: "W-2s & 1099s to recipients", plain: "Send W-2s and 1099-NEC forms to your employees and contractors", form: "W-2 / 1099-NEC", url: "https://www.irs.gov/forms-pubs/about-form-1099-nec" },
-    { m: 1, d: 28, label: "1099s to IRS (paper filing)", plain: "File your 1099s with the IRS if you're filing on paper", form: "Form 1096 / 1099", url: "https://www.irs.gov/forms-pubs/about-form-1096" },
+    { m: 0, d: 31, kind: "1099", label: "W-2s & 1099s to recipients", plain: "Send W-2s and 1099-NEC forms to your employees and contractors", form: "W-2 / 1099-NEC", url: "https://www.irs.gov/forms-pubs/about-form-1099-nec" },
+    { m: 1, d: 28, kind: "1099", label: "1099s to IRS (paper filing)", plain: "File your 1099s with the IRS if you're filing on paper", form: "Form 1096 / 1099", url: "https://www.irs.gov/forms-pubs/about-form-1096" },
     { m: 2, d: 15, label: "S-Corp & Partnership returns", plain: "File your S-Corp (1120-S) or Partnership (1065) tax return", form: "Form 1120-S / 1065", url: "https://www.irs.gov/forms-pubs/about-form-1120-s" },
-    { m: 2, d: 31, label: "1099s to IRS (e-filing)", plain: "File your 1099s with the IRS electronically", form: "Form 1099", url: "https://www.irs.gov/filing/e-file-forms-1099-with-iris" },
+    { m: 2, d: 31, kind: "1099", label: "1099s to IRS (e-filing)", plain: "File your 1099s with the IRS electronically", form: "Form 1099", url: "https://www.irs.gov/filing/e-file-forms-1099-with-iris" },
     { m: 3, d: 15, label: "Personal return + Q1 estimated", plain: "File your individual return (1040) and pay 1st-quarter estimated taxes", form: "Form 1040 / 1040-ES", url: "https://www.irs.gov/payments", est: true },
     { m: 5, d: 16, label: "Q2 estimated tax payment", plain: "Pay your 2nd-quarter estimated taxes", form: "Form 1040-ES", url: "https://www.irs.gov/payments", est: true },
     { m: 8, d: 15, label: "Q3 estimated + extended business returns", plain: "Pay 3rd-quarter estimated taxes; extended S-Corp/Partnership returns are also due", form: "Form 1040-ES / 1120-S / 1065", url: "https://www.irs.gov/payments", est: true },
@@ -64,8 +64,11 @@ export const filedKey = (d) => `${d.key}-${d.year}`;
 // days" as its first item on Home, and would be told again every quarter regardless of
 // income (O122: a card the user sees every quarter is a bug). Filing deadlines (1099s, the
 // return itself) stay — those are about forms, not amounts.
-export function deadlineIsWaiting(d, estimate) {
+export function deadlineIsWaiting(d, estimate, { has1099s = true } = {}) {
   if (!d) return false;
+  // C435 — a 1099 filing deadline waits only when the plan names someone to file for; a
+  // company with no reportable contractor was told to "send 1099-NEC forms" every January.
+  if (d.kind === "1099") return !!has1099s;
   if (!d.est) return true;
   return !!(estimate && Number(estimate.total) > 0);
 }

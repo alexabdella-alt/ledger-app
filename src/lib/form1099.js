@@ -1,3 +1,4 @@
+import { vendorGroupKey } from "./vendorIdentity.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // FULL 1099 ELIGIBILITY — worked out from what the supplier is and what they were paid,
 // not from a flag someone ticked.
@@ -183,6 +184,23 @@ export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode =
     // understates the work — and the unsure ones are the ones a person has to act on.
     outstanding: by(VERDICT.ELIGIBLE).length + by(VERDICT.NEEDS_INFO).length,
   };
+}
+
+// C435 — THE PLAN FOR A YEAR, FROM THE LEDGER AND THE CHART. This was assembled inside
+// `TaxView` (the vendor-key map, the role lookup); Home and the bell need the same answer to
+// decide whether a 1099 filing deadline is waiting at all, and a second assembly would be
+// the C316 mismatch waiting to recur. One builder, three readers.
+export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, threshold = IRS_1099_THRESHOLD } = {}) {
+  const key = keyOf || ((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase());
+  const roleOfCode = (code) => (chart || []).find((a) => String(a.code) === String(code))?.system_role || null;
+  const yearRows = (invoices || []).filter((i) => String(i?.date || "").startsWith(String(year)));
+  const byName = new Map();
+  for (const r of yearRows) {
+    const k = r.vendor_key || key(r.vendor);
+    if (!k) continue;
+    (byName.get(k) || byName.set(k, []).get(k)).push(r);
+  }
+  return plan1099({ contacts, vendorRowsFor: (c) => byName.get(key(c.name)) || [], roleOfCode, threshold });
 }
 
 export function plan1099Copy(plan = {}) {

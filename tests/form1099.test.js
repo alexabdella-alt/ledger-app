@@ -164,7 +164,7 @@ describe("★★ the derivation reaches the screen", () => {
   const tax = fs.readFileSync(path.join(process.cwd(), "src/components/views/TaxView.jsx"), "utf8");
 
   it("★★★ the tax page counts from the plan, not from the flag", () => {
-    expect(tax).toMatch(/plan1099\(\{/);
+    expect(tax).toMatch(/plan1099ForYear\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year, keyOf \}\)/);   // C435 — one builder with Home and the bell
     expect(tax).toMatch(/const need1099 = plan\.outstanding/);
     // the old flag count must be gone, not merely unused
     expect(tax).not.toMatch(/c\.is1099 && !c\.is_1099_exempt/);
@@ -230,12 +230,14 @@ describe("★★ the derivation reaches the screen", () => {
     // one normaliser for the map key AND the lookup, which is what the case above proves
     // matters. `r.vendor_key || r.vendor` passing was exactly the false comfort before.
     expect(tax).toMatch(/const keyOf = React\.useCallback\(\(s\) => vendorGroupKey\(s\)/);
-    expect(tax).toMatch(/r\.vendor_key \|\| keyOf\(r\.vendor\)/);
-    expect(tax).toMatch(/byName\.get\(keyOf\(c\.name\)\)/);
+    // C435 — the map moved into the lib builder; the SAME key on both sides is pinned there
+    const lib = fs.readFileSync(new URL("../src/lib/form1099.js", import.meta.url), "utf8");
+    expect(lib).toMatch(/r\.vendor_key \|\| key\(r\.vendor\)/);
+    expect(lib).toMatch(/byName\.get\(key\(c\.name\)\)/);
     expect(tax).not.toMatch(/String\(c\.name \|\| ""\)\.toLowerCase\(\)/);
   });
 
   it("★ and only this year's rows are considered", () => {
-    expect(tax).toMatch(/startsWith\(String\(year\)\)/);
+    expect(fs.readFileSync(new URL("../src/lib/form1099.js", import.meta.url), "utf8")).toMatch(/startsWith\(String\(year\)\)/);   // C435 — in the builder
   });
 });

@@ -8,6 +8,7 @@ import { ownerActivityText } from "../../lib/activityFeed";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
+import { plan1099ForYear } from "../../lib/form1099";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
@@ -842,7 +843,7 @@ export default function DashboardView() {
 // ─────────────────────────────────────────────────────────────────────────────
 export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
-    isAdmin, isOwner, bankMatch, invoices, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
+    isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
     uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines } = useERP();
   const [busy, setBusy] = React.useState(null);
   const cockpit = !!navSeat?.isReviewerSeat;
@@ -853,7 +854,8 @@ export function HomeWaitingList({ navTo }) {
   const overdueTotal = overdueBills.reduce((t, i) => t + (Number(i.amount) || 0), 0);
   const dl0 = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlines });   // C388 — a deadline marked filed on the Taxes screen is not waiting
   const est = dl0 && dl0.est ? taxEstimate(invoices || [], new Date().getFullYear()) : null;
-  const dl = deadlineIsWaiting(dl0, est) ? dl0 : null;   // C434 — an estimated payment with nothing to pay is not waiting
+  const has1099s = React.useMemo(() => dl0 && dl0.kind === "1099" ? plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: dl0.year - 1 }).outstanding > 0 : true, [dl0?.kind, dl0?.year, invoices, contacts, CHART_OF_ACCOUNTS]);   // C435 — 1099s are filed for the PREVIOUS year
+  const dl = deadlineIsWaiting(dl0, est, { has1099s }) ? dl0 : null;   // C434/C435 — an estimated payment with nothing to pay, or a 1099 with nobody to file for, is not waiting
   const taxEstimateText = dl && dl.est && est && est.total > 0 ? ` — estimated amount ${fmtApprox(est.quarterly)}` : "";
   const items = homeWaitingList({
     openCards: (clarificationQueue || []).filter(c => !c.resolved),
