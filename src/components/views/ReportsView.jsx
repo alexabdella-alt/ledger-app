@@ -9,6 +9,7 @@ import { pill } from "../../lib/ui";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
 import { reportNavBack } from "../../lib/reportNav";
 import { reportAttestationLine, activeSignedPeriods } from "../../lib/signoff";
+import { plainPeriodSummary } from "../../lib/plainSummary";
 import { vendorCreep, vendorCreepCopy } from "../../lib/vendorCreep";
 import { monthLabel } from "../../lib/ownerTrust";
 import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
@@ -224,6 +225,12 @@ export default function ReportsView() {
                       line, from the sign-off rows, on every report. */}
                   <div data-attestation style={{ fontSize:12.5, color:"var(--sc-text-2)", marginTop:8 }}>
                     {reportAttestationLine({ reviewedThrough, selfSigned: ownerTrust?.selfSigned, monthLabel })}
+                  </div>
+                  {/* U4 (C379) — the period in plain words, read from the same derivations as the
+                      tables below, so the paragraph cannot disagree with the table under it. */}
+                  <div data-plain-summary style={{ fontSize:14, color:"var(--sc-text)", lineHeight:1.6, marginTop:12, padding:"12px 16px", background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, maxWidth:720 }}>
+                    {plainPeriodSummary({ rangeInvoices: filtered, allInvoices: invoices, rangeLabel: rangeLabels[reportRange] || "this period",
+                      arCode: getAccountByRole?.("accounts_receivable")?.code || null, apCode: getAccountByRole?.("accounts_payable")?.code || null }).text}
                   </div>
                 </div>
 
