@@ -1,4 +1,5 @@
 import React from "react";
+import { plainWriteError } from "../lib/plainWriteError";
 import { supabase } from "../lib/supabase";
 
 function CompanySetup({ session, onComplete }) {
@@ -6,35 +7,59 @@ function CompanySetup({ session, onComplete }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
 
+  // C419 — every step after `create_company` was fired and forgotten. A failed seed (the
+  // exact thing O108's unrun check (c) worried about after `069`) left a company with NO
+  // chart: the owner landed on Home with the built-in chart shown as theirs, and the first
+  // booking would have materialised every account with no system_role — every role lookup
+  // falling back forever. Each step is checked now, the seed is verified by reading it
+  // back, and a retry after a failure resumes from the step that failed rather than
+  // creating a SECOND company.
+  const createdRef = React.useRef(null);
   const create = async () => {
     if (!name.trim()) return;
     setLoading(true); setError(null);
     try {
-      // Create company + owner membership atomically (RLS-compatible).
-      // create_company() is SECURITY DEFINER and inserts the company_users
-      // owner row in the same transaction, so the caller can read it back.
-      const { data: company, error: ce } = await supabase
-        .rpc("create_company", { p_name: name.trim() });
-      if (ce) throw ce;
-      if (!company?.id) throw new Error("Company creation failed — no company returned.");
-      // Seed chart of accounts
-      await supabase.rpc("seed_company_accounts", { p_company_id: company.id });
-      // Create default bank account
+      let company = createdRef.current;
+      if (!company) {
+        // Create company + owner membership atomically (RLS-compatible).
+        // create_company() is SECURITY DEFINER and inserts the company_users
+        // owner row in the same transaction, so the caller can read it back.
+        const { data, error: ce } = await supabase.rpc("create_company", { p_name: name.trim() });
+        if (ce) throw ce;
+        if (!data?.id) throw new Error("We couldn't create the company — nothing was set up. Please try again.");
+        company = data; createdRef.current = data;
+      }
+      // Seed chart of accounts — and READ IT BACK, because the RPC returning without an
+      // error and the chart existing are two different facts.
+      const { count: haveAccounts } = await supabase.from("accounts").select("id", { count: "exact", head: true }).eq("company_id", company.id);
+      if (!haveAccounts) {
+        const { error: se } = await supabase.rpc("seed_company_accounts", { p_company_id: company.id });
+        if (se) throw new Error(`The company was created but its categories couldn't be set up — press Create again to retry. ${plainWriteError(se.message)}`.trim());
+        const { count: seeded } = await supabase.from("accounts").select("id", { count: "exact", head: true }).eq("company_id", company.id);
+        if (!seeded) throw new Error("The company was created but its categories didn't appear — press Create again to retry.");
+      }
+      // Create default bank account (once)
       const { data: cashAcct } = await supabase.from("accounts")
-        .select("id").eq("company_id", company.id).eq("code", "1000").single();
-      if (cashAcct) {
-        await supabase.from("bank_accounts").insert({
+        .select("id").eq("company_id", company.id).eq("code", "1000").maybeSingle();
+      const { count: haveBank } = await supabase.from("bank_accounts").select("id", { count: "exact", head: true }).eq("company_id", company.id);
+      if (cashAcct && !haveBank) {
+        const { error: be } = await supabase.from("bank_accounts").insert({
           company_id: company.id, name: "Primary Checking",
           type: "checking", gl_account_id: cashAcct.id
-        });
+        }).select("id");
+        if (be) throw new Error(`The company and its categories are set up, but the starting bank account couldn't be added — press Create again to retry. ${plainWriteError(be.message)}`.trim());
       }
-      // Stub subscription
-      await supabase.from("subscriptions").insert({
-        company_id: company.id, plan: "trial", status: "trialing",
-        trial_ends_at: new Date(Date.now() + 14*24*60*60*1000).toISOString()
-      });
+      // Stub subscription (once)
+      const { count: haveSub } = await supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("company_id", company.id);
+      if (!haveSub) {
+        const { error: sube } = await supabase.from("subscriptions").insert({
+          company_id: company.id, plan: "trial", status: "trialing",
+          trial_ends_at: new Date(Date.now() + 14*24*60*60*1000).toISOString()
+        }).select("id");
+        if (sube) throw new Error(`Nearly there — the trial couldn't be started — press Create again to retry. ${plainWriteError(sube.message)}`.trim());
+      }
       onComplete(company);
-    } catch(e) { setError(e.message); setLoading(false); }
+    } catch(e) { console.error("[company setup]", e?.message || e); setError(e.message); setLoading(false); }
   };
 
   const s = {
