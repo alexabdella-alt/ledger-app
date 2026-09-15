@@ -48,3 +48,31 @@ describe("★ the card routes every booking through it and disables the controls
     expect((src.match(/disabled=\{[^}]*\bbusy\b[^}]*\}/g) || []).length).toBeGreaterThanOrEqual(3);
   });
 });
+
+// C402 — the keyed variant, and the three money-moving handlers that run under it.
+describe("★★ makeKeyedInFlight", () => {
+  it("a second press on the SAME key runs nothing; a different key runs alongside", async () => {
+    const { makeKeyedInFlight } = await import("../src/lib/oneInFlight.js");
+    let a = 0, b = 0;
+    const { run } = makeKeyedInFlight();
+    const p1 = run("bill-1", async () => { a++; return await later("x"); });
+    const p2 = run("bill-1", async () => { a++; return await later("y"); });
+    const p3 = run("bill-2", async () => { b++; return await later("z"); });
+    expect(await p2).toBe(false);
+    expect(await p1).toBe("x"); expect(await p3).toBe("z");
+    expect([a, b]).toEqual([1, 1]);
+    await run("bill-1", async () => { a++; });   // settled → admitted again
+    expect(a).toBe(2);
+  });
+  it("markBillPaid, postPayroll and the Recurring screen's Post now are keyed runs (source)", () => {
+    const app = fs.readFileSync("src/App.jsx", "utf8");
+    expect(app).toMatch(/const markBillPaid = \(entryId, opts = \{\}\) => paymentsInFlight\.current\.run\(entryId, \(\) => markBillPaidOnce\(entryId, opts\)\);/);
+    expect(app).toMatch(/const postPayroll = \(imp, opts = \{\}\) => payrollPostsInFlight\.current\.run\(/);
+    const rec = fs.readFileSync("src/components/views/RecurringView.jsx", "utf8");
+    expect(rec).toMatch(/const runRecurring = \(r\) => postsInFlight\.current\.run\(r\.id, \(\) => runRecurringOnce\(r\)\);/);
+    // nothing calls the *Once bodies directly
+    expect((app.match(/markBillPaidOnce\(/g) || []).length).toBe(1);
+    expect((app.match(/postPayrollOnce\(/g) || []).length).toBe(1);
+    expect((rec.match(/runRecurringOnce\(/g) || []).length).toBe(1);
+  });
+});

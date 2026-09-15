@@ -66,7 +66,7 @@ describe("★★ one implementation, two callers", () => {
 
   it("★ and the pipeline is exposed exactly once", () => {
     expect((app.match(/const handlePayrollFile = async/g) || []).length).toBe(1);
-    expect((app.match(/const postPayroll = async/g) || []).length).toBe(1);
+    expect((app.match(/const postPayrollOnce = async/g) || []).length).toBe(1);   // C402 wrapped it in a keyed in-flight guard
   });
 });
 

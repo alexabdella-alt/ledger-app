@@ -59,6 +59,7 @@ import { findContactForName } from "./lib/contactMatch";
 import { unknownDocRow, unknownDocFromRow, isDbUnknownDocId, UNKNOWN_DOC_SELECT } from "./lib/unknownDocs";
 import { onboardingSteps } from "./lib/onboarding";
 import { notificationTarget } from "./lib/notificationDoor";
+import { makeKeyedInFlight } from "./lib/oneInFlight";
 import { readDeclinedRecurring, writeDeclinedRecurring } from "./lib/declinedRecurring";
 import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
@@ -6192,7 +6193,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // like every other event, posting the SAME entry shown in the preview.
   // `auto` only changes the NARRATION and the audit wording — the entry, the
   // write path and the intake close-out are byte-identical either way (C198·3a).
-  const postPayroll = async (imp, { auto = false } = {}) => {
+  // C402 — one post per register: a second "Post" while the first is writing runs nothing.
+  const payrollPostsInFlight = useRef(makeKeyedInFlight());
+  const postPayroll = (imp, opts = {}) => payrollPostsInFlight.current.run(imp?.id ?? imp?.fileName ?? "payroll", () => postPayrollOnce(imp, opts));
+  const postPayrollOnce = async (imp, { auto = false } = {}) => {
     const je = payrollEntryFor(imp);
     if (!je || !je.balanced) { showNotification("Couldn't build the payroll entry — check the totals.", "error"); return; }
     const jeId = await persistMultiLineEntry(je);   // cutoff-guarded; refuses unbalanced
@@ -7598,7 +7602,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // READS the row to confirm the write persisted, and (4) on failure reverts the
   // optimistic change, toasts an error, and logs to Sentry + audit_log — so the UI
   // can never show a paid state the database doesn't have. side: "ap" | "ar".
-  const markBillPaid = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap" } = {}) => {
+  // C402 — one payment in flight per bill. The idempotency probe below reads the ledger
+  // BEFORE posting, so two presses inside one round trip could both read "not yet paid"
+  // and both post (C401's shape, on money). The second press runs nothing.
+  const paymentsInFlight = useRef(makeKeyedInFlight());
+  const markBillPaid = (entryId, opts = {}) => paymentsInFlight.current.run(entryId, () => markBillPaidOnce(entryId, opts));
+  const markBillPaidOnce = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap" } = {}) => {
     const inv = (invoicesRef.current || []).find(i => String(i.id) === String(entryId) || String(i.db_entry_id) === String(entryId));
     if (!inv) { console.warn("[markBillPaid] no invoice for entryId", String(entryId)); return false; }
     // SIGNED-PERIOD guard (O83 Trap 2): a payment/collection dated into a signed month posts a

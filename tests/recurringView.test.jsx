@@ -17,7 +17,7 @@ const code = src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, "
 
 describe("★★ C360 — posting a recurring transaction WRITES it, and says so only afterwards", () => {
   it("books through bookToDb, awaits it, and refuses to claim a post that did not land", () => {
-    const run = code.slice(code.indexOf("const runRecurring = async (r) => {"), code.indexOf("const newRec = recurringNewRec"));
+    const run = code.slice(code.indexOf("const runRecurringOnce = async (r) => {"), code.indexOf("const newRec = recurringNewRec"));   // C402: the guarded body
     expect(run.length).toBeGreaterThan(200);
     expect(run).toMatch(/const jeId = await bookToDb\(inv\);\s*if \(!jeId\) \{/);
     expect(run).toMatch(/was NOT posted/);
@@ -25,7 +25,7 @@ describe("★★ C360 — posting a recurring transaction WRITES it, and says so
     expect(run).toMatch(/if \(!jeId\) \{\s*setInvoices\(prev => prev\.filter\(i => i\.id !== inv\.id\)\)/);
   });
   it("★ the run is RECORDED on the rule before 'Posted ✓', so a reload cannot offer the month again", () => {
-    const run = code.slice(code.indexOf("const runRecurring = async (r) => {"), code.indexOf("const newRec = recurringNewRec"));
+    const run = code.slice(code.indexOf("const runRecurringOnce = async (r) => {"), code.indexOf("const newRec = recurringNewRec"));   // C402: the guarded body
     const rec = run.indexOf("await recordRecurringRun(r.id, { last_run: today, next_date: nextDate })");
     const ok = run.indexOf("if (rec?.ok) showNotification(`Posted:");
     expect(rec).toBeGreaterThan(0);
