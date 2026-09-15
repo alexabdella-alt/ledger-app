@@ -1,11 +1,12 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import LoadFailedNotice from "../LoadFailedNotice";
 
 export default function CoaView() {
   const {
     CHART_OF_ACCOUNTS, persistAccountEdit, deleteAccount, addCustomAccount,
     coaEditingCode, setCoaEditingCode, coaEditDraft, setCoaEditDraft,
-    coaAddDraft, setCoaAddDraft, coaShowAdd, setCoaShowAdd, showNotification, setDeleteConfirm,
+    coaAddDraft, setCoaAddDraft, coaShowAdd, setCoaShowAdd, showNotification, setDeleteConfirm, accountsLoadOk,
   } = useERP();
 
   const editingId = coaEditingCode; const setEditingId = setCoaEditingCode;
@@ -57,6 +58,19 @@ export default function CoaView() {
     </svg>
   );
 
+  // C416 — a failed chart read falls back to the BUILT-IN chart for display, which would
+  // otherwise render as this company's categories, editable. Say so instead of the list.
+  if (accountsLoadOk === false) {
+    return (
+      <div>
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>SETTINGS</div>
+          <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Categories</h1>
+        </div>
+        <LoadFailedNotice what="categories" table="accounts" />
+      </div>
+    );
+  }
   return (
     <div>
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>

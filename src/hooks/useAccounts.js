@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS } from "../lib/constants";
 
@@ -21,23 +21,35 @@ const WARNED_ROLE_FALLBACKS = new Set();
 export function useAccounts(companyId) {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
+  // C416 — did the LAST read for this company run? A failed read left the previous
+  // company's chart in place (or an empty one on first load), and every role then resolved
+  // through the O108 fallback below — a booking would have referenced the last company's
+  // account ids, or materialised the built-in chart onto this one. The reader gates on it.
+  const [loadOk, setLoadOk] = useState(true);
+  // C416 — the company this hook is on NOW, readable from inside an old load (C413's ref).
+  const latestCid = useRef(companyId);
+  latestCid.current = companyId;
 
   const load = useCallback(async () => {
-    if (!companyId) { setAccounts([]); return; }
+    if (!companyId) { setAccounts([]); setLoadOk(true); return; }
     setLoading(true);
+    // C416 — the previous company's chart must not stand in for this one's while it loads.
+    setAccounts([]);
     try {
       const { data, error } = await supabase
         .from("accounts").select("*").eq("company_id", companyId).order("code");
-      if (error) { console.warn("[accounts] load failed:", error.message); }
+      if (latestCid.current !== companyId) return;   // C416 — a late result for a company we have left
+      if (error) { console.warn("[accounts] load failed:", error.message); setLoadOk(false); }
       else if (data) {
+        setLoadOk(true);
         setAccounts(data.map(a => ({
           id: a.id, db_id: a.id, code: a.code, name: a.name, category: a.category,
           active: a.active, is_system: a.is_system, system_role: a.system_role,
           parent_code: a.parent_code,
         })));
       }
-    } catch (e) { console.warn("[accounts] load error:", e?.message || e); }
-    finally { setLoading(false); }
+    } catch (e) { console.warn("[accounts] load error:", e?.message || e); if (latestCid.current === companyId) setLoadOk(false); }
+    finally { if (latestCid.current === companyId) setLoading(false); }
   }, [companyId]);
 
   // (Re)fetch whenever the company changes.
@@ -100,7 +112,7 @@ export function useAccounts(companyId) {
   );
   const getAccountById = useCallback((id) => byId[id] || null, [byId]);
 
-  return { accounts, loading, reload: load, getAccountByRole, getAccountByCode, getAccountById };
+  return { accounts, loading, loadOk, reload: load, getAccountByRole, getAccountByCode, getAccountById };
 }
 
 export default useAccounts;
