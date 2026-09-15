@@ -24,6 +24,11 @@ describe("openReceivables", () => {
   it("without an A/R code the answer is nothing, never a guess", () => {
     expect(openReceivables([invoice], null)).toEqual([]);
   });
+  it("★ the owed figure is the taxed receivable (ar_amount), not the ex-tax revenue row (C454)", () => {
+    const src = fs.readFileSync("src/components/views/CustomersView.jsx", "utf8");
+    expect(src).toMatch(/openReceivables\(txns, arRoleCode\)\.reduce\(\(s,i\)=>s\+owedAmount\(i\),0\)/);
+    expect(src).toMatch(/openReceivables\(custInvoices, arRoleCode\)\.filter\(.*?\)\.reduce\(\(s,i\)=>s\+owedAmount\(i\),0\)/);
+  });
   it("both screens read it", () => {
     const cust = fs.readFileSync("src/components/views/CustomersView.jsx", "utf8");
     const ar = fs.readFileSync("src/components/views/ArView.jsx", "utf8");

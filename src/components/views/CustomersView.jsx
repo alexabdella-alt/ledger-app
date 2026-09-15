@@ -2,6 +2,7 @@ import React from "react";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { openReceivables } from "../../lib/receivables";
+import { owedAmount } from "../../lib/reports";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
@@ -40,7 +41,7 @@ export default function CustomersView() {
             // on the Customers screen. Open = an entry carrying the A/R leg, not a settlement,
             // not yet collected — the rule "Money owed to you" (ArView) already applies.
             const arRoleCode = getAccountByRole?.("accounts_receivable")?.code;
-            const openARfor = txns => openReceivables(txns, arRoleCode).reduce((s,i)=>s+(i.amount||0),0);
+            const openARfor = txns => openReceivables(txns, arRoleCode).reduce((s,i)=>s+owedAmount(i),0);   // C454 — the receivable includes its sales tax (ar_amount), the revenue row does not
 
             // ── CUSTOMER DETAIL DRILL ──
             if (selCustomer) {
@@ -173,7 +174,7 @@ export default function CustomersView() {
                       const billedYTD = billedYTDfor(custInvoices);
                       const openAR = openARfor(custInvoices);
                       const lastDate = custInvoices[0]?.date || null;
-                      const overdueAR = openReceivables(custInvoices, arRoleCode).filter(i=>i.due_date&&i.due_date<todayLocal()).reduce((s,i)=>s+(i.amount||0),0);   // C452 — same rule
+                      const overdueAR = openReceivables(custInvoices, arRoleCode).filter(i=>i.due_date&&i.due_date<todayLocal()).reduce((s,i)=>s+owedAmount(i),0);   // C452/C454 — same rule, taxed amount
                       return (
                         <div key={c.id||c.name} style={{ background:"var(--sc-surface)", border:`1px solid ${overdueAR>0?"var(--sc-error-soft)":"var(--sc-border)"}`, borderRadius:14, overflow:"hidden" }}>
                           <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
