@@ -37,10 +37,20 @@ const CLIENT_SCREENS = {
 
 const read = (name) => strip(fs.readFileSync(path.join(process.cwd(), VIEW_DIR, `${name}.jsx`), "utf8"));
 
+// ★ C383 — THE SETTINGS SCREENS ARE CLIENT-OPENABLE TOO (SETTINGS_VIEW_IDS sits inside
+// CLIENT_VIEW_IDS) AND WERE NEVER IN THE DOOR CHECK. QBOImportView sent an owner who dropped
+// a .qbo bank file to setView("bank") — a screen they may not open — under a toast saying
+// it was opening the bank import. Held to check (1) only: their copy is setup copy and is
+// governed by C378's headings, not by this suite's jargon bar.
+const SETTINGS_SCREENS = {
+  settings: "SettingsView", coa: "CoaView", "opening-balances": "OpeningBalancesView", onboard: "QBOImportView",
+  rules: "RulesView", recurring: "RecurringView", tax1099: "Tax1099View", tax: "TaxView", audit: "AuditView",
+};
+
 describe("(1) no client-visible screen offers a control the client cannot follow", () => {
   it("every setView target in a client screen is either client-openable or gated on the seat", () => {
     const offenders = [];
-    for (const [viewId, file] of Object.entries(CLIENT_SCREENS)) {
+    for (const [viewId, file] of Object.entries({ ...CLIENT_SCREENS, ...SETTINGS_SCREENS })) {
       const src = read(file);
       src.split("\n").forEach((line, i) => {
         for (const m of line.matchAll(/setView\("([a-z:-]+)"\)/g)) {

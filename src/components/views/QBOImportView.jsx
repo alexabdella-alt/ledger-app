@@ -13,7 +13,7 @@ const money = fmtSignedMoney;
 export default function QBOImportView() {
   const {
     currentCompany, session, supabase, CHART_OF_ACCOUNTS, getAccountByRole, getAccountByCode,
-    invoices, isAdmin, logAudit, showNotification, setView, loadAllData, flagBookingVisibilityFailure, storeDocument,
+    invoices, isAdmin, logAudit, showNotification, setView, loadAllData, flagBookingVisibilityFailure, storeDocument, routeFileToType,
   } = useERP();
 
   const [step, setStep] = React.useState("instructions"); // instructions|upload|columns|accounts|importing|summary
@@ -57,8 +57,13 @@ export default function QBOImportView() {
     // import ran.
     setSourceFile(file);
     if (isQboBankFile(file.name)) {
-      showNotification("That's a .qbo bank statement, not QuickBooks company data — opening the bank import instead.", "info");
-      setView("bank");
+      // C383 — this screen is in the client's Settings, so an OWNER can drop a .qbo bank
+      // file here. A bare setView("bank") sent them to a screen they may not open and the
+      // route guard bounced them Home under "opening the bank import instead". The seat-aware
+      // router handles both seats: a reviewer lands on Bank Import, an owner has the file
+      // saved for their accountant and is told so.
+      showNotification("That's a bank statement export, not QuickBooks company data — handling it as a bank statement.", "info");
+      routeFileToType("bank_statement", file);
       return;
     }
     try {
