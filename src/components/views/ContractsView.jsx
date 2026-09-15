@@ -70,7 +70,7 @@ export default function ContractsView() {
                             {/* Delete button on card */}
                             <button
                               onClick={e=>{ e.stopPropagation(); setDeleteConfirm({
-                                label:`Permanently delete contract with ${c.counterparty}?\n\n${c.description}\n\nThis removes it from the database permanently.`,
+                                label:`Remove the agreement with ${c.counterparty}?\n\n${c.description}\n\nIt leaves your books and stays in your audit trail — you can undo it right after.`,   // C447 — it is a soft delete with Undo; "permanently" was false
                                 onConfirm: async () => { softDeleteContract(c); }
                               }); }}
                               style={{ position:"absolute", top:12, right:12, width:24, height:24, borderRadius:6, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1 }}
