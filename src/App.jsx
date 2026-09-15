@@ -5526,6 +5526,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // read the clock, and that is also what lets a test assert every field.
             const { invoice, finalCode, finalName, isRevenue } = buildUploadedInvoice({
               extracted, coding, rule, rc, rn,
+              contact: findContactForName(contactsRef.current || contacts, extracted.vendor, aliasIndex),   // C473 — the supplier's saved terms
               id: Date.now() + Math.random() + idx,
               bookedAt: new Date().toISOString(),
               today: todayLocal(),

@@ -30,8 +30,13 @@ import { glIsRevenue, glIsExpense } from "./gl.js";
 import { deriveDueDate } from "./format.js";
 
 export function buildUploadedInvoice({
-  extracted = {}, coding = {}, rule = null, rc, rn, id, bookedAt, today,
+  extracted = {}, coding = {}, rule = null, contact = null, rc, rn, id, bookedAt, today,
 } = {}) {
+  // C473 — THE SUPPLIER'S OWN TERMS FILL IN WHERE THE DOCUMENT STATES NONE. "Payment terms"
+  // on the Vendors form was typed, saved, displayed — and read by nothing: a bill whose
+  // document did not print its terms got no due date, so "Bills to pay" could not say when
+  // it was overdue and aging filed it as current forever. The document wins when it says.
+  const terms = (extracted.payment_terms && String(extracted.payment_terms).trim()) || (contact && contact.payment_terms) || "";
   const isRevenue = extracted.type === "revenue";
   // A rule is a human's standing instruction, so it outranks the model AND carries a
   // confidence the gate will pass. 75 is the floor the model is given when it offers none.
@@ -57,8 +62,8 @@ export function buildUploadedInvoice({
     // O11: carry the extracted payment terms + derive a due date (Net 30 → date+30,
     // Due on receipt → date). Shown on the row immediately and persisted by
     // persistJournalEntry; AR/AP aging then ages from the real due date.
-    payment_terms: extracted.payment_terms || "",
-    due_date: deriveDueDate(extracted.date || today, extracted.payment_terms) || null,
+    payment_terms: terms,
+    due_date: (extracted.due_date && String(extracted.due_date).trim()) || deriveDueDate(extracted.date || today, terms) || null,
     project: rule?.project || "General",
     gl_code: finalCode,
     gl_name: finalName,

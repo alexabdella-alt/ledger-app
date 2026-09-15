@@ -74,3 +74,24 @@ export function invoiceDueLabel(draft = {}, fmt = (d) => d) {
   if (derived && derived !== draft.issue_date) return fmt(derived);
   return "On receipt";
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C473 — A CUSTOMER'S SAVED TERMS AND EMAIL FILL THE DRAFT WHEN THEY ARE PICKED.
+// "Payment terms" on the Customers form was typed, saved, displayed — and the invoice form
+// still opened on Net 30 and a blank email for that customer. The select offers five
+// choices, so a stored "net 15" maps onto "Net 15" by its day count; a term the select
+// cannot express (Net 45) is left as it was rather than shown as a blank option.
+// ─────────────────────────────────────────────────────────────────────────────
+import { termsToDays as _termsToDays } from "./format.js";
+export const INVOICE_TERM_OPTIONS = ["On Receipt", "Net 15", "Net 30", "Net 60", "Net 90"];
+export function customerDefaultsFor(contact, draft = {}) {
+  if (!contact) return {};
+  const out = {};
+  if (!draft.customer_email && contact.email) out.customer_email = contact.email;
+  const days = _termsToDays(contact.payment_terms);
+  if (days != null) {
+    const opt = days === 0 ? "On Receipt" : `Net ${days}`;
+    if (INVOICE_TERM_OPTIONS.includes(opt) && draft.terms !== opt) out.terms = opt;
+  }
+  return out;
+}
