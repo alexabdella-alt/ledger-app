@@ -873,6 +873,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!r.ok) { showNotification("Couldn't save that account change — nothing was updated. Please try again.", "error"); return false; }
     logAudit("coa_edited", `Account ${account.code} updated: ${updates.name || account.name}${updates.code && updates.code !== account.code ? ` (renumbered → ${updates.code})` : ""}`);
     await reloadAccounts();
+    // C431 — the ledger carries each row's category NAME and CODE as a snapshot from the join
+    // at load time. Reloading the chart alone left every transaction, every report and the
+    // Balance Sheet reading the OLD name — and after a RENUMBER, role-keyed derivations
+    // summed rows by the new code and found none: the account read $0 until the next reload.
+    try { await loadAllData(); } catch (e) { console.warn("[accounts] ledger reload after edit failed:", e?.message || e); }
     return true;
   };
   const accountHasTransactions = async (account) => {
