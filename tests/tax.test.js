@@ -78,9 +78,10 @@ describe("deductionBreakdown", () => {
   const rows = deductionBreakdown(invoices, YEAR, getAccountByRole);
   const byKey = Object.fromEntries(rows.map(r => [r.key, r]));
 
-  it("resolves category accounts by system_role", () => {
-    expect(byKey.software.hint).toContain("6500");
-    expect(byKey.rent.hint).toContain("6100");
+  it("resolves category accounts by system_role — the hint is the account's NAME, never its code (C386)", () => {
+    expect(byKey.software.hint).toBe(getAccountByRole("technology_software").name);
+    expect(byKey.rent.hint).toBe(getAccountByRole("rent_occupancy").name);
+    expect(byKey.rent.hint).not.toMatch(/\d{4}/);
   });
 
   it("sums each category for the current year, excluding voided/prior-year", () => {

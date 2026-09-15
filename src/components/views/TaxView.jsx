@@ -237,7 +237,7 @@ export default function TaxView() {
       {/* ── DISCLAIMERS ── */}
       <div style={{ background: "var(--sc-warning-soft)", border: "1px solid var(--sc-warning-soft)", borderRadius: 14, padding: "16px 20px" }}>
         <div style={{ fontSize: 12, color: "var(--sc-warning)", lineHeight: 1.6 }}>
-          Tax estimates are for planning purposes only and are based on general federal tax rates. State taxes, deductions, credits, and your specific tax situation may significantly affect your actual liability. Always consult a qualified tax professional before filing.
+          Tax estimates are for planning purposes only and are based on general federal tax rates. State taxes, deductions and your specific situation can change what you actually owe by a lot. Always consult a qualified tax professional before filing.
         </div>
         <div style={{ fontSize: 12, color: "var(--sc-gold)", lineHeight: 1.6, marginTop: 10, fontWeight: 500 }}>
           Questions? Your CFAI advisor reviews your books monthly and can provide personalized guidance.

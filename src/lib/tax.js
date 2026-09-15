@@ -81,7 +81,9 @@ export function deductionBreakdown(invoices, year = new Date().getFullYear(), ge
     .reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const acct = role => getAccountByRole ? getAccountByRole(role) : null;
   const sumRole = role => sumCode(acct(role)?.code);
-  const hintRole = role => { const a = acct(role); return a ? `${a.name} (${a.code})` : ""; };
+  // C386 — the hint names the account, never its number: the Taxes screen is the owner's,
+  // and "Rent & Occupancy (6100)" put a chart code under every deduction row.
+  const hintRole = role => { const a = acct(role); return a ? String(a.name) : ""; };
 
   const CATEGORIES = [
     { key: "salaries",     label: "Salaries & wages",                          role: "salaries_wages" },
@@ -93,7 +95,7 @@ export function deductionBreakdown(invoices, year = new Date().getFullYear(), ge
     { key: "supplies",     label: "Office supplies & de minimis equipment",    role: "office_supplies" },
     { key: "insurance",    label: "Insurance",                                 role: "insurance" },
     { key: "proservices",  label: "Professional services (legal, accounting)", role: "professional_services" },
-    { key: "depreciation", label: "Depreciation & amortization",               role: "depreciation_amortization" },
+    { key: "depreciation", label: "Equipment cost, spread over time",           role: "depreciation_amortization" },
     { key: "misc",         label: "Other / miscellaneous",                     role: "miscellaneous_expense" },
     { key: "interest",     label: "Interest expense",                          role: "interest_expense" },
   ];

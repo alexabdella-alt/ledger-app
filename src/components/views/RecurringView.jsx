@@ -83,7 +83,7 @@ export default function RecurringView() {
                       </div>
                     ))}
                     <div>
-                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>GL Account</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>Category</div>
                       <select value={newRec.gl_code} onChange={e=>{const a=CHART_OF_ACCOUNTS.find(x=>x.code===e.target.value);setNewRec(d=>({...d,gl_code:e.target.value,gl_name:a?.name||""}));}}
                         style={{width:"100%",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}>
                         {CHART_OF_ACCOUNTS.filter(a=>a.category==="Expenses").map(a=><option key={a.code} value={a.code}>{a.code} – {a.name}</option>)}
@@ -111,7 +111,7 @@ export default function RecurringView() {
                   <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,overflow:"clip"}}>
                     <table style={{width:"100%",borderCollapse:"collapse"}}>
                       <thead><tr style={{background:"var(--sc-surface-2)"}}>
-                        {["Name","Vendor","Amount","GL","Frequency","Next Date",""].map(h=><th key={h} style={{padding:"11px 16px",textAlign:"left",fontSize:10,color:"var(--sc-text-2)",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}
+                        {["Name","Vendor","Amount","Category","Frequency","Next Date",""].map(h=><th key={h} style={{padding:"11px 16px",textAlign:"left",fontSize:10,color:"var(--sc-text-2)",letterSpacing:1.2,fontWeight:500}}>{h}</th>)}
                       </tr></thead>
                       <tbody>
                         {recurring.map((r,i)=>{

@@ -182,7 +182,7 @@ export default function SettingsView() {
                 <div id="bank-accounts-section" style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:24,marginBottom:16,scrollMarginTop:16}}>
                   <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5,marginBottom:16}}>BANK ACCOUNTS</div>
                   <div style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,marginBottom:6,fontSize:10,fontWeight:600,letterSpacing:0.4,color:"var(--sc-text-mut)"}}>
-                    <div>ACCOUNT NAME</div><div>TYPE</div><div>GL</div><div>BANK</div><div style={{textAlign:"right"}}>CURRENT BALANCE</div><div/>
+                    <div>ACCOUNT NAME</div><div>TYPE</div><div>CATEGORY</div><div>BANK</div><div style={{textAlign:"right"}}>CURRENT BALANCE</div><div/>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
                     {bankAccounts.map(ba=>(

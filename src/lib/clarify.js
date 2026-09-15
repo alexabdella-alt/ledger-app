@@ -357,7 +357,10 @@ export const OWNER_JARGON_RE = /\bGAAP\b|\bASC\b|\bdebit(ed|s)?\b|\bcredit(ed|s)
 // the shape is the whole point of this check. Other form numbers (1040, 1065, 1120) are
 // the same shape and are NOT excluded: none is used in the product today, and if one ever
 // is, this guard firing is the correct and visible way to find out.
-export const OWNER_GLCODE_RE = /\b(?!(?:19|20|21)\d{2}\b)(?!1099\b)[1-8][0-9]{3}\b/;
+// C386 — the Taxes screen names the forms a deadline is about ("Form 1040-ES / 1120-S /
+// 1065", "Form 1096"), which is exactly what an owner needs to file. Those three are excluded by name now
+// that they are used; C315's reasoning stands for every other code-shaped number.
+export const OWNER_GLCODE_RE = /\b(?!(?:19|20|21)\d{2}\b)(?!1099\b)(?!1040\b)(?!1065\b)(?!1096\b)(?!1120\b)[1-8][0-9]{3}\b/;
 export function containsOwnerJargon(text) {
   const s = String(text || "");
   return OWNER_JARGON_RE.test(s) || OWNER_GLCODE_RE.test(s);

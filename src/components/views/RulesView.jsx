@@ -25,7 +25,7 @@ export default function RulesView() {
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead>
                       <tr style={{ background:"var(--sc-surface-2)" }}>
-                        {["Vendor","GL Account","Project",""].map(h=>(
+                        {["Vendor","Category","Project",""].map(h=>(
                           <th key={h} style={{ padding:"13px 20px", textAlign:"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1.5, fontWeight:500 }}>{h.toUpperCase()}</th>
                         ))}
                       </tr>
