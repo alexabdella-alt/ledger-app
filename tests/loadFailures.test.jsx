@@ -51,7 +51,7 @@ const SCREENS = [
   ["AuditView", AuditView, "audit_log", /No activity recorded yet/],
   ["SendInvoiceView", SendInvoiceView, "ar_invoices", /No invoices yet/],
 ];
-const ctxFor = (name, extra) => ({ ...(VIEW_CONTEXT[`${name}.jsx`] || {}), vendorsSelectedContact: null, customersEditingId: null, vendorSummary: [], ...extra });
+const ctxFor = (name, extra) => ({ ...(VIEW_CONTEXT[`${name}.jsx`] || {}), vendorsSelectedContact: null, customersEditingId: null, vendorSummary: [], companyDataLoaded: true, ...extra });
 
 describe("★★ each records screen: a failed read shows the notice, a clean empty read shows the empty state", () => {
   for (const [name, Comp, table, emptyRe] of SCREENS) {
@@ -59,6 +59,11 @@ describe("★★ each records screen: a failed read shows the notice, a clean em
       const html = renderViewHtml(Comp, ctxFor(name, { loadFailures: { [table]: "boom" } }));
       expect(html).toContain(`data-load-failed="${table}"`);
       expect(html).toMatch(/isn(&#x27;|')t a confirmation that there are none/);
+      expect(html).not.toMatch(emptyRe);
+    });
+    it(`${name} while the company is still loading shows a loading line, not the empty state (C428)`, () => {
+      const html = renderViewHtml(Comp, ctxFor(name, { loadFailures: {}, companyDataLoaded: false }));
+      expect(html).toContain("data-loading-list");
       expect(html).not.toMatch(emptyRe);
     });
     it(`${name} over a clean empty read keeps its empty state`, () => {
