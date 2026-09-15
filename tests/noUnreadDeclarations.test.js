@@ -65,7 +65,13 @@ function unread(app = APP_SANS_CTX, others = OTHERS, names = declared, destructu
 // (C297's cost) and can never change a pixel. The first run found TWENTY — a whole
 // QuickBooks-import state set, three reconciliation values, two narration pairs — all
 // reset on every company switch and read by nothing since their screens moved to local state.
-const stateVars = [...APP.matchAll(/^\s+const \[([A-Za-z_]\w*), *set[A-Za-z_]\w*\] = useState/gm)].map((m) => m[1]);
+// C400 — a state hook with NO setter (`const [x] = useState(…)`) and an object literal at ERP
+// scope (`const X = { … }`) are declarations too; both had slipped past this census
+// (`apSettings`, `AP_PRIORITY` — exposed, destructured by every view, read by nothing).
+const stateVars = [
+  ...[...APP.matchAll(/^\s+const \[([A-Za-z_]\w*)(?:, *set[A-Za-z_]\w*)?\] = useState/gm)].map((m) => m[1]),
+  ...[...APP.matchAll(/^  const ([A-Z][A-Z_0-9]+) = \{/gm)].map((m) => m[1]),
+];
 function unreadState(app = APP_SANS_CTX, others = OTHERS, names = stateVars, destructured = DESTRUCTURED) {
   return names.filter((n) => refs(n, app) <= 1 && !(destructured.has(n) && refs(n, others) > 0));
 }
