@@ -8,6 +8,7 @@ import { downloadCSV } from "../../lib/insights";
 import { pill } from "../../lib/ui";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
 import { reportNavBack } from "../../lib/reportNav";
+import { inReportRange } from "../../lib/reportRange";
 import { reportAttestationLine, activeSignedPeriods } from "../../lib/signoff";
 import { plainPeriodSummary } from "../../lib/plainSummary";
 import { vendorCreep, vendorCreepCopy } from "../../lib/vendorCreep";
@@ -40,23 +41,10 @@ export default function ReportsView() {
     setReportDateFrom(from); setReportDateTo(to); setReportRange("custom");
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- run once on open
             // Date filter helper
-            const filterByRange = (invList) => {
-              if (reportRange === "all") return invList;
-              const now = new Date();
-              return invList.filter(inv => {
-                if (!inv.date) return false;
-                const d = new Date(inv.date);
-                if (reportRange === "custom") return (!reportDateFrom || d >= new Date(reportDateFrom)) && (!reportDateTo || d <= new Date(reportDateTo));
-                if (reportRange === "thismonth") return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
-                if (reportRange === "lastmonth") { const lm=new Date(now.getFullYear(),now.getMonth()-1,1); return d.getMonth()===lm.getMonth()&&d.getFullYear()===lm.getFullYear(); }
-                if (reportRange === "q1") return d.getMonth()<3 && d.getFullYear()===now.getFullYear();
-                if (reportRange === "q2") return d.getMonth()>=3&&d.getMonth()<6&&d.getFullYear()===now.getFullYear();
-                if (reportRange === "q3") return d.getMonth()>=6&&d.getMonth()<9&&d.getFullYear()===now.getFullYear();
-                if (reportRange === "q4") return d.getMonth()>=9&&d.getFullYear()===now.getFullYear();
-                if (reportRange === "ytd") return d.getFullYear()===now.getFullYear();
-                return true;
-              });
-            };
+            // C440 — decided on the date STRING (see lib/reportRange.js): `new Date("2026-09-01")`
+            // is August 31 from any US zone, so the first of every month used to fall into the
+            // previous month on this screen.
+            const filterByRange = (invList) => invList.filter(inv => inReportRange(inv.date, reportRange, { from: reportDateFrom, to: reportDateTo }));
             const filtered = filterByRange(invoices);
             // P&L filter: date range + voided + P&L accounts + optional basis mode
             const plFiltered = filtered.filter(i => {
