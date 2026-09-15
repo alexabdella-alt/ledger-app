@@ -45,7 +45,7 @@ describe("C410 — a sign-off read that did not run", () => {
     const i = app.indexOf("setSignoffsLoadOk(!!so.ok);");
     expect(i).toBeGreaterThan(-1);
     expect(app.slice(i, i + 260)).toMatch(/if \(so\.ok\) setSignoffs\(so\.signoffs\);/);
-    expect(app).toMatch(/signoffsChecked: signoffsLoadOk,/);
+    expect(app).toMatch(/signoffsChecked: signoffsLoadOk !== false,/);   // C429 — null while loading is not a failure
     expect(app).toMatch(/reviewedThrough, signoffsLoadOk, ownerTrust,/);
   });
 });
@@ -93,5 +93,28 @@ describe("C411 — Reports tells a self-signed month from an accountant's review
     expect(renderViewHtml(ReportsView, ctx({ selfSigned: false, hasAttester: true }))).toMatch(/Reviewed and signed off through July 2026\./);
     const failed = renderViewHtml(ReportsView, { ...POPULATED, reviewedThrough: null, signoffsLoadOk: false, ownerTrust: ownerTrustState({ ...base, signoffsChecked: false }) });
     expect(failed).toMatch(/couldn(&#x27;|')t check which months have been signed off/);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// C429 — WHILE THE READS ARE IN FLIGHT, REPORTS SAYS IT IS CHECKING, NOT "NO MONTH SIGNED"
+// OR "YOU BROUGHT IN $0.00". `signoffsLoadOk` starts null (unknown) and the company flag
+// gates the period paragraph.
+// ═════════════════════════════════════════════════════════════════════════════
+describe("C429 — Reports during the load", () => {
+  const src = fs.readFileSync("src/App.jsx", "utf8");
+  it("signoffsLoadOk starts unknown and is reset to unknown on a switch", () => {
+    expect(src).toMatch(/const \[signoffsLoadOk, setSignoffsLoadOk\] = useState\(null\);/);
+    const i = src.indexOf("const resetCompanyState = () => {");
+    expect(src.slice(i, src.indexOf("\n  };", i))).toMatch(/setSignoffsLoadOk\(null\)/);
+  });
+  it("rendered: checking… and loading… during the load; the real sentences after", () => {
+    const loading = renderViewHtml(ReportsView, { ...POPULATED, reviewedThrough: null, signoffsLoadOk: null, companyDataLoaded: false, ownerTrust: ownerTrustState({ ...base }) });
+    expect(loading).toMatch(/Checking which months have been signed off/);
+    expect(loading).toMatch(/Loading your figures/);
+    expect(loading).not.toMatch(/No month has been signed off yet|brought in/);
+    const loaded = renderViewHtml(ReportsView, { ...POPULATED, reviewedThrough: null, signoffsLoadOk: true, companyDataLoaded: true, ownerTrust: ownerTrustState({ ...base }) });
+    expect(loaded).toMatch(/No month has been signed off yet/);
+    expect(loaded).not.toMatch(/Checking which months|Loading your figures/);
   });
 });

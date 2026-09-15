@@ -931,7 +931,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // control total) + persisted period sign-offs ("reviewed through …").
   const [intakeRows, setIntakeRows] = useState([]);
   const [intakeLoadOk, setIntakeLoadOk] = useState(true);   // O98 — did the document check run at all?
-  const [signoffsLoadOk, setSignoffsLoadOk] = useState(true);   // C410 — did the sign-off read run? `[]` from a failed read is not "no month signed"
+  const [signoffsLoadOk, setSignoffsLoadOk] = useState(null);   // C410 — did the sign-off read run? null = not yet (C429), false = failed; `[]` from either is not "no month signed"
   const [signoffs, setSignoffs] = useState([]);
   // O131 — is there anybody on this company who could sign a month off? Defaults TRUE so a
   // failed or not-yet-run query never manufactures the claim "you have no accountant".
@@ -1194,7 +1194,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // signed months, held questions and attester — §3's UI-layer isolation, missed for every
     // load added after it was written. The cutoff is the same: a failed `companies` read
     // left the last company's Day One in force over this one's bookings.
-    setSignoffs([]); setSignoffsLoadOk(true); setIntakeRows([]); setIntakeLoadOk(true); setHasAttester(true);
+    setSignoffs([]); setSignoffsLoadOk(null); setIntakeRows([]); setIntakeLoadOk(true); setHasAttester(true);
     setPendingSignedPeriodBooking(null); setCutoffDate(null);
     setNotifications([]); setNotifOpen(false);
     setOnboardingUploadDone(false); setBusinessModalOpen(false);
@@ -4836,7 +4836,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // document nobody had booked, one reload later.
       openClarifications: (clarificationQueue || []).length + heldQuestions.length,
       completenessChecked: intakeLoadOk,   // O98 — a check that did not run is not a pass
-      signoffsChecked: signoffsLoadOk,      // C410 — same rule for the sign-off read
+      signoffsChecked: signoffsLoadOk !== false,   // C410 — same rule for the sign-off read (null = still loading; Home's panel shows its loading state then)
       anomaliesChecked: anomaliesLoadOk,    // C418 — and for the unusual-activity read
     });
   }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount, clarificationQueue, intakeLoadOk, signoffsLoadOk, anomaliesLoadOk]);
@@ -5000,7 +5000,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   // Load intake rows + sign-offs when the company changes (best-effort, pre-migration safe).
   useEffect(() => {
-    if (!currentCompany?.id) { setIntakeRows([]); setSignoffs([]); setHasAttester(true); setIntakeLoadOk(true); return; }
+    if (!currentCompany?.id) { setIntakeRows([]); setSignoffs([]); setHasAttester(true); setIntakeLoadOk(true); setSignoffsLoadOk(null); return; }
     let cancelled = false;
     (async () => {
       const [ir, so, mem] = await Promise.all([
