@@ -1,4 +1,5 @@
 import React from "react";
+import { authErrorCopy } from "../lib/authErrorCopy";
 import { supabase } from "../lib/supabase";
 import LegalView from "./LegalView";
 
@@ -63,7 +64,7 @@ function AuthScreen({ onAuth, invite }) {
         if (data.session) onAuth(data.session);
         else setMessage("Check your email to confirm your account, then log in.");
       }
-    } catch(e) { setError(e.message); }
+    } catch(e) { console.warn("[auth]", e?.message || e); setError(authErrorCopy(e?.message)); }
     setLoading(false);
   };
 
@@ -205,7 +206,7 @@ function UpdatePasswordScreen({ onDone }) {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
       onDone();
-    } catch(e) { setError(e.message); }
+    } catch(e) { console.warn("[auth]", e?.message || e); setError(authErrorCopy(e?.message)); }
     setLoading(false);
   };
 
