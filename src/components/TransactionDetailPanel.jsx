@@ -443,7 +443,10 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   // ★ DISABLED, NOT REFUSED-ON-CLICK, once a correction already exists.
                   // Refusing on click is strictly worse than not offering: it teaches that
                   // clicking is how you find out (O124/O126).
-                  reversedInfo
+                  sel.source === "opening_balance"
+                    // C467 — not offered, not refused on click (O124): the starting-balances screen owns this entry.
+                    ? <span data-no-remove style={{ fontSize: 12, color: "var(--sc-text-mut)", alignSelf: "center" }}>Starting balances are changed on the starting-balances screen, not here.</span>
+                    : reversedInfo
                     ? <button disabled title={`Already corrected${reversedInfo.date ? ` on ${fmtDate(reversedInfo.date)}` : ""}`} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", color: "var(--sc-text-2)", cursor: "not-allowed" }}>Already removed</button>
                     : <button onClick={() => doRemove(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", color: "var(--sc-error)", cursor: "pointer" }}>Delete</button>
                 )}

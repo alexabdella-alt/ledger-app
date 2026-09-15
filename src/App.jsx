@@ -47,7 +47,7 @@ import { loadMailChannel, loadHeldInbound, createMailChannel, addAllowedSender, 
 import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
 import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "./lib/controlTotals";
 import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod, canSelfAttest, companyHasAttester, selfAttestAcknowledgement, isPeriodSignedOff } from "./lib/signoff";
-import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, planEntryRemoval, REMOVAL } from "./lib/signedPeriod";
+import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, planEntryRemoval, REMOVAL, isOpeningEntry, OPENING_KEEP_SENTENCE } from "./lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { planCoaTemplate, coaTemplateCopy } from "./lib/coaTemplates";
@@ -2945,6 +2945,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   };
   const softDeleteJournalEntry = async (invoice) => {
     if (!currentCompany?.id) return [];
+    // C467 — the opening entry is superseded by the starting-balances screen, never deleted
+    // alone: its `opening_balances` rows would keep saying "posted" over a ledger with none.
+    if (isOpeningEntry(invoice)) {
+      showNotification(OPENING_KEEP_SENTENCE, "error");
+      logAudit("opening_entry_delete_refused", "Refused to delete the opening-balance entry from the transactions list — starting balances are changed on their own screen", null, { entry_id: invoice?.db_entry_id ? String(invoice.db_entry_id) : null });
+      return [];
+    }
     // SIGNED-PERIOD guard (O83 Trap 2): deleting/voiding an entry inside a signed month removes
     // value the attestation vouches for — block it (reopen first). Opening entries exempt.
     const delPeriod = signedPeriodForDate(invoice?.date, signoffs, { source: invoice?.source });
@@ -3136,6 +3143,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const removeEntry = async (invoice, byAI = false) => {
     if (!invoice) return { ok: false };
     const plan = planEntryRemoval(invoice, signoffs, { monthLabel: signedMonthLabel });
+    if (plan.mode === REMOVAL.KEEP) {   // C467 — the opening entry is changed on its own screen
+      showNotification(plan.blocked, "error");
+      return { ok: false, mode: plan.mode };
+    }
     if (plan.mode === REMOVAL.CORRECT) {
       const revId = await reverseJournalEntry(invoice, `Correction — ${plan.period} already signed off`, byAI);
       if (!revId) return { ok: false, mode: plan.mode };   // reverseJournalEntry already said why
@@ -3158,6 +3169,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // original via import_metadata.reverses and idempotent (one live reversal per entry).
   const reverseJournalEntry = async (invoice, reason, byAI = false) => {
     if (!invoice || !currentCompany?.id || !session?.user?.id) return null;
+    if (isOpeningEntry(invoice)) { showNotification(OPENING_KEEP_SENTENCE, "error"); return null; }   // C467
     const origId = resolveEntryDbId(invoice) || invoice.db_entry_id || null;
     if (!origId) { showNotification("Can't reverse — entry isn't saved yet", "error"); return null; }
     // Idempotency (CR-17). GL-TRUTH first: a live reversing entry already in the loaded

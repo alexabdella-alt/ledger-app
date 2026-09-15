@@ -146,9 +146,13 @@ describe("★★ O130 — planEntryRemoval picks the mechanism so the owner does
     expect(cor.confirm).not.toMatch(/undo/i);
   });
 
-  it("an opening-balance entry is exempt, as everywhere else", () => {
+  it("an opening-balance entry in a signed month is never CORRECTED — it is exempt from the signed guard, as everywhere else", () => {
+    // Pinned DELETE until C467, which made the opening entry KEEP everywhere (the
+    // starting-balances screen owns it). The property this protects is unchanged: no
+    // dated correction is ever posted against the opening entry.
     const plan = planEntryRemoval({ date: "2026-08-06", vendor: "X", source: "opening_balance" }, signed, { monthLabel: label });
-    expect(plan.mode).toBe(REMOVAL.DELETE);
+    expect(plan.mode).not.toBe(REMOVAL.CORRECT);
+    expect(plan.mode).toBe(REMOVAL.KEEP);
   });
 
   it("falls back to the raw period when no label function is given", () => {

@@ -58,9 +58,21 @@ export function mutationHitsSignedPeriod(entry, signoffs = []) {
 // cannot render "Deleted" over a correction, or the reverse.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const REMOVAL = { DELETE: "delete", CORRECT: "correct" };
+export const REMOVAL = { DELETE: "delete", CORRECT: "correct", KEEP: "keep" };
+
+// C467 — THE OPENING ENTRY IS NOT REMOVED FROM THE TRANSACTIONS LIST. It is the company's
+// starting position, and the `opening_balances` rows that drive the grid, the cutoff lock
+// and the onboarding tick all point at it. Deleting the entry alone left every one of
+// them saying "posted" over a ledger with no opening — cash on hand at zero, the cutoff
+// locked, and no way to post another without finding "Redo opening setup". The starting-
+// balances screen owns every change to it (redo, supersede), and says so here.
+export const OPENING_KEEP_SENTENCE = "Starting balances aren't removed here — change them on the starting-balances screen (Settings → Bank accounts & starting balances).";
+export const isOpeningEntry = (entry) => !!entry && entry.source === "opening_balance";
 
 export function planEntryRemoval(entry, signoffs = [], { monthLabel = null } = {}) {
+  if (isOpeningEntry(entry)) {
+    return { mode: REMOVAL.KEEP, period: null, confirm: null, done: null, blocked: OPENING_KEEP_SENTENCE };
+  }
   const period = signedPeriodForDate(entry && entry.date, signoffs, { source: entry && entry.source });
   const who = (entry && entry.vendor && String(entry.vendor).trim()) || "this transaction";
   if (!period) {
@@ -101,8 +113,10 @@ export function planEntryRemoval(entry, signoffs = [], { monthLabel = null } = {
 export function planBulkRemoval(entries = [], signoffs = [], { monthLabel = null } = {}) {
   const removable = [];
   const signed = [];
+  const kept = [];   // C467 — opening entries, never removed from here
   for (const e of entries || []) {
     if (!e) continue;
+    if (isOpeningEntry(e)) { kept.push(e); continue; }
     const period = signedPeriodForDate(e.date, signoffs, { source: e.source });
     if (period) signed.push({ entry: e, period });
     else removable.push(e);
@@ -115,11 +129,12 @@ export function planBulkRemoval(entries = [], signoffs = [], { monthLabel = null
     ? `Remove ${n} ${n === 1 ? "entry" : "entries"}? You'll have 30 seconds to undo, and your accountant can restore them later.`
     : null;
   // Says what will be LEFT BEHIND and why, before anything happens — not afterwards.
-  const blocked = signed.length
-    ? `${signed.length} of these ${signed.length === 1 ? "is" : "are"} in ${months.length === 1 ? months[0] : "months"} your accountant has signed off, so we won't change ${months.length === 1 ? "it" : "them"} in bulk. Open ${signed.length === 1 ? "that one" : "those"} individually and we'll record a correction dated today instead.`
-    : null;
+  const parts = [];
+  if (signed.length) parts.push(`${signed.length} of these ${signed.length === 1 ? "is" : "are"} in ${months.length === 1 ? months[0] : "months"} your accountant has signed off, so we won't change ${months.length === 1 ? "it" : "them"} in bulk. Open ${signed.length === 1 ? "that one" : "those"} individually and we'll record a correction dated today instead.`);
+  if (kept.length) parts.push(`${kept.length === 1 ? "One of these is" : `${kept.length} of these are`} your starting balances. ${OPENING_KEEP_SENTENCE}`);
+  const blocked = parts.length ? parts.join(" ") : null;
 
-  return { removable, signed, months, confirm, blocked };
+  return { removable, signed, kept, months, confirm, blocked };
 }
 
 // Option (b): rebook the entry into the CURRENT open month (date-adjust for a cash-basis
