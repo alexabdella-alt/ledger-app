@@ -523,7 +523,7 @@ export default function QBOImportView() {
                 ? <span style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>Removed</span>
                 : (undoing === b.id
                   ? <span style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Undoing…</span>
-                  : <button onClick={() => { if (window.confirm(`Undo this import? This soft-deletes all ${b.imported_count} entries from "${b.filename || "the import"}". You can still find them in the audit trail.`)) undoImport(b); }}
+                  : <button onClick={() => { if (window.confirm(`Undo this import? All ${b.imported_count} transactions from "${b.filename || "the import"}" will be removed from your books. They stay in the audit trail.`)) undoImport(b); }}
                       style={{ fontSize: 12, color: "var(--sc-error)", background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Undo this import</button>)}
             </div>
           ))}

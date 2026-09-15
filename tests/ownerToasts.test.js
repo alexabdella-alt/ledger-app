@@ -48,6 +48,15 @@ describe("★★ toasts on owner-reachable paths pass the owner bar", () => {
     expect(seen).toBeGreaterThan(150);   // anti-vacuity
     expect(bad).toEqual([]);
   });
+  it("native confirm() dialogs on owner-reachable screens pass the bar too", () => {
+    for (const f of OWNER_FILES.concat(["src/components/views/QBOImportView.jsx"])) {
+      const src = strip(fs.readFileSync(f, "utf8"));
+      for (const m of src.matchAll(/window\.confirm\(\s*(?:`([^`]*)`|"([^"]*)")/g)) {
+        const t = m[1] ?? m[2];
+        expect([f, t.slice(0, 80), containsOwnerJargon(plain(t))]).toEqual([f, t.slice(0, 80), false]);
+      }
+    }
+  });
   it("every reviewer-only exemption is still a live string (a stale one is a licence lying open)", () => {
     const app = strip(fs.readFileSync("src/App.jsx", "utf8"));
     for (const t of Object.keys(REVIEWER_ONLY)) expect(app, t).toContain(t);
