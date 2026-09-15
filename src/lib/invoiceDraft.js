@@ -36,3 +36,20 @@ export function draftBase(rawState, fallback) {
   // gets line_items backfilled so reads can't throw.
   return Array.isArray(base.line_items) ? base : { ...base, line_items: (fallback && fallback.line_items) || [emptyInvoiceLine()] };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C412 — WHAT STANDS BETWEEN THIS DRAFT AND "SEND", SAID BEFORE THE CLICK.
+//
+// The Send button was enabled over an incomplete draft and refused on click with a toast
+// ("Add a customer name first.") — O124: a control that refuses on click teaches you that
+// clicking is how you find out. The same three checks the handler makes, as sentences the
+// screen shows beside a DISABLED button (C407's pattern on the sign-off card). The handler
+// keeps them as its own guard, through this one function, so the two cannot disagree.
+// ─────────────────────────────────────────────────────────────────────────────
+export function invoiceSendBlockers(draft = {}, subtotal = 0) {
+  const out = [];
+  if (!String(draft.customer || "").trim()) out.push("Add the customer's name.");
+  if (!String(draft.customer_email || "").trim()) out.push("Add the customer's email address.");
+  if (!(Number(subtotal) > 0)) out.push("Add at least one line with an amount.");
+  return out;
+}

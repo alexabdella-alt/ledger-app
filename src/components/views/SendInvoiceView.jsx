@@ -5,7 +5,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
-import { newInvoiceDraft, emptyInvoiceLine, draftBase } from "../../lib/invoiceDraft";
+import { newInvoiceDraft, emptyInvoiceLine, draftBase , invoiceSendBlockers } from "../../lib/invoiceDraft";
 import { arInvoiceRows, isDbInvoiceId } from "../../lib/arInvoiceRows";
 import { contactDbId } from "../../lib/contactIds";
 import { checkedRowUpdate } from "../../lib/checkedWrite";
@@ -49,6 +49,7 @@ export default function SendInvoiceView() {
             // Persist (insert or update) into the sent-invoices list.
             // The app can send only with a domain AND a channel set up; a member who cannot see
             // the token still sees `status.configured`, which is all this needs.
+            const sendBlockers = invoiceSendBlockers(draft, subtotal);   // C412 — shown before the click, and the button is disabled while any remain
             const canSendFromApp = !!MAIL_DOMAIN && !!(mailChannel?.channel || mailChannel?.status?.configured);
             const persistSentLocal = (inv) => setSentInvoices(prev => {
               const i = prev.findIndex(x => x.id === inv.id);
@@ -153,9 +154,7 @@ export default function SendInvoiceView() {
             // Issue the invoice: save it, create the customer, book A/R, and open the
             // user's email client pre-filled so they can actually send it.
             const sendInvoice = async () => {
-              if (!draft.customer?.trim()) { showNotification("Add a customer name first.", "error"); return; }
-              if (!(draft.customer_email||"").trim()) { showNotification("Add the customer's email to send.", "error"); return; }
-              if (!(subtotal > 0)) { showNotification("Add at least one line item with an amount.", "error"); return; }
+              if (sendBlockers.length) { showNotification(sendBlockers[0], "error"); return; }   // C412 — the same list the screen shows; the button is disabled, this is the net
               const customerId = await resolveCustomerId();
               const inv = {...draft, id: draft.id||Date.now()+Math.random(), status:"sent", sent_at:new Date().toISOString(), tax_rate: draft.tax_rate || "", tax_amount: taxAmount};
               if (!inv.created_at) inv.created_at = new Date().toISOString();
@@ -344,7 +343,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                   <div>
                     <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:16,flexWrap:"wrap"}}>
                       <button onClick={()=>setShowPreview(false)} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer"}}>← Edit</button>
-                      <button onClick={sendInvoice} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,var(--sc-success),var(--sc-success))",border:"none",color:"var(--sc-on-accent)",cursor:"pointer"}}>{canSendFromApp ? "Send Invoice →" : "Send from my mail app →"}</button>
+                      <button onClick={sendInvoice} disabled={sendBlockers.length > 0} data-send-blocked={sendBlockers.length > 0 ? "true" : undefined} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:sendBlockers.length ? "var(--sc-border)" : "linear-gradient(135deg,var(--sc-success),var(--sc-success))",border:"none",color:sendBlockers.length ? "var(--sc-text-mut)" : "var(--sc-on-accent)",cursor:sendBlockers.length ? "not-allowed" : "pointer"}}>{canSendFromApp ? "Send Invoice →" : "Send from my mail app →"}</button>
                       <button onClick={downloadPDF} style={{padding:"9px 22px",borderRadius:9,fontSize:13,background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer"}}>Download / Print PDF</button>
                     </div>
                     <PreviewCard/>
@@ -419,11 +418,17 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                     </div>
 
                     <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                      <button onClick={sendInvoice} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,var(--sc-success),var(--sc-success))",border:"none",color:"var(--sc-on-accent)",cursor:"pointer"}}>{canSendFromApp ? "Send Invoice →" : "Send from my mail app →"}</button>
+                      <button onClick={sendInvoice} disabled={sendBlockers.length > 0} data-send-blocked={sendBlockers.length > 0 ? "true" : undefined} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:sendBlockers.length ? "var(--sc-border)" : "linear-gradient(135deg,var(--sc-success),var(--sc-success))",border:"none",color:sendBlockers.length ? "var(--sc-text-mut)" : "var(--sc-on-accent)",cursor:sendBlockers.length ? "not-allowed" : "pointer"}}>{canSendFromApp ? "Send Invoice →" : "Send from my mail app →"}</button>
                       <button onClick={()=>setShowPreview(true)} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer"}}>Preview</button>
                       <button onClick={saveDraft} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"var(--sc-gold-soft)",border:"1px solid var(--sc-gold-soft)",color:"var(--sc-gold)",cursor:"pointer"}}>Save Draft</button>
                       <button onClick={downloadPDF} style={{padding:"9px 22px",borderRadius:9,fontSize:13,background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer"}}>Download / Print PDF</button>
                     </div>
+                    {sendBlockers.length > 0 && (
+                      <div data-send-blockers style={{marginTop:10,fontSize:12,color:"var(--sc-text-2)",lineHeight:1.6}}>
+                        <div style={{fontWeight:600,marginBottom:2}}>Before you can send:</div>
+                        {sendBlockers.map(b => <div key={b}>• {b}</div>)}
+                      </div>
+                    )}
                   </div>
 
                   {/* Right panel: totals + invoice list */}
