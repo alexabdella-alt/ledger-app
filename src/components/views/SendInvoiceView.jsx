@@ -168,7 +168,7 @@ export default function SendInvoiceView() {
                 inv.ledger_id = jeId;
               }
               const saved = await persistSent(inv, customerId); setSentInvoiceDraft(saved); setDraft(saved);
-              logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(subtotal)} · A/R booked`);
+              logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(subtotal)} · recorded as money owed to you`);
               const lineSummary = (inv.line_items||[]).map(l => `• ${l.description||"Item"} — ${fmt(l.amount)}`).join("\n");
               const subject = `Invoice ${inv.invoice_number} from ${companySettings.name||"Your Company"}`;
               const body = `Hi ${inv.customer},\n\nPlease find invoice ${inv.invoice_number} for ${fmt(subtotal)}, due ${inv.due_date?fmtDate(inv.due_date):"on receipt"}.\n\n${lineSummary}\n\nTotal due: ${fmt(subtotal)}\n\nThank you,\n${companySettings.name||"Your Company"}`;
@@ -177,12 +177,12 @@ export default function SendInvoiceView() {
               // the C194 shape: "sent" over something that opened a compose window).
               if (canSendFromApp && isDbInvoiceId(saved.id)) {
                 const r = await sendChannelMail({ kind: "invoice", to: inv.customer_email, subject, text: body, related: { arInvoiceId: saved.id } });
-                if (r.ok) showNotification(`Invoice ${inv.invoice_number} sent to ${inv.customer_email} — A/R booked ✓`);
+                if (r.ok) showNotification(`Invoice ${inv.invoice_number} sent to ${inv.customer_email} — recorded as money owed to you ✓`);
                 else showNotification(`Invoice ${inv.invoice_number} is in your books but was NOT sent — ${plainWriteError(r.error, "the email didn't go out")}. Open it and use your own mail app instead.`, "error");
                 return;
               }
               try { window.location.href = `mailto:${encodeURIComponent(inv.customer_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; } catch(e) { /* no mail client */ }
-              showNotification(`Invoice ${inv.invoice_number} — A/R booked ✓. It's open in your mail app to send.`);
+              showNotification(`Invoice ${inv.invoice_number} recorded as money owed to you ✓. It's open in your mail app to send.`);
             };
 
             const downloadPDF = () => {
@@ -473,7 +473,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                               </div>
                             </div>
                             {inv.status!=="paid" && (
-                              <button onClick={e=>{e.stopPropagation();markInvoicePaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid var(--sc-success-soft)",color:"var(--sc-success)",cursor:"pointer"}}>Mark Paid → Collect A/R</button>
+                              <button onClick={e=>{e.stopPropagation();markInvoicePaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid var(--sc-success-soft)",color:"var(--sc-success)",cursor:"pointer"}}>Mark paid</button>
                             )}
                           </div>
                         );

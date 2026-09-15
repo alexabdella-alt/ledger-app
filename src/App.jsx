@@ -5891,7 +5891,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // the line against the right offset (Cr 2200 for a card), not Cash (C60 interaction).
           if (plan.review.length > 0) setMatchQueue(prev => [...plan.review.map(m => ({ ...m, importOffsetCode: offsetCode, importOffsetName: offsetName })), ...prev]);
           if (plan.skipped.length > 0) {
-            logAudit("bank_match_unclearable", `${plan.skipped.length} auto-match(es) couldn't post a clearing entry (offset not A/P or A/R) — moved to review`);
+            logAudit("bank_match_unclearable", `${plan.skipped.length} auto-match(es) couldn't post a clearing entry (the other side of the entry isn't a bill or a customer invoice) — moved to review`);
             showNotification(`${plan.skipped.length} auto-match(es) couldn't post a clearing entry — moved to review`, "error");
           }
 

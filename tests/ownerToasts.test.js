@@ -65,5 +65,9 @@ describe("★★ toasts on owner-reachable paths pass the owner bar", () => {
     const app = fs.readFileSync("src/App.jsx", "utf8");
     for (const s of ["Recorded as money received in advance ✓", "Recorded — its cost will be spread over time ✓", "Cost spread set up ✓", "Agreement read —", "to your categories — you didn't have one"]) expect(app).toContain(s);
     for (const s of ["deferred revenue (advance payment)", "Depreciation attached", "upload in the intake ledger", "Contract analyzed —", "Journal entry not found."]) expect(app).not.toContain(s);
+    // C423 — "A/R" and "A/P" were not in the bar; three toasts and a button said "A/R booked"
+    const siv = fs.readFileSync("src/components/views/SendInvoiceView.jsx", "utf8");
+    expect(siv).not.toMatch(/A\/R booked|Collect A\/R/);
+    expect(siv).toContain("recorded as money owed to you ✓");
   });
 });
