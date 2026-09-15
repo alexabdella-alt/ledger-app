@@ -104,7 +104,7 @@ function TrustPanelNeutral({ headline, subtext }) {
 }
 
 export default function TrustPanel({ loading = false }) {
-  const { ownerTrust, onViewChange, setView, navSeat, canSoloAttest, selfAttestAcknowledgement, signOffPeriod, signoffs, invoices } = useERP();
+  const { ownerTrust, onViewChange, setView, navSeat, canSoloAttest, selfAttestAcknowledgement, signOffPeriod, signoffs, invoices, clarificationQueue } = useERP();
   // C197 — is this the CPA cockpit, or the client seat? (Absent context → cockpit,
   // so nothing regresses for any surface that renders the panel outside ERP.)
   const cockpit = navSeat ? navSeat.isReviewerSeat : true;
@@ -121,6 +121,21 @@ export default function TrustPanel({ loading = false }) {
   // C197 — refuses for a client seat. The nudge already renders as status rather than
   // a button there; this makes the refusal structural, not merely visual.
   const goReview = () => { if (!cockpit) return; return onViewChange ? onViewChange("review") : setView && setView("review"); };
+  // C405 — "Answer N questions" opens the QUESTIONS, not the Review tab. The nudge had
+  // pointed at Review since C197, when the review queue was where a person went; the
+  // questions have lived on Home ever since (the cards, and C374's click-through), and
+  // Review lists none of them — so the button sent a reviewer to a screen that could not
+  // answer what it had just promised, and a client got no button at all. It opens the
+  // click-through when cards are on screen, and otherwise scrolls to the waiting-on-you
+  // list, whose row for held questions carries "Bring the questions back". Same door for
+  // both seats; the confidence-flag nudge (a reviewer's queue) still goes to Review.
+  const goQuestions = () => {
+    const anyCard = (clarificationQueue || []).some((c) => c && !c.resolved);
+    if (anyCard && typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("sc:open-stepper")); return; }
+    if (typeof document !== "undefined") document.getElementById("waiting-on-you")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  const onNudge = nudge?.kind === "clarification" ? goQuestions : goReview;
+  const nudgeIsButton = nudge?.kind === "clarification" || cockpit;
   const signedLabel = monthLabel(reviewedThrough);
 
   return (
@@ -170,12 +185,11 @@ export default function TrustPanel({ loading = false }) {
         invoices={invoices}
       />}
 
-      {/* At most ONE gentle nudge (owner-actionable — a clarification to answer).
-          C197: the nudge points at the CPA's Review queue, which a client seat can't
-          open — so for a client it renders as STATUS, not a button. Same words, no
-          click that would bounce them straight back here. */}
-      {nudge && (cockpit ? (
-        <button onClick={goReview}
+      {/* At most ONE gentle nudge. A clarification nudge opens the questions (C405) on
+          either seat; a confidence-flag nudge is the reviewer's queue, so for a client it
+          renders as STATUS rather than a button that would bounce them back here (C197). */}
+      {nudge && (nudgeIsButton ? (
+        <button onClick={onNudge} data-nudge={nudge.kind}
           style={{ marginTop: 14, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 12, padding: "12px 16px", cursor: "pointer", textAlign: "left" }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)" }}>{lines.correct.text}</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-gold)", whiteSpace: "nowrap" }}>{nudge.text} →</span>
