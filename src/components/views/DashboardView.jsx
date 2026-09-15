@@ -8,7 +8,7 @@ import { ownerActivityText } from "../../lib/activityFeed";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { nextUrgentDeadline, taxEstimate } from "../../lib/tax";
+import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
 import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
@@ -851,8 +851,9 @@ export function HomeWaitingList({ navTo }) {
   const unpaid = openPayablesGL(invoices || [], apCode);
   const overdueBills = unpaid.filter(i => i.due_date && i.due_date < today);
   const overdueTotal = overdueBills.reduce((t, i) => t + (Number(i.amount) || 0), 0);
-  const dl = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlines });   // C388 — a deadline marked filed on the Taxes screen is not waiting
-  const est = dl && dl.est ? taxEstimate(invoices || [], new Date().getFullYear()) : null;
+  const dl0 = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlines });   // C388 — a deadline marked filed on the Taxes screen is not waiting
+  const est = dl0 && dl0.est ? taxEstimate(invoices || [], new Date().getFullYear()) : null;
+  const dl = deadlineIsWaiting(dl0, est) ? dl0 : null;   // C434 — an estimated payment with nothing to pay is not waiting
   const taxEstimateText = dl && dl.est && est && est.total > 0 ? ` — estimated amount ${fmtApprox(est.quarterly)}` : "";
   const items = homeWaitingList({
     openCards: (clarificationQueue || []).filter(c => !c.resolved),

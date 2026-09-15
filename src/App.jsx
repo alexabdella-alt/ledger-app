@@ -26,7 +26,7 @@ import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABI
 import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
-import { nextUrgentDeadline, taxEstimate } from "./lib/tax";
+import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
 import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
@@ -2522,9 +2522,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const generateNotifications = () => {
     try {
       // Tax deadline within 30 days, with the estimated amount.
-      const nextDue = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlinesRef.current });   // C388 — one reading with Home; a filed deadline is not due
+      const nextDue0 = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlinesRef.current });   // C388 — one reading with Home; a filed deadline is not due
+      const est = nextDue0 ? taxEstimate(invoicesRef.current, new Date().getFullYear()) : null;
+      const nextDue = deadlineIsWaiting(nextDue0, est) ? nextDue0 : null;   // C434 — same rule as Home
       if (nextDue) {
-        const est = taxEstimate(invoicesRef.current, new Date().getFullYear());
         const amt = nextDue.est && est.quarterly > 0 ? ` — est. ${fmtApprox(est.quarterly)}` : "";
         createNotification({ type: "tax_deadline", title: `${nextDue.label} due in ${nextDue.days} day${nextDue.days === 1 ? "" : "s"}${amt}`, description: nextDue.plain, link_view: "tax" });
       }

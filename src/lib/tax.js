@@ -59,6 +59,16 @@ export function getTaxDeadlines(now = new Date()) {
 // tick on the Taxes screen changed nothing anywhere else (O123: an action whose effect is
 // invisible will be repeated).
 export const filedKey = (d) => `${d.key}-${d.year}`;
+// C434 — an ESTIMATED-PAYMENT deadline is only waiting when there is something to pay. A
+// brand-new company with no books was told "Pay your 3rd-quarter estimated taxes — due in 12
+// days" as its first item on Home, and would be told again every quarter regardless of
+// income (O122: a card the user sees every quarter is a bug). Filing deadlines (1099s, the
+// return itself) stay — those are about forms, not amounts.
+export function deadlineIsWaiting(d, estimate) {
+  if (!d) return false;
+  if (!d.est) return true;
+  return !!(estimate && Number(estimate.total) > 0);
+}
 export function nextUrgentDeadline(now = new Date(), withinDays = 30, { filed = {} } = {}) {
   return getTaxDeadlines(now).find(d => d.days <= withinDays && d.days >= 0 && !(filed && filed[filedKey(d)])) || null;
 }
