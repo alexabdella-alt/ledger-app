@@ -134,6 +134,15 @@ a blank.** A vendor named here on an unsigned company is a FAIL.
 
 ---
 
+## 13. THE OWNER'S FIGURES AFTER 2026-09-15 (`C437`–`C454`) — ADDED AFTER THE DOC WAS WRITTEN
+
+Four figure defects shipped on 2026-09-15 that a drive can check in minutes. Each is binary.
+
+- **13a — Reports, first of the month (`C440`).** Book (or find) an entry dated the **1st** of the current month. Open Reports → *This month*. **PASS** if it is in the month; **FAIL** if it sits in *Last month*. Wrong-reason pass: a machine in UTC cannot fail this — check from a US-zone browser.
+- **13b — Customers, "Still owed to you" (`C452`/`C454`).** A customer whose sale arrived as a **bank deposit** (card payment) shows **$0.00** owed; a customer with an **issued invoice** carrying sales tax shows the **taxed** total. Wrong-reason pass: a company with no deposits proves nothing on the first half — Red River has Toast payouts.
+- **13c — Vendors, "Bills you still owe" / "Paid YTD" (`C453`).** A supplier paid at the till (a bank-line purchase) shows **Paid YTD > 0 and Owed $0.00**; a supplier with an open uploaded bill shows the bill under owed. Wrong-reason pass: a supplier with both kinds must show both halves right.
+- **13d — The invoice email (`C437`/`C450`/`C451`).** Send an invoice with a sales-tax rate and **no due date typed**, terms Net 30. The email body says **"for <taxed total>"** and **"Total due: <taxed total>"**, the printed invoice's *Due Date* is issue + 30 days (not *On Receipt*), and the sent-invoice list shows the taxed total. Wrong-reason pass: an invoice with no tax cannot fail the total half.
+
 ## SCORING
 
 Report each criterion as **PASS / FAIL / NOT EXERCISED**, with the wrong-reason check written next
