@@ -59,6 +59,7 @@ import { findContactForName } from "./lib/contactMatch";
 import { unknownDocRow, unknownDocFromRow, isDbUnknownDocId, UNKNOWN_DOC_SELECT } from "./lib/unknownDocs";
 import { onboardingSteps } from "./lib/onboarding";
 import { notificationTarget } from "./lib/notificationDoor";
+import { readDeclinedRecurring, writeDeclinedRecurring } from "./lib/declinedRecurring";
 import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
@@ -1120,7 +1121,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // Recurring-suggestion detection
     if (recurringScanTimer.current) { clearTimeout(recurringScanTimer.current); recurringScanTimer.current = null; }
     setRecurringSuggestions([]);
-    dismissedRecurringRef.current = new Set();
+    dismissedRecurringRef.current = new Set();   // re-read for the incoming company by the scan (C389)
     // Anomalies, notifications, onboarding UI
     applyAnomalyRows([]); anomaliesLoadedRef.current = false; anomalyScanBusyRef.current = false;
     setAnomalyComments([]);                 // §8 — company-scoped state is cleared on switch
@@ -1993,8 +1994,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const recurringScanTimer = useRef(null);
   const runRecurringScan = () => {
     try {
+      // C389 — the declined set is read back from this device before every scan, so a
+      // reload does not turn "No thanks" back into a question.
+      const stored = readDeclinedRecurring(typeof localStorage !== "undefined" ? localStorage : null, currentCompany?.id);
+      for (const k of stored) dismissedRecurringRef.current.add(k);
+      const declined = dismissedRecurringRef.current;
       const found = detectRecurringPatterns(invoicesRef.current, recurringRef.current)
-        .filter(s => !dismissedRecurringRef.current.has(s.vendorKey));
+        .filter(s => !declined.has(s.vendorKey));
       setRecurringSuggestions(found);
     } catch { /* best-effort */ }
   };
@@ -2031,7 +2037,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // "No thanks" → never suggest this vendor again. "Remind me later" → just hide for now.
   const dismissRecurringSuggestion = (s, remindLater = false) => {
     if (!s) return;
-    if (!remindLater) dismissedRecurringRef.current.add(s.vendorKey);
+    if (!remindLater) {
+      dismissedRecurringRef.current.add(s.vendorKey);
+      writeDeclinedRecurring(typeof localStorage !== "undefined" ? localStorage : null, currentCompany?.id, dismissedRecurringRef.current);   // C389
+    }
     setRecurringSuggestions(prev => prev.filter(x => x.vendorKey !== s.vendorKey));
   };
 

@@ -88,6 +88,9 @@ describe("★★ nothing parses an AI reply by hand any more", () => {
       // `aiJson.js` IS the parser and `ai.js` holds the specialised action-object scanner
       // that must read many objects out of one reply — both are the intended homes.
       if (rel.endsWith("lib/aiJson.js") || rel.endsWith("lib/ai.js")) continue;
+      // `declinedRecurring.js` parses browser storage through an INJECTED handle (so it can be
+      // tested), which hides the `localStorage` token the rule below keys on. Not a model reply.
+      if (rel.endsWith("lib/declinedRecurring.js")) continue;
       const text = fs.readFileSync(f, "utf8").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
       for (const m of text.matchAll(/JSON\.parse\(([^)]{0,160})/g)) {
         // Local/browser state is not a model reply.
