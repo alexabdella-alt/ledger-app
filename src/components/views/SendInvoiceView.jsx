@@ -178,10 +178,15 @@ export default function SendInvoiceView() {
                 inv.ledger_id = jeId;
               }
               const saved = await persistSent(inv, customerId); setSentInvoiceDraft(saved); setDraft(saved);
-              logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(subtotal)} · recorded as money owed to you`);
+              logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(total)} · recorded as money owed to you`);
               const lineSummary = (inv.line_items||[]).map(l => `• ${l.description||"Item"} — ${fmt(l.amount)}`).join("\n");
               const subject = `Invoice ${inv.invoice_number} from ${companySettings.name||"Your Company"}`;
-              const body = `Hi ${inv.customer},\n\nPlease find invoice ${inv.invoice_number} for ${fmt(subtotal)}, due ${inv.due_date?fmtDate(inv.due_date):"on receipt"}.\n\n${lineSummary}\n\nTotal due: ${fmt(subtotal)}\n\nThank you,\n${companySettings.name||"Your Company"}`;
+              // C437 — the customer's email said "for ${subtotal}" and "Total due: ${subtotal}" — the amount
+              // BEFORE sales tax — while the invoice it accompanied showed the taxed total. A customer
+              // paying what the email said would have short-paid by the tax. The email reads the same
+              // total the invoice does, and itemises the tax when there is one.
+              const taxLine = taxAmount > 0 ? `\nSales tax (${taxRatePct}%): ${fmt(taxAmount)}` : "";
+              const body = `Hi ${inv.customer},\n\nPlease find invoice ${inv.invoice_number} for ${fmt(total)}, due ${inv.due_date?fmtDate(inv.due_date):"on receipt"}.\n\n${lineSummary}${taxAmount > 0 ? `\n\nSubtotal: ${fmt(subtotal)}${taxLine}` : ""}\n\nTotal due: ${fmt(total)}\n\nThank you,\n${companySettings.name||"Your Company"}`;
               // ★ O82 (C351) — SEND FROM THE APP WHEN THE CHANNEL EXISTS; otherwise the person's
               // own mail client, as before — and the button SAYS which (a silent fallback is
               // the C194 shape: "sent" over something that opened a compose window).
