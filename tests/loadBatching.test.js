@@ -53,9 +53,12 @@ describe("loading a company does not serialise its independent reads", () => {
 
   it("★★ and a company switched mid-flight is not marked loaded — false emptiness is the one thing this function refuses", () => {
     // The batch guard returns from inside the try, which still runs the finally.
-    expect(code).toMatch(/finally \{ if \(currentCompany\.id === cid\) setCompanyDataLoaded\(true\); \}/);
+    // C413 — the guard reads `stillOn(cid)` (a ref assigned every render). The expression this
+    // test originally pinned, `currentCompany.id === cid`, compared a captured prop to itself
+    // and could never be false: the test proved the guard was WRITTEN, not that it could fire.
+    expect(code).toMatch(/finally \{ if \(stillOn\(cid\)\) setCompanyDataLoaded\(true\); \}/);
     // …and the guard itself exists after the batch resolves.
     const batchAt = code.indexOf("Promise.allSettled");
-    expect(code.indexOf("if (currentCompany.id !== cid) return;", batchAt)).toBeGreaterThan(batchAt);
+    expect(code.indexOf("if (!stillOn(cid)) return;", batchAt)).toBeGreaterThan(batchAt);
   });
 });

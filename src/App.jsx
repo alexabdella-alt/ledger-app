@@ -392,6 +392,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const canPreviewAsOwner = isReviewerSeat({ role: userRole, isPlatformAdmin });
 
   const [invoices, setInvoices] = useState([]);
+  // C413 — THE COMPANY THE SCREEN IS ON, READABLE FROM INSIDE AN OLD CLOSURE. `loadAllData`
+  // captures `currentCompany` (a prop) when it is created, so `currentCompany.id !== cid`
+  // inside it compared a value to itself and the CR-19 mid-switch guard could never fire:
+  // a slow load for the previous company landed its ledger over the next one. The ref is
+  // assigned every render, so an in-flight load can ask which company is on screen NOW.
+  const currentCompanyIdRef = useRef(null);
+  currentCompanyIdRef.current = currentCompany?.id || null;
+  const stillOn = (cid) => currentCompanyIdRef.current === cid;
   const invoicesRef = useRef([]); // always-current invoices for async lookups (e.g. doc relinking)
   useEffect(() => { invoicesRef.current = invoices; }, [invoices]);
   const [rules, setRules] = useState([]); // { vendor, gl_code, gl_name, project }
@@ -951,6 +959,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         };
       }).filter(Boolean);
       const live = filterLiveExceptions({ lineItems, stmtItems, supersededIds });   // C193 — drop zombie cards
+      if (!stillOn(cid)) return;   // C413
       setStatementExceptions([...live.lineItems, ...live.stmtItems]);
       setStatementExceptionsLoadFailed(false);
     } catch (e) {
@@ -960,6 +969,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // (The pre-058 degrade is preserved: the list still empties rather than throwing.
       // What changes is that the screen is told the difference.)
       console.error("[statement exceptions] load FAILED — this is NOT 'no exceptions':", e?.message || e);
+      if (!stillOn(cid)) return;   // C413
       setStatementExceptions([]);
       setStatementExceptionsLoadFailed(true);
     }
@@ -1191,7 +1201,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       showNotification("Couldn't load your books — please refresh. Your data is safe on the server.", "error");
       return;   // do NOT setCompanyDataLoaded(true) over a throw — failed ≠ empty
     }
-    if (currentCompany.id !== cid) return;   // company switched mid-load (CR-19) — drop the stale result
+    if (!stillOn(cid)) return;   // company switched mid-load (CR-19) — drop the stale result (C413: via the ref, not the captured prop)
 
     try {
       setInvoices(mapped);
@@ -1237,7 +1247,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // ledger fetch already makes above, for the same reason (CR-19): applying a previous
       // company's contacts over the new one is exactly the bleed `resetCompanyState` exists
       // to prevent.
-      if (currentCompany.id !== cid) return;
+      if (!stillOn(cid)) return;   // C413
 
       // Load contacts
       const { data: contactsData } = contactsRes;
@@ -1395,7 +1405,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // from inside the `try`, which still runs this — and marking data "loaded" for a company
     // that has been switched away from is precisely the false-emptiness the CR-18 comment at
     // the top of this function refuses to allow. The incoming company's own load sets it.
-    finally { if (currentCompany.id === cid) setCompanyDataLoaded(true); }
+    finally { if (stillOn(cid)) setCompanyDataLoaded(true); }   // C413 — via the ref
   };
 
   // ── SUPABASE PERSISTENCE ──────────────────────────────────────
@@ -2191,6 +2201,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         .eq("company_id", cid)
         .or(`status.eq.open,status.eq.dismissed,resolution.eq.${ANOMALY_RESOLUTION.ATTESTED}`)
         .order("created_at", { ascending: false });
+      if (!stillOn(cid)) return;   // C413 — a late result for a company we have left
       if (Array.isArray(data)) { applyAnomalyRows(data); anomaliesLoadedRef.current = true; }
     } catch { /* table may not exist yet (pre-056) — degrade gracefully */ }
   };
@@ -2305,6 +2316,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data, error } = await supabase.from("tax_settings")
         .select("filed_deadlines").eq("company_id", cid).eq("tax_year", new Date().getFullYear()).maybeSingle();
       if (error) { console.warn("[tax_settings] filed_deadlines load failed:", error.message); return; }   // leave the map alone: "could not ask" is not "none filed"
+      if (!stillOn(cid)) return;   // C413
       setFiledDeadlines(data?.filed_deadlines || {});
     } catch (e) { console.warn("[tax_settings] filed_deadlines load error:", e?.message || e); }
   };
@@ -2314,6 +2326,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data, error } = await supabase.from("anomaly_comments")
         .select("*").eq("company_id", cid).order("created_at", { ascending: true });
       if (error) { console.warn("[anomaly] comments load failed:", error.message); return; }
+      if (!stillOn(cid)) return;   // C413
       setAnomalyComments(data || []);
     } catch (e) { console.warn("[anomaly] comments load error:", e?.message || e); }
   };
@@ -2386,7 +2399,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data } = await supabase.from("notifications")
         .select("*").eq("company_id", cid).eq("dismissed", false)
         .order("created_at", { ascending: false }).limit(50);
-      if (!Array.isArray(data)) return;
+      if (!Array.isArray(data) || !stillOn(cid)) return;   // C413
       // Heal any pre-existing duplicates: keep the newest per type, dismiss the rest in
       // the DB so the 4×-same-alert backlog clears on first load.
       const seen = new Set(), keep = [], dupIds = [];
@@ -4118,6 +4131,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const loadContractsFromDB = async () => {
     if (!currentCompany?.id) return;
+    const cid = currentCompany.id;
     try {
       const { data, error } = await supabase.from("contracts")
         .select("*")
@@ -4125,6 +4139,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
       if (error) { console.error("loadContractsFromDB error:", JSON.stringify(error)); return; }
+      if (!stillOn(cid)) return;   // C413
       if (data && data.length > 0) {
         const loaded = data.map(row => {
           let c = {
@@ -4540,7 +4555,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!currentCompany?.id) return;
     const cid = currentCompany.id;
     const [ch, held] = await Promise.all([loadMailChannel(supabase, cid), loadHeldInbound(supabase, cid)]);
-    if (currentCompany?.id !== cid) return;
+    if (!stillOn(cid)) return;   // C413 — the captured prop could never differ from cid
     setMailChannel(ch);
     setHeldInbound(held.ok ? held.rows : []);
   };
