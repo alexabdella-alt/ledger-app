@@ -22,14 +22,46 @@ describe("C465", () => {
   });
   it("the panel replaces the control with a sentence on settlements and opening entries", () => {
     const src = fs.readFileSync("src/components/TransactionDetailPanel.jsx", "utf8");
-    expect(src).toMatch(/\{\(settle \|\| sel\.source === "opening_balance"\) \? \(\s*<div data-no-recode/);
+    expect(src).toMatch(/\{\(settle \|\| sel\.source === "opening_balance" \|\| isCancelledOrCancelling\(sel\)\) \? \(\s*<div data-no-recode/);   // widened by C469
     expect(src).toMatch(/A payment has no category of its own — change the category on the bill or invoice it settles\./);
   });
   it("persistRecode refuses a settlement or an opening entry before any write", () => {
     const app = fs.readFileSync("src/App.jsx", "utf8");
     const i = app.indexOf("const persistRecode = async (recodedInvoices, newGlCode, newGlName) => {");
-    const head = app.slice(i, i + 1500);
+    const head = app.slice(i, i + 2200);
     expect(head).toMatch(/const notRecodable = targets\.find\(inv => isSettlementEntry\(inv\) \|\| inv\?\.source === "opening_balance"\);/);
     expect(head.indexOf("notRecodable")).toBeLessThan(head.indexOf("signedPeriodForDate"));
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// C469 — the same control on a CORRECTION, or on the entry it cancels. The two mirror each
+// other line for line; moving one alone leaves the cancellation on the old account, so
+// the old category is no longer canceled and the new one is charged out of nothing.
+// ═════════════════════════════════════════════════════════════════════════════
+import { planRecodeSweep } from "../src/lib/recodeSweep.js";
+import { isCancelledOrCancelling } from "../src/lib/gl.js";
+describe("C469", () => {
+  const orig = { id: "b1", db_entry_id: "b1", vendor: "Sysco", vendor_key: "sysco", gl_code: "5010", amount: 500, reversed_by: "r1" };
+  const rev = { id: "r1", db_entry_id: "r1", vendor: "Sysco", vendor_key: "sysco", gl_code: "5010", amount: 500, import_metadata: { kind: "reversal", reverses: "b1" } };
+  const other = { id: "b2", db_entry_id: "b2", vendor: "Sysco", vendor_key: "sysco", gl_code: "5010", amount: 200 };
+  const subject = { id: "b3", db_entry_id: "b3", vendor: "Sysco", vendor_key: "sysco", gl_code: "5010", amount: 100 };
+  it("the predicate reads both halves", () => {
+    expect(isCancelledOrCancelling(orig)).toBe(true);
+    expect(isCancelledOrCancelling(rev)).toBe(true);
+    expect(isCancelledOrCancelling(other)).toBe(false);
+  });
+  it("the sweep offers the live sibling and neither half of a correction", () => {
+    const plan = planRecodeSweep({ rows: [orig, rev, other, subject], subject, fromCode: "5010", toCode: "6600", toName: "Kitchen Supplies" });
+    expect(plan.eligible.map((r) => r.id)).toEqual(["b2"]);
+  });
+  it("the panel withholds the control and persistRecode refuses, after the settlement check", () => {
+    const src = fs.readFileSync("src/components/TransactionDetailPanel.jsx", "utf8");
+    expect(src).toMatch(/\{\(settle \|\| sel\.source === "opening_balance" \|\| isCancelledOrCancelling\(sel\)\) \? \(/);
+    const app = fs.readFileSync("src/App.jsx", "utf8");
+    const i = app.indexOf("const persistRecode = async (recodedInvoices, newGlCode, newGlName) => {");
+    const head = app.slice(i, i + 2200);
+    expect(head).toMatch(/\n\s*const corrected = targets\.find\(inv => isCancelledOrCancelling\(inv\)\);\s*\n\s*if \(corrected\) \{[^\n]*return false; \}/);
+    expect(head.indexOf("corrected")).toBeLessThan(head.indexOf("signedPeriodForDate"));
   });
 });

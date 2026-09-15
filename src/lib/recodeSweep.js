@@ -20,6 +20,8 @@
 // period rule — one definition of "signed", in `signedPeriod.js`.
 // ────────────────────────────────────────────────────────────────────────────
 import { vendorGroupKey } from "./vendorIdentity.js";
+import { isCancelledOrCancelling } from "./gl.js";
+import { isSettlementEntry } from "./bankMatch.js";
 
 const keyOf = (row) => row?.vendor_key || vendorGroupKey(row?.vendor) || null;
 const live = (row) => row && !row.deleted_at && row.status !== "deleted" && row.status !== "voided";
@@ -28,8 +30,10 @@ export function planRecodeSweep({ rows = [], subject, fromCode, toCode, toName, 
   const key = keyOf(subject);
   const empty = { eligible: [], blocked: [], sentence: null };
   if (!key || !fromCode || !toCode || String(fromCode) === String(toCode)) return empty;
+  // C469 — a correction and the entry it cancels mirror each other; moving one alone
+  // leaves the cancellation on the old account, so neither is offered (nor a settlement).
   const same = (rows || []).filter((r) =>
-    live(r) && String(r.id) !== String(subject?.id) && keyOf(r) === key && String(r.gl_code) === String(fromCode));
+    live(r) && !isCancelledOrCancelling(r) && !isSettlementEntry(r) && String(r.id) !== String(subject?.id) && keyOf(r) === key && String(r.gl_code) === String(fromCode));
   const eligible = same.filter((r) => !isSigned(r));
   const blocked = same.filter((r) => isSigned(r));
   if (!eligible.length && !blocked.length) return empty;

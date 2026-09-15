@@ -6,6 +6,7 @@ import { initials, vendorColor, fmtDate, fmtMoney, todayLocal } from "../lib/for
 import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind } from "../lib/txnPresent";
+import { isCancelledOrCancelling } from "../lib/gl";
 import { badge } from "../lib/ui";
 import { isDurableDocId } from "../lib/docLibrary";
 import { planRecodeSweep } from "../lib/recodeSweep";
@@ -355,8 +356,8 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   its lines are A/P-or-A/R and cash (or equity), and moving one would break the
                   link to the bill it settles and teach the supplier the wrong account. The
                   control is not offered on those rows (O124: not refused on click — absent). */}
-              {(settle || sel.source === "opening_balance") ? (
-                <div data-no-recode style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>{settle ? "A payment has no category of its own — change the category on the bill or invoice it settles." : "Starting balances are changed on the starting-balances screen, not here."}</div>
+              {(settle || sel.source === "opening_balance" || isCancelledOrCancelling(sel)) ? (
+                <div data-no-recode style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>{settle ? "A payment has no category of its own — change the category on the bill or invoice it settles." : sel.source === "opening_balance" ? "Starting balances are changed on the starting-balances screen, not here." : "This entry was corrected, so its category stays as it was. If the purchase should still be in your books, record it again with the right category."}</div>
               ) : recodeOpen ? (
                 <div>
                 {/* ── O129 — EQUIPMENT WITH NO SCHEDULE ────────────────────────────

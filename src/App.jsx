@@ -5,7 +5,7 @@ import { plainWriteError } from "./lib/plainWriteError";
 import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842 } from "./lib/gl";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
@@ -1489,6 +1489,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // to the bill it settles. Refused here as well as not offered in the panel.
     const notRecodable = targets.find(inv => isSettlementEntry(inv) || inv?.source === "opening_balance");
     if (notRecodable) { showNotification("That entry is a payment or a starting balance, so it has no category to change — change the category on the bill or invoice it settles.", "error"); return false; }
+    // C469 — a correction mirrors the entry it cancels line for line. Recoding either one
+    // alone leaves the cancellation on the old account, so the old category is no longer
+    // canceled and the new one is charged out of nothing.
+    const corrected = targets.find(inv => isCancelledOrCancelling(inv));
+    if (corrected) { showNotification("That entry was corrected (or is the correction), so its category stays as it was — record the purchase again with the right category if it should still be in your books.", "error"); return false; }
     // SIGNED-PERIOD guard (O83 Trap 2): a recode changes a signed month's account mix — block
     // it (reopen first). Any mutation of an attested period must be deliberate, never silent.
     const recBlocked = targets.find(inv => signedPeriodForDate(inv?.date, signoffs, { source: inv?.source }));
