@@ -2630,7 +2630,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // companySettings/bankAccounts/invoices have arrived. Reset to false on company switch.
   const [companyDataLoaded, setCompanyDataLoaded] = useState(false);
   const [businessModalOpen, setBusinessModalOpen] = useState(false);
-  const [accountantDismissed, setAccountantDismissed] = useState(() => { try { return localStorage.getItem("cfai_onboard_accountant_dismissed") === "1"; } catch { return false; } });
+  // C424 — the "add your accountant" checklist step's dismissal is PER COMPANY: the key was
+  // device-wide, so dismissing it on one company dismissed it on every company this browser
+  // ever opens, and it was read once at mount and never on a switch.
+  const accountantDismissKey = (cid) => `cfai_onboard_accountant_dismissed_${cid || "none"}`;
+  const readAccountantDismissed = (cid) => { try { return localStorage.getItem(accountantDismissKey(cid)) === "1"; } catch { return false; } };
+  const [accountantDismissed, setAccountantDismissed] = useState(() => readAccountantDismissed(currentCompany?.id));
+  useEffect(() => { setAccountantDismissed(readAccountantDismissed(currentCompany?.id)); }, [currentCompany?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   // Persist the business-type + fiscal-year answers to the company record.
   const saveBusinessProfile = async ({ businessType, fiscalYearEnd }) => {
     const cid = currentCompany?.id;
@@ -2710,7 +2716,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       return { ok: false, error: String(e?.message || e) };
     }
   };
-  const dismissAccountantStep = () => { try { localStorage.setItem("cfai_onboard_accountant_dismissed", "1"); } catch {} setAccountantDismissed(true); };
+  const dismissAccountantStep = () => { try { localStorage.setItem(accountantDismissKey(currentCompany?.id), "1"); } catch {} setAccountantDismissed(true); };
   // Mark onboarding finished once the required steps are done (persist the flag).
   const completeOnboarding = async () => {
     const cid = currentCompany?.id;
