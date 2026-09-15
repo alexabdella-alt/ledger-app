@@ -280,14 +280,14 @@ describe("(e) burn/runway stops contradicting itself", () => {
 
   it("THE LIVE REPRO — profitable + short cash renders no self-contradictory pairing", () => {
     const h = health(30000);
-    expect(h.headline).toMatch(/You're profitable/);
-    expect(h.headline).not.toMatch(/runway/i);          // a profitable business is not counting down
+    expect(h.headline).toMatch(/You're making money/);   // C377 wording; the property below is unchanged
+    expect(h.headline).not.toMatch(/runway|cash lasts about/i);          // a profitable business is not counting down
     expect(h.concerns.find(c => c.key === "runway")).toBeUndefined();
   });
 
   it("the number is still there — reframed as coverage, not deleted", () => {
     const h = health(30000);
-    expect(h.headline).toMatch(/Cash covers about \d+ months? of spending/);
+    expect(h.headline).toMatch(/cash covers about \d+ months? of spending/i);
     const runwayFact = h.facts.find(f => f.key === "runway");
     expect(runwayFact.value).toMatch(/^~\d/);            // the figure survives
     expect(runwayFact.label).toBe("Cash covers");
@@ -301,22 +301,22 @@ describe("(e) burn/runway stops contradicting itself", () => {
       { id: "e3", type: "expense", gl_code: "6500", amount: 10000, date: "2026-06-01", status: "booked" },
     ];
     const h = businessHealth(loss, { cash: 20000, now: new Date("2026-06-15") });
-    expect(h.headline).toMatch(/running at a loss/);
-    expect(h.headline).toMatch(/runway/);
+    expect(h.headline).toMatch(/spending more than you're bringing in/);   // C377 wording
+    expect(h.headline).toMatch(/cash lasts about/);   // C377 — the countdown IS stated for a loss-making company, in plain words
     expect(h.concerns.find(c => c.key === "runway")).toBeTruthy();
     expect(h.tone).toBe("concern");
   });
 
   it("plenty of cash and profitable reads healthy", () => {
     const h = health(500000);
-    expect(h.headline).toMatch(/You're profitable/);
+    expect(h.headline).toMatch(/You're making money/);
     expect(h.tone).toBe("good");
   });
 
   it("no state pairs 'profitable' with an alarm about running out", () => {
     for (const cash of [1000, 15000, 30000, 90000, 500000]) {
       const h = health(cash);
-      const contradictory = /You're profitable/.test(h.headline) && /runway|running out/i.test(h.headline);
+      const contradictory = /You're making money/.test(h.headline) && /runway|running out|cash lasts about/i.test(h.headline);
       expect(contradictory, `contradiction at cash=${cash}: "${h.headline}"`).toBe(false);
     }
   });

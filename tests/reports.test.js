@@ -236,7 +236,7 @@ describe("businessHealth — owner-facing status, no books-health, honest", () =
   it("healthy business → tone 'good', reassuring headline, no concerns", () => {
     const bh = businessHealth(healthy, { cash: 40000, now: NOW2 });
     expect(bh.tone).toBe("good");
-    expect(bh.headline).toMatch(/profitable/i);
+    expect(bh.headline).toMatch(/making money/i);   // C377 — plain words; the property is the framing
     expect(bh.headline).toMatch(/healthy/i);
     expect(bh.concerns).toEqual([]);
     // the FOUR key numbers live here (once) — cash, monthly burn, runway, net income
@@ -265,11 +265,11 @@ describe("businessHealth — owner-facing status, no books-health, honest", () =
     const bh = businessHealth(led, { cash: 9000, now: NOW2 });
     const rw = bh.concerns.find(c => c.key === "runway");
     expect(rw).toBeTruthy();
-    expect(rw.text).toMatch(/runway/i);
+    expect(rw.text).toMatch(/cash lasts about/i);   // C377 — the countdown, in plain words
     expect(rw.text).not.toMatch(/\/mo|\$9,000/);   // burn is in the facts row — don't restate it here
     expect(rw.actionView).toBe("runway");          // "See burn breakdown →" still drills in
     expect(bh.tone).toBe("concern");               // < 3 months = high severity
-    expect(bh.headline).toMatch(/loss|runway/i);
+    expect(bh.headline).toMatch(/spending more than|cash lasts about/i);   // C377 wording
   });
 
   it("a real loss is said plainly, never falsely rosy", () => {

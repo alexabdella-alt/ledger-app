@@ -635,7 +635,10 @@ export default function DashboardView() {
                    twice. Books-health (reconciled/setup/anomalies) is deliberately NOT here — that's
                    Shadow's job, surfaced in the CPA Review queue (O50), not a demerit on the owner. */}
               {invoices.length > 0 && (() => {
-                const bh = businessHealth(invoices, { cash: glCash });
+                // U5 (C377) — the owner's four numbers; the two balances are GL-derived (§12)
+                const bh = businessHealth(invoices, { cash: glCash,
+                  owedToYou: getAccountByRole?.("accounts_receivable")?.code ? glAccountBalance(getAccountByRole("accounts_receivable").code, invoices) : null,
+                  youOwe: getAccountByRole?.("accounts_payable")?.code ? glAccountBalance(getAccountByRole("accounts_payable").code, invoices) : null });
                 const toneColor = bh.tone === "good" ? "var(--sc-success)" : bh.tone === "watch" ? "var(--sc-warning)" : "var(--sc-error)";
                 const toneSoft  = bh.tone === "good" ? "var(--sc-success-soft)" : bh.tone === "watch" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)";
                 const toneLabel = bh.tone === "good" ? "Healthy" : bh.tone === "watch" ? "Worth a look" : "Needs attention";
@@ -649,7 +652,7 @@ export default function DashboardView() {
                     <div style={{ fontSize: 13, color:"var(--sc-text)", lineHeight:1.55 }}>{bh.headline}</div>
                     {/* The four key numbers — clickable to drill, tone-colored, once (no metric-card row anymore). */}
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:14, marginTop:16, paddingTop:14, borderTop:"1px solid var(--sc-surface-2)" }}>
-                      {bh.facts.map(f => (
+                      {bh.ownerFacts.map(f => (
                         <div key={f.key} onClick={f.drill ? ()=>setDashDrill({ type:f.drill }) : undefined}
                           onMouseEnter={f.drill ? e=>e.currentTarget.style.background="var(--sc-surface-2)" : undefined}
                           onMouseLeave={f.drill ? e=>e.currentTarget.style.background="transparent" : undefined}

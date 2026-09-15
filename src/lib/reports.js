@@ -553,7 +553,7 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
 // (the bookkeeping the client pays us to do) and belong to the internal CPA review queue (O50),
 // NOT as a demerit on the owner's dashboard. Honest, not rosy — a real problem is stated plainly
 // with its number and a next step. Returns { tone, headline, facts[], concerns[] }.
-export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {}) {
+export function businessHealth(invoices = [], { cash = 0, now = new Date(), owedToYou = null, youOwe = null } = {}) {
   const year = now.getFullYear();
   const today = ymdLocal(now);   // was toISOString (UTC) while `year` used local — now consistent, local
   // CANONICAL money display: the SAME exact-cents formatter the chatbot's tools
@@ -576,10 +576,15 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {
   // burn trend — this month vs the previous month that has data
   const monthExp = {};
   for (const i of liveEntries(invoices, { to: today })) { const m = ymOf(i.date); if (!m) continue; for (const leg of plLegs(i, glIsExpense)) monthExp[m] = (monthExp[m] || 0) + leg.signed; }
-  const ms = Object.keys(monthExp).sort();
+  // ★ U5 (C377) — FULL MONTHS ONLY, AND A FLOOR. The current month is partial by definition,
+  // so "up 804% versus last month" fired on Home over two entries against one; a month
+  // compared against a partial one is not a trend, and a prior month under $250 is not a
+  // baseline. Compare the last two COMPLETE months, or say nothing.
+  const thisMonth = today.slice(0, 7);
+  const ms = Object.keys(monthExp).filter((m) => m < thisMonth).sort();
   const curM = ms.length ? monthExp[ms[ms.length - 1]] : 0;
   const prevM = ms.length > 1 ? monthExp[ms[ms.length - 2]] : null;
-  const burnUpPct = (prevM && prevM > 0 && curM > prevM * 1.05) ? Math.round((curM / prevM - 1) * 100) : 0;
+  const burnUpPct = (prevM && prevM >= 250 && curM > prevM * 1.05) ? Math.round((curM / prevM - 1) * 100) : 0;
 
   // The FOUR key numbers live here (once) as the facts under the headline — they replaced the
   // separate metric-card row so the owner never sees the same figures twice. `drill` opens the
@@ -611,10 +616,22 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {
     { key: "profit", label: `Net income · ${year}`, value: money(net),                                     tone: profitable ? "good" : "concern",                                               drill: "net" },
   ];
 
+  // ★ U5 (C377) — THE FOUR NUMBERS AN OWNER ASKS, IN THE OWNER'S WORDS. "Monthly burn" and
+  // "runway" are startup vocabulary; a restaurant owner asks how much cash there is, whether
+  // they made money, who owes them and what they owe. `facts` keeps the burn/runway pair for
+  // the monthly report and the drills; Home renders `ownerFacts`. The two balances are passed
+  // in (GL-derived by the caller, §12) and OMITTED when absent — never guessed.
+  const ownerFacts = [
+    { key: "cash",   label: "Cash on hand", value: money(cash), tone: "neutral", drill: "cash" },
+    { key: "profit", label: profitable ? `Profit this year` : `Loss this year`, value: money(net), tone: profitable ? "good" : "concern", drill: "net" },
+    ...(owedToYou == null ? [] : [{ key: "ar", label: "Owed to you", value: money(owedToYou), tone: "neutral", drill: "ar" }]),
+    ...(youOwe == null ? [] : [{ key: "ap", label: "You owe", value: money(youOwe), tone: "neutral", drill: "ap" }]),
+  ];
+
   const concerns = [];
-  if (!profitable) concerns.push({ key: "profit", severity: "high", text: `You're spending more than you're earning this year (${money(net)} net).` });
+  if (!profitable) concerns.push({ key: "profit", severity: "high", text: `You've spent more than you've brought in this year (${money(net)}).` });
   // Don't re-state the burn number here — it's already in the facts row above; reference it.
-  if (runwayShort && !profitable) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: `Only ~${runway} month${runway === 1 ? "" : "s"} of runway at the current spending pace.`, actionLabel: "See burn breakdown", actionView: "runway" });
+  if (runwayShort && !profitable) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: `At this pace your cash lasts about ${runway} month${runway === 1 ? "" : "s"}.`, actionLabel: "See where the money goes", actionView: "runway" });
   if (overdue.length) concerns.push({ key: "ar", severity: overdueTotal >= 5000 ? "high" : "med", text: `${overdue.length} invoice${overdue.length > 1 ? "s are" : " is"} 60+ days overdue (${money(overdueTotal)}).`, actionLabel: "Chase overdue invoices", actionView: "ar" });
   if (burnUpPct) concerns.push({ key: "burn", severity: "med", text: `Spending is up ${burnUpPct}% versus last month.` });
 
@@ -623,13 +640,13 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date() } = {
 
   const months = (n) => `${n} month${n === 1 ? "" : "s"}`;
   const lead = profitable
-    ? `You're profitable.${runwayInfinite ? "" : ` Cash covers about ${months(runway)} of spending at the current pace, even before new revenue.`}`
-    : `You're running at a loss${runwayInfinite ? "" : ` with about ${months(runway)} of runway`}.`;
+    ? `You're making money.${runwayInfinite ? "" : ` Your cash covers about ${months(runway)} of spending at the current pace, even before new sales.`}`
+    : `You're spending more than you're bringing in${runwayInfinite ? "" : ` — at this pace your cash lasts about ${months(runway)}`}.`;
   const headline = !concerns.length
     ? `${lead} Everything looks healthy right now.`
     : `${lead} ${tone === "concern" ? "Needs attention" : "Heads up"}: ${concerns[0].text}`;
 
-  return { tone, headline, facts, concerns };
+  return { tone, headline, facts, ownerFacts, concerns };
 }
 
 // ── MONTHLY REPORT (Item 11) ────────────────────────────────────────────────
