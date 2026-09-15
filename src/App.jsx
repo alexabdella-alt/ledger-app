@@ -156,6 +156,10 @@ function AppWrapper() {
   const [currentCompany, setCurrentCompany] = React.useState(null);
   const [showCompanySetup, setShowCompanySetup] = React.useState(false);
   const [appLoading, setAppLoading] = React.useState(true);
+  // C420 — the membership read failed. `[]` from a failed read and `[]` from a new signup
+  // are the same value, and the second one opens "Create your company" — so a returning
+  // owner on a bad connection would have been walked into creating a SECOND company.
+  const [companiesLoadError, setCompaniesLoadError] = React.useState(null);
   const [recovery, setRecovery] = React.useState(false); // arrived via password-reset link
   // View lives here so it survives ERP remounts on auth/company changes
   const [persistedView, setPersistedView] = usePersistedView();
@@ -274,12 +278,18 @@ function AppWrapper() {
 
   const loadCompanies = async (sess) => {
     setAppLoading(true);
+    setCompaniesLoadError(null);
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("company_users")
         .select("company_id, role, companies(*)")
         .eq("user_id", sess.user.id)
         .not("accepted_at", "is", null);
+      if (error) {   // C420 — "could not ask" is not "no companies"; never open setup over it
+        console.error("[companies] load failed:", error.message);
+        setCompaniesLoadError(error.message || "load failed");
+        return;
+      }
       const cos = (data||[]).map(r=>({...r.companies, role:r.role}));
       setCompanies(cos);
       // Restore the last-selected company instead of always defaulting to the first —
@@ -311,6 +321,20 @@ function AppWrapper() {
   }
 
   if (!session) return <AuthScreen onAuth={s=>setSession(s)} invite={inviteToken ? inviteInfo : null}/>;
+
+  if (companiesLoadError) {
+    return (
+      <div style={{minHeight:"100vh",background:"var(--sc-bg)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",padding:24}}>
+        <div data-companies-load-failed style={{maxWidth:420,textAlign:"center",color:"var(--sc-text-2)",fontSize:14,lineHeight:1.6}}>
+          <div style={{fontSize:28,marginBottom:10}}>⚠</div>
+          We couldn't load your companies just now — this isn't a sign that you don't have one. Check your connection and try again.
+          <div style={{marginTop:16}}>
+            <button onClick={()=>loadCompanies(session)} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"var(--sc-gold)",border:"none",color:"var(--sc-on-accent)",cursor:"pointer"}}>Try again</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (showCompanySetup) {
     return <CompanySetup session={session} onComplete={company=>{
