@@ -1196,6 +1196,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // left the last company's Day One in force over this one's bookings.
     setSignoffs([]); setSignoffsLoadOk(null); setIntakeRows([]); setIntakeLoadOk(true); setHasAttester(true);
     setPendingSignedPeriodBooking(null); setCutoffDate(null);
+    // C430 — in-flight DECISIONS are about the company they were raised on. A staged AI
+    // delete/void/recode (the confirmation card), a file routed to a view-local importer, and
+    // a reconciliation offer all survived a switch: Confirm on the card would have removed the
+    // PREVIOUS company's entries while the screen showed the next one (the ids are the old
+    // company's, and the writer is a member there, so nothing refuses it).
+    setPendingAIActions(null); setPendingImportFile(null); setReconcileOffer(null); setShadowResult(null);
     setNotifications([]); setNotifOpen(false);
     setOnboardingUploadDone(false); setBusinessModalOpen(false);
   };
