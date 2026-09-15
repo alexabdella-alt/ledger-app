@@ -15,7 +15,7 @@ describe("★★ every invoice_booked audit sits after a landed id", () => {
   it("ClarificationFlow writes it in ONE place — inside bookAnswer, after `if (!jeId) return false`", () => {
     const sites = [...flow.matchAll(/logAudit\("invoice_booked"/g)];
     expect(sites).toHaveLength(1);
-    const b0 = flow.indexOf("const bookAnswer = async (finalInv, successText, audit = null) => {");
+    const b0 = flow.indexOf("const bookAnswer = (finalInv, successText, audit = null) => withOneBooking(async () => {");
     expect(b0).toBeGreaterThan(-1);
     const body = flow.slice(b0, flow.indexOf("const total = questions.length", b0));
     expect(body.indexOf("if (!jeId) return false;")).toBeLessThan(body.indexOf('logAudit("invoice_booked"'));

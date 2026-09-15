@@ -3,6 +3,7 @@ import { useERP } from "./ERPContext";
 import { fmtDate , fmtSignedMoney, todayLocal } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
 import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
+import { makeOneInFlight } from "../lib/oneInFlight";
 import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
 import { rightHalf } from "../lib/vendorIdentity";
 import { aiJson } from "../lib/aiJson";
@@ -257,7 +258,19 @@ function ClarificationCard({ item }) {
   // write "invoice_booked" and then call this, so a refused booking (signed month, cutoff,
   // RPC) left a booking in the audit trail that never happened (C240's shape, four times on
   // one card). `audit` is { detail, meta } and is recorded only on a landed id.
-  const bookAnswer = async (finalInv, successText, audit = null) => {
+  // C401 — ONE BOOKING IN FLIGHT PER CARD. `done` is set only after the write returns, so
+  // between the click and the ledger's answer a second click on the same pill called the
+  // writer again — two entries for one answer, the O123 double-post shape on the card an
+  // owner is most likely to press twice while it "does nothing". The ref is the guard
+  // (state lags a render); `busy` disables the controls. (The GAAP path removes the card
+  // from the queue before it books, so it cannot be pressed twice; this covers the rest.)
+  const [busy, setBusy] = React.useState(false);
+  const doneRef = React.useRef(done); doneRef.current = done;
+  const gate = React.useRef(null);
+  if (!gate.current) gate.current = makeOneInFlight({ onBusy: setBusy, blocked: () => !!doneRef.current });
+  const withOneBooking = (fn) => gate.current.run(fn);
+  const inFlight = { get current() { return gate.current.isInFlight(); } };
+  const bookAnswer = (finalInv, successText, audit = null) => withOneBooking(async () => {
     setInvoices(prev => [finalInv, ...prev]);
     const jeId = await bookToDb(finalInv);   // rolls the row back and says why on a refusal
     if (!jeId) return false;                 // the card stays open — the refusal was said by the writer
@@ -266,7 +279,7 @@ function ClarificationCard({ item }) {
     settleClarification?.(item, { kind: "booked", jeId });
     finishWithSuccess(successText);
     return true;
-  };
+  });
   const total = questions.length;
   const atSummary = step >= total;
 
@@ -299,7 +312,7 @@ function ClarificationCard({ item }) {
 
   // A pill answer was clicked. Decide whether to book now or advance a step.
   const onPill = (field, value) => {
-    if (done) return; // already booking
+    if (done || inFlight.current) return; // already booking (C401)
     if (kind === "gaap") { answerAndAdvance(field, value); return; }       // → summary
     if (kind === "lifecycle") { setAnswer(field, value); resolveLifecycle(value); return; }
     if (kind === "duplicate") { setAnswer(field, value); bookDuplicate(value); return; }
@@ -430,7 +443,7 @@ function ClarificationCard({ item }) {
   // free-text box both route here.
   const submitAnswer = (rawText) => {
     const text = String(rawText != null ? rawText : freeText).trim();
-    if (!text || interpreting || done) return;
+    if (!text || interpreting || done || inFlight.current) return;
     const mapped = answerToAccount(text, { getAccountByRole, rules, vendor: answers.vendor || inv.vendor });
     if (mapped && mapped.gl_code) {
       doBookGl({ code: mapped.gl_code, name: mapped.gl_name }, {
@@ -445,7 +458,7 @@ function ClarificationCard({ item }) {
   // (creating a new one if nothing fits), then book immediately — no confirm step.
   const interpretFreeText = async (overrideText) => {
     const text = String(overrideText != null ? overrideText : freeText).trim();
-    if (!text || interpreting || done) return;
+    if (!text || interpreting || done || inFlight.current) return;
     setFreeError(null); setInterpreting(true);
     try {
       const coa = (CHART_OF_ACCOUNTS || [])
@@ -589,7 +602,7 @@ function ClarificationCard({ item }) {
                 {q.options.map((opt, oi) => {
                   const sel = isSelected(q.field, opt);
                   return (
-                    <button key={oi} onClick={() => onPill(q.field, opt.value)} style={pill(sel)}
+                    <button key={oi} onClick={() => onPill(q.field, opt.value)} disabled={busy} style={pill(sel)}
                       onMouseEnter={e => { if (!sel) { e.currentTarget.style.background = "var(--sc-gold-soft)"; e.currentTarget.style.borderColor = "var(--sc-gold)"; } }}
                       onMouseLeave={e => { if (!sel) { e.currentTarget.style.background = "var(--sc-surface)"; e.currentTarget.style.borderColor = "var(--sc-border-2)"; } }}>
                       {opt.label}
@@ -608,7 +621,7 @@ function ClarificationCard({ item }) {
                 {clarificationChips(inv).length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                     {clarificationChips(inv).map((chip, ci) => (
-                      <button key={ci} onClick={() => submitAnswer(chip.answer)} disabled={interpreting} style={pill(false)}
+                      <button key={ci} onClick={() => submitAnswer(chip.answer)} disabled={interpreting || busy} style={pill(false)}
                         onMouseEnter={e => { e.currentTarget.style.background = "var(--sc-gold-soft)"; e.currentTarget.style.borderColor = "var(--sc-gold)"; }}
                         onMouseLeave={e => { e.currentTarget.style.background = "var(--sc-surface)"; e.currentTarget.style.borderColor = "var(--sc-border-2)"; }}>
                         {chip.label}
@@ -624,7 +637,7 @@ function ClarificationCard({ item }) {
                     disabled={interpreting}
                     placeholder="Tell me in your own words — e.g. “lunch with a client”"
                     style={{ flex: "1 1 260px", minWidth: 0, height: 42, boxSizing: "border-box", background: interpreting ? "var(--sc-bg)" : "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "var(--sc-text)", outline: "none" }} />
-                  <button onClick={() => submitAnswer()} disabled={interpreting || !freeText.trim()}
+                  <button onClick={() => submitAnswer()} disabled={interpreting || busy || !freeText.trim()}
                     style={{ height: 42, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: "var(--sc-gold)", border: "none", cursor: (interpreting || !freeText.trim()) ? "default" : "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
                     {interpreting && <span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "var(--sc-surface)", borderRadius: "50%", animation: "scSpin 0.7s linear infinite" }} />}
                     {interpreting ? "Booking…" : "Book it →"}

@@ -93,7 +93,7 @@ describe("the card (source)", () => {
     expect((card.match(/bookAnswer\(finalInv, /g) || []).length).toBe(4);
   });
   it("bookAnswer writes first, gates the success state on the id, and reports the outcome", () => {
-    const i = card.indexOf("const bookAnswer = async (finalInv, successText, audit = null) => {");   // C393 added the audit argument
+    const i = card.indexOf("const bookAnswer = (finalInv, successText, audit = null) => withOneBooking(async () => {");   // C393 added the audit argument
     // comments stripped — a gate commented out still contains its own text (the recorded
     // source-guard escape, eighth time in this repo)
     const body = card.slice(i, i + 900).replace(/\/\/[^\n]*/g, "");
