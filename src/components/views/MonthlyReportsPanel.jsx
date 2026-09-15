@@ -76,7 +76,7 @@ export default function MonthlyReportsPanel() {
   if (!open) {
     return (
       <div>
-        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginBottom: 16 }}>Your month-end financials — computed live from the ledger, so every figure ties to your dashboard and P&L.</div>
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginBottom: 16 }}>Your month-end figures — worked out from your books as they stand, so every number here matches your Home page and your P&L.</div>
         {reports.length === 0 && (
           <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 32, textAlign: "center", color: "var(--sc-text-mut)" }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>🗓️</div>
@@ -157,13 +157,13 @@ export default function MonthlyReportsPanel() {
       ${row("Total Expenses", -(pl.expenses_total?.current || 0), -(pl.expenses_total?.prior || 0), -(pl.expenses_total?.change || 0), pl.expenses_total?.changePct)}
       ${row("Net Income", pl.net_income?.current, pl.net_income?.prior, pl.net_income?.change, pl.net_income?.changePct, true)}
       </tbody></table>
-      <h2>Cash &amp; Receivables</h2>
+      <h2>Cash, and what is owed</h2>
       <div class="grid">
         <div class="stat"><div class="sub">Cash on hand</div><div>${money(cash.cash_on_hand)}</div></div>
-        <div class="stat"><div class="sub">Monthly burn</div><div>${money(cash.burn_rate)}</div></div>
-        <div class="stat"><div class="sub">Runway</div><div>${cash.runway_months == null ? "—" : cash.runway_months + " mo"}</div></div>
-        <div class="stat"><div class="sub">Receivables</div><div>${money(ar.total)} <span class="sub">(${money(ar.overdue)} overdue)</span></div></div>
-        <div class="stat"><div class="sub">Payables</div><div>${money(ap.total)} <span class="sub">(${money(ap.overdue)} overdue)</span></div></div>
+        <div class="stat"><div class="sub">Spending each month</div><div>${money(cash.burn_rate)}</div></div>
+        <div class="stat"><div class="sub">Months of cash at this pace</div><div>${cash.runway_months == null ? "—" : cash.runway_months + " mo"}</div></div>
+        <div class="stat"><div class="sub">Owed to you</div><div>${money(ar.total)} <span class="sub">(${money(ar.overdue)} overdue)</span></div></div>
+        <div class="stat"><div class="sub">You owe</div><div>${money(ap.total)} <span class="sub">(${money(ap.overdue)} overdue)</span></div></div>
         <div class="stat"><div class="sub">Business health</div><div>${esc(toneLabel(health.tone))}</div></div>
       </div>
       <button onclick="window.print()" style="margin-top:28px;padding:8px 18px;border-radius:8px;border:none;background:#B9962E;color:#fff;font-size:13px;cursor:pointer;">Print / Save as PDF</button>
@@ -250,10 +250,10 @@ export default function MonthlyReportsPanel() {
         <div style={sectionTitle}>Cash, Burn &amp; Working Capital</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
           {stat("Cash on hand", money(cash.cash_on_hand))}
-          {stat("Monthly burn", money(cash.burn_rate))}
-          {stat("Runway", cash.runway_months == null ? "—" : `${cash.runway_months} mo`, cash.runway_months != null && cash.runway_months < 6 ? "watch cash" : null, cash.runway_months != null && cash.runway_months < 6 ? "var(--sc-warning)" : null)}
-          {stat("Receivables", money(ar.total), `${money(ar.overdue)} overdue`, ar.overdue > 0 ? "var(--sc-warning)" : null)}
-          {stat("Payables", money(ap.total), `${money(ap.overdue)} overdue`)}
+          {stat("Spending each month", money(cash.burn_rate))}
+          {stat("Months of cash at this pace", cash.runway_months == null ? "—" : `${cash.runway_months} mo`, cash.runway_months != null && cash.runway_months < 6 ? "watch cash" : null, cash.runway_months != null && cash.runway_months < 6 ? "var(--sc-warning)" : null)}
+          {stat("Owed to you", money(ar.total), `${money(ar.overdue)} overdue`, ar.overdue > 0 ? "var(--sc-warning)" : null)}
+          {stat("You owe", money(ap.total), `${money(ap.overdue)} overdue`)}
         </div>
       </div>
 

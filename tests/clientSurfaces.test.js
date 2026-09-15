@@ -175,7 +175,7 @@ describe("(2) client-visible copy assumes zero accounting knowledge", () => {
   // Recode GL account". A component rendered INSIDE a client view is a client surface.
   // (TrustPanel lives under views/ and is a client screen's own child; it is scanned here
   // by path rather than added to CLIENT_SCREENS, which is keyed by view id.)
-  const CLIENT_COMPONENTS = ["TransactionDetailPanel", "ClarificationFlow", "DocumentPreviewModal", "ChatRichOutput", "views/TrustPanel", "MailChannelSettings"];
+  const CLIENT_COMPONENTS = ["TransactionDetailPanel", "ClarificationFlow", "DocumentPreviewModal", "ChatRichOutput", "views/TrustPanel", "MailChannelSettings", "views/MonthlyReportsPanel"];   // C443 — the monthly report panel sits inside Reports and said Receivables / Payables / Runway
   const readComponent = (name) => strip(fs.readFileSync(path.join(process.cwd(), "src/components", `${name}.jsx`), "utf8"));
   for (const file of CLIENT_COMPONENTS) {
     it(`${file} (rendered inside client views) — no owner jargon in the client half of its copy`, () => {
