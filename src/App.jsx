@@ -503,6 +503,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Non-dismissable banner shown if a booked entry isn't visible in the ledger (set by
   // flagBookingVisibilityFailure). Cleared only by a page refresh or a company switch.
   const [visibilityAlert, setVisibilityAlert] = useState(false);
+  // C408 — the audit trail is a client Settings screen ("Audit trail"), so its sentences
+  // are owner-facing; the technical fields stay in `after_state`. The GAAP answer type is
+  // named in words here and kept verbatim in meta (`gaap_type`).
+  const GAAP_TYPE_PLAIN = { capital: "equipment — cost spread over time", prepaid: "paid in advance — spread over time", deferred_revenue: "money received in advance", leasehold: "building improvement — cost spread over time", vehicle: "vehicle — cost spread over time" };
   const logAudit = (action, detail, before=null, after=null, performedBy=null) => {
     // During Support Mode, attribute every action to the platform admin (unless the
     // caller passed an explicit actor, e.g. "AI Chat").
@@ -795,7 +799,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       active: true, is_system: false, system_role: null,
     });
     if (error) { console.warn("[accounts] add failed:", error.message); showNotification("Couldn't add account — " + error.message, "error"); return false; }
-    logAudit("coa_added", `Account added: ${code} – ${name} (${category})`);
+    logAudit("coa_added", `Category added: ${name} (${category})`, null, { code, name, category });
     await reloadAccounts();
     return true;
   };
@@ -1417,7 +1421,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // O108 finding 4, FOURTH SITE — this is how 6520 and 6530 came to exist. A CPA recoded
         // a bank line to a code that was in no chart, and the recode created it. Origin was a
         // HUMAN CORRECTION, not machine invention; the account is still role-less and invisible.
-        logAudit("account_materialized", `Created account ${newGlCode} "${newGlName || newGlCode}" while recategorizing — it was not in this company's chart`, null, { code: newGlCode, name: newGlName || newGlCode, site: "persistRecode" });
+        logAudit("account_materialized", `Added "${newGlName || newGlCode}" to the categories while recategorizing — it was not in this company's list`, null, { code: newGlCode, name: newGlName || newGlCode, site: "persistRecode" });
         acctRow = created;
       }
       if (!acctRow?.id) return false;
@@ -1490,7 +1494,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // Franklin Ave across attested months and left no trace anywhere. Behaviour unchanged;
         // it is simply no longer silent. (`system_role IS NULL` + a late created_at is the
         // fingerprint — see the standing query in tests/accountMaterialization.test.js.)
-        if (created) logAudit("account_materialized", `Created account ${code} "${name || acctDef?.name || code}" on the fly — it was not in this company's chart`, null, { code, name: name || acctDef?.name || code, in_default_chart: !!acctDef, site: "ensureAccount" });
+        if (created) logAudit("account_materialized", `Added "${name || acctDef?.name || code}" to the categories on the fly — it was not in this company's list`, null, { code, name: name || acctDef?.name || code, in_default_chart: !!acctDef, site: "ensureAccount" });
         return created;
       };
 
@@ -1693,7 +1697,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // Franklin Ave across attested months and left no trace anywhere. Behaviour unchanged;
         // it is simply no longer silent. (`system_role IS NULL` + a late created_at is the
         // fingerprint — see the standing query in tests/accountMaterialization.test.js.)
-        if (created) logAudit("account_materialized", `Created account ${code} "${name || acctDef?.name || code}" on the fly — it was not in this company's chart`, null, { code, name: name || acctDef?.name || code, in_default_chart: !!acctDef, site: "ensureAccount" });
+        if (created) logAudit("account_materialized", `Added "${name || acctDef?.name || code}" to the categories on the fly — it was not in this company's list`, null, { code, name: name || acctDef?.name || code, in_default_chart: !!acctDef, site: "ensureAccount" });
         return created;
       };
       const resolved = [];
@@ -1801,7 +1805,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     })).select("id").single();
     if (error) { console.warn("[opening] ensureAccount failed:", code, error.message); return null; }
     // O108 finding 4 — the path that materialised 3400 Opening Balance Equity on 2026-07-22.
-    logAudit("account_materialized", `Created account ${code} on the fly during opening balances — it was not in this company's chart`, null, { code, site: "ensureAccountIdForCode" });
+    logAudit("account_materialized", `Added a category on the fly during starting balances — it was not in this company's list`, null, { code, site: "ensureAccountIdForCode" });
     await reloadAccounts();
     return data?.id || null;
   };
@@ -2896,7 +2900,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const gone = results.filter(r => r.ids.length);
     const kept = results.filter(r => !r.ids.length);
     const allIds = gone.flatMap(r => r.ids);
-    gone.forEach(({ snap: s }) => logAudit("invoice_deleted", `Deleted: ${s.vendor} $${s.amount} on ${s.date} (${s.gl_name||""})`, s, null, byAI ? "AI Chat" : "owner"));
+    gone.forEach(({ snap: s }) => logAudit("invoice_deleted", `Deleted: ${s.vendor} ${fmtMoney(s.amount)} on ${s.date} (${s.gl_name||""})`, s, null, byAI ? "AI Chat" : "owner"));
 
     // ★★ AND A PARTIAL REFUSAL WAS REPORTED AS A CLEAN SUCCESS. `allIds.length` is a
     // BATCH-level test: delete five entries, have two refused because their month is signed,
@@ -3058,7 +3062,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         showNotification("Reversed — but we couldn't record that it's been reversed. Don't press Void on it again; tell your accountant.", "error");
       }
     }
-    logAudit("entry_reversed", `Reversed ${invoice.vendor || orig.description || "entry"} · $${(invoice.amount || 0).toFixed(2)}${reason ? ` — ${reason}` : ""}`,
+    logAudit("entry_reversed", `Reversed ${invoice.vendor || orig.description || "entry"} · ${fmtMoney(invoice.amount || 0)}${reason ? ` — ${reason}` : ""}`,
       null, { reverses: String(origId), reversal_id: revId ? String(revId) : null }, byAI ? "AI Chat" : "owner");
     return revId;
   };
@@ -3246,7 +3250,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data: made, error } = await supabase.from("accounts")
         .insert(buildAccountInsert({ companyId: currentCompany.id, code: glCode, name: glName || def?.name || glCode, category: def?.category })).select("id").single();
       if (error || !made) { console.warn("[resolveAccountId] create failed:", error?.message); return null; }
-      logAudit("account_materialized", `Created account ${glCode} "${glName || def?.name || glCode}" while resolving a rule target — it was not in this company's chart`, null, { code: glCode, name: glName || def?.name || glCode, in_default_chart: true, site: "resolveAccountId" });
+      logAudit("account_materialized", `Added "${glName || def?.name || glCode}" to the categories while setting up a rule — it was not in this company's list`, null, { code: glCode, name: glName || def?.name || glCode, in_default_chart: true, site: "resolveAccountId" });
       showNotification(`Added ${def.name} to your categories — you didn't have one.`);
       return made.id;
     } catch (e) { console.warn("[resolveAccountId]", e?.message); return null; }
@@ -3660,13 +3664,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     for (const je of sched.entries) { const id = await persistMultiLineEntry(je); if (!id) missed.push(je); }
     if (missed.length) {
       const stranded = missed.reduce((t, je) => t + (je.lines || []).reduce((u, l) => u + (Number(l.debit) || 0), 0), 0);
-      logAudit("prepaid_schedule_incomplete", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid, but ${missed.length} of ${sched.entries.length} monthly entries did not post — ${fmtMoney(stranded)} stays in Prepaid`, null, { vendor: inv.vendor, amount: amt, months, missed: missed.length, stranded, capitalize_entry_id: String(capId) });
+      logAudit("prepaid_schedule_incomplete", `${inv.vendor} · ${fmtMoney(amt)} recorded as paid in advance, but ${missed.length} of ${sched.entries.length} monthly entries did not post — ${fmtMoney(stranded)} has not been spread yet`, null, { vendor: inv.vendor, amount: amt, months, missed: missed.length, stranded, capitalize_entry_id: String(capId) });
       try { await loadAllData(); } catch {}
       showNotification(`Recorded as prepaid — but ${missed.length} of ${sched.entries.length} monthly entries couldn't be posted, so ${fmtMoney(stranded)} will stay in Prepaid until they're added. Tell your accountant.`, "error");
       return capId;   // the document IS recorded (the capitalization landed); what is missing is said above
     }
 
-    logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(amt)} recorded as prepaid (1300), amortizing over ${months} months`, null, { vendor: inv.vendor, amount: amt, gl_code: prepaidCode, months });
+    logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(amt)} recorded as paid in advance, spread over ${months} months`, null, { vendor: inv.vendor, amount: amt, gl_code: prepaidCode, months });
     try { await loadAllData(); } catch {}
     showNotification(`Recorded as prepaid — spread over ${months} months ✓`);
     return capId;
@@ -3687,7 +3691,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const jeId = await persistMultiLineEntry(je);   // also enforces the cutoff guard
     if (!jeId) return;                               // failure already surfaced
     if (inv._contact) createOrUpdateContact({ ...inv._contact, type: "customer" });
-    logAudit("deferred_revenue_received", `Advance payment from ${inv.vendor || "customer"} ${fmtMoney(amount)} → Deferred Revenue (2300)`, null, { vendor: inv.vendor, amount });
+    logAudit("deferred_revenue_received", `Advance payment from ${inv.vendor || "customer"} ${fmtMoney(amount)} — recorded as money received in advance`, null, { vendor: inv.vendor, amount, gl_code: rc("deferred_revenue") });
     try { await loadAllData(); } catch {}
     showNotification("Recorded as money received in advance ✓");
     return jeId;
@@ -3734,7 +3738,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // one record an accountant is entitled to trust (C240's shape, on the GAAP card).
     if (jeId) {
       if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      logAudit("invoice_booked", `${finalInv.vendor} · ${fmtMoney(finalInv.amount)} → ${finalInv.gl_name} (GAAP ${item.gaapType})`, null, { vendor:finalInv.vendor, amount:finalInv.amount, gl_code:finalInv.gl_code, gl_name:finalInv.gl_name, reasoning: finalInv.reasoning });
+      logAudit("invoice_booked", `${finalInv.vendor} · ${fmtMoney(finalInv.amount)} → ${finalInv.gl_name} (${GAAP_TYPE_PLAIN[item.gaapType] || "recorded"})`, null, { vendor:finalInv.vendor, amount:finalInv.amount, gl_code:finalInv.gl_code, gl_name:finalInv.gl_name, gaap_type: item.gaapType, reasoning: finalInv.reasoning });
     }
     if (opt.depreciate) {
       // A capitalized asset with no depreciation schedule must be impossible. If the
@@ -3774,7 +3778,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       label: "compensateCapitalization",
     });
     if (!comp.ok) {
-      logAudit("capitalization_rollback_failed", `Couldn't roll back a capitalization for ${finalInv.vendor || "an entry"} — the asset is in the books with no depreciation schedule`, null, { je_id: String(jeId) });
+      logAudit("capitalization_rollback_failed", `${finalInv.vendor || "An entry"} is in the books, but its cost spread couldn't be set up and the entry couldn't be undone`, null, { je_id: String(jeId) });
       try { Sentry.captureMessage("capitalization_rollback_failure", { level: "error", tags: { kind: "capitalization_rollback_failure" }, extra: { je_id: String(jeId) } }); } catch {}
       // C392 — the sentence reads the rollback's RESULT. It used to say "rolled back … try
       // again" whatever `comp.ok` was, and a retry on top of an un-rolled-back entry books the
@@ -3785,7 +3789,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
     setInvoices(prev => prev.filter(i => i.id !== finalInv.id && String(i.db_entry_id) !== String(jeId)));
     logAudit("fixed_asset_setup_failed",
-      `Capitalization rolled back — couldn't create the asset/schedule for ${finalInv.vendor || ""} ${fmtMoney(finalInv.amount)}: ${reason || "unknown"}`,
+      `Entry undone — couldn't set up the cost spread for ${finalInv.vendor || ""} ${fmtMoney(finalInv.amount)}: ${reason || "unknown"}`,
       null, { je_id: String(jeId), reason: reason || null });
     try { Sentry.captureMessage("fixed_asset_setup_failure", { level: "error",
       tags: { kind: "fixed_asset_setup_failure" }, extra: { je_id: String(jeId), reason: reason || null } }); } catch {}
@@ -3814,7 +3818,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         .delete().eq("id", assetId).eq("company_id", companyId).select("id");
       if (error || !data || !data.length) {
         console.error("[fixed_asset] rollback failed:", error?.message || "no rows deleted");
-        logAudit("fixed_asset_rollback_failed", `Couldn't remove a half-created asset — it is in the books with no depreciation schedule`, null, { asset_id: String(assetId) });
+        logAudit("fixed_asset_rollback_failed", `Couldn't remove a half-created equipment record — it is in the books with no cost spread`, null, { asset_id: String(assetId) });
       }
     } catch (e) { console.error("[fixed_asset] rollback failed:", e?.message || e); }
   };
@@ -3865,7 +3869,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         return { ok: false, error: schedErr.message || "depreciation_schedule insert failed" };
       }
       logAudit("fixed_asset_created",
-        `Capitalized ${invoice.vendor || ""} ${fmtMoney(cost)} — ${lifeMonths}mo straight-line${salvage ? `, salvage ${fmtMoney(salvage)}` : ""}`,
+        `Recorded ${invoice.vendor || ""} ${fmtMoney(cost)} as equipment — cost spread evenly over ${lifeMonths} months${salvage ? `, worth ${fmtMoney(salvage)} at the end` : ""}`,
         null, { asset_id: assetId, cost, life_months: lifeMonths, salvage, in_service: inService });
       return { ok: true, assetId };
     } catch (e) {
@@ -3969,7 +3973,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       try { createNotification?.({ type: "needs_review", title: `${incomplete.length} scheduled asset ${incomplete.length === 1 ? "entry needs" : "entries need"} a look`, description: "A scheduled cost spread is due but its schedule is incomplete — the asset needs a look before it posts.", link_view: "review" }); } catch {}
     }
     if (posted > 0) {
-      logAudit("depreciation_autoposted", `Auto-posted ${posted} due depreciation ${posted === 1 ? "entry" : "entries"}${assetsToFlip.length ? ` · ${assetsToFlip.length} asset(s) fully depreciated` : ""}`);
+      logAudit("depreciation_autoposted", `Recorded ${posted} equipment cost-spread ${posted === 1 ? "entry" : "entries"} that came due${assetsToFlip.length ? ` · ${assetsToFlip.length} item(s) now fully spread` : ""}`);
       try { await loadAllData(); } catch {}
     }
     return { posted, flagged: incomplete.length };
@@ -4035,7 +4039,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       });
       if (res.ok) {
         try { await loadAllData(); } catch {}
-        logAudit("fixed_asset_backfilled", `Attached depreciation to existing entry ${jeId} — ${vendor} ${fmtMoney(cost)}, ${usefulLifeMonths}mo straight-line`, null, { je_id: jeId, asset_id: res.assetId, cost, life_months: usefulLifeMonths });
+        logAudit("fixed_asset_backfilled", `Set up a cost spread for an existing entry — ${vendor} ${fmtMoney(cost)}, evenly over ${usefulLifeMonths} months`, null, { je_id: jeId, asset_id: res.assetId, cost, life_months: usefulLifeMonths });
         showNotification("Cost spread set up ✓");
       } else {
         showNotification(`Couldn't set up the cost spread: ${res.error || "unknown error"}`, "error");
@@ -4281,7 +4285,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const jeId = await bookToDb(invoice);
       if (!jeId) return;
       checkWatchTriggers([invoice], unknownDocs);
-      logAudit("invoice_booked", `Manual entry: ${invoice.vendor} $${invoice.amount} → ${invoice.gl_name}${form.paidWithCash ? " (already paid — cash out)" : ""}`, null, invoice);
+      logAudit("invoice_booked", `Manual entry: ${invoice.vendor} ${fmtMoney(invoice.amount)} → ${invoice.gl_name}${form.paidWithCash ? " (already paid — cash out)" : ""}`, null, invoice);
       setForm({ vendor:"", description:"", amount:"", date:"", type:"expense", notes:"", project:"General", invoice_number:"", paidWithCash:false });
       setAiSuggestion(null); setUploadedFile(null);
       setView("home");
@@ -4933,7 +4937,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         .select("id, ai_confidence").single();
       if (error || !data || Number(data.ai_confidence) !== 100) return { ok: false, error: error?.message || "approve not verified" };
       setInvoices(prev => prev.map(i => String(i.db_entry_id) === String(dbId) ? { ...i, confidence: 100 } : i));
-      logAudit("review_approved", `Approved AI coding: ${txn.vendor || "entry"} → ${txn.gl_name || txn.gl_code} ($${Math.abs(txn.amount || 0).toFixed(2)})`, null, { db_entry_id: String(dbId), gl_code: txn.gl_code });
+      logAudit("review_approved", `Approved AI coding: ${txn.vendor || "entry"} → ${txn.gl_name || txn.gl_code} (${fmtMoney(Math.abs(txn.amount || 0))})`, null, { db_entry_id: String(dbId), gl_code: txn.gl_code });
       return { ok: true };
     } catch (e) { return { ok: false, error: String(e?.message || e) }; }
   };
@@ -5559,7 +5563,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // a refused booking used to leave "invoice_booked" in the audit trail (C240).
             bookPromises = highConfidence.map(inv => bookToDb(inv).then(jeId => {
               if (jeId) {
-                logAudit("invoice_booked", `${inv.vendor} · $${(inv.amount||0).toFixed(2)} → ${inv.gl_name} (${inv.confidence}% confidence · ${inv.date})`, null, { vendor: inv.vendor, amount: inv.amount, date: inv.date, gl_code: inv.gl_code, gl_name: inv.gl_name });
+                logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(inv.amount||0)} → ${inv.gl_name} (${inv.date})`, null, { vendor: inv.vendor, amount: inv.amount, date: inv.date, gl_code: inv.gl_code, gl_name: inv.gl_name, confidence: inv.confidence });
                 createOrUpdateContact(inv._contact);
               }
               return jeId;
@@ -7794,7 +7798,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     // surfaces on Home exactly the same way.)
     const glPosted = postedPaymentId ? (side === "ar" ? "Dr Cash/Cr AR" : "Dr AP/Cr Cash") : null;
     logAudit(side === "ar" ? "invoice_collected" : "invoice_paid",
-      `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · $${(inv.amount || 0).toFixed(2)} via ${methodPretty(method)}${refStr}${noteStr}`,
+      `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · ${fmtMoney(inv.amount || 0)} via ${methodPretty(method)}${refStr}${noteStr}`,
       { payment_status: snap.payment_status }, { payment_status: newStatus, method, reference: ref, notes: note, by: who, payment_entry_id: postedPaymentId ? String(postedPaymentId) : null, gl_posted: glPosted });
     return true;
   };

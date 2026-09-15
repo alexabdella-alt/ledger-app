@@ -131,7 +131,8 @@ describe("(O108) every materialisation site is AUDIBLE", () => {
     const msgs = [...app.matchAll(/logAudit\("account_materialized", `([^`]*)`/g)].map((m) => m[1]);
     expect(msgs.length).toBeGreaterThanOrEqual(3);
     for (const m of msgs) {
-      expect(m, m).toMatch(/was not in this company's chart/);
+      // C408 — "chart" became "list" (the owner reads the Audit trail); the shape is the same query-claim.
+      expect(m, m).toMatch(/was not in this company's (chart|list)/);
       expect(m, m).not.toMatch(/does not exist|invalid|unknown account/i);
     }
   });

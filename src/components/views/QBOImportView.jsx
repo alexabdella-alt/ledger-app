@@ -146,7 +146,7 @@ export default function QBOImportView() {
           continue;
         }
         acctId[code] = data.id;
-        logAudit("account_materialized", `Created account ${code} "${def?.name || code}" during a QuickBooks import — it was not in this company's chart`, null, { code, name: def?.name || code, in_default_chart: !!def, site: "qboImport" });
+        logAudit("account_materialized", `Added "${def?.name || code}" to the categories during a QuickBooks import — it was not in this company's list`, null, { code, name: def?.name || code, in_default_chart: !!def, site: "qboImport" });
       }
     }
     if (acctCreateFailures.length) {
