@@ -35,7 +35,7 @@ const ordered = (body, ...marks) => {
 };
 
 describe("Home's recurring suggestion card persists through the one writer", () => {
-  const body = fn("const acceptRecurringSuggestion = async (s) => {", "const dismissRecurringSuggestion");
+  const body = fn("const acceptRecurringSuggestionOnce = async (s) => {", "const dismissRecurringSuggestion");
   it("writes through persistChatRecurring, and the ✓ follows the verdict", () => {
     ordered(body, "const res = await persistChatRecurring({", "if (!res?.ok) {", "nothing was created", "return;", "showNotification(`Recurring set up:");
   });
@@ -77,11 +77,11 @@ describe("persistContract returns a verdict and its update is checked", () => {
 
 describe("a contract entry's posted-marker is awaited, and a lost marker is said", () => {
   it("single post", () => {
-    const body = fn("const postContractEntry = async", "const postAllContractEntries");
+    const body = fn("const postContractEntryOnce = async", "const postAllContractEntries");
     ordered(body, "const jeId = await persistMultiLineEntry(je);", "const marker = await persistContract(updatedContract);", "if (!marker?.ok) {", "Don't post this entry again", "return;", "showNotification(`Journal entry posted to ledger ✓`)");
   });
   it("post all", () => {
-    const body = fn("const postAllContractEntries = async", "\n  };\n");
+    const body = fn("const postAllContractEntriesOnce = async", "\n  };\n");
     ordered(body, "const marker = await persistContract(updatedContract);", "if (!marker?.ok) {", "Don't post them again", "return;", "showNotification(`✓ Posted ${posted.length}");
   });
   it("a contract that could not be saved after analysis says it will be gone on reload", () => {

@@ -76,3 +76,26 @@ describe("★★ makeKeyedInFlight", () => {
     expect((rec.match(/runRecurringOnce\(/g) || []).length).toBe(1);
   });
 });
+
+// C403 — the remaining handlers that move money or attest a month run under the same guard.
+describe("★ every money-moving or attesting handler in ERP is a keyed run (source)", () => {
+  const app = fs.readFileSync("src/App.jsx", "utf8");
+  const GUARDED = [
+    ["postContractEntry", "contract:"], ["postAllContractEntries", "contract:"], ["dismissMatch", "match:"], ["applyMatch", "match:"],
+    ["confirmOpeningFromStatement", '"opening"'], ["postOpeningBalances", '"opening"'], ["signOffPeriod", "signoff:"],
+    ["acceptRecurringSuggestion", "recurring-suggestion:"], ["reopenSignedPeriodAndBook", '"signed-hold"'], ["rebookHeldIntoOpenMonth", '"signed-hold"'], ["sendHeldToCPA", '"signed-hold"'],
+  ];
+  it("each wrapper runs its Once body under moneyMoves with its key, and nothing else calls the body", () => {
+    for (const [fn, key] of GUARDED) {
+      const wrapper = new RegExp(`const ${fn} = \\([^)]*\\) => moneyMoves\\.current\\.run\\(([^,]+), \\(\\) => ${fn}Once\\(`);
+      const m = app.match(wrapper);
+      expect(m, fn).toBeTruthy();
+      expect(m[1], fn).toContain(key);
+      expect((app.match(new RegExp(`${fn}Once\\(`, "g")) || []).length, fn).toBe(1);
+    }
+    expect(app).toMatch(/const moneyMoves = useRef\(makeKeyedInFlight\(\)\);/);
+  });
+  it("the three signed-month decisions share one key, so two different buttons cannot both act on one held entry", () => {
+    for (const fn of ["reopenSignedPeriodAndBook", "rebookHeldIntoOpenMonth", "sendHeldToCPA"]) expect(app).toMatch(new RegExp(`const ${fn} = \\(\\) => moneyMoves\\.current\\.run\\("signed-hold"`));
+  });
+});

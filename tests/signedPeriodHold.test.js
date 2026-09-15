@@ -32,7 +32,7 @@ describe("the wiring (source)", () => {
     expect(app).toMatch(/partialHoldsRef\.current\[String\(item\.id\)\] = \{ intakeId: item\.intake_id, ids: \[\.\.\.\(entryLinks\.ids \|\| \[\]\)\], expected: entryLinks\.expected \}/);
   });
   it("send-to-accountant writes the signed-month sentence on the row, keeping the ids that landed", () => {
-    const i = app.indexOf("const sendHeldToCPA = async () => {");
+    const i = app.indexOf("const sendHeldToCPAOnce = async () => {");
     const body = app.slice(i, i + 1200);
     expect(body).toMatch(/markIntake\(hold\.intakeId, INTAKE_STATUS\.HELD, \{ journalEntryIds: hold\.ids, detail: signedPeriodHoldDetail\(/);
   });
@@ -41,7 +41,7 @@ describe("the wiring (source)", () => {
     const body = app.slice(i, i + 1200);
     expect(body).toMatch(/if \(hold\.ids\.length >= hold\.expected\) \{\s*markIntake\(hold\.intakeId, INTAKE_STATUS\.RECORDED/);
     expect(body).toMatch(/markIntake\(hold\.intakeId, INTAKE_STATUS\.HELD, \{ journalEntryIds: hold\.ids, detail: partialHoldDetail\(hold\.ids\.length, hold\.expected\)/);   // C390 — the shared sentence
-    for (const fn of ["const reopenSignedPeriodAndBook = async () => {", "const rebookHeldIntoOpenMonth = async () => {"]) {
+    for (const fn of ["const reopenSignedPeriodAndBookOnce = async () => {", "const rebookHeldIntoOpenMonthOnce = async () => {"]) {
       const j = app.indexOf(fn);
       const b = app.slice(j, j + 1000);
       expect(b, fn).toMatch(/if \(jeId\) \{ settlePartialHold\(held\.invoice, jeId\);/);

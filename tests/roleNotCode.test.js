@@ -27,7 +27,7 @@ describe("C341 — the three load-bearing equity/plug accounts resolve by role",
     const src = read("src/App.jsx");
     // `redoOpeningSetup` is declared BEFORE `postOpeningBalances` — an end anchor searched
     // from the start offset, or the slice is empty and the test fails on correct code (C237).
-    const start = src.indexOf("const postOpeningBalances");
+    const start = src.indexOf("const postOpeningBalancesOnce = async");   // C403: the guarded body
     const end = src.indexOf("\n  const ", start + 40);
     const fn = src.slice(start, end);
     expect(fn.length).toBeGreaterThan(500);

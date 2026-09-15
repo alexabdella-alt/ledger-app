@@ -143,7 +143,7 @@ describe("O131 — a self-signed month is not reported as an accountant's review
 describe("the write path enforces it rather than trusting the screen", () => {
   const app = readFileSync("src/App.jsx", "utf8");
   const code = app.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
-  const start = code.indexOf("const signOffPeriod = async");
+  const start = code.indexOf("const signOffPeriodOnce = async");
   const fn = code.slice(start, code.indexOf("const reopenPeriod", start));
 
   it("★ signOffPeriod refuses a self-attestation without the acknowledgement", () => {

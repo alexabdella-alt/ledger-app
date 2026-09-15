@@ -881,6 +881,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // O83 Trap 2 — a booking held because it dates into a signed-off period: { invoice, period }.
   // The decision modal (reopen / rebook / CPA) reads this; null when nothing is held.
   const [pendingSignedPeriodBooking, setPendingSignedPeriodBooking] = useState(null);
+  // C403 — one run per key for every handler that moves money or attests a month (contract
+  // posts, bank-match confirms/dismissals, opening balances, sign-off, the recurring
+  // suggestion, the three signed-month decisions): a second press while the first is
+  // writing runs nothing. Declared here, early, so no handler reaches it before it exists.
+  const moneyMoves = useRef(makeKeyedInFlight());
   // C186 — the automatic pipeline's exceptions surfaced to the CPA Review queue: excepted
   // statement lines + attention statements, each with a plain-language reason.
   const [statementExceptions, setStatementExceptions] = useState([]);
@@ -1803,7 +1808,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   // Post (or re-post) opening balances. `gridBalancesByCode` = { code: natural balance }
   // for the user-entered accounts; bank-linked cash is overridden from bank balances.
-  const postOpeningBalances = async (gridBalancesByCode, { asOf = null } = {}) => {
+  const postOpeningBalances = (gridBalancesByCode, opts = {}) => moneyMoves.current.run("opening", () => postOpeningBalancesOnce(gridBalancesByCode, opts));
+  const postOpeningBalancesOnce = async (gridBalancesByCode, { asOf = null } = {}) => {
     if (!currentCompany?.id || !session?.user?.id) { showNotification("No active company", "error"); return false; }
     // `asOf` (the statement-derived flow) overrides the company cutoff so the write isn't
     // blocked by not-yet-persisted cutoff state; the manual grid passes none and uses cutoffDate.
@@ -1918,7 +1924,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // post_journal_entry, source 'opening_balance', + opening_balances rows). `override` lets
   // the confirm UI adjust the amount. HARD double-booking guard: refuse if an opening already
   // exists for the account (or any opening is posted). Sets the cutoff to the period start.
-  const confirmOpeningFromStatement = async (override = {}) => {
+  const confirmOpeningFromStatement = (override = {}) => moneyMoves.current.run("opening", () => confirmOpeningFromStatementOnce(override));
+  const confirmOpeningFromStatementOnce = async (override = {}) => {
     const p = { ...(pendingOpeningProposal || {}), ...override };
     if (p.openingBalance == null || !p.accountCode || !p.periodStart) { showNotification("Nothing to confirm.", "error"); return false; }
     const obRow = (openingBalances || []).find(b => String(b.account_code) === String(p.accountCode) && b.posted);
@@ -2015,7 +2022,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // scan found the same pattern, the card came back, and each "yes" appended one more custom
   // rule to the client profile. One writer now (`persistChatRecurring`, verified insert); a
   // refused write keeps the card and says so.
-  const acceptRecurringSuggestion = async (s) => {
+  const acceptRecurringSuggestion = (s) => moneyMoves.current.run(`recurring-suggestion:${s?.vendorKey}`, () => acceptRecurringSuggestionOnce(s));
+  const acceptRecurringSuggestionOnce = async (s) => {
     if (!s) return;
     const res = await persistChatRecurring({
       name: s.vendor, vendor: s.vendor, amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name,
@@ -4759,7 +4767,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // clear OR the reviewer explicitly OVERRIDES (acknowledgment + reason RECORDED on the row,
   // with the exact blockers). Re-verified live at write time with the freshest dropped-docs.
   // Returns { ok, row } or { ok:false, blockers?/error? }. Verified write (row read back).
-  const signOffPeriod = async (period, { note = null, override = null, acknowledged = false } = {}) => {
+  const signOffPeriod = (period, opts = {}) => moneyMoves.current.run(`signoff:${period}`, () => signOffPeriodOnce(period, opts));
+  const signOffPeriodOnce = async (period, { note = null, override = null, acknowledged = false } = {}) => {
     if (!currentCompany?.id || !session?.user?.id || !period) return { ok: false, error: "missing company/user/period" };
     // ★★ O131 — TWO WAYS TO BE ALLOWED, AND THE SECOND IS CONDITIONAL. A reviewer always may.
     // A SOLO owner may, because otherwise their books can never be signed at all — but only
@@ -4849,7 +4858,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   };
   // (a) REVIEWER ONLY: reopen the signed month (revokes the sign-off, audited), then post into it.
   // The owner can't reopen — that would undo their accountant's attestation (separation of duties).
-  const reopenSignedPeriodAndBook = async () => {
+  const reopenSignedPeriodAndBook = () => moneyMoves.current.run("signed-hold", () => reopenSignedPeriodAndBookOnce());
+  const reopenSignedPeriodAndBookOnce = async () => {
     const held = pendingSignedPeriodBooking; if (!held) return;
     if (!isReviewer) { showNotification("Only your accountant can reopen a reviewed month.", "error"); return; }
     const r = await reopenPeriod(held.period);
@@ -4860,7 +4870,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (jeId) { settlePartialHold(held.invoice, jeId); await loadAllData(); showNotification(`Recorded in ${signedMonthLabel(held.period)} — that month is reopened for re-review`); }
   };
   // (b) Rebook into the current OPEN month (date-adjust; the original date is kept in metadata).
-  const rebookHeldIntoOpenMonth = async () => {
+  const rebookHeldIntoOpenMonth = () => moneyMoves.current.run("signed-hold", () => rebookHeldIntoOpenMonthOnce());
+  const rebookHeldIntoOpenMonthOnce = async () => {
     const held = pendingSignedPeriodBooking; if (!held) return;
     const moved = rebookedIntoOpenMonth(held.invoice, todayLocal(), held.period);
     logAudit("signed_period_rebooked_open", `Rebooked ${held.invoice?.vendor || "an entry"} out of signed ${held.period} into the open month (original date ${held.invoice?.date} kept)`, null, { period: held.period, original_date: held.invoice?.date, new_date: moved.date });
@@ -4869,7 +4880,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (jeId) { settlePartialHold(held.invoice, jeId); showNotification(`Recorded in the current month — the original date (${held.invoice?.date}) is kept on file.`); }
   };
   // (c) Send to the CPA review queue to decide — leave it UNBOOKED (never silently posted); notify.
-  const sendHeldToCPA = async () => {
+  const sendHeldToCPA = () => moneyMoves.current.run("signed-hold", () => sendHeldToCPAOnce());
+  const sendHeldToCPAOnce = async () => {
     const held = pendingSignedPeriodBooking; if (!held) return;
     logAudit("signed_period_sent_to_cpa", `Sent ${held.invoice?.vendor || "an entry"} dated ${held.invoice?.date} (signed ${held.period}) to accountant review`, null, { period: held.period, date: held.invoice?.date });
     try { createNotification?.({ type: "needs_review", title: `A ${signedMonthLabel(held.period) || "reviewed-month"} item needs your accountant`, description: `${held.invoice?.vendor || "An entry"} dated ${held.invoice?.date} falls in a reviewed month — your accountant should decide how to record it.`, link_view: "review" }); } catch {}
@@ -7267,7 +7279,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     meta: { ai_reasoning: `Posted from contract (GAAP/ASC 842): ${contract.description || ""}`, contract_id: contract.id },
   });
 
-  const postContractEntry = async (contract, entryIdx) => {
+  const postContractEntry = (contract, entryIdx) => moneyMoves.current.run(`contract:${contract?.id}:${entryIdx}`, () => postContractEntryOnce(contract, entryIdx));
+  const postContractEntryOnce = async (contract, entryIdx) => {
     const entry = contract.journal_entries?.[entryIdx];
     if (!entry) return;
     const je = buildContractEntry(contract, entry);
@@ -7291,7 +7304,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     showNotification(`Journal entry posted to ledger ✓`);
   };
 
-  const postAllContractEntries = async (contract) => {
+  const postAllContractEntries = (contract) => moneyMoves.current.run(`contract:${contract?.id}`, () => postAllContractEntriesOnce(contract));
+  const postAllContractEntriesOnce = async (contract) => {
     const unpostedIndexes = (contract.journal_entries || [])
       .map((_, i) => i)
       .filter(i => !(contract.posted_entries || []).includes(i));
@@ -7433,7 +7447,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   };
 
   // Apply a confirmed match — posts clearing journal entry and marks invoices as matched
-  const applyMatch = async (matchRecord) => {
+  const applyMatch = (matchRecord) => moneyMoves.current.run(`match:${matchRecord?.id}`, () => applyMatchOnce(matchRecord));
+  const applyMatchOnce = async (matchRecord) => {
     const { invoice_ids, match_type, amount_remaining, bank_txn } = matchRecord;
     // Precise side check — "ap_clear".includes("ar") is true (the "ar" in "cle-ar"),
     // which would mis-post an AP clear as an AR collection. See isArMatch.
@@ -7477,7 +7492,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // bank line is a real transaction, so book it directly (in the correct direction
   // per buildBankLineEntry) using its AI categorization. Income/expense must never
   // silently vanish on dismiss. Was: just drop from the queue (stranded, unbooked).
-  const dismissMatch = async (matchId) => {
+  const dismissMatch = (matchId) => moneyMoves.current.run(`match:${matchId}`, () => dismissMatchOnce(matchId));
+  const dismissMatchOnce = async (matchId) => {
     const m = (matchQueue || []).find(x => x.id === matchId);
     setMatchQueue(prev => prev.filter(x => x.id !== matchId));
     if (!m || !m.bank_txn) { showNotification("Match dismissed", "error"); return; }
