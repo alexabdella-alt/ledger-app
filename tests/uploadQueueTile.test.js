@@ -73,7 +73,7 @@ describe("the view reads the tone rather than re-deciding it", () => {
 
   it("★ no style expression in the queue tile branches on status==='error' any more", () => {
     const start = code.indexOf("UPLOAD QUEUE");
-    const end = code.indexOf("Invoice clarification prompt", start);
+    const end = code.indexOf("U1 (C375)", start);   // the list that replaced the in-queue banners follows the tiles
     const tile = code.slice(start, end);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);          // the slice is real, not an empty window

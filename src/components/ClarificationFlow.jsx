@@ -761,6 +761,13 @@ export function ClarificationStepper() {
     if (queueIdle && dismissedKey !== setKey) setVisible(true);
   }, [setKey, queueIdle, dismissedKey]);
 
+  // "Answer these" on Home's waiting list opens it on demand, even for a set that was closed.
+  React.useEffect(() => {
+    const onOpen = () => { setDismissedKey(null); setVisible(true); };
+    window.addEventListener("sc:open-stepper", onOpen);
+    return () => window.removeEventListener("sc:open-stepper", onOpen);
+  }, []);
+
   // Keep a current card; when it resolves, let its "✓" show, then move to the next.
   const current = (clarificationQueue || []).find(c => String(c.id) === String(currentId)) || null;
   React.useEffect(() => {

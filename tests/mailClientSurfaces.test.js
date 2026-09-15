@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { renderViewHtml } from "./helpers/renderView.jsx";
 import MailChannelSettings from "../src/components/MailChannelSettings.jsx";
-import HeldMailLine from "../src/components/HeldMailLine.jsx";
+import { HomeWaitingList } from "../src/components/views/DashboardView.jsx";   // C375 — the held-mail line is a row in Home's one list
 import { releaseInboundMessage, addAllowedSender, sendMailViaFunction } from "../src/lib/mailClient.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -29,18 +29,20 @@ describe("★ the Settings block — four states, each said (MAIL_DOMAIN is null
 
 describe("★ the Home line — names the sender, and only an owner/admin may decide", () => {
   const held = [{ id: "m1", from_email: "asst@cpa.com", subject: "Sept invoices", attachment_count: 3 }];
-  it("renders nothing when nothing is held", () => {
-    expect(renderViewHtml(HeldMailLine, { heldInbound: [] })).toBe("");
+  it("no held mail → no held-mail row (the list may still carry a tax deadline — it reads the real calendar)", () => {
+    const html = renderViewHtml(HomeWaitingList, { heldInbound: [], clarificationQueue: [], heldQuestions: [], heldUnreadable: [], uploadQueue: [], invoices: [], recurringSuggestions: [], bankMatch: { overdue: false } });
+    expect(html).not.toContain("Allow this sender");
+    expect(html).not.toContain("documents address");
   });
   it("an admin sees the sender, the count kept, and both buttons", () => {
-    const html = strip(renderViewHtml(HeldMailLine, { heldInbound: held, isAdmin: true }));
+    const html = strip(renderViewHtml(HomeWaitingList, { heldInbound: held, isAdmin: true, clarificationQueue: [], heldQuestions: [], heldUnreadable: [], uploadQueue: [], invoices: [], recurringSuggestions: [], bankMatch: { overdue: false } }));
     expect(html).toContain("asst@cpa.com");
     expect(html).toContain("3 attachments kept, not read");
     expect(html).toContain("Allow this sender");
     expect(html).toContain("Ignore");
   });
   it("a member sees the message and is told who can decide", () => {
-    const html = strip(renderViewHtml(HeldMailLine, { heldInbound: held, isAdmin: false, isOwner: false }));
+    const html = strip(renderViewHtml(HomeWaitingList, { heldInbound: held, isAdmin: false, isOwner: false, clarificationQueue: [], heldQuestions: [], heldUnreadable: [], uploadQueue: [], invoices: [], recurringSuggestions: [], bankMatch: { overdue: false } }));
     expect(html).toContain("An owner or admin can allow or ignore it.");
     expect(html).not.toContain("Allow this sender");
   });

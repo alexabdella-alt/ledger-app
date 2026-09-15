@@ -90,7 +90,8 @@ describe("★★ it reaches both surfaces", () => {
     // A bare count plus an instruction to scroll is the O120 complaint in one sentence.
     const dash = fs.readFileSync(path.join(process.cwd(), "src/components/views/DashboardView.jsx"), "utf8");
     expect(dash).not.toMatch(/need your input before booking — scroll down to review/);
-    expect(dash).toMatch(/queueBannerCopy\(open\)/);
+    // C375 — the banner sentence now lives in Home's one waiting list (lib/homeWaiting.js)
+    expect(fs.readFileSync(path.join(process.cwd(), "src/lib/homeWaiting.js"), "utf8")).toMatch(/queueBannerCopy\(cards\)/);
   });
 
   it("★ and the cards themselves are ordered", () => {

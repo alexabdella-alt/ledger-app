@@ -378,7 +378,8 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
     ];
     for (const c of clientCopy) {
       expect([c, containsOwnerJargon(c)]).toEqual([c, false]);           // no accounting concepts
-      expect([c, dash.includes(c) || app.includes(c)]).toEqual([c, true]); // and it's actually on screen
+      const waiting = fs.readFileSync(new URL("../src/lib/homeWaiting.js", import.meta.url), "utf8");   // C375 — three of these moved into Home's one list
+      expect([c, dash.includes(c) || app.includes(c) || waiting.includes(c)]).toEqual([c, true]); // and it's actually on screen
     }
   });
 
