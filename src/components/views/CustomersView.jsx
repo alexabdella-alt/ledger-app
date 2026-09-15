@@ -3,7 +3,8 @@ import { useERP } from "../ERPContext";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 import { applyAlias } from "../../lib/vendorAlias";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
+import { fmtDate , fmtMoney, todayLocal } from "../../lib/format";
+import VendorAvatar from "../VendorAvatar";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function CustomersView() {
@@ -47,7 +48,7 @@ export default function CustomersView() {
                 <div>
                   <button onClick={()=>setSelCustomer(null)} style={{ background:"transparent", border:"none", color:"var(--sc-success)", cursor:"pointer", fontSize:13, padding:0, marginBottom:16 }}>← All customers</button>
                   <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
-                    <div style={{ width:52,height:52,borderRadius:14,background:vendorColor(c.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(c.name)}</div>
+                    <VendorAvatar vendor={c} size={52} radius={14} fontSize={18} />
                     <h1 style={{ fontSize:26, fontWeight:600, margin:0, letterSpacing:-0.5 }}>{c.name}</h1>
                   </div>
 
@@ -166,7 +167,7 @@ export default function CustomersView() {
                       return (
                         <div key={c.id||c.name} style={{ background:"var(--sc-surface)", border:`1px solid ${overdueAR>0?"var(--sc-error-soft)":"var(--sc-border)"}`, borderRadius:14, overflow:"hidden" }}>
                           <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
-                            <div onClick={()=>setSelCustomer(c)} style={{ width:44,height:44,borderRadius:12,background:vendorColor(c.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0, cursor:"pointer" }}>{initials(c.name)}</div>
+                            <VendorAvatar vendor={c} size={44} radius={12} fontSize={15} onClick={()=>setSelCustomer(c)} />
                             <div onClick={()=>setSelCustomer(c)} style={{ flex:1, minWidth:0, cursor:"pointer" }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                                 <span style={{ fontSize:15, fontWeight:600 }}>{c.name}</span>

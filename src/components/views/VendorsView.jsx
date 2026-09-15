@@ -4,7 +4,8 @@ import { verdictFor, reportablePayments, VERDICT } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 import { applyAlias } from "../../lib/vendorAlias";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
+import { fmtDate , fmtMoney } from "../../lib/format";
+import VendorAvatar from "../VendorAvatar";
 import { getAuthHeaders } from "../../lib/supabase";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 import { validateAlias, aliasExplainer } from "../../lib/vendorAlias";
@@ -88,7 +89,7 @@ export default function VendorsView() {
                 <div>
                   <button onClick={()=>setSelectedContact(null)} style={{ background:"transparent", border:"none", color:"var(--sc-gold)", cursor:"pointer", fontSize:13, padding:0, marginBottom:16 }}>← All vendors</button>
                   <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
-                    <div style={{ width:52,height:52,borderRadius:14,background:vendorColor(v.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(v.name)}</div>
+                    <VendorAvatar vendor={v} size={52} radius={14} fontSize={18} />
                     <div>
                       <h1 style={{ fontSize:26, fontWeight:600, margin:0, letterSpacing:-0.5 }}>{v.name}</h1>
                       <div style={{ display:"flex", gap:8, marginTop:6, alignItems:"center" }}>
@@ -314,7 +315,7 @@ export default function VendorsView() {
                         <div key={v.id||v.name} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"hidden" }}>
                           {/* Header row */}
                           <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
-                            <div onClick={()=>setSelectedContact(v)} style={{ width:44,height:44,borderRadius:12,background:vendorColor(v.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0, cursor:"pointer" }}>{initials(v.name)}</div>
+                            <VendorAvatar vendor={v} size={44} radius={12} fontSize={15} onClick={()=>setSelectedContact(v)} />
                             <div onClick={()=>setSelectedContact(v)} style={{ flex:1, minWidth:0, cursor:"pointer" }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                                 <span style={{ fontSize:15, fontWeight:600 }}>{v.name}</span>

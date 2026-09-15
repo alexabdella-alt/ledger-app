@@ -100,6 +100,8 @@ export function directoryConflicts(entries = []) {
 // SCOPE IS DELIBERATELY NARROW: national vendors whose mapping is genuinely
 // uncontroversial. Every entry here is a claim that ANY restaurant booking this vendor
 // wants this account, and that claim has to be true for a stranger's books.
+// C395 — `domain` is the vendor's own public domain, curated beside the mapping, and is
+// the only thing a logo is ever fetched by (src/lib/vendorLogo.js). No row may guess it.
 export const DIRECTORY_SEED = [
   // ★ EXACT IS THE DEFAULT. Only Toast uses PREFIX, and only because its descriptors
   // carry a MONTH NAME. Two defects in the first draft of this seed — caught by the
@@ -111,32 +113,32 @@ export const DIRECTORY_SEED = [
   // Both are the Q4 one-way door re-entering through the directory. EXACT by default;
   // PREFIX only where a curator has a reason and the pattern is specific enough to
   // carry it.
-  { entity_key: "toast",  canonical_name: "Toast",  default_account_role: "merchant_processing_fees",
+  { entity_key: "toast", domain: "toasttab.com",  canonical_name: "Toast",  default_account_role: "merchant_processing_fees",
     match_type: MATCH_TYPE.PREFIX, match_patterns: ["toast merchant fees", "toast inc merchant fees"] },
-  { entity_key: "square", canonical_name: "Square", default_account_role: "merchant_processing_fees",
+  { entity_key: "square", domain: "squareup.com", canonical_name: "Square", default_account_role: "merchant_processing_fees",
     match_type: MATCH_TYPE.EXACT,  match_patterns: ["squareup", "square inc"] },
-  { entity_key: "stripe", canonical_name: "Stripe", default_account_role: "merchant_processing_fees",
+  { entity_key: "stripe", domain: "stripe.com", canonical_name: "Stripe", default_account_role: "merchant_processing_fees",
     match_type: MATCH_TYPE.EXACT,  match_patterns: ["stripe", "stripe payments"] },
 
-  { entity_key: "meta ads",   canonical_name: "Meta Ads",   default_account_role: "marketing_advertising",
+  { entity_key: "meta ads", domain: "facebook.com",   canonical_name: "Meta Ads",   default_account_role: "marketing_advertising",
     match_type: MATCH_TYPE.EXACT, match_patterns: ["facebook ads", "facebk ads", "meta platforms"] },
-  { entity_key: "google ads", canonical_name: "Google Ads", default_account_role: "marketing_advertising",
+  { entity_key: "google ads", domain: "google.com", canonical_name: "Google Ads", default_account_role: "marketing_advertising",
     match_type: MATCH_TYPE.EXACT, match_patterns: ["google ads", "google adwords"] },
 
   // Broadline distributors. EXACT, and the sub-brand matters: `sysco foods` is COGS
   // and `sysco fuel` is not the same vendor for accounting purposes.
-  { entity_key: "sysco",               canonical_name: "Sysco",               default_account_role: "cogs",
+  { entity_key: "sysco", domain: "sysco.com",               canonical_name: "Sysco",               default_account_role: "cogs",
     match_type: MATCH_TYPE.EXACT, match_patterns: ["sysco", "sysco foods"] },
-  { entity_key: "us foods",            canonical_name: "US Foods",            default_account_role: "cogs",
+  { entity_key: "us foods", domain: "usfoods.com",            canonical_name: "US Foods",            default_account_role: "cogs",
     match_type: MATCH_TYPE.EXACT, match_patterns: ["us foods", "usfoods"] },
-  { entity_key: "restaurant depot",    canonical_name: "Restaurant Depot",    default_account_role: "cogs",
+  { entity_key: "restaurant depot", domain: "restaurantdepot.com",    canonical_name: "Restaurant Depot",    default_account_role: "cogs",
     match_type: MATCH_TYPE.EXACT, match_patterns: ["restaurant depot"] },
-  { entity_key: "gordon food service", canonical_name: "Gordon Food Service", default_account_role: "cogs",
+  { entity_key: "gordon food service", domain: "gfs.com", canonical_name: "Gordon Food Service", default_account_role: "cogs",
     match_type: MATCH_TYPE.EXACT, match_patterns: ["gordon food service"] },
 
-  { entity_key: "amazon web services", canonical_name: "Amazon Web Services", default_account_role: "technology_software",
+  { entity_key: "amazon web services", domain: "aws.amazon.com", canonical_name: "Amazon Web Services", default_account_role: "technology_software",
     match_type: MATCH_TYPE.EXACT, match_patterns: ["amazon web services", "aws"] },
-  { entity_key: "google workspace",    canonical_name: "Google Workspace",    default_account_role: "technology_software",
+  { entity_key: "google workspace", domain: "workspace.google.com",    canonical_name: "Google Workspace",    default_account_role: "technology_software",
     match_type: MATCH_TYPE.EXACT, match_patterns: ["google workspace", "google gsuite"] },
 ];
 
