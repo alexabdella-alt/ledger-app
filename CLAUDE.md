@@ -1362,6 +1362,8 @@ A full `information_schema` audit against the live database (the schema-drift pa
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C448 — ONE MORE RAW DATABASE SENTENCE ON AN OWNER TOAST, UNDER A DIFFERENT VARIABLE NAME (2026-09-15).** `C415`'s census keyed on `r.error`/`res.error`; the cost-spread rollback toast appended `${reason}` — the schedule insert's raw error, passed in as an argument. Routed; pinned.
+
 - **C447 — "PERMANENTLY DELETE … THIS REMOVES IT FROM THE DATABASE PERMANENTLY" OVER A SOFT DELETE WITH UNDO (2026-09-15).** The contract card's confirmation (`ContractsView`, reviewer-side) described the opposite of what the button does — `softDeleteContracts` stamps `deleted_at` and offers Undo (`C362`). Found by the `C446` grep for "permanently". Reworded to the record.
 
 - **★ C446 — THE PRIVACY PAGE PROMISED "PERMANENT REMOVAL" THAT NOTHING PERFORMS (2026-09-15). ▶ OPERATOR TO REVIEW.** *"Deleted entries are soft-deleted … before permanent removal"* — §11's own warning, written weeks ago: *"a retention promise must be defined AND implemented before it is quoted to anyone."* No purge exists in `src/` or the edge functions. The paragraph now says what happens — soft-deleted, out of the books and reports, kept in the audit trail, restorable — and that we do not currently purge automatically; a test refuses the purge wording while no purge exists in the codebase.
