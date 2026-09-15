@@ -790,7 +790,12 @@ export default function ReviewView() {
                       showNotification(`Entry posted: ${doc.document_type} · ${fmt(debitLine.debit)} ✓`);
                     };
 
-                    const dismiss = () => setUnknownDocs(prev => prev.filter(d => d.id!==doc.id));
+                    // C398 — dismissed durably (C364's column), or the document is back after a reload.
+                    const dismiss = async () => {
+                      const r = await persistUnknownDocPatch(doc, { dismissed: true });
+                      if (!r?.ok) { showNotification("Couldn't dismiss that document — nothing was changed.", "error"); return; }
+                      setUnknownDocs(prev => prev.filter(d => d.id!==doc.id));
+                    };
 
                     return (
                       <div key={doc.id} style={{ background:"var(--sc-surface)", border:`1px solid ${doc.posted?"var(--sc-success-soft)":doc.entry_needed?"var(--sc-gold-soft)":"var(--sc-border)"}`, borderRadius:14, overflow:"clip" }}>
