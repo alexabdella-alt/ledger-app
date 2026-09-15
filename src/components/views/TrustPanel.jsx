@@ -1,6 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { monthLabel } from "../../lib/ownerTrust";
+import { monthLabel, ownerSignOffBlockers } from "../../lib/ownerTrust";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { todayLocal } from "../../lib/format";
 
@@ -104,7 +104,7 @@ function TrustPanelNeutral({ headline, subtext }) {
 }
 
 export default function TrustPanel({ loading = false }) {
-  const { ownerTrust, onViewChange, setView, navSeat, canSoloAttest, selfAttestAcknowledgement, signOffPeriod, signoffs, invoices, clarificationQueue } = useERP();
+  const { ownerTrust, onViewChange, setView, navSeat, canSoloAttest, selfAttestAcknowledgement, signOffPeriod, signOffReadinessFor, signoffs, invoices, clarificationQueue } = useERP();
   // C197 — is this the CPA cockpit, or the client seat? (Absent context → cockpit,
   // so nothing regresses for any surface that renders the panel outside ERP.)
   const cockpit = navSeat ? navSeat.isReviewerSeat : true;
@@ -180,6 +180,7 @@ export default function TrustPanel({ loading = false }) {
           the separation is back with nobody changing a setting. */}
       {canSoloAttest && <SoloSignOff
         signOffPeriod={signOffPeriod}
+        signOffReadinessFor={signOffReadinessFor}
         acknowledgementFor={selfAttestAcknowledgement}
         signoffs={signoffs}
         invoices={invoices}
@@ -210,7 +211,7 @@ export default function TrustPanel({ loading = false }) {
 // signed month), so the acknowledgement is the control and the button is only reachable
 // through it.
 // ─────────────────────────────────────────────────────────────────────────────
-function SoloSignOff({ signOffPeriod, acknowledgementFor, signoffs, invoices }) {
+function SoloSignOff({ signOffPeriod, signOffReadinessFor, acknowledgementFor, signoffs, invoices }) {
   const [ack, setAck] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [problem, setProblem] = React.useState(null);
@@ -230,14 +231,20 @@ function SoloSignOff({ signOffPeriod, acknowledgementFor, signoffs, invoices }) 
   // empty period would be a control that exists to be declined.
   if (!months.length || !period) return null;
 
+  // C407 — what stands in the way is said BEFORE the click, in the owner's words, and the
+  // control is disabled while it does (O124). A refusal after the click reads the same map.
+  let notYet = [];
+  try { const r = signOffReadinessFor ? signOffReadinessFor(period) : null; if (r && !r.ok) notYet = ownerSignOffBlockers(r.blockers, { periodLabel: label }); } catch { notYet = []; }
+  const blocked = notYet.length > 0;
+
   const sign = async () => {
-    if (!ack || busy || !signOffPeriod) return;
+    if (!ack || busy || blocked || !signOffPeriod) return;
     setBusy(true); setProblem(null);
     try {
       const r = await signOffPeriod(period, { acknowledged: true });
       // §9 — the message reads the RESULT. A refusal names what actually stopped it rather
       // than a generic "try again", because most refusals here are things to act on.
-      if (!r || !r.ok) setProblem((r && (r.error || (r.blockers || [])[0])) || "we couldn't record that just now");
+      if (!r || !r.ok) setProblem((r && (r.error || ownerSignOffBlockers(r.blockers || [], { periodLabel: label })[0])) || "we couldn't record that just now");
       else setAck(false);
     } finally { setBusy(false); }
   };
@@ -247,13 +254,19 @@ function SoloSignOff({ signOffPeriod, acknowledgementFor, signoffs, invoices }) 
       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--sc-text)", marginBottom: 6 }}>
         Sign off {label} yourself
       </div>
-      <label style={{ display: "flex", gap: 9, alignItems: "flex-start", cursor: "pointer", fontSize: 12, lineHeight: 1.5, color: "var(--sc-text-2)" }}>
-        <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
+      {blocked && (
+        <div data-signoff-blocked style={{ fontSize: 12, lineHeight: 1.5, color: "var(--sc-text-2)", marginBottom: 8 }}>
+          <div style={{ fontWeight: 600, color: "var(--sc-text)" }}>Not ready to sign yet:</div>
+          {notYet.map((t, i) => <div key={i}>· {t}</div>)}
+        </div>
+      )}
+      <label style={{ display: "flex", gap: 9, alignItems: "flex-start", cursor: blocked ? "not-allowed" : "pointer", fontSize: 12, lineHeight: 1.5, color: "var(--sc-text-2)", opacity: blocked ? 0.6 : 1 }}>
+        <input type="checkbox" checked={ack} disabled={blocked} onChange={(e) => setAck(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
         <span>{acknowledgementFor ? acknowledgementFor(label) : ""}</span>
       </label>
       <button
         onClick={sign}
-        disabled={!ack || busy}
+        disabled={!ack || busy || blocked}
         style={{ marginTop: 10, width: "100%", background: ack ? "var(--sc-gold-soft)" : "transparent",
                  border: `1px solid ${ack ? "var(--sc-gold)" : "var(--sc-border)"}`, borderRadius: 10, padding: "9px 14px",
                  fontSize: 13, fontWeight: 600, color: ack ? "var(--sc-text)" : "var(--sc-text-2)",

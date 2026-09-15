@@ -299,3 +299,38 @@ export function ownerAnomalyLine(anomalies = []) {
     ? `One${small} thing noted — your accountant will look it over.`
     : `${n}${small} things noted — your accountant will look them over.`;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C407 — WHY A MONTH CANNOT BE SIGNED YET, IN THE OWNER'S WORDS. `signOffReadiness`
+// (controlTotals.js) is CPA-side and says so: "the bank isn't reconciled yet",
+// "3 checks that should match don't: ap_tie". The solo owner's sign-off card used to let
+// the person tick the acknowledgement, press Sign off, and only THEN read that refusal —
+// O124's rule (if the action is impossible, disable the control and say why) and the
+// owner bar, both broken on the one control that locks a month. Each net gets one plain
+// sentence; a net this map does not know is reported as "something your accountant can
+// see", never dropped — a blocker that vanishes from the list is a sign-off nobody meant.
+// ─────────────────────────────────────────────────────────────────────────────
+export function ownerSignOffBlockers(blockers = [], { periodLabel = "this month" } = {}) {
+  const out = [];
+  for (const b of blockers || []) {
+    if (!b) continue;
+    const r = String(b.reason || "");
+    const n = (r.match(/\d+/) || [null])[0];
+    switch (b.net) {
+      case "completeness": out.push(`${n || "Some"} document${n === "1" ? " isn't" : "s aren't"} in your books yet.`); break;
+      case "confidence":   out.push(`${n || "Some"} transaction${n === "1" ? " still needs" : "s still need"} a look.`); break;
+      case "accuracy":     out.push("Some figures don't add up yet — your accountant can see which."); break;
+      case "bank":         out.push(`Your books haven't been matched to your bank yet — drop your latest statement.`); break;
+      case "anomaly":      out.push(`Something unusual in ${periodLabel} hasn't been looked at yet.`); break;
+      case "readiness":
+        if (/setup/i.test(r)) out.push("Your setup isn't finished yet.");
+        else if (/opening balance/i.test(r)) out.push("Your starting balances haven't been set yet.");
+        else if (/no transactions/i.test(r)) out.push(`Nothing is recorded in ${periodLabel} yet.`);
+        else if (/reconciled/i.test(r)) out.push(`${periodLabel} hasn't been matched to your bank statement yet — drop that month's statement.`);
+        else out.push("Something your accountant can see is still open.");
+        break;
+      default: out.push("Something your accountant can see is still open.");
+    }
+  }
+  return [...new Set(out)];
+}
