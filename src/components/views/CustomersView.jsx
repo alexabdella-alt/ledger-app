@@ -214,8 +214,8 @@ export default function CustomersView() {
                                 { key:"payment_terms", label:"Payment Terms", placeholder:"Net 15" },
                                 { key:"email", label:"Email", placeholder:"billing@customer.com" },
                                 { key:"phone", label:"Phone", placeholder:"+1 555 000 0000" },
-                                { key:"min_expected", label:"Min Revenue ($)", placeholder:"1000" },
-                                { key:"max_expected", label:"Max Revenue ($)", placeholder:"5000" },
+                                { key:"min_expected", label:"Usually pays at least ($)", placeholder:"1000" },
+                                { key:"max_expected", label:"Usually pays at most ($)", placeholder:"5000" },
                                 { key:"tags", label:"Tags (comma-separated)", placeholder:"enterprise, monthly" },
                               ].map(f=>(
                                 <div key={f.key}>

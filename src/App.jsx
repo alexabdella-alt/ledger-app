@@ -2317,7 +2317,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const detected = applyPatternSuppression(
         // C332 — the A/P code lets the flat-fee count rule tell an open bill from a charge by
         // its OFFSET leg (§9); without it that rule stays silent rather than guessing.
-        runAnomalyDetection(invoicesRef.current, recurringRef.current, new Date(), { apCode: rc("accounts_payable") || null }),
+        // C474 — the contacts carry the amount bands a person declared per supplier.
+        runAnomalyDetection(invoicesRef.current, recurringRef.current, new Date(), { apCode: rc("accounts_payable") || null, contacts: contactsRef.current || [] }),
         anomalyRowsRef.current
       );
       const { toInsert, toResolve } = reconcileAnomalies({ detected, rows: anomalyRowsRef.current });

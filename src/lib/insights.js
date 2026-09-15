@@ -22,6 +22,7 @@ export function normVendor(name) {
 
 const isLive = i => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at;
 const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s[0] === "6" || s[0] === "7" || s[0] === "8"; };
+const isRevenueCode = c => String(c || "")[0] === "4";   // C474
 
 // Find an existing entry that looks like a duplicate of `invoice`:
 //   • same vendor + exact amount, OR same vendor + amount within 1%, AND within a date window.
@@ -179,7 +180,7 @@ export function booksFrontier(invoices = [], now = new Date()) {
 const dayDiffYMD = (from, to) =>
   Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 
-export function runAnomalyDetection(invoices, recurring = [], now = new Date(), { frontier = null, apCode = null } = {}) {
+export function runAnomalyDetection(invoices, recurring = [], now = new Date(), { frontier = null, apCode = null, contacts = null } = {}) {
   const money = n => fmtSignedMoney(n);   // canonical cents (was ad-hoc whole-dollar)
   const daysAgo = d => (now - new Date(d)) / 86400000;
   const within = (d, days) => { const x = daysAgo(d); return x >= 0 && x <= days; };
@@ -504,6 +505,37 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
         title: `Large charge: ${money(amt)} to ${i.vendor}`,
         description: `${money(amt)} to ${i.vendor} on ${String(i.date)}. If it's equipment or software lasting over a year, it may need to be capitalized rather than expensed.`,
         invoice_ids: [i.id] });
+    }
+  }
+
+  // 5b. C474 — OUTSIDE THE RANGE THE PERSON TOLD US. "Min/Max expected" on the Vendors and
+  // Customers forms was saved and displayed and read by nothing. It is a fact a human
+  // stated about this supplier, which is exactly what a detector should prefer over a
+  // statistic. One card per charge, MEDIUM (a judgment, never a block), and silent for a
+  // supplier with no band.
+  if (contacts && contacts.length) {
+    const bands = new Map();
+    for (const c of contacts) {
+      const lo = Number(c && c.min_expected), hi = Number(c && c.max_expected);
+      if (!c || !c.name || (!(lo > 0) && !(hi > 0))) continue;
+      bands.set(normVendor(c.name), { lo: lo > 0 ? lo : null, hi: hi > 0 ? hi : null, name: c.name });
+    }
+    if (bands.size) {
+      // Customers declare a band too ("usually pays…"), so revenue rows are in this one
+      // population — the counterparty's name is the row's `vendor` either way.
+      const revenues = (invoices || []).filter(i => isLive(i) && !isCancelledOrCancelling(i) && i.date && isRevenueCode(i.gl_code) && (Number(i.amount) > 0));
+      for (const i of [...expenses, ...revenues].filter(x => within(x.date, 95) && !isSystemPostedEntry(x))) {
+        const b = bands.get(normVendor(i.vendor));
+        if (!b) continue;
+        const amt = Number(i.amount) || 0;
+        const under = b.lo != null && amt < b.lo, over = b.hi != null && amt > b.hi;
+        if (!under && !over) continue;
+        const range = b.lo != null && b.hi != null ? `${money(b.lo)}–${money(b.hi)}` : b.lo != null ? `at least ${money(b.lo)}` : `up to ${money(b.hi)}`;
+        push({ id: `range:${normVendor(i.vendor)}:${subjectKey(i)}`, type: "outside_expected_range", severity: "medium",
+          title: `${i.vendor}: ${money(amt)} is ${over ? "more" : "less"} than you told us to expect`,
+          description: `You told us ${b.name} usually charges ${range}; this one on ${String(i.date)} is ${money(amt)}. Worth a look if that's not what you expected.`,
+          invoice_ids: [i.id] });
+      }
     }
   }
 

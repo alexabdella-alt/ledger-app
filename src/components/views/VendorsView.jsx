@@ -368,8 +368,8 @@ export default function VendorsView() {
                                 { key:"phone", label:"Phone", placeholder:"+1 555 000 0000" },
                                 { key:"website", label:"Website", placeholder:"vendor.com" },
                                 { key:"payment_url", label:"Payment Portal URL", placeholder:"bill.com / invoicing portal link" },
-                                { key:"min_expected", label:"Min Expected ($)", placeholder:"500" },
-                                { key:"max_expected", label:"Max Expected ($)", placeholder:"2000" },
+                                { key:"min_expected", label:"Usually charges at least ($)", placeholder:"500" },
+                                { key:"max_expected", label:"Usually charges at most ($)", placeholder:"2000" },
                                 { key:"tags", label:"Tags (comma-separated)", placeholder:"IT, recurring" },
                               ].map(f=>(
                                 <div key={f.key}>

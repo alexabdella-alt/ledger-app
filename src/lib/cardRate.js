@@ -53,6 +53,7 @@ export const CARD_TAXONOMY = {
   category_spike: { category: CARD_CATEGORY.JUDGMENT, why: "spending in a category jumped" },
   vendor_spike: { category: CARD_CATEGORY.JUDGMENT, why: "one supplier's charges jumped" },
   rapid_sequential: { category: CARD_CATEGORY.JUDGMENT, why: "several charges from one supplier in quick succession" },
+  outside_expected_range: { category: CARD_CATEGORY.JUDGMENT, why: "a charge outside the band the person declared for this supplier (C474)" },
 
   // ── clarifications ──
   gl: { category: CARD_CATEGORY.JUDGMENT, why: "which account this belongs to — shrinks toward category 2 as vendors become known" },
