@@ -3907,7 +3907,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       null, { je_id: String(jeId), reason: reason || null });
     try { Sentry.captureMessage("fixed_asset_setup_failure", { level: "error",
       tags: { kind: "fixed_asset_setup_failure" }, extra: { je_id: String(jeId), reason: reason || null } }); } catch {}
-    showNotification(`We couldn't set up the cost spread for ${finalInv.vendor || "that purchase"}, so we undid the entry — nothing is in your books.${reason ? ` (${reason})` : ""} Please try again.`, "error");
+    showNotification(`We couldn't set up the cost spread for ${finalInv.vendor || "that purchase"}, so we undid the entry — nothing is in your books.${plainWriteError(reason) ? ` ${plainWriteError(reason)}` : ""} Please try again.`, "error");   // C448 — `reason` is the schedule insert's raw error
   };
 
   // Create the fixed_assets master + generate its straight-line depreciation_schedule

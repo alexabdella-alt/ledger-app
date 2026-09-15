@@ -37,6 +37,11 @@ describe("plainWriteError", () => {
 
 describe("★ no toast quotes a write's raw error any more", () => {
   const walk = (d) => fs.readdirSync(d).flatMap((f) => { const p = path.join(d, f); return fs.statSync(p).isDirectory() ? walk(p) : /\.jsx?$/.test(f) ? [p] : []; });
+  it("the cost-spread rollback toast routes its raw `reason` too (C448)", () => {
+    const app = fs.readFileSync("src/App.jsx", "utf8");
+    expect(app).toMatch(/nothing is in your books\.\$\{plainWriteError\(reason\)/);
+    expect(app).not.toMatch(/\$\{reason \? ` \(\$\{reason\}\)` : ""\}/);
+  });
   it("every `${r.error}` / `${res.error}` inside a showNotification goes through plainWriteError (Admin excepted: platform-admin only)", () => {
     const bad = []; let seen = 0;
     for (const f of walk("src")) {
