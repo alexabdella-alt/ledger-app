@@ -44,3 +44,12 @@ describe("★★ the clarification nudge", () => {
     expect(flow).toContain('window.addEventListener("sc:open-stepper", onOpen)');
   });
 });
+
+// C406 — the nudge bar no longer repeats the "Nothing wrong" line word for word above it.
+describe("★ the nudge bar does not repeat the line above it", () => {
+  it("the clarification nudge carries its own sentence; the line's sentence appears once", () => {
+    const html = renderViewHtml(TrustPanel, { ...VIEW_CONTEXT["TrustPanel.jsx"], ownerTrust: trust("clarification"), navSeat: seat(false) });
+    expect((html.match(/asked you about 4 transactions/g) || []).length).toBe(1);
+    expect(html).toContain("Go through them one at a time");
+  });
+});

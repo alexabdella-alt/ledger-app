@@ -191,7 +191,7 @@ export default function TrustPanel({ loading = false }) {
       {nudge && (nudgeIsButton ? (
         <button onClick={onNudge} data-nudge={nudge.kind}
           style={{ marginTop: 14, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 12, padding: "12px 16px", cursor: "pointer", textAlign: "left" }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)" }}>{lines.correct.text}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)" }}>{nudge.kind === "clarification" ? "Go through them one at a time — nothing is lost if you stop." : lines.correct.text}</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-gold)", whiteSpace: "nowrap" }}>{nudge.text} →</span>
         </button>
       ) : (
