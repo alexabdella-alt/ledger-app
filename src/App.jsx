@@ -1094,13 +1094,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (mainContentRef.current) mainContentRef.current.scrollTop = 0;
   }, [view]);
 
-  useEffect(() => {
-    // Initialize settings draft when entering settings view
-    if (view === "settings" && !settingsDraft) {
-      setSettingsDraft(companySettings);
-    }
-  }, [view]); // eslint-disable-line
-
   // ── COMPANY STATE RESET ────────────────────────────────────
   // Wipe every piece of company-scoped state back to its initial value so nothing
   // from the previous company can bleed into the next one (a UI-layer complement to
@@ -2630,6 +2623,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // companySettings/bankAccounts/invoices have arrived. Reset to false on company switch.
   const [companyDataLoaded, setCompanyDataLoaded] = useState(false);
   const [businessModalOpen, setBusinessModalOpen] = useState(false);
+  // (moved below `companyDataLoaded`'s declaration — a hook dep in the temporal dead zone throws at render, C318)
+  useEffect(() => {
+    // Initialize settings draft when entering settings view.
+    // C427 — ONLY ONCE THE COMPANY HAS LOADED. Reloading the app while on Settings ran this
+    // before `loadAllData` resolved, so the draft was seeded from the reset defaults (name
+    // "", address "") and stayed that way when the real settings arrived — the form showed
+    // blanks over a company that has a name, and a save would have written them.
+    if (view === "settings" && !settingsDraft && companyDataLoaded) {
+      setSettingsDraft(companySettings);
+    }
+  }, [view, companyDataLoaded]); // eslint-disable-line
+
   // C424 — the "add your accountant" checklist step's dismissal is PER COMPANY: the key was
   // device-wide, so dismissing it on one company dismissed it on every company this browser
   // ever opens, and it was read once at mount and never on a switch.
