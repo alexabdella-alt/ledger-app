@@ -63,7 +63,7 @@ import { readDeclinedRecurring, writeDeclinedRecurring } from "./lib/declinedRec
 import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
-import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
+import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, pendingStatementStashes, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
 import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy, bankImportToastCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
@@ -4676,7 +4676,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       openHighAnomalies: openHighAnomalyCount,   // O83 — open HIGH anomaly ⇒ "Nothing wrong" can't be green
       heldUnreadable: heldUnreadable.length,     // C369 — a file we could not read is not "accounted for"
       heldPartial: heldPartial.length,           // C390 — a file only partly recorded is not "accounted for" either
-      heldForAccountant: heldPayrollCards(intakeRows).length + deferredToAccountantCards(intakeRows).length + signedPeriodHoldCards(intakeRows).length,   // C372/C373
+      heldForAccountant: heldPayrollCards(intakeRows).length + deferredToAccountantCards(intakeRows).length + signedPeriodHoldCards(intakeRows).length + pendingStatementStashes(intakeRows).length,   // C372/C373 · C391 — a statement stashed for the accountant is not "accounted for" either
       hasAttester,                               // O131 — don't promise a review nobody can give
       // Was the month we are reporting as reviewed signed by the owner themselves? Read off
       // the ROW rather than inferred from `hasAttester`, because a company that has since

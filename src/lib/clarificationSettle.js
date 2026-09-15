@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { INTAKE_STATUS } from "./documentIntake";
 
-import { DEFERRED_DETAIL } from "./waitingOnYou";
+import { DEFERRED_DETAIL, ANSWER_NOT_LANDED_DETAIL } from "./waitingOnYou";
 // One string, owned by the reader (waitingOnYou) and re-exported for the writer.
 export const CLARIFICATION_DEFERRED_DETAIL = DEFERRED_DETAIL;
 
@@ -42,7 +42,7 @@ export function settleIntakeAfterAnswers({ outcomes = [], existingIds = [], rema
   }
   if (booked.length) {
     // something claimed booked with no id — never RECORDED (C311: terminal-and-unlinked is a lie)
-    return { status: INTAKE_STATUS.HELD, journalEntryIds: landed, detail: "a booking from your answer did not land — held for review" };
+    return { status: INTAKE_STATUS.HELD, journalEntryIds: landed, detail: ANSWER_NOT_LANDED_DETAIL };   // C391 — read back by heldPartialRows
   }
   if (outcomes.length && outcomes.every((o) => o && o.kind === ANSWER_OUTCOME.SKIPPED)) {
     return { status: INTAKE_STATUS.REJECTED, journalEntryIds: landed, detail: "skipped after your answer — a duplicate or not a business expense" };

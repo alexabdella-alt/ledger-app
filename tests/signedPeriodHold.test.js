@@ -48,6 +48,6 @@ describe("the wiring (source)", () => {
     }
   });
   it("the owner's completeness line counts it as held for the accountant", () => {
-    expect(app).toMatch(/\+ signedPeriodHoldCards\(intakeRows\)\.length,/);
+    expect(app).toMatch(/heldForAccountant: [^\n]*\+ signedPeriodHoldCards\(intakeRows\)\.length/);   // the term is in the sum (C391 appended one after it)
   });
 });

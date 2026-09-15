@@ -101,6 +101,6 @@ describe("C372 — accountant-held documents are not 'accounted for' either", ()
   });
   it("App feeds it from the same card builders Review renders (one definition of 'held for a person')", () => {
     const app = read("src/App.jsx");
-    expect(app).toMatch(/heldForAccountant: heldPayrollCards\(intakeRows\)\.length \+ deferredToAccountantCards\(intakeRows\)\.length \+ signedPeriodHoldCards\(intakeRows\)\.length,/);
+    expect(app).toMatch(/heldForAccountant: heldPayrollCards\(intakeRows\)\.length \+ deferredToAccountantCards\(intakeRows\)\.length \+ signedPeriodHoldCards\(intakeRows\)\.length \+ pendingStatementStashes\(intakeRows\)\.length,/);   // C391 added the stash
   });
 });

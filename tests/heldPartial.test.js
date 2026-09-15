@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
-import { partialHoldDetail, parsePartialHold, heldPartialRows, heldPartialCopy } from "../src/lib/waitingOnYou.js";
+import { partialHoldDetail, parsePartialHold, heldPartialRows, heldPartialCopy, ANSWER_NOT_LANDED_DETAIL } from "../src/lib/waitingOnYou.js";
+import { settleIntakeAfterAnswers, ANSWER_OUTCOME } from "../src/lib/clarificationSettle.js";
+import { buildStashDetail } from "../src/lib/statementLifecycle.js";
 import { homeWaitingList } from "../src/lib/homeWaiting.js";
 import { ownerTrustState } from "../src/lib/ownerTrust.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
@@ -15,8 +17,8 @@ const row = (over = {}) => ({ id: "in1", status: "held_for_review", filename: "h
 
 describe("★★ writer and reader share one sentence", () => {
   it("the sentence the writer stores is the sentence the reader parses", () => {
-    expect(parsePartialHold(partialHoldDetail(1, 3))).toEqual({ saved: 1, expected: 3, missing: 2 });
-    expect(parsePartialHold(partialHoldDetail(0, 1))).toEqual({ saved: 0, expected: 1, missing: 1 });
+    expect(parsePartialHold(partialHoldDetail(1, 3))).toEqual({ saved: 1, expected: 3, missing: 2, afterAnswer: false });
+    expect(parsePartialHold(partialHoldDetail(0, 1))).toEqual({ saved: 0, expected: 1, missing: 1, afterAnswer: false });
     expect(parsePartialHold("awaiting clarification in review queue")).toBeNull();
     expect(parsePartialHold("2 of 3 transactions saved")).toBeNull();   // a near-miss spelling is NOT a partial hold
   });
@@ -65,3 +67,24 @@ describe("★★ it reaches Home and the trust panel", () => {
     expect(ok.lines.captured.text).not.toMatch(/only partly/);
   });
 });
+
+// C391 — two more holds that a person had to deal with and nothing listed after a reload.
+describe("★ C391 — the answer-path hold and the stashed statement reach a reader", () => {
+  it("clarificationSettle's 'did not land' row is the constant heldPartialRows reads, with its own sentence", () => {
+    const r = settleIntakeAfterAnswers({ outcomes: [{ kind: ANSWER_OUTCOME.BOOKED, jeId: null }], existingIds: [], remainingCards: 0 });
+    expect(r.detail).toBe(ANSWER_NOT_LANDED_DETAIL);
+    const rows = heldPartialRows([row({ detail: r.detail })]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].afterAnswer).toBe(true);
+    const copy = heldPartialCopy(rows);
+    expect(copy).toMatch(/You answered our question about hill-country\.pdf/);
+    expect(containsOwnerJargon(copy)).toBe(false);
+  });
+  it("a statement stashed for the accountant counts against the trust panel's Documents line", () => {
+    const app = fs.readFileSync("src/App.jsx", "utf8");
+    expect(app).toMatch(/heldForAccountant: [^\n]*pendingStatementStashes\(intakeRows\)\.length/);
+    const base = { intakeRows: [{ id: "s1", status: "held_for_review", document_id: "d", detail: buildStashDetail({ fileName: "jan.pdf" }), received_at: "2026-09-01T00:00:00Z" }], completenessChecked: true, hasBooks: true, setupComplete: true };
+    expect(ownerTrustState({ ...base, heldForAccountant: 1 }).nets.completeness).toBe(false);
+  });
+});
+

@@ -153,9 +153,15 @@ export function heldUnreadableCopy(rows = []) {
 export const partialHoldDetail = (saved, expected) =>
   `${saved} of ${expected} transaction(s) saved — ${Math.max(0, expected - saved)} did not, so this document is not fully recorded`;
 const PARTIAL_HOLD_RE = /^(\d+) of (\d+) transaction\(s\) saved — (\d+) did not, so this document is not fully recorded$/;
+// C391 — the answer-path twin: a card was answered, the booking claimed to land and no id
+// came back (clarificationSettle). Same shape — a document only partly (or not at all) in
+// the books after a person did their part — so it reads through the same door.
+export const ANSWER_NOT_LANDED_DETAIL = "a booking from your answer did not land — held for review";
 export function parsePartialHold(detail) {
-  const m = PARTIAL_HOLD_RE.exec(String(detail || ""));
-  return m ? { saved: Number(m[1]), expected: Number(m[2]), missing: Number(m[3]) } : null;
+  const d = String(detail || "");
+  if (d === ANSWER_NOT_LANDED_DETAIL) return { saved: null, expected: null, missing: null, afterAnswer: true };
+  const m = PARTIAL_HOLD_RE.exec(d);
+  return m ? { saved: Number(m[1]), expected: Number(m[2]), missing: Number(m[3]), afterAnswer: false } : null;
 }
 
 export function heldPartialRows(intakeRows = [], { uploadQueue = [] } = {}) {
@@ -183,6 +189,7 @@ export function heldPartialCopy(rows = []) {
   if (!n) return "";
   if (n === 1) {
     const r = rows[0];
+    if (r.afterAnswer) return `You answered our question about ${r.filename}, but recording it didn't go through — it isn't in your books yet. Bring it back to finish.`;
     return `${r.filename} is only partly in your books — ${r.saved} of ${r.expected} transactions saved, ${r.missing} not. Bring it back to finish.`;
   }
   const names = rows.slice(0, 3).map((r) => r.filename).join(", ") + (n > 3 ? ` and ${n - 3} more` : "");
