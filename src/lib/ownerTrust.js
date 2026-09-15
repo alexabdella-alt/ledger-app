@@ -90,6 +90,7 @@ export function ownerTrustState({
   // Same lie the payroll gate told ("this is the first payroll we've recorded"), on the
   // owner's trust panel.
   completenessChecked = true,
+  signoffsChecked = true,       // C410 — did the sign-off read run? false → we cannot say what is signed
   // ── "Is there anything to evaluate yet?" signals (the false-green-on-empty fix). ──
   // A brand-new company with NO journal entries and NO completed setup has nothing to
   // evaluate — every net trivially "clears" (zero failures out of zero checks), which is
@@ -181,7 +182,12 @@ export function ownerTrustState({
   const signedLabel = monthLabel(reviewedThrough);
   // ★ WHAT IS SIGNED IS A FACT AND IS SAID FIRST — a company that later loses its accountant
   // has still genuinely had those months reviewed, and that does not stop being true.
-  const reviewedText = signedLabel
+  const reviewedText = !signoffsChecked
+    // C410 — O98 on the reviewed line: the sign-off rows are loaded per company, and a read
+    // that failed returns the same `[]` as a company with no sign-offs. Saying "awaiting
+    // sign-off" over that would describe a query, not the books.
+    ? "We couldn't check which months have been signed off just now — reload to try again."
+    : signedLabel
     ? (selfSigned
         // ★ SAYS WHO. Not a disclaimer — an accurate description of what was recorded, and
         // the one thing a reader would want to know before relying on it.
@@ -246,7 +252,7 @@ export function ownerTrustState({
   //    bug). Bank-not-matched / in-flight docs → in_progress; a short net or open anomaly →
   //    attention. ──
   let overall, headline;
-  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked || unreadableCount > 0 || accountantCount > 0) {   // C369/C372 — an unread or undecided file is not "up to date"
+  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked || !signoffsChecked || unreadableCount > 0 || accountantCount > 0) {   // C369/C372 — an unread or undecided file is not "up to date"
     // O121 — `asksOk` is gated HERE explicitly, for the same reason `anomaliesOk` is: the
     // clarification queue is not part of `evaluateSignOff`'s three doc/confidence/accuracy
     // nets, so without naming it the header would reach `all_clear` with questions open.
@@ -264,9 +270,13 @@ export function ownerTrustState({
     overall,                       // "all_clear" | "in_progress" | "attention"
     headline,
     reviewedThrough: reviewedThrough || null,
+    // C411 — Reports reads `ownerTrust.selfSigned` for its attestation line and this was never
+    // returned, so a solo owner's Reports said "Reviewed and signed off" — the accountant's
+    // sentence — over months they signed themselves (C272's distinction, lost one screen over).
+    selfSigned: !!(signedLabel && selfSigned),
     lines: {
       captured: { ok: capturedOk, pending: pendingCount > 0, state: capturedStateVal, text: capturedText },
-      reviewed: { signed: !!signedLabel, state: signedLabel ? "ok" : "info", text: reviewedText },
+      reviewed: { signed: signoffsChecked && !!signedLabel, state: signoffsChecked && signedLabel ? "ok" : "info", text: reviewedText },
       correct: { ok: correctOk, state: correctStateVal, text: correctText },
     },
     nudge,                         // at most one gentle "needs you" | null

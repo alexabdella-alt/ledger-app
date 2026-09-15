@@ -184,7 +184,10 @@ export function latestReviewedThrough(signoffs = []) {
 // are the books — but a report that says nothing about attestation reads as surer than the
 // books are. One line, derived from the sign-off rows: through which month a person has
 // stood behind these figures, and whether that person was an accountant. Owner-plain.
-export function reportAttestationLine({ reviewedThrough = null, selfSigned = false, monthLabel = (p) => p } = {}) {
+export function reportAttestationLine({ reviewedThrough = null, selfSigned = false, monthLabel = (p) => p, checked = true } = {}) {
+  // C410 — a failed sign-off read is `[]`, the same value as "no month signed". The line says
+  // it could not check rather than declaring the figures unreviewed.
+  if (!checked) return "We couldn't check which months have been signed off just now — reload to see whether these figures have been reviewed.";
   if (!reviewedThrough) return "No month has been signed off yet — these figures haven't been reviewed by anyone.";
   const label = monthLabel(reviewedThrough) || reviewedThrough;
   return selfSigned

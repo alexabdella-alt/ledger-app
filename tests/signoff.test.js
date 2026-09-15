@@ -49,7 +49,7 @@ describe("reportAttestationLine — one honest line on every report", () => {
   });
   it("the Reports screen renders it from the sign-off rows, on every report", () => {
     const src = fs.readFileSync(new URL("../src/components/views/ReportsView.jsx", import.meta.url), "utf8");
-    expect(src).toMatch(/reportAttestationLine\(\{ reviewedThrough, selfSigned: ownerTrust\?\.selfSigned, monthLabel \}\)/);
+    expect(src).toMatch(/reportAttestationLine\(\{ reviewedThrough, selfSigned: ownerTrust\?\.selfSigned, monthLabel, checked: signoffsLoadOk !== false \}\)/);
     // above the report-type pills, so it is on screen whichever report is open
     expect(src.indexOf("reportAttestationLine({")).toBeLessThan(src.indexOf('["pl","P&L"]'));
   });
