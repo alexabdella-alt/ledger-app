@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 import { inReportRange, reportRangeBounds } from "../src/lib/reportRange.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -34,6 +36,16 @@ describe("inReportRange", () => {
     expect(inReportRange("2026-04-01", "custom", { from: "2026-03-01", to: "" })).toBe(true);
     expect(inReportRange("", "thismonth", { now: sep15 })).toBe(false);
     expect(inReportRange("2026-04-01", "all")).toBe(true);
+  });
+  it("★ src-wide: no local getter is read off a Date parsed from an entry's date string", () => {
+    const path = require("node:path");
+    const walk = (d) => fs.readdirSync(d).flatMap((f) => { const p = path.join(d, f); return fs.statSync(p).isDirectory() ? walk(p) : /\.jsx?$/.test(f) ? [p] : []; });
+    const bad = [];
+    for (const f of walk("src")) {
+      const src = fs.readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+      for (const m of src.matchAll(/new Date\([\w.?]+\.(date|due_date|entry_date|document_date|paid_at|next_date)\)\.get(Month|Date|FullYear|Day)\(\)/g)) bad.push(`${f}: ${m[0]}`);
+    }
+    expect(bad).toEqual([]);
   });
   it("Reports reads it, and no getMonth() on a parsed entry date remains there", () => {
     const src = fs.readFileSync("src/components/views/ReportsView.jsx", "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
