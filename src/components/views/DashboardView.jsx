@@ -6,7 +6,7 @@ import { useERP } from "../ERPContext";
 import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
 import { ownerActivityText } from "../../lib/activityFeed";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLocal } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLocal, plural } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { plan1099ForYear } from "../../lib/form1099";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
@@ -167,7 +167,7 @@ export default function DashboardView() {
       body = txnRows(revFY, "var(--sc-success)");
     } else if (d.type==="expenses" && !d.cat) {
       const cats = Object.values(expFY.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0,count:0}; a[k].total+=i.amount; a[k].count++; return a;},{})).sort((x,y)=>y.total-x.total);
-      title = "Expenses by category"; subtitle = `${cats.length} categories · ${fmt(expFY.reduce((s,i)=>s+i.amount,0))}`;
+      title = "Expenses by category"; subtitle = `${plural(cats.length, "category", "categories")} · ${fmt(expFY.reduce((s,i)=>s+i.amount,0))}`;
       body = cats.length===0 ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>No expenses yet.</div> :
         cats.map(c=>clickableRow(c.name,
           <span style={{ fontSize:13, color:"var(--sc-text-2)" }}>{c.name} <span style={{ fontSize:11, color:"var(--sc-text-mut)" }}>· {c.count}</span></span>,
@@ -176,14 +176,14 @@ export default function DashboardView() {
     } else if (d.type==="expenses" && d.cat && !d.vendor) {
       const inCat = expFY.filter(i=>(i.gl_name||"Uncoded")===d.cat);
       const vends = Object.values(inCat.reduce((a,i)=>{const v=i.vendor||"Unknown"; if(!a[v])a[v]={vendor:v,total:0,count:0}; a[v].total+=i.amount; a[v].count++; return a;},{})).sort((x,y)=>y.total-x.total);
-      title = `${d.cat} — by vendor`; subtitle = `${vends.length} vendors · ${fmt(inCat.reduce((s,i)=>s+i.amount,0))}`;
+      title = `${d.cat} — by vendor`; subtitle = `${plural(vends.length, "vendor")} · ${fmt(inCat.reduce((s,i)=>s+i.amount,0))}`;
       body = vends.map(v=>clickableRow(v.vendor,
         <span style={{ fontSize:13, color:"var(--sc-text-2)", display:"flex", alignItems:"center", gap:9 }}><span style={{ width:24, height:24, borderRadius:6, background:vendorColor(v.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"var(--sc-on-accent)" }}>{initials(v.vendor)}</span>{v.vendor} <span style={{ fontSize:11, color:"var(--sc-text-mut)" }}>· {v.count}</span></span>,
         <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmt(v.total)}</span>,
         ()=>setDashDrill({type:"expenses",cat:d.cat,vendor:v.vendor})));
     } else if (d.type==="expenses" && d.vendor) {
       const txns = expFY.filter(i=>(i.gl_name||"Uncoded")===d.cat && (i.vendor||"Unknown")===d.vendor);
-      title = `${d.vendor} — ${d.cat}`; subtitle = `${txns.length} transactions · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
+      title = `${d.vendor} — ${d.cat}`; subtitle = `${plural(txns.length, "transaction")} · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
       body = txnRows(txns, "var(--sc-error)");
     } else if (d.type==="net") {
       // SAME source/period as the Net Income (YTD) tile (computeNetIncome over the FY
@@ -247,7 +247,7 @@ export default function DashboardView() {
       ));
     } else if (d.type==="burn" && d.month) {
       const txns = exp.filter(i=>i.date?.startsWith(d.month));
-      title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${txns.length} transactions · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
+      title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${plural(txns.length, "transaction")} · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
       body = txnRows(txns, "var(--sc-error)");
     } else if (d.type==="runway") {
       // Compute from the SAME canonical source as the card face (computeBurnRate trailing 3-mo

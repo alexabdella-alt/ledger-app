@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor } from "../../lib/format";
+import { initials, vendorColor, plural } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { scrubOwnerActivity } from "../../lib/activityFeed";
 
@@ -60,7 +60,7 @@ export default function AuditView() {
                     <div style={{fontSize:13,color:"var(--sc-text-2)"}}>Permanent, immutable record of every action. Entries are never modified or deleted.</div>
                   </div>
                   <button onClick={downloadCSV} style={{background:"var(--sc-border)",border:"1px solid var(--sc-border-2)",color:"var(--sc-gold)",borderRadius:10,padding:"9px 18px",fontSize:13,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                    ↓ Download CSV ({auditLog.length} events)
+                    ↓ Download CSV ({plural(auditLog.length, "event")})
                   </button>
                 </div>
 
@@ -114,7 +114,7 @@ export default function AuditView() {
                     <div style={{padding:"12px 20px",borderBottom:"1px solid var(--sc-border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div style={{fontSize:13,fontWeight:600}}>
                         {filteredLog.length < auditLog.length
-                          ? `Showing ${filteredLog.length} of ${auditLog.length} events`
+                          ? `Showing ${filteredLog.length} of ${plural(auditLog.length, "event")}`
                           : `${auditLog.length} event${auditLog.length!==1?"s":""}`}
                       </div>
                       <div style={{fontSize:11,color:"var(--sc-text-2)"}}>Newest first · scroll to see all</div>

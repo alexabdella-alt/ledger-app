@@ -122,7 +122,13 @@ const todayLocal = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD };
+// C436 — "1 accounts", "1 events", "1 categories" on owner screens. One helper; the irregular
+// plural is passed in when it is not an "s".
+function plural(n, word, pluralWord = null) {
+  const k = Number(n) || 0;
+  return `${k} ${k === 1 ? word : (pluralWord || `${word}s`)}`;
+}
+export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, plural };
 
 // ── HOW LONG AGO, IN WORDS A PERSON USES ─────────────────────────────────────
 // The Review screen rendered raw minutes, so a four-day-old document read

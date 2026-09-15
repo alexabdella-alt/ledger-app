@@ -1,4 +1,5 @@
 import React from "react";
+import { plural } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 
@@ -110,7 +111,7 @@ export default function CoaView() {
 
       {grouped.map(({ cat, accounts }) => (
         <div key={cat} style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color: "var(--sc-text-2)", letterSpacing: 2, marginBottom: 10, paddingLeft: 4 }}>{cat.toUpperCase()} — {accounts.length} accounts</div>
+          <div style={{ fontSize: 11, color: "var(--sc-text-2)", letterSpacing: 2, marginBottom: 10, paddingLeft: 4 }}>{cat.toUpperCase()} — {plural(accounts.length, "account")}</div>
           <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 12, overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
