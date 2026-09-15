@@ -44,3 +44,20 @@ describe("★★ no view removes a persisted row from local state alone", () => 
     expect(g).toBeLessThan(body.indexOf("setUnknownDocs(prev => prev.filter"));
   });
 });
+
+// C399 — the same shape with a paint-before-write instead of a paint-without-write.
+describe("★ Send Invoice: the list reads paid only after the payment landed", () => {
+  it("both branches call paintPaid() AFTER their write's verdict", () => {
+    const v = read("src/components/views/SendInvoiceView.jsx");
+    const i = v.indexOf("const markInvoicePaid = async (inv) => {"); expect(i).toBeGreaterThan(-1);
+    const body = v.slice(i, v.indexOf("marked paid ✓", i));
+    expect((body.match(/paintPaid\(\);/g) || []).length).toBe(2);
+    const ar = body.indexOf("const ok = await markBillPaid("); expect(ar).toBeGreaterThan(-1);
+    expect(body.indexOf("if (!ok) return;", ar)).toBeGreaterThan(ar);
+    expect(body.indexOf("paintPaid();", ar)).toBeGreaterThan(body.indexOf("if (!ok) return;", ar));
+    const legacy = body.indexOf("const jeId = await bookToDb(entry);"); expect(legacy).toBeGreaterThan(-1);
+    expect(body.indexOf("paintPaid();", legacy)).toBeGreaterThan(body.indexOf("if (!jeId) return;", legacy));
+    expect(body).not.toMatch(/markInvoicePaid = async \(inv\) => \{\s*setSentInvoices/);
+  });
+});
+

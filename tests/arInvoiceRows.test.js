@@ -61,7 +61,7 @@ describe("★ the writer is wired and the reader is shared", () => {
     expect(view).toMatch(/it will not be here after a reload/);
   });
   it("★ marking paid updates the row through a CHECKED write, gated on the ledger write succeeding", () => {
-    expect(view).toMatch(/if \(ok && isDbInvoiceId\(inv\.id\)\) \{[\s\S]{0,400}checkedRowUpdate\(\{ supabase, table: "ar_invoices"/);
+    expect(view).toMatch(/if \(!ok\) return;[\s\S]{0,120}if \(isDbInvoiceId\(inv\.id\)\) \{[\s\S]{0,400}checkedRowUpdate\(\{ supabase, table: "ar_invoices"/);
   });
   it("the load reads through sentInvoiceFromRow and asks for the customer's email", () => {
     expect(app).toMatch(/setSentInvoices\(arData\.map\(sentInvoiceFromRow\)\)/);

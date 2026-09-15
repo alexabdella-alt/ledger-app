@@ -241,20 +241,25 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
             };
 
             const markInvoicePaid = async (inv) => {
-              setSentInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"paid",paid_at:new Date().toISOString()}:i));
+              // C399 — the list flips to "paid" only once the payment is in the books (C238:
+              // the screen follows the database). It used to flip first, so a refused
+              // payment left the invoice reading paid until the next reload.
+              const paintPaid = () => setSentInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"paid",paid_at:new Date().toISOString()}:i));
               const amt = inv.line_items?.reduce((s,l)=>s+(l.amount||0),0)||0;
               if (inv.ledger_id) {
                 // Collect the existing A/R through the canonical poster: posts Dr Cash / Cr A/R
                 // and persists payment_status='collected'. (Was a local flag flip that never
                 // hit the GL — so A/R was never cleared and the figure couldn't reconcile.)
                 const ok = await markBillPaid(inv.ledger_id, { side: "ar" });
-                if (ok && isDbInvoiceId(inv.id)) {
+                if (!ok) return;                      // the poster said why; the list is unchanged
+                paintPaid();
+                if (isDbInvoiceId(inv.id)) {
                   // The invoice row follows the ledger: paid there, paid here. A failure is
                   // reported — the books are right, and the list would be wrong after a reload.
                   const r = await checkedRowUpdate({ supabase, table: "ar_invoices", id: inv.id, companyId: currentCompany.id, patch: { status: "paid", paid_at: new Date().toISOString() }, label: "ar_invoice_paid" });
                   if (!r.ok) showNotification(`Payment recorded in your books, but the invoice list couldn't be updated — it may still show ${inv.invoice_number} as unpaid after a reload.`, "error");
                 }
-                if (ok) { try { await loadAllData(); } catch {} }
+                try { await loadAllData(); } catch {}
               } else {
                 // Legacy invoice issued before A/R booking existed — book revenue now.
                 const rev = getAccountByRole("product_revenue"); const cash = getAccountByRole("cash");
@@ -269,6 +274,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                 setInvoices(prev=>[entry,...prev]);
                 const jeId = await bookToDb(entry);   // C371 — the ✓ reads the write
                 if (!jeId) return;                    // the writer said why; nothing was marked
+                paintPaid();
                 logAudit("invoice_paid",`Invoice ${inv.invoice_number} marked paid – ${fmt(amt)}`);
               }
               showNotification(`${inv.invoice_number} marked paid ✓`);
