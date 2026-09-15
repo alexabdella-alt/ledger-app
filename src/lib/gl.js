@@ -76,3 +76,13 @@ const glIsBalSheet    = (code) => typeof code === "string" && (code.startsWith("
 const glPLType        = (code) => glIsRevenue(code) ? "revenue" : glIsExpense(code) ? "expense" : null;
 
 export { glIsRevenue, glIsExpense, calcASC842, glIsBalSheet, glPLType };
+
+// ── C468 — A CORRECTION AND ITS TARGET ARE NEITHER OF THEM AN OPEN ITEM ──────────────
+// A dated correction (`import_metadata.reverses`) mirrors every line of the entry it
+// cancels, so it flattens as a bill-shaped row of its own — A/P leg, expense primary, no
+// paid flag — and the ORIGINAL keeps its A/P leg too. Openness readers must skip both:
+// the reversal because it is a cancellation, the original because `reversed_by` (stamped
+// by the flatten from the live reversal) says it has been cancelled. Lives here, in the
+// one module every reader already imports, so there is one definition of "not open".
+export const isReversalEntry = (i) => !!(i && i.import_metadata && i.import_metadata.reverses != null && i.import_metadata.reverses !== "");
+export const isCancelledOrCancelling = (i) => !!(i && (i.reversed_by || isReversalEntry(i)));

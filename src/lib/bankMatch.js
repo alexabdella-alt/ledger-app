@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildPaymentEntry } from "./payments.js";
+import { isCancelledOrCancelling } from "./gl.js";
 import { normalizeName } from "./docDirection.js";
 import { NAME_MATCH, nameMatchKind } from "./nameMatch.js";
 
@@ -172,6 +173,7 @@ export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode 
     i &&
     isClearable(i) &&
     !isSettlementEntry(i) &&                                       // a payment/collection is never "open"
+    !isCancelledOrCancelling(i) &&                                 // C468 — a corrected bill, and the correction itself, are not open
     i.source !== "bank_feed" && i.source !== "bank_statement" &&   // not the bank lines themselves
     !i.matched &&                                                  // session optimistic guard
     !cleared.has(String(i.db_entry_id != null ? i.db_entry_id : i.id)));

@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { isLiveEntry } from "./reports.js";
 import { isSettlementEntry } from "./bankMatch.js";
+import { isCancelledOrCancelling } from "./gl.js";
 
 const eq = (a, b) => a != null && b != null && String(a) === String(b);
 export const hasArLeg = (i, arCode) => arCode != null && (eq(i?.gl_code, arCode) || eq(i?.secondary_gl_code, arCode));
@@ -19,5 +20,5 @@ export function receivableEntries(invoices = [], arCode) {
 }
 // The ones still open.
 export function openReceivables(invoices = [], arCode) {
-  return receivableEntries(invoices, arCode).filter((i) => i.payment_status !== "collected" && i.payment_status !== "paid");
+  return receivableEntries(invoices, arCode).filter((i) => !isCancelledOrCancelling(i) && i.payment_status !== "collected" && i.payment_status !== "paid");   // C468
 }

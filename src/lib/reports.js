@@ -6,7 +6,7 @@
 // "unadjusted" toggle that includes voided). Uses the shared GL helpers.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { glIsRevenue, glIsExpense } from "./gl";
+import { glIsRevenue, glIsExpense, isCancelledOrCancelling } from "./gl";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format";
 
 const num = n => Number(n) || 0;
@@ -24,7 +24,8 @@ const ymOf = d => String(d || "").slice(0, 7);
 // would miscount balance-sheet legs). Fall back to `type` only when no code is set.
 const isRev = i => i.gl_code ? glIsRevenue(i.gl_code) : i.type === "revenue";
 const isExp = i => i.gl_code ? glIsExpense(i.gl_code) : i.type === "expense";
-const arUnpaid = i => isRev(i) && i.payment_status !== "paid" && i.payment_status !== "collected";
+// C468 — a reversed original (`reversed_by`, stamped by the flatten) and the reversal itself are canceled, not open.
+const arUnpaid = i => !isCancelledOrCancelling(i) && isRev(i) && i.payment_status !== "paid" && i.payment_status !== "collected";
 // ── AN OPEN BILL IS ONE WITH AN A/P LEG, NOT ONE WHOSE DEBIT IS AN EXPENSE ──
 // This read `isExp(i) && !paid`, which derives openness from the entry's P&L CLASS — the
 // §9 anti-pattern by name (*side is the A/R-or-A/P OFFSET code on the leg, never the type*).
@@ -58,7 +59,7 @@ const isApOffsetPurchase = (i, apCode) => {
       && !isRev(i);                                  // a customer credit is not a bill
 };
 const apUnpaidWith = apCode => i =>
-  i.payment_status !== "paid" && (isExp(i) || isApOffsetPurchase(i, apCode));
+  !isCancelledOrCancelling(i) && i.payment_status !== "paid" && (isExp(i) || isApOffsetPurchase(i, apCode));
 const apUnpaid = apUnpaidWith(null);
 // The amount OWED on a row: for a taxed AR invoice the receivable is the full incl-tax
 // A/R balance (carried as `ar_amount`), not the ex-tax revenue (`amount`). AP/untaxed

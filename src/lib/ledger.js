@@ -167,6 +167,26 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
       });
     }
   });
+  // ★★ C468 — A REVERSED ORIGINAL IS NOT AN OPEN ITEM. The original of a dated correction
+  // stays live (§12 #14: reverse, never delete) and its A/P or A/R leg is cancelled by the
+  // reversal's opposite leg — so the GL is right, and every list that derives openness from
+  // "has an A/P leg and no paid flag" read the cancelled bill as still owed: Bills to pay,
+  // the bank matcher's open universe, the panel's Mark as Paid, and the `ap_tie` control
+  // total, which then failed by exactly the corrected amount. The flatten sees the whole
+  // ledger, so it can say which originals a live reversal points at; readers treat
+  // `reversed_by` the way they treat a settlement. (GL sums are untouched — both entries
+  // still count, which is what makes them net to zero.)
+  const reversedBy = new Map();
+  for (const r of mapped) {
+    const rev = r.import_metadata && r.import_metadata.reverses;
+    if (rev != null && rev !== "" && r.status !== "voided" && !r.deleted_at) reversedBy.set(String(rev), String(r.db_entry_id || r.id));
+  }
+  if (reversedBy.size) {
+    for (const r of mapped) {
+      const by = reversedBy.get(resolveEntryDbId(r));
+      if (by) r.reversed_by = by;
+    }
+  }
   return mapped;
 }
 

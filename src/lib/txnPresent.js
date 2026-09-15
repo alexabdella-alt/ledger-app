@@ -13,7 +13,7 @@
 //   settleAction : "pay" | "collect" | null — show a settle button ONLY on a genuinely
 //                  OPEN bill/invoice; never on a settlement or an already-paid/collected item
 // ─────────────────────────────────────────────────────────────────────────────
-import { glIsRevenue, glIsExpense } from "./gl";
+import { glIsRevenue, glIsExpense, isCancelledOrCancelling } from "./gl";
 
 const eq = (a, b) => a != null && b != null && String(a) === String(b);
 
@@ -48,7 +48,7 @@ export function classifyTxn(inv = {}, { apCode, arCode } = {}) {
   // Settle action only on a genuinely OPEN item (GL-side: booked to A/P/A/R and not yet
   // paid/collected) — never on a settlement entry or a voided/paid/collected one.
   let settleAction = null;
-  if (!settle && inv.status !== "voided") {
+  if (!settle && inv.status !== "voided" && !isCancelledOrCancelling(inv)) {   // C468 — nothing to pay on a corrected bill, or on the correction
     const onAP = eq(inv.secondary_gl_code, apCode) || eq(inv.gl_code, apCode);
     const onAR = eq(inv.secondary_gl_code, arCode) || eq(inv.gl_code, arCode);
     if (onAP && isExp && inv.payment_status !== "paid") settleAction = "pay";

@@ -7840,6 +7840,13 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     // Always target the PARENT journal_entries.id (multi-line rows carry a synthetic
     // `${parentId}_${line}` id; one bill = one entry = one payment_status).
     const dbId = resolveEntryDbId(inv);
+    // C468 — a bill canceled by a dated correction has nothing left to pay; a payment
+    // against it would take cash out for a purchase the books no longer carry. GL-truth
+    // (the live reversal), not the flattened stamp, so it cannot depend on a reload.
+    if (dbId && alreadyReversed(invoicesRef.current, dbId)) {
+      showNotification(`${inv.vendor || "That entry"} was already corrected — nothing is left to ${side === "ar" ? "collect" : "pay"} on it.`, "error");
+      return false;
+    }
     const who = session?.user?.email || "owner";
     const at = paidDate ? new Date(paidDate + "T12:00:00").toISOString() : new Date().toISOString();
     const newStatus = side === "ar" ? "collected" : "paid";
@@ -8186,7 +8193,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     const pending = pendingAIActions;
     if (!pending) return;
     setPendingAIActions(null);
-    logAI("ai_actions_cancelled", `User cancelled ${pending.actions.length} destructive action(s): ${pending.items.map(it => it.type).join(", ")}`);
+    logAI("ai_actions_cancelled", `User canceled ${pending.actions.length} destructive action(s): ${pending.items.map(it => it.type).join(", ")}`);
     const msg = { role: "assistant", content: "Okay — I've left everything as it was. Nothing was changed.", actions: [], rich: [], id: Date.now() + 3, created_at: new Date().toISOString() };
     setChatHistory(h => [...h, msg]);
     persistChatMessage("assistant", msg.content, msg.actions, msg.rich);
