@@ -26,22 +26,26 @@ export function useAccounts(companyId) {
   // through the O108 fallback below — a booking would have referenced the last company's
   // account ids, or materialised the built-in chart onto this one. The reader gates on it.
   const [loadOk, setLoadOk] = useState(true);
+  // C461 — which company the chart in state belongs to. Between a switch and the read landing,
+  // `accounts` is [] and every role falls through to the built-in fallback; a booking in that
+  // window would materialise the built-in chart. Writers wait for `loadedFor === companyId`.
+  const [loadedFor, setLoadedFor] = useState(null);
   // C416 — the company this hook is on NOW, readable from inside an old load (C413's ref).
   const latestCid = useRef(companyId);
   latestCid.current = companyId;
 
   const load = useCallback(async () => {
-    if (!companyId) { setAccounts([]); setLoadOk(true); return; }
+    if (!companyId) { setAccounts([]); setLoadOk(true); setLoadedFor(null); return; }
     setLoading(true);
     // C416 — the previous company's chart must not stand in for this one's while it loads.
-    setAccounts([]);
+    setAccounts([]); setLoadedFor(null);
     try {
       const { data, error } = await supabase
         .from("accounts").select("*").eq("company_id", companyId).order("code");
       if (latestCid.current !== companyId) return;   // C416 — a late result for a company we have left
       if (error) { console.warn("[accounts] load failed:", error.message); setLoadOk(false); }
       else if (data) {
-        setLoadOk(true);
+        setLoadOk(true); setLoadedFor(companyId);
         setAccounts(data.map(a => ({
           id: a.id, db_id: a.id, code: a.code, name: a.name, category: a.category,
           active: a.active, is_system: a.is_system, system_role: a.system_role,
@@ -112,7 +116,7 @@ export function useAccounts(companyId) {
   );
   const getAccountById = useCallback((id) => byId[id] || null, [byId]);
 
-  return { accounts, loading, loadOk, reload: load, getAccountByRole, getAccountByCode, getAccountById };
+  return { accounts, loading, loadOk, loadedFor, reload: load, getAccountByRole, getAccountByCode, getAccountById };
 }
 
 export default useAccounts;

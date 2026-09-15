@@ -35,8 +35,8 @@ describe("useAccounts", () => {
   });
   it("records the verdict both ways and returns it", () => {
     expect(hook).toMatch(/if \(error\) \{[^}]*setLoadOk\(false\); \}/);
-    expect(hook).toMatch(/else if \(data\) \{\s*setLoadOk\(true\);/);
-    expect(hook).toMatch(/return \{ accounts, loading, loadOk, reload: load,/);
+    expect(hook).toMatch(/else if \(data\) \{\s*setLoadOk\(true\); setLoadedFor\(companyId\);/);   // C461
+    expect(hook).toMatch(/return \{ accounts, loading, loadOk, loadedFor, reload: load,/);
   });
 });
 
@@ -47,10 +47,11 @@ describe("★★ nothing books against a chart that did not load", () => {
       expect(i, fn).toBeGreaterThan(-1);
       const head = app.slice(i, i + 1400);
       expect(head, fn).toMatch(/if \(accountsLoadOk === false \|\| loadFailures\.companies\) \{[^\n]*CHART_NOT_LOADED[^\n]*return null; \}/);   // C457 — and the company row
-      // before the cutoff guard, which is the first business rule
+      // before the cutoff guard, which is the first business rule (C461 put the wait ahead of it)
+      expect(head.indexOf("waitForChart"), fn).toBeLessThan(head.indexOf("accountsLoadOk === false"));
       expect(head.indexOf("accountsLoadOk === false"), fn).toBeLessThan(head.indexOf("isBeforeCutoff"));
     }
-    expect(app).toMatch(/loadOk: accountsLoadOk, reload: reloadAccounts/);
+    expect(app).toMatch(/loadOk: accountsLoadOk, loadedFor: accountsLoadedFor, reload: reloadAccounts/);
   });
 });
 
@@ -62,5 +63,24 @@ describe("the Categories screen", () => {
     const ok = renderViewHtml(CoaView, { accountsLoadOk: true, CHART_OF_ACCOUNTS: [{ code: "6100", name: "Rent", category: "Expenses" }] });
     expect(ok).not.toContain("data-load-failed");
     expect(ok).toContain("6100");
+  });
+});
+
+// C461 — writers wait for the chart to belong to THIS company before resolving roles.
+describe("C461", () => {
+  it("useAccounts records which company the chart is for, and clears it on switch", () => {
+    expect(hook).toMatch(/const \[loadedFor, setLoadedFor\] = useState\(null\);/);
+    expect(hook).toMatch(/setAccounts\(\[\]\); setLoadedFor\(null\);/);
+    expect(hook).toMatch(/setLoadOk\(true\); setLoadedFor\(companyId\);/);
+    expect(hook).toMatch(/return \{ accounts, loading, loadOk, loadedFor, reload: load,/);
+  });
+  it("both write paths await waitForChart before anything else, and refuse when it never arrives", () => {
+    expect(app).toMatch(/accountsReadyRef\.current = !!currentCompany\?\.id && accountsLoadedFor === currentCompany\.id && accountsLoadOk !== false;/);
+    for (const fn of ["const persistJournalEntry = async (invoice) => {", "const persistMultiLineEntry = async (entry, { background = false } = {}) => {"]) {
+      const i = app.indexOf(fn);
+      const head = app.slice(i, i + 900);
+      expect(head, fn).toMatch(/if \(!\(await waitForChart\(\)\)\) \{[^\n]*return null; \}/);
+      expect(head.indexOf("waitForChart"), fn).toBeLessThan(head.indexOf("accountsLoadOk === false"));
+    }
   });
 });

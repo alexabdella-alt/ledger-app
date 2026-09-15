@@ -835,7 +835,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   });
 
   // ── CHART OF ACCOUNTS (customizable, loaded from Supabase via useAccounts) ───
-  const { accounts: liveAccounts, loadOk: accountsLoadOk, reload: reloadAccounts, getAccountByRole, getAccountByCode, getAccountById } = useAccounts(currentCompany?.id);
+  const { accounts: liveAccounts, loadOk: accountsLoadOk, loadedFor: accountsLoadedFor, reload: reloadAccounts, getAccountByRole, getAccountByCode, getAccountById } = useAccounts(currentCompany?.id);
+  // C461 — a writer must not resolve roles against an empty chart. The chart read is small and
+  // lands well before the ledger, but a drop in the first second after a switch (or the drain
+  // resuming) could reach the writers first. Wait, briefly; refuse if it never arrives.
+  const accountsReadyRef = useRef(false);
+  accountsReadyRef.current = !!currentCompany?.id && accountsLoadedFor === currentCompany.id && accountsLoadOk !== false;
+  const waitForChart = async (maxMs = 8000) => {
+    for (let waited = 0; !accountsReadyRef.current && waited < maxMs; waited += 200) await new Promise((r) => setTimeout(r, 200));
+    return accountsReadyRef.current;
+  };
   // C416 — a booking against a chart that did not load would resolve every role through the
   // built-in fallback and materialise it (O108 finding 4), or reference the last company's
   // account ids. Both write paths refuse until the chart is read.
@@ -1542,6 +1551,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Write a journal entry to Supabase when an invoice is booked
   const persistJournalEntry = async (invoice) => {
     if (!currentCompany?.id || !session?.user?.id) return;
+    if (!(await waitForChart())) { showNotification(CHART_NOT_LOADED, "error"); logAudit("booking_blocked_chart_unloaded", "Blocked a booking because the categories had not loaded", null, { vendor: invoice?.vendor, date: invoice?.date }); return null; }   // C461
     if (accountsLoadOk === false || loadFailures.companies) { showNotification(loadFailures.companies ? COMPANY_NOT_LOADED : CHART_NOT_LOADED, "error"); logAudit("booking_blocked_chart_unloaded", loadFailures.companies ? "Blocked a booking because the company's settings did not load" : "Blocked a booking because the categories did not load", null, { vendor: invoice?.vendor, date: invoice?.date }); return null; }   // C416/C457
     // Cutoff enforcement (hybrid): a transaction dated before the cutoff is part of
     // the opening position — reject it and redirect to opening balances. The opening
@@ -1738,6 +1748,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // an automatic poster must never raise an interactive confirmation.
   const persistMultiLineEntry = async (entry, { background = false } = {}) => {
     if (!currentCompany?.id || !session?.user?.id) return null;
+    if (!(await waitForChart())) { if (!background) showNotification(CHART_NOT_LOADED, "error"); logAudit("booking_blocked_chart_unloaded", "Blocked a booking because the categories had not loaded", null, { date: entry?.date, source: entry?.source }); return null; }   // C461
     if (accountsLoadOk === false || loadFailures.companies) { if (!background) showNotification(loadFailures.companies ? COMPANY_NOT_LOADED : CHART_NOT_LOADED, "error"); logAudit("booking_blocked_chart_unloaded", loadFailures.companies ? "Blocked a booking because the company's settings did not load" : "Blocked a booking because the categories did not load", null, { date: entry?.date, source: entry?.source }); return null; }   // C416/C457
     if (!entry || !entry.balanced) { console.error("persistMultiLineEntry: refusing unbalanced/empty entry", entry); showNotification("Entry doesn't balance — not posted.", "error"); return null; }
     if (cutoffDate && entry.source !== "opening_balance" && isBeforeCutoff(entry.date, cutoffDate)) {
