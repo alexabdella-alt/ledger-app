@@ -46,7 +46,7 @@ describe("vendorCreep", () => {
   it("the sentence reads the report — both amounts and the jump", () => {
     const copy = vendorCreepCopy(vendorCreep({ rows: ledger, signedPeriods: signed }), { monthLabel: () => "August 2026" });
     expect(copy.headline).toBe("In August 2026, one supplier charged more than usual:");
-    expect(copy.lines[0]).toBe("Sysco: $2800.00, against about $2033.33 a month before — 38% more.");
+    expect(copy.lines[0]).toBe("Sysco: $2,800.00, against about $2,033.33 a month before — 38% more.");
   });
   it("a quiet month says nothing is creeping, rather than nothing at all", () => {
     const rows = ledger.filter((r) => r.id !== "s4" && r.id !== "s4c");

@@ -224,13 +224,13 @@ export default function SendInvoiceView() {
 <table>
   <thead><tr><th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
   <tbody>
-    ${draft.line_items.map(l=>`<tr><td>${esc(l.description||"")}</td><td style="text-align:right">${parseFloat(l.qty||0)}</td><td style="text-align:right">$${parseFloat(l.rate||0).toFixed(2)}</td><td style="text-align:right">$${(Number(l.amount)||0).toFixed(2)}</td></tr>`).join("")}
+    ${draft.line_items.map(l=>`<tr><td>${esc(l.description||"")}</td><td style="text-align:right">${parseFloat(l.qty||0)}</td><td style="text-align:right">${fmtMoney(parseFloat(l.rate||0))}</td><td style="text-align:right">${fmtMoney(Number(l.amount)||0)}</td></tr>`).join("")}
   </tbody>
 </table>
 <div class="totals">
-  <div class="total-row"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
-  ${taxAmount>0?`<div class="total-row"><span>Sales tax (${taxRatePct}%)</span><span>$${taxAmount.toFixed(2)}</span></div>`:""}
-  <div class="total-row grand-total"><span>Total Due</span><span>$${total.toFixed(2)}</span></div>
+  <div class="total-row"><span>Subtotal</span><span>${fmtMoney(subtotal)}</span></div>
+  ${taxAmount>0?`<div class="total-row"><span>Sales tax (${taxRatePct}%)</span><span>${fmtMoney(taxAmount)}</span></div>`:""}
+  <div class="total-row grand-total"><span>Total Due</span><span>${fmtMoney(total)}</span></div>
 </div>
 ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
 </body></html>`;

@@ -1,3 +1,4 @@
+import { fmtMoney } from "./format";
 // ────────────────────────────────────────────────────────────────────────────
 // O104 — "WHICH SUPPLIERS ARE CREEPING UP?" (C344), ANSWERED ONLY FROM SIGNED MONTHS.
 //
@@ -52,7 +53,7 @@ const r2 = (n) => Math.round(n * 100) / 100;
 
 // The sentences. Reads the report (§9). Owner-plain: no "variance", no percentages
 // dressed as certainty — the two amounts, and how much of a jump that is.
-export function vendorCreepCopy(report, { monthLabel = (p) => p, money = (n) => `$${Number(n).toFixed(2)}` } = {}) {
+export function vendorCreepCopy(report, { monthLabel = (p) => p, money = (n) => fmtMoney(Number(n)) } = {}) {
   if (!report || !report.ok) return { headline: "We need three signed-off months before we can say who's charging more than usual.", lines: [] };
   const when = monthLabel(report.latest) || report.latest;
   if (!report.items.length) return { headline: `In ${when}, no supplier charged noticeably more than usual.`, lines: [] };

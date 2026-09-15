@@ -4391,7 +4391,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (dup) {
         setDeleteConfirm({
           title: "Duplicate Invoice Detected",
-          label: `Invoice #${invNum} from ${form.vendor.trim()} was already booked on ${dup.date} for $${dup.amount.toFixed(2)} (${dup.gl_name}). Are you sure this is a different charge?`,
+          label: `Invoice #${invNum} from ${form.vendor.trim()} was already booked on ${dup.date} for ${fmtMoney(dup.amount)} (${dup.gl_name}). Are you sure this is a different charge?`,
           confirmLabel: "Book Anyway",
           confirmBg: "var(--sc-success-soft)", confirmBorder: "1px solid var(--sc-success-soft)", confirmColor: "var(--sc-success)",
           onConfirm: doBook,
@@ -5513,7 +5513,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
                 queueItemId: item.id,
                 isDuplicate: true,
                 existingInvoice: dupExisting,
-                question: `Invoice #${invoice.invoice_number} from ${invoice.vendor} was already booked on ${dupExisting.date} for $${dupExisting.amount.toFixed(2)} (coded to ${dupExisting.gl_name}). Is this the same charge?`,
+                question: `Invoice #${invoice.invoice_number} from ${invoice.vendor} was already booked on ${dupExisting.date} for ${fmtMoney(dupExisting.amount)} (coded to ${dupExisting.gl_name}). Is this the same charge?`,
                 options: [],
                 suggestedCode: invoice.gl_code,
                 suggestedName: invoice.gl_name,

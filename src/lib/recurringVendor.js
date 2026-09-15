@@ -1,3 +1,4 @@
+import { fmtMoney } from "./format";
 // ─────────────────────────────────────────────────────────────────────────────
 // O117 + O127 — THE FLAT-FEE RECURRING VENDOR.
 // Spec: docs/RECURRING_FLAT_FEE_SPEC_O117_O127.md
@@ -234,7 +235,7 @@ export function offRhythmCopy({ vendor, gapDays, intervalDays, amount } = {}) {
   const who = vendor || "This supplier";
   const g = Math.round(Math.abs(Number(gapDays) || 0));
   const t = Math.round(Number(intervalDays) || 0);
-  const amt = amount == null ? "" : ` for $${Math.abs(Number(amount) || 0).toFixed(2)}`;
+  const amt = amount == null ? "" : ` for ${fmtMoney(Math.abs(Number(amount) || 0))}`;
   const when = g === 0 ? "twice on the same day" : `twice in ${g} day${g === 1 ? "" : "s"}`;
   return `${who} charged ${when}${amt} — they normally charge about every ${t} days.`;
 }
