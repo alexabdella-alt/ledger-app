@@ -4361,7 +4361,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!form.description || !form.amount || !form.date) { showNotification("Please fill all fields.", "error"); return; }
     if (!aiSuggestion) { showNotification("Waiting for AI coding.", "error"); return; }
 
-    const doBook = async () => {
+    // C433 — one manual booking at a time: a double click on "Book" ran this twice and booked
+    // the entry twice (the form clears only after the write lands). Same gate as the other
+    // fourteen money-moving handlers (C402).
+    const doBook = () => moneyMoves.current.run("manual-entry", doBookOnce);
+    const doBookOnce = async () => {
       if (!assertBookable(form.date)) return;   // pre-cutoff → reject up front, no optimistic add, no success toast
       const invoice = {
         id: Date.now(), ...form, vendor: form.vendor.trim(),
