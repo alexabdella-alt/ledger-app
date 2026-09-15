@@ -71,3 +71,23 @@ describe("the door reads the seat's view list, not a copy", () => {
     for (const v of ALL_VIEW_IDS.filter((x) => !CLIENT_VIEW_IDS.includes(x))) expect(notificationTarget({ link_view: v }, owner).view).toBe("home");
   });
 });
+
+// C387 — the bell's "bank match overdue" reads the SAME definition as Home's list and the
+// trust panel. It used to count from any reconciliation row's created_at (an abandoned
+// session counted as a match) and fire on a company with no books at all.
+import { bankMatchStatus } from "../src/lib/controlTotals.js";
+describe("★ the bank-match notification is bankMatchStatus, not a second reading", () => {
+  it("the generator calls bankMatchStatus on the live refs and no longer reads created_at", () => {
+    const gen = app.slice(app.indexOf("const generateNotifications = () => {"), app.indexOf("// ── AUTOMATIC MONTHLY REPORTS"));
+    expect(gen.length).toBeGreaterThan(400);
+    expect(gen).toMatch(/bankMatchStatus\(\{ reconciliations: reconciliationsRef\.current \|\| \[\], invoices: invoicesRef\.current \|\| \[\] \}\)/);
+    expect(gen).not.toMatch(/created_at \|\| r\.statement_date/);
+    expect(gen).toMatch(/if \(bm\.overdue\)/);
+  });
+  it("the shared definition: no books → not overdue; an unverified session is not a match", () => {
+    expect(bankMatchStatus({ reconciliations: [], invoices: [] }).overdue).toBe(false);
+    const books = [{ id: 1, status: "posted", amount: 10 }];
+    expect(bankMatchStatus({ reconciliations: [{ status: "open", created_at: "2026-09-14T00:00:00Z" }], invoices: books, now: new Date("2026-09-15") }).overdue).toBe(true);
+  });
+});
+

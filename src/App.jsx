@@ -2399,11 +2399,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         const amt = nextDue.est && est.quarterly > 0 ? ` — est. ${fmtApprox(est.quarterly)}` : "";
         createNotification({ type: "tax_deadline", title: `${nextDue.label} due in ${nextDue.days} day${nextDue.days === 1 ? "" : "s"}${amt}`, description: nextDue.plain, link_view: "tax" });
       }
-      // Reconciliation overdue (> 35 days since the last, or never).
-      const lastRecon = (reconciliationsRef.current || []).map(r => r.created_at || r.statement_date).filter(Boolean).sort().pop();
-      const reconAge = lastRecon ? (Date.now() - new Date(lastRecon)) / 86400000 : Infinity;
-      if (reconAge > 35) {
-        createNotification({ type: "reconciliation", title: lastRecon ? `Books not matched to your bank in ${Math.round(reconAge)} days` : "Your books haven't been matched to your bank yet", description: "Drop your latest bank statement and we'll match it to your books.", link_view: "recon" });
+      // Bank match overdue — C387: ONE definition, the same `bankMatchStatus` Home's list and
+      // the trust panel read. The bell used to count from any reconciliation row's created_at
+      // (an abandoned session counted as a match) and nagged a company with no books at all,
+      // while Home counted verified completions and stayed silent without books. Two readings
+      // of one fact, on two surfaces a person sees in the same minute.
+      const bm = bankMatchStatus({ reconciliations: reconciliationsRef.current || [], invoices: invoicesRef.current || [] });
+      if (bm.overdue) {
+        createNotification({ type: "reconciliation", title: bm.days == null ? "Your books haven't been matched to your bank yet" : `Books not matched to your bank in ${bm.days} days`, description: "Drop your latest bank statement and we'll match it to your books.", link_view: "recon" });
       }
       // Items waiting for review.
       const pendingClar = (clarificationQueueRef.current || []).filter(c => !c.resolved).length;
