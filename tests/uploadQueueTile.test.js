@@ -81,3 +81,37 @@ describe("the view reads the tone rather than re-deciding it", () => {
     expect(tile).toContain("queueItemTone(item");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// U2 / C376 — when the batch has settled, the tiles fold behind ONE sentence read off the
+// same census as the tiles. `queueCensus` had been exported and read by nothing.
+// ─────────────────────────────────────────────────────────────────────────────
+import { queueSummaryCopy } from "../src/lib/uploadQueueTile.js";
+import { renderViewHtml, VIEW_CONTEXT } from "./helpers/renderView.jsx";
+import { POPULATED } from "./helpers/populatedFixture.js";
+import DashboardView from "../src/components/views/DashboardView.jsx";
+describe("C376 — the batch in one sentence", () => {
+  it("every clause reads a census field, in the owner's words", () => {
+    expect(queueSummaryCopy({ done: 10, review: 2, error: 1, waiting: 3 })).toBe("12 documents handled · 2 have questions for you · 1 we couldn't read · 3 waiting their turn");
+    expect(queueSummaryCopy({ done: 1 })).toBe("1 document handled");
+    expect(queueSummaryCopy({ done: 1, review: 1 })).toBe("2 documents handled · 1 has a question for you");
+    expect(queueSummaryCopy({ running: 2, queued: 1 })).toBe("3 still being read");
+    expect(queueSummaryCopy({})).toBe("");
+  });
+  it("the summary is the census the tiles are drawn from — never a second count", () => {
+    const items = [{ id: 1, status: "done" }, { id: 2, status: "done" }, { id: 3, status: "error" }, { id: 4, status: "error", transient: true }];
+    expect(queueSummaryCopy(queueCensus(items, { pendingReviewIds: [2] }))).toBe("2 documents handled · 1 has a question for you · 1 we couldn't read · 1 waiting its turn");
+  });
+  it("Home folds a settled batch behind the sentence and a Show details toggle; an unsettled one keeps the tiles", () => {
+    const strip = (h) => h.replace(/<!-- -->/g, "").replace(/&#x27;/g, "'");
+    const base = { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"] };
+    const settled = strip(renderViewHtml(DashboardView, { ...base, uploadQueue: [{ id: 1, name: "a.pdf", status: "done", type: "invoice", result: { invoiceCount: 1, total: 10 } }, { id: 2, name: "b.pdf", status: "error", error: "bad", transient: false }] }));
+    expect(settled).toContain("1 document handled · 1 we couldn't read");
+    expect(settled).toContain("Show details");
+    expect(settled).not.toContain("b.pdf");                 // the tile is folded
+    const running = strip(renderViewHtml(DashboardView, { ...base, uploadQueue: [{ id: 1, name: "a.pdf", status: "processing", type: "invoice" }] }));
+    expect(running).toContain("PROCESSING QUEUE");
+    expect(running).toContain("a.pdf");                     // the tile is on screen while it runs
+    expect(running).not.toContain("Show details");
+  });
+});

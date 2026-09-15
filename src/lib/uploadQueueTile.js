@@ -107,3 +107,22 @@ export function queueCensus(items = [], { pendingReviewIds = [] } = {}) {
   }
   return out;
 }
+
+// ── U2 (C376) — THE BATCH IN ONE SENTENCE ───────────────────────────────────
+// `queueCensus` was exported, tested, and read by nothing (the C331 shape, in a lib). When a
+// batch has settled, the per-file tiles fold behind this line: what happened, in the words a
+// person dropped the files to hear. Counts only — every clause reads a census field (§9).
+export function queueSummaryCopy(census = {}) {
+  const c = { done: 0, waiting: 0, error: 0, review: 0, running: 0, queued: 0, ...(census || {}) };
+  const total = c.done + c.waiting + c.error + c.review + c.running + c.queued;
+  if (!total) return "";
+  const docs = (n) => `${n} document${n === 1 ? "" : "s"}`;
+  const parts = [];
+  const handled = c.done + c.review;
+  if (handled) parts.push(`${docs(handled)} handled`);
+  if (c.review) parts.push(`${c.review} ${c.review === 1 ? "has a question for you" : "have questions for you"}`);
+  if (c.error) parts.push(`${c.error} we couldn't read`);
+  if (c.waiting) parts.push(`${c.waiting} waiting ${c.waiting === 1 ? "its" : "their"} turn`);
+  if (c.running || c.queued) parts.push(`${c.running + c.queued} still being read`);
+  return parts.join(" · ");
+}

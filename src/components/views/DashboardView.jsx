@@ -20,7 +20,7 @@ import { useDrillStack } from "../../lib/useDrillStack";
 import DrillNav from "../ui/DrillNav";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 import { sortByUrgency } from "../../lib/cardUrgency";
-import { QUEUE_TONE, queueIsSettled, queueItemChip, queueItemIcon, queueItemTone } from "../../lib/uploadQueueTile";
+import { QUEUE_TONE, queueIsSettled, queueItemChip, queueItemIcon, queueItemTone, queueCensus, queueSummaryCopy } from "../../lib/uploadQueueTile";
 import { budgetCopy } from "../../lib/aiBudget";
 
 // Breadcrumb label for a dashboard drill layer (used by the shared onion-nav stack).
@@ -60,6 +60,7 @@ export default function DashboardView() {
     setView(viewId);
   };
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
+  const [queueDetailsOpen, setQueueDetailsOpen] = React.useState(false);   // U2 (C376)
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   // Shared onion-layer drill navigation (drillStack) — drilling pushes a layer, Back pops
   // exactly one, Forward re-advances, the breadcrumb jumps to any level. setDashDrill is kept
@@ -463,10 +464,22 @@ export default function DashboardView() {
 
 
               {/* ── UPLOAD QUEUE ── */}
-              {uploadQueue.length > 0 && (
+              {/* U2 (C376) — once the batch has settled, the tiles fold behind ONE sentence
+                  (`queueSummaryCopy`, read off the same census as the tiles). Details on request;
+                  the tiles stay while anything is still being read. */}
+              {uploadQueue.length > 0 && (() => {
+                const settled = queueIsSettled(uploadQueue);
+                const census = queueCensus(uploadQueue, { pendingReviewIds: (clarificationQueue || []).filter(c => !c.resolved).map(c => c.queueItemId) });
+                const folded = settled && !queueDetailsOpen;
+                return (
                 <div style={{ marginBottom:24 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-                    <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:2 }}>PROCESSING QUEUE</div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, gap:12, flexWrap:"wrap" }}>
+                    <div style={{ fontSize: settled ? 13 : 11, color: settled ? "var(--sc-text)" : "var(--sc-text-2)", letterSpacing: settled ? 0 : 2, fontWeight: settled ? 600 : 400 }}>
+                      {settled ? `${census.error ? "" : "✓ "}${queueSummaryCopy(census)}` : "PROCESSING QUEUE"}
+                    </div>
+                    {settled && (
+                      <button onClick={()=>setQueueDetailsOpen(v => !v)} style={{ background:"none", border:"none", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer", padding:0 }}>{queueDetailsOpen ? "Hide details" : "Show details"}</button>
+                    )}
                     {/* ── O113b — HOW MUCH READING IS LEFT, IN DOCUMENTS ──────────────
                         The ceiling was only ever discoverable by hitting it: the limit is not
                         "20 documents", it is "20 documents minus whatever else you did this
@@ -483,7 +496,7 @@ export default function DashboardView() {
                       <button onClick={()=>setUploadQueue([])} style={{ background:"none", border:"none", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer", padding:0 }}>Clear ×</button>
                     )}
                   </div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {!folded && <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                     {uploadQueue.map(item => {
                       const typeConfig = {
                         invoice:       { icon:"🧾", label:"Invoice",         color:"var(--sc-gold)" },
@@ -600,9 +613,10 @@ export default function DashboardView() {
                         </div>
                       );
                     })}
-                  </div>
+                  </div>}
                 </div>
-              )}
+                );
+              })()}
 
 
               {/* ── U1 (C375) — ONE LIST OF THINGS WAITING ON YOU. Replaces nine banners; see lib/homeWaiting.js. ── */}
