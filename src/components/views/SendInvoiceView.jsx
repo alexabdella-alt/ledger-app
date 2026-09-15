@@ -7,7 +7,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
-import { newInvoiceDraft, emptyInvoiceLine, draftBase , invoiceSendBlockers, invoiceTotalOf } from "../../lib/invoiceDraft";
+import { newInvoiceDraft, emptyInvoiceLine, draftBase , invoiceSendBlockers, invoiceTotalOf, invoiceDueLabel } from "../../lib/invoiceDraft";
 import { arInvoiceRows, isDbInvoiceId } from "../../lib/arInvoiceRows";
 import { contactDbId } from "../../lib/contactIds";
 import { checkedRowUpdate } from "../../lib/checkedWrite";
@@ -186,7 +186,7 @@ export default function SendInvoiceView() {
               // paying what the email said would have short-paid by the tax. The email reads the same
               // total the invoice does, and itemises the tax when there is one.
               const taxLine = taxAmount > 0 ? `\nSales tax (${taxRatePct}%): ${fmt(taxAmount)}` : "";
-              const body = `Hi ${inv.customer},\n\nPlease find invoice ${inv.invoice_number} for ${fmt(total)}, due ${inv.due_date?fmtDate(inv.due_date):"on receipt"}.\n\n${lineSummary}${taxAmount > 0 ? `\n\nSubtotal: ${fmt(subtotal)}${taxLine}` : ""}\n\nTotal due: ${fmt(total)}\n\nThank you,\n${companySettings.name||"Your Company"}`;
+              const body = `Hi ${inv.customer},\n\nPlease find invoice ${inv.invoice_number} for ${fmt(total)}, due ${invoiceDueLabel(inv, fmtDate).replace(/^On receipt$/, "on receipt")}.\n\n${lineSummary}${taxAmount > 0 ? `\n\nSubtotal: ${fmt(subtotal)}${taxLine}` : ""}\n\nTotal due: ${fmt(total)}\n\nThank you,\n${companySettings.name||"Your Company"}`;
               // ★ O82 (C351) — SEND FROM THE APP WHEN THE CHANNEL EXISTS; otherwise the person's
               // own mail client, as before — and the button SAYS which (a silent fallback is
               // the C194 shape: "sent" over something that opened a compose window).
@@ -231,9 +231,9 @@ export default function SendInvoiceView() {
     <div class="invoice-number">${esc(draft.invoice_number)}</div>
     <div style="margin-top:8px"><strong>Bill To:</strong> ${esc(draft.customer)}</div>
     <div style="color:#888">${esc(draft.customer_email||"")}</div>
-    <div style="margin-top:8px">Issue Date: ${esc(draft.issue_date)}</div>
-    <div>Due Date: ${esc(draft.due_date||"On Receipt")}</div>
-    <div>Terms: ${esc(draft.terms||"Net 30")}</div>
+    <div style="margin-top:8px">Issue Date: ${esc(draft.issue_date ? fmtDate(draft.issue_date) : "")}</div>
+    <div>Due Date: ${esc(invoiceDueLabel(draft, fmtDate))}</div>
+    ${draft.terms ? `Terms: ${esc(draft.terms)}` : ""}
   </div>
 </div>
 <table>
@@ -312,7 +312,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                     <div style={{fontSize:24,fontWeight:700,color:"var(--sc-gold)",fontFamily:"'DM Mono',monospace"}}>{draft.invoice_number}</div>
                     <div style={{fontSize:12,color:"var(--sc-text-2)",marginTop:10,lineHeight:1.8}}>
                       <div>Issue date: <strong style={{color:"var(--sc-text)"}}>{draft.issue_date?fmtDate(draft.issue_date):"—"}</strong></div>
-                      <div>Due date: <strong style={{color:"var(--sc-text)"}}>{draft.due_date?fmtDate(draft.due_date):"On receipt"}</strong></div>
+                      <div>Due date: <strong style={{color:"var(--sc-text)"}}>{invoiceDueLabel(draft, fmtDate)}</strong></div>
                       <div>Terms: <strong style={{color:"var(--sc-text)"}}>{draft.terms||"Net 30"}</strong></div>
                     </div>
                   </div>

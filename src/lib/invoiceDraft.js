@@ -61,3 +61,16 @@ export function invoiceTotalOf(inv = {}) {
   const sub = (inv.line_items || []).reduce((s, l) => s + (Number(l?.amount) || 0), 0);
   return Math.round((sub + (Number(inv.tax_amount) || 0)) * 100) / 100;
 }
+
+// C450 — THE DUE DATE THE INVOICE SHOWS FOLLOWS THE TERMS WHEN NONE WAS TYPED. The draft
+// defaults to terms "Net 30" and an empty due date, so the printed invoice read "Due Date:
+// On Receipt · Terms: Net 30" — two claims that contradict each other, on the document a
+// customer pays from. A typed due date wins; otherwise the terms decide; "On Receipt"
+// terms (or no terms) read as due on receipt.
+import { deriveDueDate as _deriveDueDate } from "./format.js";
+export function invoiceDueLabel(draft = {}, fmt = (d) => d) {
+  if (draft.due_date) return fmt(draft.due_date);
+  const derived = _deriveDueDate(draft.issue_date, draft.terms);
+  if (derived && derived !== draft.issue_date) return fmt(derived);
+  return "On receipt";
+}
