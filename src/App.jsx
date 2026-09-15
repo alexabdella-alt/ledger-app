@@ -3698,8 +3698,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       deductible_amount: opt.vehiclePct ? (Number(inv.amount)||0)*opt.vehiclePct/100 : undefined };
     setInvoices(prev => [finalInv, ...prev]);
     const jeId = await bookToDb(finalInv);
-    if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-    logAudit("invoice_booked", `${finalInv.vendor} · ${fmtMoney(finalInv.amount)} → ${finalInv.gl_name} (GAAP ${item.gaapType})`, null, { vendor:finalInv.vendor, amount:finalInv.amount, gl_code:finalInv.gl_code, gl_name:finalInv.gl_name, reasoning: finalInv.reasoning });
+    // C392 — the audit row and the contact enrichment follow the WRITE, not the click. Both
+    // used to fire before `jeId` was read, so a refused booking left "invoice_booked" in the
+    // one record an accountant is entitled to trust (C240's shape, on the GAAP card).
+    if (jeId) {
+      if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
+      logAudit("invoice_booked", `${finalInv.vendor} · ${fmtMoney(finalInv.amount)} → ${finalInv.gl_name} (GAAP ${item.gaapType})`, null, { vendor:finalInv.vendor, amount:finalInv.amount, gl_code:finalInv.gl_code, gl_name:finalInv.gl_name, reasoning: finalInv.reasoning });
+    }
     if (opt.depreciate) {
       // A capitalized asset with no depreciation schedule must be impossible. If the
       // booking didn't post, or the asset/schedule write fails, COMPENSATE (reverse the
@@ -3740,6 +3745,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!comp.ok) {
       logAudit("capitalization_rollback_failed", `Couldn't roll back a capitalization for ${finalInv.vendor || "an entry"} — the asset is in the books with no depreciation schedule`, null, { je_id: String(jeId) });
       try { Sentry.captureMessage("capitalization_rollback_failure", { level: "error", tags: { kind: "capitalization_rollback_failure" }, extra: { je_id: String(jeId) } }); } catch {}
+      // C392 — the sentence reads the rollback's RESULT. It used to say "rolled back … try
+      // again" whatever `comp.ok` was, and a retry on top of an un-rolled-back entry books the
+      // purchase twice (C245's shape: a failure that cannot be retried must never be described
+      // as one). The entry stays on screen because it IS in the books.
+      showNotification(`${finalInv.vendor || "That purchase"} is in your books, but we couldn't set up its cost spread and couldn't undo the entry either. Don't try again — send this to your accountant.`, "error");
+      return;
     }
     setInvoices(prev => prev.filter(i => i.id !== finalInv.id && String(i.db_entry_id) !== String(jeId)));
     logAudit("fixed_asset_setup_failed",
@@ -3747,7 +3758,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       null, { je_id: String(jeId), reason: reason || null });
     try { Sentry.captureMessage("fixed_asset_setup_failure", { level: "error",
       tags: { kind: "fixed_asset_setup_failure" }, extra: { je_id: String(jeId), reason: reason || null } }); } catch {}
-    showNotification(`Couldn't set up depreciation — the capitalization was rolled back so your books stay consistent.${reason ? ` (${reason})` : ""} Please try again.`, "error");
+    showNotification(`We couldn't set up the cost spread for ${finalInv.vendor || "that purchase"}, so we undid the entry — nothing is in your books.${reason ? ` (${reason})` : ""} Please try again.`, "error");
   };
 
   // Create the fixed_assets master + generate its straight-line depreciation_schedule
