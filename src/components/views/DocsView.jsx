@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import LoadFailedNotice from "../LoadFailedNotice";
 import { filterDocuments, documentDate, documentDateLabel, linkedEntryFor } from "../../lib/docLibrary";
 import { fmtDate, fmtMoney } from "../../lib/format";
 import DocumentPreviewModal from "../DocumentPreviewModal";
@@ -22,7 +23,7 @@ function StoredImage({ supabase, path, base64, mediaType, style, alt }) {
 }
 
 export default function DocsView() {
-  const { docLibrary, docsFilterType, docsPreview, setDocsFilterType, setDocsPreview, supabase, invoices, setSelectedInvoice, setReturnTo, setView } = useERP();
+  const { docLibrary, docsFilterType, docsPreview, setDocsFilterType, setDocsPreview, supabase, invoices, setSelectedInvoice, setReturnTo, setView, loadFailures } = useERP();
   const [query, setQuery] = React.useState("");
   const [from, setFrom] = React.useState("");
   const [to, setTo] = React.useState("");
@@ -88,7 +89,7 @@ export default function DocsView() {
           <button onClick={() => { setQuery(""); setFrom(""); setTo(""); setFilterType("all"); }}
             style={{ height: 36, padding: "0 14px", borderRadius: 9, background: "var(--sc-gold)", border: "none", color: "var(--sc-surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Show all documents</button>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : loadFailures?.documents ? <LoadFailedNotice what="documents" table="documents" /> : filtered.length === 0 ? (
         <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 48, textAlign: "center" }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>📁</div>
           <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>No documents yet</div>
