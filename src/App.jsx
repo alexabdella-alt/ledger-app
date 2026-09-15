@@ -2645,10 +2645,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // before `loadAllData` resolved, so the draft was seeded from the reset defaults (name
     // "", address "") and stayed that way when the real settings arrived — the form showed
     // blanks over a company that has a name, and a save would have written them.
-    if (view === "settings" && !settingsDraft && companyDataLoaded) {
+    if (view === "settings" && !settingsDraft && companyDataLoaded && !loadFailures.companies) {   // C456 — and only when the company row itself loaded
       setSettingsDraft(companySettings);
     }
-  }, [view, companyDataLoaded]); // eslint-disable-line
+  }, [view, companyDataLoaded, loadFailures.companies]); // eslint-disable-line
 
   // C424 — the "add your accountant" checklist step's dismissal is PER COMPANY: the key was
   // device-wide, so dismissing it on one company dismissed it on every company this browser
