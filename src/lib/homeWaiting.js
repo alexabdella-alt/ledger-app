@@ -13,7 +13,7 @@
 // until you act) · SOON (a date is coming) · INFO (someone else will handle it; you may look).
 // ─────────────────────────────────────────────────────────────────────────────
 import { countByUrgency, queueBannerCopy } from "./cardUrgency";
-import { heldQuestionsCopy, heldUnreadableCopy } from "./waitingOnYou";
+import { heldQuestionsCopy, heldUnreadableCopy, heldPartialCopy } from "./waitingOnYou";
 import { unknownSenderCopy } from "../../supabase/functions/_shared/mailChannel.js";
 import { fmtMoney } from "./format";
 
@@ -24,6 +24,7 @@ export function homeWaitingList({
   openCards = [],            // unresolved clarification cards (this session)
   heldQuestions = [],        // C365 rows
   heldUnreadable = [],       // C369 rows
+  heldPartial = [],          // C390 rows
   heldInbound = [],          // O82 messages the sender wall held
   canDecideMail = false,
   bankMatch = null,          // { overdue, days }
@@ -61,6 +62,13 @@ export function homeWaitingList({
     items.push({
       id: "held_unreadable", urgency: WAIT.NOW, text: heldUnreadableCopy(heldUnreadable),
       actions: reloadable.length ? [{ kind: "reload", label: heldUnreadable.some((h) => h.loading) ? "Trying again…" : "Try again", intakeIds: reloadable.map((h) => h.intake_id), busy: heldUnreadable.some((h) => h.loading) }] : [],
+    });
+  }
+  if ((heldPartial || []).length) {
+    const reloadable = heldPartial.filter((h) => h.reloadable && !h.loading);
+    items.push({
+      id: "held_partial", urgency: WAIT.NOW, text: heldPartialCopy(heldPartial),
+      actions: reloadable.length ? [{ kind: "reload", label: heldPartial.some((h) => h.loading) ? "Bringing it back…" : "Bring it back", intakeIds: reloadable.map((h) => h.intake_id), busy: heldPartial.some((h) => h.loading) }] : [],
     });
   }
   for (const m of heldInbound || []) {

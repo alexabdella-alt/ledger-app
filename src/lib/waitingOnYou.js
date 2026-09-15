@@ -143,6 +143,52 @@ export function heldUnreadableCopy(rows = []) {
     : `We couldn't read ${n} documents (${names}) — they aren't in your books. Try again, or send clearer copies.`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// C390 — A DOCUMENT ONLY PARTLY IN THE BOOKS. C311 holds an invoice file whose transactions
+// did not all land (a write refused mid-batch, or a person choosing "Not now" on the
+// signed-month decision) with a sentence naming the count — and nothing read that sentence
+// back. HELD is terminal, so after a reload the file was "accounted for" on the trust panel
+// and on no screen at all. The writer and this reader share one function.
+// ─────────────────────────────────────────────────────────────────────────────
+export const partialHoldDetail = (saved, expected) =>
+  `${saved} of ${expected} transaction(s) saved — ${Math.max(0, expected - saved)} did not, so this document is not fully recorded`;
+const PARTIAL_HOLD_RE = /^(\d+) of (\d+) transaction\(s\) saved — (\d+) did not, so this document is not fully recorded$/;
+export function parsePartialHold(detail) {
+  const m = PARTIAL_HOLD_RE.exec(String(detail || ""));
+  return m ? { saved: Number(m[1]), expected: Number(m[2]), missing: Number(m[3]) } : null;
+}
+
+export function heldPartialRows(intakeRows = [], { uploadQueue = [] } = {}) {
+  const onScreen = new Set((uploadQueue || []).filter((q) => q && q.intake_id).map((q) => String(q.intake_id)));
+  const inFlight = new Set((uploadQueue || [])
+    .filter((q) => q && q.intake_id && q.status !== "done" && q.status !== "error")
+    .map((q) => String(q.intake_id)));
+  return (intakeRows || [])
+    .filter((r) => r && r.status === "held_for_review" && parsePartialHold(r.detail))
+    .filter((r) => !onScreen.has(String(r.id)) || inFlight.has(String(r.id)))
+    .map((r) => ({
+      kind: "partial_held",
+      id: `partial_held:${r.id}`,
+      intake_id: r.id,
+      filename: r.filename || "a document",
+      ...parsePartialHold(r.detail),
+      received_at: r.received_at || null,
+      reloadable: !!r.document_id,
+      loading: inFlight.has(String(r.id)),
+    }));
+}
+
+export function heldPartialCopy(rows = []) {
+  const n = (rows || []).length;
+  if (!n) return "";
+  if (n === 1) {
+    const r = rows[0];
+    return `${r.filename} is only partly in your books — ${r.saved} of ${r.expected} transactions saved, ${r.missing} not. Bring it back to finish.`;
+  }
+  const names = rows.slice(0, 3).map((r) => r.filename).join(", ") + (n > 3 ? ` and ${n - 3} more` : "");
+  return `${n} documents are only partly in your books (${names}). Bring them back to finish.`;
+}
+
 // Bank lines the matcher could not settle on its own. `matchQueue` is in-session state,
 // which is exactly when this matters: the pipeline just redirected to Matching once and
 // a person navigated away. One card, not one per line — the decision is made on the

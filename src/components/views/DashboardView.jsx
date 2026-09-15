@@ -840,7 +840,7 @@ export default function DashboardView() {
 // Actions are dispatched here; the literals below are the doors the C312 guard counts.
 // ─────────────────────────────────────────────────────────────────────────────
 export function HomeWaitingList({ navTo }) {
-  const { clarificationQueue, heldQuestions, heldUnreadable, heldInbound, releaseHeldInbound, ignoreHeldInbound,
+  const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
     uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines } = useERP();
   const [busy, setBusy] = React.useState(null);
@@ -855,7 +855,7 @@ export function HomeWaitingList({ navTo }) {
   const taxEstimateText = dl && dl.est && est && est.total > 0 ? ` — estimated amount ${fmtApprox(est.quarterly)}` : "";
   const items = homeWaitingList({
     openCards: (clarificationQueue || []).filter(c => !c.resolved),
-    heldQuestions: heldQuestions || [], heldUnreadable: heldUnreadable || [],
+    heldQuestions: heldQuestions || [], heldUnreadable: heldUnreadable || [], heldPartial: heldPartial || [],
     heldInbound: Array.isArray(heldInbound) ? heldInbound : [], canDecideMail: !!(isAdmin || isOwner),
     bankMatch, taxDeadline: dl, taxEstimateText, overdueBills, overdueTotal,
     recurringSuggestions: Array.isArray(recurringSuggestions) ? recurringSuggestions : [],

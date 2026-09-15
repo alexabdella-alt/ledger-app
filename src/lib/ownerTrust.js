@@ -78,6 +78,7 @@ export function ownerTrustState({
   // completeness arithmetic above counted an unreadable file as "accounted for" and this
   // line read "nothing missing" over a document that had become nothing at all.
   heldUnreadable = 0,
+  heldPartial = 0,             // C390 — files only partly in the books
   // ★ C372 — DOCUMENTS WITH THE ACCOUNTANT TO DECIDE (a payroll register the gate refused, a
   // question the owner set aside). Not the owner's task, and not in the books either — so
   // this line may not say "nothing missing" over them, and the header may not read all-clear.
@@ -142,7 +143,8 @@ export function ownerTrustState({
   //    processing"; never a false all-clear; neutral (not a gap) when nothing was uploaded. ──
   const unreadableCount = Math.max(0, Number(heldUnreadable) || 0);
   const accountantCount = Math.max(0, Number(heldForAccountant) || 0);
-  const capturedOk = outstanding === 0 && unreadableCount === 0 && accountantCount === 0 && completenessChecked;
+  const partialCount = Math.max(0, Number(heldPartial) || 0);
+  const capturedOk = outstanding === 0 && unreadableCount === 0 && accountantCount === 0 && partialCount === 0 && completenessChecked;
   let capturedText, capturedStateVal;
   if (!completenessChecked) {
     // A claim about the QUERY, never about the books — and deliberately reassuring, because
@@ -157,6 +159,9 @@ export function ownerTrustState({
     capturedStateVal = "attention";
   } else if (accountantCount > 0) {
     capturedText = `${accountantCount} ${plural(accountantCount, "document is", "documents are")} with your accountant to decide — not in your books yet.`;
+    capturedStateVal = "attention";
+  } else if (partialCount > 0) {
+    capturedText = `${partialCount} ${plural(partialCount, "document is", "documents are")} only partly in your books — bring ${plural(partialCount, "it", "them")} back to finish.`;
     capturedStateVal = "attention";
   } else if (pendingCount > 0) {
     capturedText = `Filing the ${pendingCount} ${plural(pendingCount, "document", "documents")} you just sent — almost done.`;

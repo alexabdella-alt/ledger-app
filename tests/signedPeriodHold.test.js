@@ -40,7 +40,7 @@ describe("the wiring (source)", () => {
     const i = app.indexOf("const settlePartialHold = (invoice, jeId) => {");
     const body = app.slice(i, i + 1200);
     expect(body).toMatch(/if \(hold\.ids\.length >= hold\.expected\) \{\s*markIntake\(hold\.intakeId, INTAKE_STATUS\.RECORDED/);
-    expect(body).toMatch(/markIntake\(hold\.intakeId, INTAKE_STATUS\.HELD, \{ journalEntryIds: hold\.ids, detail: `\$\{hold\.ids\.length\} of \$\{hold\.expected\}/);
+    expect(body).toMatch(/markIntake\(hold\.intakeId, INTAKE_STATUS\.HELD, \{ journalEntryIds: hold\.ids, detail: partialHoldDetail\(hold\.ids\.length, hold\.expected\)/);   // C390 — the shared sentence
     for (const fn of ["const reopenSignedPeriodAndBook = async () => {", "const rebookHeldIntoOpenMonth = async () => {"]) {
       const j = app.indexOf(fn);
       const b = app.slice(j, j + 1000);
