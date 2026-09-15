@@ -25,7 +25,7 @@ const stmt = { id: "s1", status: "attention", bank_account_id: "a1", period_star
 
 describe("(a1) a single-account company auto-binds; anything else stashes", () => {
   it("exactly ONE account → bind it (no ambiguity, so no human needed)", () => {
-    const acct = { id: "a1", name: "Primary Checking", gl_code: "1000" };
+    const acct = { id: "22222222-2222-4222-8222-222222222222", name: "Primary Checking", gl_code: "1000" };
     expect(autoBindAccount([acct])).toBe(acct);
   });
   it("ZERO accounts → no bind (nothing to bind to)", () => {
@@ -34,9 +34,13 @@ describe("(a1) a single-account company auto-binds; anything else stashes", () =
   it("TWO accounts → no bind: which account this belongs to is a real choice", () => {
     expect(autoBindAccount([{ id: "a1" }, { id: "a2" }])).toBeNull();
   });
+  it("★ the reset placeholder ({ id: \"default\" }) and any non-stored id are NOT bound (C458)", () => {
+    expect(autoBindAccount([{ id: "default", name: "Primary Checking" }])).toBeNull();
+    expect(autoBindAccount([{ id: "a1" }])).toBeNull();
+  });
   it("an account with no id can't be bound to anything", () => {
     expect(autoBindAccount([{ name: "orphan" }])).toBeNull();
-    expect(autoBindAccount([{ name: "orphan" }, { id: "a1", name: "real" }]).id).toBe("a1");
+    expect(autoBindAccount([{ name: "orphan" }, { id: "11111111-1111-4111-8111-111111111111", name: "real" }]).id).toBe("11111111-1111-4111-8111-111111111111");   // C458 — a stored account has a uuid
   });
 });
 

@@ -263,8 +263,14 @@ export function statementOfferCopy({ statement = null, lineCount = null, monthLa
     : `We already have your ${when ? `${when} ` : ""}statement, ready to check against your books.`;
 }
 
+// C458 — ONLY A STORED ACCOUNT MAY BE BOUND. `resetCompanyState` seeds a placeholder
+// `{ id: "default", name: "Primary Checking" }` until the company's accounts arrive, and a
+// failed `bank_accounts` read leaves it there; `b.id` was truthy for it, so a statement
+// dropped in that window auto-bound to an account that does not exist — the lines booked,
+// the statement row's insert died on a non-uuid, and no reconciliation could ever follow.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function autoBindAccount(bankAccounts = []) {
-  const usable = (bankAccounts || []).filter((b) => b && b.id);
+  const usable = (bankAccounts || []).filter((b) => b && typeof b.id === "string" && UUID.test(b.id));
   return usable.length === 1 ? usable[0] : null;
 }
 
