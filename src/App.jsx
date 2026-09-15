@@ -4876,7 +4876,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       signoffsChecked: signoffsLoadOk !== false,   // C410 — same rule for the sign-off read (null = still loading; Home's panel shows its loading state then)
       anomaliesChecked: anomaliesLoadOk,    // C418 — and for the unusual-activity read
     });
-  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount, clarificationQueue, intakeLoadOk, signoffsLoadOk, anomaliesLoadOk]);
+  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount, clarificationQueue, intakeLoadOk, signoffsLoadOk, anomaliesLoadOk, hasAttester, signoffs]);   // C463 — hasAttester and signoffs are read inside and were not deps; the panel stayed right only because the effect that sets them batches with intakeRows
 
   // ── O83 SIGN-OFF READINESS (single source) — "can THIS period be attested?" ──
   // Preconditions (non-vacuous: a period with nothing to check is NOT ready) + the four
