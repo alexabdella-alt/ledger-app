@@ -31,6 +31,12 @@ describe("C420", () => {
     expect(blk).toMatch(/onClick=\{\(\)=>loadCompanies\(session\)\}/);
     expect(containsOwnerJargon("We couldn't load your companies just now — this isn't a sign that you don't have one. Check your connection and try again.")).toBe(false);
   });
+  it("the post-invite re-read records its failure too, instead of a blank page", () => {
+    const i = src.indexOf('rpc("accept_invite"');
+    const blk = src.slice(i, i + 900);
+    expect(blk).toMatch(/const \{ data, error: le \} = await supabase\.from\("company_users"\)/);
+    expect(blk).toMatch(/if \(le\) \{[^\n]*setCompaniesLoadError\([^\n]*return; \}/);
+  });
   it("a retry clears the recorded failure first", () => {
     expect(body).toMatch(/setAppLoading\(true\);\s*setCompaniesLoadError\(null\);/);
   });

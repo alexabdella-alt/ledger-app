@@ -257,8 +257,11 @@ function AppWrapper() {
         const { data: companyId, error } = await supabase.rpc("accept_invite", { p_token: inviteToken });
         if (error) throw error;
         // Reload memberships and switch to the joined company.
-        const { data } = await supabase.from("company_users")
+        const { data, error: le } = await supabase.from("company_users")
           .select("company_id, role, companies(*)").eq("user_id", session.user.id).not("accepted_at", "is", null);
+        // C420 — the invite was accepted; if the re-read fails, say so rather than rendering
+        // a blank page (no company selected, setup not shown).
+        if (le) { console.error("[companies] reload after invite failed:", le.message); setCompaniesLoadError(le.message || "load failed"); setAppLoading(false); return; }
         const cos = (data || []).map(r => ({ ...r.companies, role: r.role }));
         setCompanies(cos);
         const joined = cos.find(c => c.id === companyId) || cos[0] || null;
