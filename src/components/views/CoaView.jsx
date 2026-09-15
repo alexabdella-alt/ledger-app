@@ -61,9 +61,9 @@ export default function CoaView() {
     <div>
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>CONFIGURATION</div>
-          <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Chart of Accounts</h1>
-          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Rename or renumber any account freely — the app tracks accounts by role, so reports and automations keep working. System accounts can be renamed but not deleted.</div>
+          <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>SETTINGS</div>
+          <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Categories</h1>
+          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Every transaction is filed under one of these. Rename or renumber any of them freely — the app tracks them by what they are for, so reports keep working. System accounts can be renamed but not deleted.</div>
         </div>
         <button onClick={() => setShowAdd(v => !v)} style={{ padding: "9px 20px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>+ Add Account</button>
       </div>

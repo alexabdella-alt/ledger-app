@@ -61,7 +61,7 @@ export default function RecurringView() {
               <div>
                 <div style={{marginBottom:24}}>
                   <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>AUTOMATION</div>
-                  <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Recurring Transactions</h1>
+                  <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Recurring charges</h1>
                   <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Set up transactions that repeat automatically. You can also tell the AI chat — "set up rent as $4,500/month starting June 1".</div>
                 </div>
                 {/* Due now alert */}

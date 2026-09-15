@@ -88,9 +88,9 @@ export const REVIEW_TOOLS = [
 // see where you are and leave by any route, without nine rows of setup sitting
 // over the nav every other minute.
 export const NAV_SECTION_SETTINGS = { id: "settings", label: "Settings", items: [
-  ["settings", "Company"], ["team", "Team"], ["coa", "Chart of Accounts"],
-  ["opening-balances", "Bank & Balances"], ["rules", "Rules"], ["recurring", "Recurring"],
-  ["tax", "Taxes"], ["tax1099", "1099s"], ["audit", "Audit Trail"],
+  ["settings", "Company"], ["team", "Team"], ["coa", "Categories"],
+  ["opening-balances", "Bank accounts & starting balances"], ["rules", "Supplier rules"], ["recurring", "Recurring charges"],
+  ["tax", "Taxes"], ["tax1099", "Tax forms (1099s)"], ["audit", "Audit trail"],
   ["onboard", "Import from QuickBooks"],
 ] };
 

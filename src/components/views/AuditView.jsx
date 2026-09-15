@@ -49,7 +49,7 @@ export default function AuditView() {
                 <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16}}>
                   <div>
                     <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>COMPLIANCE</div>
-                    <h1 style={{fontSize:28,fontWeight:600,margin:"0 0 6px",letterSpacing:-0.5}}>Audit Trail</h1>
+                    <h1 style={{fontSize:28,fontWeight:600,margin:"0 0 6px",letterSpacing:-0.5}}>Audit trail</h1>
                     <div style={{fontSize:13,color:"var(--sc-text-2)"}}>Permanent, immutable record of every action. Entries are never modified or deleted.</div>
                   </div>
                   <button onClick={downloadCSV} style={{background:"var(--sc-border)",border:"1px solid var(--sc-border-2)",color:"var(--sc-gold)",borderRadius:10,padding:"9px 18px",fontSize:13,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>

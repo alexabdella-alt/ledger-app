@@ -9,8 +9,8 @@ export default function RulesView() {
   return (
             <div>
               <div style={{ marginBottom:28 }}>
-                <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>AUTOMATION</div>
-                <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Vendor Rules</h1>
+                <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>SETTINGS</div>
+                <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Supplier rules</h1>
                 <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Rules auto-apply when invoices are uploaded. Create them by chatting with the AI assistant.</div>
               </div>
               {rules.length===0 ? (
