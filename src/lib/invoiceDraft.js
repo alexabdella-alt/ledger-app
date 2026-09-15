@@ -53,3 +53,11 @@ export function invoiceSendBlockers(draft = {}, subtotal = 0) {
   if (!(Number(subtotal) > 0)) out.push("Add at least one line with an amount.");
   return out;
 }
+
+// C438 — THE AMOUNT OF A SENT INVOICE INCLUDES ITS SALES TAX. The list and the legacy
+// mark-paid path summed line items only, so a $1,299.00 invoice (with $99.00 tax) read as
+// $1,200.00 in the list and, on the path with no ledger entry, was collected for $1,200.00.
+export function invoiceTotalOf(inv = {}) {
+  const sub = (inv.line_items || []).reduce((s, l) => s + (Number(l?.amount) || 0), 0);
+  return Math.round((sub + (Number(inv.tax_amount) || 0)) * 100) / 100;
+}

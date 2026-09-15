@@ -7,7 +7,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
-import { newInvoiceDraft, emptyInvoiceLine, draftBase , invoiceSendBlockers } from "../../lib/invoiceDraft";
+import { newInvoiceDraft, emptyInvoiceLine, draftBase , invoiceSendBlockers, invoiceTotalOf } from "../../lib/invoiceDraft";
 import { arInvoiceRows, isDbInvoiceId } from "../../lib/arInvoiceRows";
 import { contactDbId } from "../../lib/contactIds";
 import { checkedRowUpdate } from "../../lib/checkedWrite";
@@ -261,7 +261,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
               // the screen follows the database). It used to flip first, so a refused
               // payment left the invoice reading paid until the next reload.
               const paintPaid = () => setSentInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"paid",paid_at:new Date().toISOString()}:i));
-              const amt = inv.line_items?.reduce((s,l)=>s+(l.amount||0),0)||0;
+              const amt = invoiceTotalOf(inv);   // C438 — with its sales tax
               if (inv.ledger_id) {
                 // Collect the existing A/R through the canonical poster: posts Dr Cash / Cr A/R
                 // and persists payment_status='collected'. (Was a local flag flip that never
@@ -473,7 +473,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                       {loadFailures?.ar_invoices ? <LoadFailedNotice what="sent invoices" table="ar_invoices" /> : !companyDataLoaded ? <LoadingList what="your invoices" /> : sentInvoices.length===0 ? (
                         <div style={{padding:24,textAlign:"center",color:"var(--sc-text-2)",fontSize:12}}>No invoices yet</div>
                       ) : sentInvoices.slice(0,8).map(inv=>{
-                        const invTotal = inv.line_items?.reduce((s,l)=>s+(l.amount||0),0)||0;
+                        const invTotal = invoiceTotalOf(inv);   // C438 — with its sales tax
                         return (
                           <div key={inv.id} style={{padding:"12px 16px",borderTop:"1px solid var(--sc-border)",cursor:"pointer",background:"transparent"}}
                             onClick={()=>setDraft(inv)}>
