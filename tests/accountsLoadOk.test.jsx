@@ -45,8 +45,8 @@ describe("★★ nothing books against a chart that did not load", () => {
     for (const fn of ["const persistJournalEntry = async (invoice) => {", "const persistMultiLineEntry = async (entry, { background = false } = {}) => {"]) {
       const i = app.indexOf(fn);
       expect(i, fn).toBeGreaterThan(-1);
-      const head = app.slice(i, i + 700);
-      expect(head, fn).toMatch(/if \(accountsLoadOk === false\) \{[^\n]*CHART_NOT_LOADED[^\n]*return null; \}/);
+      const head = app.slice(i, i + 1400);
+      expect(head, fn).toMatch(/if \(accountsLoadOk === false \|\| loadFailures\.companies\) \{[^\n]*CHART_NOT_LOADED[^\n]*return null; \}/);   // C457 — and the company row
       // before the cutoff guard, which is the first business rule
       expect(head.indexOf("accountsLoadOk === false"), fn).toBeLessThan(head.indexOf("isBeforeCutoff"));
     }

@@ -840,6 +840,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // built-in fallback and materialise it (O108 finding 4), or reference the last company's
   // account ids. Both write paths refuse until the chart is read.
   const CHART_NOT_LOADED = "We couldn't load your categories, so nothing can be recorded right now — reload the page and try again. Nothing was changed.";
+  // C457 — the company row carries the cutoff (Day One) and the fiscal year; a booking against a
+  // company whose row did not load would run with no cutoff guard at all.
+  const COMPANY_NOT_LOADED = "We couldn't load your company's settings, so nothing can be recorded right now — reload the page and try again. Nothing was changed.";
   // Live company chart; falls back to the default chart before the first load.
   const CHART_OF_ACCOUNTS = liveAccounts.length ? liveAccounts : DEFAULT_CHART_OF_ACCOUNTS;
   const customCOA = CHART_OF_ACCOUNTS; // backwards-compat alias for existing readers
@@ -1539,7 +1542,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Write a journal entry to Supabase when an invoice is booked
   const persistJournalEntry = async (invoice) => {
     if (!currentCompany?.id || !session?.user?.id) return;
-    if (accountsLoadOk === false) { showNotification(CHART_NOT_LOADED, "error"); logAudit("booking_blocked_chart_unloaded", "Blocked a booking because the categories did not load", null, { vendor: invoice?.vendor, date: invoice?.date }); return null; }   // C416
+    if (accountsLoadOk === false || loadFailures.companies) { showNotification(loadFailures.companies ? COMPANY_NOT_LOADED : CHART_NOT_LOADED, "error"); logAudit("booking_blocked_chart_unloaded", loadFailures.companies ? "Blocked a booking because the company's settings did not load" : "Blocked a booking because the categories did not load", null, { vendor: invoice?.vendor, date: invoice?.date }); return null; }   // C416/C457
     // Cutoff enforcement (hybrid): a transaction dated before the cutoff is part of
     // the opening position — reject it and redirect to opening balances. The opening
     // entry itself is exempt. No cutoff set (legacy) → no enforcement (handled by the
@@ -1735,7 +1738,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // an automatic poster must never raise an interactive confirmation.
   const persistMultiLineEntry = async (entry, { background = false } = {}) => {
     if (!currentCompany?.id || !session?.user?.id) return null;
-    if (accountsLoadOk === false) { if (!background) showNotification(CHART_NOT_LOADED, "error"); logAudit("booking_blocked_chart_unloaded", "Blocked a booking because the categories did not load", null, { date: entry?.date, source: entry?.source }); return null; }   // C416
+    if (accountsLoadOk === false || loadFailures.companies) { if (!background) showNotification(loadFailures.companies ? COMPANY_NOT_LOADED : CHART_NOT_LOADED, "error"); logAudit("booking_blocked_chart_unloaded", loadFailures.companies ? "Blocked a booking because the company's settings did not load" : "Blocked a booking because the categories did not load", null, { date: entry?.date, source: entry?.source }); return null; }   // C416/C457
     if (!entry || !entry.balanced) { console.error("persistMultiLineEntry: refusing unbalanced/empty entry", entry); showNotification("Entry doesn't balance — not posted.", "error"); return null; }
     if (cutoffDate && entry.source !== "opening_balance" && isBeforeCutoff(entry.date, cutoffDate)) {
       showNotification(PRE_CUTOFF_MESSAGE, "error");
