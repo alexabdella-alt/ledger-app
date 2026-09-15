@@ -19,6 +19,6 @@ describe("Ask your books", () => {
   });
   it("submitting opens the chat with the typed text as the prefill (keyed on its own timestamp — C297)", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/components/views/DashboardView.jsx"), "utf8");
-    expect(src).toMatch(/onSubmit=\{e => \{ e\.preventDefault\(\); const t = String\(askText \|\| ""\)\.trim\(\); setChatOpen\(true\); if \(t\) setChatPrefill\(\{ at: Date\.now\(\), text: t \}\); setAskText\(""\); \}\}/);
+    expect(src).toMatch(/onSubmit=\{e => \{ e\.preventDefault\(\); const t = String\(askText \|\| ""\)\.trim\(\); setChatOpen\(true\); if \(t\) setChatPrefill\(\{ at: Date\.now\(\), text: t, send: true \}\); setAskText\(""\); \}\}/);
   });
 });

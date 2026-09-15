@@ -622,7 +622,7 @@ export default function DashboardView() {
 
               {/* ── U6 (C380) — ASK YOUR BOOKS. The thesis is "tell it what happened"; the chat was a
                   drawer behind a button. One line on Home opens the same chat with what you typed. */}
-              <form onSubmit={e => { e.preventDefault(); const t = String(askText || "").trim(); setChatOpen(true); if (t) setChatPrefill({ at: Date.now(), text: t }); setAskText(""); }}
+              <form onSubmit={e => { e.preventDefault(); const t = String(askText || "").trim(); setChatOpen(true); if (t) setChatPrefill({ at: Date.now(), text: t, send: true }); setAskText(""); }}
                 style={{ display:"flex", gap:8, alignItems:"center", marginBottom:24 }}>
                 <input value={askText} onChange={e => setAskText(e.target.value)} aria-label="Ask about your books"
                   placeholder="Ask about your books, or tell us what happened — “What did I spend on food in August?”, “Sysco paid me back $120”…"

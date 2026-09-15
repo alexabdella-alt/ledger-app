@@ -33,9 +33,14 @@ export default function ChatComposer({ onSend, loading = false, showSuggestions 
   // would be ignored the second time, which reads as the button being broken.
   React.useEffect(() => {
     if (!prefill || !prefill.text) return;
+    // C404 — Home's "Ask about your books" box (U6) already took an Enter; making the person
+    // press it again in the drawer read as "nothing happened". A prefill marked `send` is
+    // sent on arrival; if the chat declines (still answering the last one), the text stays
+    // in the box exactly as a plain prefill would, so nothing typed is lost.
+    if (prefill.send && !loading && onSend && onSend(String(prefill.text).trim()) !== false) { setText(""); return; }
     setText(prefill.text);
     inputRef.current?.focus();
-  }, [prefill]);
+  }, [prefill]);   // eslint-disable-line react-hooks/exhaustive-deps
   const canSend = !loading && text.trim().length > 0;
 
   // ★ THE BOX CLEARS ONLY WHEN THE SEND IS ACCEPTED. `onSend` returns false when it declines
