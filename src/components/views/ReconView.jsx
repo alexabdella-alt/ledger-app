@@ -18,7 +18,7 @@ import { aiJson } from "../../lib/aiJson";
 // ── CSV helpers (Chase / Bank of America / generic 3-column) ──
 const splitRow = (l) => { const out=[]; let cur="",q=false; for (const ch of l){ if(ch==='"'){q=!q;} else if(ch===","&&!q){out.push(cur);cur="";} else cur+=ch; } out.push(cur); return out.map(s=>s.trim().replace(/^"|"$/g,"")); };
 const parseAmt = (s) => { if(s==null) return null; s=String(s).replace(/[$,\s]/g,""); if(s==="") return null; let neg=false; if(/^\(.*\)$/.test(s)){neg=true;s=s.replace(/[()]/g,"");} const n=parseFloat(s); if(isNaN(n)) return null; return neg?-Math.abs(n):n; };
-const normDate = (s) => { if(!s) return ""; s=String(s).trim(); let m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/); if(m){let[,a,b,y]=m; if(y.length===2)y="20"+y; return `${y}-${String(a).padStart(2,"0")}-${String(b).padStart(2,"0")}`;} m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0]; const d=new Date(s); return isNaN(d.getTime())?s:d.toISOString().slice(0,10); };
+const normDate = (s) => { if(!s) return ""; s=String(s).trim(); let m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/); if(m){let[,a,b,y]=m; if(y.length===2)y="20"+y; return `${y}-${String(a).padStart(2,"0")}-${String(b).padStart(2,"0")}`;} m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0]; const d=new Date(s); return isNaN(d.getTime())?s:ymdLocal(d); };   // C439 — local calendar date, never the UTC slice (C290)
 function parseBankCSV(text){
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
   if(!lines.length) return [];
