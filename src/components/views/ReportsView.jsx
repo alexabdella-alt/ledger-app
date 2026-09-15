@@ -240,6 +240,10 @@ export default function ReportsView() {
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
+                {/* C441 — a custom range whose start is after its end matches nothing and read as "$0.00" with no explanation */}
+                {reportRange === "custom" && reportDateFrom && reportDateTo && reportDateFrom > reportDateTo && (
+                  <div data-range-inverted style={{ marginTop: 8, fontSize: 12.5, color: "var(--sc-warning)" }}>The start date is after the end date, so nothing is in this range — swap them to see your figures.</div>
+                )}
 
                 {/* Depreciation auto-posts silently when due (App.jsx autoPostDepreciation) — the
                     owner should never see the system narrate a bookkeeping action it performed on
