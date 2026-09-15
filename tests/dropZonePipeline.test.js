@@ -314,3 +314,15 @@ describe("(wiring) the drop reaches the pipeline, and the stash reaches storage"
     expect(app).toMatch(/markIntake\(intakeId, INTAKE_STATUS\.RECORDED, \{ detail: [\s\S]{0,120}journalEntryIds: jeIds \}\)/);
   });
 });
+
+// C459 — handleBankFile refuses a non-stored account up front (Bank Import's picker defaults
+// to bankAccounts[0], the reset placeholder, until the accounts arrive).
+describe("C459", () => {
+  it("handleBankFile refuses an account whose id is not a stored uuid, before any work", () => {
+    const app = fs.readFileSync("src/App.jsx", "utf8");
+    const i = app.indexOf("const handleBankFile = async (file, account = null");
+    const head = app.slice(i, i + 1200);
+    expect(head).toMatch(/if \(account && !isDbId\(account\.id\)\) \{[^\n]*return; \}/);
+    expect(head.indexOf("!isDbId(account.id)")).toBeLessThan(head.indexOf('validateUpload(file, "bank")'));
+  });
+});

@@ -6649,6 +6649,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const handleBankFile = async (file, account = null, { intakeId: callerIntakeId = null } = {}) => {
     if (!file) return;
+    // C459 — the account must be a STORED one. Bank Import's picker defaults to
+    // `bankAccounts[0]`, which is the reset placeholder ({ id: "default" }) until the
+    // company's accounts arrive or when their read failed; a statement imported against it
+    // booked its lines to Cash and then lost the statement row on a non-uuid insert.
+    if (account && !isDbId(account.id)) { showNotification("Your bank accounts haven't finished loading, so this statement can't be imported yet — give it a moment and try again. Nothing was changed.", "error"); return; }
     const v = validateUpload(file, "bank");   // size + type guard (CR-34)
     if (!v.ok) { showNotification(v.error, "error"); return; }
     if (!(await guardImport(file, "bank_statement"))) return;   // misroute guard
