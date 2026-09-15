@@ -91,6 +91,7 @@ export function ownerTrustState({
   // owner's trust panel.
   completenessChecked = true,
   signoffsChecked = true,       // C410 — did the sign-off read run? false → we cannot say what is signed
+  anomaliesChecked = true,      // C418 — did the unusual-activity read run? false → "nothing wrong" cannot be said
   // ── "Is there anything to evaluate yet?" signals (the false-green-on-empty fix). ──
   // A brand-new company with NO journal entries and NO completed setup has nothing to
   // evaluate — every net trivially "clears" (zero failures out of zero checks), which is
@@ -224,6 +225,11 @@ export function ownerTrustState({
     correctText = `${confidenceCount === 1 ? "One transaction needs" : `${confidenceCount} transactions need`} a quick answer from you.`;
     correctStateVal = "attention";
     nudge = { kind: "confidence", count: confidenceCount, text: `${confidenceCount === 1 ? "Answer 1 quick question" : `Answer ${confidenceCount} quick questions`}` };
+  } else if (!anomaliesChecked) {
+    // C418 — O98 on the "nothing wrong" line: a failed anomaly read is `[]`, the same as a
+    // clean month, and the scan (correctly) does not run over it. Say we could not check.
+    correctText = "We couldn't check for unusual activity just now — reload to try again.";
+    correctStateVal = "info";
   } else if (!anomaliesOk) {
     // Something unusual is open (e.g. a possible duplicate payment). Not an owner task —
     // the accountant reviews it — so honest, reassuring, and NOT green. No jargon.
@@ -243,7 +249,7 @@ export function ownerTrustState({
     correctText = "Nothing needs your attention — your books are correct and up to date.";
     correctStateVal = "ok";
   }
-  const correctOk = asksOk && confidenceOk && accuracyOk && !bankOverdue && anomaliesOk;
+  const correctOk = asksOk && confidenceOk && accuracyOk && !bankOverdue && anomaliesOk && anomaliesChecked;
 
   // ── Overall — never all_clear unless the three sign-off nets clear AND the books are matched
   //    to the bank AND no open HIGH anomaly AND nothing's mid-flight. Anomalies are NOT part
@@ -252,7 +258,7 @@ export function ownerTrustState({
   //    bug). Bank-not-matched / in-flight docs → in_progress; a short net or open anomaly →
   //    attention. ──
   let overall, headline;
-  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked || !signoffsChecked || unreadableCount > 0 || accountantCount > 0) {   // C369/C372 — an unread or undecided file is not "up to date"
+  if (!evalr.ok || !anomaliesOk || !asksOk || !completenessChecked || !signoffsChecked || !anomaliesChecked || unreadableCount > 0 || accountantCount > 0) {   // C369/C372 — an unread or undecided file is not "up to date"
     // O121 — `asksOk` is gated HERE explicitly, for the same reason `anomaliesOk` is: the
     // clarification queue is not part of `evaluateSignOff`'s three doc/confidence/accuracy
     // nets, so without naming it the header would reach `all_clear` with questions open.
@@ -280,7 +286,7 @@ export function ownerTrustState({
       correct: { ok: correctOk, state: correctStateVal, text: correctText },
     },
     nudge,                         // at most one gentle "needs you" | null
-    nets: { completeness: capturedOk, confidence: confidenceOk, accuracy: accuracyOk, bankMatched: !bankOverdue, noAnomalies: anomaliesOk, signOffOk: evalr.ok },
+    nets: { completeness: capturedOk, confidence: confidenceOk, accuracy: accuracyOk, bankMatched: !bankOverdue, noAnomalies: anomaliesOk && anomaliesChecked, signOffOk: evalr.ok },
   };
 }
 

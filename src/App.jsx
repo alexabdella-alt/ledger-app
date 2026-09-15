@@ -1150,7 +1150,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setRecurringSuggestions([]);
     dismissedRecurringRef.current = new Set();   // re-read for the incoming company by the scan (C389)
     // Anomalies, notifications, onboarding UI
-    applyAnomalyRows([]); anomaliesLoadedRef.current = false; anomalyScanBusyRef.current = false;
+    applyAnomalyRows([]); anomaliesLoadedRef.current = false; anomalyScanBusyRef.current = false; setAnomaliesLoadOk(true);
     setAnomalyComments([]);                 // §8 — company-scoped state is cleared on switch
     setFiledDeadlines({});
     setStatementExceptions([]); setStatementExceptionsLoadFailed(false);   // C186
@@ -2191,6 +2191,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [anomalyRows, setAnomalyRows] = useState([]);
   const anomalyRowsRef = useRef([]);
   const anomaliesLoadedRef = useRef(false);
+  // C418 — did the anomaly read RUN? `[]` from a failed read and `[]` from a clean company are
+  // the same value; the trust header must not say "nothing needs your attention" over the first.
+  const [anomaliesLoadOk, setAnomaliesLoadOk] = useState(true);
   const anomalyScanBusyRef = useRef(false);
   const applyAnomalyRows = (rows) => { const r = Array.isArray(rows) ? rows : []; anomalyRowsRef.current = r; setAnomalyRows(r); };
   const anomalies = useMemo(
@@ -2204,13 +2207,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const cid = companyId || currentCompany?.id;
     if (!cid) return;
     try {
-      const { data } = await supabase.from("anomalies").select("*")
+      const { data, error } = await supabase.from("anomalies").select("*")
         .eq("company_id", cid)
         .or(`status.eq.open,status.eq.dismissed,resolution.eq.${ANOMALY_RESOLUTION.ATTESTED}`)
         .order("created_at", { ascending: false });
       if (!stillOn(cid)) return;   // C413 — a late result for a company we have left
-      if (Array.isArray(data)) { applyAnomalyRows(data); anomaliesLoadedRef.current = true; }
-    } catch { /* table may not exist yet (pre-056) — degrade gracefully */ }
+      if (error) { console.warn("[anomalies] load failed:", error.message); setAnomaliesLoadOk(false); return; }   // C418
+      if (Array.isArray(data)) { applyAnomalyRows(data); anomaliesLoadedRef.current = true; setAnomaliesLoadOk(true); }
+    } catch (e) { console.warn("[anomalies] load error:", e?.message || e); if (stillOn(cid)) setAnomaliesLoadOk(false); }
   };
 
   // Reconcile the freshly-detected set against the table: INSERT new open rows, AUTO-RESOLVE
@@ -4780,8 +4784,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       openClarifications: (clarificationQueue || []).length + heldQuestions.length,
       completenessChecked: intakeLoadOk,   // O98 — a check that did not run is not a pass
       signoffsChecked: signoffsLoadOk,      // C410 — same rule for the sign-off read
+      anomaliesChecked: anomaliesLoadOk,    // C418 — and for the unusual-activity read
     });
-  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount, clarificationQueue, intakeLoadOk, signoffsLoadOk]);
+  }, [controlTotals, invoices, intakeRows, unknownDocs, reviewedThrough, bankMatch, companySettings, bankAccounts, openingBalances, onboardingUploadDone, openHighAnomalyCount, clarificationQueue, intakeLoadOk, signoffsLoadOk, anomaliesLoadOk]);
 
   // ── O83 SIGN-OFF READINESS (single source) — "can THIS period be attested?" ──
   // Preconditions (non-vacuous: a period with nothing to check is NOT ready) + the four
