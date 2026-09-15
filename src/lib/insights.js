@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { fmtSignedMoney, ymdLocal } from "./format";
+import { isCancelledOrCancelling } from "./gl";
 import { classifyCadence, typicalIntervalDays, isOffRhythm, offRhythmCopy, countMismatchCopy, periodOf, FLAT_SD_RATIO } from "./recurringVendor.js";
 import { couldBeCapital } from "./clarify";
 import { hasAttachedInvoice } from "./invoicePayment.js";   // C332 — one definition of "this charge already carries its invoice"
@@ -216,7 +217,12 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
   const ymd = d => String(d || "").slice(0, 10);
   const subjectKey = i => `${ymd(i && i.date)}:${cents(i && i.amount)}`;
 
-  const expenses = (invoices || []).filter(i => isLive(i) && i.date && isExpenseCode(i.gl_code) && (Number(i.amount) > 0));
+  // C471 — a canceled entry and its correction are not evidence of a spending pattern.
+  // The correction flattens as an expense row of its own (+amount, same vendor, same
+  // account), so without this the pair read as two charges: a duplicate card when the
+  // correction came within a week, a large-charge card on the correction, and both halves
+  // in every vendor and category baseline.
+  const expenses = (invoices || []).filter(i => isLive(i) && !isCancelledOrCancelling(i) && i.date && isExpenseCode(i.gl_code) && (Number(i.amount) > 0));
 
   // Group recent expenses by normalized vendor (used by spike / rapid / missing).
   const byVendor = {};
