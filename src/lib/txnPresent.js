@@ -13,7 +13,7 @@
 //   settleAction : "pay" | "collect" | null — show a settle button ONLY on a genuinely
 //                  OPEN bill/invoice; never on a settlement or an already-paid/collected item
 // ─────────────────────────────────────────────────────────────────────────────
-import { glIsRevenue, glIsExpense, isCancelledOrCancelling } from "./gl";
+import { glIsRevenue, glIsExpense, isCancelledOrCancelling, isReversalEntry } from "./gl";
 
 const eq = (a, b) => a != null && b != null && String(a) === String(b);
 
@@ -37,7 +37,12 @@ export function classifyTxn(inv = {}, { apCode, arCode } = {}) {
   // Money direction. For a settlement the kind is authoritative (collection in, payment out);
   // for everything else the P&L nature is correct (revenue in, expense out) and the cash leg
   // already agrees (a direct deposit flattens to a 4xxx revenue primary).
-  const inflow = settle ? settle === "ar_collection" : isRev;
+  // C470 — a correction mirrors the entry it cancels, so its P&L line is a CREDIT to an
+  // expense (or a debit to revenue): money direction is the opposite of what the line's
+  // account says. Without the flip a correction of a $500 purchase listed as "−$500 · Paid"
+  // — a second purchase, on the screen where the first one is struck through.
+  const correction = isReversalEntry(inv);
+  const inflow = settle ? settle === "ar_collection" : correction ? !isRev : isRev;
 
   // Account to display. A collection's primary leg is Cash — show the A/R it CLEARED (the
   // offset) instead, which is what the entry is about. A payment's primary already IS the A/P.
@@ -55,12 +60,13 @@ export function classifyTxn(inv = {}, { apCode, arCode } = {}) {
     else if (onAR && isRev && inv.payment_status !== "collected") settleAction = "collect";
   }
 
-  return { settle, inflow, account, settleAction };
+  return { settle, inflow, account, settleAction, correction };
 }
 
 // Plain-language status for a non-accountant: Open / Received / Paid (reversed/voided/review
 // are handled by the caller, which has the reversal index). Tone keys into the pill colors.
 export function txnStatus(inv = {}, cls = {}) {
+  if (cls.correction) return { label: "Correction", tone: "info" };   // C470 — never "Paid"
   if (cls.settleAction) return { label: "Open", tone: "warning" };
   if (cls.inflow) return { label: "Received", tone: "success" };
   return { label: "Paid", tone: "info" };

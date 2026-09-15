@@ -57,6 +57,6 @@ describe("C467 · every removal door refuses it", () => {
   });
   it("the panel shows a sentence in place of Delete, ahead of the already-corrected branch", () => {
     expect(panel).toMatch(/sel\.source === "opening_balance"\s*\n[^\n]*\n\s*\? <span data-no-remove/);
-    expect(panel.indexOf('data-no-remove')).toBeLessThan(panel.indexOf("? <button disabled title={`Already corrected"));
+    expect(panel.indexOf("data-no-remove")).toBeLessThan(panel.indexOf("? <button disabled title={`Already removed"));
   });
 });

@@ -128,7 +128,8 @@ export default function BooksView() {
   // Reversed / Needs Review). No raw "· BANK_TRANSFER" technical suffix in the list.
   const statusBadge = (i) => {
     const rev = reversalFor(revIdx, i);
-    if (rev) return <span style={pill("var(--sc-error)")} title={`Reversed${rev.date?` on ${fmtDate(rev.date)}`:""}`}>↩ Reversed{rev.date?` · ${fmtDate(rev.date)}`:""}</span>;
+    // C470 — one word for one state: the panel says "Removed · DATE", so does the list.
+    if (rev) return <span style={pill("var(--sc-error)")} title={`Removed${rev.date?` on ${fmtDate(rev.date)}`:""} — a correction dated that day cancels it`}>↩ Removed{rev.date?` · ${fmtDate(rev.date)}`:""}</span>;
     if (i.status==="voided") return <span style={pill("var(--sc-text-mut)")}>Voided</span>;
     if (needsReview(i)) return <span style={pill("var(--sc-warning)")}>Needs Review</span>;
     const cls = classifyTxn(i, { apCode, arCode });

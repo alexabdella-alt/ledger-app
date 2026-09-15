@@ -6,7 +6,7 @@ import { initials, vendorColor, fmtDate, fmtMoney, todayLocal } from "../lib/for
 import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind } from "../lib/txnPresent";
-import { isCancelledOrCancelling } from "../lib/gl";
+import { isCancelledOrCancelling, isReversalEntry } from "../lib/gl";
 import { badge } from "../lib/ui";
 import { isDurableDocId } from "../lib/docLibrary";
 import { planRecodeSweep } from "../lib/recodeSweep";
@@ -41,6 +41,8 @@ const isExpense = i => (i.gl_code ? glIsExpense(i.gl_code) : i.type === "expense
 // tones (lib/ui) so the tint + border are token-driven, not hand-mixed hex+alpha.
 export function txnStatusBadge(i) {
   if (i.status === "voided") return <span style={badge("neutral")}>Voided</span>;
+  if (isReversalEntry(i)) return <span style={badge("info")}>Correction</span>;   // C470 — not "Booked"
+  if (i.reversed_by) return <span style={badge("neutral")}>Removed</span>;       // C470 — not "Paid · ACH" beside a Removed marker
   if (i.payment_status === "paid") return <span style={badge("info")}>Paid · {methodLabel(i.payment_method_used).split(" ")[0]}</span>;
   if (i.payment_status === "collected") return <span style={badge("success")}>Collected</span>;
   if (needsReview(i)) return <span style={badge("warning")}>Needs Review</span>;
@@ -448,7 +450,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                     // C467 — not offered, not refused on click (O124): the starting-balances screen owns this entry.
                     ? <span data-no-remove style={{ fontSize: 12, color: "var(--sc-text-mut)", alignSelf: "center" }}>Starting balances are changed on the starting-balances screen, not here.</span>
                     : reversedInfo
-                    ? <button disabled title={`Already corrected${reversedInfo.date ? ` on ${fmtDate(reversedInfo.date)}` : ""}`} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", color: "var(--sc-text-2)", cursor: "not-allowed" }}>Already removed</button>
+                    ? <button disabled title={`Already removed${reversedInfo.date ? ` on ${fmtDate(reversedInfo.date)}` : ""}`} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", color: "var(--sc-text-2)", cursor: "not-allowed" }}>Already removed</button>
                     : <button onClick={() => doRemove(sel)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-error-soft)", color: "var(--sc-error)", cursor: "pointer" }}>Delete</button>
                 )}
               </>
