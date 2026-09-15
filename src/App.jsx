@@ -58,6 +58,7 @@ import { settleIntakeAfterAnswers, ANSWER_OUTCOME } from "./lib/clarificationSet
 import { findContactForName } from "./lib/contactMatch";
 import { unknownDocRow, unknownDocFromRow, isDbUnknownDocId, UNKNOWN_DOC_SELECT } from "./lib/unknownDocs";
 import { onboardingSteps } from "./lib/onboarding";
+import { notificationTarget } from "./lib/notificationDoor";
 import { visibleNav, isReviewerSeat, navRedirect, activeNavItem, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
@@ -2377,12 +2378,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (n.type === "monthly_report") setReportType("monthly"); // land on the archive tab
     // `txn:<id>` link targets open the flagged entry in the detail panel (e.g. a
     // duplicate-payment alert) instead of a bare view string.
-    const txnLink = typeof n.link_view === "string" && n.link_view.startsWith("txn:") ? n.link_view.slice(4) : null;
+    // C381 — the row is shared by every seat on the company; the door is resolved for the
+    // seat that clicked (a gated view lands Home, never a bounce). See notificationDoor.js.
+    const target = notificationTarget(n, { role: userRole, isPlatformAdmin, previewAsOwner });
+    const txnLink = target.kind === "txn" ? target.id : null;
     if (txnLink) {
       const inv = (invoices || []).find(i => String(i.id) === String(txnLink) || String(i.db_entry_id) === String(txnLink));
       if (inv) { setReturnTo({ view: "home" }); setSelectedInvoice(inv); setView("detail"); }
       else setView("home");
-    } else if (n.link_view) setView(n.link_view);
+    } else setView(target.view);
     setNotifOpen(false);
   };
   // Check all triggers and create notifications (deduped) — run after data loads.
@@ -2399,7 +2403,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const lastRecon = (reconciliationsRef.current || []).map(r => r.created_at || r.statement_date).filter(Boolean).sort().pop();
       const reconAge = lastRecon ? (Date.now() - new Date(lastRecon)) / 86400000 : Infinity;
       if (reconAge > 35) {
-        createNotification({ type: "reconciliation", title: lastRecon ? `Books not matched to your bank in ${Math.round(reconAge)} days` : "Your books haven't been matched to your bank yet", description: "Run a quick bank match to make sure everything is accounted for.", link_view: "recon" });
+        createNotification({ type: "reconciliation", title: lastRecon ? `Books not matched to your bank in ${Math.round(reconAge)} days` : "Your books haven't been matched to your bank yet", description: "Drop your latest bank statement and we'll match it to your books.", link_view: "recon" });
       }
       // Items waiting for review.
       const pendingClar = (clarificationQueueRef.current || []).filter(c => !c.resolved).length;
@@ -3891,7 +3895,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (incomplete.length) {
       // Don't auto-post something wrong — surface it to the CPA review side (O49/O50).
       logAudit("depreciation_incomplete", `${incomplete.length} due depreciation row(s) are incomplete/ambiguous — NOT auto-posted; needs review`);
-      try { createNotification?.({ type: "needs_review", title: `${incomplete.length} depreciation ${incomplete.length === 1 ? "entry" : "entries"} need a look`, description: "A scheduled depreciation is due but its schedule is incomplete — review the asset before it posts.", link_view: "review" }); } catch {}
+      try { createNotification?.({ type: "needs_review", title: `${incomplete.length} scheduled asset ${incomplete.length === 1 ? "entry needs" : "entries need"} a look`, description: "A scheduled cost spread is due but its schedule is incomplete — the asset needs a look before it posts.", link_view: "review" }); } catch {}
     }
     if (posted > 0) {
       logAudit("depreciation_autoposted", `Auto-posted ${posted} due depreciation ${posted === 1 ? "entry" : "entries"}${assetsToFlip.length ? ` · ${assetsToFlip.length} asset(s) fully depreciated` : ""}`);
@@ -5109,7 +5113,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // into one (the route guard would only bounce them back).
           if (navSeat.isReviewerSeat) {
             showNotification("Bank statement uploaded — review & book it in Bank Import (Books → Bank Import).");
-            try { createNotification?.({ type:"bank_import", title:"Bank statement ready to import", description:"Open Bank Import to pick the account, review the matches, and book it.", link_view:"bank" }); } catch {}
+            try { createNotification?.({ type:"bank_import", title:"Bank statement ready to import", description:"We saved it — which account it belongs to needs choosing before it's added.", link_view:"bank" }); } catch {}
           } else {
             showNotification("Got it — we've saved your statement for your accountant to add to your books.");
             try { createNotification?.({ type:"bank_import", title:"Your statement is in", description:"Your accountant will add these transactions to your books.", link_view:"home" }); } catch {}
@@ -6594,7 +6598,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
                 if (note) await supabase.from("anomalies").upsert(note, { onConflict: "company_id,fingerprint", ignoreDuplicates: true });
               } catch (e) { console.warn("[opening] note not persisted:", e?.message || e); }
               logAudit("opening_balance_discrepancy", `Statement opening ${fmtSignedMoney(disc.statedOpening)} disagrees with recorded ${fmtSignedMoney(disc.recordedOpening)} for ${acctName} (off by ${fmtSignedMoney(disc.diff)})`, null, { accountCode: cashCode, diff: disc.diff });
-              try { createNotification?.({ type: "reconciliation", title: "Opening balance doesn't match your statement", description: `Your books show a different starting balance than this statement for ${acctName}. Open Review to resolve.`, link_view: "review" }); } catch {}
+              try { createNotification?.({ type: "reconciliation", title: "Opening balance doesn't match your statement", description: `Your books show a different starting balance than this statement for ${acctName}.`, link_view: "review" }); } catch {}
             }
           }
         }
@@ -8725,7 +8729,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               <div style={{ flex:1, overflowY:"auto" }}>
                 {notifications.length===0 ? (
                   <div style={{ padding:"48px 24px", textAlign:"center", color:"var(--sc-text-mut)", fontSize:13, lineHeight:1.6 }}>
-                    <div style={{ fontSize:32, marginBottom:10 }}>🔔</div>You're all caught up. New alerts about taxes, anomalies, and reviews will show up here.
+                    <div style={{ fontSize:32, marginBottom:10 }}>🔔</div>You're all caught up. New alerts about taxes, unusual activity, and things to check will show up here.
                   </div>
                 ) : notifications.map(n => {
                   const m = META[n.type] || { icon:"•", color:"var(--sc-text-2)" };
