@@ -5519,11 +5519,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           let bookPromises = [];
           if (highConfidence.length > 0) {
             setInvoices(prev => [...highConfidence, ...prev]);
-            bookPromises = highConfidence.map(inv => {
-              logAudit("invoice_booked", `${inv.vendor} · $${(inv.amount||0).toFixed(2)} → ${inv.gl_name} (${inv.confidence}% confidence · ${inv.date})`, null, { vendor: inv.vendor, amount: inv.amount, date: inv.date, gl_code: inv.gl_code, gl_name: inv.gl_name });
-              createOrUpdateContact(inv._contact);
-              return bookToDb(inv);
-            });
+            // C393 — the audit row and the contact follow the ledger's answer, not the intent:
+            // a refused booking used to leave "invoice_booked" in the audit trail (C240).
+            bookPromises = highConfidence.map(inv => bookToDb(inv).then(jeId => {
+              if (jeId) {
+                logAudit("invoice_booked", `${inv.vendor} · $${(inv.amount||0).toFixed(2)} → ${inv.gl_name} (${inv.confidence}% confidence · ${inv.date})`, null, { vendor: inv.vendor, amount: inv.amount, date: inv.date, gl_code: inv.gl_code, gl_name: inv.gl_name });
+                createOrUpdateContact(inv._contact);
+              }
+              return jeId;
+            }));
             checkWatchTriggers(highConfidence, unknownDocs);
           }
 

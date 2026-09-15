@@ -253,10 +253,15 @@ function ClarificationCard({ item }) {
   // path here fired `bookToDb` unawaited and showed "✓ Booked" regardless (C194's family,
   // inside the card the owner answers), and none of them told the document's intake row
   // that its question was answered — so the row read "awaiting clarification" forever.
-  const bookAnswer = async (finalInv, successText) => {
+  // C393 — the audit row is written HERE, after the ledger answered. Every caller used to
+  // write "invoice_booked" and then call this, so a refused booking (signed month, cutoff,
+  // RPC) left a booking in the audit trail that never happened (C240's shape, four times on
+  // one card). `audit` is { detail, meta } and is recorded only on a landed id.
+  const bookAnswer = async (finalInv, successText, audit = null) => {
     setInvoices(prev => [finalInv, ...prev]);
     const jeId = await bookToDb(finalInv);   // rolls the row back and says why on a refusal
     if (!jeId) return false;                 // the card stays open — the refusal was said by the writer
+    if (audit) logAudit("invoice_booked", audit.detail, null, audit.meta || null);
     if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
     settleClarification?.(item, { kind: "booked", jeId });
     finishWithSuccess(successText);
@@ -350,8 +355,7 @@ function ClarificationCard({ item }) {
       finishWithSuccess("Filed with the payment we already recorded", "muted");
     } else if (value === "different") {
       const finalInv = { ...inv, confidence: 100, status: "booked" };
-      logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — a separate purchase from the payment on ${ex.date || "an earlier date"})`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      bookAnswer(finalInv, describeBooking(finalInv));
+      bookAnswer(finalInv, describeBooking(finalInv), { detail: `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — a separate purchase from the payment on ${ex.date || "an earlier date"})`, meta: { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name } });
     } else {
       // ★ DEFER — BOOKS NOTHING, and that is exactly what routes it. Nothing booked
       // leaves the document's intake row at `held_for_review` (App.jsx, the invoice
@@ -374,13 +378,11 @@ function ClarificationCard({ item }) {
     } else if (value === "unsure") {
       // Not sure — book it but flag for review so it surfaces in the review queue.
       const finalInv = { ...inv, confidence: 100, status: "booked", approval_status: "flagged", duplicate_flag: true, duplicate_reason: "Possible duplicate — user wasn't sure" };
-      logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (flagged: possible duplicate — needs review)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      bookAnswer(finalInv, `${describeBooking(finalInv)} Flagged as a possible duplicate.`);
+      bookAnswer(finalInv, `${describeBooking(finalInv)} Flagged as a possible duplicate.`, { detail: `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (flagged: possible duplicate — needs review)`, meta: { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name } });
     } else {
       // New charge — book it normally.
       const finalInv = { ...inv, confidence: 100, status: "booked" };
-      logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — different charge)`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
-      bookAnswer(finalInv, describeBooking(finalInv));
+      bookAnswer(finalInv, describeBooking(finalInv), { detail: `${finalInv.vendor} · ${money(finalInv.amount)} → ${finalInv.gl_name} (confirmed — different charge)`, meta: { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: finalInv.gl_code, gl_name: finalInv.gl_name } });
     }
   };
 
@@ -404,11 +406,11 @@ function ClarificationCard({ item }) {
     };
     if (bp && /project/i.test(bp)) finalInv.notes = (finalInv.notes ? finalInv.notes + " · " : "") + "Project expense";
     if (answers.vendor) finalInv._contact = { ...(inv._contact || {}), name: answers.vendor };
-    logAudit("invoice_booked", `${finalInv.vendor} · ${money(finalInv.amount)} → ${chosen.name} (${audit})`, null, { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: chosen.code, gl_name: chosen.name });
     // Structured learning signal, keyed to the company (O64-68). Captured now; the full
     // learning store (decay curve, cross-vendor generalization) is the O64-68 build.
+    // (The answer WAS given whether or not the booking lands, so this one may precede the write.)
     if (answer) logAudit("ai_clarification_learned", `Learned for this business: "${answer}" → ${finalInv.vendor || "vendor"} booked as ${finalInv.gl_name}`, null, { vendor: finalInv.vendor, answer, gl_code: chosen.code, gl_name: chosen.name });
-    bookAnswer(finalInv, describeBooking(finalInv));
+    bookAnswer(finalInv, describeBooking(finalInv), { detail: `${finalInv.vendor} · ${money(finalInv.amount)} → ${chosen.name} (${audit})`, meta: { vendor: finalInv.vendor, amount: finalInv.amount, date: finalInv.date, gl_code: chosen.code, gl_name: chosen.name } });
   };
 
   // ── Free-text booking ("describe it in your own words") ──
