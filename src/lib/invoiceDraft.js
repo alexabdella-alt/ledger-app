@@ -96,3 +96,15 @@ export function customerDefaultsFor(contact, draft = {}) {
   }
   return out;
 }
+
+// C511 — the next invoice number was `INV-${count + 1}`: a persist that failed (C350), a
+// removed invoice, or a custom number in the list handed the SAME number to the next
+// customer-facing document. It is one past the highest INV-number seen, never a count.
+export function nextInvoiceNumber(sentInvoices = []) {
+  let max = 0;
+  for (const inv of sentInvoices || []) {
+    const m = String(inv?.invoice_number || "").match(/^INV-(\d+)$/i);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `INV-${String(max + 1).padStart(4, "0")}`;
+}

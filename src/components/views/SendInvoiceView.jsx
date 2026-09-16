@@ -8,7 +8,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal, deriveDueDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
-import { newInvoiceDraft, emptyInvoiceLine, draftBase , invoiceSendBlockers, invoiceTotalOf, invoiceDueLabel, customerDefaultsFor, INVOICE_TERM_OPTIONS } from "../../lib/invoiceDraft";
+import { newInvoiceDraft, emptyInvoiceLine, draftBase, invoiceSendBlockers, invoiceTotalOf, invoiceDueLabel, customerDefaultsFor, INVOICE_TERM_OPTIONS, nextInvoiceNumber } from "../../lib/invoiceDraft";
 import { arInvoiceRows, isDbInvoiceId } from "../../lib/arInvoiceRows";
 import { contactDbId } from "../../lib/contactIds";
 import { checkedRowUpdate } from "../../lib/checkedWrite";
@@ -25,7 +25,7 @@ export default function SendInvoiceView() {
   const sendGate = React.useRef(makeOneInFlight({ onBusy: setSending }));
 
             const fmt = fmtMoney;
-            const nextNum = `INV-${String((sentInvoices.length+1)).padStart(4,"0")}`;
+            const nextNum = nextInvoiceNumber(sentInvoices);   // C511 — one past the highest, never a count
             const emptyLine = emptyInvoiceLine;
             // Render-time draft: always a complete object. tax_rate pre-fills from the
             // saved company default (migration 042), overridable per invoice.
