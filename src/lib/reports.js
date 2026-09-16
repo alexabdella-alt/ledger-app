@@ -91,7 +91,8 @@ export const signedPL = (inv) => {
 // A/R balance (carried as `ar_amount`), not the ex-tax revenue (`amount`). AP/untaxed
 // rows have no ar_amount → fall back to amount. Keeps AR aging/total tied to GL A/R.
 export const owedAmount = i => num(i && i.ar_amount != null ? i.ar_amount : i && i.amount);
-const daysOverdue = (dueDate, now) => dueDate ? Math.floor((now - new Date(String(dueDate) + "T12:00:00")) / 86400000) : 0;
+// Exported (C501): anchored at LOCAL noon so a `YYYY-MM-DD` due date never reads a day early from a US zone.
+export const daysOverdue = (dueDate, now) => dueDate ? Math.floor((now - new Date(String(dueDate) + "T12:00:00")) / 86400000) : 0;
 
 // ── SHARED LEG-SIGN PRIMITIVES (the one place debit/credit → sign lives) ──────
 // Normal-balance by code first digit: assets(1) & expenses(5–8) are debit-normal

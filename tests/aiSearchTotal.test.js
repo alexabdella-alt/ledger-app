@@ -56,3 +56,20 @@ describe("C500", () => {
     expect(r.total).toBe(1299);
   });
 });
+
+// C501 — days_overdue was `now − new Date("YYYY-MM-DD")`, a UTC-midnight parse against a local
+// clock: from any US zone an invoice due today read "1 day overdue" from 7 pm. Noon-anchored now.
+describe("C501", () => {
+  it("an invoice due today is not overdue at 7 pm local on its due date; it is the next afternoon", async () => {
+    // The defect only shows from a zone BEHIND UTC (C290: CI runs UTC, where the mutation survives).
+    process.env.TZ = "America/Chicago";
+    expect(new Date("2026-08-01T12:00:00").getTimezoneOffset()).toBe(300);   // the zone change took, or this proves nothing
+    const inv = { id: "d1", vendor: "Beta", amount: 100, date: "2026-07-01", due_date: "2026-08-01", gl_code: "4000", secondary_gl_code: "1100", type: "revenue", status: "posted", payment_status: "unpaid" };
+    const ctx = { getLedger: async () => [inv], getAccountByRole: () => null };
+    const at = (s) => ({ ...ctx, now: new Date(s) });
+    const evening = await executeAITool("get_overdue_invoices", { type: "ar", days_overdue: 1 }, at("2026-08-01T19:00:00"));
+    expect(evening.invoices).toHaveLength(0);
+    const nextDay = await executeAITool("get_overdue_invoices", { type: "ar", days_overdue: 1 }, at("2026-08-02T13:00:00"));
+    expect(nextDay.invoices.map((x) => x.days_overdue)).toEqual([1]);
+  });
+});

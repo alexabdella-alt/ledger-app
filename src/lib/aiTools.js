@@ -16,7 +16,7 @@ import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
-import { isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals, computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables, owedAmount } from "./reports.js";
+import { isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals, computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables, owedAmount, daysOverdue } from "./reports.js";
 
 const isLive = isLiveEntry;                                  // the ONE shared liveness predicate
 const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s[0] === "6" || s[0] === "7" || s[0] === "8"; };
@@ -146,7 +146,7 @@ async function getFinancialSummary(input, ctx) {
 }
 
 async function getOverdueInvoices(input, ctx) {
-  const now = new Date();
+  const now = ctx.now instanceof Date ? ctx.now : new Date();   // injectable for tests; production never sets it
   const type = input.type || "both";
   const minDays = input.days_overdue || 1;
   const all = (await ctx.getLedger()).filter(isLive);
@@ -164,7 +164,7 @@ async function getOverdueInvoices(input, ctx) {
     if (!isAR && !isAP) continue;
     if (type === "ar" && !isAR) continue;
     if (type === "ap" && !isAP) continue;
-    const days = Math.floor((now - new Date(i.due_date)) / 86400000);
+    const days = daysOverdue(i.due_date, now);   // C501 — `new Date("YYYY-MM-DD")` is UTC midnight: from Chicago an invoice read "1 day overdue" at 7 pm on its due date
     if (days < minDays) continue;
     rows.push({ kind: isAR ? "ar" : "ap", vendor: i.vendor, amount: r2(owedAmount(i)), amount_display: money(owedAmount(i)), due_date: i.due_date, days_overdue: days, gl_name: i.gl_name });   // C500 — the receivable incl. tax, not the ex-tax revenue row
   }
