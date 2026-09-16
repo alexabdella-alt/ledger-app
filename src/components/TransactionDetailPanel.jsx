@@ -6,7 +6,7 @@ import { initials, vendorColor, fmtDate, fmtMoney, todayLocal } from "../lib/for
 import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind, entryTotalOf, entryLineCount } from "../lib/txnPresent";
-import { isCancelledOrCancelling, isReversalEntry } from "../lib/gl";
+import { isCancelledOrCancelling, isReversalEntry, settledBases } from "../lib/gl";
 import { badge } from "../lib/ui";
 import { isDurableDocId } from "../lib/docLibrary";
 import { planRecodeSweep } from "../lib/recodeSweep";
@@ -158,7 +158,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   // stale `type` flag says.
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
-  const cls = classifyTxn(sel, { apCode, arCode });
+  const cls = classifyTxn(sel, { apCode, arCode, settled: settledBases(invoices) });   // C528
   const settle = settlementKind(sel);
 
   const close = () => { setRecodeOpen(false); setPayOpen(false); onClose(); };

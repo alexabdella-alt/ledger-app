@@ -63,3 +63,27 @@ describe("C528 — linked-settled bills leave every open list", () => {
     expect([c.a, c.b, c.ties]).toEqual([300, 300, true]);
   });
 });
+
+// And the settle button: a bill a live payment links gets no Mark as Paid (O124 — not offered,
+// rather than refused on click), on the Transactions list and the panel's classifier.
+import { classifyTxn } from "../src/lib/txnPresent.js";
+import { settledBases } from "../src/lib/gl.js";
+import BooksView from "../src/components/views/BooksView.jsx";
+describe("C528 — no Mark as Paid on a linked-settled bill", () => {
+  const apRows = flattenJournalEntries([
+    je("b1", "2026-08-01", "Sysco – bill", [{ code: "5010", debit: 400 }, { code: "2000", credit: 400 }], { source: "universal_upload", payment_status: "unpaid" }),
+    je("p1", "2026-08-15", "Payment – Sysco", [{ code: "2000", debit: 400 }, { code: "1000", credit: 400 }], { source: "bank_import", import_metadata: { kind: "ap_payment", payment_for: "b1" }, payment_status: "paid" }),
+    je("b2", "2026-09-01", "Roma – bill", [{ code: "5010", debit: 300 }, { code: "2000", credit: 300 }], { source: "universal_upload", payment_status: "unpaid" }),
+  ], [...chart, { code: "5010", name: "Food Cost", category: "Expenses" }]);
+  const settled = settledBases(apRows);
+  it("the classifier withholds the action with the ledger's settled set, and offers it without", () => {
+    const b1 = apRows.find(r => r.id === "b1"), b2 = apRows.find(r => r.id === "b2");
+    expect(classifyTxn(b1, { apCode: "2000", arCode: "1100", settled }).settleAction).toBeNull();
+    expect(classifyTxn(b2, { apCode: "2000", arCode: "1100", settled }).settleAction).toBe("pay");
+    expect(classifyTxn(b1, { apCode: "2000", arCode: "1100" }).settleAction).toBe("pay");   // the flag alone still says pay — which is why the set is threaded
+  });
+  it("the Transactions list renders one Mark as Paid, for the open bill", () => {
+    const t = text(renderViewHtml(BooksView, { ...POPULATED, invoices: apRows, companyDataLoaded: true, getAccountByRole: (r) => [...chart, { code: "5010", name: "Food Cost", category: "Expenses" }].find(a => a.system_role === r) || null }));
+    expect((t.match(/Mark Paid/g) || []).length).toBe(1);
+  });
+});

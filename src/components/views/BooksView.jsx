@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, settledBases } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { planBulkRemoval } from "../../lib/signedPeriod";
@@ -29,6 +29,7 @@ export default function BooksView() {
   const scopedInvoices = vendorScoped && Array.isArray(filteredInvoices) ? filteredInvoices : invoices;
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
+  const settled = React.useMemo(() => settledBases(invoices), [invoices]);   // C528 — bills a live payment links get no Mark as Paid
   // ★★ C315 — THIS SCREEN BECAME CLIENT-FACING ON 2026-09-10 (C313) AND WAS WRITTEN FOR
   // A CPA. `cockpit` gates the three things on it that are the CPA's job rather than the
   // owner's record: hand-entering a transaction, the reconciliation history, and the
@@ -78,7 +79,7 @@ export default function BooksView() {
     // sign/status/Mark-Paid button (classifyTxn.settleAction==="pay" ⇒ booked to A/P, not a
     // settlement, not voided, not yet paid) so the tab and the row never disagree — no money-IN
     // collection can leak in, and direct-to-cash expenses (never payables) are excluded.
-    if (filter==="unpaid") return classifyTxn(i, { apCode, arCode }).settleAction === "pay";
+    if (filter==="unpaid") return classifyTxn(i, { apCode, arCode, settled }).settleAction === "pay";
     if (filter==="review") return needsReview(i) && i.status!=="voided";
     return true;
   });
@@ -139,7 +140,7 @@ export default function BooksView() {
     if (rev) return <span style={pill("var(--sc-error)")} title={`Removed${rev.date?` on ${fmtDate(rev.date)}`:""} — a correction dated that day cancels it`}>↩ Removed{rev.date?` · ${fmtDate(rev.date)}`:""}</span>;
     if (i.status==="voided") return <span style={pill("var(--sc-text-mut)")}>Voided</span>;
     if (needsReview(i)) return <span style={pill("var(--sc-warning)")}>Needs Review</span>;
-    const cls = classifyTxn(i, { apCode, arCode });
+    const cls = classifyTxn(i, { apCode, arCode, settled });
     const st = txnStatus(i, cls);
     const tone = st.tone==="success" ? "var(--sc-success)" : st.tone==="warning" ? "var(--sc-warning)" : "var(--sc-info)";
     return <span style={pill(tone)} title={i.payment_method_used ? `${st.label} · ${methodLabel(i.payment_method_used)}` : st.label}>{st.label}</span>;
@@ -300,7 +301,7 @@ export default function BooksView() {
               </td></tr>
             ) : rows.map((inv,idx)=>{
               // What this row actually IS — drives sign/color, account shown, and the action.
-              const cls = classifyTxn(inv, { apCode, arCode });
+              const cls = classifyTxn(inv, { apCode, arCode, settled });
               const reversedInfo = reversalFor(revIdx, inv);   // O8 — original was reversed
               return (
                 <React.Fragment key={inv.id}>
