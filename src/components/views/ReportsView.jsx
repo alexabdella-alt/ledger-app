@@ -895,7 +895,7 @@ export default function ReportsView() {
 
                     {/* ── KPIs (Item 33) ── */}
                     {reportType==="kpis" && (() => {
-                      const kpis = computeKPIs(invoices, { cashBalance: glCash });
+                      const kpis = computeKPIs(invoices, { cashBalance: glCash, arCode: getAccountByRole?.("accounts_receivable")?.code || null, apCode: getAccountByRole?.("accounts_payable")?.code || null });   // C496
                       const SC = { good:{c:"var(--sc-success)",bg:"var(--sc-success-soft)",b:"var(--sc-success-soft)",lbl:"Healthy"}, warn:{c:"var(--sc-warning)",bg:"var(--sc-warning-soft)",b:"var(--sc-warning-soft)",lbl:"Watch"}, bad:{c:"var(--sc-error)",bg:"var(--sc-error-soft)",b:"var(--sc-error-soft)",lbl:"Action needed"}, na:{c:"var(--sc-text-mut)",bg:"var(--sc-bg)",b:"var(--sc-border)",lbl:"—"} };
                       const trendIcon = { up:"↑", down:"↓", flat:"→" };
                       return (

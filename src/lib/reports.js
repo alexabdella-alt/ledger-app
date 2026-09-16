@@ -505,7 +505,7 @@ export function trialBalance(invoices, { includeVoided = false } = {}) {
 // ── KPIs (Item 33) ──────────────────────────────────────────────────────────
 // Each returns { key, label, value, display, status:"good"|"warn"|"bad"|"na",
 // explanation, trend:"up"|"down"|"flat"|null }. Divide-by-zero → status "na".
-export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}) {
+export function computeKPIs(invoices, { cashBalance = 0, now = new Date(), arCode = null, apCode = null } = {}) {
   const live = (invoices || []).filter(isLiveEntry);
   // TZ-safe month keys: derive from LOCAL date components, NEVER toISOString() (UTC). A local
   // end-of-month (endOfMonth("2026-05") = May 31 23:59 local) rolls into the NEXT month under
@@ -519,9 +519,14 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
   // Signed, BOTH-leg P&L sum (plLegs) → reversals AND intra-P&L reclasses net (CR-1 + F-3).
   const sumPL = (set, codeMatch) => set.reduce((s, i) => s + plLegs(i, codeMatch).reduce((a, l) => a + l.signed, 0), 0);
   const rev = set => sumPL(set, glIsRevenue), cogs = set => sumPL(set, isCOGS), opex = set => sumPL(set, isOpEx), exp = set => sumPL(set, glIsExpense);
-  const arOut = sum(live, arUnpaid);
+  // C496 — with the company's codes, what customers owe and what is due are the GL balances
+  // of A/R and A/P as of `now` (§12's single source, the figure the aging report and Bills
+  // to pay already show). Without codes: the flag lists, the receivable INCLUDING its sales
+  // tax (`owedAmount`, C454) — never the ex-tax revenue amount.
+  const asOf = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const arOut = arCode ? glAccountBalance(arCode, live, { asOf }) : live.filter(arUnpaid).reduce((s, i) => s + owedAmount(i), 0);
   const cash = num(cashBalance);
-  const apOut = sum(live, apUnpaid);
+  const apOut = apCode ? glAccountBalance(apCode, live, { asOf }) : sum(live, apUnpaid);
   const tm = inMonth(thisMonth), lm = inMonth(lastMonth);
   const trend = (cur, prev) => (cur == null || prev == null) ? null : (Math.abs(cur - prev) < 1e-9 ? "flat" : (cur > prev ? "up" : "down"));
   const out = [];
@@ -701,7 +706,7 @@ const endOfMonth = (period) => {
 const pctChange = (c, p) => (p === 0 ? null : r1(((c - p) / Math.abs(p)) * 100)); // null = no prior basis
 const momLine = (c, p) => ({ current: r2(c), prior: r2(p), change: r2(c - p), changePct: pctChange(c, p) });
 
-export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false, fiscalYearEnd = "12-31", apCode = null } = {}) {
+export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, reconciliations = [], anomalies = [], onboardingComplete = false, fiscalYearEnd = "12-31", apCode = null, arCode = null } = {}) {
   const live = (invoices || []).filter(isLiveEntry);
   const prior = priorPeriod(period);
   const monthEnd = endOfMonth(period);
@@ -746,7 +751,7 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
 
   const arT = computeAR(live, { now: monthEnd }), apT = computeAP(live, { now: monthEnd, apCode });
 
-  const kpis = computeKPIs(live, { cashBalance: cash, now: monthEnd })
+  const kpis = computeKPIs(live, { cashBalance: cash, now: monthEnd, arCode, apCode })
     .map(k => ({ key: k.key, label: k.label, display: k.display, status: k.status, trend: k.trend, explanation: k.explanation }));
   // Owner-facing plain-language health (businessHealth) — the 0–100 grade/score was removed
   // (C120); the monthly report must not resurrect it. Same GL-truth inputs.

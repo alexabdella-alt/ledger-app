@@ -21,7 +21,7 @@ export default function MonthlyReportsPanel() {
   // figures always tie and can never be a stale/empty stored snapshot. The `monthly_reports`
   // table is now only an OVERLAY for the AI-written executive summary (a nicer narrative than
   // the template); the numbers are never read from it.
-  const { supabase, currentCompany, setView, invoices, reconciliations, anomalies, companySettings, cashGlCodes } = useERP();
+  const { supabase, currentCompany, setView, invoices, reconciliations, anomalies, companySettings, cashGlCodes, getAccountByRole } = useERP();
   const [storedSummaries, setStoredSummaries] = React.useState({}); // period -> { summary, generated_at }
   const [openPeriod, setOpenPeriod] = React.useState(null);
   const [plView, setPlView] = React.useState("month");             // "month" | "ytd" — P&L scope toggle
@@ -58,6 +58,8 @@ export default function MonthlyReportsPanel() {
         anomalies: anomalies || [],
         onboardingComplete: companySettings?.onboardingComplete,
         fiscalYearEnd: companySettings?.fiscalYearEnd || "12-31",
+        // C496 — the codes make "you owe" / "owed to you" the GL balances (§12); this caller never passed them, so the panel disagreed with Home.
+        apCode: getAccountByRole?.("accounts_payable")?.code || null, arCode: getAccountByRole?.("accounts_receivable")?.code || null,
       });
       // Overlay the stored AI narrative ONLY if that snapshot is current (its figures still
       // match the live compute) — otherwise it's stale/poisoned and we keep the live template.

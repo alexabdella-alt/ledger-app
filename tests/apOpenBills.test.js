@@ -89,5 +89,12 @@ describe("an open bill is one with an A/P leg", () => {
     expect(ai).toMatch(/computeAP\([^)]*apCode/);
     expect(rep).toMatch(/computeAP\(live, \{ now: monthEnd, apCode \}\)/);
     expect(app).toMatch(/apCode: rc\("accounts_payable"\)/);
+    // C496 — the SECOND buildMonthlyReport caller, the panel on Reports, never passed the code
+    // and this pin never asked it to; and computeKPIs now takes both codes from both callers.
+    const panel = strip(readFileSync(new URL("../src/components/views/MonthlyReportsPanel.jsx", import.meta.url), "utf8"));
+    expect(panel).toMatch(/buildMonthlyReport\(period, \{[\s\S]*?apCode: getAccountByRole\?\.\("accounts_payable"\)\?\.code[\s\S]*?arCode: getAccountByRole\?\.\("accounts_receivable"\)\?\.code[\s\S]*?\}\)/);
+    expect(rep).toMatch(/computeKPIs\(live, \{ cashBalance: cash, now: monthEnd, arCode, apCode \}\)/);
+    const rv = strip(readFileSync(new URL("../src/components/views/ReportsView.jsx", import.meta.url), "utf8"));
+    expect(rv).toMatch(/computeKPIs\(invoices, \{ cashBalance: glCash, arCode: getAccountByRole\?\.\("accounts_receivable"\)\?\.code \|\| null, apCode: getAccountByRole\?\.\("accounts_payable"\)\?\.code \|\| null \}\)/);
   });
 });
