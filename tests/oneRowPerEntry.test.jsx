@@ -55,3 +55,16 @@ describe("C503", () => {
     expect(i - j).toBeLessThan(600);
   });
 });
+
+import { entryTotalOf, entryLineCount } from "../src/lib/txnPresent.js";
+describe("C503 · the detail panel", () => {
+  it("headlines the entry's total for a row of an expanded entry (the panel is a portal — pinned in source)", () => {
+    const rev = rows.find((r) => r.id === "s1_1");
+    expect(entryTotalOf(rev, rows)).toBe(1299);
+    expect(entryLineCount(rev, rows)).toBe(3);
+    expect(entryTotalOf(rows.find((r) => r.id === "b2"), rows)).toBe(120);
+    const src = fs.readFileSync("src/components/TransactionDetailPanel.jsx", "utf8").replace(/^[ \t]*\/\/.*$/gm, "");
+    expect(src).toMatch(/\{fmtM\(entryTotalOf\(sel, invoices\)\)\}/);
+    expect(src).not.toMatch(/\{fmtM\(sel\.amount\)\}<\/div>/);
+  });
+});

@@ -5,7 +5,7 @@ import { useERP } from "./ERPContext";
 import { initials, vendorColor, fmtDate, fmtMoney, todayLocal } from "../lib/format";
 import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
-import { classifyTxn, settlementKind } from "../lib/txnPresent";
+import { classifyTxn, settlementKind, entryTotalOf, entryLineCount } from "../lib/txnPresent";
 import { isCancelledOrCancelling, isReversalEntry } from "../lib/gl";
 import { badge } from "../lib/ui";
 import { isDurableDocId } from "../lib/docLibrary";
@@ -265,7 +265,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
             <button onClick={close} style={{ background: "none", border: "none", color: "var(--sc-text-2)", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-            <div style={{ fontSize: 30, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: cls.inflow ? "var(--sc-success)" : "var(--sc-error)", marginBottom: 6 }}>{cls.inflow ? "+" : "-"}{fmtM(sel.amount)}</div>
+            <div style={{ fontSize: 30, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: cls.inflow ? "var(--sc-success)" : "var(--sc-error)", marginBottom: 6 }}>{cls.inflow ? "+" : "-"}{fmtM(entryTotalOf(sel, invoices))}</div>{/* C503 — the entry's total, not one line's share */}
             <div style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {txnStatusBadge(sel)}
               {/* O124 — name the pixel. The effect of a void must be visible on the thing
@@ -276,7 +276,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               <div>
                 {[
                   ["Description", sel.description || "—"],
-                  ["Category", sel.gl_name || sel.gl_code || "—"],
+                  ["Category", `${sel.gl_name || sel.gl_code || "—"}${entryLineCount(sel, invoices) > 1 ? ` · ${entryLineCount(sel, invoices)} lines (see Full entry)` : ""}`],
                   ["Against", sel.secondary_gl_code ? (sel.secondary_gl_name || sel.secondary_gl_code) : "—"],
                   ["Type", settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? "Revenue" : "Expense"],
                   ["How sure we were", sel.confidence != null ? `${sel.confidence}%` : "—"],

@@ -103,3 +103,17 @@ export function collapseExpandedRows(rows = []) {
 
 // The figure the list shows for a row: an expanded entry's total, a simple row's amount.
 export const listAmount = (r) => (r && r._entryTotal != null ? r._entryTotal : Number(r && r.amount) || 0);
+
+// The whole entry's amount for any one of its rows (the panel resolves a row from the raw
+// ledger, where `_entryTotal` is not stamped): an expanded entry's debits, a simple row's amount.
+export function entryTotalOf(row, rows = []) {
+  if (!row || !String(row.id ?? "").includes("_")) return Number(row && row.amount) || 0;
+  const base = String(row.db_entry_id != null ? row.db_entry_id : String(row.id).split("_")[0]);
+  const lines = (rows || []).filter((r) => r && String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base);
+  return Math.round(lines.reduce((s, r) => s + (r.debit_credit === "debit" ? Number(r.amount) || 0 : 0), 0) * 100) / 100;
+}
+export const entryLineCount = (row, rows = []) => {
+  if (!row || !String(row.id ?? "").includes("_")) return 1;
+  const base = String(row.db_entry_id != null ? row.db_entry_id : String(row.id).split("_")[0]);
+  return (rows || []).filter((r) => r && String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base).length;
+};
