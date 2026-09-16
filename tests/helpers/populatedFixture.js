@@ -15,41 +15,7 @@
 // REAL builders, so those shapes cannot drift from the app's.
 // ─────────────────────────────────────────────────────────────────────────────
 import { buildVendorSummary } from "../../src/lib/vendorSummary.js";
-import { vendorGroupKey } from "../../src/lib/vendorIdentity.js";
-
-// ★ C358 — EVERY ROW CARRIES ITS OFFSET LEG, THE WAY A REAL FLATTENED ROW DOES. An unpaid
-// bill is Dr Expense / Cr A/P (2000); a paid one and a sale settle to Cash (1000). Without
-// the offset, every screen that derives openness from the A/P leg (§9, C309) saw no bill as
-// open while the flag-based list showed three — "Bills to pay" rendered $0.00 over three
-// listed bills, and the sweep could not tell a product defect from its own fixture.
-const ent = (id, vendor, amount, date, gl_code, gl_name, extra = {}) => {
-  const revenue = Number(gl_code) >= 4000 && Number(gl_code) < 5000;
-  const paid = extra.payment_status === "paid";
-  const offset = revenue || paid ? { secondary_gl_code: "1000", secondary_gl_name: "Cash" } : { secondary_gl_code: "2000", secondary_gl_name: "Accounts Payable" };
-  return {
-    id, vendor, vendor_key: vendorGroupKey(vendor), amount, date, gl_code, gl_name,
-    type: revenue ? "revenue" : "expense",
-    status: "booked", source: "universal_upload", db_entry_id: `je_${id}`,
-    payment_status: "unpaid", confidence: 92, reasoning: "Test reasoning.",
-    debit_credit: "debit", project: "General", ...offset, ...extra,
-  };
-};
-
-// Two spellings of one supplier — the C317 case, so the join path actually runs.
-export const INVOICES = [
-  ent("i1", "Hill Country Milling Co.", 824.60, "2026-01-05", "5010", "Food Cost"),
-  ent("i2", "Hill Country Milling", 912.30, "2026-03-05", "5010", "Food Cost"),
-  ent("i3", "Bluebonnet Linen Service", 145.00, "2026-03-09", "6180", "Linen & Laundry"),
-  ent("i4", "Franklin Ave Properties", 2400.00, "2026-03-01", "6100", "Rent & Occupancy", { payment_status: "paid" }),
-  ent("i5", "Corner Market Catering", 1500.00, "2026-03-12", "4010", "Food Sales", { debit_credit: "credit" }),
-  ent("i6", "Gusto Payroll", 4000.00, "2026-03-14", "6000", "Salaries & Wages", { source: "payroll", payment_status: "paid" }),
-];
-
-export const CONTACTS = [
-  { id: "c1", name: "Hill Country Milling Co.", type: "vendor", business_type: "sole_proprietor", email: "ap@hcm.test", payment_terms: "net30", tags: ["food"] },
-  { id: "c2", name: "Bluebonnet Linen Service", type: "vendor", business_type: "llc", aliases: [] },
-  { id: "c3", name: "Corner Market Catering", type: "customer", email: "ar@cmc.test" },
-];
+import { flattenJournalEntries } from "../../src/lib/ledger.js";
 
 export const ACCOUNTS = [
   { id: "a1", code: "1000", name: "Cash", category: "Assets", system_role: "cash", active: true },
@@ -60,7 +26,48 @@ export const ACCOUNTS = [
   { id: "a6", code: "1100", name: "Accounts Receivable", category: "Assets", system_role: "accounts_receivable", active: true },
   { id: "a7", code: "6180", name: "Linen & Laundry", category: "Expenses", system_role: "linen_laundry", active: true },
   { id: "a8", code: "6000", name: "Salaries & Wages", category: "Expenses", system_role: "salaries_wages", active: true },
+  { id: "a9", code: "5030", name: "Freight", category: "Expenses", system_role: "shipping_fulfillment", active: true },
 ];
+
+// ★★ C527 — THE ROWS COME OUT OF THE REAL FLATTEN. They were hand-built (C358 patched the
+// offset leg on by hand), so every render test exercised a row shape production never makes:
+// no `description`, no `due_date`, no `import_metadata`, no expanded multi-line entry. Now the
+// fixture is journal ENTRIES in the shape `fetchLedgerEntries` returns, run through
+// `flattenJournalEntries` against the fixture's own chart — so a two-line bill is three rows
+// with one `db_entry_id`, exactly as on a real company, and a change to the flatten shows up
+// here rather than in a copy that quietly disagrees with it.
+const acct = (code) => { const a = ACCOUNTS.find((x) => x.code === code); return { code, name: a ? a.name : code }; };
+const je = (id, date, description, lines, extra = {}) => ({
+  id, entry_date: date, description, status: "posted", deleted_at: null, source: "universal_upload",
+  ai_confidence: 92, ai_reasoning: "Test reasoning.", created_at: `${date}T10:00:00Z`,
+  journal_entry_lines: lines.map((l, n) => ({ id: `${id}-l${n}`, debit: l.debit || 0, credit: l.credit || 0, accounts: acct(l.code), project: l.project || null })),
+  ...extra,
+});
+// A bill on terms is Dr Expense / Cr A/P (2000); a paid one and a sale settle to Cash (1000).
+const bill = (id, vendor, amount, date, code, extra = {}) => je(id, date, `${vendor} – bill`, [{ code, debit: amount }, { code: "2000", credit: amount }], { payment_status: "unpaid", due_date: date.slice(0, 8) + "28", ...extra });
+const paid = (id, vendor, amount, date, code, extra = {}) => je(id, date, `${vendor} – bill`, [{ code, debit: amount }, { code: "1000", credit: amount }], { payment_status: "paid", ...extra });
+
+// Two spellings of one supplier — the C317 case, so the join path actually runs; a paid
+// rent; a sale; a payroll register; and a two-line bill (C503/C518/C519), so the
+// one-row-per-entry paths run against a real expanded entry.
+export const ENTRIES = [
+  bill("i1", "Hill Country Milling Co.", 824.60, "2026-01-05", "5010"),
+  bill("i2", "Hill Country Milling", 912.30, "2026-03-05", "5010"),
+  bill("i3", "Bluebonnet Linen Service", 145.00, "2026-03-09", "6180"),
+  paid("i4", "Franklin Ave Properties", 2400.00, "2026-03-01", "6100"),
+  je("i5", "2026-03-12", "Corner Market Catering – sale", [{ code: "1000", debit: 1500 }, { code: "4010", credit: 1500 }], { payment_status: "collected" }),
+  je("i6", "2026-03-14", "Gusto Payroll – 2026-03-14", [{ code: "6000", debit: 4000 }, { code: "1000", credit: 4000 }], { source: "payroll", payment_status: "paid" }),
+  je("i7", "2026-03-16", "Sysco – produce + freight", [{ code: "5010", debit: 500 }, { code: "5030", debit: 20 }, { code: "2000", credit: 520 }], { payment_status: "unpaid", due_date: "2026-04-15" }),
+];
+export const INVOICES = flattenJournalEntries(ENTRIES, ACCOUNTS);
+
+export const CONTACTS = [
+  { id: "c1", name: "Hill Country Milling Co.", type: "vendor", business_type: "sole_proprietor", email: "ap@hcm.test", payment_terms: "net30", tags: ["food"] },
+  { id: "c2", name: "Bluebonnet Linen Service", type: "vendor", business_type: "llc", aliases: [] },
+  { id: "c3", name: "Corner Market Catering", type: "customer", email: "ar@cmc.test" },
+];
+
+
 
 // ★★★ SELECTION KEYS MUST BE NULL, NOT ABSENT. The Proxy answers an unknown key with `[]`,
 // which is TRUTHY — so `if (selectedContact)` took the DETAIL branch and the vendor LIST
@@ -93,7 +100,7 @@ export const POPULATED = {
   aliasIndex: new Map(),
   bankAccounts: [{ id: "b1", name: "Primary Checking", type: "checking", gl_code: "1000", last4: "4321", institution: "Test Bank", current_balance: 10000 }],
   reconciliations: [{ id: "r1", status: "complete", account_name: "Primary Checking", period_end: "2026-03-31", books_balance: 10000, statement_balance: 10000, difference: 0, matched_transactions: [], unmatched_bank: [], outstanding_books: [] }],
-  docLibrary: [{ id: "d1", name: "invoice-jan.pdf", mime_type: "application/pdf", document_type: "invoice", storage_path: "co/d1.pdf", file_size_bytes: 12000, uploaded_at: "2026-01-06", linked_invoice_id: "je_i1", tags: ["uploaded"] }],
+  docLibrary: [{ id: "d1", name: "invoice-jan.pdf", mime_type: "application/pdf", document_type: "invoice", storage_path: "co/d1.pdf", file_size_bytes: 12000, uploaded_at: "2026-01-06", linked_invoice_id: "i1", tags: ["uploaded"] }],
   auditLog: [{ id: "al1", action: "invoice_booked", detail: "Hill Country Milling Co. · $824.60", performed_by: "test@example.com", created_at: "2026-01-05T10:00:00Z" }],
   anomalies: [{ id: "an1", type: "large_transaction", severity: "medium", status: "open", title: "Large charge", detail: "A large charge", entity_refs: { invoice_ids: ["i4"] }, period: "2026-03", first_seen_at: "2026-03-02T00:00:00Z" }],
   signoffs: [{ id: "s1", period: "2026-01", signed_by: "test@example.com", signed_at: "2026-02-01T00:00:00Z", self_attested: false }],

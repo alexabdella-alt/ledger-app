@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
 import { ownerActivityText } from "../../lib/activityFeed";
+import { collapseExpandedRows, listAmount } from "../../lib/txnPresent";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural, monthsLeftYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -791,7 +792,11 @@ export default function DashboardView() {
               {/* ── ACTIVITY FEED ── */}
               {(() => {
                 const items = [];
-                invoices.forEach(inv => items.push({ ts: inv.booked_at||inv.date||"", inv, icon: glIsRevenue(inv.gl_code)?"💰":"🧾", text:`${inv.vendor||"Entry"} — ${inv.gl_name||"Booked"}`, amount: inv.amount, rev: glIsRevenue(inv.gl_code) }));
+                // C527 — one line per ENTRY at the entry's amount: a two-line bill listed as three
+                // lines here, the third of them "Sysco — Accounts Payable −$520" (the offset leg,
+                // an accounting word on the owner's first screen). Found the day the render
+                // fixture started coming out of the real flatten.
+                collapseExpandedRows(invoices).forEach(inv => items.push({ ts: inv.booked_at||inv.date||"", inv, icon: glIsRevenue(inv.gl_code)?"💰":"🧾", text:`${inv.vendor||"Entry"} — ${inv.gl_name||"Booked"}${inv._lineCount > 1 ? ` · ${inv._lineCount} lines` : ""}`, amount: listAmount(inv), rev: glIsRevenue(inv.gl_code) }));
                 (auditLog||[]).forEach(a => { if (/paid|approv|reject|recode|void|flag|info_requested/i.test(a.action||"")) {
                   // ★ SCRUBBED, not rendered raw. The audit log is written for the CPA and
                   // carries bookkeeping notation on purpose; this is the owner's screen.

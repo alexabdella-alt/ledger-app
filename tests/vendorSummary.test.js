@@ -122,7 +122,7 @@ describe("★★ C347 — scoping the list to one supplier", () => {
   });
 
   it("a supplier no row carries scopes to NOTHING, never to everything", () => {
-    expect(scopeInvoicesToVendor(INVOICES, "Sysco")).toEqual([]);
+    expect(scopeInvoicesToVendor(INVOICES, "Nobody Supply Co")).toEqual([]);
   });
 
   it("'all' is the whole list", () => {
