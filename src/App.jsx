@@ -1720,16 +1720,21 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           ...(carried.original_date ? { original_date: carried.original_date } : {}),
           ...(carried.rebooked_from_signed_period ? { rebooked_from_signed_period: carried.rebooked_from_signed_period } : {}),
         };
-        if (newId && Object.keys(stamp).length) {
+        // C478 — the invoice number goes to `reference_number` (a baseline column the RPC
+        // never writes). Both duplicate checks read `invoice_number` off the ledger rows,
+        // and without this they could only ever match a row booked in the same sitting.
+        const refNum = invoice && invoice.invoice_number ? String(invoice.invoice_number).trim().slice(0, 120) : "";
+        if (newId && (Object.keys(stamp).length || refNum)) {
           const r = await checkedRowUpdate({
             supabase, table: "journal_entries", id: newId, companyId: currentCompany.id,
-            patch: { import_metadata: stamp }, label: "entryMetaStamp",
+            patch: { ...(Object.keys(stamp).length ? { import_metadata: stamp } : {}), ...(refNum ? { reference_number: refNum } : {}) }, label: "entryMetaStamp",
           });
           // ★ A FAILED STAMP FAILS LOUD, NOT SAFE. The entry is correct either way, but the
           // control total then reads 0 against a real liability and blocks sign-off with a
           // mismatch nobody can explain — so say what happened rather than logging it.
           if (!r.ok) {
-            logAudit("entry_meta_stamp_failed", `Booked the entry, but couldn't record ${Object.keys(stamp).join(", ")}`, null, { entry_id: String(newId), fields: Object.keys(stamp) });
+            logAudit("entry_meta_stamp_failed", `Booked the entry, but couldn't record ${[...Object.keys(stamp), ...(refNum ? ["invoice number"] : [])].join(", ")}`, null, { entry_id: String(newId), fields: Object.keys(stamp), reference_number: refNum || null });
+            if (!Object.keys(stamp).length) { return newId; }   // a lost invoice number costs one duplicate check, not a wrong figure — audited, not toasted
             // The sentence names the consequence for THIS entry, so it cannot promise the
             // original date is on file when the write that would have put it there failed.
             showNotification(stamp.original_date

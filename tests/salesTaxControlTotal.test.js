@@ -106,12 +106,13 @@ describe("★★ the tax figure is actually written", () => {
     const stamp = code.indexOf('label: "entryMetaStamp"');
     expect(post).toBeGreaterThan(-1);
     expect(stamp).toBeGreaterThan(post);
-    expect(code).toMatch(/patch: \{ import_metadata: stamp \}/);
+    expect(code).toMatch(/import_metadata: stamp \}/);   // C478 widened the patch to carry reference_number beside it
     expect(code).toMatch(/taxAmt2 > 0 \? \{ tax_amount: taxAmt2 \}/);
   });
 
   it("★ only when there IS something to stamp — an empty write would be noise on every entry", () => {
-    expect(code).toMatch(/if \(newId && Object\.keys\(stamp\)\.length\)/);
+    expect(code).toMatch(/if \(newId && \(Object\.keys\(stamp\)\.length \|\| refNum\)\)/);   // C478: the metadata half still fires only with something to say
+    expect(code).toMatch(/\.\.\.\(Object\.keys\(stamp\)\.length \? \{ import_metadata: stamp \} : \{\}\)/);
   });
 
   it("★★ a failed stamp is SAID, not swallowed", () => {
@@ -164,7 +165,8 @@ describe("★★ 'the original date is kept on file' is now true", () => {
   });
 
   it("★ the stamp only fires when there is something to say", () => {
-    expect(code).toMatch(/if \(newId && Object\.keys\(stamp\)\.length\)/);
+    expect(code).toMatch(/if \(newId && \(Object\.keys\(stamp\)\.length \|\| refNum\)\)/);   // C478: the metadata half still fires only with something to say
+    expect(code).toMatch(/\.\.\.\(Object\.keys\(stamp\)\.length \? \{ import_metadata: stamp \} : \{\}\)/);
   });
 
   it("★★ a failed stamp does not repeat the promise it just failed to keep", () => {

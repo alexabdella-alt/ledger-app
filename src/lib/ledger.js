@@ -96,6 +96,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         payment_method_used: e.payment_method || undefined,
         payment_reference: e.payment_reference || undefined,
         payment_notes: e.payment_notes || undefined,
+        invoice_number: e.reference_number || null,   // C478 — read back so the duplicate-by-number check sees prior sittings
         paid_at: e.paid_at || undefined,
         due_date: e.due_date || undefined,
         confidence: e.ai_confidence ?? 99,
