@@ -4,7 +4,7 @@ import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { fmtSignedMoney, initials, vendorColor, fmtDate, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { computeAP, openPayables, paidPayables, glAccountBalance, signedPL } from "../../lib/reports";
+import { computeAP, openPayables, paidPayables, openPayablesGL, paidPayablesGL, glAccountBalance } from "../../lib/reports";
 
 export default function ApView() {
   const { CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, companyDataLoaded } = useERP();
@@ -20,8 +20,14 @@ export default function ApView() {
   // Canonical AP lists — the rows behind computeAP, so the bills shown reconcile
   // exactly with the headline total below, the AP aging report, and the AI.
   // (No inline AP math here — see openPayables/paidPayables in lib/reports.js.)
-  const unpaid = openPayables(invoices).sort((a,b)=>(a.due_date||"9999").localeCompare(b.due_date||"9999"));
-  const paid   = paidPayables(invoices).sort((a,b)=>(b.paid_at||"").localeCompare(a.paid_at||""));
+  // C513 — the GL-truth lists (one row per bill, a capitalized purchase on terms included)
+  // when the company's A/P code resolves; the flag lists only when it cannot.
+  const apCodeForLists = getAccountByRole("accounts_payable")?.code || null;
+  const unpaid = (apCodeForLists ? openPayablesGL(invoices, apCodeForLists) : openPayables(invoices)).sort((a,b)=>(a.due_date||"9999").localeCompare(b.due_date||"9999"));
+  const paid   = (apCodeForLists ? paidPayablesGL(invoices, apCodeForLists) : paidPayables(invoices)).sort((a,b)=>(b.paid_at||"").localeCompare(a.paid_at||""));
+  // C513 — the bills settled, each at its amount: one live bill per row (paidPayablesGL excludes
+  // corrections), and a capitalized purchase is a bill here, not a P&L movement (signedPL would sign it −).
+  const paidTotal = paid.reduce((s,i)=>s+(Number(i.amount)||0),0);   // paidPayablesGL — one live bill per row
   // Outstanding AP = the GL balance of the Accounts Payable account (what the ledger
   // says is owed) — the SAME canonical source as the Balance Sheet and Dashboard, so
   // they reconcile by construction. (The per-bill payment_status flag still drives the
@@ -80,7 +86,7 @@ export default function ApView() {
         <div onClick={()=>setApView("paid")} className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"16px 20px", cursor:"pointer" }}>
           <div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:1.5, marginBottom:8 }}>PAID</div>
           <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between" }}>
-            <div style={{ fontSize:24, fontWeight:700, color:"var(--sc-success)", fontFamily:"'DM Mono',monospace" }}>{fmt(paid.reduce((s,i)=>s+signedPL(i),0))}</div>
+            <div style={{ fontSize:24, fontWeight:700, color:"var(--sc-success)", fontFamily:"'DM Mono',monospace" }}>{fmt(paidTotal)}</div>
             <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>{paid.length} payment{paid.length!==1?"s":""}</div>
           </div>
         </div>

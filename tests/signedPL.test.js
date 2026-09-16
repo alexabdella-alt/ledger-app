@@ -29,7 +29,7 @@ describe("C491 · signedPL", () => {
         // line items (`l.amount`, not a ledger row), the reconcile's bank lines (`t.amount`),
         // the matching screen's session history, and the Taxes screen's deduction BREAKDOWN rows
         // (`deductions.reduce` sums per-category figures C489 already signed, not ledger rows).
-        if (/openPayablesGL|openPayables\b|openReceivables|line_items|\bl\.amount|\bt\.amount|matchHistory|arAll\.filter|deductions\.reduce/.test(text)) continue;
+        if (/openPayablesGL|paidPayablesGL|openPayables\b|openReceivables|line_items|\bl\.amount|\bt\.amount|matchHistory|arAll\.filter|deductions\.reduce/.test(text)) continue;
         offenders.push(`${f}:${line}: ${text.trim().slice(0, 100)}`);
       }
     }

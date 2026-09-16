@@ -451,8 +451,33 @@ export function openReceivablesGL(invoices, arCode) {
 // row that represents it; a debit to A/P is a payment and is never a bill.
 const isApLegRow = (i, ap) => ap != null && String(i.id ?? "").includes("_") && String(i.gl_code) === String(ap) && i.debit_credit === "credit"
   && !isCancelledOrCancelling(i) && i.payment_status !== "paid";
+// C513 — with the code, the predicate is the CODE-AWARE one (`apUnpaidWith`), so a capitalized
+// purchase on terms (Dr Equipment / Cr A/P — the live Sabine bill, C309) is a bill here too.
+// `openPayablesGL` called the code-less `apUnpaid`, so Home's "Bills to pay" card, the
+// Vendors tab and the Bills screen all missed a $4,625 bill that "You owe" counted.
+// A multi-line bill is represented by its A/P leg row (the bill's full amount, C498), which
+// a list would print as "2000 · Accounts Payable"; it borrows the first expense line's
+// category for display and carries the line count, so the Bills screen reads
+// "Food Cost · $520" for a two-line bill rather than one row per line.
+const presentLegRow = (leg, all) => {
+  const base = String(leg.db_entry_id != null ? leg.db_entry_id : String(leg.id).split("_")[0]);
+  const lines = all.filter(r => r && String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base);
+  const pl = lines.find(r => isExp(r)) || lines.find(r => r !== leg);
+  return { ...leg, ...(pl ? { gl_code: pl.gl_code, gl_name: pl.gl_name, secondary_gl_code: leg.gl_code, secondary_gl_name: leg.gl_name } : {}), _lineCount: lines.length, _entryTotal: leg.amount };
+};
 export function openPayablesGL(invoices, apCode) {
-  return (invoices || []).filter(i => isLiveEntry(i) && ((apUnpaid(i) && touchesAccount(i, apCode)) || isApLegRow(i, apCode)));
+  const open = apUnpaidWith(apCode || null);
+  const all = invoices || [];
+  return all.filter(i => isLiveEntry(i) && ((open(i) && touchesAccount(i, apCode)) || isApLegRow(i, apCode)))
+    .map(i => (isApLegRow(i, apCode) ? presentLegRow(i, all) : i));
+}
+const isPaidApLegRow = (i, ap) => ap != null && String(i.id ?? "").includes("_") && String(i.gl_code) === String(ap) && i.debit_credit === "credit"
+  && !isCancelledOrCancelling(i) && i.payment_status === "paid";
+export function paidPayablesGL(invoices, apCode) {
+  const all = invoices || [];
+  return all.filter(i => isLiveEntry(i) && i.payment_status === "paid" && !isCancelledOrCancelling(i)
+    && ((!String(i.id ?? "").includes("_") && (isExp(i) || isApOffsetPurchase(i, apCode))) || isPaidApLegRow(i, apCode)))
+    .map(i => (isPaidApLegRow(i, apCode) ? presentLegRow(i, all) : i));
 }
 
 // ── AR / AP AGING (Items 24, 83) ────────────────────────────────────────────
