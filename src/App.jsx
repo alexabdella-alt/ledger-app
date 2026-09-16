@@ -847,6 +847,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     for (let waited = 0; !accountsReadyRef.current && waited < maxMs; waited += 200) await new Promise((r) => setTimeout(r, 200));
     return accountsReadyRef.current;
   };
+  // C505 — the chart as of NOW, for an async caller whose closure captured the render-time
+  // value. `loadAllData` flattened the ledger against `CHART_OF_ACCOUNTS` at the moment its
+  // fetch resolved — the BUILT-IN chart while the company's own was still loading — so a
+  // company whose A/R is not numbered 1100 had no `ar_amount` stamped on any taxed invoice
+  // (every one read ex-tax) until a reload happened to order the two reads the other way.
+  const liveChartRef = useRef([]);
+  liveChartRef.current = liveAccounts;
   // C416 — a booking against a chart that did not load would resolve every role through the
   // built-in fallback and materialise it (O108 finding 4), or reference the last company's
   // account ids. Both write paths refuse until the chart is read.
@@ -1275,7 +1282,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // emptiness and no one books against a truncated/absent ledger.
     let mapped;
     try {
-      mapped = await fetchLedger(supabase, cid, CHART_OF_ACCOUNTS);
+      // C505 — flatten against the COMPANY's chart, not the built-in one the closure saw
+      // before it loaded: wait for it (briefly), then read it through the ref.
+      await waitForChart();
+      if (!stillOn(cid)) return;
+      mapped = await fetchLedger(supabase, cid, liveChartRef.current.length ? liveChartRef.current : CHART_OF_ACCOUNTS);
     } catch (e) {
       console.error("[loadAllData] ledger load failed:", e?.message || e);
       try { Sentry.captureException(e, { tags: { kind: "ledger_load_failure" }, extra: { company_id: String(cid) } }); } catch {}
