@@ -357,12 +357,12 @@ export default function DashboardView() {
                 // statement is what answers it. Order and copy live in lib/onboarding.js.
                 const stepByKey = {
                   biz:     { key:"biz",     done: obHasBiz,     label:"Tell us about your business", hint:"Business type & fiscal year", go:()=>setBusinessModalOpen(true) },
-                  bank:    { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Bank Accounts",   go:()=>goToSection("settings","bank-accounts-section") },
+                  bank:    { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Company → Bank accounts",   go:()=>goToSection("settings","bank-accounts-section") },
                   upload:  { key:"upload",  done: obHasUpload,  ...ONBOARDING_STEP_COPY.upload,  go:()=>document.getElementById("universal-upload")?.scrollIntoView({behavior:"smooth"}) },
                   opening: { key:"opening", done: obHasOpening, ...ONBOARDING_STEP_COPY.opening, go:()=>goToSection("opening-balances","opening-balances-section") },
                 };
                 const steps = ONBOARDING_STEP_ORDER.map(k => stepByKey[k]);
-                const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Optional", go:()=>{ setAccountantNotice(true); dismissAccountantStep(); }, optional:true };
+                const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Your accountant can review and sign off each month", go:()=>{ setAccountantNotice(true); dismissAccountantStep(); }, optional:true };
                 const required = requiredDone;
                 if (obAllDone) {
                   // The effect above persists onboarding_complete after a short delay.

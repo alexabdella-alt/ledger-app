@@ -49,7 +49,7 @@ export default function OpeningBalancesView() {
               <div style={{maxWidth:680}}>
                 <div id="opening-balances-section" style={{marginBottom:24,scrollMarginTop:16}}>
                   <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>SETUP</div>
-                  <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Bank accounts &amp; starting balances</h1>
+                  <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Starting balances</h1>
                   <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Enter your account balances as of the date you're starting your books. This sets the baseline for all reports.</div>
                 </div>
 

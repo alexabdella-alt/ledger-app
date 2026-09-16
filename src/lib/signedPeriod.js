@@ -66,7 +66,7 @@ export const REMOVAL = { DELETE: "delete", CORRECT: "correct", KEEP: "keep" };
 // them saying "posted" over a ledger with no opening — cash on hand at zero, the cutoff
 // locked, and no way to post another without finding "Redo opening setup". The starting-
 // balances screen owns every change to it (redo, supersede), and says so here.
-export const OPENING_KEEP_SENTENCE = "Starting balances aren't removed here — change them on the starting-balances screen (Settings → Bank accounts & starting balances).";
+export const OPENING_KEEP_SENTENCE = "Starting balances aren't removed here — change them on the starting-balances screen (Settings → Starting balances).";
 export const isOpeningEntry = (entry) => !!entry && entry.source === "opening_balance";
 
 export function planEntryRemoval(entry, signoffs = [], { monthLabel = null } = {}) {

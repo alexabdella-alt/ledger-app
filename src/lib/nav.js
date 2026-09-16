@@ -89,7 +89,7 @@ export const REVIEW_TOOLS = [
 // over the nav every other minute.
 export const NAV_SECTION_SETTINGS = { id: "settings", label: "Settings", items: [
   ["settings", "Company"], ["team", "Team"], ["coa", "Categories"],
-  ["opening-balances", "Bank accounts & starting balances"], ["rules", "Supplier rules"], ["recurring", "Recurring charges"],
+  ["opening-balances", "Starting balances"], ["rules", "Supplier rules"], ["recurring", "Recurring charges"],
   ["tax", "Taxes"], ["tax1099", "Tax forms (1099s)"], ["audit", "Audit trail"],
   ["onboard", "Import from QuickBooks"],
 ] };
