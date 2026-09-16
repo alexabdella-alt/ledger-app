@@ -14,6 +14,7 @@
 
 import { fmtMoney } from "./format";
 import { AI_CONFIDENCE_ASK_FLOOR } from "./constants";
+import { collapseExpandedRows, listAmount } from "./txnPresent.js";
 
 // Tunable thresholds. Confidence is 0–100 (the model's scale; rule-applied = 99).
 export const FLAG_DEFAULTS = {
@@ -122,9 +123,13 @@ export function autoBookDecision(txn = {}, { askFloor = AI_CONFIDENCE_ASK_FLOOR,
 // confident first — the order a CPA should work them.
 export function flaggedForReview(invoices = [], opts = {}) {
   const out = [];
-  for (const i of (invoices || [])) {
+  // C518 — one judgement per ENTRY, on the entry's total. Flatten expands a multi-line entry
+  // into one row per line, and each row was judged on its own share: a $3,000 two-line bill at
+  // 62% was flagged twice, an $1,800 bill split 900/900 at 62% not at all (each line under the
+  // $1,000 materiality, the bill over it).
+  for (const i of collapseExpandedRows(invoices || [])) {
     if (!i || i.status === "voided" || i.status === "deleted") continue;
-    const a = shouldFlagForReview(i, opts);
+    const a = shouldFlagForReview({ ...i, amount: listAmount(i) }, opts);
     if (!a.flagged) continue;
     out.push({
       id: i.id,
@@ -132,7 +137,7 @@ export function flaggedForReview(invoices = [], opts = {}) {
       vendor: i.vendor ?? null,
       description: i.description ?? null,
       date: i.date ?? null,
-      amount: num(i.amount),
+      amount: listAmount(i),
       gl_code: i.gl_code ?? null,                                   // the AI's chosen account
       gl_name: i.gl_name ?? null,
       confidence: a.confidence,
