@@ -49,7 +49,11 @@ function fmtDate(d, opts) {
 function fmtSignedMoney(n, { decimals = 2, signed = true } = {}) {
   const v = Number(n) || 0;
   const body = "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  return (signed && v < 0) ? "-" + body : body;
+  // C483 — the sign follows the ROUNDED value. A net that sums to -1e-13 in floating point
+  // (or a loss of forty cents shown in whole dollars) printed "-$0.00" / "-$0": a minus on
+  // a zero reads as a defect on a report. If it rounds to nothing, it has no sign.
+  const rounded = Math.round(Math.abs(v) * Math.pow(10, decimals));
+  return (signed && v < 0 && rounded > 0) ? "-" + body : body;
 }
 // Magnitude cents (drops sign — the dominant view-table convention, sign via color).
 const fmtMoney = (n) => fmtSignedMoney(n, { signed: false });
