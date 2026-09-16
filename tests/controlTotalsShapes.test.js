@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { buildArInvoiceEntry } from "../src/lib/revenueEntries.js";
+import { multiLineMetaPatch } from "../src/lib/entryMetaStamp.js";
 import { flattenJournalEntries } from "../src/lib/ledger.js";
 import { computeControlTotals } from "../src/lib/controlTotals.js";
 
@@ -20,7 +22,11 @@ const acct = (code) => ({ code, name: chart.find((a) => a.code === code)?.name }
 const je = (id, date, description, lines, extra = {}) => ({ id, entry_date: date, description, status: "posted", deleted_at: null, source: "universal_upload",
   journal_entry_lines: lines.map((l, n) => ({ id: `${id}-l${n}`, debit: l.debit || 0, credit: l.credit || 0, accounts: acct(l.code) })), ...extra });
 const entries = [
-  je("s1", "2026-09-04", "Acme – catering", [{ code: "1100", debit: 1299 }, { code: "4000", credit: 1200 }, { code: "2350", credit: 99 }], { payment_status: "unpaid", import_metadata: { tax_amount: 99 } }),
+  // C524 — the taxed invoice's metadata is what the REAL write path stamps (builder → RPC keeps six
+  // scalars → multiLineMetaPatch), not a hand-typed `{ tax_amount: 99 }`: handed directly, this
+  // fixture proved the check works GIVEN the data and said nothing about whether it arrives (·3a).
+  je("s1", "2026-09-04", "Acme – catering", [{ code: "1100", debit: 1299 }, { code: "4000", credit: 1200 }, { code: "2350", credit: 99 }],
+    { payment_status: "unpaid", import_metadata: multiLineMetaPatch(buildArInvoiceEntry({ subtotal: 1200, taxRate: 0.0825, arCode: "1100", revenueCode: "4000", salesTaxCode: "2350", date: "2026-09-04", customer: "Acme", invoiceNumber: "INV-1" }).meta).import_metadata }),
   je("s2", "2026-09-05", "Beta – design", [{ code: "1100", debit: 700 }, { code: "4000", credit: 700 }], { payment_status: "collected" }),
   je("c2", "2026-09-09", "Collection – Beta", [{ code: "1000", debit: 700 }, { code: "1100", credit: 700 }], { import_metadata: { kind: "ar_collection", payment_for: "s2" }, payment_status: "paid" }),
   je("sab", "2026-09-02", "Sabine – freezer", [{ code: "1500", debit: 4625 }, { code: "2000", credit: 4625 }], { payment_status: "unpaid" }),
