@@ -510,39 +510,39 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date() } = {}
 
   // 1. Current Ratio = Current Assets / Current Liabilities
   if (apOut <= 0) {
-    out.push({ key: "current_ratio", label: "Current Ratio", value: null, display: "N/A — no current liabilities", status: "na", trend: null,
-      explanation: "No unpaid bills on the books yet — once you owe money this shows whether cash + receivables can cover it." });
+    out.push({ key: "current_ratio", label: "Can you cover what's due?", value: null, display: "Nothing due yet", status: "na", trend: null,
+      explanation: "No unpaid bills on the books yet — once you owe money, this shows whether your cash plus what customers owe you can cover it." });
   } else {
     const v = (cash + arOut) / apOut;
-    out.push({ key: "current_ratio", label: "Current Ratio", value: r1(v), display: `${r1(v).toFixed(1)}×`, trend: null,
+    out.push({ key: "current_ratio", label: "Can you cover what's due?", value: r1(v), display: `${r1(v).toFixed(1)}×`, trend: null,
       status: v > 2 ? "good" : v >= 1 ? "warn" : "bad",
-      explanation: `${fmtMoney(cash + arOut)} in cash + receivables against ${fmtMoney(apOut)} of bills due — ${v > 2 ? "a comfortable cushion." : v >= 1 ? "tight but covered." : "you can't currently cover short-term obligations."}` });
+      explanation: `${fmtMoney(cash + arOut)} in cash plus what customers owe you, against ${fmtMoney(apOut)} of bills due — ${v > 2 ? "a comfortable cushion." : v >= 1 ? "tight but covered." : "not enough to cover what's due right now."}` });
   }
 
   // 2. Gross Margin = (Revenue − COGS) / Revenue × 100
   const gm = set => { const r = rev(set); return r > 0 ? ((r - cogs(set)) / r) * 100 : null; };
   const gmCur = gm(tm);
-  if (gmCur == null) out.push({ key: "gross_margin", label: "Gross Margin", value: null, display: "N/A — no revenue yet", status: "na", trend: null, explanation: "No revenue recorded this month, so margin can't be computed." });
-  else out.push({ key: "gross_margin", label: "Gross Margin", value: r1(gmCur), display: `${r1(gmCur)}%`, status: gmCur >= 50 ? "good" : gmCur >= 25 ? "warn" : "bad", trend: trend(gmCur, gm(lm)), explanation: `After direct costs (COGS), you keep ${r1(gmCur)}¢ of every revenue dollar.` });
+  if (gmCur == null) out.push({ key: "gross_margin", label: "What you keep after direct costs", value: null, display: "No sales yet", status: "na", trend: null, explanation: "No sales recorded this month, so there is nothing to measure yet." });
+  else out.push({ key: "gross_margin", label: "What you keep after direct costs", value: r1(gmCur), display: `${r1(gmCur)}%`, status: gmCur >= 50 ? "good" : gmCur >= 25 ? "warn" : "bad", trend: trend(gmCur, gm(lm)), explanation: `After what it costs you to make what you sell, you keep ${r1(gmCur)}¢ of every dollar of sales.` });
 
   // 3. Operating Expense Ratio = OpEx / Revenue × 100
   const oer = set => { const r = rev(set); return r > 0 ? (opex(set) / r) * 100 : null; };
   const oerCur = oer(tm);
-  if (oerCur == null) out.push({ key: "opex_ratio", label: "Operating Expense Ratio", value: null, display: "N/A — no revenue yet", status: "na", trend: null, explanation: "No revenue this month to compare operating expenses against." });
-  else out.push({ key: "opex_ratio", label: "Operating Expense Ratio", value: r1(oerCur), display: `${r1(oerCur)}%`, status: oerCur <= 60 ? "good" : oerCur <= 90 ? "warn" : "bad", trend: trend(oerCur, oer(lm)), explanation: `Operating expenses eat ${r1(oerCur)}% of revenue — lower is leaner.` });
+  if (oerCur == null) out.push({ key: "opex_ratio", label: "Running costs as a share of sales", value: null, display: "No sales yet", status: "na", trend: null, explanation: "No sales this month to compare your running costs against." });
+  else out.push({ key: "opex_ratio", label: "Running costs as a share of sales", value: r1(oerCur), display: `${r1(oerCur)}%`, status: oerCur <= 60 ? "good" : oerCur <= 90 ? "warn" : "bad", trend: trend(oerCur, oer(lm)), explanation: `Your running costs (rent, wages, software and the like) take ${r1(oerCur)}% of your sales — lower is leaner.` });
 
   // 4. Burn Multiple = Net Burn / Net New Revenue
   const netBurn = exp(tm) - rev(tm);
   const netNewRev = rev(tm) - rev(lm);
-  if (netNewRev <= 0) out.push({ key: "burn_multiple", label: "Burn Multiple", value: null, display: "N/A — no new revenue", status: "na", trend: null, explanation: "Revenue didn't grow versus last month, so burn multiple isn't meaningful yet." });
-  else if (netBurn <= 0) out.push({ key: "burn_multiple", label: "Burn Multiple", value: 0, display: "0.0× (profitable)", status: "good", trend: null, explanation: "You grew revenue without burning cash — excellent." });
-  else { const v = netBurn / netNewRev; out.push({ key: "burn_multiple", label: "Burn Multiple", value: r1(v), display: `${r1(v)}×`, status: v < 1 ? "good" : v < 2 ? "warn" : "bad", trend: null, explanation: `Burned ${fmtMoney(netBurn)} to add ${fmtMoney(netNewRev)} of new revenue — under 1× is efficient.` }); }
+  if (netNewRev <= 0) out.push({ key: "burn_multiple", label: "Cash spent to grow sales", value: null, display: "Sales didn't grow", status: "na", trend: null, explanation: "Sales didn't grow versus last month, so there is no growth to measure the cost of yet." });
+  else if (netBurn <= 0) out.push({ key: "burn_multiple", label: "Cash spent to grow sales", value: 0, display: "None — profitable", status: "good", trend: null, explanation: "Sales grew without spending more cash than you brought in — excellent." });
+  else { const v = netBurn / netNewRev; out.push({ key: "burn_multiple", label: "Cash spent to grow sales", value: r1(v), display: `${r1(v)}×`, status: v < 1 ? "good" : v < 2 ? "warn" : "bad", trend: null, explanation: `Spent ${fmtMoney(netBurn)} more than you brought in to add ${fmtMoney(netNewRev)} of new sales — under 1× is efficient.` }); }
 
   // 5. Days Sales Outstanding = (AR / Revenue) × 30
   const dsoOf = set => { const r = rev(set); return r > 0 ? (arOut / r) * 30 : null; };
   const dsoCur = dsoOf(tm);
-  if (dsoCur == null) out.push({ key: "dso", label: "Days Sales Outstanding", value: null, display: "N/A — no revenue yet", status: "na", trend: null, explanation: "No revenue this month, so collection days can't be computed." });
-  else out.push({ key: "dso", label: "Days Sales Outstanding", value: Math.round(dsoCur), display: `${Math.round(dsoCur)} days`, status: dsoCur <= 30 ? "good" : dsoCur <= 60 ? "warn" : "bad", trend: trend(dsoCur, dsoOf(lm)), explanation: `On average it takes ~${Math.round(dsoCur)} days to collect on sales — lower means faster cash.` });
+  if (dsoCur == null) out.push({ key: "dso", label: "How long customers take to pay", value: null, display: "No sales yet", status: "na", trend: null, explanation: "No sales this month, so there is nothing to measure yet." });
+  else out.push({ key: "dso", label: "How long customers take to pay", value: Math.round(dsoCur), display: `${Math.round(dsoCur)} days`, status: dsoCur <= 30 ? "good" : dsoCur <= 60 ? "warn" : "bad", trend: trend(dsoCur, dsoOf(lm)), explanation: `On average customers pay about ${Math.round(dsoCur)} days after the sale — lower means your cash arrives sooner.` });
 
   return out;
 }

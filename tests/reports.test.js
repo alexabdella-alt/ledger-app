@@ -92,10 +92,11 @@ describe("computeKPIs", () => {
     for (const k of [gm, oer, dso, bm]) {
       expect(k.value).toBeNull();
       expect(k.status).toBe("na");
-      expect(k.display).toMatch(/N\/A/);
+      expect(k.display).toMatch(/No sales yet|Sales didn't grow/);   // C484 — the owner's words; the property is "not a number"
+      expect(k.display).not.toMatch(/NaN|Infinity/);
       expect(Number.isFinite(k.value)).toBe(false);
     }
-    expect(gm.display).toContain("no revenue");
+    expect(gm.display).toContain("No sales yet");   // C484
   });
 
   it("current ratio is N/A when there are no current liabilities", () => {
