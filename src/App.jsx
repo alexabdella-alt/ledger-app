@@ -5,7 +5,7 @@ import { plainWriteError } from "./lib/plainWriteError";
 import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling } from "./lib/gl";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling, settledBases } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
@@ -8040,8 +8040,11 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       });
       if (payEntry) {
         // Idempotency: don't double-post if a LIVE payment JE already links to this bill.
-        let already = false;
-        try {
+        // C528 — the in-session ledger is asked first (the same settled set every open list
+        // reads), so a failed DB probe cannot fall through to a second payment on a bill the
+        // books on screen already show as settled.
+        let already = settledBases(invoicesRef.current || []).has(String(dbId));
+        if (!already) try {
           const { data } = await supabase.from("journal_entries").select("id")
             .eq("company_id", currentCompany.id)
             .eq("import_metadata->>payment_for", String(dbId))

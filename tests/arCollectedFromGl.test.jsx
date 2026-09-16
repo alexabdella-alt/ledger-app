@@ -87,3 +87,19 @@ describe("C528 — no Mark as Paid on a linked-settled bill", () => {
     expect((t.match(/Mark Paid/g) || []).length).toBe(1);
   });
 });
+
+// markBillPaid asks the in-session settled set before its DB probe, so a failed probe cannot
+// fall through to a second payment on a bill the screen already shows as settled.
+import fs from "node:fs";
+describe("C528 — markBillPaid's idempotency reads the settled set first", () => {
+  it("structure", () => {
+    const src = fs.readFileSync("src/App.jsx", "utf8").replace(/\/\/.*$/gm, "");
+    const at = src.indexOf("const markBillPaidOnce");
+    expect(at).toBeGreaterThan(-1);
+    const body = src.slice(at, src.indexOf("const markBillPaid =", at));
+    const a = body.indexOf('let already = settledBases(invoicesRef.current || []).has(String(dbId));');
+    const b = body.indexOf('if (!already) try {');
+    const c = body.indexOf("if (!already) {");
+    expect(a).toBeGreaterThan(-1); expect(b).toBeGreaterThan(a); expect(c).toBeGreaterThan(b);
+  });
+});
