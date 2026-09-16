@@ -55,7 +55,8 @@ describe("C466 · App.jsx wires the resync into every path that changes the sett
   it("the delete's Undo resyncs after the restore landed, counting the snapshots", () => {
     const fn = between("const softDeleteInvoices = async (list, byAI=false) => {", "const softDeleteInvoice =");
     const undo = fn.slice(fn.indexOf("const ok = await restoreJournalEntries(allIds);"));
-    expect(undo).toMatch(/if \(!ok\) \{[\s\S]*?return;[\s\S]*?\}[\s\S]*?\n\s*await resyncSettledFlags\(snaps, \{ entries: \[\.\.\.\(invoicesRef\.current \|\| \[\]\), \.\.\.snaps\] \}\);/);
+    // C507 — the restored set is the whole family of rows (one entry may be several), under the name `restored`.
+    expect(undo).toMatch(/if \(!ok\) \{[\s\S]*?return;[\s\S]*?\}[\s\S]*?\n\s*await resyncSettledFlags\(restored, \{ entries: \[\.\.\.\(invoicesRef\.current \|\| \[\]\), \.\.\.restored\] \}\);/);
   });
   it("a reversal resyncs with the reversed settlement excluded by id", () => {
     const fn = between("const reverseJournalEntry = async (invoice, reason, byAI = false) => {", "const voidInvoiceWithUndo");

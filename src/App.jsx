@@ -3101,7 +3101,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const items = (list || []).filter(Boolean);
     if (!items.length) return;
     const snaps = items.map(i => ({ ...i }));
-    const idset = new Set(snaps.map(s => String(s.id)));
+    // C507 — an expanded entry is several rows and the caller hands over ONE (the list shows
+    // one row per entry since C503). Snapshot the whole family, so a refusal or an Undo puts
+    // every line back: restoring only the row handed over left a taxed invoice's A/R and tax
+    // lines out of state until a reload — GL A/R understated by the invoice meanwhile.
+    const baseOf = (i) => String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
+    const bases = new Set(snaps.map(baseOf));
+    const family = (invoicesRef.current || []).filter(i => i && bases.has(baseOf(i))).map(i => ({ ...i }));
+    const familyOf = (rows) => { const b = new Set(rows.map(baseOf)); return family.filter(f => b.has(baseOf(f))); };
+    const idset = new Set(family.map(s => String(s.id)).concat(snaps.map(s => String(s.id))));
     setInvoices(prev => prev.filter(i => !idset.has(String(i.id))));
 
     // ★★ THE AUDIT ROWS USED TO BE WRITTEN HERE, BEFORE THE WRITE — so a refused delete
@@ -3128,7 +3136,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (kept.length) {
       setInvoices(prev => {
         const have = new Set(prev.map(i => String(i.id)));
-        return [...kept.map(r => r.snap).filter(s => !have.has(String(s.id))), ...prev];
+        const back = familyOf(kept.map(r => r.snap));
+        return [...(back.length ? back : kept.map(r => r.snap)).filter(s => !have.has(String(s.id))), ...prev];
       });
       logAudit("invoice_delete_failed", `Couldn't delete ${kept.length} of ${items.length} — left in the books`, null,
         { attempted: items.length, refused: kept.length, vendors: kept.map(r => r.snap.vendor || null) }, byAI ? "AI Chat" : "owner");
@@ -3149,7 +3158,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!allIds.length) {
       setInvoices(prev => {
         const have = new Set(prev.map(i => String(i.id)));
-        return [...snaps.filter(s => !have.has(String(s.id))), ...prev];
+        return [...(family.length ? family : snaps).filter(s => !have.has(String(s.id))), ...prev];
       });
       logAudit("invoice_delete_failed", `Couldn't delete ${label} — nothing was removed`, null, { attempted: items.length }, byAI ? "AI Chat" : "owner");
       showNotification(`Couldn't delete ${label} — it's still in your books. If the month has been signed off, your accountant needs to reopen it.`, "error");
@@ -3170,10 +3179,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         showNotification(`Couldn't undo that — ${label} is still deleted. If the month has since been signed off, your accountant needs to reopen it.`, "error");
         return;
       }
-      setInvoices(prev => { const have = new Set(prev.map(i => String(i.id))); return [...snaps.filter(s => !have.has(String(s.id))), ...prev]; });
+      const back = familyOf(gone.map(r => r.snap));
+      const restored = back.length ? back : gone.map(r => r.snap);
+      setInvoices(prev => { const have = new Set(prev.map(i => String(i.id))); return [...restored.filter(s => !have.has(String(s.id))), ...prev]; });
       // C466 — a restored payment re-pays its bill. The snapshots are counted with the
       // ledger because the ref lags the setInvoices above by a render.
-      await resyncSettledFlags(snaps, { entries: [...(invoicesRef.current || []), ...snaps] });
+      await resyncSettledFlags(restored, { entries: [...(invoicesRef.current || []), ...restored] });
       logAudit("invoice_restored", `Restored ${items.length} entr${items.length===1?"y":"ies"}`, null, null);
       showNotification("Restored ✓");
     });
