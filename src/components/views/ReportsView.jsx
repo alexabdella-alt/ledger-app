@@ -72,12 +72,25 @@ export default function ReportsView() {
             const expenses = basisMode==="cash" ? plFiltered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0) : computeExpenses(filtered);
             const net = revenue - expenses;
 
+            // C490 — THE LINES ARE SIGNED LIKE THE HEADLINE. The P&L's headline totals flow
+            // through the canonical layer (leg-signed, so a correction nets), but the per-
+            // category and per-project lines summed `amount` unsigned — a $500 bill and its
+            // $500 correction read as $1,000 of Food Cost on a report whose total said $0.
+            // For a P&L row the normal side is the row's own class: an expense DEBIT and a
+            // revenue CREDIT count positive; the opposite leg (a correction, a refund, a
+            // reclass) subtracts.
+            const signedAmt = (inv) => {
+              const a = Number(inv.amount) || 0;
+              if (!inv.debit_credit) return a;
+              const normalIsDebit = glIsExpense(inv.gl_code);
+              return (inv.debit_credit === "debit") === normalIsDebit ? a : -a;
+            };
             // Group revenue by GL
             const byRevGL = {};
             plFiltered.filter(i=>glIsRevenue(i.gl_code)).forEach(inv => {
               const k = inv.gl_code;
               if (!byRevGL[k]) byRevGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
-              byRevGL[k].total += inv.amount; byRevGL[k].count++;
+              byRevGL[k].total += signedAmt(inv); byRevGL[k].count++;   // C490 — a credit to revenue (a correction) subtracts
             });
             const revRows = Object.values(byRevGL).sort((a,b)=>b.total-a.total);
 
@@ -86,7 +99,7 @@ export default function ReportsView() {
             plFiltered.filter(i=>glIsExpense(i.gl_code)).forEach(inv => {
               const k = inv.gl_code;
               if (!allExpGL[k]) allExpGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
-              allExpGL[k].total += inv.amount; allExpGL[k].count++;
+              allExpGL[k].total += signedAmt(inv); allExpGL[k].count++;   // C490 — a credit to an expense (a correction) subtracts
             });
             const cogsRows = Object.values(allExpGL).filter(r=>String(r.code).startsWith("5"));
             const opexRows = Object.values(allExpGL).filter(r=>!String(r.code).startsWith("5")).sort((a,b)=>a.code.localeCompare(b.code));
@@ -126,8 +139,8 @@ export default function ReportsView() {
             filtered.filter(i=>glPLType(i.gl_code)).forEach(inv => {
               const p = inv.project||"General";
               if (!byProject[p]) byProject[p] = { name:p, expenses:0, revenue:0, count:0 };
-              if (glIsExpense(inv.gl_code)) byProject[p].expenses+=inv.amount;
-              else byProject[p].revenue+=inv.amount;
+              if (glIsExpense(inv.gl_code)) byProject[p].expenses+=signedAmt(inv);
+              else byProject[p].revenue+=signedAmt(inv);   // C490
               byProject[p].count++;
             });
             const projectRows = Object.values(byProject).sort((a,b)=>b.expenses-a.expenses);
