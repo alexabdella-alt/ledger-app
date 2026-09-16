@@ -270,11 +270,12 @@ export function computeVendorTotals(invoices, range = {}, { side = "expense", al
     // chat's top-vendors answer, a week after the Vendors tab stopped splitting them.
     const raw = i.vendor_key || i.vendor || "Unknown";
     const key = aliasIndex ? applyAlias(raw, aliasIndex) : raw;
-    const v = map[key] || (map[key] = { vendor: i.vendor || "Unknown", total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name });
-    v.total += signed; v.count++;
+    const v = map[key] || (map[key] = { vendor: i.vendor || "Unknown", total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name, _entries: new Set() });
+    const entryKey = String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);   // C506 — count entries, not expanded rows
+    v.total += signed; if (!v._entries.has(entryKey)) { v._entries.add(entryKey); v.count++; }
     if (String(i.date || "") > v.last_date) { v.last_date = String(i.date || ""); v.vendor = i.vendor || v.vendor; v.gl_code = i.gl_code; v.gl_name = i.gl_name; }
   }
-  return Object.values(map).map(v => ({ ...v, total: r2(v.total) })).sort((a, b) => b.total - a.total);
+  return Object.values(map).map(({ _entries, ...v }) => ({ ...v, total: r2(v.total) })).sort((a, b) => b.total - a.total);
 }
 
 // Cash on hand = the GL balance of the cash / cash-equivalent accounts, summed.

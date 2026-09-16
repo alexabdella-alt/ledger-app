@@ -53,14 +53,17 @@ export function buildVendorSummary(invoices = [], aliasIndex = null) {
     const raw = inv.vendor_key || inv.vendor || "Unknown";
     const key = aliasIndex ? applyAlias(raw, aliasIndex) : raw;
     if (!map.has(key)) {
-      map.set(key, { key, name: inv.vendor || "Unknown", nameDate: "", total: 0, count: 0, lastDate: "", glAccounts: new Set(), projects: new Set() });
+      map.set(key, { key, name: inv.vendor || "Unknown", nameDate: "", total: 0, count: 0, lastDate: "", glAccounts: new Set(), projects: new Set(), _entries: new Set() });
     }
     const m = map.get(key);
+    // C506 — one bill with two expense lines flattens to two rows: count ENTRIES, not rows.
+    const entryKey = String(inv.db_entry_id != null ? inv.db_entry_id : String(inv.id).split("_")[0]);
+    const newEntry = !m._entries.has(entryKey); m._entries.add(entryKey);
     // A correcting entry is a credit to the same expense account, so subtracting it here is
     // what makes a removed bill stop counting as spend.
     const signed = inv.debit_credit === "credit" ? -(inv.amount || 0) : (inv.amount || 0);
     m.total += signed;
-    m.count += 1;
+    if (newEntry) m.count += 1;
     if (!m.lastDate || inv.date > m.lastDate) m.lastDate = inv.date;
     // Label with the most RECENT spelling — a real string the user has seen, not a
     // normalised key and not a vote nobody can predict.
@@ -68,7 +71,7 @@ export function buildVendorSummary(invoices = [], aliasIndex = null) {
     if (inv.gl_name) m.glAccounts.add(inv.gl_name);
     m.projects.add(inv.project || "General");
   }
-  return [...map.values()].sort((a, b) => b.total - a.total);
+  return [...map.values()].map(({ _entries, ...v }) => v).sort((a, b) => b.total - a.total);
 }
 
 // ── SCOPING THE TRANSACTIONS LIST TO ONE SUPPLIER (C347) ─────────────────────
