@@ -17,7 +17,7 @@ import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
-import { isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals, computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables, owedAmount, daysOverdue } from "./reports.js";
+import { isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals, computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables, openPayablesGL, openReceivablesGL, owedAmount, daysOverdue } from "./reports.js";
 
 const isLive = isLiveEntry;                                  // the ONE shared liveness predicate
 const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s[0] === "6" || s[0] === "7" || s[0] === "8"; };
@@ -172,10 +172,18 @@ async function getOverdueInvoices(input, ctx) {
   // financial summary two tools over. The local flag-only test counted a corrected bill
   // as overdue. (Code-free on purpose: `C309`'s A/P-offset widening needs the company's
   // code, and this ctx may not carry one — the summary's own predicate is the floor.)
-  const openSet = new Set([...openPayables(all), ...openReceivables(all)].map((i) => String(i.id)));
+  // C532 — ONE ROW PER BILL. The code-free lists are per flattened ROW, so a two-line overdue
+  // bill was listed twice at half each. With the company's codes (this ctx carries them), the
+  // open universe is the code-aware, one-per-entry list the Bills screen and Home read
+  // (C513/C528); without them, the flag list collapsed to entries.
+  const apCode = ctx.getAccountByRole?.("accounts_payable")?.code ?? null;
+  const arCode = ctx.getAccountByRole?.("accounts_receivable")?.code ?? null;
+  const openRows = (apCode || arCode)
+    ? [...(apCode ? openPayablesGL(all, apCode) : []), ...(arCode ? openReceivablesGL(all, arCode) : [])]
+    : [...openPayables(perEntry(all)), ...openReceivables(perEntry(all))];
   const rows = [];
-  for (const i of all) {
-    if (!openSet.has(String(i.id)) || !i.due_date) continue;
+  for (const i of openRows) {
+    if (!i.due_date) continue;
     const isAR = isRevenueCode(i.gl_code), isAP = isExpenseCode(i.gl_code);
     if (!isAR && !isAP) continue;
     if (type === "ar" && !isAR) continue;

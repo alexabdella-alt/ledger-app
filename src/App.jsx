@@ -9,7 +9,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancell
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
-import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayables } from "./lib/reports";
+import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, openPayablesGL } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount, mealsOverrideAllowed } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
@@ -8962,7 +8962,11 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             // live bills booked to A/P still unpaid). An older inline filter counted every
             // non-paid expense including direct cash spend that was never a payable, so the
             // badge showed a number the screen could not account for.
-            const apUnpaid = openPayables(invoices).length;
+            // C532 — the SAME code-aware list the Bills screen renders (openPayablesGL, C513): one
+            // per bill, a capitalized purchase on terms included, a card purchase at the till
+            // excluded. `openPayables(invoices)` was the code-free per-ROW flag list, so a two-line
+            // bill counted twice, the Sabine freezer not at all, and a till purchase as a bill.
+            const apUnpaid = openPayablesGL(invoices, rc("accounts_payable")).length;
             const openCards = clarificationQueue.filter(c => !c.resolved).length;
             const badgeFor = (id) => (id === "home" && openCards > 0 ? openCards : id === "ap" && apUnpaid > 0 ? apUnpaid : null);
             const active = activeNavItem(view, { booksFilter });

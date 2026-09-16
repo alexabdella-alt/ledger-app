@@ -109,7 +109,16 @@ export function collapseExpandedRows(rows = []) {
 // its `amount` set to the entry's total, so a two-line $6,000 bill is one $6,000 charge and not
 // two $3,000 ones. Simple rows pass through untouched.
 export function perEntry(rows = []) {
-  return collapseExpandedRows(rows).map(r => (r && r._entryTotal != null ? { ...r, amount: r._entryTotal } : r));
+  // An expanded row's id is `${entryId}_${lineIndex}` — the numeric tail is the sentinel here,
+  // not any underscore (C288's collision: a fixture id like `ap_null` is a simple row).
+  const expanded = r => /_\d+$/.test(String((r && r.id) ?? ""));
+  const simple = [], toCollapse = [];
+  for (const r of rows || []) (expanded(r) ? toCollapse : simple).push(r);
+  if (!toCollapse.length) return simple;
+  const collapsed = collapseExpandedRows(toCollapse).map(r => (r && r._entryTotal != null ? { ...r, amount: r._entryTotal } : r));
+  // keep the ledger's order: a collapsed entry sits where its first line was
+  const firstIndex = new Map(); (rows || []).forEach((r, i) => { const k = expanded(r) ? entryBaseOf(r) : String(r && r.id); if (!firstIndex.has(k)) firstIndex.set(k, i); });
+  return [...simple, ...collapsed].sort((a, b) => (firstIndex.get(expanded(a) ? entryBaseOf(a) : String(a.id)) ?? 0) - (firstIndex.get(expanded(b) ? entryBaseOf(b) : String(b.id)) ?? 0));
 }
 
 // The figure the list shows for a row: an expanded entry's total, a simple row's amount.
