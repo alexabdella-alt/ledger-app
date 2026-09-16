@@ -112,7 +112,7 @@ async function getCategoryTotals(input, ctx) {
 
 async function getVendorSummary(input, ctx) {
   const { from, to } = periodRange(input.period || "all_time", input.date_from, input.date_to);
-  let vendors = computeVendorTotals(await ctx.getLedger(), { from, to });
+  let vendors = computeVendorTotals(await ctx.getLedger(), { from, to }, { aliasIndex: ctx.aliasIndex || null });   // C488
   if (input.vendor) { const q = normV(input.vendor); vendors = vendors.filter(v => normV(v.vendor).includes(q)); }
   return { vendors: vendors.slice(0, 50).map(v => ({ ...v, total_display: money(v.total) })) };
 }

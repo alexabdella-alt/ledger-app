@@ -8271,7 +8271,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance: glCash, anomalies,
         businessType: companySettings.businessType,
         // Function-calling: give the AI direct, RLS-scoped database access via tools.
-        supabase, companyId: currentCompany?.id, getAccountByRole, recurring,
+        supabase, companyId: currentCompany?.id, getAccountByRole, recurring, aliasIndex,
         onToolCall: (name, params) => { try { logAI("ai_tool_call", `AI called tool: ${name} with params: ${JSON.stringify(params)}`); } catch {} },
       });
 

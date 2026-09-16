@@ -8,6 +8,7 @@
 
 import { glIsRevenue, glIsExpense, isCancelledOrCancelling } from "./gl";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format";
+import { applyAlias } from "./vendorAlias.js";
 
 const num = n => Number(n) || 0;
 const r2 = n => Math.round(num(n) * 100) / 100;
@@ -228,7 +229,7 @@ export function computeCategoryTotals(invoices, range = {}) {
 // GL account CLASS, not by whether a counterparty name exists: a revenue invoice that
 // happens to carry a customer name (e.g. an AR collection) is NOT a vendor expense and
 // must be excluded. `side:"revenue"` gives the symmetric by-customer view if ever needed.
-export function computeVendorTotals(invoices, range = {}, { side = "expense" } = {}) {
+export function computeVendorTotals(invoices, range = {}, { side = "expense", aliasIndex = null } = {}) {
   const match = side === "revenue" ? glIsRevenue : glIsExpense;
   const map = {};
   for (const i of liveEntries(invoices, range)) {
@@ -237,10 +238,15 @@ export function computeVendorTotals(invoices, range = {}, { side = "expense" } =
     const legs = plLegs(i, match);
     if (!legs.length) continue;
     const signed = legs.reduce((s, l) => s + l.signed, 0);
-    const name = i.vendor || "Unknown";
-    const v = map[name] || (map[name] = { vendor: name, total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name });
+    // C488 — grouped by the vendor KEY (and a confirmed alias, O111), labelled by the most
+    // recent spelling — the C210/C317 rule. Keyed on the display name, "Hill Country Milling
+    // Co." and "Hill Country Milling" were two vendors on the By Vendor report and in the
+    // chat's top-vendors answer, a week after the Vendors tab stopped splitting them.
+    const raw = i.vendor_key || i.vendor || "Unknown";
+    const key = aliasIndex ? applyAlias(raw, aliasIndex) : raw;
+    const v = map[key] || (map[key] = { vendor: i.vendor || "Unknown", total: 0, count: 0, last_date: "", gl_code: i.gl_code, gl_name: i.gl_name });
     v.total += signed; v.count++;
-    if (String(i.date || "") > v.last_date) { v.last_date = String(i.date || ""); v.gl_code = i.gl_code; v.gl_name = i.gl_name; }
+    if (String(i.date || "") > v.last_date) { v.last_date = String(i.date || ""); v.vendor = i.vendor || v.vendor; v.gl_code = i.gl_code; v.gl_name = i.gl_name; }
   }
   return Object.values(map).map(v => ({ ...v, total: r2(v.total) })).sort((a, b) => b.total - a.total);
 }
