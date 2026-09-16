@@ -26,6 +26,7 @@ import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, stat
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation, resolveActionTargets } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection, perEntry } from "./lib/insights";
+import { multiLineMetaPatch } from "./lib/entryMetaStamp";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
 import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
@@ -1865,7 +1866,29 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         p_source: source, p_created_by: session.user.id, p_lines: resolved, p_meta: entry.meta || {},
       });
       if (error) { console.error("post_journal_entry (multi-line) failed:", error.message); showNotification(`Couldn't save the entry — nothing was recorded. ${plainWriteError(error.message, "Please try again.")}`, "error"); return null; }
-      return data?.id || data?.entry?.id || null;
+      const newId = data?.id || data?.entry?.id || null;
+      // ── C524 — THE RPC KEEPS SIX SCALARS OF `p_meta` AND DROPS THE REST (O95). This path
+      // handed it the whole `entry.meta` and stamped nothing after, so a taxed invoice sent from
+      // the app arrived with `import_metadata: null`: after a reload `taxChargedOnInvoices` read
+      // $0 against a real Sales Tax Payable balance and `sales_tax_tie` failed HIGH — blocking
+      // sign-off after every taxed invoice, on books that were right (C241's inverted guard, on
+      // the A/R path; C517's fixture handed the check `tax_amount` directly, the ·3a shape).
+      // The same follow-up checked update `persistJournalEntry` uses (C241/C478): the tax figure
+      // under the key the control total reads, the entry's kind, and the invoice number into
+      // `reference_number` so the flatten reads it back. A lost stamp is audited and said.
+      const mp = multiLineMetaPatch(entry.meta);
+      if (newId && mp) {
+        const { taxAmt, fields, refNum, ...patch } = mp;
+        const r = await checkedRowUpdate({
+          supabase, table: "journal_entries", id: newId, companyId: currentCompany.id,
+          patch, label: "multiLineMetaStamp",
+        });
+        if (!r.ok) {
+          logAudit("entry_meta_stamp_failed", `Booked the entry, but couldn't record ${[...fields, ...(refNum ? ["invoice number"] : [])].join(", ")}`, null, { entry_id: String(newId), fields, reference_number: refNum || null });
+          if (taxAmt > 0) showNotification("Recorded — but we couldn't record this invoice's sales tax for the monthly cross-check. Your accountant may see a sales-tax mismatch that isn't real.", "warning");
+        }
+      }
+      return newId;
     } catch(e) { console.error("persistMultiLineEntry error:", e); return null; }
   };
 
