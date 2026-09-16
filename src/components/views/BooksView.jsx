@@ -2,7 +2,8 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, settledBases } from "../../lib/gl";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, settledBases, entryBaseOf } from "../../lib/gl";
+import { flaggedForReview } from "../../lib/confidenceFlag";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { planBulkRemoval } from "../../lib/signedPeriod";
@@ -60,7 +61,13 @@ export default function BooksView() {
   React.useEffect(() => { setPicked(new Set()); }, [filter]);
   const methodOpts = [["ach","ACH / Bank Transfer"],["check","Check"],["wire","Wire Transfer"],["card","Credit Card"],["zelle","Zelle"],["venmo","Venmo"],["paypal","PayPal"],["other","Other"]];
   const methodLabel = m => (methodOpts.find(([v])=>v===m)?.[1]) || (m?String(m).toUpperCase():"—");
-  const needsReview = i => i.approval_status==="pending_approval" || i.approval_status==="flagged" || i.approval_status==="info_requested" || (i.confidence!=null && i.confidence<70);
+  // C530 — "Needs Review" is the SAME judgement Review and Home make (`flaggedForReview`: uncertain
+  // AND material, per entry on the entry's total), plus a row a person flagged. This list had its
+  // own rule — confidence under 70, any amount — so a $5 receipt at 60% wore the pill while Review
+  // listed nothing, and a $3,000 bill at 72% read "Booked" here while Home said it still needed a
+  // look. Two definitions of one word, on two screens a person reads in the same minute (§12).
+  const flaggedBases = React.useMemo(() => new Set(flaggedForReview(invoices || []).map(f => String(f.db_entry_id ?? String(f.id).split("_")[0]))), [invoices]);
+  const needsReview = i => i.approval_status==="flagged" || i.approval_status==="info_requested" || flaggedBases.has(entryBaseOf(i));
   // GL-truth classification (CLAUDE.md §9): the account the entry hits IS the truth. Revenue =
   // credits a revenue (4xxx) account; expense = debits an expense (5–8xxx) account — read from
   // the flattened primary `gl_code`, NOT the denormalized `type` flag. The flag LIES on
