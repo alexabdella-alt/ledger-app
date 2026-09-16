@@ -190,3 +190,16 @@ describe("★ the trust panel's Documents row is a QUEUE, not an unearned tick",
     expect(panel).toMatch(/<Line state=\{lines\.correct\.state\} title="Nothing wrong"/);
   });
 });
+
+// C526 — a failure row never reaches the owner's feed, whatever keyword its action carries.
+describe("C526 — failure rows stay out of the owner feed", () => {
+  it("settled_flag_resync_failed (matches Home's 'flag' keyword) renders nothing, with its raw error", () => {
+    expect(ownerActivityText({ action: "settled_flag_resync_failed", detail: `A payment was removed, but its bill couldn't be marked paid (update matched 0 rows) — "Bills to pay" may disagree` })).toBeNull();
+    expect(ownerActivityText({ action: "payment_persist_failure", detail: "Couldn't record the payment: new row violates row-level security policy" })).toBeNull();
+    expect(ownerActivityText({ action: "invoice_delete_failed", detail: "Couldn't delete Roma $551.20" })).toBeNull();
+  });
+  it("and a real event with 'paid' or 'flag' in its name still shows", () => {
+    expect(ownerActivityText({ action: "invoice_paid", detail: "Paid Sysco $824.60 via ACH" })).toBe("Paid Sysco $824.60 via ACH");
+    expect(ownerActivityText({ action: "review_approved", detail: "Approved the Sysco bill" })).toBe("Approved the Sysco bill");
+  });
+});

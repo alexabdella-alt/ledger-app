@@ -34,7 +34,12 @@ const TECHNICAL_TAIL = [
 // Words that mean the whole line is machinery rather than an event a person did. These
 // rows are kept OUT of the owner feed entirely rather than scrubbed — a half-readable
 // sentence about a control total is worse than no line at all.
-const SYSTEM_ACTIONS = /^(security_check|coa_template_applied|.*_write_failed|.*_stamp_failed|intake_.*|anomaly_.*|statement_.*|reversal_stamp_failed)$/i;
+// C526 — every `*_failed` / `*_failure` row, not only the write- and stamp-shaped ones: Home's
+// feed admits actions by keyword (`flag`, `paid`, …), and `settled_flag_resync_failed` — whose
+// detail quotes the database's own error in parentheses — walked through on "flag". A failure
+// is toasted in the owner's words at the moment it happens (C415); the audit row keeps the raw
+// reason for the accountant, and the owner's feed is not the place to read it back.
+const SYSTEM_ACTIONS = /^(security_check|coa_template_applied|.*_failed|.*_failure|intake_.*|anomaly_.*|statement_.*)$/i;
 
 export function scrubOwnerActivity(detail) {
   let s = String(detail == null ? "" : detail);
