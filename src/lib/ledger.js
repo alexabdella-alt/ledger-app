@@ -158,6 +158,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
           paid_at: e.paid_at || undefined,
           payment_method_used: e.payment_method || undefined,
           due_date: e.due_date || undefined,
+          invoice_number: e.reference_number || null,   // C523 — C478 read it back on the simple branch only; a multi-line bill's number was never seen again
           confidence: e.ai_confidence ?? 99,
           reasoning: e.ai_reasoning || null,   // C328: no invented rationale — a payment, a clearing or an opening balance has none, and the screen shows none
           db_entry_id: e.id,

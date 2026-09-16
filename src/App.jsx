@@ -25,7 +25,7 @@ import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstan
 import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation, resolveActionTargets } from "./lib/aiActionGate";
-import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
+import { findDuplicate, detectRecurringPatterns, runAnomalyDetection, perEntry } from "./lib/insights";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
 import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
@@ -5612,8 +5612,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // Duplicate check — runs before any other routing. First an exact
             // invoice-number match, then a smart fuzzy match (same vendor + amount
             // within 1% + within 7 days, or exact amount + same vendor any date).
+            // C523 — against ENTRIES, not the expanded rows. A two-line bill's rows are its lines
+            // and its offset leg, so a re-drop matched by accident (the A/P row carries the total,
+            // the by-number match returned a LINE and the card quoted its share), and the vendor's
+            // rhythm could never read as flat (three rows a week at three amounts) — a weekly
+            // two-line bill was offered as a duplicate every week.
+            const ledgerEntries = perEntry(invoices);
             const dupByNumber = invoice.invoice_number
-              ? invoices.find(ex =>
+              ? ledgerEntries.find(ex =>
                   ex.invoice_number &&
                   ex.invoice_number.toLowerCase() === invoice.invoice_number.toLowerCase() &&
                   ex.vendor?.toLowerCase() === invoice.vendor?.toLowerCase()
@@ -5633,12 +5639,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // machine then answered it correctly and unattended. Deferring costs nothing we
             // do not recover: a missed double-charge is two identical rows in the ledger —
             // visible and removable — and the detector re-raises it in the same session.
-            const rawDup = dupByNumber || findDuplicate(invoice, invoices);
+            const rawDup = dupByNumber || findDuplicate(invoice, ledgerEntries);
             // Same-vendor rows, grouped the way the rest of the app groups them (O125), so
             // this cannot disagree with the vendor list about who a supplier is.
             const dupVendorKey = normVendorName(invoice.vendor);
             const vendorRows = rawDup && dupVendorKey
-              ? invoices.filter(x => normVendorName(x?.vendor) === dupVendorKey)
+              ? ledgerEntries.filter(x => normVendorName(x?.vendor) === dupVendorKey)
               : [];
             // How many files are still in flight — a lone drop is not a batch, and nothing
             // further is coming to change the answer.
