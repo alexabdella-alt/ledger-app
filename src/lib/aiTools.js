@@ -16,10 +16,7 @@ import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
-import {
-  isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
-  computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables,
-} from "./reports.js";
+import { isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals, computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables, owedAmount } from "./reports.js";
 
 const isLive = isLiveEntry;                                  // the ONE shared liveness predicate
 const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s[0] === "6" || s[0] === "7" || s[0] === "8"; };
@@ -169,7 +166,7 @@ async function getOverdueInvoices(input, ctx) {
     if (type === "ap" && !isAP) continue;
     const days = Math.floor((now - new Date(i.due_date)) / 86400000);
     if (days < minDays) continue;
-    rows.push({ kind: isAR ? "ar" : "ap", vendor: i.vendor, amount: r2(i.amount), amount_display: money(i.amount), due_date: i.due_date, days_overdue: days, gl_name: i.gl_name });
+    rows.push({ kind: isAR ? "ar" : "ap", vendor: i.vendor, amount: r2(owedAmount(i)), amount_display: money(owedAmount(i)), due_date: i.due_date, days_overdue: days, gl_name: i.gl_name });   // C500 — the receivable incl. tax, not the ex-tax revenue row
   }
   rows.sort((a, b) => b.days_overdue - a.days_overdue);
   const total = r2(rows.reduce((s, r) => s + r.amount, 0));

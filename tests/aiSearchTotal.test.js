@@ -45,3 +45,14 @@ describe("C487", () => {
     expect(ids).toContain("Acme:900");        // an open receivable
   });
 });
+
+// C500 — the overdue tool reported a taxed invoice at its ex-tax revenue amount (the C454
+// shape): a $1,299 invoice read as $1,200 owed in the chat's answer.
+describe("C500", () => {
+  it("an overdue taxed invoice is reported at the receivable, tax included", async () => {
+    const taxed = { id: "t1", vendor: "Beta", amount: 1200, ar_amount: 1299, date: "2026-07-01", due_date: "2026-08-01", gl_code: "4000", secondary_gl_code: "1100", type: "revenue", status: "posted", payment_status: "unpaid" };
+    const r = await executeAITool("get_overdue_invoices", { type: "ar" }, { getLedger: async () => [taxed], getAccountByRole: () => null });
+    expect(r.invoices.map((x) => x.amount)).toEqual([1299]);
+    expect(r.total).toBe(1299);
+  });
+});
