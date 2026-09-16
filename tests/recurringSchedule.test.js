@@ -46,3 +46,27 @@ describe("C492 · nextRecurringDate", () => {
     }
   });
 });
+
+import { dueLabel } from "../src/lib/recurringSchedule.js";
+import { renderViewHtml } from "./helpers/renderView.jsx";
+import { POPULATED } from "./helpers/populatedFixture.js";
+import RecurringView from "../src/components/views/RecurringView.jsx";
+import { todayLocal, addDaysYMD } from "../src/lib/format.js";
+
+describe("C495 · dueLabel", () => {
+  it("says how long a rule has been due, not 'today' for everything past", () => {
+    expect(dueLabel("2026-09-15", "2026-09-15")).toBe("Due today");
+    expect(dueLabel("2026-09-14", "2026-09-15")).toBe("Due yesterday");
+    expect(dueLabel("2026-09-05", "2026-09-15")).toBe("Due 10 days ago");
+    expect(dueLabel("2026-08-25", "2026-09-15")).toBe("Due 3 weeks ago");
+    expect(dueLabel("2026-06-15", "2026-09-15")).toBe("Due 3 months ago");
+    expect(dueLabel("2026-09-16", "2026-09-15")).toBeNull();
+  });
+  it("the Recurring screen renders it for an overdue rule", () => {
+    const today = todayLocal();
+    const recurring = [{ id: "r1", name: "Rent", vendor: "Franklin Ave", amount: 2400, gl_code: "6100", gl_name: "Rent", frequency: "monthly", next_date: addDaysYMD(today, -21), active: true }];
+    const t = renderViewHtml(RecurringView, { ...POPULATED, recurring, companyDataLoaded: true }).replace(/<!-- -->/g, "");
+    expect(t).toContain("Due 3 weeks ago");
+    expect(t).not.toContain("Due today");
+  });
+});

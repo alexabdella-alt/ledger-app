@@ -33,3 +33,17 @@ export function nextRecurringDate(ymd, frequency) {
   const total = p.mo - 1 + k, y = p.y + Math.floor(total / 12), mo = (total % 12) + 1;
   return `${y}-${pad(mo)}-${pad(lastDayOf(y, mo))}`;
 }
+
+// C495 — the Recurring screen's badge read "Due today" for any rule whose date had passed,
+// three weeks overdue included. Says how long, from the date the row carries.
+export function dueLabel(ymd, today) {
+  const a = parse(ymd), b = parse(today);
+  if (!a || !b) return null;
+  const days = Math.round((Date.UTC(b.y, b.mo - 1, b.d) - Date.UTC(a.y, a.mo - 1, a.d)) / 86400000);
+  if (days < 0) return null;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due yesterday";
+  if (days < 14) return `Due ${days} days ago`;
+  if (days < 60) return `Due ${Math.round(days / 7)} weeks ago`;
+  return `Due ${Math.round(days / 30)} months ago`;
+}
