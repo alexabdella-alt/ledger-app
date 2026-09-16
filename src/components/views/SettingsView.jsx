@@ -155,20 +155,10 @@ export default function SettingsView() {
                         {[["12-31","December 31"],["03-31","March 31"],["06-30","June 30"],["09-30","September 30"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
                       </select>
                     </div>
-                    <div>
-                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>DEFAULT CASH ACCOUNT</div>
-                      <select value={draft.defaultCashAccount} onChange={e=>setDraft(d=>({...d,defaultCashAccount:e.target.value}))}
-                        style={{width:"100%",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}>
-                        {(BOOKABLE_ACCOUNTS||[]).filter(a=>a.category==="Assets").map(a=><option key={a.code} value={a.code}>{a.code} – {a.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>CURRENCY</div>
-                      <select value={draft.currency||"USD"} onChange={e=>setDraft(d=>({...d,currency:e.target.value}))}
-                        style={{width:"100%",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}>
-                        {["USD","EUR","GBP","CAD","AUD"].map(c=><option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
+                    {/* C476 — the "Default cash account" and "Currency" pickers are gone: both were saved to
+                        the company row and read by nothing. Cash comes from the bank account a statement is
+                        matched to (by role, §4), and every figure in the product is US dollars — a EUR option
+                        that changed no symbol anywhere was a promise the product does not keep. */}
                     <div>
                       <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>DEFAULT SALES TAX RATE</div>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
