@@ -443,8 +443,14 @@ export function openReceivablesGL(invoices, arCode) {
   if (arCode == null) return [];   // no code → nothing, never the flag list (degrade safely)
   return (invoices || []).filter(i => isLiveEntry(i) && arUnpaidWith(arCode)(i));   // C497 — one row per invoice, taxed invoices included
 }
+// C498 — an expanded (multi-line) bill's expense rows carry A/P only as their offset, which
+// `touchesAccount` ignores for expanded rows, so Home's "Bills to pay" card MISSED every
+// multi-line bill. Its A/P leg row (a CREDIT to A/P with the bill's full amount) is the one
+// row that represents it; a debit to A/P is a payment and is never a bill.
+const isApLegRow = (i, ap) => ap != null && String(i.id ?? "").includes("_") && String(i.gl_code) === String(ap) && i.debit_credit === "credit"
+  && !isCancelledOrCancelling(i) && i.payment_status !== "paid";
 export function openPayablesGL(invoices, apCode) {
-  return (invoices || []).filter(i => isLiveEntry(i) && apUnpaid(i) && touchesAccount(i, apCode));
+  return (invoices || []).filter(i => isLiveEntry(i) && ((apUnpaid(i) && touchesAccount(i, apCode)) || isApLegRow(i, apCode)));
 }
 
 // ── AR / AP AGING (Items 24, 83) ────────────────────────────────────────────

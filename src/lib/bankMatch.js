@@ -169,7 +169,7 @@ export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode 
   // Dr A/P / Cr Cash payment entries have an A/P leg, so the old filter offered them as "open
   // payables" and February bank debits proposed matches against JANUARY's settled history
   // (Roma Feb ↔ Roma's Jan payment, etc.). A settlement entry is never itself an open item.
-  return (invoices || []).filter(i =>
+  const open = (invoices || []).filter(i =>
     i &&
     isClearable(i) &&
     !isSettlementEntry(i) &&                                       // a payment/collection is never "open"
@@ -177,6 +177,23 @@ export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode 
     i.source !== "bank_feed" && i.source !== "bank_statement" &&   // not the bank lines themselves
     !i.matched &&                                                  // session optimistic guard
     !cleared.has(String(i.db_entry_id != null ? i.db_entry_id : i.id)));
+  // C498 — ONE OPEN ITEM PER ENTRY. A multi-line bill (Dr Food 500 / Dr Freight 20 / Cr A/P 520)
+  // or a taxed invoice (Dr A/R 1,299 / Cr Revenue / Cr Sales Tax) flattens to several rows that
+  // ALL carry the A/P (A/R) account on a leg, and every one passed the filter above — so the
+  // Matching screen listed one $520 bill as three open items totalling $1,040, and the engine
+  // could match a $500 ACH to the food line alone. An expanded entry is represented by the row
+  // whose PRIMARY account IS the A/R, A/P or accrued leg: that row carries the whole amount.
+  const legRow = (i) => eq(i.gl_code, arCode) || eq(i.gl_code, apCode) || eq(i.gl_code, accruedCode);
+  const seen = new Set();
+  const out = [];
+  for (const i of open) {
+    if (!String(i.id ?? "").includes("_")) { out.push(i); continue; }   // a simple entry is one row already
+    const base = String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
+    if (seen.has(base)) continue;
+    const rep = open.find(r => String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base && legRow(r)) || i;
+    seen.add(base); out.push(rep);
+  }
+  return out;
 }
 
 // Resolve an LLM/engine proposal's invoice_ids → the actual open-item objects to DISPLAY as the
