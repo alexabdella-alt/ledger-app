@@ -3,6 +3,7 @@ import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { filterDocuments, documentDate, documentDateLabel, linkedEntryFor } from "../../lib/docLibrary";
+import { entryTotalOf } from "../../lib/txnPresent";
 import { fmtDate, fmtMoney } from "../../lib/format";
 import DocumentPreviewModal from "../DocumentPreviewModal";
 
@@ -135,7 +136,7 @@ export default function DocsView() {
                     if (!inv) return null;
                     return (
                       <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <span>{inv.vendor} · {fmtMoney(inv.amount)}</span>
+                        <span>{inv.vendor} · {fmtMoney(entryTotalOf(inv, invoices))}</span>   {/* C516 — the entry's total, not its first line */}
                         <button onClick={(e) => { e.stopPropagation(); setReturnTo({ view: "docs", label: "Documents" }); setSelectedInvoice(inv); setView("detail"); }}
                           style={{ fontSize: 11, fontWeight: 600, color: "var(--sc-gold)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Open the transaction →</button>
                       </div>

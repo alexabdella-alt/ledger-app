@@ -1,3 +1,4 @@
+import { entryTotalOf } from "./txnPresent.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // THE DOCUMENT LIBRARY — three claims the screen made and did not keep.
 //
@@ -80,7 +81,7 @@ export function filterDocuments(docs = [], { query = "", type = "all", from = nu
     // supplier — so the linked entry's vendor and amount are searchable. This is NOT
     // content search: nothing here reads the file, only the entry already on screen.
     const inv = linkedEntryFor(d, invoices);
-    const amt = inv && Number.isFinite(Number(inv.amount)) ? Number(inv.amount) : null;
+    const amt = inv ? entryTotalOf(inv, invoices) : null;   // C516 — the figure the card prints (the entry's total)
     const linked = inv ? `${norm(inv.vendor)} ${amt == null ? "" : `${amt} ${amt.toFixed(2)}`}` : "";
     const hay = `${norm(d.name)} ${norm(d.type)} ${norm((d.tags || []).join(" "))} ${linked}`;
     return terms.every((t) => hay.includes(t));

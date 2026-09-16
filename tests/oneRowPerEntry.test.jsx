@@ -95,3 +95,16 @@ describe("C510 · the Full entry page names the party by direction", () => {
     expect(bill).toMatch(/Supplier\s+Roma/);
   });
 });
+
+import DocsView from "../src/components/views/DocsView.jsx";
+import { filterDocuments } from "../src/lib/docLibrary.js";
+describe("C516 · the Documents card names the entry at its total", () => {
+  const doc = { id: "d1", name: "IMG_4471.jpg", type: "invoice", linked_invoice_id: "b1", uploaded_at: "2026-09-02T10:00:00Z" };
+  it("a two-line bill's document reads $520, and is found by 520", () => {
+    const t = text(renderViewHtml(DocsView, { ...ctx, docLibrary: [doc], documents: [doc] }));
+    expect(t).toContain("$520.00");
+    expect(t).not.toContain("$500.00");
+    expect(filterDocuments([doc], { query: "520" }, rows)).toHaveLength(1);
+    expect(filterDocuments([doc], { query: "500" }, rows)).toHaveLength(0);   // not one line's share
+  });
+});
