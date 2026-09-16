@@ -12,6 +12,7 @@
 // getLedger() returns the full flattened ledger (fetched once per turn, cached).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { perEntry } from "./txnPresent.js";
 import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
@@ -48,13 +49,25 @@ const inRange = (date, from, to) => { const d = String(date || ""); if (from && 
 // ── Tool implementations ────────────────────────────────────────────────────
 async function searchTransactions(input, ctx) {
   const led = (await ctx.getLedger()).filter(isLive);
-  let rows = led.filter(i => {
-    if (input.vendor && !normV(i.vendor).includes(normV(input.vendor))) return false;
-    if (input.gl_code && String(i.gl_code) !== String(input.gl_code)) return false;
-    if (!inRange(i.date, input.date_from, input.date_to)) return false;
-    if (input.min_amount != null && (Number(i.amount) || 0) < input.min_amount) return false;
-    if (input.max_amount != null && (Number(i.amount) || 0) > input.max_amount) return false;
-    if (input.status && (i.payment_status || "unpaid") !== input.status) return false;
+  // C521 — A TRANSACTION IS AN ENTRY, NOT A LINE. The ledger arrives expanded (one row per line
+  // of a multi-line entry), and this listed every row: a two-line $6,000 Sysco bill was THREE
+  // "transactions" — $3,000 Food, $3,000 Freight and a $6,000 Accounts Payable row, all
+  // `kind: "entry"` — and "the $6,000 Sysco bill" (min_amount 6000) matched only the A/P row.
+  // One row per entry at the entry's total, its lines listed beneath it; a GL-code filter
+  // matches an entry carrying that code on ANY line. The total stays C486's — the signed P&L
+  // movement over the matched LINES (narrowed to the asked-for code when one is given).
+  const keyOf = i => (String(i.id ?? "").includes("_") ? String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]) : String(i.id));
+  const linesOf = new Map();
+  for (const i of led) { const k = keyOf(i); if (!linesOf.has(k)) linesOf.set(k, []); linesOf.get(k).push(i); }
+  const lines = e => linesOf.get(keyOf(e)) || [e];
+  const askedCode = input.gl_code != null ? String(input.gl_code) : null;
+  let rows = perEntry(led).filter(e => {
+    if (input.vendor && !normV(e.vendor).includes(normV(input.vendor))) return false;
+    if (askedCode && !lines(e).some(l => String(l.gl_code) === askedCode)) return false;
+    if (!inRange(e.date, input.date_from, input.date_to)) return false;
+    if (input.min_amount != null && (Number(e.amount) || 0) < input.min_amount) return false;
+    if (input.max_amount != null && (Number(e.amount) || 0) > input.max_amount) return false;
+    if (input.status && (e.payment_status || "unpaid") !== input.status) return false;
     return true;
   });
   // C486 — THE TOTAL IS WHAT MOVED ON THE P&L, SIGNED. It summed `amount` over every match:
@@ -69,7 +82,8 @@ async function searchTransactions(input, ctx) {
     if (isRevenueCode(i.gl_code)) return i.debit_credit === "debit" ? -amt : amt;
     return 0;
   };
-  const total = rows.reduce((s, i) => s + plSigned(i), 0);
+  const countedLines = rows.flatMap(e => lines(e).filter(l => !askedCode || String(l.gl_code) === askedCode));
+  const total = countedLines.reduce((s, i) => s + plSigned(i), 0);
   const settlementsIncluded = rows.filter(isSettlementEntry).length;
   const matchCount = rows.length;                       // ALL matches (before the display cap)
   // Most recent first, so the AI always lists the latest matches first when
@@ -81,6 +95,8 @@ async function searchTransactions(input, ctx) {
     type: i.type, payment_status: i.payment_status, due_date: i.due_date, description: i.description,
     // C486 — so the model can SAY which rows are the bill, its payment, or a correction.
     kind: isSettlementEntry(i) ? "payment" : i.import_metadata?.reverses ? "correction" : i.source === "opening_balance" ? "opening_balance" : "entry",
+    // C521 — a multi-line entry says what its lines are, so "$6,000 to Sysco" can be explained.
+    ...(i._lineCount > 1 ? { lines: i._lineCount, line_items: lines(i).map(l => ({ gl_code: l.gl_code, gl_name: l.gl_name, amount: l.amount, amount_display: money(l.amount), side: l.debit_credit })) } : {}),
   }));
   // The listed rows can be a TRUNCATED slice while total_amount/total_count reflect ALL
   // matches. Surface that explicitly so the AI never presents a partial list as complete —

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
 import { executeAITool } from "../src/lib/aiTools.js";
+import { flattenJournalEntries } from "../src/lib/ledger.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // C486 — "HOW MUCH HAVE I SPENT WITH SYSCO?" ANSWERED $1,500 FOR A $500 BILL. The AI's
@@ -71,5 +73,63 @@ describe("C501", () => {
     expect(evening.invoices).toHaveLength(0);
     const nextDay = await executeAITool("get_overdue_invoices", { type: "ar", days_overdue: 1 }, at("2026-08-02T13:00:00"));
     expect(nextDay.invoices.map((x) => x.days_overdue)).toEqual([1]);
+  });
+});
+
+// C521 — a transaction is an ENTRY, not a line: a two-line bill is one search result at its total.
+describe("C521 — search_transactions lists one row per entry", () => {
+  const chart = [
+    { code: "2000", name: "Accounts Payable", category: "Liabilities", system_role: "accounts_payable" },
+    { code: "5010", name: "Food Cost", category: "Expenses" },
+    { code: "5030", name: "Freight", category: "Expenses" },
+  ];
+  const acct = (code) => ({ code, name: chart.find(a => a.code === code)?.name });
+  const je = (id, date, description, lines) => ({
+    id, entry_date: date, description, status: "posted", deleted_at: null, source: "universal_upload", payment_status: "unpaid",
+    journal_entry_lines: lines.map((l, n) => ({ id: `${id}-l${n}`, debit: l.debit || 0, credit: l.credit || 0, accounts: acct(l.code) })),
+  });
+  const ledger = flattenJournalEntries([
+    je("big", "2026-09-03", "Sysco – produce + freight", [{ code: "5010", debit: 3000 }, { code: "5030", debit: 3000 }, { code: "2000", credit: 6000 }]),
+    je("s", "2026-09-04", "Sysco – cheese", [{ code: "5010", debit: 400 }, { code: "2000", credit: 400 }]),
+  ], chart);
+  const ctx = { getLedger: async () => ledger, getAccountByRole: () => null };
+
+  it("THE REPRO — the two-line bill is ONE transaction of $6,000, not three rows", async () => {
+    expect(ledger.length).toBe(4);   // the shape under test: an expanded entry plus a simple one
+    const r = await executeAITool("search_transactions", { vendor: "Sysco" }, ctx);
+    expect(r.total_count).toBe(2);
+    expect(r.total_amount).toBe(6400);
+    const big = r.transactions.find(t => t.date === "2026-09-03");
+    expect(big.amount).toBe(6000);
+    expect(big.lines).toBe(3);   // the whole entry, with each line's side, so the model can tell what was bought from what is owed
+    expect(big.line_items.map(l => `${l.gl_name}:${l.side}`)).toEqual(["Food Cost:debit", "Freight:debit", "Accounts Payable:credit"]);
+    expect(r.transactions.find(t => t.date === "2026-09-04").lines).toBeUndefined();
+  });
+
+  it("'the $6,000 Sysco bill' is found by its total — and is not reported as an Accounts Payable row", async () => {
+    const r = await executeAITool("search_transactions", { vendor: "Sysco", min_amount: 6000 }, ctx);
+    expect(r.total_count).toBe(1);
+    expect(r.transactions[0].gl_name).not.toBe("Accounts Payable");
+  });
+
+  it("a GL-code filter matches an entry carrying that code on ANY line, and totals only those lines", async () => {
+    const r = await executeAITool("search_transactions", { vendor: "Sysco", gl_code: "5030" }, ctx);
+    expect(r.total_count).toBe(1);
+    expect(r.total_amount).toBe(3000);   // the Freight line, not the whole bill
+  });
+});
+
+// C521 — the legacy (no-tools) prompt lists the ledger per ENTRY too. `runAIBrain` is network-bound,
+// so this is held as structure: the section reads `perEntry(invoices)` and never slices the raw rows.
+describe("C521 — the legacy prompt's ledger snapshot is per entry", () => {
+  it("reads perEntry and not the expanded rows", () => {
+    const src = fs.readFileSync("src/lib/ai.js", "utf8").replace(/\/\/.*$/gm, "");
+    const at = src.indexOf("const legacyLedgerSection");
+    expect(at).toBeGreaterThan(-1);
+    const block = src.slice(src.lastIndexOf("\n", src.indexOf("const ledgerEntries")), src.indexOf("const contactsSection", at));
+    expect(block).toContain("perEntry(invoices)");
+    expect(block).toContain("ledgerEntries.slice(0, 80)");
+    expect(block).not.toMatch(/invoices\.slice\(/);
+    expect(block).not.toMatch(/\$\$\{inv\.amount\}/);   // money through the formatter, not "$4000"
   });
 });

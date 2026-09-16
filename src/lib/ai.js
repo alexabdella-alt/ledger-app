@@ -3,6 +3,7 @@ import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL } from "./constants";
 import { formatProfileForPrompt } from "./clientProfile";
 import { fmtSignedMoney, todayLocal } from "./format";
 import { fetchLedger } from "./ledger";
+import { perEntry } from "./txnPresent";
 import { executeAITool } from "./aiTools";
 import { classifyAIFailure } from "./aiFailure";
 import { readBudgetHeaders, recordBudget } from "./aiBudget";
@@ -229,12 +230,15 @@ async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory,
 
   // The ledger snapshot is ONLY used by the legacy fallback (when tool-calling is
   // unavailable). In tool mode the AI queries the database directly via tools.
+  // C521 — one line per ENTRY at its total (the ledger arrives expanded, one row per line), so a
+  // two-line bill is not told to the model as two purchases and an "Accounts Payable" one.
+  const ledgerEntries = perEntry(invoices);
   const legacyLedgerSection = needsLedger
-    ? `Current Ledger (${invoices.length} entries — showing most recent 80):
-${invoices.length === 0 ? "Empty." : invoices.slice(0, 80).map(inv =>
-  `ID:${inv.id} | ${inv.vendor} | $${inv.amount} | ${inv.date} | GL:${inv.gl_code} ${inv.gl_name} | Project:${inv.project||"General"} | Status:${inv.payment_status||"unpaid"}`
+    ? `Current Ledger (${ledgerEntries.length} entries — showing most recent 80):
+${ledgerEntries.length === 0 ? "Empty." : ledgerEntries.slice(0, 80).map(inv =>
+  `ID:${inv.id} | ${inv.vendor} | ${fmtSignedMoney(inv.amount)} | ${inv.date} | GL:${inv.gl_code} ${inv.gl_name}${inv._lineCount > 1 ? ` (+${inv._lineCount - 1} more lines)` : ""} | Project:${inv.project||"General"} | Status:${inv.payment_status||"unpaid"}`
 ).join("\n")}`
-    : `Ledger: not loaded for this query (${invoices.length} total entries available — ask a specific financial question to query it).`;
+    : `Ledger: not loaded for this query (${ledgerEntries.length} total entries available — ask a specific financial question to query it).`;
 
   const contactsSection = needsContacts && contacts.length > 0
     ? `Contacts (${contacts.length}):
