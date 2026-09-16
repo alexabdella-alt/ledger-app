@@ -94,9 +94,12 @@ export function deductionBreakdown(invoices, year = new Date().getFullYear(), ge
   const inScope = i =>
     i.status !== "voided" && i.status !== "deleted" && !i.deleted_at &&
     String(i.date || "").startsWith(String(year));
+  // C489 — signed by the leg: a correction is a CREDIT to the same expense account and must
+  // subtract, or a corrected $2,400 rent bill counted as $4,800 of deductions (the C216 rule,
+  // on the Taxes screen and the chat's deductions tool).
   const sumCode = code => !code ? 0 : (invoices || [])
     .filter(i => inScope(i) && String(i.gl_code || "") === String(code))
-    .reduce((s, i) => s + (Number(i.amount) || 0), 0);
+    .reduce((s, i) => s + (i.debit_credit === "credit" ? -(Number(i.amount) || 0) : (Number(i.amount) || 0)), 0);
   const acct = role => getAccountByRole ? getAccountByRole(role) : null;
   const sumRole = role => sumCode(acct(role)?.code);
   // C386 — the hint names the account, never its number: the Taxes screen is the owner's,
