@@ -870,12 +870,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // ── ACCOUNT MUTATIONS (persist to Supabase, then refresh the live chart) ─────
   const addCustomAccount = async ({ code, name, category }) => {
     if (!currentCompany?.id || !code || !name) return false;
-    if (CHART_OF_ACCOUNTS.find(a => a.code === code)) { showNotification("Account code already exists.", "error"); return false; }
+    if (CHART_OF_ACCOUNTS.find(a => a.code === code)) { showNotification("That category number is already in use — pick another.", "error"); return false; }
     const { error } = await supabase.from("accounts").insert({
       company_id: currentCompany.id, code, name, category: category || "Expenses",
       active: true, is_system: false, system_role: null,
     });
-    if (error) { console.warn("[accounts] add failed:", error.message); showNotification("Couldn't add account — " + error.message, "error"); return false; }
+    // C480 — `error.message` was appended raw (the C415 census keyed on `r.error`, and this is a
+    // bare `error` off a Supabase call); routed through the same plain-language map.
+    if (error) { console.warn("[accounts] add failed:", error.message); showNotification(`Couldn't add that category — nothing was changed. ${plainWriteError(error.message, "Please try again.")}`, "error"); return false; }
     logAudit("coa_added", `Category added: ${name} (${category})`, null, { code, name, category });
     await reloadAccounts();
     return true;
@@ -917,7 +919,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (account.system_role) { showNotification("System accounts can't be deleted — rename it instead.", "error"); return false; }
     if (await accountHasTransactions(account)) { showNotification("This account has transactions and can't be deleted.", "error"); return false; }
     const { error } = await supabase.from("accounts").delete().eq("id", account.db_id).eq("company_id", currentCompany.id);
-    if (error) { console.warn("[accounts] delete failed:", error.message); showNotification("Couldn't delete — " + error.message, "error"); return false; }
+    if (error) { console.warn("[accounts] delete failed:", error.message); showNotification(`Couldn't remove that category — nothing was changed. ${plainWriteError(error.message, "Please try again.")}`, "error"); return false; }
     logAudit("coa_deleted", `Account deleted: ${account.code} – ${account.name}`);
     await reloadAccounts();
     return true;
@@ -1763,7 +1765,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const rpcMissing = /post_journal_entry|could not find the function|does not exist|schema cache|PGRST202|PGRST302/i.test(rpcErr.message || "");
       if (!rpcMissing) {
         console.error("post_journal_entry failed:", rpcErr.message);
-        showNotification("Couldn't save the entry: " + (rpcErr.message || "unknown error"), "error");
+        showNotification(`Couldn't save the entry — nothing was recorded. ${plainWriteError(rpcErr.message, "Please try again.")}`, "error");
         return null;
       }
       console.warn("post_journal_entry RPC not found — using legacy insert. Apply migration 010_post_journal_entry.sql.");
@@ -1851,7 +1853,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         p_company_id: currentCompany.id, p_entry_date: entryDate, p_description: description,
         p_source: source, p_created_by: session.user.id, p_lines: resolved, p_meta: entry.meta || {},
       });
-      if (error) { console.error("post_journal_entry (multi-line) failed:", error.message); showNotification("Couldn't save the entry: " + (error.message || "unknown error"), "error"); return null; }
+      if (error) { console.error("post_journal_entry (multi-line) failed:", error.message); showNotification(`Couldn't save the entry — nothing was recorded. ${plainWriteError(error.message, "Please try again.")}`, "error"); return null; }
       return data?.id || data?.entry?.id || null;
     } catch(e) { console.error("persistMultiLineEntry error:", e); return null; }
   };
@@ -2005,7 +2007,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       p_company_id: cid, p_entry_date: cutoff, p_description: `Opening balances as of ${cutoff}`,
       p_source: "opening_balance", p_created_by: session.user.id, p_lines: rpcLines, p_meta: {},
     });
-    if (error) { showNotification("Couldn't post opening balances — " + error.message, "error"); return false; }
+    if (error) { showNotification(`Couldn't record your starting balances — nothing was changed. ${plainWriteError(error.message, "Please try again.")}`, "error"); return false; }
     const jeId = rpcData?.id || rpcData?.entry?.id || null;
 
     // 2) VERIFY the new entry actually committed before we touch the old one.
@@ -3254,7 +3256,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       p_source: "manual", p_created_by: session.user.id, p_lines: lines,
       p_meta: { kind: "reversal", reverses: String(origId) },
     });
-    if (rpcErr) { console.error("[reverse] post failed:", rpcErr.message); showNotification("Couldn't post the reversal — " + rpcErr.message, "error"); return null; }
+    if (rpcErr) { console.error("[reverse] post failed:", rpcErr.message); showNotification(`Couldn't record the correction — nothing was changed. ${plainWriteError(rpcErr.message, "Please try again.")}`, "error"); return null; }
     const revId = rpcData?.id || rpcData?.entry?.id || null;
 
     // ★★ HERE THE STAMP IS THE **ONLY** GUARD, WHICH IS NOT TRUE OF ITS PRECEDENTS.
@@ -8446,7 +8448,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           const res = await persistChatRecurring({ name: action.name, vendor: action.vendor, amount: action.amount, gl_code: action.gl_code, gl_name: action.gl_name, frequency: action.frequency, next_date: action.next_date, project: action.project });
           if (res.ok) {
             logAudit("recurring_created", `AI created recurring: ${action.name} $${action.amount} ${action.frequency}`);
-            actionSummary.push(`Recurring created: ${action.name} · $${action.amount}/${action.frequency}`);
+            actionSummary.push(`Recurring created: ${action.name} · ${fmtMoney(action.amount)}/${action.frequency}`);   // C480 — printed money, not `$4000`
           } else actionFailures.push(`recurring ${action.name}`);
         }
         if (action.type === "pause_recurring") {

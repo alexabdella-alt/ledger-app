@@ -1,3 +1,4 @@
+import { plainWriteError } from "../../lib/plainWriteError";
 import React from "react";
 import { useERP } from "../ERPContext";
 import { parseQbo, normalizeQbo, matchAccount, isQboBankFile } from "../../lib/qboParser";
@@ -82,7 +83,7 @@ export default function QBOImportView() {
       [...new Set(res.rows.map(r => r.account).filter(Boolean))].forEach(name => { map[name] = matchAccount(name, CHART_OF_ACCOUNTS, getAccountByRole) || miscCode; });
       setAcctMap(map);
       setStep("columns");
-    } catch (e) { showNotification("Couldn't parse that file: " + (e?.message || e) + ". Try exporting as CSV.", "error"); }
+    } catch (e) { showNotification("Couldn't read that file — try exporting it from QuickBooks as a CSV.", "error"); }
   };
 
   // Recompute rows when the user corrects a column mapping.
@@ -306,9 +307,11 @@ export default function QBOImportView() {
         // for a person — see `signed_period_error`).
         const signed = /signed off by your accountant/i.test(error.message || "");
         logAudit && logAudit("qbo_import_undo_failed", `Couldn't undo QuickBooks import ${batch.filename || ""} — ${error.message}`, batch, null);
+        // C480 — the `078` sentence passes through `plainWriteError` untouched (it is already the
+        // owner's); any other database message is mapped or dropped rather than quoted.
         showNotification(signed
-          ? `This import can't be undone: ${error.message}`
-          : `Couldn't undo the import — nothing was removed. ${error.message}`, "error");
+          ? `This import can't be undone: ${plainWriteError(error.message, "")}`
+          : `Couldn't undo the import — nothing was removed. ${plainWriteError(error.message, "Please try again.")}`, "error");
         setUndoing(null);
         return;
       }
@@ -343,7 +346,7 @@ export default function QBOImportView() {
         showNotification(`Import undone — ${n} ${n === 1 ? "entry" : "entries"} removed. ✓`);
       }
       loadRecent(); loadAllData && loadAllData();
-    } catch (e) { showNotification("Couldn't undo: " + (e?.message || e), "error"); }
+    } catch (e) { showNotification(`Couldn't undo the import — the entries are still in your books. ${plainWriteError(e?.message || String(e), "Please try again.")}`, "error"); }
     setUndoing(null);
   };
 

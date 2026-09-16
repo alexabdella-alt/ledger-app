@@ -1,3 +1,4 @@
+import { plainWriteError } from "../../lib/plainWriteError";
 import React from "react";
 import { useERP } from "../ERPContext";
 
@@ -55,7 +56,7 @@ export default function TeamView() {
       logAudit && logAudit("invite_sent", `Invited ${e} as ${role}`, null, { email: e, role });
       load();
     } catch (err) {
-      showNotification("Couldn't create the invite — " + (err?.message || err), "error");
+      showNotification(`Couldn't create the invite — nothing was sent. ${plainWriteError(err?.message || String(err), "Please try again.")}`, "error");
     }
     setBusy(false);
   };
@@ -66,7 +67,7 @@ export default function TeamView() {
       logAudit && logAudit("invite_revoked", `Revoked invite for ${inv.email}`, inv, null);
       if (lastLink && lastLink.includes(inv.token)) setLastLink(null);
       load();
-    } catch (err) { showNotification("Couldn't revoke — " + (err?.message || err), "error"); }
+    } catch (err) { showNotification(`Couldn't revoke that invite — it still stands. ${plainWriteError(err?.message || String(err), "Please try again.")}`, "error"); }
   };
 
   const copy = async (text) => {

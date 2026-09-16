@@ -55,3 +55,28 @@ describe("★ no toast quotes a write's raw error any more", () => {
     expect(bad).toEqual([]);
   });
 });
+
+// C480 — the census above keyed on `r.error`/`res.error`; eight toasts appended a bare
+// `error.message` / `rpcErr.message` / `e.message` off a Supabase call or a catch — the
+// booking path's own "Couldn't save the entry: <postgres sentence>" among them. Any
+// `.message` reaching a toast goes through the map (or is dropped, for a parser error the
+// person cannot act on); Admin excepted (platform-admin only).
+describe("★ no toast quotes a bare `.message` either (C480)", () => {
+  const fs = require("node:fs");
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(`${d}/${e.name}`) : [`${d}/${e.name}`]);
+  it("every showNotification that mentions a `.message` routes it through plainWriteError", () => {
+    const offenders = [];
+    for (const f of walk("src").filter((f) => /\.(js|jsx)$/.test(f) && !f.endsWith("AdminView.jsx"))) {
+      const src = fs.readFileSync(f, "utf8");
+      for (const m of src.matchAll(/showNotification\s*\(([^;]*?)\)\s*;/g)) {
+        const arg = m[1];
+        // Only ERROR objects: a planner's `plan.message` / `check.message` is our own sentence.
+        if (/\b(error|err|rpcErr|e)\??\.message\b/.test(arg) && !/plainWriteError\(/.test(arg)) offenders.push(`${f}: ${arg.slice(0, 90)}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+    // Anti-vacuity: the routed sites exist.
+    const app = fs.readFileSync("src/App.jsx", "utf8");
+    expect((app.match(/plainWriteError\((rpcErr|error)\.message, "Please try again\."\)/g) || []).length).toBeGreaterThanOrEqual(4);
+  });
+});
