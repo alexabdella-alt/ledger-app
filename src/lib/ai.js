@@ -16,7 +16,7 @@ import {
 // answers with REAL numbers (burn, runway, top categories MoM, overdue AR, net).
 // Every figure flows through the canonical layer (reports.js) so the snapshot the
 // AI sees is identical to the dashboard and the reports. cashBalance from the app.
-function buildFinancials(invoices, cashBalance) {
+export function buildFinancials(invoices, cashBalance) {
   const now = new Date();
   const today = todayLocal();            // local period boundaries (were toISOString UTC)
   const thisMonth = today.slice(0, 7);
@@ -41,10 +41,10 @@ function buildFinancials(invoices, cashBalance) {
 
   const lines = [
     `FINANCIAL SNAPSHOT (live from the books — use these exact figures, do not invent numbers):`,
-    `Cash on hand: ${cash > 0 ? money(cash) : "not set by the owner yet"}`,
+    `Cash on hand: ${money(cash)}${cash < 0 ? " (overdrawn — the books show more out than in)" : ""}`,   // C493 — GL-derived; zero or negative is a figure, not a missing setting
     `Net income YTD (${year}): ${money(netYTD)} (revenue ${money(revYTD)} − expenses ${money(expYTD)})`,
     `Monthly burn (trailing 3-mo avg of expenses): ${burn > 0 ? money(burn) : "n/a"}`,
-    `Runway: ${runway != null ? `${runway.toFixed(1)} months at current burn` : (cash > 0 ? "effectively unlimited (no recent burn)" : "unknown — cash balance not set")}`,
+    `Runway: ${runway != null ? `${runway.toFixed(1)} months at current burn` : (cash > 0 ? "effectively unlimited (no recent burn)" : "none — there is no cash on hand to spend down")}`,
     `Top expense categories THIS month vs last: ${topThis.length ? topThis.join("; ") : "no expenses booked this month yet"}`,
     `Overdue receivables: ${ar.overdueCount > 0 ? `${money(ar.overdue)} across ${ar.overdueCount} invoice(s) past due` : "none past due"}`,
   ];
