@@ -37,6 +37,9 @@ describe("C523", () => {
     // C478 read `reference_number` back on the simple branch only; the expanded branch never
     // carried it, so a re-dropped multi-line invoice was never caught by its number.
     expect(rows.filter(r => r.invoice_number === "BLS-w3").length).toBe(3);
+    // and the other per-entry fields the simple branch carried alone: the payment reference and notes
+    const paid = flattenJournalEntries([weekly("pd", "2026-08-24")].map(e => ({ ...e, payment_reference: "ACH 4471", payment_notes: "paid Friday" })), chart);
+    expect(paid.every(r => r.payment_reference === "ACH 4471" && r.payment_notes === "paid Friday")).toBe(true);
     const entries = perEntry(rows);
     const hit = entries.find(ex => ex.invoice_number === "BLS-w3");
     expect(hit.amount).toBe(145);
