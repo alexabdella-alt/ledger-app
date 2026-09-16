@@ -6,7 +6,7 @@ import { useERP } from "../ERPContext";
 import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
 import { ownerActivityText } from "../../lib/activityFeed";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural } from "../../lib/format";
+import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural, monthsLeftYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { plan1099ForYear } from "../../lib/form1099";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
@@ -753,7 +753,7 @@ export default function DashboardView() {
                 const active = (contracts||[]).filter(c => c.end_date ? new Date(c.end_date) >= new Date() : true);
                 if (active.length===0) return null;
                 const monthly = active.reduce((s,c)=>s+(c.payment_amount||0),0);
-                const monthsLeft = (c) => { if(!c.end_date) return null; const d=Math.ceil((new Date(c.end_date)-new Date())/(86400000*30)); return d>0?d:0; };
+                const monthsLeft = (c) => c.end_date ? monthsLeftYMD(todayLocal(), c.end_date) : null;   // C502 — calendar months, not ceil(days/30)
                 return (
                   <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
                     <div onClick={()=>setShowCommit(s=>!s)} style={{ padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>

@@ -109,6 +109,19 @@ const addMonthsClampedYMD = (startYMD, k) => {
 // setDate, which carries month/year boundaries). e.g. addDaysYMD("2026-02-01", -1) →
 // "2026-01-31". Used to get "the day before the statement period start" = the balance the
 // books carry INTO the period (the opening-discrepancy comparand). Null on bad input.
+// C502 — whole calendar months from `fromYMD` to `toYMD`, a partial month counting as one
+// (2026-09-15 → 2027-09-14 is 12, → 2026-09-30 is 1, → a past date is 0). The lease card
+// computed `ceil(days / 30)` on a UTC-midnight parse, so a 12-month lease read "13 months left".
+const monthsLeftYMD = (fromYMD, toYMD) => {
+  const p = (x) => { const m = String(x || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? [+m[1], +m[2], +m[3]] : null; };
+  const a = p(fromYMD), b = p(toYMD);
+  if (!a || !b) return null;
+  if (String(toYMD).slice(0, 10) < String(fromYMD).slice(0, 10)) return 0;
+  const whole = (b[0] - a[0]) * 12 + (b[1] - a[1]);
+  if (whole <= 0) return 1;                        // ends later this month: this month is what is left
+  return whole + (b[2] > a[2] ? 1 : 0);            // a partial month past the anniversary day counts
+};
+
 const addDaysYMD = (ymd, days) => {
   if (!ymd) return null;
   const d = new Date(String(ymd) + "T00:00:00");
@@ -132,7 +145,7 @@ function plural(n, word, pluralWord = null) {
   const k = Number(n) || 0;
   return `${k} ${k === 1 ? word : (pluralWord || `${word}s`)}`;
 }
-export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, plural };
+export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, monthsLeftYMD, plural };
 
 // ── HOW LONG AGO, IN WORDS A PERSON USES ─────────────────────────────────────
 // The Review screen rendered raw minutes, so a four-day-old document read
