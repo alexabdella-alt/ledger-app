@@ -20,3 +20,20 @@ describe("C511", () => {
     expect(src).not.toMatch(/sentInvoices\.length\+1/);
   });
 });
+
+import { invoiceSendBlockers } from "../src/lib/invoiceDraft.js";
+describe("C512 · a repeated invoice number blocks the send", () => {
+  const ok = { id: "d9", customer: "Acme", customer_email: "a@acme.com", invoice_number: "INV-0004" };
+  const sent = [{ id: "i1", invoice_number: "INV-0004" }, { id: "i2", invoice_number: "INV-0002" }];
+  it("names the number, and does not block a draft against its own stored row or a fresh number", () => {
+    expect(invoiceSendBlockers(ok, 100, sent)).toEqual(["Invoice number INV-0004 is already used — pick another."]);
+    expect(invoiceSendBlockers({ ...ok, invoice_number: "inv-0004" }, 100, sent)).toHaveLength(1);
+    expect(invoiceSendBlockers({ ...ok, id: "i1" }, 100, sent)).toEqual([]);
+    expect(invoiceSendBlockers({ ...ok, invoice_number: "INV-0005" }, 100, sent)).toEqual([]);
+  });
+  it("Send Invoice passes the stored invoices to every call", () => {
+    const src = fs.readFileSync("src/components/views/SendInvoiceView.jsx", "utf8");
+    expect(src).toMatch(/invoiceSendBlockers\(draft, subtotal, sentInvoices\)/);
+    expect(src).not.toMatch(/invoiceSendBlockers\(draft, subtotal\)/);
+  });
+});

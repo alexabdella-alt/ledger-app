@@ -60,7 +60,7 @@ export default function SendInvoiceView() {
             // Persist (insert or update) into the sent-invoices list.
             // The app can send only with a domain AND a channel set up; a member who cannot see
             // the token still sees `status.configured`, which is all this needs.
-            const sendBlockers = invoiceSendBlockers(draft, subtotal);   // C412 — shown before the click, and the button is disabled while any remain
+            const sendBlockers = invoiceSendBlockers(draft, subtotal, sentInvoices);   // C412 — shown before the click, and the button is disabled while any remain
             const canSendFromApp = !!MAIL_DOMAIN && !!(mailChannel?.channel || mailChannel?.status?.configured);
             const persistSentLocal = (inv) => setSentInvoices(prev => {
               const i = prev.findIndex(x => x.id === inv.id);

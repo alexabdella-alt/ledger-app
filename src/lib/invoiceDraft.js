@@ -46,11 +46,18 @@ export function draftBase(rawState, fallback) {
 // screen shows beside a DISABLED button (C407's pattern on the sign-off card). The handler
 // keeps them as its own guard, through this one function, so the two cannot disagree.
 // ─────────────────────────────────────────────────────────────────────────────
-export function invoiceSendBlockers(draft = {}, subtotal = 0) {
+export function invoiceSendBlockers(draft = {}, subtotal = 0, sentInvoices = []) {
   const out = [];
   if (!String(draft.customer || "").trim()) out.push("Add the customer's name.");
   if (!String(draft.customer_email || "").trim()) out.push("Add the customer's email address.");
   if (!(Number(subtotal) > 0)) out.push("Add at least one line with an amount.");
+  // C512 — the number is editable and nothing refused a repeat: two customers could hold the
+  // same invoice number. A number already on a stored invoice (other than this draft's own)
+  // blocks the send before the click, in the list with the other reasons.
+  const num = String(draft.invoice_number || "").trim().toLowerCase();
+  if (num && (sentInvoices || []).some((i) => i && String(i.invoice_number || "").trim().toLowerCase() === num && String(i.id) !== String(draft.id))) {
+    out.push(`Invoice number ${draft.invoice_number} is already used — pick another.`);
+  }
   return out;
 }
 
