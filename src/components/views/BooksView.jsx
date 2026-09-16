@@ -89,7 +89,12 @@ export default function BooksView() {
     (i.gl_name||"").toLowerCase().includes(q) ||
     (i.date||"").includes(q) ||
     fmtDate(i.date).toLowerCase().includes(q) ||
-    String(i.amount||"").includes(q)
+    String(i.amount||"").includes(q) ||
+    // C479 — the amount as the row PRINTS it ($824.60), not only as it is stored (824.6):
+    // "824.60" found nothing while the figure sat on screen (C346's rule, one list over).
+    // And the invoice number, now that C478 keeps it.
+    fmt(i.amount).toLowerCase().includes(q) ||
+    (i.invoice_number||"").toLowerCase().includes(q)
   );
 
   // ── Sortable columns ──────────────────────────────────────────────
@@ -161,7 +166,7 @@ export default function BooksView() {
 
       {/* Search + filters */}
       <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendor, amount, date, description…"
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search supplier, amount, date, invoice number…"
           style={{ flex:"1 1 280px", minWidth:0, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:10, padding:"10px 14px", fontSize:14, color:"var(--sc-text)", outline:"none" }} />
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
