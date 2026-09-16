@@ -781,7 +781,7 @@ export default function ReportsView() {
                     {/* ── AR / AP AGING (Items 24, 83) ── */}
                     {(reportType==="araging" || reportType==="apaging") && (() => {
                       const side = reportType==="araging" ? "ar" : "ap";
-                      const rep = agingReport(invoices, side);
+                      const rep = agingReport(invoices, side, new Date(), { arCode: getAccountByRole?.("accounts_receivable")?.code || null, apCode: getAccountByRole?.("accounts_payable")?.code || null });   // C514
                       // Headline total derives from the GL (single source — matches the Balance
                       // Sheet, Dashboard, and Payables/Receivables). The age buckets remain a
                       // due-date view; in clean books they sum to this total.

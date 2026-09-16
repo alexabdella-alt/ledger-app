@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 import { flattenJournalEntries } from "../src/lib/ledger.js";
 import { openPayablesGL, paidPayablesGL, computeAP, glAccountBalance } from "../src/lib/reports.js";
 import { renderViewHtml } from "./helpers/renderView.jsx";
@@ -53,5 +55,27 @@ describe("C513", () => {
     expect(t).toContain("$520.00");
     expect(t).not.toContain("$20.00");
     expect(t).not.toContain("Accounts Payable");
+  });
+});
+
+import { agingReport } from "../src/lib/reports.js";
+describe("C514 · the aging report's buckets sum to its GL headline", () => {
+  it("with the A/P code the buckets hold the freezer and one row per bill; without, the flag rows as before", () => {
+    const now = new Date("2026-09-15T12:00:00");
+    const rep = agingReport(rows, "ap", now, { apCode: "2000" });
+    expect(rep.total).toBe(glAccountBalance("2000", rows));
+    expect(rep.count).toBe(2);
+    const parties = rep.buckets.flatMap((b) => b.rows.map((r) => [r.party, r.amount]));
+    expect(parties).toEqual(expect.arrayContaining([["Sabine", 4625], ["Sysco", 520]]));
+    expect(parties).toHaveLength(2);
+    const legacy = agingReport(rows, "ap", now);
+    expect(legacy.total).toBe(520);   // the flag rows: two Sysco lines, no freezer — the old reading, kept only for a caller with no code
+  });
+});
+
+describe("C514 · Reports passes the codes", () => {
+  it("the aging call site hands both roles over", () => {
+    const src = require("node:fs").readFileSync("src/components/views/ReportsView.jsx", "utf8");
+    expect(src).toMatch(/agingReport\(invoices, side, new Date\(\), \{ arCode: getAccountByRole\?\.\("accounts_receivable"\)\?\.code \|\| null, apCode: getAccountByRole\?\.\("accounts_payable"\)\?\.code \|\| null \}\)/);
   });
 });

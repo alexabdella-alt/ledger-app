@@ -481,8 +481,14 @@ export function paidPayablesGL(invoices, apCode) {
 }
 
 // ── AR / AP AGING (Items 24, 83) ────────────────────────────────────────────
-export function agingReport(invoices, side = "ar", now = new Date()) {
-  const open = (invoices || []).filter(i => isLiveEntry(i) && (side === "ar" ? arUnpaid(i) : apUnpaid(i)));
+// C514 — with the company's codes the buckets are built from the same code-aware lists as
+// everything else (one row per bill, a capitalized purchase on terms included), so they can
+// actually sum to the GL headline printed above them. Without codes: the flag lists, as before.
+export function agingReport(invoices, side = "ar", now = new Date(), { arCode = null, apCode = null } = {}) {
+  const code = side === "ar" ? arCode : apCode;
+  const open = code
+    ? (side === "ar" ? openReceivablesGL(invoices, code) : openPayablesGL(invoices, code))
+    : (invoices || []).filter(i => isLiveEntry(i) && (side === "ar" ? arUnpaid(i) : apUnpaid(i)));
   const defs = [
     { key: "current", label: "Current", test: d => d <= 0 },
     { key: "1-30",    label: "1–30 days",  test: d => d >= 1 && d <= 30 },
