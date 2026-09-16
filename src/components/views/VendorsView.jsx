@@ -2,6 +2,7 @@ import React from "react";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { openPayablesGL, signedPL } from "../../lib/reports";
+import { collapseExpandedRows, listAmount } from "../../lib/txnPresent";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { verdictFor, reportablePayments, VERDICT } from "../../lib/form1099";
@@ -98,9 +99,16 @@ export default function VendorsView() {
               const v = selectedContact;
               const vTxns = txnsForVendor(v.name);
               const paidYTD = paidYTDfor(vTxns, v.name);
+              // C522 — the LIST is one row per entry at the entry's amount (a two-line bill was two
+              // rows of half each, and "All transactions (N)" counted lines); the totals above still
+              // sum the lines. Open/Paid comes from the same open list the card's figures use — the
+              // row's `payment_status` flag read a card purchase at the till as "Open" (C453's class).
+              const openBases = new Set(openBillsFor(v.name).map(baseOf));
+              const vList = collapseExpandedRows(vTxns);
+              const isOpenRow = i => openBases.has(baseOf(i));
               const openAP = openAPfor(v.name);
               const lastDate = vTxns[0]?.date || "—";
-              const payHistory = vTxns.filter(i=>i.payment_status==="paid");
+              const payHistory = vList.filter(i=>!isOpenRow(i));   // C522 — one per entry, and a purchase paid at the till counts
               const st = status1099(v);
               const infoRows = [
                 ["Email", v.email], ["Phone", v.phone], ["Website", v.website],
@@ -147,20 +155,20 @@ export default function VendorsView() {
 
                   {/* Transactions */}
                   <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip", marginBottom:20 }}>
-                    <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid var(--sc-surface-2)" }}>All transactions ({vTxns.length})</div>
-                    {vTxns.length===0 ? <div style={{ padding:32, textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>No transactions with this vendor yet.</div> : (
+                    <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid var(--sc-surface-2)" }}>All transactions ({vList.length})</div>
+                    {vList.length===0 ? <div style={{ padding:32, textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>No transactions with this vendor yet.</div> : (
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>
                         <thead><tr style={{ background:"var(--sc-bg)" }}>{["Date","Description","Category","Status","Amount"].map((h,i)=><th key={i} style={{ padding:"9px 16px", textAlign:i===4?"right":"left", fontSize:10, color:"var(--sc-text-2)", letterSpacing:1, fontWeight:600, borderBottom:"1px solid var(--sc-border)" }}>{h.toUpperCase()}</th>)}</tr></thead>
                         <tbody>
-                          {vTxns.map((i,idx)=>(
+                          {vList.map((i,idx)=>(
                             <tr key={i.id||idx} onClick={()=>setVSel(i.id)}
                               onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                               style={{ borderBottom:"1px solid var(--sc-surface-2)", cursor:"pointer" }}>
                               <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)", whiteSpace:"nowrap" }}>{fmtDate(i.date)}</td>
                               <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
-                              <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{i.gl_code} {i.gl_name}</td>
-                              <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:i.payment_status==="paid"?"var(--sc-success)":"var(--sc-warning)" }}>{i.payment_status==="paid"?"Paid":"Open"}</span></td>
-                              <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(i.amount)}</td>
+                              <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{i.gl_code} {i.gl_name}{i._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {i._lineCount} lines</span>}</td>
+                              <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:isOpenRow(i)?"var(--sc-warning)":"var(--sc-success)" }}>{isOpenRow(i)?"Open":"Paid"}</span></td>
+                              <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(listAmount(i))}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -329,6 +337,7 @@ export default function VendorsView() {
                     {filteredVendors.map(v => {
                       const isEditing = editingId===(v.id||v.name);
                       const vTxns = txnsForVendor(v.name);
+                      const vCount = collapseExpandedRows(vTxns).length;   // C522 — entries, not lines
                       const openAP = openAPfor(v.name);
                       const paidYTD = paidYTDfor(vTxns, v.name);
                       const lastDate = vTxns[0]?.date || v.ledger?.lastDate || null;
@@ -348,7 +357,7 @@ export default function VendorsView() {
                                 {(v.tags||[]).map(t=><span key={t} style={{ fontSize:10, background:"var(--sc-border)", color:"var(--sc-text-2)", borderRadius:20, padding:"2px 7px" }}>{t}</span>)}
                               </div>
                               <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:3 }}>
-                                {vTxns.length>0 ? `${vTxns.length} transaction${vTxns.length!==1?"s":""}${lastDate?` · last ${fmtDate(lastDate)}`:""}` : "No transactions yet"}
+                                {vCount>0 ? `${vCount} transaction${vCount!==1?"s":""}${lastDate?` · last ${fmtDate(lastDate)}`:""}` : "No transactions yet"}
                                 {v.email && <span style={{ marginLeft:10 }}>✉ {v.email}</span>}
                                 {v.phone && <span style={{ marginLeft:10 }}>📞 {v.phone}</span>}
                               </div>

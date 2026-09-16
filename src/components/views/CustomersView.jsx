@@ -3,6 +3,7 @@ import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { openReceivables } from "../../lib/receivables";
 import { owedAmount, signedPL } from "../../lib/reports";
+import { collapseExpandedRows } from "../../lib/txnPresent";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
@@ -49,6 +50,12 @@ export default function CustomersView() {
               const cTxns = txnsForCustomer(c.name);
               const billedYTD = billedYTDfor(cTxns);
               const openAR = openARfor(cTxns);
+              // C522 — one row per entry, at the invoice's amount (`owedAmount`: the receivable
+              // including its tax, C454); Open/Collected from the same open list "Still owed" reads,
+              // not the row's flag (a direct deposit carries none and read "Open").
+              const baseOf = i => String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
+              const openBases = new Set(openReceivables(cTxns, arRoleCode).map(baseOf));
+              const cList = collapseExpandedRows(cTxns);
               const lastDate = cTxns[0]?.date || "—";
               const infoRows = [
                 ["Email", c.email], ["Phone", c.phone], ["Website", c.website],
@@ -86,20 +93,20 @@ export default function CustomersView() {
                   </div>
 
                   <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
-                    <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid var(--sc-surface-2)" }}>All transactions ({cTxns.length})</div>
-                    {cTxns.length===0 ? <div style={{ padding:32, textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>No transactions with this customer yet.</div> : (
+                    <div style={{ padding:"14px 18px", fontSize:13, fontWeight:600, borderBottom:"1px solid var(--sc-surface-2)" }}>All transactions ({cList.length})</div>
+                    {cList.length===0 ? <div style={{ padding:32, textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>No transactions with this customer yet.</div> : (
                       <table style={{ width:"100%", borderCollapse:"collapse" }}>
                         <thead><tr style={{ background:"var(--sc-bg)" }}>{["Date","Description","Category","Status","Amount"].map((h,i)=><th key={i} style={{ padding:"9px 16px", textAlign:i===4?"right":"left", fontSize:10, color:"var(--sc-text-2)", letterSpacing:1, fontWeight:600, borderBottom:"1px solid var(--sc-border)" }}>{h.toUpperCase()}</th>)}</tr></thead>
                         <tbody>
-                          {cTxns.map((i,idx)=>{
-                            const collected = i.payment_status==="collected"||i.payment_status==="paid";
+                          {cList.map((i,idx)=>{
+                            const collected = !openBases.has(baseOf(i));
                             return (
                               <tr key={i.id||idx} style={{ borderBottom:"1px solid var(--sc-surface-2)" }}>
                                 <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)", whiteSpace:"nowrap" }}>{fmtDate(i.date)}</td>
                                 <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
-                                <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{i.gl_code} {i.gl_name}</td>
+                                <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{i.gl_code} {i.gl_name}{i._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {i._lineCount} lines</span>}</td>
                                 <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:collected?"var(--sc-success)":"var(--sc-warning)" }}>{collected?"Collected":"Open"}</span></td>
-                                <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(i.amount)}</td>
+                                <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(owedAmount(i))}</td>
                               </tr>
                             );
                           })}
