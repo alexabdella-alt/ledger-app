@@ -20,3 +20,18 @@ describe("C493 · fallback snapshot cash", () => {
     expect(buildFinancials([], 4200).text).toMatch(/Cash on hand: \$4,200\.00/);
   });
 });
+
+// C532 — with the company's A/R code the legacy snapshot's receivables are the code-aware
+// figure (a direct deposit is not owed; a taxed invoice is owed with its tax).
+describe("C532 — the legacy snapshot's receivables take the A/R code", () => {
+  it("a direct deposit with no A/R leg is not 'past due' when the code is given", () => {
+    const rows = [
+      { id: "dep", vendor: "Acme", amount: 500, date: "2026-01-05", gl_code: "4000", secondary_gl_code: "1000", debit_credit: "credit", type: "revenue", payment_status: "unpaid", due_date: "2026-01-20", status: "booked" },
+      { id: "inv", vendor: "Bravo", amount: 300, date: "2026-01-06", gl_code: "4000", secondary_gl_code: "1100", debit_credit: "credit", type: "revenue", payment_status: "unpaid", due_date: "2026-01-20", status: "booked" },
+    ];
+    const withCode = buildFinancials(rows, 100, { arCode: "1100" }).text;
+    const without = buildFinancials(rows, 100).text;
+    expect(withCode).toContain("$300.00 across 1 invoice(s) past due");
+    expect(without).toContain("$800.00 across 2 invoice(s) past due");   // the flag list, as before, when no code is known
+  });
+});

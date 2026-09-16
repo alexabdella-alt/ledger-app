@@ -17,7 +17,7 @@ import {
 // answers with REAL numbers (burn, runway, top categories MoM, overdue AR, net).
 // Every figure flows through the canonical layer (reports.js) so the snapshot the
 // AI sees is identical to the dashboard and the reports. cashBalance from the app.
-export function buildFinancials(invoices, cashBalance) {
+export function buildFinancials(invoices, cashBalance, { arCode = null } = {}) {   // C532 — the company's A/R code, so the legacy snapshot's receivables are the code-aware figure Home shows
   const now = new Date();
   const today = todayLocal();            // local period boundaries (were toISOString UTC)
   const thisMonth = today.slice(0, 7);
@@ -34,7 +34,7 @@ export function buildFinancials(invoices, cashBalance) {
   const cash = Number(cashBalance) || 0;   // GL cash on hand, passed in from the app
   const burn = computeBurnRate(invoices, { asOf: today });
   const runway = computeRunway(cash, burn);
-  const ar = computeAR(invoices, { now });
+  const ar = computeAR(invoices, { now, arCode });
 
   const catLast = Object.fromEntries(computeCategoryTotals(invoices, monthRange(lastMonth)).map(c => [c.category, c.total]));
   const topThis = computeCategoryTotals(invoices, monthRange(thisMonth)).slice(0, 5)
@@ -286,7 +286,7 @@ ${contacts.map(c =>
   // fallback keeps the snapshots so it can still answer. The instruction prompt is
   // server-owned; this string becomes the {{LEDGER_CONTEXT}} untrusted data slot.
   const buildContext = (useTools) => {
-    const financialsText = useTools ? "" : buildFinancials(invoices, cashBalance).text;
+    const financialsText = useTools ? "" : buildFinancials(invoices, cashBalance, { arCode: getAccountByRole?.("accounts_receivable")?.code ?? null }).text;
     const ledgerSection = useTools ? "" : legacyLedgerSection;
     const coaList = (chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name} (${a.category})`).join("\n");
     const projectsList = [...PROJECTS, ...projects].filter((v, i, a) => a.indexOf(v) === i).join(", ");
