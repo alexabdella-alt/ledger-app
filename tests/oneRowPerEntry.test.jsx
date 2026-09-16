@@ -68,3 +68,17 @@ describe("C503 · the detail panel", () => {
     expect(src).not.toMatch(/\{fmtM\(sel\.amount\)\}<\/div>/);
   });
 });
+
+import DetailView from "../src/components/views/DetailView.jsx";
+describe("C509 · the Full entry page", () => {
+  it("lists every line of an expanded entry and headlines the whole amount", () => {
+    const rep = rows.find((r) => r.id === "s1_1");
+    const t = text(renderViewHtml(DetailView, { ...ctx, selectedInvoice: rep }));
+    expect(t).toContain("$1,299.00");
+    expect(t).toContain("3 LINES");
+    expect(t).toContain("2350 — Sales Tax Payable");
+    expect(t).toContain("1100 — Accounts Receivable");
+    const simple = text(renderViewHtml(DetailView, { ...ctx, selectedInvoice: rows.find((r) => r.id === "b2") }));
+    expect(simple).not.toContain("LINES");
+  });
+});

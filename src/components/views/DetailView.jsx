@@ -2,6 +2,7 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
+import { entryTotalOf, entryLineCount } from "../../lib/txnPresent";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function DetailView() {
@@ -27,7 +28,7 @@ export default function DetailView() {
                   ["Description", selectedInvoice.description],
                   ["Date", fmtDate(selectedInvoice.date)],
                   ["Project", selectedInvoice.project||"General"],
-                  ["Amount", fmtMoney(selectedInvoice.amount)],
+                  ["Amount", fmtMoney(entryTotalOf(selectedInvoice, invoices))],   // C509 — the whole entry's, not one line's
                   ["Category", [selectedInvoice.gl_code, selectedInvoice.gl_name].filter(Boolean).join(" — ") || null],
                   ["Against", [selectedInvoice.secondary_gl_code, selectedInvoice.secondary_gl_name].filter(Boolean).join(" — ") || null],
                   ["How sure we were", selectedInvoice.confidence != null && selectedInvoice.confidence !== "" ? `${selectedInvoice.confidence}%` : null],
@@ -37,6 +38,24 @@ export default function DetailView() {
                     <span style={{ fontSize:14, color:"var(--sc-text)", fontWeight:label==="Vendor"?600:500, textAlign:"right", maxWidth:"60%" }}>{value}</span>
                   </div>
                 ))}
+                {/* C509 — THE FULL ENTRY, LINE BY LINE. The panel says "3 lines (see Full entry)" and this
+                    page showed two accounts and one line's amount: the tax line of a taxed invoice was
+                    nowhere on the screen named for showing it. */}
+                {entryLineCount(selectedInvoice, invoices) > 1 && (() => {
+                  const base = String(selectedInvoice.db_entry_id != null ? selectedInvoice.db_entry_id : String(selectedInvoice.id).split("_")[0]);
+                  const lines = (invoices || []).filter(r => r && String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base);
+                  return (
+                    <div style={{ marginTop:20 }} data-entry-lines>
+                      <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:8, letterSpacing:1.5, fontWeight:600 }}>THE WHOLE ENTRY · {lines.length} LINES</div>
+                      {lines.map(l => (
+                        <div key={l.id} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid var(--sc-border)", fontSize:13 }}>
+                          <span style={{ color:"var(--sc-text)" }}>{[l.gl_code, l.gl_name].filter(Boolean).join(" — ")}</span>
+                          <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-2)" }}>{l.debit_credit === "debit" ? "+" : "−"}{fmtMoney(l.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {selectedInvoice.reasoning && (
                   <div style={{ marginTop:20, padding:"14px 16px", background:"var(--sc-gold-soft)", borderLeft:"3px solid var(--sc-gold)", borderRadius:"0 10px 10px 0" }}>
                     <div style={{ fontSize:11, color:"var(--sc-gold)", marginBottom:8, letterSpacing:1.5, fontWeight:600 }}>WHY IT WAS BOOKED THIS WAY</div>
