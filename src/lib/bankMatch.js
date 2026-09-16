@@ -172,7 +172,7 @@ export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode 
     isClearable(i) &&
     !isSettlementEntry(i) &&                                       // a payment/collection is never "open"
     !isCancelledOrCancelling(i) &&                                 // C468 — a corrected bill, and the correction itself, are not open
-    i.source !== "bank_feed" && i.source !== "bank_statement" &&   // not the bank lines themselves
+    i.source !== "bank_feed" && i.source !== "bank_statement" && i.source !== "bank_import" &&   // not the bank lines themselves (C531 — stored lines read `bank_import`; the in-session names never survive a reload)
     !i.matched &&                                                  // session optimistic guard
     !cleared.has(String(i.db_entry_id != null ? i.db_entry_id : i.id)));
   // C498 — ONE OPEN ITEM PER ENTRY. A multi-line bill (Dr Food 500 / Dr Freight 20 / Cr A/P 520)
