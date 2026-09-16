@@ -62,6 +62,18 @@ const isApOffsetPurchase = (i, apCode) => {
 const apUnpaidWith = apCode => i =>
   !isCancelledOrCancelling(i) && i.payment_status !== "paid" && (isExp(i) || isApOffsetPurchase(i, apCode));
 const apUnpaid = apUnpaidWith(null);
+// C491 — A P&L ROW'S AMOUNT, SIGNED BY ITS LEG. An expense DEBIT and a revenue CREDIT
+// count positive; the opposite leg — a correction, a refund, a reclass — subtracts. Every
+// per-row sum a person reads (a drill, a vendor's paid-this-year, a customer's billed
+// this year, the P&L's category lines) uses this, so it cannot disagree with the headline
+// totals, which are leg-signed through `plLegs`. A row without `debit_credit` (an in-session
+// row before reload) counts positive, as before.
+export const signedPL = (inv) => {
+  const a = Number(inv && inv.amount) || 0;
+  if (!inv || !inv.debit_credit) return a;
+  const normalIsDebit = glIsExpense(inv.gl_code);
+  return (inv.debit_credit === "debit") === normalIsDebit ? a : -a;
+};
 // The amount OWED on a row: for a taxed AR invoice the receivable is the full incl-tax
 // A/R balance (carried as `ar_amount`), not the ex-tax revenue (`amount`). AP/untaxed
 // rows have no ar_amount → fall back to amount. Keeps AR aging/total tied to GL A/R.

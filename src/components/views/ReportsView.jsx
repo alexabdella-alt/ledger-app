@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { isCancelledOrCancelling, glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate, fmtSignedMoney , fmtMoney, todayLocal, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
-import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
+import { signedPL, agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
 import { pill } from "../../lib/ui";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
@@ -68,23 +68,13 @@ export default function ReportsView() {
             });
             // Accrual headline flows through the canonical layer (identical to the
             // dashboard, monthly report, and AI). Cash basis stays a P&L-only view.
-            const revenue  = basisMode==="cash" ? plFiltered.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0) : computeRevenue(filtered);
-            const expenses = basisMode==="cash" ? plFiltered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0) : computeExpenses(filtered);
+            const revenue  = basisMode==="cash" ? plFiltered.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+signedPL(i),0) : computeRevenue(filtered);   // C491 — cash basis keeps correction pairs (C481); unsigned they doubled
+            const expenses = basisMode==="cash" ? plFiltered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+signedPL(i),0) : computeExpenses(filtered);
             const net = revenue - expenses;
 
-            // C490 — THE LINES ARE SIGNED LIKE THE HEADLINE. The P&L's headline totals flow
-            // through the canonical layer (leg-signed, so a correction nets), but the per-
-            // category and per-project lines summed `amount` unsigned — a $500 bill and its
-            // $500 correction read as $1,000 of Food Cost on a report whose total said $0.
-            // For a P&L row the normal side is the row's own class: an expense DEBIT and a
-            // revenue CREDIT count positive; the opposite leg (a correction, a refund, a
-            // reclass) subtracts.
-            const signedAmt = (inv) => {
-              const a = Number(inv.amount) || 0;
-              if (!inv.debit_credit) return a;
-              const normalIsDebit = glIsExpense(inv.gl_code);
-              return (inv.debit_credit === "debit") === normalIsDebit ? a : -a;
-            };
+            // C490 — the lines are signed like the headline (`signedPL`, C491 — one helper for
+            // every per-row sum a person reads).
+            const signedAmt = signedPL;
             // Group revenue by GL
             const byRevGL = {};
             plFiltered.filter(i=>glIsRevenue(i.gl_code)).forEach(inv => {
@@ -177,10 +167,11 @@ export default function ReportsView() {
               // sum of amounts: entries that CREDIT the account (a payment clearing A/P, a contra/
               // refund to an expense) REDUCE it. glAccountBalance walks each row's signed leg
               // contribution, so the total ties to the Balance Sheet / trial-balance line for that
-              // account. Non-account groupings (vendor / month / project) keep the plain sum.
+              // account. Non-account groupings (vendor / month / project) sum the P&L rows
+              // signed by their leg (C491), so a correction nets here as it does above.
               const total = (drill.scope==="bsacct" || drill.scope==="gl")
                 ? glAccountBalance(drill.value, txns)
-                : txns.reduce((s,i)=>s+i.amount,0);
+                : txns.reduce((s,i)=>s+signedPL(i),0);
               const scopeLabel = { vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project", bsacct:"Balance Sheet" }[drill.scope];
               const hideVendor = drill.scope==="vendor", hideGL = drill.scope==="gl";
               const cols = ["Date", ...(hideVendor?[]:["Vendor"]), "Description", ...(hideGL?[]:["Category"]), "Amount", "Status"];
@@ -300,15 +291,15 @@ export default function ReportsView() {
                           if (plDrill.type==="rev-acct") {
                             crumbs = ["Income Statement","Revenue",plDrill.name]; back = () => setPlDrill(null);
                             data = plFiltered.filter(i=>glIsRevenue(i.gl_code) && i.gl_code===plDrill.code).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-                            total = data.reduce((s,i)=>s+i.amount,0); kind = "txns";
+                            total = data.reduce((s,i)=>s+signedPL(i),0); kind = "txns";   // C491
                           } else if (plDrill.type==="exp-acct") {
                             crumbs = ["Income Statement",plDrill.name]; back = () => setPlDrill(null);
-                            const byV = {}; plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===plDrill.code).forEach(i=>{ const v=i.vendor||"Unknown"; if(!byV[v]) byV[v]={vendor:v,total:0,count:0}; byV[v].total+=i.amount; byV[v].count++; });
+                            const byV = {}; plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===plDrill.code).forEach(i=>{ const v=i.vendor||"Unknown"; if(!byV[v]) byV[v]={vendor:v,total:0,count:0}; byV[v].total+=signedPL(i); byV[v].count++; });   // C491 — a correction subtracts
                             data = Object.values(byV).sort((a,b)=>b.total-a.total); total = data.reduce((s,r)=>s+r.total,0); kind = "vendors";
                           } else {
                             crumbs = ["Income Statement",plDrill.name,plDrill.vendor]; back = () => setPlDrill({type:"exp-acct",code:plDrill.code,name:plDrill.name});
                             data = plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===plDrill.code && (i.vendor||"Unknown")===plDrill.vendor).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-                            total = data.reduce((s,i)=>s+i.amount,0); kind = "txns";
+                            total = data.reduce((s,i)=>s+signedPL(i),0); kind = "txns";   // C491
                           }
                           return (
                             <div className="sc-rise" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
@@ -500,8 +491,8 @@ export default function ReportsView() {
                       const totalEquityAccts       = bsEquity.reduce((s,a)=>s+getBal(a.code),0);
 
                       // Current year net income flows into retained earnings
-                      const bsRevenue  = bsInvoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+i.amount,0);
-                      const bsExpenses = bsInvoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+i.amount,0);
+                      const bsRevenue  = bsInvoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+signedPL(i),0);   // C491 — leg-signed, like the P&L
+                      const bsExpenses = bsInvoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+signedPL(i),0);
                       const ytdNet     = bsRevenue - bsExpenses;
                       // Derived soft-close split (Option A): prior fiscal years' net rolls into
                       // beginning Retained Earnings; current-period net is this FY only. Keyed off

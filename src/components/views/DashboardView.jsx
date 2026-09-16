@@ -10,7 +10,7 @@ import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLo
 import { getAuthHeaders } from "../../lib/supabase";
 import { plan1099ForYear } from "../../lib/form1099";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
-import { businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
+import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
@@ -163,11 +163,11 @@ export default function DashboardView() {
 
     let title, subtitle, body;
     if (d.type==="revenue") {
-      title = "Revenue transactions"; subtitle = `${revFY.length} entr${revFY.length!==1?"ies":"y"} · ${fmt(revFY.reduce((s,i)=>s+i.amount,0))}`;
+      title = "Revenue transactions"; subtitle = `${revFY.length} entr${revFY.length!==1?"ies":"y"} · ${fmt(revFY.reduce((s,i)=>s+signedPL(i),0))}`;
       body = txnRows(revFY, "var(--sc-success)");
     } else if (d.type==="expenses" && !d.cat) {
-      const cats = Object.values(expFY.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0,count:0}; a[k].total+=i.amount; a[k].count++; return a;},{})).sort((x,y)=>y.total-x.total);
-      title = "Expenses by category"; subtitle = `${plural(cats.length, "category", "categories")} · ${fmt(expFY.reduce((s,i)=>s+i.amount,0))}`;
+      const cats = Object.values(expFY.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0,count:0}; a[k].total+=signedPL(i); a[k].count++; return a;},{})).sort((x,y)=>y.total-x.total);   // C491
+      title = "Expenses by category"; subtitle = `${plural(cats.length, "category", "categories")} · ${fmt(expFY.reduce((s,i)=>s+signedPL(i),0))}`;
       body = cats.length===0 ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>No expenses yet.</div> :
         cats.map(c=>clickableRow(c.name,
           <span style={{ fontSize:13, color:"var(--sc-text-2)" }}>{c.name} <span style={{ fontSize:11, color:"var(--sc-text-mut)" }}>· {c.count}</span></span>,
@@ -175,15 +175,15 @@ export default function DashboardView() {
           ()=>setDashDrill({type:"expenses",cat:c.name})));
     } else if (d.type==="expenses" && d.cat && !d.vendor) {
       const inCat = expFY.filter(i=>(i.gl_name||"Uncoded")===d.cat);
-      const vends = Object.values(inCat.reduce((a,i)=>{const v=i.vendor||"Unknown"; if(!a[v])a[v]={vendor:v,total:0,count:0}; a[v].total+=i.amount; a[v].count++; return a;},{})).sort((x,y)=>y.total-x.total);
-      title = `${d.cat} — by vendor`; subtitle = `${plural(vends.length, "vendor")} · ${fmt(inCat.reduce((s,i)=>s+i.amount,0))}`;
+      const vends = Object.values(inCat.reduce((a,i)=>{const v=i.vendor||"Unknown"; if(!a[v])a[v]={vendor:v,total:0,count:0}; a[v].total+=signedPL(i); a[v].count++; return a;},{})).sort((x,y)=>y.total-x.total);   // C491
+      title = `${d.cat} — by vendor`; subtitle = `${plural(vends.length, "vendor")} · ${fmt(inCat.reduce((s,i)=>s+signedPL(i),0))}`;
       body = vends.map(v=>clickableRow(v.vendor,
         <span style={{ fontSize:13, color:"var(--sc-text-2)", display:"flex", alignItems:"center", gap:9 }}><span style={{ width:24, height:24, borderRadius:6, background:vendorColor(v.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"var(--sc-on-accent)" }}>{initials(v.vendor)}</span>{v.vendor} <span style={{ fontSize:11, color:"var(--sc-text-mut)" }}>· {v.count}</span></span>,
         <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmt(v.total)}</span>,
         ()=>setDashDrill({type:"expenses",cat:d.cat,vendor:v.vendor})));
     } else if (d.type==="expenses" && d.vendor) {
       const txns = expFY.filter(i=>(i.gl_name||"Uncoded")===d.cat && (i.vendor||"Unknown")===d.vendor);
-      title = `${d.vendor} — ${d.cat}`; subtitle = `${plural(txns.length, "transaction")} · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
+      title = `${d.vendor} — ${d.cat}`; subtitle = `${plural(txns.length, "transaction")} · ${fmt(txns.reduce((s,i)=>s+signedPL(i),0))}`;
       body = txnRows(txns, "var(--sc-error)");
     } else if (d.type==="net") {
       // SAME source/period as the Net Income (YTD) tile (computeNetIncome over the FY
@@ -224,14 +224,14 @@ export default function DashboardView() {
       const detail = burnRateDetail(invoices, { asOf: ymdLocal(today) });
       const mLabel = (key)=>{ const [y,m]=key.split("-").map(Number); return new Date(y,m-1,1).toLocaleDateString("en-US",{month:"long",year:"numeric"}); };
       const curKey = detail.asOfMonth;
-      const curTotal = exp.filter(i=>i.date?.startsWith(curKey)).reduce((s,i)=>s+i.amount,0);
+      const curTotal = exp.filter(i=>i.date?.startsWith(curKey)).reduce((s,i)=>s+signedPL(i),0);
       const winKeys = new Set(detail.window.map(w=>w.ym));
       // The counted/dropped window, most-recent first, plus the current partial month.
       const rows = [];
       if (!winKeys.has(curKey)) rows.push({ key:curKey, label:mLabel(curKey), total:curTotal, excluded:true, note:"this month so far — not counted yet" });
       for (const w of [...detail.window].reverse()) rows.push({ key:w.ym, label:mLabel(w.ym), total:w.total, excluded:w.dropped, note:w.dropped?"one-off spike — excluded from the average":"counted in the average" });
       // A few earlier months for trend context (not part of the average).
-      for (let cur=detail.window[0]?.ym, n=0; cur && n<3; n++){ const [y,m]=cur.split("-").map(Number); const dd=new Date(y,m-2,1); cur=`${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,"0")}`; const t=exp.filter(i=>i.date?.startsWith(cur)).reduce((s,i)=>s+i.amount,0); if(t>0) rows.push({ key:cur, label:mLabel(cur), total:t, excluded:true, note:"earlier — outside the 3-month window" }); }
+      for (let cur=detail.window[0]?.ym, n=0; cur && n<3; n++){ const [y,m]=cur.split("-").map(Number); const dd=new Date(y,m-2,1); cur=`${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,"0")}`; const t=exp.filter(i=>i.date?.startsWith(cur)).reduce((s,i)=>s+signedPL(i),0); if(t>0) rows.push({ key:cur, label:mLabel(cur), total:t, excluded:true, note:"earlier — outside the 3-month window" }); }
       const max = Math.max(1,...rows.map(m=>m.total));
       title = "Monthly burn"; subtitle = `Average ${fmt(detail.value)}/mo · trailing ${detail.window.length} complete month${detail.window.length===1?"":"s"} — one-off & current months excluded`;
       body = rows.map(m=>(
@@ -247,7 +247,7 @@ export default function DashboardView() {
       ));
     } else if (d.type==="burn" && d.month) {
       const txns = exp.filter(i=>i.date?.startsWith(d.month));
-      title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${plural(txns.length, "transaction")} · ${fmt(txns.reduce((s,i)=>s+i.amount,0))}`;
+      title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${plural(txns.length, "transaction")} · ${fmt(txns.reduce((s,i)=>s+signedPL(i),0))}`;
       body = txnRows(txns, "var(--sc-error)");
     } else if (d.type==="runway") {
       // Compute from the SAME canonical source as the card face (computeBurnRate trailing 3-mo
@@ -273,7 +273,7 @@ export default function DashboardView() {
         </div>
       </div>);
     } else if (d.type==="ap") {
-      title = "Open accounts payable"; subtitle = `${openAP.length} unpaid · ${fmt(openAP.reduce((s,i)=>s+i.amount,0))}`;
+      title = "Open accounts payable"; subtitle = `${openAP.length} unpaid · ${fmt(openAP.reduce((s,i)=>s+signedPL(i),0))}`;
       const methodOpts = [["ach","ACH / Bank Transfer"],["check","Check"],["wire","Wire Transfer"],["card","Credit Card"],["zelle","Zelle"],["venmo","Venmo"],["paypal","PayPal"],["other","Other"]];
       body = openAP.length===0
         ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>Nothing outstanding — you're all paid up.</div>
@@ -306,7 +306,7 @@ export default function DashboardView() {
             </div>
           ));
     } else if (d.type==="ar") {
-      title = "Open accounts receivable"; subtitle = `${openAR.length} uncollected · ${fmt(openAR.reduce((s,i)=>s+i.amount,0))}`;
+      title = "Open accounts receivable"; subtitle = `${openAR.length} uncollected · ${fmt(openAR.reduce((s,i)=>s+signedPL(i),0))}`;
       body = txnRows(openAR, "var(--sc-success)");
     }
 

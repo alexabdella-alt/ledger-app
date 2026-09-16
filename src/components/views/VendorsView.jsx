@@ -1,7 +1,7 @@
 import React from "react";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
-import { openPayablesGL } from "../../lib/reports";
+import { openPayablesGL, signedPL } from "../../lib/reports";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { verdictFor, reportablePayments, VERDICT } from "../../lib/form1099";
@@ -80,7 +80,7 @@ export default function VendorsView() {
             const apRoleCode = getAccountByRole?.("accounts_payable")?.code;
             const inYear = i => String(i.date||"").startsWith(String(yr));
             const openAPfor = txns => openPayablesGL(txns, apRoleCode).reduce((s,i)=>s+(i.amount||0),0);
-            const paidYTDfor = txns => { const yearRows = txns.filter(inYear); const open = new Set(openPayablesGL(yearRows, apRoleCode).map(i => String(i.id))); return yearRows.filter(i => !open.has(String(i.id))).reduce((s,i)=>s+(i.amount||0),0); };
+            const paidYTDfor = txns => { const yearRows = txns.filter(inYear); const open = new Set(openPayablesGL(yearRows, apRoleCode).map(i => String(i.id))); return yearRows.filter(i => !open.has(String(i.id))).reduce((s,i)=>s+signedPL(i),0); };   // C491 — a correction subtracts rather than counting as a second payment
             const status1099 = v => v.is_1099_exempt ? {label:"1099 exempt", color:"var(--sc-text-2)"} : v.is1099 ? {label:"1099 required", color:"var(--sc-warning)"} : {label:"Not flagged", color:"var(--sc-text-mut)"};
 
             // ── VENDOR DETAIL DRILL ──
