@@ -709,7 +709,7 @@ export default function DashboardView() {
                 // C197: the transaction itself stays open to both seats (it's the client's own
                 // entry, reached from their own home page). The BOOKS fallback is cockpit-only —
                 // a client never gets bounced into the workbench because a lookup missed.
-                const openTxn = (a) => { const inv=(invoices||[]).find(i=>String(i.id)===String((a.invoice_ids||[])[0])); if(inv){ setReturnTo && setReturnTo({view:"home"}); setSelectedInvoice(inv); setView("detail"); } else { navTo("books"); } };
+                const openTxn = (a) => { const want=String((a.invoice_ids||[])[0]); const inv=(invoices||[]).find(i=>String(i.id)===want || String(i.db_entry_id)===want); if(inv){   /* C508 — a stored ref is the entry's db id; an expanded entry's rows carry it on db_entry_id */ setReturnTo && setReturnTo({view:"home"}); setSelectedInvoice(inv); setView("detail"); } else { navTo("books"); } };
                 return (
                   <div style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
                     <div onClick={()=>setAnomExpanded(v=>!v)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
