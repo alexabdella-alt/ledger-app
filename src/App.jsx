@@ -1737,6 +1737,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               : `Saved — but we couldn't record this invoice's sales tax for the monthly cross-check. Your accountant may see a sales-tax mismatch that isn't real.`, "error");
           }
         }
+        // ── C477 — THE PROJECT IS STAMPED ON THE LINES AFTER THE POST ─────────────
+        // `post_journal_entry` inserts (account_id, debit, credit, memo) per line and no
+        // `project`, so the manual form's project picker, a supplier rule's project and a
+        // recurring charge's project were carried on the in-session row, shown on the By
+        // Project report until the next reload, and then read back as "General" — the
+        // one writer of `journal_entry_lines.project` was the AI's retag action. Same
+        // follow-up shape as the meta stamp above; `078`/`079` allow this column in a
+        // signed month, since it moves no money.
+        const proj = invoice && invoice.project && String(invoice.project).trim();
+        if (newId && proj && proj !== "General") {
+          const pr = await stampLineProject(newId, proj);
+          if (!pr.ok) logAudit("entry_project_stamp_failed", `Booked the entry, but couldn't file it under ${proj} — it will show under General`, null, { entry_id: String(newId), project: proj, reason: pr.error || null });
+        }
         return newId;
       }
 
@@ -3545,14 +3558,25 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // retag_project: project lives on journal_entry_lines.project (per line), so update every
   // line of the target entries, then VERIFY the read-back. (flatten now reads project back so
   // a refresh shows the tag — src/lib/ledger.js.)
-  const persistChatRetagProject = async (invoiceIds, project) => {
+  // C477 — ONE WRITER for `journal_entry_lines.project`, read back to verify the VALUE
+  // (a read-back is the stronger check here — see C274). Used by the AI retag and by the
+  // booking paths, so a project reaches the database by exactly one route.
+  const stampLineProject = async (jeIds, project) => {
+    const dbIds = [...new Set((Array.isArray(jeIds) ? jeIds : [jeIds]).filter(Boolean).map(String))];
     if (!currentCompany?.id) return { ok: false, error: "no company" };
-    const dbIds = [...new Set(invoices.filter(i => invoiceIds.includes(i.id)).map(i => i.db_entry_id).filter(Boolean))];
     if (!dbIds.length) return { ok: false, error: "entries aren't saved yet" };
     const { error } = await supabase.from("journal_entry_lines").update({ project }).in("journal_entry_id", dbIds).eq("company_id", currentCompany.id);
     if (error) return { ok: false, error: error.message };
     const { data: chk } = await supabase.from("journal_entry_lines").select("journal_entry_id, project").in("journal_entry_id", dbIds).eq("company_id", currentCompany.id);
     if (!Array.isArray(chk) || !chk.length || !chk.every(r => r.project === project)) return { ok: false, error: "project did not persist on the entry lines" };
+    return { ok: true };
+  };
+  const persistChatRetagProject = async (invoiceIds, project) => {
+    if (!currentCompany?.id) return { ok: false, error: "no company" };
+    const dbIds = [...new Set(invoices.filter(i => invoiceIds.includes(i.id)).map(i => i.db_entry_id).filter(Boolean))];
+    if (!dbIds.length) return { ok: false, error: "entries aren't saved yet" };
+    const w = await stampLineProject(dbIds, project);
+    if (!w.ok) return w;
     setInvoices(prev => prev.map(inv => invoiceIds.includes(inv.id) ? { ...inv, project } : inv));
     if (!allProjects.includes(project)) setCustomProjects(p => [...p, project]);
     return { ok: true };
