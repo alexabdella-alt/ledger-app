@@ -47,3 +47,16 @@ describe("C482 · the row name and the door agree", () => {
     expect(read("src/components/views/SettingsView.jsx")).toContain('id="bank-accounts-section"');
   });
 });
+
+// C485 — the Supplier-rules screen's example rule named a category that does not exist
+// ("Shipping & Freight"); the assistant would have refused it (C260), so the one example on
+// the empty screen was a rule nobody could make. The example names a category in the chart.
+describe("C485 · the example rule names a real category", () => {
+  it("the category in the example exists in the default chart", () => {
+    const src = read("src/components/views/RulesView.jsx");
+    const m = /things like "Always put [^"]* under ([^"]+)"/.exec(src);
+    expect(m).toBeTruthy();
+    const chart = read("src/lib/constants.js");
+    expect(chart).toContain(`name: "${m[1]}"`);
+  });
+});

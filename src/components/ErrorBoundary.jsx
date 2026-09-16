@@ -23,7 +23,7 @@ export default class ErrorBoundary extends React.Component {
           <div style={{ fontSize:34, marginBottom:10 }}>⚠️</div>
           <h1 style={{ fontSize:20, fontWeight:700, margin:"0 0 8px", color:"var(--sc-text)" }}>Something went wrong on this screen</h1>
           <p style={{ fontSize:14, color:"var(--sc-text-2)", lineHeight:1.6, margin:"0 0 16px" }}>
-            The rest of the app is fine. Try reloading, or head back to your dashboard. If it keeps happening, send us the detail below.
+            The rest of the app is fine. Try reloading, or head back to Home. If it keeps happening, send us the detail below.
           </p>
           <pre style={{ fontSize:12, color:"var(--sc-error)", background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:10, padding:"12px 14px", whiteSpace:"pre-wrap", wordBreak:"break-word", margin:"0 0 18px", maxHeight:200, overflow:"auto" }}>{msg}</pre>
           <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
