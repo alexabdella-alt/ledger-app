@@ -24,7 +24,7 @@ import { DIRECTORY_SEED } from "./lib/vendorDirectory";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
 import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
-import { routeAIActions, buildPendingConfirmation } from "./lib/aiActionGate";
+import { routeAIActions, buildPendingConfirmation, resolveActionTargets } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection } from "./lib/insights";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
@@ -8179,17 +8179,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     }
     if (action.type === "delete_invoice") {
       if (action.invoice_id) {
-        const target = invoices.find(i => String(i.id) === String(action.invoice_id));
+        const target = resolveActionTargets(action, { invoices, contracts })[0];   // C519 — the entry, whichever of its lines was cited
         if (target) {
           const ids = await softDeleteInvoice(target, true);
           if (ids && ids.length) summary.push(`Deleted the transaction: ${target.vendor} ${fmtMoney(target.amount)}`);
           else failures.push(`delete ${target.vendor}`);
         } else summary.push(`Couldn't find that transaction`);
       } else if (action.vendor) {
-        const toDelete = invoices.filter(i =>
-          i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) &&
-          (!action.amount || Math.abs(i.amount - parseFloat(action.amount)) < 1) &&
-          (!action.date || i.date === action.date));
+        const toDelete = resolveActionTargets(action, { invoices, contracts });   // C519 — one per entry, matched at the entry's total
         if (toDelete.length > 0) {
           const ids = await softDeleteInvoices(toDelete, true);
           if (ids && ids.length) summary.push(`Deleted ${toDelete.length} transaction${toDelete.length===1?"":"s"} for ${action.vendor}`);
@@ -8199,14 +8196,17 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     }
     if (action.type === "void_invoice") {
       if (action.invoice_id) {
-        const target = invoices.find(i => String(i.id) === String(action.invoice_id));
+        const target = resolveActionTargets(action, { invoices, contracts })[0];   // C519
         if (target) {
           const revId = await voidInvoiceWithUndo(target, action.reason || "Voided via AI", true);
           if (revId) summary.push(`Undid the entry for ${target.vendor}`);
           else failures.push(`void ${target.vendor}`);
         } else summary.push(`Couldn't find that transaction`);
       } else if (action.vendor) {
-        const toVoid = invoices.filter(i => i.vendor?.toLowerCase().includes(action.vendor.toLowerCase()) && i.status!=="voided");
+        // C519 — one reversal per ENTRY. Iterating rows offered a three-line bill's three rows to
+        // the reverser one after another; the DB probe refuses the second and third, but the
+        // reply then reported "undid 1 · couldn't undo 2" about one bill.
+        const toVoid = resolveActionTargets(action, { invoices, contracts });
         let voided = 0;
         for (const t of toVoid) { const revId = await voidInvoiceWithUndo(t, action.reason || "Voided via AI", true); if (revId) voided++; }
         if (voided) summary.push(`Undid ${voided} transaction${voided===1?"":"s"} for ${action.vendor}`);
@@ -8214,7 +8214,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       }
     }
     if (action.type === "reverse_entry") {
-      const toReverse = invoices.find(i => String(i.id) === String(action.invoice_id));
+      const toReverse = resolveActionTargets(action, { invoices, contracts })[0];   // C519
       if (toReverse) {
         const revId = await reverseJournalEntry(toReverse, action.reason || "Reversed via AI", true);
         if (revId) { await loadAllData().catch(() => {}); summary.push(`Undid the entry for ${toReverse.vendor} (${fmtMoney(toReverse.amount)})`); }
@@ -8315,19 +8315,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // ── Bulk-delete protection ──
       // Count how many items the requested deletes would remove. If more than 3,
       // refuse all deletions and ask the user to remove them one at a time.
+      // C519 — counted through the SAME resolver the confirm card and the executor read, per
+      // ENTRY: a four-line bill used to count as four items against a cap of three, refusing
+      // "delete the Sysco bill" as a bulk delete. Three copies of one matcher is how the
+      // displayed set, the counted set and the executed set came to disagree.
       let pendingDeletes = 0;
       for (const a of (result.actions || [])) {
-        if (a.type === "delete_invoice") {
-          if (a.invoice_id) pendingDeletes += 1;
-          else if (a.vendor) pendingDeletes += invoices.filter(i =>
-            i.vendor?.toLowerCase().includes(a.vendor.toLowerCase()) &&
-            (!a.amount || Math.abs(i.amount - parseFloat(a.amount)) < 1) &&
-            (!a.date || i.date === a.date)).length;
-        } else if (a.type === "delete_contract") {
-          if (a.contract_id) pendingDeletes += 1;
-          else if (a.counterparty) pendingDeletes += contracts.filter(c =>
-            c.counterparty?.toLowerCase().includes(a.counterparty.toLowerCase())).length;
-        }
+        if (a.type === "delete_invoice") pendingDeletes += a.invoice_id ? 1 : resolveActionTargets(a, { invoices, contracts }).length;
+        else if (a.type === "delete_contract") pendingDeletes += a.contract_id ? 1 : resolveActionTargets(a, { invoices, contracts }).length;
       }
       const bulkBlocked = pendingDeletes > 3;
       if (bulkBlocked) logAI("bulk_delete_blocked", `Refused a request to delete ${pendingDeletes} items at once`);

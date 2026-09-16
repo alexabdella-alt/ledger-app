@@ -16,6 +16,7 @@
 // the prompt — even if the model "decides" to act, routing stages instead of runs.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { perEntry } from "./txnPresent.js";
 import { isDestructiveAIAction } from "./aiCapabilities";
 import { fmtMoney } from "./format";
 
@@ -48,28 +49,36 @@ export function routeAIActions(actions = [], { blocked = false } = {}) {
 // the displayed set === the executed set. Mirrors the dispatch handlers' matching.
 export function resolveActionTargets(action, { invoices = [], contracts = [] } = {}) {
   const a = action || {};
-  const liveInv = invoices.filter((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at);
+  // C519 — TARGETS ARE ENTRIES, NOT LINES. `flattenJournalEntries` expands a multi-line bill
+  // into one row per line, and this matched rows: "delete the $6,000 Sysco bill" found nothing
+  // (each line is $3,000), a four-line bill counted as FOUR items against the bulk cap of three,
+  // and the confirm card read "Delete 3 transactions" for one bill. One representative row per
+  // entry, at the entry's total; an id cited off any of the entry's lines resolves to the entry.
+  const entries = perEntry(invoices);
+  const liveInv = entries.filter((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at);
+  const baseOf = (id) => String(id ?? "").split("_")[0];
+  const byId = (id) => entries.filter((i) => String(i.id) === String(id) || String(i.db_entry_id ?? "") === String(id) || (String(id ?? "").includes("_") && baseOf(i.id) === baseOf(id)));
   switch (a.type) {
     case "recode":
     case "retag_project": {
       const ids = Array.isArray(a.invoiceIds) ? a.invoiceIds.map(String) : [];
-      return invoices.filter((i) => ids.includes(String(i.id)));
+      return invoices.filter((i) => ids.includes(String(i.id)));   // a recode is per LINE (each line has its own category)
     }
     case "delete_invoice": {
-      if (a.invoice_id != null) return invoices.filter((i) => String(i.id) === String(a.invoice_id));
-      if (a.vendor) return invoices.filter((i) =>
+      if (a.invoice_id != null) return byId(a.invoice_id);
+      if (a.vendor) return liveInv.filter((i) =>
         norm(i.vendor).includes(norm(a.vendor)) &&
         (a.amount == null || Math.abs((Number(i.amount) || 0) - parseFloat(a.amount)) < 1) &&
         (!a.date || i.date === a.date));
       return [];
     }
     case "void_invoice": {
-      if (a.invoice_id != null) return invoices.filter((i) => String(i.id) === String(a.invoice_id));
+      if (a.invoice_id != null) return byId(a.invoice_id);
       if (a.vendor) return liveInv.filter((i) => norm(i.vendor).includes(norm(a.vendor)));
       return [];
     }
     case "reverse_entry":
-      return invoices.filter((i) => String(i.id) === String(a.invoice_id));
+      return byId(a.invoice_id);
     case "delete_contract": {
       if (a.contract_id != null) return contracts.filter((c) => String(c.id) === String(a.contract_id));
       if (a.counterparty) return contracts.filter((c) => norm(c.counterparty).includes(norm(a.counterparty)));

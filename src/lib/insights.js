@@ -9,7 +9,8 @@ import { isCancelledOrCancelling } from "./gl";
 import { classifyCadence, typicalIntervalDays, isOffRhythm, offRhythmCopy, countMismatchCopy, periodOf, FLAT_SD_RATIO } from "./recurringVendor.js";
 import { couldBeCapital } from "./clarify";
 import { hasAttachedInvoice } from "./invoicePayment.js";   // C332 — one definition of "this charge already carries its invoice"
-import { collapseExpandedRows } from "./txnPresent.js";   // C519 — one charge per entry, at the entry's total
+import { perEntry } from "./txnPresent.js";   // C519 — one charge per entry, at the entry's total
+export { perEntry };
 
 // Normalize a vendor/contact name for fuzzy matching (lowercase, drop legal
 // suffixes and punctuation). Same spirit as the contacts unique-name handling.
@@ -38,9 +39,6 @@ const isRevenueCode = c => String(c || "")[0] === "4";   // C474
 // counted once, at the figure a person would recognise. `category_spike` deliberately keeps
 // the per-line rows: a bill with a Food line and a Freight line genuinely spent in both.
 // ═════════════════════════════════════════════════════════════════════════════
-export function perEntry(rows = []) {
-  return collapseExpandedRows(rows).map(r => (r && r._entryTotal != null ? { ...r, amount: r._entryTotal } : r));
-}
 
 // Find an existing entry that looks like a duplicate of `invoice`:
 //   • same vendor + exact amount, OR same vendor + amount within 1%, AND within a date window.

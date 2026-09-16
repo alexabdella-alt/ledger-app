@@ -101,6 +101,14 @@ export function collapseExpandedRows(rows = []) {
   });
 }
 
+// C519 — ONE ROW PER ENTRY, AT THE ENTRY'S TOTAL. For any reader that treats a row as "a
+// transaction" (the anomaly detectors, the AI's action targets): the representative row with
+// its `amount` set to the entry's total, so a two-line $6,000 bill is one $6,000 charge and not
+// two $3,000 ones. Simple rows pass through untouched.
+export function perEntry(rows = []) {
+  return collapseExpandedRows(rows).map(r => (r && r._entryTotal != null ? { ...r, amount: r._entryTotal } : r));
+}
+
 // The figure the list shows for a row: an expanded entry's total, a simple row's amount.
 export const listAmount = (r) => (r && r._entryTotal != null ? r._entryTotal : Number(r && r.amount) || 0);
 
