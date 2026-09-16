@@ -6,7 +6,7 @@
 // "unadjusted" toggle that includes voided). Uses the shared GL helpers.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { glIsRevenue, glIsExpense, isCancelledOrCancelling } from "./gl";
+import { glIsRevenue, glIsExpense, isCancelledOrCancelling, settledBases, entryBaseOf } from "./gl";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format";
 import { applyAlias } from "./vendorAlias.js";
 
@@ -368,8 +368,9 @@ export function computeRunway(cash, burn) { const b = num(burn); return b > 0 ? 
 // `now` anchors the overdue test. Reconciles with agingReport (same predicates).
 function arApTotals(invoices, predicate, now) {
   let total = 0, overdue = 0, count = 0, overdueCount = 0;
+  const settled = settledBases(invoices);   // C528
   for (const i of (invoices || [])) {
-    if (!isLiveEntry(i) || !predicate(i)) continue;
+    if (!isLiveEntry(i) || !predicate(i) || settled.has(entryBaseOf(i))) continue;
     const amt = owedAmount(i); total += amt; count++;   // incl-tax for AR; amount for AP/untaxed
     if (i.due_date && daysOverdue(i.due_date, now) > 0) { overdue += amt; overdueCount++; }
   }
@@ -443,7 +444,8 @@ const touchesAccount = (i, code) => code != null &&
    (!String(i.id).includes("_") && String(i.secondary_gl_code) === String(code)));
 export function openReceivablesGL(invoices, arCode) {
   if (arCode == null) return [];   // no code → nothing, never the flag list (degrade safely)
-  return (invoices || []).filter(i => isLiveEntry(i) && arUnpaidWith(arCode)(i));   // C497 — one row per invoice, taxed invoices included
+  const settled = settledBases(invoices);   // C528
+  return (invoices || []).filter(i => isLiveEntry(i) && arUnpaidWith(arCode)(i) && !settled.has(entryBaseOf(i)));   // C497 — one row per invoice, taxed invoices included
 }
 // C498 — an expanded (multi-line) bill's expense rows carry A/P only as their offset, which
 // `touchesAccount` ignores for expanded rows, so Home's "Bills to pay" card MISSED every
@@ -468,16 +470,18 @@ const presentLegRow = (leg, all) => {
 export function openPayablesGL(invoices, apCode) {
   const open = apUnpaidWith(apCode || null);
   const all = invoices || [];
-  return all.filter(i => isLiveEntry(i) && ((open(i) && touchesAccount(i, apCode)) || isApLegRow(i, apCode)))
+  const settled = settledBases(all);   // C528
+  return all.filter(i => isLiveEntry(i) && !settled.has(entryBaseOf(i)) && ((open(i) && touchesAccount(i, apCode)) || isApLegRow(i, apCode)))
     .map(i => (isApLegRow(i, apCode) ? presentLegRow(i, all) : i));
 }
-const isPaidApLegRow = (i, ap) => ap != null && String(i.id ?? "").includes("_") && String(i.gl_code) === String(ap) && i.debit_credit === "credit"
-  && !isCancelledOrCancelling(i) && i.payment_status === "paid";
 export function paidPayablesGL(invoices, apCode) {
   const all = invoices || [];
-  return all.filter(i => isLiveEntry(i) && i.payment_status === "paid" && !isCancelledOrCancelling(i)
-    && ((!String(i.id ?? "").includes("_") && (isExp(i) || isApOffsetPurchase(i, apCode))) || isPaidApLegRow(i, apCode)))
-    .map(i => (isPaidApLegRow(i, apCode) ? presentLegRow(i, all) : i));
+  const settled = settledBases(all);   // C528 — a bill a live payment links is paid, whatever its flag says
+  const paidFlag = i => i.payment_status === "paid" || settled.has(entryBaseOf(i));
+  const legRow = i => apCode != null && String(i.id ?? "").includes("_") && String(i.gl_code) === String(apCode) && i.debit_credit === "credit" && !isCancelledOrCancelling(i) && paidFlag(i);
+  return all.filter(i => isLiveEntry(i) && paidFlag(i) && !isCancelledOrCancelling(i)
+    && ((!String(i.id ?? "").includes("_") && (isExp(i) || isApOffsetPurchase(i, apCode))) || legRow(i)))
+    .map(i => (legRow(i) ? presentLegRow(i, all) : i));
 }
 
 // ── AR / AP AGING (Items 24, 83) ────────────────────────────────────────────

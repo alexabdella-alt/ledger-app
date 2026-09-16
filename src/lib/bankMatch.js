@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildPaymentEntry } from "./payments.js";
-import { isCancelledOrCancelling } from "./gl.js";
+import { isCancelledOrCancelling, isSettlementEntry } from "./gl.js";
 import { normalizeName } from "./docDirection.js";
 import { NAME_MATCH, nameMatchKind } from "./nameMatch.js";
 
@@ -150,9 +150,7 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
 // A SETTLEMENT/clearing entry pays FOR another entry — a bill payment (Dr A/P / Cr Cash) or
 // a collection (Dr Cash / Cr A/R). It carries an A/P or A/R leg but it is NOT an open item;
 // it's the entry that CLOSES one, linked to its target via import_metadata.payment_for.
-export function isSettlementEntry(i) {
-  return !!(i && i.import_metadata && i.import_metadata.payment_for != null);
-}
+export { isSettlementEntry };   // C528 — one definition, in gl.js, shared with the open lists
 
 export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode } = {}) {
   const eq = (a, b) => a != null && b != null && String(a) === String(b);

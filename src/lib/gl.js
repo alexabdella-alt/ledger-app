@@ -86,3 +86,24 @@ export { glIsRevenue, glIsExpense, calcASC842, glIsBalSheet, glPLType };
 // one module every reader already imports, so there is one definition of "not open".
 export const isReversalEntry = (i) => !!(i && i.import_metadata && i.import_metadata.reverses != null && i.import_metadata.reverses !== "");
 export const isCancelledOrCancelling = (i) => !!(i && (i.reversed_by || isReversalEntry(i)));
+
+// ═════════════════════════════════════════════════════════════════════════════
+// C528 — A BILL A LIVE SETTLEMENT LINKS IS NOT OPEN, WHATEVER ITS FLAG SAYS. §9's rule since
+// O73: openness = "no LIVE clearing entry links this bill" (`matchableOpenItems` has read it
+// that way all along); the flag is a cache that writers stamp and C466 resyncs, and every
+// open LIST and total still read the flag alone. A collection whose flag write was lost
+// (C466's class) left the invoice on "Money owed to you" and in `ar_tie` while the GL — and
+// the matcher — knew it was cleared. The live settlements' targets, as one set; the open
+// lists and totals exclude them. Only ever REMOVES from the open set (a linked live
+// settlement is proof of clearing); it never adds.
+// ═════════════════════════════════════════════════════════════════════════════
+export const isSettlementEntry = (i) => !!(i && i.import_metadata && i.import_metadata.payment_for != null);
+export function settledBases(invoices = []) {
+  const out = new Set();
+  for (const i of invoices || []) {
+    if (!isSettlementEntry(i) || i.status === "voided" || i.status === "deleted" || i.deleted_at) continue;
+    out.add(String(i.import_metadata.payment_for));
+  }
+  return out;
+}
+export const entryBaseOf = (i) => String(i && i.db_entry_id != null ? i.db_entry_id : String((i && i.id) ?? "").split("_")[0]);

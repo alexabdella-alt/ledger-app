@@ -13,7 +13,7 @@
 // card and the KPI strip so the three cannot disagree.
 import { isLiveEntry, isReceivableRow } from "./reports.js";
 import { isSettlementEntry } from "./bankMatch.js";
-import { isCancelledOrCancelling } from "./gl.js";
+import { isCancelledOrCancelling, settledBases, entryBaseOf } from "./gl.js";
 
 // Every issued receivable, settled or not (the aging report's universe).
 export function receivableEntries(invoices = [], arCode) {
@@ -22,5 +22,6 @@ export function receivableEntries(invoices = [], arCode) {
 }
 // The ones still open.
 export function openReceivables(invoices = [], arCode) {
-  return receivableEntries(invoices, arCode).filter((i) => !isCancelledOrCancelling(i) && i.payment_status !== "collected" && i.payment_status !== "paid");   // C468
+  const settled = settledBases(invoices);   // C528 — a live collection linking it closes it, whatever the flag says
+  return receivableEntries(invoices, arCode).filter((i) => !isCancelledOrCancelling(i) && i.payment_status !== "collected" && i.payment_status !== "paid" && !settled.has(entryBaseOf(i)));   // C468
 }

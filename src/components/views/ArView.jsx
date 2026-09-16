@@ -36,6 +36,14 @@ export default function ArView() {
             const arAll   = receivableEntries(invoices, arRoleCode);   // C452 — one definition with the Customers screen
             const arOpen  = openReceivables(invoices, arRoleCode);
             const arOverdue = arOpen.filter(i => i.due_date && i.due_date < today);
+            // C528 — collected is "a receivable that is no longer open", from the same open list
+            // the totals read (§9: openness from the GL, never the flag). The card and each row's
+            // badge read `payment_status`, so an invoice cleared by a bank match whose flag write
+            // was lost (C466's class) read as still owed here and as collected in the aging.
+            const baseOf = i => String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
+            const openBases = new Set(arOpen.map(baseOf));
+            const isCollectedRow = i => !openBases.has(baseOf(i));
+            const arCollected = arAll.filter(isCollectedRow);
 
             // GL-derived AR Outstanding — the GL balance of Accounts Receivable, same
             // canonical source as the Dashboard, Balance Sheet, and AP. (computeAR /
@@ -111,7 +119,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                     { label:"Total Outstanding", value:fmt(totalAR),         sub:`${arOpen.length} open invoices`,          color:"var(--sc-success)" },
                     { label:"Overdue",            value:arOverdue.length,     sub:fmt(arOverdue.reduce((s,i)=>s+arAmt(i),0))+" past due", color:"var(--sc-error)" },
                     { label:"Current (0–30d)",    value:fmt(aging.current.total), sub:`${aging.current.count} invoices`,     color:"var(--sc-gold)" },
-                    { label:"Collected (Total)",  value:fmt(arAll.filter(i=>i.payment_status==="collected"||i.payment_status==="paid").reduce((s,i)=>s+arAmt(i),0)), sub:`${arAll.filter(i=>i.payment_status==="collected"||i.payment_status==="paid").length} invoices`, color:"var(--sc-text-2)" },
+                    { label:"Collected (Total)",  value:fmt(arCollected.reduce((s,i)=>s+arAmt(i),0)), sub:`${arCollected.length} invoices`, color:"var(--sc-text-2)" },
                   ].map(c=>(
                     <div key={c.label} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:"16px 18px" }}>
                       <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:1, marginBottom:8 }}>{c.label.toUpperCase()}</div>
@@ -145,11 +153,12 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                     ) : (
                       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                         {[...arAll].sort((a,b) => {
-                          if (a.payment_status==="collected"&&b.payment_status!=="collected") return 1;
-                          if (b.payment_status==="collected"&&a.payment_status!=="collected") return -1;
+                          const ca = isCollectedRow(a), cb = isCollectedRow(b);
+                          if (ca && !cb) return 1;
+                          if (cb && !ca) return -1;
                           return (a.due_date||"9999").localeCompare(b.due_date||"9999");
                         }).map(inv => {
-                          const isCollected = inv.payment_status==="collected"||inv.payment_status==="paid";
+                          const isCollected = isCollectedRow(inv);
                           const daysUntilDue = inv.due_date ? Math.floor((new Date(inv.due_date)-new Date(today))/86400000) : null;
                           const isOverdue = daysUntilDue !== null && daysUntilDue < 0;
                           return (
