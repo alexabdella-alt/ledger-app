@@ -7973,7 +7973,15 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     // while markBillPaid still returned success. The `already` probe below is the correct,
     // GL-based idempotency guard; the flag is not a posting precondition.)
     {
-      const payEntry = buildPaymentEntry(inv, side, {
+      // C503 — handed one row of an EXPANDED entry (the list shows one row per entry, and a
+      // multi-line bill's expense row carries only part of it), settle from the entry's LEG
+      // row — the credit to A/P or debit to A/R that carries the whole balance (C499).
+      const wantCode = side === "ar" ? rc("accounts_receivable") : rc("accounts_payable");
+      const legRow = String(inv.id ?? "").includes("_")
+        ? (invoicesRef.current || []).find(r => String(r.db_entry_id) === String(dbId) && String(r.gl_code) === String(wantCode)
+            && r.debit_credit === (side === "ar" ? "debit" : "credit"))
+        : null;
+      const payEntry = buildPaymentEntry(legRow || inv, side, {
         apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"),
         arCode: rc("accounts_receivable"), cashCode: rc("cash"), cashName: rn("cash"),
         date: paidDate || at.slice(0, 10), billDbId: dbId,

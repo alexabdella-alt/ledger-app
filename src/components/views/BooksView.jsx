@@ -7,7 +7,7 @@ import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { planBulkRemoval } from "../../lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "../../lib/ownerTrust";
-import { classifyTxn, txnStatus } from "../../lib/txnPresent";
+import { classifyTxn, txnStatus, collapseExpandedRows, listAmount } from "../../lib/txnPresent";
 import { pill } from "../../lib/ui";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 
@@ -83,7 +83,8 @@ export default function BooksView() {
     return true;
   });
   const q = search.trim().toLowerCase();
-  const filtered = byFilter.filter(i => !q ||
+  // C503 — one row per entry: a taxed invoice or a multi-line bill is one thing to a person.
+  const filtered = collapseExpandedRows(byFilter).filter(i => !q ||
     (i.vendor||"").toLowerCase().includes(q) ||
     (i.description||"").toLowerCase().includes(q) ||
     (i.gl_name||"").toLowerCase().includes(q) ||
@@ -94,6 +95,7 @@ export default function BooksView() {
     // "824.60" found nothing while the figure sat on screen (C346's rule, one list over).
     // And the invoice number, now that C478 keeps it.
     fmt(i.amount).toLowerCase().includes(q) ||
+    fmt(listAmount(i)).toLowerCase().includes(q) ||
     (i.invoice_number||"").toLowerCase().includes(q)
   );
 
@@ -104,7 +106,7 @@ export default function BooksView() {
     "Vendor": i => (i.vendor||"").toLowerCase(),
     "Description": i => (i.description||"").toLowerCase(),
     "Category": i => String(i.gl_code||""),
-    "Amount": i => Math.abs(Number(i.amount)||0),
+    "Amount": i => Math.abs(listAmount(i)),
     "Status": i => statusKey(i),
   };
   const cycleSort = (col) => setSort(s =>
@@ -312,8 +314,8 @@ export default function BooksView() {
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
                     <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor||"—"}</span></div></td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
-                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>{cls.account.name}</td>
-                    <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(inv.amount)}</td>
+                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>{cls.account.name}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
+                    <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>
                     <td style={{ padding:"0 16px" }}>{statusBadge(inv)}</td>
                     <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
                       {/* Settle action ONLY on a genuinely open item — never on a settlement/clearing entry. */}
