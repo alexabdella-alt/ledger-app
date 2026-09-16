@@ -1,6 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
+import { isCancelledOrCancelling, glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate, fmtSignedMoney , fmtMoney, todayLocal, ymdLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
@@ -55,8 +55,14 @@ export default function ReportsView() {
             const plFiltered = filtered.filter(i => {
               if (i.status === "voided" || !glPLType(i.gl_code)) return false;
               if (basisMode === "cash") {
-                // Cash basis: bank feed entries are actual cash; otherwise require marked paid/collected
-                return i.source === "bank_feed" || i.payment_status === "paid" || i.payment_status === "collected";
+                // Cash basis: bank lines are actual cash; otherwise require marked paid/collected.
+                // C481 — stored bank lines carry `bank_import` (the in-session name is normalised
+                // at the RPC), so the old `bank_feed` test was dead after a reload; and a
+                // correction and the entry it cancels are kept TOGETHER — the original carries the
+                // paid flag and the correction does not, so filtering by flag showed the canceled
+                // expense on the cash-basis P&L with nothing cancelling it.
+                if (isCancelledOrCancelling(i)) return true;
+                return i.source === "bank_import" || i.source === "bank_feed" || i.payment_status === "paid" || i.payment_status === "collected";
               }
               return true; // accrual: all posted entries
             });

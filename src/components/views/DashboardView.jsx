@@ -201,7 +201,7 @@ export default function DashboardView() {
         <div style={{ padding:"12px 18px" }}><button onClick={goReports} style={{ padding:"8px 16px", borderRadius:9, fontSize:12, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Open full P&amp;L report →</button></div>
       </div>);
     } else if (d.type==="cash") {
-      const cashTxns = invoices.filter(i => (i.source==="bank_feed" || i.payment_status==="paid" || i.payment_status==="collected") && i.status!=="voided");
+      const cashTxns = invoices.filter(i => (i.source==="bank_import" || i.source==="bank_feed" || i.payment_status==="paid" || i.payment_status==="collected") && i.status!=="voided");
       title = "Cash & bank"; subtitle = `${(bankAccounts||[]).length} account${(bankAccounts||[]).length!==1?"s":""} · ${cashTxns.length} cash transactions`;
       body = (<div>
         <div style={{ padding:"12px 18px", display:"flex", gap:10, flexWrap:"wrap" }}>
