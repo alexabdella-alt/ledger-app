@@ -21,11 +21,38 @@ const num = n => Number(n) || 0;
 // Does paying/collecting this entry require a GL movement? Only when its booked
 // offset is the AP/Accrued liability (AP side) or AR (AR side). Direct-to-cash or
 // an indeterminate/missing offset → false (stay flag-only; never double-post).
-export function paymentNeedsGLMovement(bill, side, { apCode, accruedCode, arCode } = {}) {
-  const offset = bill && bill.secondary_gl_code;
-  if (!offset) return false;
-  if (side === "ar") return offset === arCode;
-  return offset === apCode || offset === accruedCode;
+// C499 — TWO ROW SHAPES ESTABLISH A RECEIVABLE OR PAYABLE, AND ONLY ONE WAS RECOGNISED.
+// A simple bill flattens to one row whose OFFSET is A/P (Dr Expense / Cr A/P). A multi-line
+// bill or a taxed invoice expands to several rows, and the one that represents it (C498) is
+// its LEG row — the row whose PRIMARY account IS A/P (a credit, the bill's whole amount) or
+// A/R (a debit, the whole receivable). Handed a leg row, this returned false, `buildPaymentEntry`
+// returned null, and `markBillPaid` flipped the flag with NO cash movement: every taxed
+// invoice collected through a bank match read "collected" while A/R kept the full amount and
+// the deposit never reached the books. A debit to A/P or a credit to A/R is a settlement's
+// own leg and is never a bill.
+export function settlementLegOf(bill, side, { apCode, accruedCode, arCode } = {}) {
+  if (!bill) return null;
+  const eq = (a, b) => a != null && b != null && String(a) === String(b);
+  const wants = side === "ar" ? [arCode] : [apCode, accruedCode];
+  const sec = bill.secondary_gl_code;
+  const expanded = String(bill.id ?? "").includes("_");
+  // The offset shape: a simple row, or — on an expanded invoice — the revenue row flatten
+  // stamps `ar_amount` on. Any other expanded row with A/R or A/P as its offset (a tax line,
+  // one expense line of a multi-line bill) carries only PART of the balance and is refused.
+  const offsetShape = !expanded || (side === "ar" && bill.ar_amount != null);
+  if (offsetShape && sec != null && wants.some((c) => eq(c, sec))) {
+    const amount = side === "ar" && bill.ar_amount != null ? bill.ar_amount : bill.amount;
+    return { code: sec, name: bill.secondary_gl_name || String(sec), amount: num(amount) };
+  }
+  const pri = bill.gl_code;
+  const establishes = side === "ar" ? bill.debit_credit === "debit" : bill.debit_credit === "credit";
+  if (expanded && establishes && pri != null && wants.some((c) => eq(c, pri))) {
+    return { code: pri, name: bill.gl_name || String(pri), amount: num(bill.amount) };
+  }
+  return null;
+}
+export function paymentNeedsGLMovement(bill, side, codes = {}) {
+  return settlementLegOf(bill, side, codes) != null;
 }
 
 // Build the invoice-shaped object to feed persistJournalEntry for the payment, or
@@ -35,17 +62,18 @@ export function paymentNeedsGLMovement(bill, side, { apCode, accruedCode, arCode
 // is credited — matching persistJournalEntry's line construction.
 export function buildPaymentEntry(bill, side, opts = {}) {
   const { apCode, accruedCode, arCode, cashCode, cashName, date, billDbId } = opts;
-  if (!paymentNeedsGLMovement(bill, side, { apCode, accruedCode, arCode })) return null;
+  const leg = settlementLegOf(bill, side, { apCode, accruedCode, arCode });
+  if (!leg) return null;
   // Collect/pay the FULL balance owed. For a taxed AR invoice that's the incl-tax A/R
-  // (ar_amount), not the ex-tax revenue (amount) — so collecting clears A/R to zero and
-  // never strands the tax. The sales-tax liability (2350) was recorded at invoice time
-  // and is untouched here (it stays payable until remitted to the state).
-  const amount = num(side === "ar" && bill && bill.ar_amount != null ? bill.ar_amount : bill && bill.amount);
+  // (ar_amount on the revenue row, or the A/R leg row's own amount), not the ex-tax
+  // revenue — so collecting clears A/R to zero and never strands the tax. The sales-tax
+  // liability (2350) was recorded at invoice time and is untouched here.
+  const amount = leg.amount;
   if (amount <= 0) return null;
   if (!cashCode) return null;        // can't post a cash movement without a cash account
 
-  const offset = bill.secondary_gl_code;
-  const offsetName = bill.secondary_gl_name || String(offset);
+  const offset = leg.code;
+  const offsetName = leg.name;
   const vendor = bill.vendor || (side === "ar" ? "Customer" : "Vendor");
   const base = {
     vendor, amount, date,
