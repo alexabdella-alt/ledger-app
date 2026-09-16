@@ -82,3 +82,16 @@ describe("C509 · the Full entry page", () => {
     expect(simple).not.toContain("LINES");
   });
 });
+
+describe("C510 · the Full entry page names the party by direction", () => {
+  it("a sale says Customer / SALE; a bill says Supplier / PURCHASE", () => {
+    const sale = text(renderViewHtml(DetailView, { ...ctx, selectedInvoice: rows.find((r) => r.id === "s1_1") }));
+    expect(sale).toContain("SALE");
+    expect(sale).toMatch(/Customer\s+Acme/);
+    expect(sale).not.toContain("INVOICE DETAIL");
+    expect(sale).not.toMatch(/Vendor\s+Acme/);
+    const bill = text(renderViewHtml(DetailView, { ...ctx, selectedInvoice: rows.find((r) => r.id === "b2") }));
+    expect(bill).toContain("PURCHASE");
+    expect(bill).toMatch(/Supplier\s+Roma/);
+  });
+});
