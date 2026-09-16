@@ -5,8 +5,9 @@ import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney, todayLocal, ymdLocal } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
+import { nextRecurringDate } from "../../lib/recurringSchedule";
 
 export default function RecurringView() {
   const { BOOKABLE_ACCOUNTS, createRecurring, recordRecurringRun, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, setRecurringActive, removeRecurring, loadFailures, companyDataLoaded } = useERP();
@@ -36,14 +37,9 @@ export default function RecurringView() {
                 showNotification(`${r.name} was NOT posted — the entry couldn't be written. Nothing changed.`, "error");
                 return;
               }
-              // Anchor to LOCAL midnight (not UTC) so the month/week add + ymdLocal readout stay
-              // on the user's calendar day — the toISOString() readout day-shifted for non-UTC.
-              const next = new Date(r.next_date + "T00:00:00");
-              if (r.frequency==="weekly") next.setDate(next.getDate()+7);
-              else if (r.frequency==="monthly") next.setMonth(next.getMonth()+1);
-              else if (r.frequency==="quarterly") next.setMonth(next.getMonth()+3);
-              else if (r.frequency==="annual") next.setFullYear(next.getFullYear()+1);
-              const nextDate = ymdLocal(next);
+              // C492 — never overflow a month (Jan 31 + 1 → Feb 28, not Mar 3), and a
+              // month-end rule stays on month-ends. Unknown frequency: the date is left as is.
+              const nextDate = nextRecurringDate(r.next_date, r.frequency) || r.next_date;
               const rec = await recordRecurringRun(r.id, { last_run: today, next_date: nextDate });
               setRecurring(prev => prev.map(x => x.id===r.id ? {...x, last_run:today, next_date:nextDate} : x));
               logAudit("recurring_posted", `Recurring posted: ${r.name} ${fmt(r.amount)}`, null, { journal_entry_id: jeId, next_date: nextDate, run_recorded: !!rec?.ok });
