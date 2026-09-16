@@ -8,7 +8,7 @@ import LoadingList from "../LoadingList";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 import { applyAlias } from "../../lib/vendorAlias";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { fmtDate , fmtMoney, todayLocal } from "../../lib/format";
+import { fmtSignedMoney, fmtDate, todayLocal } from "../../lib/format";
 import VendorAvatar from "../VendorAvatar";
 import { getAuthHeaders } from "../../lib/supabase";
 
@@ -23,7 +23,7 @@ export default function CustomersView() {
   // are the two words OWNER_JARGON_RE names by hand. The CPA keeps the terms (§9 exempts
   // reviewer-facing copy); only the words change, never the figures.
   const cockpit = navSeat ? navSeat.isReviewerSeat : true;
-            const fmt = fmtMoney;
+            const fmt = fmtSignedMoney;   // C494 — the totals on this screen are leg-signed (C489–C491); a net credit must show its sign
             const editingId = customersEditingId; const setEditingId = setCustomersEditingId;
             const editDraft = customersEditDraft; const setEditDraft = setCustomersEditDraft;
             const [selCustomer, setSelCustomer] = React.useState(null);

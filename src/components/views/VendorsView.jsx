@@ -8,7 +8,7 @@ import { verdictFor, reportablePayments, VERDICT } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 import { applyAlias } from "../../lib/vendorAlias";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { fmtDate , fmtMoney } from "../../lib/format";
+import { fmtSignedMoney, fmtDate } from "../../lib/format";
 import VendorAvatar from "../VendorAvatar";
 import { getAuthHeaders } from "../../lib/supabase";
 import TransactionDetailPanel from "../TransactionDetailPanel";
@@ -60,7 +60,7 @@ export default function VendorsView() {
   };
             const [vendorSearch, setVendorSearch] = React.useState("");
             const [vSel, setVSel] = React.useState(null); // selected transaction id for the slide-in
-            const fmt = fmtMoney;
+            const fmt = fmtSignedMoney;   // C494 — the totals on this screen are leg-signed (C489–C491); a net credit must show its sign
             const selectedContact = vendorsSelectedContact; const setSelectedContact = setVendorsSelectedContact;
             const [aliasDraft, setAliasDraft] = React.useState("");
             const editingId = vendorsEditingId; const setEditingId = setVendorsEditingId; const editDraft = vendorsEditDraft; const setEditDraft = setVendorsEditDraft;

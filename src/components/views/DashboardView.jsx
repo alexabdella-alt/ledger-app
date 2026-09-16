@@ -6,7 +6,7 @@ import { useERP } from "../ERPContext";
 import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
 import { ownerActivityText } from "../../lib/activityFeed";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney, fmtApprox, todayLocal, ymdLocal, plural } from "../../lib/format";
+import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { plan1099ForYear } from "../../lib/form1099";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
@@ -108,7 +108,7 @@ export default function DashboardView() {
     const _stack = drill.state.stack;
     const isTxn = cur.type === "txn";
     const d = isTxn ? (_stack[_stack.length - 2] || cur) : cur;
-    const fmt = fmtMoney;
+    const fmt = fmtSignedMoney;   // C494 — the totals on this screen are leg-signed (C489–C491); a net credit must show its sign
     const today = new Date();
     const exp = invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided");
     const rev = invoices.filter(i => glIsRevenue(i.gl_code) && i.status!=="voided");

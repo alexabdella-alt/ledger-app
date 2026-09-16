@@ -2,7 +2,7 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
+import { fmtSignedMoney, initials, vendorColor, fmtDate, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { computeAP, openPayables, paidPayables, glAccountBalance, signedPL } from "../../lib/reports";
 
@@ -14,7 +14,7 @@ export default function ApView() {
   const [payRef, setPayRef] = React.useState("");
   const [payNotes, setPayNotes] = React.useState("");
 
-  const fmt = fmtMoney;
+  const fmt = fmtSignedMoney;   // C494 — the totals on this screen are leg-signed (C489–C491); a net credit must show its sign
   const today = todayLocal();
 
   // Canonical AP lists — the rows behind computeAP, so the bills shown reconcile
