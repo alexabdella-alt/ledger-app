@@ -39,7 +39,7 @@ describe("fingerprint stability — same condition re-detected yields ONE row", 
   });
 
   it("and survives the ledger renumbering the rows underneath it", () => {
-    const renumbered = dupLedger.map((r, i) => ({ ...r, id: `other_${i}`, db_entry_id: `other_${i}` }));
+    const renumbered = dupLedger.map((r, i) => ({ ...r, id: `other-${i}`, db_entry_id: `other-${i}` }));
     const before = runAnomalyDetection(dupLedger, [], NOW).find((x) => x.type === "duplicate_payment");
     const after = runAnomalyDetection(renumbered, [], NOW).find((x) => x.type === "duplicate_payment");
     expect(after.fingerprint).toBe(before.fingerprint);

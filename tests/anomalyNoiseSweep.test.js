@@ -72,7 +72,7 @@ describe("(f3) anomaly emission is content-keyed, so a re-run emits nothing new"
     exp({ id: "3", vendor: "Bluebonnet", amount: 3000, date: "2026-06-10" }),
   ];
   // The same statement re-derived: identical content, renumbered rows.
-  const reRun = ledger.map((r, i) => ({ ...r, id: `re_${i}`, db_entry_id: `re_${i}` }));
+  const reRun = ledger.map((r, i) => ({ ...r, id: `re-${i}`, db_entry_id: `re-${i}` }));
   const now = new Date("2026-06-30");
 
   it("THE LIVE REPRO — re-running over identical content yields identical fingerprints", () => {

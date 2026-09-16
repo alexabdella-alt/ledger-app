@@ -9,6 +9,7 @@ import { isCancelledOrCancelling } from "./gl";
 import { classifyCadence, typicalIntervalDays, isOffRhythm, offRhythmCopy, countMismatchCopy, periodOf, FLAT_SD_RATIO } from "./recurringVendor.js";
 import { couldBeCapital } from "./clarify";
 import { hasAttachedInvoice } from "./invoicePayment.js";   // C332 — one definition of "this charge already carries its invoice"
+import { collapseExpandedRows } from "./txnPresent.js";   // C519 — one charge per entry, at the entry's total
 
 // Normalize a vendor/contact name for fuzzy matching (lowercase, drop legal
 // suffixes and punctuation). Same spirit as the contacts unique-name handling.
@@ -23,6 +24,23 @@ export function normVendor(name) {
 const isLive = i => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at;
 const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s[0] === "6" || s[0] === "7" || s[0] === "8"; };
 const isRevenueCode = c => String(c || "")[0] === "4";   // C474
+
+// ═════════════════════════════════════════════════════════════════════════════
+// C519 — A CHARGE IS AN ENTRY, NOT A LINE. `flattenJournalEntries` expands a multi-line
+// bill into one row per line, and every vendor-shaped detector below read those rows as
+// separate charges: a two-line $6,000 Sysco bill raised a HIGH `duplicate_payment` against
+// its OWN two lines (blocking sign-off), two `round_number` cards for one entry, three lines
+// read as "3 charges in 48 hours", and `large_transaction` judged the $3,000 line rather
+// than the $6,000 the vendor actually charged. Same class as C518, in the detector.
+//
+// The vendor-shaped detectors read `perEntry(rows)`: one row per entry — the first P&L
+// line as the representative, its `amount` the entry's total (its debits) — so a charge is
+// counted once, at the figure a person would recognise. `category_spike` deliberately keeps
+// the per-line rows: a bill with a Food line and a Freight line genuinely spent in both.
+// ═════════════════════════════════════════════════════════════════════════════
+export function perEntry(rows = []) {
+  return collapseExpandedRows(rows).map(r => (r && r._entryTotal != null ? { ...r, amount: r._entryTotal } : r));
+}
 
 // Find an existing entry that looks like a duplicate of `invoice`:
 //   • same vendor + exact amount, OR same vendor + amount within 1%, AND within a date window.
@@ -74,7 +92,9 @@ export function detectRecurringPatterns(invoices, recurring, now = new Date()) {
   const existing = new Set((recurring || []).map(r => normVendor(r.vendor || r.name)).filter(Boolean));
 
   const byVendor = {};
-  for (const i of invoices || []) {
+  // C519 — a monthly two-line bill is one monthly charge at the bill's total, not two
+  // same-day charges at half of it (which the cadence test then rejected, silently).
+  for (const i of perEntry((invoices || []).filter(isLive))) {
     if (!isLive(i) || !i.vendor || !i.date || !isExpenseCode(i.gl_code)) continue;
     const d = new Date(i.date);
     if (isNaN(d) || d < cutoff || d > now) continue;
@@ -223,7 +243,13 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
   // account), so without this the pair read as two charges: a duplicate card when the
   // correction came within a week, a large-charge card on the correction, and both halves
   // in every vendor and category baseline.
-  const expenses = (invoices || []).filter(i => isLive(i) && !isCancelledOrCancelling(i) && i.date && isExpenseCode(i.gl_code) && (Number(i.amount) > 0));
+  const liveRows = (invoices || []).filter(i => isLive(i) && !isCancelledOrCancelling(i) && i.date);
+  const isCharge = i => isExpenseCode(i.gl_code) && (Number(i.amount) > 0);
+  // Per LINE — only `category_spike` reads this (a line belongs to its own category).
+  const expenseLines = liveRows.filter(isCharge);
+  // Per ENTRY — every vendor-shaped detector reads this (C519).
+  const entries = perEntry(liveRows);
+  const expenses = entries.filter(isCharge);
 
   // Group recent expenses by normalized vendor (used by spike / rapid / missing).
   const byVendor = {};
@@ -408,7 +434,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
   // human label for display copy.
   const catMonth = {};
   const catName = {};
-  for (const i of expenses.filter(x => within(x.date, 130))) {
+  for (const i of expenseLines.filter(x => within(x.date, 130))) {   // C519 — per line, on purpose
     const code = String(i.gl_code || i.gl_name || "");
     catName[code] = i.gl_name || code;
     const m = String(i.date).slice(0, 7);
@@ -523,7 +549,7 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
     if (bands.size) {
       // Customers declare a band too ("usually pays…"), so revenue rows are in this one
       // population — the counterparty's name is the row's `vendor` either way.
-      const revenues = (invoices || []).filter(i => isLive(i) && !isCancelledOrCancelling(i) && i.date && isRevenueCode(i.gl_code) && (Number(i.amount) > 0));
+      const revenues = entries.filter(i => isRevenueCode(i.gl_code) && (Number(i.amount) > 0));   // C519 — a taxed invoice at its total
       for (const i of [...expenses, ...revenues].filter(x => within(x.date, 95) && !isSystemPostedEntry(x))) {
         const b = bands.get(normVendor(i.vendor));
         if (!b) continue;
