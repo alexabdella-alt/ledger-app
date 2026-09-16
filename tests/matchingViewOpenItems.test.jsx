@@ -65,3 +65,21 @@ describe("★★ C358 — open payables/receivables on the Matching screen", () 
     expect(src).not.toMatch(/payment_status!=="paid"|payment_status!=="collected"/);
   });
 });
+
+// C529 — a multi-line bill's open item (its A/P leg row) is presented by its first line's category
+// with the line count, not as "2000 · Accounts Payable".
+import { flattenJournalEntries } from "../src/lib/ledger.js";
+import { POPULATED as P2, ENTRIES } from "./helpers/populatedFixture.js";
+describe("C529 — the Matching screen presents a multi-line bill by its category", () => {
+  it("the fixture's two-line Sysco bill reads 'Food Cost · 3 lines · $520.00', never 'Accounts Payable'", () => {
+    expect(ENTRIES.find(e => e.id === "i7").journal_entry_lines.length).toBe(3);   // the shape under test
+    const navSeat = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ["home", "matching"] };
+    const t = renderViewHtml(MatchingView, { ...P2, navSeat, companyDataLoaded: true }).replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    const i = t.indexOf("Sysco – produce + freight");
+    expect(i).toBeGreaterThan(-1);
+    const row = t.slice(i, i + 120);
+    expect(row).toContain("5010 · Food Cost");
+    expect(row).toContain("$520.00");
+    expect(row).not.toContain("Accounts Payable");
+  });
+});

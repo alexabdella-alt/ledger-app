@@ -461,7 +461,7 @@ const isApLegRow = (i, ap) => ap != null && String(i.id ?? "").includes("_") && 
 // a list would print as "2000 · Accounts Payable"; it borrows the first expense line's
 // category for display and carries the line count, so the Bills screen reads
 // "Food Cost · $520" for a two-line bill rather than one row per line.
-const presentLegRow = (leg, all) => {
+export const presentLegRow = (leg, all) => {
   const base = String(leg.db_entry_id != null ? leg.db_entry_id : String(leg.id).split("_")[0]);
   const lines = all.filter(r => r && String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base);
   const pl = lines.find(r => isExp(r)) || lines.find(r => r !== leg);
