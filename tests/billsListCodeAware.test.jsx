@@ -79,3 +79,19 @@ describe("C514 · Reports passes the codes", () => {
     expect(src).toMatch(/agingReport\(invoices, side, new Date\(\), \{ arCode: getAccountByRole\?\.\("accounts_receivable"\)\?\.code \|\| null, apCode: getAccountByRole\?\.\("accounts_payable"\)\?\.code \|\| null \}\)/);
   });
 });
+
+import VendorsView from "../src/components/views/VendorsView.jsx";
+describe("C515 · the Vendors tab's Paid YTD", () => {
+  it("an open two-line bill is not 'paid', and a paid two-line bill is counted once", () => {
+    const paidRows = flattenJournalEntries([
+      je("b3", "2026-09-05", "Sysco – cheese + freight", [{ code: "5010", debit: 100 }, { code: "5030", debit: 10 }, { code: "2000", credit: 110 }], { payment_status: "paid", paid_at: "2026-09-12" }),
+      je("p3", "2026-09-12", "Payment – Sysco", [{ code: "2000", debit: 110 }, { code: "1000", credit: 110 }], { import_metadata: { kind: "ap_payment", payment_for: "b3" }, payment_status: "paid" }),
+    ], chart);
+    const all = [...rows, ...paidRows];
+    const contact = { id: "c1", name: "Sysco", type: "vendor" };
+    const t = text(renderViewHtml(VendorsView, { ...POPULATED, invoices: all, contacts: [contact], vendorsSelectedContact: contact, companyDataLoaded: true, getAccountByRole: (r) => chart.find((a) => a.system_role === r) || null }));
+    // open: the $520 bill (b1) — paid this year: the $110 bill (b3), once
+    expect(t).toMatch(/Paid YTD\s+\$110\.00/);
+    expect(t).toMatch(/Bills you still owe\s+\$520\.00/);
+  });
+});

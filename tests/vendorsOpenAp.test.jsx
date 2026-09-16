@@ -29,7 +29,7 @@ describe("C453", () => {
   });
   it("source: the Vendors screen reads openPayablesGL, not the flag", () => {
     const src = fs.readFileSync("src/components/views/VendorsView.jsx", "utf8");
-    expect(src).toMatch(/const openAPfor = txns => openPayablesGL\(txns, apRoleCode\)/);
+    expect(src).toMatch(/const openAPfor = name => openPayablesGL\(allForVendor\(name\), apRoleCode\)/);   // C515 — off the vendor's FULL ledger rows
     expect(src).not.toMatch(/txns\.filter\(i=>i\.payment_status!=="paid"\)\.reduce/);
   });
 });

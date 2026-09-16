@@ -79,16 +79,26 @@ export default function VendorsView() {
             // paid this year = everything spent this year that is not still open.
             const apRoleCode = getAccountByRole?.("accounts_payable")?.code;
             const inYear = i => String(i.date||"").startsWith(String(yr));
-            const openAPfor = txns => openPayablesGL(txns, apRoleCode).reduce((s,i)=>s+(i.amount||0),0);
-            const paidYTDfor = txns => { const yearRows = txns.filter(inYear); const open = new Set(openPayablesGL(yearRows, apRoleCode).map(i => String(i.id))); return yearRows.filter(i => !open.has(String(i.id))).reduce((s,i)=>s+signedPL(i),0); };   // C491 — a correction subtracts rather than counting as a second payment
+            // C515 — open bills are read off the FULL ledger for the vendor (by key), not the
+            // expense-row list above: a multi-line bill is represented by its A/P leg row (C498),
+            // which `txnsForVendor` filters out — so a $520 bill read "$0 still owed", and its
+            // expense rows fell through to "Paid YTD".
+            const allForVendor = name => invoices.filter(i => (i.vendor_key||keyOf(i.vendor))===keyOf(name) && i.status!=="voided");
+            const openBillsFor = name => openPayablesGL(allForVendor(name), apRoleCode);
+            const openAPfor = name => openPayablesGL(allForVendor(name), apRoleCode).reduce((s,i)=>s+(i.amount||0),0);   // one live bill per row
+            // C515 — open is decided per ENTRY (db id), not per row: an open two-line bill's expense
+            // rows are not in the open list (its representative is the A/P leg) and counted as paid.
+            // And paid spend is the EXPENSE-account movement (C216) — never the A/P leg row itself.
+            const baseOf = i => String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
+            const paidYTDfor = (txns, name) => { const yearRows = txns.filter(inYear); const open = new Set((name ? openBillsFor(name) : openPayablesGL(yearRows, apRoleCode)).map(baseOf)); return yearRows.filter(i => !open.has(baseOf(i)) && glIsExpense(i.gl_code)).reduce((s,i)=>s+signedPL(i),0); };   // C491 — a correction subtracts rather than counting as a second payment
             const status1099 = v => v.is_1099_exempt ? {label:"1099 exempt", color:"var(--sc-text-2)"} : v.is1099 ? {label:"1099 required", color:"var(--sc-warning)"} : {label:"Not flagged", color:"var(--sc-text-mut)"};
 
             // ── VENDOR DETAIL DRILL ──
             if (selectedContact) {
               const v = selectedContact;
               const vTxns = txnsForVendor(v.name);
-              const paidYTD = paidYTDfor(vTxns);
-              const openAP = openAPfor(vTxns);
+              const paidYTD = paidYTDfor(vTxns, v.name);
+              const openAP = openAPfor(v.name);
               const lastDate = vTxns[0]?.date || "—";
               const payHistory = vTxns.filter(i=>i.payment_status==="paid");
               const st = status1099(v);
@@ -319,8 +329,8 @@ export default function VendorsView() {
                     {filteredVendors.map(v => {
                       const isEditing = editingId===(v.id||v.name);
                       const vTxns = txnsForVendor(v.name);
-                      const openAP = openAPfor(vTxns);
-                      const paidYTD = paidYTDfor(vTxns);
+                      const openAP = openAPfor(v.name);
+                      const paidYTD = paidYTDfor(vTxns, v.name);
                       const lastDate = vTxns[0]?.date || v.ledger?.lastDate || null;
                       const rule = rules.find(r=>r.vendor?.toLowerCase()===v.name?.toLowerCase());
                       return (
