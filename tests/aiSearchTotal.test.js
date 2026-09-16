@@ -11,7 +11,8 @@ import { executeAITool } from "../src/lib/aiTools.js";
 const rows = [
   { id: "b1", db_entry_id: "b1", vendor: "Sysco", amount: 500, date: "2026-09-01", gl_code: "5010", secondary_gl_code: "2000", type: "expense", debit_credit: "debit", status: "posted", payment_status: "paid" },
   { id: "p1", db_entry_id: "p1", vendor: "Sysco", amount: 500, date: "2026-09-05", gl_code: "2000", secondary_gl_code: "1000", type: "expense", debit_credit: "debit", status: "posted", import_metadata: { kind: "ap_payment", payment_for: "b1" } },
-  { id: "b2", db_entry_id: "b2", vendor: "Sysco", amount: 200, date: "2026-09-08", gl_code: "5010", secondary_gl_code: "2000", type: "expense", debit_credit: "debit", status: "posted" },
+  // `reversed_by` as the flatten stamps it from the live correction (C468) — the AI's ledger comes through `fetchLedger` → flatten.
+  { id: "b2", db_entry_id: "b2", vendor: "Sysco", amount: 200, date: "2026-09-08", gl_code: "5010", secondary_gl_code: "2000", type: "expense", debit_credit: "debit", status: "posted", reversed_by: "r2" },
   { id: "r2", db_entry_id: "r2", vendor: "Sysco", amount: 200, date: "2026-09-09", gl_code: "5010", secondary_gl_code: "2000", type: "expense", debit_credit: "credit", status: "posted", import_metadata: { kind: "reversal", reverses: "b2" } },
   { id: "s1", db_entry_id: "s1", vendor: "Acme", amount: 900, date: "2026-09-10", gl_code: "4000", secondary_gl_code: "1100", type: "revenue", debit_credit: "credit", status: "posted" },
 ];
@@ -29,5 +30,18 @@ describe("C486", () => {
     const r = await executeAITool("search_transactions", { vendor: "Acme" }, ctx);
     expect(r.total_amount).toBe(900);
     expect(r.note_payments).toBeUndefined();
+  });
+});
+
+// C487 — get_overdue_invoices decided "open" from the paid flag alone, so a corrected bill
+// (flag still unpaid, canceled by a correction) and a legacy bank line were listed as overdue.
+describe("C487", () => {
+  const ctx2 = { getLedger: async () => rows.map((r) => ({ ...r, due_date: "2026-08-01" })), getAccountByRole: () => null };
+  it("a corrected bill is not overdue; a genuinely open one is", async () => {
+    const r = await executeAITool("get_overdue_invoices", { type: "both" }, ctx2);
+    const ids = r.invoices.map((x) => x.vendor + ":" + x.amount);
+    expect(ids).not.toContain("Sysco:200");   // b2 — canceled by r2
+    expect(ids).not.toContain("Sysco:500");   // b1 — paid (p1 settles it)
+    expect(ids).toContain("Acme:900");        // an open receivable
   });
 });

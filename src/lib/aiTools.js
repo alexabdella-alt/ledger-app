@@ -18,7 +18,7 @@ import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
 import {
   isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
-  computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP,
+  computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables,
 } from "./reports.js";
 
 const isLive = isLiveEntry;                                  // the ONE shared liveness predicate
@@ -33,7 +33,6 @@ const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 // not dependent on the model formatting a raw float. Forward-looking estimates
 // (runway months, projected taxes) intentionally stay numeric/approximate.
 const money = v => fmtSignedMoney(v);
-const unpaid = i => i.payment_status !== "paid" && i.payment_status !== "collected";
 
 function periodRange(period, dateFrom, dateTo, now = new Date()) {
   if (dateFrom || dateTo) return { from: dateFrom || null, to: dateTo || null };
@@ -153,9 +152,16 @@ async function getOverdueInvoices(input, ctx) {
   const type = input.type || "both";
   const minDays = input.days_overdue || 1;
   const all = (await ctx.getLedger()).filter(isLive);
+  // C487 — "open" is the SAME predicate `computeAP`/`computeAR` and the aging report use
+  // (`openPayables`/`openReceivables`: live, the paid flag, and — since C468 — not a
+  // corrected bill or its correction), so the overdue list cannot disagree with the
+  // financial summary two tools over. The local flag-only test counted a corrected bill
+  // as overdue. (Code-free on purpose: `C309`'s A/P-offset widening needs the company's
+  // code, and this ctx may not carry one — the summary's own predicate is the floor.)
+  const openSet = new Set([...openPayables(all), ...openReceivables(all)].map((i) => String(i.id)));
   const rows = [];
   for (const i of all) {
-    if (!unpaid(i) || !i.due_date) continue;
+    if (!openSet.has(String(i.id)) || !i.due_date) continue;
     const isAR = isRevenueCode(i.gl_code), isAP = isExpenseCode(i.gl_code);
     if (!isAR && !isAP) continue;
     if (type === "ar" && !isAR) continue;
