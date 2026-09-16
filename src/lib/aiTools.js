@@ -14,6 +14,7 @@
 
 import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
+import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
 import {
   isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals,
@@ -60,7 +61,20 @@ async function searchTransactions(input, ctx) {
     if (input.status && (i.payment_status || "unpaid") !== input.status) return false;
     return true;
   });
-  const total = rows.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  // C486 — THE TOTAL IS WHAT MOVED ON THE P&L, SIGNED. It summed `amount` over every match:
+  // a $500 bill, the $500 payment that settled it (its row carries the vendor's name and an
+  // A/P primary) and a $500 correction of it added up to $1,500 "spent with Sysco". A
+  // payment or a clearing moves no P&L and contributes nothing; a correction (a credit to
+  // an expense) subtracts; a revenue row counts its credit as positive.
+  const plSigned = (i) => {
+    if (isSettlementEntry(i) || i.source === "opening_balance") return 0;
+    const amt = Number(i.amount) || 0;
+    if (isExpenseCode(i.gl_code)) return i.debit_credit === "credit" ? -amt : amt;
+    if (isRevenueCode(i.gl_code)) return i.debit_credit === "debit" ? -amt : amt;
+    return 0;
+  };
+  const total = rows.reduce((s, i) => s + plSigned(i), 0);
+  const settlementsIncluded = rows.filter(isSettlementEntry).length;
   const matchCount = rows.length;                       // ALL matches (before the display cap)
   // Most recent first, so the AI always lists the latest matches first when
   // disambiguating ("which Adobe charge — Jun 9, May 8, or Apr 7?").
@@ -69,6 +83,8 @@ async function searchTransactions(input, ctx) {
   const listed = rows.slice(0, cap).map(i => ({
     id: i.id, date: i.date, vendor: i.vendor, amount: i.amount, amount_display: money(i.amount), gl_code: i.gl_code, gl_name: i.gl_name,
     type: i.type, payment_status: i.payment_status, due_date: i.due_date, description: i.description,
+    // C486 — so the model can SAY which rows are the bill, its payment, or a correction.
+    kind: isSettlementEntry(i) ? "payment" : i.import_metadata?.reverses ? "correction" : i.source === "opening_balance" ? "opening_balance" : "entry",
   }));
   // The listed rows can be a TRUNCATED slice while total_amount/total_count reflect ALL
   // matches. Surface that explicitly so the AI never presents a partial list as complete —
@@ -77,8 +93,9 @@ async function searchTransactions(input, ctx) {
   return {
     count: listed.length,                               // rows actually listed
     total_count: matchCount,                            // total matches (may exceed count)
-    total_amount: r2(total),                            // sum over ALL matches, not just listed
+    total_amount: r2(total),                            // signed P&L movement over ALL matches — payments and clearings excluded, corrections subtracted
     total_amount_display: money(total),                 // exact string to quote (matches dashboard)
+    ...(settlementsIncluded ? { note_payments: `${settlementsIncluded} of the matches are payments/clearings of other entries; they are listed (kind: "payment") but not counted in total_amount, so the total is what was spent or earned, not spend plus its own settlement.` } : {}),
     truncated,
     ...(truncated ? { note: `Showing the ${listed.length} most recent of ${matchCount} total matches. total_amount reflects all ${matchCount}. Tell the user the list is truncated and that the total covers everything; offer to narrow by date/amount to see specific ones.` } : {}),
     transactions: listed,
