@@ -41,7 +41,10 @@ describe("★★ C360 — posting a recurring transaction WRITES it, and says so
   it("App exposes both writers, and createRecurring IS the chat's persistChatRecurring", () => {
     const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
     expect(app).toMatch(/const createRecurring = \(args\) => persistChatRecurring\(args\);/);
-    expect(app).toMatch(/updateVerified\(supabase, "recurring_transactions", id, \{ last_run, next_date \}\)/);
+    // C525 — this pinned the literal `{ last_run, next_date }` patch, which named a column the
+    // table does not have; the update failed on every Post now. The property is that the run is
+    // recorded through the ONE patch builder, whose keys a DDL test holds to the table.
+    expect(app).toMatch(/updateVerified\(supabase, "recurring_transactions", id, recurringRunPatch\(\{ last_run, next_date \}\)\)/);
   });
   it("renders the due banner for a rule that is due", () => {
     const html = renderViewHtml(RecurringView, { ...POPULATED, recurring: [{ id: "r1", name: "Rent", vendor: "Franklin Ave", amount: 2400, frequency: "monthly", next_date: "2020-01-01", active: true, gl_code: "6100", gl_name: "Rent" }] });

@@ -54,6 +54,15 @@ export async function insertVerified(db, table, payload) {
 
 // Patch a row by id; the post-update returned row IS the committed DB truth. ok requires
 // that every patched field actually matches in the returned row (caught a no-op update).
+// C525 — THE PATCH THAT RECORDS A RUN, UNDER THE TABLE'S OWN COLUMN NAME. `recordRecurringRun`
+// (C360) wrote `{ last_run, next_date }`; the column is `last_run_date`, so PostgREST refused
+// the update on every "Post now" since it shipped — the rule never advanced, the honest fallback
+// toast ("we couldn't record the run … don't post it twice") fired every time, and the charge
+// came back due after every reload. The reader maps `last_run_date` → `last_run` for the app.
+export function recurringRunPatch({ last_run, next_date }) {
+  return { last_run_date: last_run, next_date };
+}
+
 export async function updateVerified(db, table, id, patch) {
   if (!db || id == null) return { ok: false, error: "no db client / id" };
   try {

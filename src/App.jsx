@@ -30,7 +30,7 @@ import { multiLineMetaPatch } from "./lib/entryMetaStamp";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
 import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
-import { buildVendorRuleRow, buildRecurringRow, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
+import { buildVendorRuleRow, buildRecurringRow, recurringRunPatch, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
 import { recordedEntryLinks } from "./lib/intakeEntryLinks";
 import { payrollHoldDetail, heldPayrollCards, deferredToAccountantCards, signedPeriodHoldCards, signedPeriodHoldDetail, CLARIFICATION_HOLD_DETAIL, heldQuestionRows, heldUnreadableRows, heldPartialRows, partialHoldDetail, EXTRACT_FAILED_DETAIL, NOTHING_EXTRACTED_DETAIL, UNREADABLE_HOLD_PREFIX } from "./lib/waitingOnYou";
@@ -1413,6 +1413,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           id: r.id, name: r.name, vendor: r.contacts?.name||"", amount: r.amount,
           gl_code: r.debit_account?.code, gl_name: r.debit_account?.name,
           frequency: r.frequency, next_date: r.next_date, last_run: r.last_run_date,
+          project: r.project || "General",   // C525 — written by the rule's own insert, never read back: a rule's project was lost on reload
           active: r.active, created_at: r.created_at
         })));
       }
@@ -3573,7 +3574,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   };
   const recordRecurringRun = async (id, { last_run, next_date }) => {
     if (id == null || typeof id === "number") return { ok: false, error: "recurring isn't saved yet" };
-    return updateVerified(supabase, "recurring_transactions", id, { last_run, next_date });
+    return updateVerified(supabase, "recurring_transactions", id, recurringRunPatch({ last_run, next_date }));   // C525 — the column is last_run_date
   };
   // C398 — the Recurring screen's Pause/Resume and Delete were `setRecurring` only (the
   // C360/C397 shape a third time on one screen): the row came back on reload, still active,
