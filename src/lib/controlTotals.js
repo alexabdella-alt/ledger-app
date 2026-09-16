@@ -122,7 +122,7 @@ export function computeControlTotals({
 
   // 1. AR sub-ledger (sum of open receivables) === GL Accounts Receivable balance.
   if (codes.ar) {
-    const arSub = computeAR(invoices, { now }).total;
+    const arSub = computeAR(invoices, { now, arCode: codes.ar }).total;   // C496 — the A/R-leg rule, so the sub-ledger and the GL count the same universe
     const arGl = glAccountBalance(codes.ar, invoices);
     checks.push(check("ar_tie", "Money owed to you (receivables)", arSub, "sum of open invoices", arGl, "receivables account balance"));
   }

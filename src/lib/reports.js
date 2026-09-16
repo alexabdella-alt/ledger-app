@@ -27,6 +27,19 @@ const isRev = i => i.gl_code ? glIsRevenue(i.gl_code) : i.type === "revenue";
 const isExp = i => i.gl_code ? glIsExpense(i.gl_code) : i.type === "expense";
 // C468 — a reversed original (`reversed_by`, stamped by the flatten) and the reversal itself are canceled, not open.
 const arUnpaid = i => !isCancelledOrCancelling(i) && isRev(i) && i.payment_status !== "paid" && i.payment_status !== "collected";
+// C496 — with the company's A/R code, an open receivable is an entry CARRYING the A/R leg
+// (an issued invoice) that is not itself a collection and has not been collected — the
+// `receivables.js` rule "Money owed to you" and the Customers screen read (C452). A direct
+// deposit (Dr Cash / Cr Revenue) has no A/R leg and never counts, whatever its flag says.
+// Without a code the flag rule above stands, unchanged.
+// ★★ ONE ROW PER INVOICE: THE REVENUE ROW WHOSE OFFSET IS A/R. A taxed invoice on terms
+// (Dr A/R 1,299 / Cr Revenue 1,200 / Cr Sales Tax 99) flattens to THREE rows that all carry
+// A/R on a leg; "any row touching A/R" listed it three times and owed $2,697 on a $1,299
+// invoice (C452's rule, written on the two-line shape), while `touchesAccount`'s expanded-row
+// guard MISSED it entirely on Home. The revenue row is the one flatten stamps `ar_amount` on
+// (the receivable incl. tax), so it is the row that carries the figure a person is owed.
+export const isReceivableRow = (i, arCode) => arCode != null && isRev(i) && String(i.secondary_gl_code ?? "") === String(arCode);
+const arUnpaidWith = arCode => arCode ? (i => arUnpaid(i) && isReceivableRow(i, arCode)) : arUnpaid;
 // ── AN OPEN BILL IS ONE WITH AN A/P LEG, NOT ONE WHOSE DEBIT IS AN EXPENSE ──
 // This read `isExp(i) && !paid`, which derives openness from the entry's P&L CLASS — the
 // §9 anti-pattern by name (*side is the A/R-or-A/P OFFSET code on the leg, never the type*).
@@ -360,7 +373,7 @@ function arApTotals(invoices, predicate, now) {
   }
   return { total: r2(total), overdue: r2(overdue), count, overdueCount };
 }
-export function computeAR(invoices, { now = new Date() } = {}) { return arApTotals(invoices, arUnpaid, now); }
+export function computeAR(invoices, { now = new Date(), arCode = null } = {}) { return arApTotals(invoices, arUnpaidWith(arCode), now); }
 export function computeAP(invoices, { now = new Date(), apCode = null } = {}) {
   return arApTotals(invoices, apCode ? apUnpaidWith(apCode) : apUnpaid, now);
 }
@@ -427,7 +440,8 @@ const touchesAccount = (i, code) => code != null &&
   (String(i.gl_code) === String(code) ||
    (!String(i.id).includes("_") && String(i.secondary_gl_code) === String(code)));
 export function openReceivablesGL(invoices, arCode) {
-  return (invoices || []).filter(i => isLiveEntry(i) && arUnpaid(i) && touchesAccount(i, arCode));
+  if (arCode == null) return [];   // no code → nothing, never the flag list (degrade safely)
+  return (invoices || []).filter(i => isLiveEntry(i) && arUnpaidWith(arCode)(i));   // C497 — one row per invoice, taxed invoices included
 }
 export function openPayablesGL(invoices, apCode) {
   return (invoices || []).filter(i => isLiveEntry(i) && apUnpaid(i) && touchesAccount(i, apCode));
@@ -749,7 +763,7 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   const burn = computeBurnRate(live, { asOf: curRange.to, excludePartialMonth: false });
   const runway = computeRunway(cash, burn);
 
-  const arT = computeAR(live, { now: monthEnd }), apT = computeAP(live, { now: monthEnd, apCode });
+  const arT = computeAR(live, { now: monthEnd, arCode }), apT = computeAP(live, { now: monthEnd, apCode });
 
   const kpis = computeKPIs(live, { cashBalance: cash, now: monthEnd, arCode, apCode })
     .map(k => ({ key: k.key, label: k.label, display: k.display, status: k.status, trend: k.trend, explanation: k.explanation }));

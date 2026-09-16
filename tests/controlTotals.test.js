@@ -16,7 +16,7 @@ const CODES = { ar: "1100", ap: "2000", salesTax: "2350" };
 // the invoice's captured tax on import_metadata.
 const taxedInvoiceCorrect = (je = "jeC", { collected = false } = {}) => ([
   { id: `${je}_0`, gl_code: "1100", amount: 108, debit_credit: "debit",  date: "2026-05-01", type: "revenue", payment_status: collected ? "collected" : "unpaid", import_metadata: { tax_amount: 8 } },
-  { id: `${je}_1`, gl_code: "4000", amount: 100, debit_credit: "credit", date: "2026-05-01", type: "revenue", ar_amount: 108, payment_status: collected ? "collected" : "unpaid", import_metadata: { tax_amount: 8 } },
+  { id: `${je}_1`, gl_code: "4000", secondary_gl_code: "1100", amount: 100, debit_credit: "credit", date: "2026-05-01", type: "revenue", ar_amount: 108, payment_status: collected ? "collected" : "unpaid", import_metadata: { tax_amount: 8 } },
   { id: `${je}_2`, gl_code: "2350", amount: 8,   debit_credit: "credit", date: "2026-05-01", type: "revenue", import_metadata: { tax_amount: 8 } },
 ]);
 
@@ -25,7 +25,7 @@ const taxedInvoiceCorrect = (je = "jeC", { collected = false } = {}) => ([
 // STILL balances (Dr 108 = Cr 100 + Cr 8).
 const taxedInvoiceRiverside = (je = "jeR") => ([
   { id: `${je}_0`, gl_code: "1100", amount: 108, debit_credit: "debit",  date: "2026-05-01", type: "revenue", payment_status: "unpaid", import_metadata: { tax_amount: 8 } },
-  { id: `${je}_1`, gl_code: "4000", amount: 100, debit_credit: "credit", date: "2026-05-01", type: "revenue", ar_amount: 108, payment_status: "unpaid", import_metadata: { tax_amount: 8 } },
+  { id: `${je}_1`, gl_code: "4000", secondary_gl_code: "1100", amount: 100, debit_credit: "credit", date: "2026-05-01", type: "revenue", ar_amount: 108, payment_status: "unpaid", import_metadata: { tax_amount: 8 } },
   { id: `${je}_2`, gl_code: "4000", amount: 8,   debit_credit: "credit", date: "2026-05-01", type: "revenue", import_metadata: { tax_amount: 8 } },  // ← WRONG account
 ]);
 

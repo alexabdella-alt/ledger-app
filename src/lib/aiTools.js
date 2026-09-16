@@ -127,7 +127,8 @@ async function getFinancialSummary(input, ctx) {
   // The same universe the control total counts — a second definition of "money you owe"
   // is exactly what §12 warns against.
   const apCode = ctx.getAccountByRole?.("accounts_payable")?.code || null;
-  const ar = computeAR(led, { now }), ap = computeAP(led, { now, apCode });
+  const arCode = ctx.getAccountByRole?.("accounts_receivable")?.code || null;
+  const ar = computeAR(led, { now, arCode }), ap = computeAP(led, { now, apCode });
   const revenue = computeRevenue(led, { from, to });
   const expenses = computeExpenses(led, { from, to });
   const netIncome = computeNetIncome(led, { from, to });

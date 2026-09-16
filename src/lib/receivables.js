@@ -6,17 +6,19 @@
 // leg — the money is already in the bank — and must never count, whatever its
 // payment_status says (§9: openness from the GL leg, never from a flag).
 // ─────────────────────────────────────────────────────────────────────────────
-import { isLiveEntry } from "./reports.js";
+// C497 — "carries the A/R account on a leg" was written on the two-line shape. A taxed
+// invoice (Dr A/R / Cr Revenue / Cr Sales Tax) flattens to three rows that ALL carry A/R,
+// so this listed one invoice three times and owed $2,697 on $1,299. The row that IS the
+// receivable is the revenue row whose offset is A/R — `isReceivableRow`, shared with Home's
+// card and the KPI strip so the three cannot disagree.
+import { isLiveEntry, isReceivableRow } from "./reports.js";
 import { isSettlementEntry } from "./bankMatch.js";
 import { isCancelledOrCancelling } from "./gl.js";
-
-const eq = (a, b) => a != null && b != null && String(a) === String(b);
-export const hasArLeg = (i, arCode) => arCode != null && (eq(i?.gl_code, arCode) || eq(i?.secondary_gl_code, arCode));
 
 // Every issued receivable, settled or not (the aging report's universe).
 export function receivableEntries(invoices = [], arCode) {
   if (arCode == null) return [];
-  return (invoices || []).filter((i) => isLiveEntry(i) && hasArLeg(i, arCode) && !isSettlementEntry(i));
+  return (invoices || []).filter((i) => isLiveEntry(i) && isReceivableRow(i, arCode) && !isSettlementEntry(i));
 }
 // The ones still open.
 export function openReceivables(invoices = [], arCode) {

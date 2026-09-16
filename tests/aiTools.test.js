@@ -12,7 +12,7 @@ const LEDGER = [
   { id: 2, vendor: "Adobe", amount: 52.99, date: `${Y}-03-01`, gl_code: "6500", gl_name: "Technology & Software", type: "expense", status: "posted", payment_status: "paid" },
   { id: 3, vendor: "Rent LLC", amount: 2000, date: `${Y}-02-01`, gl_code: "6100", gl_name: "Rent & Occupancy", type: "expense", status: "posted", payment_status: "paid" },
   { id: 4, vendor: "Acme", amount: 10000, date: `${Y}-02-01`, gl_code: "4000", gl_name: "Product Revenue", type: "revenue", status: "posted", payment_status: "collected" },
-  { id: 5, vendor: "Acme", amount: 5000, date: `${Y}-01-15`, gl_code: "4000", gl_name: "Product Revenue", type: "revenue", status: "posted", payment_status: "unpaid", due_date: "2020-01-01" }, // overdue AR
+  { id: 5, vendor: "Acme", amount: 5000, date: `${Y}-01-15`, gl_code: "4000", gl_name: "Product Revenue", secondary_gl_code: "1100", type: "revenue", status: "posted", payment_status: "unpaid", due_date: "2020-01-01" },   // C497 — an issued invoice carries A/R as its offset, as flatten emits // overdue AR
   { id: 6, vendor: "Gas Co", amount: 800, date: `${Y}-01-10`, gl_code: "6200", gl_name: "Utilities", type: "expense", status: "posted", payment_status: "unpaid", due_date: "2020-01-01" }, // overdue AP
   { id: 7, vendor: "Voided Co", amount: 9999, date: `${Y}-02-01`, gl_code: "6500", gl_name: "Technology & Software", type: "expense", status: "voided" }, // excluded everywhere
 ];
