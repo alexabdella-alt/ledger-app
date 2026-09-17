@@ -16,6 +16,9 @@ import { monthLabel } from "../../lib/ownerTrust";
 import TransactionDetailPanel, { txnStatusBadge } from "../TransactionDetailPanel";
 import MonthlyReportsPanel from "./MonthlyReportsPanel";
 
+// C543 — "N transactions" on the report subtitles and drills counted flattened LINES (a two-line
+// bill was two, a payroll register two); a person counts entries.
+const entryCount = (rows) => new Set((rows || []).map((r) => String(r.db_entry_id != null ? r.db_entry_id : String(r.id ?? "").split("_")[0]))).size;
 export default function ReportsView() {
   const { aliasIndex, signoffs, ownerTrust, reviewedThrough, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, isOwner, isAdmin, cutoffDate, glCash, cashGlCodes, getAccountByRole, reconciliations, anomalies, setReturnTo, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setChatPrefill, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, signoffsLoadOk, companyDataLoaded } = useERP();
   // plDrill / drill / drillSel are now LIFTED to ERP context (above) so they survive the
@@ -189,7 +192,7 @@ export default function ReportsView() {
                         </span>
                       ))}
                     </div>
-                    <span style={{ marginLeft:"auto", fontSize:11, color:"var(--sc-text-2)" }}>{txns.length} transaction{txns.length!==1?"s":""}</span>
+                    <span style={{ marginLeft:"auto", fontSize:11, color:"var(--sc-text-2)" }}>{entryCount(txns)} transaction{entryCount(txns)!==1?"s":""}</span>
                     <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"var(--sc-text)" }}>{fmt(total)}</span>
                   </div>
                   {txns.length===0 ? <div style={{ padding:24, fontSize:13, color:"var(--sc-text-2)" }}>No transactions in this range.</div> : (
@@ -313,7 +316,7 @@ export default function ReportsView() {
                                     </span>
                                   ))}
                                 </div>
-                                <span style={{ marginLeft:"auto", fontSize:11, color:"var(--sc-text-2)" }}>{data.length} {kind==="vendors"?"vendor":"transaction"}{data.length!==1?"s":""}</span>
+                                <span style={{ marginLeft:"auto", fontSize:11, color:"var(--sc-text-2)" }}>{kind==="vendors"?data.length:entryCount(data)} {kind==="vendors"?"vendor":"transaction"}{(kind==="vendors"?data.length:entryCount(data))!==1?"s":""}</span>
                                 <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:amtColor }}>{fmt(total)}</span>
                               </div>
                               {kind==="vendors" ? (
@@ -359,7 +362,7 @@ export default function ReportsView() {
                           <div style={{ padding:"18px 24px", borderBottom:"1px solid var(--sc-border)", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
                             <div>
                               <div style={{ fontSize:14, fontWeight:600 }}>Profit & Loss Statement</div>
-                              <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{basisMode==="cash"?"Cash basis":"Accrual basis"} · {rangeLabels[reportRange]} · {plFiltered.length} transactions</div>
+                              <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{basisMode==="cash"?"Cash basis":"Accrual basis"} · {rangeLabels[reportRange]} · {entryCount(plFiltered)} transactions</div>
                             </div>
                             <div style={{ display:"flex", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:8, overflow:"hidden" }}>
                               {[["accrual","Accrual"],["cash","Cash"]].map(([m,label])=>(

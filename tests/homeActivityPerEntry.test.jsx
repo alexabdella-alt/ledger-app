@@ -54,3 +54,17 @@ describe("C540 — a correction is labelled as one", () => {
     expect(t).not.toMatch(/💰 Bluebonnet/);
   });
 });
+
+// C543 — Reports' "N transactions" counts entries, not flattened lines.
+import ReportsView from "../src/components/views/ReportsView.jsx";
+describe("C543 — Reports counts entries", () => {
+  it("the P&L subtitle counts one per entry", () => {
+    const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+    const plRows = INVOICES.filter((r) => /^[4-8]/.test(String(r.gl_code)) && r.status !== "voided");
+    const lines = plRows.length, entries = new Set(plRows.map((r) => r.db_entry_id)).size;
+    expect(lines).toBeGreaterThan(entries);   // the fixture has multi-line entries, so the two differ
+    const t = text(renderViewHtml(ReportsView, { ...POPULATED, ...VIEW_CONTEXT["ReportsView.jsx"], navSeat, companyDataLoaded: true, reportRange: "all" }));
+    expect(t).toContain(`${entries} transactions`);
+    expect(t).not.toContain(`${lines} transactions`);
+  });
+});
