@@ -183,7 +183,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
     setSrcUploading(true);
     try {
       const base64 = await fileToBase64(file);
-      const storedId = await storeDocument(file.name, base64, file.type, inv.type || "invoice", inv.db_entry_id || inv.id, ["source"], null, file);
+      const storedId = await storeDocument(file.name, base64, file.type, (glIsRevenue(inv.gl_code) ? "invoice" : "receipt"), inv.db_entry_id || inv.id, ["source"], null, file);   // C534 — a document type, not the row's P&L side
       // ★ GATED ON THE RECORD, NOT THE CLICK (C194's family). `storeDocument` hands back an
       // in-session float when the persist fails — or, since O136, when the file was already
       // in the library and the link to THIS transaction did not land. Both already raised

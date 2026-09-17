@@ -767,7 +767,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       company_id: currentCompany.id,
       name,
       mime_type: mediaType || null,
-      document_type: type || null,
+      // C534 — mapped to the column's vocabulary at the one insert. The panel's attach button
+      // passed `inv.type` ("expense"/"revenue"), which `documents_document_type_check` refuses:
+      // the O136 repair button had never stored a fresh file (a file already in the library
+      // took the dedupe branch above and worked, which is why it looked repaired sometimes).
+      document_type: documentTypeFor(type, "other"),
       uploaded_by: session?.user?.id || null,
       storage_path: storagePath,
       file_size_bytes: fileSize,
