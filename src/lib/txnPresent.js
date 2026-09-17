@@ -104,6 +104,21 @@ export function collapseExpandedRows(rows = []) {
   });
 }
 
+// C539 — THE PARTY A ROW IS ABOUT. A settlement's description is "Payment – Vendor" (or
+// "Collection – Customer"), so the flatten's `vendor` — the left of the dash — is the literal
+// word "Payment": Home's feed, the Transactions list and the detail panel all printed it as a
+// vendor, with a "P" avatar. The party is the bill or invoice the settlement links (payment_for),
+// else the right half of its own description; any other row's party is its vendor.
+export function displayParty(inv, rows = []) {
+  if (!inv) return "";
+  if (!settlementKind(inv)) return inv.vendor || "";
+  const base = String((inv.import_metadata && inv.import_metadata.payment_for) ?? "");
+  const target = base ? (rows || []).find(r => r && entryBaseOf(r) === base) : null;
+  if (target && target.vendor) return target.vendor;
+  const stripped = String(inv.description || "").replace(/^(Payment|Collection)\s*[–—-]\s*/i, "").trim();
+  return stripped || inv.vendor || "";
+}
+
 // C519 — ONE ROW PER ENTRY, AT THE ENTRY'S TOTAL. For any reader that treats a row as "a
 // transaction" (the anomaly detectors, the AI's action targets): the representative row with
 // its `amount` set to the entry's total, so a two-line $6,000 bill is one $6,000 charge and not

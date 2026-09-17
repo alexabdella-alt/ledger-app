@@ -8,7 +8,7 @@ import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { planBulkRemoval } from "../../lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "../../lib/ownerTrust";
-import { classifyTxn, txnStatus, collapseExpandedRows, listAmount } from "../../lib/txnPresent";
+import { classifyTxn, txnStatus, collapseExpandedRows, listAmount, displayParty } from "../../lib/txnPresent";
 import { pill } from "../../lib/ui";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 
@@ -309,6 +309,7 @@ export default function BooksView() {
             ) : rows.map((inv,idx)=>{
               // What this row actually IS — drives sign/color, account shown, and the action.
               const cls = classifyTxn(inv, { apCode, arCode, settled });
+              const party = displayParty(inv, invoices);   // C539 — a settlement's own `vendor` is the word "Payment"
               const reversedInfo = reversalFor(revIdx, inv);   // O8 — original was reversed
               return (
                 <React.Fragment key={inv.id}>
@@ -320,7 +321,7 @@ export default function BooksView() {
                         style={{ cursor:"pointer" }} />
                     </td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
-                    <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor||"—"}</span></div></td>
+                    <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span></div></td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}><span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>{cls.account.name}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
                     <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>

@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
 import { ownerActivityText } from "../../lib/activityFeed";
-import { collapseExpandedRows, listAmount, classifyTxn } from "../../lib/txnPresent";
+import { collapseExpandedRows, listAmount, classifyTxn, displayParty } from "../../lib/txnPresent";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural, monthsLeftYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -801,13 +801,9 @@ export default function DashboardView() {
                 // read "Payment — Accounts Payable" (the A/P leg, an accounting word on the owner's
                 // first screen) and a collection would have read as money OUT of "Cash". The
                 // classifier the Transactions list uses decides the direction and the account.
-                const byBase = new Map((invoices || []).map(r => [String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]), r]));
                 collapseExpandedRows(invoices).forEach(inv => {
                   const cls = classifyTxn(inv, { apCode, arCode });
-                  // A settlement's own `vendor` is the word "Payment" (its description is
-                  // "Payment – Vendor"); the party is the bill or invoice it settles.
-                  const target = cls.settle ? byBase.get(String(inv.import_metadata?.payment_for ?? "")) : null;
-                  const party = (target && target.vendor) || String(inv.description || "").replace(/^(Payment|Collection)\s*[–—-]\s*/i, "").trim() || inv.vendor;
+                  const party = displayParty(inv, invoices);   // C539 — a settlement's own vendor is the word "Payment"
                   const label = cls.settle === "ap_payment" ? `Paid ${party || "a bill"}` : cls.settle === "ar_collection" ? `Received from ${party || "a customer"}` : `${inv.vendor||"Entry"} — ${cls.account?.name || inv.gl_name || "Booked"}`;
                   items.push({ ts: inv.booked_at||inv.date||"", inv, icon: cls.inflow?"💰":"🧾", text:`${label}${inv._lineCount > 1 ? ` · ${inv._lineCount} lines` : ""}`, amount: listAmount(inv), rev: cls.inflow });
                 });

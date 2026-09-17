@@ -5,7 +5,7 @@ import { useERP } from "./ERPContext";
 import { initials, vendorColor, fmtDate, fmtMoney, todayLocal } from "../lib/format";
 import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
-import { classifyTxn, settlementKind, entryTotalOf, entryLineCount } from "../lib/txnPresent";
+import { classifyTxn, settlementKind, entryTotalOf, entryLineCount, displayParty } from "../lib/txnPresent";
 import { isCancelledOrCancelling, isReversalEntry, settledBases } from "../lib/gl";
 import { badge } from "../lib/ui";
 import { isDurableDocId } from "../lib/docLibrary";
@@ -159,6 +159,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
   const cls = classifyTxn(sel, { apCode, arCode, settled: settledBases(invoices) });   // C528
+  const party = displayParty(sel, invoices);   // C539 — a settlement's own `vendor` is the word "Payment"
   const settle = settlementKind(sel);
 
   const close = () => { setRecodeOpen(false); setPayOpen(false); onClose(); };
@@ -241,9 +242,9 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
         <div onClick={e => e.stopPropagation()} style={{ width: 880, maxWidth: "94vw", height: "100%", background: "var(--sc-surface)", borderLeft: "1px solid var(--sc-border)", boxShadow: "-20px 0 60px rgba(16,24,40,0.18)", display: "flex", flexDirection: "column", animation: "txnPanelIn .25s cubic-bezier(.22,1,.36,1)" }}>
           <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--sc-surface-2)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-              <span style={{ width: 42, height: 42, borderRadius: 11, background: vendorColor(sel.vendor), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "var(--sc-on-accent)", flexShrink: 0 }}>{initials(sel.vendor)}</span>
+              <span style={{ width: 42, height: 42, borderRadius: 11, background: vendorColor(party), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "var(--sc-on-accent)", flexShrink: 0 }}>{initials(party)}</span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.vendor || "—"}</div>
+                <div style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{party || "—"}</div>
                 <div style={{ fontSize: 12, color: "var(--sc-text-2)" }}>{fmtDate(sel.date)}</div>
                 {/* ★★ THE READER THE "KEPT ON FILE" PROMISE NEVER HAD. When an entry is dated
                     into a month the accountant has signed off, one of the three choices is
