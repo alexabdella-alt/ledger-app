@@ -1,3 +1,4 @@
+import { categoryForCode } from "./gl.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure builders for DB write payloads, extracted so their column shape and types
 // can be unit-tested against the authoritative live schema (tests/schemaContract
@@ -19,7 +20,7 @@
 export function buildAccountInsert({ companyId, code, name, category = null, system_role = null, origin = null }) {
   return {
     company_id: companyId, code, name,
-    category: category || "Expenses",
+    category: categoryForCode(code, category),   // C536 — the code decides; a stated category is normalised onto the CHECK set
     active: true, is_system: false,
     // ★ `system_role` HAS A READER, AND IT IS NOT `getAccountByRole`. O108's detector is
     // `system_role is null and origin <> 'external'` — it means "invented at runtime by a

@@ -75,6 +75,20 @@ const glIsBalSheet    = (code) => typeof code === "string" && (code.startsWith("
 // Returns "revenue" | "expense" | null (null = balance sheet — exclude from P&L entirely)
 const glPLType        = (code) => glIsRevenue(code) ? "revenue" : glIsExpense(code) ? "expense" : null;
 
+// C536 — `accounts.category` is CHECK-constrained to five capitalised plurals. §4's numbering
+// convention already decides it from the code's first digit, so a category a caller supplies is
+// at most a cross-check: the model's `add_account` wrote its own word ("Expense", "asset") and the
+// insert was refused. The code decides; a stated category is honoured only when it is one of the
+// five and agrees with the code; otherwise the code's own.
+export const ACCOUNT_CATEGORIES = ["Assets", "Liabilities", "Equity", "Revenue", "Expenses"];
+export function categoryForCode(code, stated = null) {
+  const c = String(code || "");
+  const byCode = c.startsWith("1") ? "Assets" : c.startsWith("2") ? "Liabilities" : c.startsWith("3") ? "Equity" : c.startsWith("4") ? "Revenue" : /^[5-8]/.test(c) ? "Expenses" : null;
+  const s = String(stated || "").trim().toLowerCase();
+  const norm = ACCOUNT_CATEGORIES.find(k => k.toLowerCase() === s || k.toLowerCase() === s + "s" || k.toLowerCase() === s.replace(/ies$/, "y") || (s === "liability" && k === "Liabilities"));
+  if (byCode) return byCode;
+  return norm || "Expenses";
+}
 export { glIsRevenue, glIsExpense, calcASC842, glIsBalSheet, glPLType };
 
 // ── C468 — A CORRECTION AND ITS TARGET ARE NEITHER OF THEM AN OPEN ITEM ──────────────

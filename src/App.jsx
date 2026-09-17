@@ -5,7 +5,7 @@ import { plainWriteError } from "./lib/plainWriteError";
 import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling, settledBases } from "./lib/gl";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling, settledBases, categoryForCode } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
@@ -884,13 +884,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!currentCompany?.id || !code || !name) return false;
     if (CHART_OF_ACCOUNTS.find(a => a.code === code)) { showNotification("That category number is already in use — pick another.", "error"); return false; }
     const { error } = await supabase.from("accounts").insert({
-      company_id: currentCompany.id, code, name, category: category || "Expenses",
+      company_id: currentCompany.id, code, name, category: categoryForCode(code, category),   // C536 — the code decides (§4); a stated word is normalised, never written raw
       active: true, is_system: false, system_role: null,
     });
     // C480 — `error.message` was appended raw (the C415 census keyed on `r.error`, and this is a
     // bare `error` off a Supabase call); routed through the same plain-language map.
     if (error) { console.warn("[accounts] add failed:", error.message); showNotification(`Couldn't add that category — nothing was changed. ${plainWriteError(error.message, "Please try again.")}`, "error"); return false; }
-    logAudit("coa_added", `Category added: ${name} (${category})`, null, { code, name, category });
+    logAudit("coa_added", `Category added: ${name} (${categoryForCode(code, category)})`, null, { code, name, category: categoryForCode(code, category) });
     await reloadAccounts();
     return true;
   };

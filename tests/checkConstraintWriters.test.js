@@ -1,4 +1,4 @@
-// C525 — every column the app WRITES to recurring_transactions exists in the table, and the run
+// C525/C535/C536 — writers held to the schema: every column exists, and every CHECK-constrained value lands in its set. Started as: every column the app WRITES to recurring_transactions exists in the table, and the run
 // record uses the table's own name. `recordRecurringRun` (C360) wrote `last_run`; the column is
 // `last_run_date`, so PostgREST refused the update on every "Post now" since it shipped. The C360
 // test pinned the writer's literal against itself (·3a) and never asked the schema.
@@ -49,5 +49,29 @@ describe("C535 — contact type lands in the CHECK set", () => {
     const app = fs.readFileSync("src/App.jsx", "utf8").replace(/\/\/.*$/gm, "");
     expect(app).toContain("type: normalizeContactType(contact_type)");
     expect(app).toContain('k === "type" ? normalizeContactType(v) : v');
+  });
+});
+
+// C536 — accounts.category is CHECK-constrained to five capitalised plurals; the AI's add_account
+// wrote its own word. §4's numbering decides the category from the code; a stated word is only
+// normalised, never written raw.
+import { ACCOUNT_CATEGORIES, categoryForCode } from "../src/lib/gl.js";
+import { buildAccountInsert } from "../src/lib/writeShapes.js";
+describe("C536 — account category lands in the CHECK set", () => {
+  const set = fs.readFileSync("supabase/migrations/000_baseline_schema.sql", "utf8").match(/accounts_category_check CHECK \(\(category = ANY \(ARRAY\[(.*?)\]\)\)\)/)[1].match(/'([A-Za-z]+)'/g).map(s => s.replace(/'/g, "")).sort();
+  it("the app's list is the column's; the code decides; a stated word is normalised", () => {
+    expect(ACCOUNT_CATEGORIES.slice().sort()).toEqual(set);
+    expect(categoryForCode("6250", "Expense")).toBe("Expenses");
+    expect(categoryForCode("6250", "asset")).toBe("Expenses");      // the code wins over a wrong word
+    expect(categoryForCode("1500", "Asset")).toBe("Assets");
+    expect(categoryForCode("2100", "liability")).toBe("Liabilities");
+    expect(categoryForCode("", "revenue")).toBe("Revenue");         // no code: the word, normalised
+    expect(categoryForCode("", "nonsense")).toBe("Expenses");
+    for (const [code, word] of [["6250", "Expense"], ["1500", "asset"], ["", "Liability"], ["9999", "x"]]) expect(set.includes(buildAccountInsert({ companyId: "c", code, name: "n", category: word }).category)).toBe(true);
+  });
+  it("addCustomAccount — the AI's add_account door — writes through it", () => {
+    const app = fs.readFileSync("src/App.jsx", "utf8").replace(/\/\/.*$/gm, "");
+    expect(app).toContain("code, name, category: categoryForCode(code, category),");
+    expect(app).not.toMatch(/category: category \|\| "Expenses"/);
   });
 });
