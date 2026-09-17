@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
 import { ownerActivityText } from "../../lib/activityFeed";
-import { collapseExpandedRows, listAmount } from "../../lib/txnPresent";
+import { collapseExpandedRows, listAmount, classifyTxn } from "../../lib/txnPresent";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural, monthsLeftYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -792,11 +792,25 @@ export default function DashboardView() {
               {/* ── ACTIVITY FEED ── */}
               {(() => {
                 const items = [];
+                const apCode = getAccountByRole?.("accounts_payable")?.code, arCode = getAccountByRole?.("accounts_receivable")?.code;
                 // C527 — one line per ENTRY at the entry's amount: a two-line bill listed as three
                 // lines here, the third of them "Sysco — Accounts Payable −$520" (the offset leg,
                 // an accounting word on the owner's first screen). Found the day the render
                 // fixture started coming out of the real flatten.
-                collapseExpandedRows(invoices).forEach(inv => items.push({ ts: inv.booked_at||inv.date||"", inv, icon: glIsRevenue(inv.gl_code)?"💰":"🧾", text:`${inv.vendor||"Entry"} — ${inv.gl_name||"Booked"}${inv._lineCount > 1 ? ` · ${inv._lineCount} lines` : ""}`, amount: listAmount(inv), rev: glIsRevenue(inv.gl_code) }));
+                // C538 — a settlement is described as what it did, not by its own leg: a payment
+                // read "Payment — Accounts Payable" (the A/P leg, an accounting word on the owner's
+                // first screen) and a collection would have read as money OUT of "Cash". The
+                // classifier the Transactions list uses decides the direction and the account.
+                const byBase = new Map((invoices || []).map(r => [String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]), r]));
+                collapseExpandedRows(invoices).forEach(inv => {
+                  const cls = classifyTxn(inv, { apCode, arCode });
+                  // A settlement's own `vendor` is the word "Payment" (its description is
+                  // "Payment – Vendor"); the party is the bill or invoice it settles.
+                  const target = cls.settle ? byBase.get(String(inv.import_metadata?.payment_for ?? "")) : null;
+                  const party = (target && target.vendor) || String(inv.description || "").replace(/^(Payment|Collection)\s*[–—-]\s*/i, "").trim() || inv.vendor;
+                  const label = cls.settle === "ap_payment" ? `Paid ${party || "a bill"}` : cls.settle === "ar_collection" ? `Received from ${party || "a customer"}` : `${inv.vendor||"Entry"} — ${cls.account?.name || inv.gl_name || "Booked"}`;
+                  items.push({ ts: inv.booked_at||inv.date||"", inv, icon: cls.inflow?"💰":"🧾", text:`${label}${inv._lineCount > 1 ? ` · ${inv._lineCount} lines` : ""}`, amount: listAmount(inv), rev: cls.inflow });
+                });
                 (auditLog||[]).forEach(a => { if (/paid|approv|reject|recode|void|flag|info_requested/i.test(a.action||"")) {
                   // ★ SCRUBBED, not rendered raw. The audit log is written for the CPA and
                   // carries bookkeeping notation on purpose; this is the owner's screen.

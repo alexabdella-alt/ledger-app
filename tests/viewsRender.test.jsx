@@ -158,12 +158,17 @@ describe("★★★ every screen renders with a company that has data in it", ()
   it("★★★ C317 reaches the SCREEN — one row for one supplier, carrying the whole total", () => {
     // ★★ "IT PAINTED" IS NOT "IT SHOWED THE RIGHT NUMBER". The sweep above is satisfied by a
     // screen that drew a row with the wrong figure in it, so this asserts the figure. The
-    // fixture's two Hill Country spellings sum to $1,736.90, which exists only if the rows
-    // were grouped by key rather than by display name.
+    // fixture's two Hill Country spellings — one bill paid in February (C538), one still
+    // open — land on ONE row: "$824.60 paid this year" and "$912.30 still owed" side by side,
+    // which exists only if the rows were grouped by key rather than by display name.
     return import(path.join(viewsDir, "VendorsView.jsx")).then((mod) => {
       const html = renderViewHtml(mod.default, { ...POPULATED, navSeat: SEATS.reviewer });
-      expect(html).toContain("1,736.90");                 // 824.60 + 912.30, grouped
-      expect(html).not.toContain("824.60");               // …not one half of it
+      const t = html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      const i = t.indexOf("Hill Country Milling Co.");
+      const row = t.slice(i, i + 260);
+      expect(row).toContain("2 transactions");            // both spellings, one supplier
+      expect(row).toMatch(/PAID YTD \$824\.60/);
+      expect(row).toMatch(/STILL OWED \$912\.30/);
       // …and ONE row for that supplier, not a contact row plus a ledger-only row (the C317
       // symptom, which is invisible to a totals check because each row's own sum is right).
       expect(html.split("Hill Country Milling").length - 1).toBe(1);

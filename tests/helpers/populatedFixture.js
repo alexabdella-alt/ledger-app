@@ -27,6 +27,7 @@ export const ACCOUNTS = [
   { id: "a7", code: "6180", name: "Linen & Laundry", category: "Expenses", system_role: "linen_laundry", active: true },
   { id: "a8", code: "6000", name: "Salaries & Wages", category: "Expenses", system_role: "salaries_wages", active: true },
   { id: "a9", code: "5030", name: "Freight", category: "Expenses", system_role: "shipping_fulfillment", active: true },
+  { id: "a10", code: "2350", name: "Sales Tax Payable", category: "Liabilities", system_role: "sales_tax_payable", active: true },
 ];
 
 // ★★ C527 — THE ROWS COME OUT OF THE REAL FLATTEN. They were hand-built (C358 patched the
@@ -51,13 +52,17 @@ const paid = (id, vendor, amount, date, code, extra = {}) => je(id, date, `${ven
 // rent; a sale; a payroll register; and a two-line bill (C503/C518/C519), so the
 // one-row-per-entry paths run against a real expanded entry.
 export const ENTRIES = [
-  bill("i1", "Hill Country Milling Co.", 824.60, "2026-01-05", "5010"),
+  bill("i1", "Hill Country Milling Co.", 824.60, "2026-01-05", "5010", { payment_status: "paid", paid_at: "2026-02-02T12:00:00Z" }),
   bill("i2", "Hill Country Milling", 912.30, "2026-03-05", "5010"),
   bill("i3", "Bluebonnet Linen Service", 145.00, "2026-03-09", "6180"),
   paid("i4", "Franklin Ave Properties", 2400.00, "2026-03-01", "6100"),
   je("i5", "2026-03-12", "Corner Market Catering – sale", [{ code: "1000", debit: 1500 }, { code: "4010", credit: 1500 }], { payment_status: "collected" }),
   je("i6", "2026-03-14", "Gusto Payroll – 2026-03-14", [{ code: "6000", debit: 4000 }, { code: "1000", credit: 4000 }], { source: "payroll", payment_status: "paid" }),
   je("i7", "2026-03-16", "Sysco – produce + freight", [{ code: "5010", debit: 500 }, { code: "5030", debit: 20 }, { code: "2000", credit: 520 }], { payment_status: "unpaid", due_date: "2026-04-15" }),
+  // C538 — a taxed invoice on terms (three rows, one receivable, C497) and a real payment of the
+  // January bill (a settlement, linked by payment_for — C528), so those branches run too.
+  je("i8", "2026-03-18", "Corner Market Catering – Invoice INV-0002", [{ code: "1100", debit: 1299 }, { code: "4010", credit: 1200 }, { code: "2350", credit: 99 }], { source: "ar_invoice", payment_status: "uncollected", due_date: "2026-04-17", import_metadata: { kind: "ar_invoice", tax_amount: 99 }, reference_number: "INV-0002" }),
+  je("i9", "2026-02-02", "Payment – Hill Country Milling Co.", [{ code: "2000", debit: 824.60 }, { code: "1000", credit: 824.60 }], { source: "bank_import", payment_status: "paid", import_metadata: { kind: "ap_payment", payment_for: "i1" } }),
 ];
 export const INVOICES = flattenJournalEntries(ENTRIES, ACCOUNTS);
 

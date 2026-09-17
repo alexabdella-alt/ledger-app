@@ -23,3 +23,22 @@ describe("C527 — Home's activity feed is one line per entry", () => {
     expect((t.match(/Sysco —/g) || []).length).toBe(1);
   });
 });
+
+// C538 — a settlement on Home's feed is described as what it did. The fixture's February payment
+// of the January bill read "Payment — Accounts Payable −$824.60"; a collection would have read as
+// money OUT of "Cash".
+describe("C538 — Home's activity feed describes settlements", () => {
+  const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+  it("the payment reads 'Paid Hill Country Milling Co.' as money out; the A/P leg's name never shows", () => {
+    expect(INVOICES.find((r) => r.id === "i9").import_metadata.payment_for).toBe("i1");   // the shape under test
+    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, companyDataLoaded: true }));
+    expect(t).toContain("Paid Hill Country Milling Co.");
+    expect(t).not.toContain("Accounts Payable");
+    expect(t).not.toContain("Payment —");
+  });
+  it("a collection reads as money IN from the customer", () => {
+    const rows = [...INVOICES, { id: "c1", vendor: "Acme", amount: 300, date: "2026-03-20", gl_code: "1000", gl_name: "Cash", secondary_gl_code: "1100", secondary_gl_name: "Accounts Receivable", debit_credit: "debit", type: "expense", status: "booked", payment_status: "paid", description: "Collection – Acme", import_metadata: { kind: "ar_collection", payment_for: "x" } }];
+    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, invoices: rows, companyDataLoaded: true }));
+    expect(t).toMatch(/💰 Received from Acme[^🧾💰]*\+\$300\.00/);
+  });
+});
