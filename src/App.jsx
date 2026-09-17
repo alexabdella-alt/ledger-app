@@ -3555,11 +3555,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const debitAccountId = await resolveAccountId(gl_code, gl_name);
     const creditAccountId = getAccountByRole("cash")?.db_id || await resolveAccountId(rc("cash"), rn("cash"));
     if (!debitAccountId || !creditAccountId) return { ok: false, error: "couldn't resolve accounts" };
-    const contactId = vendor ? await resolveContactId(vendor, "vendor", true) : null;
-    const res = await insertVerified(supabase, "recurring_transactions", buildRecurringRow({
-      companyId: currentCompany.id, name, contactId, amount, debitAccountId, creditAccountId,
+    const row = buildRecurringRow({
+      companyId: currentCompany.id, name, contactId: null, amount, debitAccountId, creditAccountId,
       frequency, nextDate: next_date || todayLocal(), project,
-    }));
+    });
+    // C537 — a frequency we cannot represent is refused with the reason, not quietly made monthly.
+    if (!row) return { ok: false, error: `I can't set up a charge "${frequency}" — I can do weekly, monthly, quarterly or annual.` };
+    const contactId = vendor ? await resolveContactId(vendor, "vendor", true) : null;
+    const res = await insertVerified(supabase, "recurring_transactions", { ...row, contact_id: contactId || null });
     if (res.ok) setRecurring(prev => [{ id: res.row.id, name, vendor: vendor || "", amount: parseFloat(amount) || 0, gl_code, gl_name, frequency: res.row.frequency, next_date: res.row.next_date, last_run: null, active: true, created_at: res.row.created_at }, ...prev]);
     return res;
   };

@@ -35,7 +35,24 @@ export function buildVendorRuleRow({ companyId, contactId, accountId, project = 
 }
 // recurring_transactions: name NOT NULL, amount NOT NULL, debit/credit account NOT NULL,
 // frequency CHECK ∈ RECURRING_FREQUENCIES, next_date NOT NULL.
+// C537 — A FREQUENCY WE DO NOT KNOW IS REFUSED, NEVER DEFAULTED TO MONTHLY. The row builder
+// silently wrote "monthly" for anything outside the four — so a model's "biweekly" payroll rule
+// or "yearly" insurance premium became a MONTHLY charge, offered for posting twelve times a
+// year: a wrong rule that looked set up, which is worse than the refusal C535 fixed. Synonyms
+// are mapped; anything else returns null and the caller says it could not.
+export function normalizeFrequency(f) {
+  const v = String(f || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (RECURRING_FREQUENCIES.includes(v)) return v;
+  const ALIASES = { yearly: "annual", annually: "annual", per_year: "annual", every_year: "annual",
+    every_week: "weekly", per_week: "weekly", each_week: "weekly",
+    every_month: "monthly", per_month: "monthly", each_month: "monthly",
+    every_quarter: "quarterly", per_quarter: "quarterly", each_quarter: "quarterly" };
+  return ALIASES[v] || null;
+}
+
 export function buildRecurringRow({ companyId, name, contactId = null, amount, debitAccountId, creditAccountId, frequency, nextDate, project = null }) {
+  const freq = normalizeFrequency(frequency);
+  if (!freq) return null;
   return {
     company_id: companyId,
     name: name || "Recurring",
@@ -44,7 +61,7 @@ export function buildRecurringRow({ companyId, name, contactId = null, amount, d
     debit_account_id: debitAccountId,
     credit_account_id: creditAccountId,
     project: project || null,
-    frequency: RECURRING_FREQUENCIES.includes(frequency) ? frequency : "monthly",
+    frequency: freq,
     next_date: nextDate,
     active: true,
   };

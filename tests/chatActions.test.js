@@ -60,8 +60,12 @@ describe("buildVendorRuleRow / buildRecurringRow — DB-row shapes", () => {
     expect(buildVendorRuleRow({ companyId: "co", contactId: "ct", accountId: "ac", project: "P" }))
       .toEqual({ company_id: "co", contact_id: "ct", account_id: "ac", project: "P", active: true });
   });
-  it("recurring clamps an invalid frequency to monthly and rounds the amount", () => {
-    const r = buildRecurringRow({ companyId: "co", name: "Rent", amount: 1999.999, debitAccountId: "d", creditAccountId: "c", frequency: "fortnightly", nextDate: "2026-07-01" });
+  // C537 — this pinned "an invalid frequency is clamped to monthly": a wrong rule that looked set
+  // up (a fortnightly payroll offered monthly). It is REFUSED now (null), and synonyms are mapped.
+  it("recurring REFUSES a frequency it cannot represent, maps synonyms, and rounds the amount", () => {
+    expect(buildRecurringRow({ companyId: "co", name: "Rent", amount: 1999.999, debitAccountId: "d", creditAccountId: "c", frequency: "fortnightly", nextDate: "2026-07-01" })).toBeNull();
+    expect(buildRecurringRow({ companyId: "co", name: "Ins", amount: 1, debitAccountId: "d", creditAccountId: "c", frequency: "yearly", nextDate: "2026-07-01" }).frequency).toBe("annual");
+    const r = buildRecurringRow({ companyId: "co", name: "Rent", amount: 1999.999, debitAccountId: "d", creditAccountId: "c", frequency: "monthly", nextDate: "2026-07-01" });
     expect(r.frequency).toBe("monthly");
     expect(r.amount).toBe(2000);
     expect(r.debit_account_id).toBe("d");

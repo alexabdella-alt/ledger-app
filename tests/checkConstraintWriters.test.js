@@ -75,3 +75,15 @@ describe("C536 — account category lands in the CHECK set", () => {
     expect(app).not.toMatch(/category: category \|\| "Expenses"/);
   });
 });
+
+// C537 — a recurring frequency outside the four is refused, never made monthly.
+import { normalizeFrequency } from "../src/lib/chatActions.js";
+describe("C537 — unknown frequency is refused", () => {
+  it("synonyms map; the rest return null; App says why", () => {
+    expect(normalizeFrequency("Yearly")).toBe("annual");
+    expect(normalizeFrequency("every week")).toBe("weekly");
+    for (const w of ["biweekly", "fortnightly", "daily", "every 2 weeks", "", null]) expect(normalizeFrequency(w), String(w)).toBeNull();
+    const app = fs.readFileSync("src/App.jsx", "utf8").replace(/\/\/.*$/gm, "");
+    expect(app).toContain("if (!row) return { ok: false, error: `I can't set up a charge");
+  });
+});
