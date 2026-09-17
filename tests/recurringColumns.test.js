@@ -34,3 +34,20 @@ describe("C525 — recurring_transactions writers match the table", () => {
     expect(app).toMatch(/last_run: r\.last_run_date,\s*\n\s*project: r\.project \|\| "General"/);
   });
 });
+
+// C535 — contacts.type is CHECK-constrained; the chat's add_contact maps the model's word onto it.
+import { CONTACT_TYPES, normalizeContactType } from "../src/lib/chatActions.js";
+describe("C535 — contact type lands in the CHECK set", () => {
+  const set = fs.readFileSync("supabase/migrations/000_baseline_schema.sql", "utf8").match(/contacts_type_check CHECK \(\(type = ANY \(ARRAY\[(.*?)\]\)\)\)/)[1].match(/'([a-z]+)'/g).map(s => s.replace(/'/g, "")).sort();
+  it("the app's list is the column's, and every mapped word lands in it", () => {
+    expect(CONTACT_TYPES.slice().sort()).toEqual(set);
+    for (const w of ["vendor", "customer", "both", "supplier", "client", "Supplier ", "", null, "nonsense"]) expect(set.includes(normalizeContactType(w)), String(w)).toBe(true);
+    expect(normalizeContactType("supplier")).toBe("vendor");
+    expect(normalizeContactType("client")).toBe("customer");
+  });
+  it("persistChatContact writes through it on both branches", () => {
+    const app = fs.readFileSync("src/App.jsx", "utf8").replace(/\/\/.*$/gm, "");
+    expect(app).toContain("type: normalizeContactType(contact_type)");
+    expect(app).toContain('k === "type" ? normalizeContactType(v) : v');
+  });
+});

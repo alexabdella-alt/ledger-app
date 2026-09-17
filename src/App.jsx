@@ -30,7 +30,7 @@ import { multiLineMetaPatch } from "./lib/entryMetaStamp";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
 import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
-import { buildVendorRuleRow, buildRecurringRow, recurringRunPatch, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
+import { buildVendorRuleRow, buildRecurringRow, recurringRunPatch, normalizeContactType, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
 import { recordedEntryLinks } from "./lib/intakeEntryLinks";
 import { payrollHoldDetail, heldPayrollCards, deferredToAccountantCards, signedPeriodHoldCards, signedPeriodHoldDetail, CLARIFICATION_HOLD_DETAIL, heldQuestionRows, heldUnreadableRows, heldPartialRows, partialHoldDetail, EXTRACT_FAILED_DETAIL, NOTHING_EXTRACTED_DETAIL, UNREADABLE_HOLD_PREFIX } from "./lib/waitingOnYou";
@@ -3646,8 +3646,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const existing = (list || []).find(c => _norm(c.name) === _norm(name));
       const ALLOWED = ["email", "phone", "payment_terms", "notes", "tags", "type", "expected_min", "expected_max"];
       const payload = updates
-        ? Object.fromEntries(Object.entries(updates).filter(([k]) => ALLOWED.includes(k)))
-        : { company_id: currentCompany.id, name, type: contact_type || "vendor", email: email || null, phone: phone || null, payment_terms: payment_terms || null, notes: notes || null, tags: tags || [], expected_min: min_expected || null, expected_max: max_expected || null };
+        ? Object.fromEntries(Object.entries(updates).filter(([k]) => ALLOWED.includes(k)).map(([k, v]) => [k, k === "type" ? normalizeContactType(v) : v]))   // C535
+        : { company_id: currentCompany.id, name, type: normalizeContactType(contact_type), email: email || null, phone: phone || null, payment_terms: payment_terms || null, notes: notes || null, tags: tags || [], expected_min: min_expected || null, expected_max: max_expected || null };
       if (updates && !Object.keys(payload).length) return { ok: false, error: "no recognized fields to update" };
       let row, error;
       if (existing) ({ data: row, error } = await supabase.from("contacts").update(payload).eq("id", existing.id).select().single());

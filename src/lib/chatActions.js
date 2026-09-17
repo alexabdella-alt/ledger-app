@@ -17,6 +17,19 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // ── Pure DB-row builders (shape only; FK ids resolved by the caller) ──────────
 // vendor_rules: company_id, contact_id NOT NULL, account_id NOT NULL, project, active.
+// C535 — `contacts.type` is CHECK-constrained to vendor | customer | both. The model's schema says
+// "vendor|customer", and a model that writes "supplier" or "client" anyway had its insert refused
+// by the database and the reply said "couldn't add". Mapped here, so a word for the same thing is
+// not a refusal; anything unrecognised is a vendor, the schema's own default.
+export const CONTACT_TYPES = ["vendor", "customer", "both"];
+export function normalizeContactType(t) {
+  const v = String(t || "").trim().toLowerCase();
+  if (CONTACT_TYPES.includes(v)) return v;
+  if (["supplier", "payee", "vendor_contact"].includes(v)) return "vendor";
+  if (["client", "buyer", "payer"].includes(v)) return "customer";
+  return "vendor";
+}
+
 export function buildVendorRuleRow({ companyId, contactId, accountId, project = null }) {
   return { company_id: companyId, contact_id: contactId, account_id: accountId, project: project || null, active: true };
 }
