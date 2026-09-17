@@ -35,6 +35,8 @@ const drillLabel = (l) => {
   return ({ revenue: "Revenue", net: "Net Income", cash: "Cash & Bank", runway: "Runway", ap: "Accounts Payable", ar: "Accounts Receivable", expenses: "Expenses" })[l.type] || l.type;
 };
 
+// C543 — drill subtitles count entries, not flattened lines.
+const entryCount = (rows) => new Set((rows || []).map((r) => String(r.db_entry_id != null ? r.db_entry_id : String(r.id ?? "").split("_")[0]))).size;
 export default function DashboardView() {
   const { CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyGaapAnswer, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, glCash, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, reconciliations, bankMatch, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, companyDataLoaded, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, aiBudget, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat, heldQuestions, heldUnreadable, reloadHeldIntake, setChatPrefill, filedDeadlines } = useERP();
   // C197 — CPA cockpit vs client seat. Home is the ONE surface both seats share, so
@@ -164,7 +166,7 @@ export default function DashboardView() {
 
     let title, subtitle, body;
     if (d.type==="revenue") {
-      title = "Revenue transactions"; subtitle = `${revFY.length} entr${revFY.length!==1?"ies":"y"} · ${fmt(revFY.reduce((s,i)=>s+signedPL(i),0))}`;
+      title = "Revenue transactions"; subtitle = `${entryCount(revFY)} entr${entryCount(revFY)!==1?"ies":"y"} · ${fmt(revFY.reduce((s,i)=>s+signedPL(i),0))}`;
       body = txnRows(revFY, "var(--sc-success)");
     } else if (d.type==="expenses" && !d.cat) {
       const cats = Object.values(expFY.reduce((a,i)=>{const k=i.gl_name||"Uncoded"; if(!a[k])a[k]={name:k,total:0,count:0}; a[k].total+=signedPL(i); a[k].count++; return a;},{})).sort((x,y)=>y.total-x.total);   // C491
@@ -184,7 +186,7 @@ export default function DashboardView() {
         ()=>setDashDrill({type:"expenses",cat:d.cat,vendor:v.vendor})));
     } else if (d.type==="expenses" && d.vendor) {
       const txns = expFY.filter(i=>(i.gl_name||"Uncoded")===d.cat && (i.vendor||"Unknown")===d.vendor);
-      title = `${d.vendor} — ${d.cat}`; subtitle = `${plural(txns.length, "transaction")} · ${fmt(txns.reduce((s,i)=>s+signedPL(i),0))}`;
+      title = `${d.vendor} — ${d.cat}`; subtitle = `${plural(entryCount(txns), "transaction")} · ${fmt(txns.reduce((s,i)=>s+signedPL(i),0))}`;
       body = txnRows(txns, "var(--sc-error)");
     } else if (d.type==="net") {
       // SAME source/period as the Net Income (YTD) tile (computeNetIncome over the FY
@@ -203,7 +205,7 @@ export default function DashboardView() {
       </div>);
     } else if (d.type==="cash") {
       const cashTxns = invoices.filter(i => (i.source==="bank_import" || i.source==="bank_feed" || i.payment_status==="paid" || i.payment_status==="collected") && i.status!=="voided");
-      title = "Cash & bank"; subtitle = `${(bankAccounts||[]).length} account${(bankAccounts||[]).length!==1?"s":""} · ${cashTxns.length} cash transactions`;
+      title = "Cash & bank"; subtitle = `${(bankAccounts||[]).length} account${(bankAccounts||[]).length!==1?"s":""} · ${entryCount(cashTxns)} cash transactions`;
       body = (<div>
         <div style={{ padding:"12px 18px", display:"flex", gap:10, flexWrap:"wrap" }}>
           {(bankAccounts||[]).length===0 ? <span style={{ fontSize:13, color:"var(--sc-text-2)" }}>No bank accounts yet — add one in Settings.</span> :
@@ -248,7 +250,7 @@ export default function DashboardView() {
       ));
     } else if (d.type==="burn" && d.month) {
       const txns = exp.filter(i=>i.date?.startsWith(d.month));
-      title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${plural(txns.length, "transaction")} · ${fmt(txns.reduce((s,i)=>s+signedPL(i),0))}`;
+      title = `Burn — ${d.monthLabel||d.month}`; subtitle = `${plural(entryCount(txns), "transaction")} · ${fmt(txns.reduce((s,i)=>s+signedPL(i),0))}`;
       body = txnRows(txns, "var(--sc-error)");
     } else if (d.type==="runway") {
       // Compute from the SAME canonical source as the card face (computeBurnRate trailing 3-mo
