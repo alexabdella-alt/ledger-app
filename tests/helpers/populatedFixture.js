@@ -28,6 +28,9 @@ export const ACCOUNTS = [
   { id: "a8", code: "6000", name: "Salaries & Wages", category: "Expenses", system_role: "salaries_wages", active: true },
   { id: "a9", code: "5030", name: "Freight", category: "Expenses", system_role: "shipping_fulfillment", active: true },
   { id: "a10", code: "2350", name: "Sales Tax Payable", category: "Liabilities", system_role: "sales_tax_payable", active: true },
+  { id: "a11", code: "3400", name: "Opening Balance Equity", category: "Equity", system_role: "opening_balance_equity", active: true },
+  { id: "a12", code: "6010", name: "Payroll Tax Expense", category: "Expenses", system_role: "payroll_tax", active: true },
+  { id: "a13", code: "2101", name: "Payroll Taxes Payable", category: "Liabilities", system_role: "payroll_taxes_payable", active: true },
 ];
 
 // ★★ C527 — THE ROWS COME OUT OF THE REAL FLATTEN. They were hand-built (C358 patched the
@@ -67,6 +70,10 @@ export const ENTRIES = [
   // zero) and a purchase paid at the till (no A/P leg, no flag — C453's class), so those run too.
   je("i10", "2026-03-11", "REVERSAL: Bluebonnet Linen Service – bill", [{ code: "2000", debit: 145 }, { code: "6180", credit: 145 }], { source: "manual", import_metadata: { kind: "reversal", reverses: "i3" } }),
   je("i11", "2026-03-20", "Corner Market – ice, paid by card", [{ code: "5010", debit: 40 }, { code: "1000", credit: 40 }]),
+  // C541 — the opening position (source opening_balance, dated at the cutoff) and a payroll
+  // register's four legs, so the system-entry branches run on every screen.
+  je("i12", "2026-01-01", "Opening balances as of 2026-01-01", [{ code: "1000", debit: 10000 }, { code: "3400", credit: 10000 }], { source: "opening_balance" }),
+  je("i13", "2026-03-28", "Gusto Payroll — 2026-03-14 – 2026-03-27", [{ code: "6000", debit: 4000 }, { code: "6010", debit: 306 }, { code: "1000", credit: 3150 }, { code: "2101", credit: 1156 }], { source: "payroll", payment_status: "paid", import_metadata: { kind: "payroll", gross: 4000, net: 3150, pay_date: "2026-03-28" } }),
 ];
 export const INVOICES = flattenJournalEntries(ENTRIES, ACCOUNTS);
 

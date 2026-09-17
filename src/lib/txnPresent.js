@@ -31,8 +31,12 @@ export function settlementKind(inv) {
 
 export function classifyTxn(inv = {}, { apCode, arCode, settled = null } = {}) {
   const settle = settlementKind(inv);
-  const isRev = glIsRevenue(inv.gl_code) || inv.type === "revenue";
-  const isExp = glIsExpense(inv.gl_code) || inv.type === "expense";
+  // C541 — the `type` flag stands in only when the row carries no code: the flatten stamps
+  // `type: "expense"` on EVERY non-revenue row, balance-sheet legs included, so with a code
+  // present the account decides (§9: the flag is a display hint, never the basis).
+  const hasCode = inv.gl_code != null && inv.gl_code !== "";
+  const isRev = glIsRevenue(inv.gl_code) || (!hasCode && inv.type === "revenue");
+  const isExp = glIsExpense(inv.gl_code) || (!hasCode && inv.type === "expense");
 
   // Money direction. For a settlement the kind is authoritative (collection in, payment out);
   // for everything else the P&L nature is correct (revenue in, expense out) and the cash leg
@@ -42,7 +46,14 @@ export function classifyTxn(inv = {}, { apCode, arCode, settled = null } = {}) {
   // account says. Without the flip a correction of a $500 purchase listed as "−$500 · Paid"
   // — a second purchase, on the screen where the first one is struck through.
   const correction = isReversalEntry(inv);
-  const inflow = settle ? settle === "ar_collection" : correction ? !isRev : isRev;
+  // C541 — an entry with no P&L line at all (the opening position, a transfer between two
+  // balance-sheet accounts) read as money OUT: neither revenue nor expense, so `inflow` was
+  // false and the opening balance listed "Cash −$10,000.00 · Paid" — the owner's own starting
+  // cash shown leaving. For those, the direction is the cash leg's: a debit to an asset is in.
+  const opening = inv.source === "opening_balance";
+  const balanceSheetOnly = !isRev && !isExp && !settle;
+  const primaryIsAssetDebit = balanceSheetOnly && String(inv.gl_code || "").startsWith("1") && inv.debit_credit !== "credit";
+  const inflow = settle ? settle === "ar_collection" : correction ? !isRev : balanceSheetOnly ? primaryIsAssetDebit : isRev;
 
   // Account to display. A collection's primary leg is Cash — show the A/R it CLEARED (the
   // offset) instead, which is what the entry is about. A payment's primary already IS the A/P.
@@ -63,12 +74,13 @@ export function classifyTxn(inv = {}, { apCode, arCode, settled = null } = {}) {
     else if (onAR && isRev && inv.payment_status !== "collected") settleAction = "collect";
   }
 
-  return { settle, inflow, account, settleAction, correction };
+  return { settle, inflow, account, settleAction, correction, opening };
 }
 
 // Plain-language status for a non-accountant: Open / Received / Paid (reversed/voided/review
 // are handled by the caller, which has the reversal index). Tone keys into the pill colors.
 export function txnStatus(inv = {}, cls = {}) {
+  if (cls.opening) return { label: "Starting balance", tone: "info" };   // C541 — never "Paid"
   if (cls.correction) return { label: "Correction", tone: "info" };   // C470 — never "Paid"
   if (cls.settleAction) return { label: "Open", tone: "warning" };
   if (cls.inflow) return { label: "Received", tone: "success" };

@@ -34,3 +34,33 @@ describe("C539", () => {
     expect(src).toContain("{party || \"—\"}");
   });
 });
+
+// C541 — the opening position listed "Cash −$10,000.00 · Paid": no P&L line, so the direction
+// fell to "expense-shaped". A debit to an asset is money in, and the row is a starting balance.
+import { classifyTxn, txnStatus } from "../src/lib/txnPresent.js";
+import DashboardView from "../src/components/views/DashboardView.jsx";
+import { VIEW_CONTEXT } from "./helpers/renderView.jsx";
+describe("C541 — the opening entry", () => {
+  const ob = INVOICES.find((r) => r.id === "i12");
+  it("is money in and a 'Starting balance', not '−$10,000 · Paid'", () => {
+    expect(ob.source).toBe("opening_balance");   // the shape under test
+    const cls = classifyTxn(ob, { apCode: "2000", arCode: "1100" });
+    expect(cls.inflow).toBe(true);
+    expect(cls.opening).toBe(true);
+    expect(txnStatus(ob, cls).label).toBe("Starting balance");
+  });
+  it("renders so on the list and on Home", () => {
+    const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+    const list = text(renderViewHtml(BooksView, { ...POPULATED, navSeat, companyDataLoaded: true }));
+    expect(list).toMatch(/1000 Cash \+\$10,000\.00 Starting balance/);
+    const home = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, companyDataLoaded: true }));
+    expect(home).toMatch(/🏁 Starting balances recorded[^🧾💰]*\+\$10,000\.00/);
+    expect(home).not.toContain("Opening balances as of 2026-01-01 — Cash");
+  });
+  it("a transfer between two asset accounts is in when cash is debited, out when credited", () => {
+    const inn = { id: "t1", vendor: "Transfer", gl_code: "1000", gl_name: "Cash", secondary_gl_code: "1050", debit_credit: "debit", source: "manual" };
+    const out = { ...inn, debit_credit: "credit" };
+    expect(classifyTxn(inn, {}).inflow).toBe(true);
+    expect(classifyTxn(out, {}).inflow).toBe(false);
+  });
+});

@@ -805,8 +805,8 @@ export default function DashboardView() {
                   const cls = classifyTxn(inv, { apCode, arCode });
                   const party = displayParty(inv, invoices);   // C539 — a settlement's own vendor is the word "Payment"
                   // C540 — a correction (C470) is not income from the supplier: it read 💰 "Bluebonnet — Linen & Laundry +$145".
-                  const label = cls.correction ? `Corrected: ${party || "an entry"}` : cls.settle === "ap_payment" ? `Paid ${party || "a bill"}` : cls.settle === "ar_collection" ? `Received from ${party || "a customer"}` : `${inv.vendor||"Entry"} — ${cls.account?.name || inv.gl_name || "Booked"}`;
-                  items.push({ ts: inv.booked_at||inv.date||"", inv, icon: cls.correction ? "↩" : cls.inflow?"💰":"🧾", text:`${label}${inv._lineCount > 1 ? ` · ${inv._lineCount} lines` : ""}`, amount: listAmount(inv), rev: cls.inflow });
+                  const label = cls.opening ? "Starting balances recorded" : cls.correction ? `Corrected: ${party || "an entry"}` : cls.settle === "ap_payment" ? `Paid ${party || "a bill"}` : cls.settle === "ar_collection" ? `Received from ${party || "a customer"}` : `${inv.vendor||"Entry"} — ${cls.account?.name || inv.gl_name || "Booked"}`;
+                  items.push({ ts: inv.booked_at||inv.date||"", inv, icon: cls.opening ? "🏁" : cls.correction ? "↩" : cls.inflow?"💰":"🧾", text:`${label}${inv._lineCount > 1 ? ` · ${inv._lineCount} lines` : ""}`, amount: listAmount(inv), rev: cls.inflow });
                 });
                 (auditLog||[]).forEach(a => { if (/paid|approv|reject|recode|void|flag|info_requested/i.test(a.action||"")) {
                   // ★ SCRUBBED, not rendered raw. The audit log is written for the CPA and
