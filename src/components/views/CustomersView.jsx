@@ -2,8 +2,8 @@ import React from "react";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { openReceivables } from "../../lib/receivables";
-import { owedAmount, signedPL } from "../../lib/reports";
-import { collapseExpandedRows } from "../../lib/txnPresent";
+import { owedAmount } from "../../lib/reports";
+import { collapseExpandedRows, entryTotalOf } from "../../lib/txnPresent";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
@@ -35,7 +35,13 @@ export default function CustomersView() {
             const txnsForCustomer = name => invoices
               .filter(i => (i.vendor_key||keyOf(i.vendor))===keyOf(name) && (glIsRevenue(i.gl_code)||i.type==="revenue") && i.status!=="voided")
               .sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
-            const billedYTDfor = txns => txns.filter(i=>String(i.date||"").startsWith(String(yr))).reduce((s,i)=>s+signedPL(i),0);   // C491 — a reversed invoice subtracts
+            // C545 — "Billed this year" is what the customer was BILLED, tax included: it summed
+            // the revenue rows (ex-tax), so a taxed $1,299 invoice read "billed $1,200 · still
+            // owed $1,299" — owed more than billed, on one card. One figure per entry — the
+            // entry's own total (its debits: the receivable incl. tax, or the deposit), signed
+            // by the revenue row's side so a correction (C491) still subtracts.
+            const billedYTDfor = txns => collapseExpandedRows(txns.filter(i=>String(i.date||"").startsWith(String(yr))))
+              .reduce((s,i)=>s+(i.debit_credit==="debit"?-1:1)*entryTotalOf(i, invoices),0);
             // C452 — "Still owed to you" was every revenue row whose payment_status was not
             // collected: a direct deposit (Dr Cash / Cr Revenue — money already in the bank)
             // carries no status and so read as OWED. §9's flag-derived openness, the O83 shape

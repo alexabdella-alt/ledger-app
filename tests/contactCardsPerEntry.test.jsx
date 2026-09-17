@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import { flattenJournalEntries } from "../src/lib/ledger.js";
 import { renderViewHtml } from "./helpers/renderView.jsx";
-import { POPULATED } from "./helpers/populatedFixture.js";
+import { POPULATED, ENTRIES as FIX_ENTRIES } from "./helpers/populatedFixture.js";
 import VendorsView from "../src/components/views/VendorsView.jsx";
 import CustomersView from "../src/components/views/CustomersView.jsx";
 import { collapseExpandedRows } from "../src/lib/txnPresent.js";
@@ -78,5 +78,23 @@ describe("C522 — the Customers card's wiring", () => {
     expect(src).toContain("{fmt(owedAmount(i))}");
     expect(src).not.toMatch(/cTxns\.map\(/);
     expect(src).not.toMatch(/i\.payment_status==="collected"\|\|i\.payment_status==="paid"/);
+  });
+});
+
+// C545 — "Billed this year" is the invoice total, tax included: the fixture's taxed $1,299 invoice
+// read "BILLED YTD $2,700 · STILL OWED $1,299" (billed = the ex-tax revenue rows, $1,200 + $1,500).
+describe("C545 — a customer's billed-this-year includes the tax billed", () => {
+  it("reads $2,799.00 (a $1,500 deposit and a $1,299 taxed invoice), and a correction still subtracts", () => {
+    const ENTRIES = FIX_ENTRIES;
+    const t = text(renderViewHtml(CustomersView, { ...POPULATED, companyDataLoaded: true }));
+    const i = t.indexOf("Corner Market Catering Contact");
+    expect(t.slice(i, i + 200)).toMatch(/BILLED YTD \$2,799\.00 STILL OWED TO YOU \$1,299\.00/);
+    // a correction of the taxed invoice subtracts the whole $1,299, not the $1,200 revenue share
+    const rev = ENTRIES.find((e) => e.id === "i8");
+    const reversal = { ...rev, id: "i8r", entry_date: "2026-03-19", description: "REVERSAL: " + rev.description, import_metadata: { kind: "reversal", reverses: "i8" }, journal_entry_lines: rev.journal_entry_lines.map((l, n) => ({ ...l, id: `i8r-l${n}`, debit: l.credit, credit: l.debit })) };
+    const rows = flattenJournalEntries([...ENTRIES, reversal], POPULATED.CHART_OF_ACCOUNTS);
+    const t2 = text(renderViewHtml(CustomersView, { ...POPULATED, invoices: rows, companyDataLoaded: true }));
+    const j = t2.indexOf("Corner Market Catering Contact");
+    expect(t2.slice(j, j + 200)).toMatch(/BILLED YTD \$1,500\.00/);
   });
 });
