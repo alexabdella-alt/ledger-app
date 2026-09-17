@@ -6134,8 +6134,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // Reconciliation summary numbers.
           const matchedCount = autoCleared.length + queue.length;
           const txnTotal = withRules.length;
-          const stillOpenTotal = invoices
-            .filter(inv => (inv.type==="expense"||inv.type==="revenue") && !inv.matched && inv.payment_status!=="paid" && inv.payment_status!=="collected" && !clearedInvIds.has(inv.id))
+          // C542 — "open items still unmatched" is the MATCHER'S open universe (one item per bill or
+          // invoice, by its A/R or A/P leg, no live settlement linked — §9), less what this run
+          // cleared. It was every row typed expense/revenue without a paid flag: the opening
+          // balance (type "expense", no flag), every till purchase, each line of a multi-line
+          // bill — so a first statement's tile said "$10,000.00 in open items still unmatched"
+          // over a company with nothing open.
+          const stillOpenTotal = matchableOpenItems(invoicesRef.current || invoices, { arCode: rc("accounts_receivable"), apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities") })
+            .filter(inv => !inv.matched && !clearedInvIds.has(inv.id) && !clearedInvIds.has(inv.db_entry_id))
             .reduce((s,inv)=>s+Math.abs(inv.amount||0), 0);
 
           // Persist a reconciliation record (table stays — now reached via the upload flow).
