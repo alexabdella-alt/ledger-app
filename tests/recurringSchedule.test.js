@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import { nextRecurringDate, isMonthEnd } from "../src/lib/recurringSchedule.js";
+import { RECURRING_FREQUENCIES } from "../src/lib/chatActions.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // C492 — A RECURRING CHARGE DUE ON THE 31st SKIPPED FEBRUARY. The Recurring screen
@@ -68,5 +69,22 @@ describe("C495 · dueLabel", () => {
     const t = renderViewHtml(RecurringView, { ...POPULATED, recurring, companyDataLoaded: true }).replace(/<!-- -->/g, "");
     expect(t).toContain("Due 3 weeks ago");
     expect(t).not.toContain("Due today");
+  });
+});
+
+// C533 — the frequency vocabulary is one set in four places: the DB CHECK, the writer's allow-list,
+// the form's options and the scheduler. A frequency the scheduler does not know returns null and
+// the rule is "left alone" — i.e. never advances, which is C525's shape by another door.
+describe("C533 — every allowed recurring frequency advances", () => {
+  const ddl = fs.readFileSync("supabase/migrations/000_baseline_schema.sql", "utf8");
+  const m = ddl.match(/recurring_transactions_frequency_check CHECK \(\(frequency = ANY \(ARRAY\[(.*?)\]\)\)\)/);
+  const dbSet = m[1].match(/'([a-z]+)'/g).map(s => s.replace(/'/g, "")).sort();
+  it("the writer's allow-list is exactly the DB's CHECK set", () => {
+    expect([...RECURRING_FREQUENCIES].sort()).toEqual(dbSet);
+  });
+  it("the scheduler advances every one of them, and the form offers every one", () => {
+    for (const f of dbSet) expect(nextRecurringDate("2026-01-31", f), f).not.toBeNull();
+    const view = fs.readFileSync("src/components/views/RecurringView.jsx", "utf8");
+    for (const f of dbSet) expect(view).toContain(`"${f}"`);
   });
 });
