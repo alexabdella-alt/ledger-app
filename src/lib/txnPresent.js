@@ -111,6 +111,10 @@ export function collapseExpandedRows(rows = []) {
 // else the right half of its own description; any other row's party is its vendor.
 export function displayParty(inv, rows = []) {
   if (!inv) return "";
+  if (isReversalEntry(inv)) {   // C540 — a correction's vendor is "REVERSAL: Vendor"; the party is the entry it corrects
+    const stripped = String(inv.vendor || "").replace(/^REVERSAL:\s*/i, "").trim();
+    return stripped || inv.vendor || "";
+  }
   if (!settlementKind(inv)) return inv.vendor || "";
   const base = String((inv.import_metadata && inv.import_metadata.payment_for) ?? "");
   const target = base ? (rows || []).find(r => r && entryBaseOf(r) === base) : null;

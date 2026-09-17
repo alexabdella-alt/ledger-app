@@ -42,3 +42,15 @@ describe("C538 — Home's activity feed describes settlements", () => {
     expect(t).toMatch(/💰 Received from Acme[^🧾💰]*\+\$300\.00/);
   });
 });
+
+// C540 — a correction on Home's feed is not income: the fixture's reversal of the Bluebonnet bill
+// read 💰 "Bluebonnet Linen Service — Linen & Laundry +$145.00".
+describe("C540 — a correction is labelled as one", () => {
+  it("reads '↩ Corrected: Bluebonnet Linen Service'", () => {
+    const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+    expect(INVOICES.find((r) => r.id === "i10").import_metadata.reverses).toBe("i3");   // the shape under test
+    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, companyDataLoaded: true }));
+    expect(t).toContain("↩ Corrected: Bluebonnet Linen Service");
+    expect(t).not.toMatch(/💰 Bluebonnet/);
+  });
+});

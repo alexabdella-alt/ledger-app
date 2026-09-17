@@ -63,6 +63,10 @@ export const ENTRIES = [
   // January bill (a settlement, linked by payment_for — C528), so those branches run too.
   je("i8", "2026-03-18", "Corner Market Catering – Invoice INV-0002", [{ code: "1100", debit: 1299 }, { code: "4010", credit: 1200 }, { code: "2350", credit: 99 }], { source: "ar_invoice", payment_status: "uncollected", due_date: "2026-04-17", import_metadata: { kind: "ar_invoice", tax_amount: 99 }, reference_number: "INV-0002" }),
   je("i9", "2026-02-02", "Payment – Hill Country Milling Co.", [{ code: "2000", debit: 824.60 }, { code: "1000", credit: 824.60 }], { source: "bank_import", payment_status: "paid", import_metadata: { kind: "ap_payment", payment_for: "i1" } }),
+  // C540 — a correction of the Bluebonnet bill (a dated reversal, C468: both stay live and net to
+  // zero) and a purchase paid at the till (no A/P leg, no flag — C453's class), so those run too.
+  je("i10", "2026-03-11", "REVERSAL: Bluebonnet Linen Service – bill", [{ code: "2000", debit: 145 }, { code: "6180", credit: 145 }], { source: "manual", import_metadata: { kind: "reversal", reverses: "i3" } }),
+  je("i11", "2026-03-20", "Corner Market – ice, paid by card", [{ code: "5010", debit: 40 }, { code: "1000", credit: 40 }]),
 ];
 export const INVOICES = flattenJournalEntries(ENTRIES, ACCOUNTS);
 
