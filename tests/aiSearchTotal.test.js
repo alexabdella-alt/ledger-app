@@ -133,3 +133,18 @@ describe("C521 — the legacy prompt's ledger snapshot is per entry", () => {
     expect(block).not.toMatch(/\$\$\{inv\.amount\}/);   // money through the formatter, not "$4000"
   });
 });
+
+// C539 — "how much with Hill Country" lists the payment that settled the bill under the
+// supplier's name (kind: payment), not under a vendor called "Payment".
+describe("C539 — the chat's search files a payment under the party it paid", () => {
+  it("finds the payment by the supplier's name and reports its vendor as the supplier", async () => {
+    const rows = [
+      { id: "b", vendor: "Roma", description: "Roma – cheese", amount: 300, date: "2026-09-01", gl_code: "5010", secondary_gl_code: "2000", debit_credit: "debit", type: "expense", status: "booked", payment_status: "paid" },
+      { id: "p", vendor: "Payment", description: "Payment – Roma", amount: 300, date: "2026-09-05", gl_code: "2000", secondary_gl_code: "1000", debit_credit: "debit", type: "expense", status: "booked", payment_status: "paid", import_metadata: { kind: "ap_payment", payment_for: "b" } },
+    ];
+    const r = await executeAITool("search_transactions", { vendor: "Roma" }, { getLedger: async () => rows, getAccountByRole: () => null });
+    expect(r.total_count).toBe(2);
+    expect(r.transactions.find(t => t.kind === "payment").vendor).toBe("Roma");
+    expect(r.total_amount).toBe(300);   // the payment contributes nothing to spend (C486)
+  });
+});

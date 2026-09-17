@@ -12,7 +12,7 @@
 // getLedger() returns the full flattened ledger (fetched once per turn, cached).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { perEntry } from "./txnPresent.js";
+import { perEntry, displayParty } from "./txnPresent.js";
 import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
@@ -62,7 +62,7 @@ async function searchTransactions(input, ctx) {
   const lines = e => linesOf.get(keyOf(e)) || [e];
   const askedCode = input.gl_code != null ? String(input.gl_code) : null;
   let rows = perEntry(led).filter(e => {
-    if (input.vendor && !normV(e.vendor).includes(normV(input.vendor))) return false;
+    if (input.vendor && !normV(displayParty(e, led)).includes(normV(input.vendor))) return false;   // C539 — a payment's own vendor is the word "Payment"; it belongs to the supplier it paid
     if (askedCode && !lines(e).some(l => String(l.gl_code) === askedCode)) return false;
     if (!inRange(e.date, input.date_from, input.date_to)) return false;
     if (input.min_amount != null && (Number(e.amount) || 0) < input.min_amount) return false;
@@ -91,7 +91,7 @@ async function searchTransactions(input, ctx) {
   rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   const cap = Math.min(input.limit || 50, 200);
   const listed = rows.slice(0, cap).map(i => ({
-    id: i.id, date: i.date, vendor: i.vendor, amount: i.amount, amount_display: money(i.amount), gl_code: i.gl_code, gl_name: i.gl_name,
+    id: i.id, date: i.date, vendor: displayParty(i, led), amount: i.amount, amount_display: money(i.amount), gl_code: i.gl_code, gl_name: i.gl_name,
     type: i.type, payment_status: i.payment_status, due_date: i.due_date, description: i.description,
     // C486 — so the model can SAY which rows are the bill, its payment, or a correction.
     kind: isSettlementEntry(i) ? "payment" : i.import_metadata?.reverses ? "correction" : i.source === "opening_balance" ? "opening_balance" : "entry",
