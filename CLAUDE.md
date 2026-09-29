@@ -120,9 +120,9 @@ Two-stage pipeline, both calls through the **`ai-proxy`** Edge Function (`supaba
 
 ## 6. Migration conventions
 
-> **★★ APPLIED & VERIFIED LIVE — THE LEDGER AS OF 2026-09-15: through `061`, plus `063`, `064`, `066`, `068`–`087`.** (`062`, `065`, `067` deliberately unused; `088`–`090` written for O82, not applied — no domain yet; `091` written, ▶ HOLD.) **The per-migration verification narratives — what each check returned, and what a false pass would have looked like — are in [`docs/notes/MIGRATIONS.md`](docs/notes/MIGRATIONS.md).** Record each new application on this line AND in that file.
+> **★★ APPLIED & VERIFIED LIVE — THE LEDGER AS OF 2026-09-28: through `061`, plus `063`, `064`, `066`, `068`–`087`, and `091`.** (`062`, `065`, `067` deliberately unused; `088`–`090` written for O82, not applied — no domain yet.) **The per-migration verification narratives — what each check returned, and what a false pass would have looked like — are in [`docs/notes/MIGRATIONS.md`](docs/notes/MIGRATIONS.md).** Record each new application on this line AND in that file.
 >
-> **★ `091` WRITTEN 2026-09-15, ▶ HOLD — NOT APPLIED (O139, the line-account company guard). Run its probe (A) first; it is expected to say FAIL.**
+> **★★ `091` APPLIED & VERIFIED LIVE 2026-09-28 (O139, the line-account company guard). THREE CHECKS, THREE PASSES, EACH `[ran as: authenticated]`.** (A) BEFORE: *"FAIL - a line in this company's books now points at another company's account"* — **the hole demonstrated on live data, which is the evidence the migration was needed.** (A) AFTER, the identical probe (clipboard checksum matched the file both times): *"PASS - refused: That category belongs to a different company, so this entry cannot use it."* (B) the `079` direction: *"PASS - a same-general-company line still inserts (2 rows)"* — **the check that would have taken this straight back out**, because for a guard "it blocks too much" is the dangerous failure and the one a lazier verification omits.
 >
 > **★ MIGRATIONS APPLIED — the live state.** **Applied & verified live: through `061`, PLUS `063`** (`060` on 2026-08-08, `061` on 2026-08-09, **`063` on 2026-08-17**; all verified via catalog queries, not an HTTP 201). **Pending: `062`** (unknown_documents policy dedup — queued, unwritten).
 >
