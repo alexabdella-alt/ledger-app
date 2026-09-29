@@ -1563,16 +1563,35 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // Update the primary (debit/credit) line of each journal entry — check EVERY write.
       for (const inv of withDbId) {
         const isDebit = inv.debit_credit !== "credit";
-        // ▶ `.select("id")` rather than `checkedRowUpdate`: this is keyed on
-        // `journal_entry_id` + a debit/credit filter, not on the line's own `id`, so the
-        // helper's `.eq("id", …)` shape does not fit. The REQUIREMENT is the same — a
-        // recode that matched no line moved no money and must not report success.
-        const q = supabase.from("journal_entry_lines").update({ account_id: acctRow.id }).eq("journal_entry_id", inv.db_entry_id);
-        const { data, error } = await (isDebit ? q.gt("debit", 0) : q.gt("credit", 0)).select("id");
-        if (error || !data || !data.length) {
-          console.error("[persistRecode] line update:", error?.message || "no line matched");
+        // ★★★ C546 — MOVE THE LINE WE WERE HANDED, NOT "EVERY DEBIT LINE OF THE ENTRY".
+        // This was keyed on `journal_entry_id` + a debit/credit filter because the flattened
+        // row carried no line id. On a two-line bill (Dr Food 500 / Dr Freight 20 / Cr A/P)
+        // that moved BOTH expense lines to the new account and reported success — the line
+        // split destroyed silently, from the Transactions list as well as from the chat.
+        // The row now carries `line_db_id`, so the update is keyed on the line itself.
+        if (inv.line_db_id) {
+          const r = await checkedRowUpdate({
+            supabase, table: "journal_entry_lines", id: inv.line_db_id, companyId: currentCompany.id,
+            patch: { account_id: acctRow.id }, label: "recodeLine",
+          });
+          if (!r.ok) { console.error("[persistRecode] line update:", r.error); return false; }
+          continue;
+        }
+        // No line id (a row booked in this sitting, not yet reloaded): the old entry-wide key
+        // is the only one available, so COUNT first — if it would touch more than one line we
+        // refuse rather than collapse a split the person never asked us to collapse.
+        const c = supabase.from("journal_entry_lines").select("id").eq("journal_entry_id", inv.db_entry_id);
+        const { data: hits, error: cErr } = await (isDebit ? c.gt("debit", 0) : c.gt("credit", 0));
+        if (cErr || !hits || !hits.length) { console.error("[persistRecode] line lookup:", cErr?.message || "no line matched"); return false; }
+        if (hits.length > 1) {
+          showNotification("That entry has more than one category line, so we've left it alone — open it and change the line you mean.", "error");
           return false;
         }
+        const r = await checkedRowUpdate({
+          supabase, table: "journal_entry_lines", id: hits[0].id, companyId: currentCompany.id,
+          patch: { account_id: acctRow.id }, label: "recodeLine",
+        });
+        if (!r.ok) { console.error("[persistRecode] line update:", r.error); return false; }
       }
       // O67 — TEACH THE LEARNING LAYER. A human correction (this recode, and the CPA override
       // that routes through here) is the highest-quality signal: overwrite the vendor→GL
@@ -3633,11 +3652,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   };
   const persistChatRetagProject = async (invoiceIds, project) => {
     if (!currentCompany?.id) return { ok: false, error: "no company" };
-    const dbIds = [...new Set(invoices.filter(i => invoiceIds.includes(i.id)).map(i => i.db_entry_id).filter(Boolean))];
+    const ids = new Set((invoiceIds || []).map(String));   // C546 — string-normalised, as the resolver is
+    const dbIds = [...new Set(invoices.filter(i => ids.has(String(i.id))).map(i => i.db_entry_id).filter(Boolean))];
     if (!dbIds.length) return { ok: false, error: "entries aren't saved yet" };
     const w = await stampLineProject(dbIds, project);
     if (!w.ok) return w;
-    setInvoices(prev => prev.map(inv => invoiceIds.includes(inv.id) ? { ...inv, project } : inv));
+    setInvoices(prev => prev.map(inv => ids.has(String(inv.id)) ? { ...inv, project } : inv));
     if (!allProjects.includes(project)) setCustomProjects(p => [...p, project]);
     return { ok: true };
   };
@@ -8200,12 +8220,25 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const executeDestructiveAction = async (action) => {
     const summary = [], failures = [];
     if (action.type === "recode" && action.invoiceIds?.length) {
-      const toRecode = invoices.filter(inv => action.invoiceIds.includes(inv.id));
+      // ★★★ C546 — THE SAME RESOLVER THE CONFIRM CARD USED. This filtered `invoices` with a RAW
+      // `.includes(inv.id)` while the card resolved string-normalised and (C546) by entry id too,
+      // so the card could list the charge and the executor find NOTHING: `persistRecode` returned
+      // false on an empty target list and the reply blamed the connection. The gate's own comment
+      // says it exists "to keep the displayed set === the executed set"; recode never read it.
+      const toRecode = resolveActionTargets(action, { invoices, contracts });
+      const recodeIds = new Set(toRecode.map(i => String(i.id)));
       const beforeState = toRecode.map(i => ({ id:i.id, gl_code:i.gl_code, gl_name:i.gl_name }));
       setInvoices(prev => prev.map(inv =>
-        action.invoiceIds.includes(inv.id)
+        recodeIds.has(String(inv.id))
           ? { ...inv, gl_code: action.gl_code, gl_name: action.gl_name, recode_note: `Recoded by AI assistant` }
           : inv));
+      // C546 — nothing resolved is a DIFFERENT outcome from a write that failed, and the person
+      // can act on the difference. Said as itself rather than folded into "couldn't save".
+      if (!toRecode.length) {
+        failures.push({ label: `recode → ${action.gl_name}`, reason: "I couldn't find the transaction you meant — tell me the supplier and the date and I'll try again." });
+        logAudit("ai_recode_unresolved", `Recode named ${action.invoiceIds.length} id(s) that matched no transaction`, null, { ids: action.invoiceIds, gl_code: action.gl_code });
+        return { summary, failures };
+      }
       const ok = await persistRecode(toRecode, action.gl_code, action.gl_name);
       if (ok) {
         logAudit("ai_recode", `AI recoded ${toRecode.length} invoice(s) → ${action.gl_name}`, beforeState, { gl_code: action.gl_code, gl_name: action.gl_name });
@@ -8219,7 +8252,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       }
     }
     if (action.type === "retag_project" && action.invoiceIds?.length) {
-      const res = await persistChatRetagProject(action.invoiceIds, action.project);
+      // C546 — same resolver, same reason (this one matched raw ids inside persistChatRetagProject).
+      const res = await persistChatRetagProject(resolveActionTargets(action, { invoices, contracts }).map(i => i.id), action.project);
       if (res.ok) summary.push(`Tagged ${action.invoiceIds.length} invoice(s) → Project: ${action.project}`);
       else failures.push(`tag → Project: ${action.project}`);
     }

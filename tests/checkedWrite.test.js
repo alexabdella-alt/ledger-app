@@ -407,10 +407,20 @@ describe("★★★ the ledger writes every 'done' message is built from", () =>
   it("★★ a recode that matched no line does not report success", () => {
     // Moving a transaction to a different account is the one operation where "it didn't
     // throw" and "the money moved" are most easily confused.
-    const start = app.indexOf("const q = supabase.from(\"journal_entry_lines\")");
-    const fn = strip(app.slice(start, start + 700));
-    expect(fn).toMatch(/\.select\("id"\)/);
-    expect(fn).toMatch(/!data \|\| !data\.length/);
+    // C546 — this pinned the OLD mechanism (`.select("id")` + `!data.length`), which was keyed
+    // on the ENTRY plus a debit/credit filter and so moved every debit line of a multi-line
+    // bill. The PROPERTY is unchanged and is now carried by `checkedRowUpdate` (rows-affected
+    // >= 1, the stronger form) on the LINE's own id, plus a count-first refusal for a row that
+    // has no line id yet. Re-aimed at the property, not at the expression that carried it.
+    // ▶ anchored on the block's own end, not a character count — a fixed-width slice is a guess
+    // about how long code is, and this repo has paid for that one several times.
+    const start = app.indexOf("for (const inv of withDbId) {");
+    const end = app.indexOf("// O67 — TEACH THE LEARNING LAYER", start);
+    expect(start).toBeGreaterThan(-1); expect(end).toBeGreaterThan(start);
+    const fn = strip(app.slice(start, end));
+    expect(fn).toMatch(/checkedRowUpdate\(\{[\s\S]*?table: "journal_entry_lines", id: inv\.line_db_id/);
+    expect(fn).toMatch(/if \(!r\.ok\) \{ console\.error\("\[persistRecode\] line update:"/);
+    expect(fn).toMatch(/if \(hits\.length > 1\) \{/);   // never collapse a split silently
   });
 
   it("★★ a failed opening-balance supersede is SAID — it doubles the balance sheet", () => {

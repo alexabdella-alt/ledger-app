@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { perEntry } from "./txnPresent.js";
+import { glIsRevenue, glIsExpense, entryBaseOf } from "./gl.js";
 import { isDestructiveAIAction } from "./aiCapabilities";
 import { fmtMoney } from "./format";
 
@@ -54,15 +55,31 @@ export function resolveActionTargets(action, { invoices = [], contracts = [] } =
   // (each line is $3,000), a four-line bill counted as FOUR items against the bulk cap of three,
   // and the confirm card read "Delete 3 transactions" for one bill. One representative row per
   // entry, at the entry's total; an id cited off any of the entry's lines resolves to the entry.
-  const entries = perEntry(invoices);
-  const liveInv = entries.filter((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at);
+  const entries = invoices || [];   // C546 — recode reads LINES; the per-entry view is built below
+  const perEntryRows = perEntry(invoices);
+  const liveInv = perEntryRows.filter((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at);
   const baseOf = (id) => String(id ?? "").split("_")[0];
-  const byId = (id) => entries.filter((i) => String(i.id) === String(id) || String(i.db_entry_id ?? "") === String(id) || (String(id ?? "").includes("_") && baseOf(i.id) === baseOf(id)));
+  const byId = (id) => perEntryRows.filter((i) => String(i.id) === String(id) || String(i.db_entry_id ?? "") === String(id) || (String(id ?? "").includes("_") && baseOf(i.id) === baseOf(id)));
   switch (a.type) {
     case "recode":
     case "retag_project": {
+      // A recode is per LINE (each line has its own category), so an exact row-id match is the
+      // primary rule — unchanged.
       const ids = Array.isArray(a.invoiceIds) ? a.invoiceIds.map(String) : [];
-      return invoices.filter((i) => ids.includes(String(i.id)));   // a recode is per LINE (each line has its own category)
+      const exact = invoices.filter((i) => ids.includes(String(i.id)));
+      if (exact.length) return exact;
+      // ★★ C546 — AND THE ENTRY'S ID RESOLVES TOO. `delete_invoice` has accepted "the id of any
+      // line of the entry" since C519; recode was left on the exact row id alone, so a model
+      // naming the CHARGE — the natural thing for a one-line bill, and what it had just been
+      // handed — resolved to nothing, the executor moved nothing, and the reply blamed the
+      // connection. Ambiguity is refused rather than guessed at: an entry with several category
+      // lines returns none, because which line was meant is not ours to decide.
+      const lines = entries.filter((i) => ids.includes(entryBaseOf(i)));
+      if (!lines.length) return [];
+      const pl = lines.filter((i) => glIsRevenue(i.gl_code) || glIsExpense(i.gl_code));
+      const byEntry = new Map();
+      for (const l of pl) byEntry.set(entryBaseOf(l), (byEntry.get(entryBaseOf(l)) || 0) + 1);
+      return pl.filter((l) => byEntry.get(entryBaseOf(l)) === 1);
     }
     case "delete_invoice": {
       if (a.invoice_id != null) return byId(a.invoice_id);

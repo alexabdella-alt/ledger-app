@@ -62,6 +62,11 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
       const primaryCode = primaryLine?.accounts?.code;
       mapped.push({
         id: e.id, vendor, vendor_key, description: e.description,
+        // C546 — THE LINE'S OWN DB ID. Without it `persistRecode` could only key a recode on
+        // the ENTRY plus a debit/credit filter, so recoding one line of a multi-line bill moved
+        // EVERY debit line of that entry to the new account and reported success. §9's own
+        // doctrine ("ids reach DB calls only through the line's id") had no id to reach for.
+        line_db_id: primaryLine?.id ?? null,
         amount: (primaryIsDebit ? primaryLine?.debit : primaryLine?.credit) || 0,
         // ★★★ THE OFFSET LEG'S OWN AMOUNT. Every consumer used to DERIVE the offset from the
         // primary amount — so a two-line entry that did not balance was made balanced by the
@@ -133,6 +138,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         const isRevenueRow = acctDef?.category === "Revenue";
         mapped.push({
           id: `${e.id}_${li}`, vendor, vendor_key, description: e.description,
+          line_db_id: l?.id ?? null,   // C546 — this row IS one line; a recode moves exactly it
           amount,
           // Full receivable owed (incl. tax) for the revenue row of a taxed AR invoice;
           // AR aging/collection/total read this, P&L still reads `amount` (ex-tax).
