@@ -2,7 +2,7 @@ import React from "react";
 import { fmtMoney } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
-import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE, filedKey } from "../../lib/tax";
+import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE, filedKey, taxYearFor1099 } from "../../lib/tax";
 import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
@@ -10,6 +10,7 @@ export default function TaxView() {
   const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
+  const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
   const lsKey = `cfai_tax_${currentCompany?.id || "x"}`;
 
   // Tax compliance state lives in Supabase (tax_settings). Falls back to the
@@ -111,8 +112,13 @@ export default function TaxView() {
   // their payments split and both halves fall under the threshold, which is a wrong answer
   // that looks tidy" — it got the ROW side right and the CONTACT side wrong.
   const keyOf = React.useCallback((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase(), []);
-  const plan = React.useMemo(() => plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year, keyOf }),   // C435 — one builder with Home and the bell
-    [invoices, contacts, CHART_OF_ACCOUNTS, year, keyOf]);
+  // ★★ C549 — THE 1099 YEAR IS NOT THIS SCREEN'S YEAR. Everything else here (the estimate,
+  // the deduction tracker, the header) is about the calendar year in progress; a 1099 is about
+  // the payments of the year before its deadline. The two coincide for nine months and diverge
+  // every January, when this card would count three weeks of the new year while the tracker it
+  // links to correctly lists the year just ended. One question, one year — `taxYearFor1099`.
+  const plan = React.useMemo(() => plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: year1099, keyOf }),   // C435 — one builder with Home and the bell
+    [invoices, contacts, CHART_OF_ACCOUNTS, year1099, keyOf]);
   const need1099 = plan.outstanding;
 
   const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "18px 20px" };
@@ -224,7 +230,7 @@ export default function TaxView() {
         <div>
           <div style={{ fontSize: 13, fontWeight: 600 }}>1099 contractors</div>
           <div style={{ fontSize: 12, color: need1099 > 0 ? "var(--sc-warning)" : "var(--sc-text-2)", marginTop: 3 }}>
-            {plan1099Copy(plan)}
+            {plan1099Copy(plan, { year: year1099 })}
           </div>
         </div>
         <button onClick={() => setView("tax1099")} style={{ padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer" }}>Open 1099 tracker →</button>

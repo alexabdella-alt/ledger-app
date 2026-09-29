@@ -164,14 +164,14 @@ describe("★★ the derivation reaches the screen", () => {
   const tax = fs.readFileSync(path.join(process.cwd(), "src/components/views/TaxView.jsx"), "utf8");
 
   it("★★★ the tax page counts from the plan, not from the flag", () => {
-    expect(tax).toMatch(/plan1099ForYear\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year, keyOf \}\)/);   // C435 — one builder with Home and the bell
+    expect(tax).toMatch(/plan1099ForYear\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: year1099, keyOf \}\)/);   // C435 — one builder with Home and the bell; C549 — on the 1099 year, not the calendar year
     expect(tax).toMatch(/const need1099 = plan\.outstanding/);
     // the old flag count must be gone, not merely unused
     expect(tax).not.toMatch(/c\.is1099 && !c\.is_1099_exempt/);
   });
 
   it("★★ and the sentence is the plan's own, so it cannot describe a different count", () => {
-    expect(tax).toMatch(/\{plan1099Copy\(plan\)\}/);
+    expect(tax).toMatch(/\{plan1099Copy\(plan, \{ year: year1099 \}\)\}/);   // C549
     expect(tax).not.toMatch(/vendors? need 1099s this year/);
   });
 

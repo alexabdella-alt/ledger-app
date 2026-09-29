@@ -203,10 +203,16 @@ export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year
   return plan1099({ contacts, vendorRowsFor: (c) => byName.get(key(c.name)) || [], roleOfCode, threshold });
 }
 
-export function plan1099Copy(plan = {}) {
+// ★ C549 — THE SENTENCE NAMES THE YEAR, because "this year" is not what it means for three
+// months of every one. A 1099 is about the payments of the year BEFORE its deadline, so from
+// January to March this card is about the year just ended — and it sits next to a button that
+// opens a screen headed with that year. Passing no `year` keeps the old wording for any caller
+// that has no year to name.
+export function plan1099Copy(plan = {}, { year = null } = {}) {
   const e = (plan.eligible || []).length;
   const n = (plan.needsInfo || []).length;
-  if (!e && !n) return "No suppliers look like they need a 1099 this year.";
+  const when = year ? `for ${year}` : "this year";
+  if (!e && !n) return `No suppliers look like they need a 1099 ${when}.`;
   const parts = [];
   if (e) parts.push(`${e} supplier${e === 1 ? "" : "s"} look${e === 1 ? "s" : ""} like ${e === 1 ? "it needs" : "they need"} a 1099`);
   if (n) parts.push(`${n} we can't decide without knowing more`);

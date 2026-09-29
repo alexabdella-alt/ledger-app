@@ -3,6 +3,7 @@ import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { glIsExpense } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
+import { taxYearFor1099 } from "../../lib/tax";
 
 const TYPE_OPTIONS = [
   { v:"individual",  label:"Individual / Sole Proprietor", exempt:false },
@@ -17,7 +18,10 @@ const isExemptType = t => ["corp","scorp","nonprofit"].includes(t);
 export default function Tax1099View() {
   const { contacts, setContacts, invoices, companySettings, persistContact, logAudit, showNotification } = useERP();
 
-  const taxYear = new Date().getFullYear() - 1; // always the previous calendar year
+  // C549 — the year the next 1099 deadline is about (`deadline.year - 1`, the C435 rule), not
+  // `getFullYear() - 1`. That read "always the previous calendar year" and left this screen a
+  // year behind the Taxes card and the bell that link to it for nine months of every year.
+  const taxYear = taxYearFor1099();
   const month = new Date().getMonth(); // 0=Jan
   const fmt = fmtMoney;
   const yourEIN = companySettings?.taxId || companySettings?.ein || companySettings?.tax_id || "";

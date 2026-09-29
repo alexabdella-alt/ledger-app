@@ -53,6 +53,29 @@ export function getTaxDeadlines(now = new Date()) {
     .sort((a, b) => a.date - b.date);
 }
 
+// ★★★ C549 — WHICH YEAR THE 1099 TRACKER IS ABOUT, READ OFF THE DEADLINE RATHER THAN OFF
+// TODAY'S DATE. The tracker computed `new Date().getFullYear() - 1` and called it "always the
+// previous calendar year" — right in January, when you are preparing the forms for the year
+// just ended, and WRONG for the other eleven months. On 2026-09-28 the Taxes screen's own
+// 1099 card counted **2026** (`getFullYear()`), the bell counted **2026** (`deadline.year - 1`,
+// C435), and the tracker screen the card's button opens was headed **2025** — one surface a
+// year behind the two that link to it.
+//
+// ★★ AND THE DIRECTION IS THE ONE THAT FILE ALREADY NAMES AS DANGEROUS: A MISSING 1099,
+// SILENTLY. The screen where you go to see who needs a form, and to export the data, showed a
+// year in which a company that signed up this year has no payments at all — so it reads "No
+// vendor payments recorded for 2025 yet" for nine months while 2026's reportable suppliers sit
+// unlisted. Nothing is wrong on screen; the list is simply of the wrong year.
+//
+// ★ THE RULE IS C435'S, NOT A NEW ONE: a 1099 deadline is about the payments of the year
+// BEFORE it, so the year being tracked is `next 1099 deadline .year - 1`. Jan–Mar it is the
+// closed year you are filing for (Jan 31 / Feb 28 / Mar 31 all resolve to the same year);
+// from April it is the year in progress, which is the year you are accruing toward.
+export function taxYearFor1099(now = new Date()) {
+  const next = getTaxDeadlines(now).find((d) => d.kind === "1099");
+  return next ? next.year - 1 : now.getFullYear();
+}
+
 // The soonest deadline within `withinDays` (for the Home alert). null if none.
 // C388 — `filed` is the Taxes screen's map (`${key}-${year}` → true): a deadline the person
 // has marked filed is not due, so Home and the bell stop asking about it. Without this the
