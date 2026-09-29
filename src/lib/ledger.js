@@ -80,8 +80,18 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         secondary_amount: ((offsetLine?.debit || 0) > 0 ? offsetLine?.debit : offsetLine?.credit) || 0,
         date: e.entry_date,
         type: glIsRevenue(primaryCode) ? "revenue" : "expense",
-        gl_code: primaryCode || offsetLine?.accounts?.code,
-        gl_name: primaryLine?.accounts?.name || offsetLine?.accounts?.name,
+        // ★★★ C547 — A LINE WHOSE ACCOUNT WE CANNOT RESOLVE DOES NOT BORROW THE OTHER LEG'S.
+        // This read `primaryCode || offsetLine?.accounts?.code`, so when the join returned no
+        // account for the primary line the row silently became the OFFSET's account — both legs
+        // then reading the same code, cancelling each other. Demonstrated: an $800 bill whose
+        // expense line could not be resolved vanished from expenses AND took its own $800 A/P
+        // credit with it (payables read $500 instead of $1,300), while the trial balance
+        // reported balanced, difference $0.00. Filling a gap with a fabricated fact is worse
+        // than leaving it empty: the money disappears from totals that swear they are complete.
+        gl_code: primaryCode ?? null,
+        gl_name: primaryLine?.accounts?.name ?? null,
+        // Named so a reader can act on it (§9) — `computeControlTotals` counts these.
+        ...(primaryLine && !primaryLine.accounts ? { account_unresolved: true } : {}),
         secondary_gl_code: offsetLine?.accounts?.code,
         secondary_gl_name: offsetLine?.accounts?.name,
         debit_credit: primaryIsDebit ? "debit" : "credit",
@@ -139,6 +149,7 @@ export function flattenJournalEntries(entries, chartOfAccounts = []) {
         mapped.push({
           id: `${e.id}_${li}`, vendor, vendor_key, description: e.description,
           line_db_id: l?.id ?? null,   // C546 — this row IS one line; a recode moves exactly it
+          ...(l && !l.accounts ? { account_unresolved: true } : {}),   // C547
           amount,
           // Full receivable owed (incl. tax) for the revenue row of a taxed AR invoice;
           // AR aging/collection/total read this, P&L still reads `amount` (ex-tax).

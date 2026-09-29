@@ -369,14 +369,16 @@ describe("5 · AR / AP sub-ledgers === their GL balances (control totals tie)", 
   });
 });
 
-describe("6 · ALL SIX control totals TIE on the correctly-booked year", () => {
+describe("6 · ALL SEVEN control totals TIE on the correctly-booked year", () => {
   it("computeControlTotals → allTie, no failures", () => {
     expect(CONTROL.allTie).toBe(true);
     expect(CONTROL.failed).toHaveLength(0);
   });
-  it("all six checks are present and each ties", () => {
+  it("all seven checks are present and each ties", () => {
+    // C547 added `lines_have_a_category` — the only check that counts LINES rather than comparing
+    // two figures, because a line that leaves both sides at once is invisible to every other one.
     const keys = CONTROL.checks.map(c => c.key).sort();
-    expect(keys).toEqual(["ap_tie", "ar_tie", "cash_recon", "docs_recorded", "sales_tax_tie", "trial_balance"]);
+    expect(keys).toEqual(["ap_tie", "ar_tie", "cash_recon", "docs_recorded", "lines_have_a_category", "sales_tax_tie", "trial_balance"]);
     for (const c of CONTROL.checks) expect(c.ties).toBe(true);
   });
   it("the trial balance itself is balanced (debits === credits)", () => {

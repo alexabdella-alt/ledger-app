@@ -141,6 +141,16 @@ export function computeControlTotals({
   const tb = trialBalance(invoices);
   checks.push(check("trial_balance", "Books balance (every entry has two equal sides)", tb.totalDebit, "total on one side", tb.totalCredit, "total on the other", { tolerance: 0.005 }));
 
+  // 3b. ★★★ C547 — EVERY LINE'S CATEGORY IS ONE WE CAN ACTUALLY READ. A line whose account
+  // does not resolve (deleted, or — the O139 case `091` closes — belonging to another company)
+  // used to borrow the other leg's account and cancel itself out: the money left the P&L, took
+  // the real leg's balance with it, and the trial balance still read "balanced, difference
+  // $0.00". Every other check here compares two figures, so NONE of them can see a line that
+  // left both sides at once. This one counts the lines themselves — the only shape that can.
+  const unresolved = live.filter((i) => i && i.account_unresolved).length;
+  checks.push(check("lines_have_a_category", "Every transaction has a category we can read",
+    0, "transactions with no readable category", unresolved, "found", { tolerance: 0, unit: "count" }));
+
   // 4. Sales tax: tax the invoices charged === GL Sales-Tax-Payable balance.
   //    THE Riverside catch — tax booked into revenue leaves the liability short.
   //    (Holds until sales-tax remittance ships (O6); a remittance lowers the GL, so
