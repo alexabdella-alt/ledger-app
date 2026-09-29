@@ -91,7 +91,14 @@ export default function TeamView() {
       <div style={{ marginBottom: 22 }}>
         <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>TEAM</div>
         <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Team & invites</h1>
-        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Invite teammates as admins (full access) or members (upload, view, and ask the AI — no destructive changes).</div>
+        {/* ★★ C550 — THIS SENTENCE NAMED A ROLE THAT DOES NOT EXIST, ON THE SCREEN `C225` FIXED
+            FOR EXACTLY THAT REASON. The dropdown below offers viewer / accountant / admin —
+            the three `company_users_role_check` allows — and C225's note records that the
+            fourth word, "Member", was in none of them and made every invite unacceptable.
+            The heading above it went on offering "admins or members" and never mentioned the
+            accountant, which is the role this product is built around. It now describes the
+            options that are actually there, in the order they appear. */}
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Invite someone to your books and choose what they can do — look without changing anything, review and sign off a month, or full access.</div>
       </div>
 
       {/* ★ SAY "WE COULDN'T ASK", NEVER SHOW AN EMPTY TEAM WE DID NOT CONFIRM. On the one

@@ -7,7 +7,7 @@ import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
@@ -241,8 +241,19 @@ export default function TaxView() {
         <div style={{ fontSize: 12, color: "var(--sc-warning)", lineHeight: 1.6 }}>
           Tax estimates are for planning purposes only and are based on general federal tax rates. State taxes, deductions and your specific situation can change what you actually owe by a lot. Always consult a qualified tax professional before filing.
         </div>
+        {/* ★★★ C550 — THIS PROMISED A REVIEW NOBODY MAY BE DOING, AND NAMED A PRODUCT THAT DOES
+            NOT EXIST. It read "Your CFAI advisor reviews your books monthly and can provide
+            personalized guidance" — "CFAI" is the old working name, surviving in exactly one
+            user-visible string (and in a localStorage key just above), and the sentence is FALSE
+            for anyone who signed up alone: `O131`/`D2` record that a solo owner has no reviewer
+            until they invite an accountant. Sitting directly under a tax disclaimer, on the
+            screen about money owed to the IRS, it is the worst place in the product to overstate
+            who is watching. `hasAttester` already answers this and DEFAULTS TRUE, so a failed
+            membership read can never manufacture "you have no accountant" (O131's own rule). */}
         <div style={{ fontSize: 12, color: "var(--sc-gold)", lineHeight: 1.6, marginTop: 10, fontWeight: 500 }}>
-          Questions? Your CFAI advisor reviews your books monthly and can provide personalized guidance.
+          {hasAttester === false
+            ? "Questions? Nobody is reviewing your books yet — add your accountant under Settings → Team and they can go through these with you."
+            : "Questions? Your accountant can review your books and go through these figures with you."}
         </div>
       </div>
     </div>
