@@ -5811,12 +5811,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               // OR O49 says a human would pause on a material amount. A vendor rule (and the
               // learned-vendor boost above, which lifts confidence to the auto-book level) books
               // straight through — that's how the questions decay as this business is learned.
-              const decision = autoBookDecision(invoice);
+              // C551 — the chart is what lets it notice a booking whose own reasoning names a
+              // different category; without it that check is silently absent.
+              const decision = autoBookDecision(invoice, { chart: CHART_OF_ACCOUNTS });
               if (rule || decision.autoBook) {
                 highConfidence.push(invoice);
               } else {
                 // Genuinely unsure (or missing the amount) → ask ONE plain-language question and
                 // let the free-text answer map to an account (answerToAccount). No GL buttons.
+                // C551 — the reason rides on the invoice because the card's one-tap answer reads
+                // it there (`clarificationChips`): a card asked BECAUSE the guess is in doubt must
+                // not offer that guess back as a button.
+                invoice.ask_reason = decision.reason;
                 needsClarification.push({
                   id: Date.now() + Math.random(),
                   invoice,

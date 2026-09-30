@@ -20,7 +20,7 @@ they found it themselves, it goes here.
 | ~~**A1**~~ | ✅ **CLOSED 2026-08-29 (C218/C220) — awaiting a drive.** ~~"A supplier who bills you the same amount every week can have an invoice matched to the wrong week's payment. When that happens one delivery quietly stops being an expense, and nothing on screen says so."** Weekly linen, weekly produce, weekly laundry — the vendor class a restaurant has most of. | **`O127`** (+`O117`) |
 | ~~**A2**~~ | ✅ **CLOSED 2026-08-29 (C207) — awaiting a drive.** ~~"If you press Void twice, we book the reversal twice. There is nothing stopping it and no accounting reading under which it is correct."** | **`O123`** |
 | **A3** | **"A charge from a supplier we have never seen can be booked automatically at high confidence, on nothing more than the name looking plausible. Review new vendors yourself for the first few months."** The live case: a never-seen vendor booked at **88** while one taught eight times was asked again at **78**. | **`O102`** / C203 |
-| **A4** | **"A recognisable supplier can still land in Miscellaneous."** Live instance: CO2 tanks and bagged ice → `7100`. | ROADMAP TIER 1 **#7** |
+| ~~**A4**~~ | ✅ **CLOSED (C224 2026-08-29, and C551 2026-09-30 for the adjacent case) — awaiting a drive.** ~~"A recognisable supplier can still land in Miscellaneous."~~ Live instance: CO2 tanks and bagged ice → `7100`. C224 makes a confident Miscellaneous booking of a named supplier ask; C551 makes a confident booking whose own explanation names a different category ask (the Lone Star → Travel & Entertainment case). | ROADMAP TIER 1 **#7** |
 
 ## B. THE SCREEN CAN SAY THINGS THAT ARE NOT TRUE
 
@@ -69,7 +69,7 @@ drive confirms it.** What remains is:
 | still open | what closes it |
 |---|---|
 | **A3** — a never-seen supplier can be booked automatically on name plausibility | `O102` / C203 — **the largest item on the board** |
-| **A4** — a recognisable supplier can still land in Miscellaneous | TIER 1 #7 *(the confident-into-"couldn't tell" half shipped in C224; the calibration half has not)* |
+| ~~**A4**~~ — ✅ closed by C224 + C551, awaiting a drive | — |
 | **C1** — a first upload takes six to twelve hours in the foreground | `O97` — two of three parts shipped |
 | **C3** — payroll cannot be dropped on the home screen | `O116` |
 | **all of section D** | none of it is code |

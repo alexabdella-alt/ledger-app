@@ -62,6 +62,7 @@ export function draftClientQuestion(txn = {}) {
 // vendor→category signals the categorizer/ReconView use). Returns null when the answer is
 // too vague to disambiguate — so a still-ambiguous answer NEVER falsely resolves a flag.
 import { DEFAULT_CHART_OF_ACCOUNTS } from "./constants";
+import { REASONING_CONTRADICTS } from "./confidenceFlag";
 import { TEMPLATE_ACCOUNTS } from "./coaTemplates";
 
 const ANSWER_MAP = [
@@ -331,6 +332,11 @@ export function describeBooking(invoice = {}) {
 // `answer` round-trips through answerToCategory so clicking it resolves deterministically.
 export function clarificationChips(invoice = {}, { minConfidence = 55 } = {}) {
   if (isRevenueish(invoice)) return [];
+  // ★★★ C551 — NO ONE-TAP ANSWER ON A CARD ASKED BECAUSE THE GUESS CONTRADICTS ITSELF. The chip
+  // is built from the booked account, which is the half of the contradiction in doubt — one tap
+  // would turn the model's wrong answer into the owner's confirmed one (§9: an attestation is
+  // scoped to the question asked). They say it in their own words instead.
+  if (invoice.ask_reason === REASONING_CONTRADICTS) return [];
   const conf = invoice.confidence == null ? 0 : Number(invoice.confidence);
   if (conf < minConfidence) return [];                     // not a strong-enough guess → no chip
   const role = inferRole(invoice);

@@ -15,6 +15,7 @@
 import { fmtMoney } from "./format";
 import { AI_CONFIDENCE_ASK_FLOOR } from "./constants";
 import { collapseExpandedRows, listAmount } from "./txnPresent.js";
+import { glIsRevenue, glIsExpense } from "./gl.js";
 
 // Tunable thresholds. Confidence is 0–100 (the model's scale; rule-applied = 99).
 export const FLAG_DEFAULTS = {
@@ -102,7 +103,102 @@ export function hasNamedVendor(txn = {}) {
   return v.length >= 3 && /[a-z]{3}/i.test(v);
 }
 
-export function autoBookDecision(txn = {}, { askFloor = AI_CONFIDENCE_ASK_FLOOR, ...opts } = {}) {
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★★ C551 — THE BOOKING WHOSE OWN EXPLANATION ARGUES FOR A DIFFERENT CATEGORY (TIER 1 #7).
+//
+// The live case (O83): a Lone Star food-supplier bill was auto-booked to Travel &
+// Entertainment at 92% while its OWN stored reasoning said the items were "direct product
+// costs properly classified as Cost of Goods Sold". The model contradicted itself and the
+// books took the half that was wrong, with nobody asked. No confidence threshold can catch
+// it — the score was high because the model was sure, and it was sure of the other answer.
+//
+// ★★ WHAT COUNTS AS A CONTRADICTION IS DELIBERATELY NARROW, because the cost of a false
+// positive is a question the owner did not need (`O122`: noise is a defect too). The
+// reasoning is free text written to explain "why this account fits", so it mentions other
+// things all the time — freight on a produce invoice, cash, a considered alternative. So a
+// contradiction is an ASSERTION, not a mention:
+//   • another income/expense account of THIS company's chart (by name or code) is the
+//     object of a classification phrase — "classified as", "belongs in", "should be",
+//     "properly …", "recorded as" — within three words;
+//   • that phrase is not negated or hedged ("not", "rather than", "could also be" …) —
+//     a considered alternative is the model showing its work, not changing its answer;
+//   • and the BOOKED account is never the object of such a phrase — "classified as Food
+//     Cost rather than Freight" is the model agreeing with itself.
+// Balance-sheet accounts ("paid in cash") and the catch-all buckets ("miscellaneous
+// kitchen items") never count: they are ordinary words far more often than they are claims.
+//
+// ★ AND NAMING THE BROADER PARENT OF A SUB-ACCOUNT IS NOT A CONTRADICTION. A restaurant's
+// Food Cost (5010) IS cost of goods sold, and "classified as Cost of Goods Sold" on a Food
+// Cost booking is the reasoning being less specific, not disagreeing. The chart has no
+// parent column, so the parent is read off the numbering (§4): a round-hundred account in
+// the same block. It only runs one way — booked Technology & Software (6500) with reasoning
+// that says Merchant Processing Fees (6520) IS flagged, which is the Toast-fee case.
+//
+// ▶ LIMITS, stated: it recognises the company's own account NAMES and CODES only, so an
+// acronym the chart does not spell ("COGS") or a paraphrase ("food costs") passes unseen.
+// That is the safe direction — the booking behaves as it did before this check existed.
+// ═════════════════════════════════════════════════════════════════════════════
+const normText = (s) => ` ${String(s || "").toLowerCase()
+  .replace(/\([^)]*\)/g, " ").replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ")
+  .replace(/\s+/g, " ").trim()} `;
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// The phrases that ASSIGN a category. Bare verbs a supplier's invoice uses for other
+// reasons ("charged", "includes") are deliberately absent.
+const CUES = "classified|classify|classifies|categori[sz]ed|categori[sz]e|belongs|belong|should be|should go|properly|correctly|appropriately|recorded|treated|coded|booked|expensed|falls under|fits under";
+// A cue read after one of these is a considered alternative or a denial, not a claim.
+const HEDGES = new Set(["not", "never", "rather", "instead", "than", "could", "might", "may", "alternatively", "also", "or", "if", "unless", "although", "though", "nor"]);
+
+function nameForms(acct) {
+  const forms = new Set();
+  const full = normText(acct.name).trim();
+  if (full) forms.add(full);
+  const stem = full.replace(/ expenses?$/, "").trim();
+  if (stem && stem !== full && stem.length >= 4) forms.add(stem);
+  if (acct.code && /^\d{4}$/.test(String(acct.code))) forms.add(String(acct.code));
+  return [...forms];
+}
+
+// Is `form` the object of an un-hedged classification cue anywhere in `text`?
+function assertedAs(text, form) {
+  const re = new RegExp(`(?:^| )((?:\\S+ ){0,3})(?:${CUES}) ((?:\\S+ ){0,3})${escRe(form)} `, "g");
+  let m;
+  while ((m = re.exec(text))) {
+    const before = m[1].trim().split(" ").filter(Boolean);
+    const between = m[2].trim().split(" ").filter(Boolean);
+    if ([...before, ...between].some((w) => HEDGES.has(w))) continue;
+    return true;
+  }
+  return false;
+}
+
+const isParentOf = (parentCode, childCode) => {
+  const p = String(parentCode || ""), c = String(childCode || "");
+  return /^\d{4}$/.test(p) && /^\d{4}$/.test(c) && p !== c && p.endsWith("00") && p.slice(0, 2) === c.slice(0, 2);
+};
+
+export function reasoningContradiction(txn = {}, { chart = [] } = {}) {
+  const text = normText(txn.reasoning);
+  if (text.trim().length === 0 || !Array.isArray(chart) || chart.length === 0) return null;
+  const bookedCode = txn.gl_code != null ? String(txn.gl_code).trim() : "";
+  const bookedAcct = chart.find((a) => a && String(a.code) === bookedCode) || null;
+  const bookedForms = new Set([
+    ...(bookedAcct ? nameForms(bookedAcct) : []),
+    ...(txn.gl_name ? nameForms({ name: txn.gl_name, code: bookedCode }) : bookedCode ? [bookedCode] : []),
+  ]);
+  if ([...bookedForms].some((f) => assertedAs(text, f))) return null;   // it argues for what it booked
+  for (const a of chart) {
+    if (!a || a.active === false) continue;
+    const code = String(a.code || "");
+    if (!code || code === bookedCode) continue;
+    if (!(glIsRevenue(code) || glIsExpense(code))) continue;          // "paid in cash" is not a claim
+    if (isCatchAllAccount({ gl_code: code, gl_name: a.name, system_role: a.system_role })) continue;
+    if (isParentOf(code, bookedCode)) continue;                          // Food Cost IS cost of goods sold
+    if (nameForms(a).some((f) => !bookedForms.has(f) && assertedAs(text, f))) return { code, name: a.name };
+  }
+  return null;
+}
+
+export function autoBookDecision(txn = {}, { askFloor = AI_CONFIDENCE_ASK_FLOOR, chart = [], ...opts } = {}) {
   const conf = txn.confidence == null ? 100 : num(txn.confidence);
   if (!(Math.abs(num(txn.amount)) > 0)) return { autoBook: false, reason: "missing_amount" };
   if (conf < askFloor) return { autoBook: false, reason: "below_confidence_floor" };
@@ -113,9 +209,17 @@ export function autoBookDecision(txn = {}, { askFloor = AI_CONFIDENCE_ASK_FLOOR,
   if (isCatchAllAccount(txn) && hasNamedVendor(txn)) {
     return { autoBook: false, reason: "catch_all_account_named_vendor" };
   }
+  // ★★ C551 — and so is a confident booking whose own explanation says it belongs elsewhere.
+  // Same placement argument: after the floor, before materiality, because a self-contradiction
+  // is worth one question at any amount.
+  const named = reasoningContradiction(txn, { chart });
+  if (named) return { autoBook: false, reason: REASONING_CONTRADICTS, named };
   if (shouldFlagForReview(txn, opts).flagged) return { autoBook: false, reason: "flagged_uncertain_material" };
   return { autoBook: true, reason: "confident" };
 }
+// The one routing value the question card reads (`clarificationChips`) — exported so the
+// writer and the reader cannot spell it two ways.
+export const REASONING_CONTRADICTS = "reasoning_names_other_account";
 
 // The queryable "needs review" SET (what O50's CPA surface will consume). Each item carries
 // the AI's CHOSEN account, its CONFIDENCE, the WHY (reasoning — ties C107/C109), any
