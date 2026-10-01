@@ -83,7 +83,7 @@ function Privacy() {
         <li style={s.li}><strong>Anthropic</strong> — AI processing of your documents and questions. Requests are sent through our server-side proxy; your data is processed to generate output and is not used by us to train models.</li>
         <li style={s.li}><strong>Vercel</strong> — hosts the application itself. As with any website, it sees the ordinary connection details of your visits (such as your IP address) in its access logs.</li>
         <li style={s.li}><strong>Sentry</strong> — error monitoring, so we learn when something breaks. It receives the signed-in account's email address, which company was open, and technical details of the error. Financial figures, documents and contact details are removed before anything is sent.</li>
-        <li style={s.li}><strong>Google</strong> — supplies the small logos shown beside suppliers we recognize. Your browser asks Google for the logo of a supplier's public website; nothing about your books or your account is sent with that request.</li>
+        <li style={s.li}><strong>Google</strong> — supplies the small logos shown beside vendors we recognize. Your browser asks Google for the logo of a vendor's public website; nothing about your books or your account is sent with that request.</li>
         <li style={s.li}><strong>Payments</strong> — there are no paid plans yet. When there are, the payment processor will be named here before it handles anything.</li>
       </ul>
       <p style={s.p}><strong>We never sell your data.</strong> We share data with processors only as needed to run the service, and we do not share your financial information with third parties for their own purposes.</p>

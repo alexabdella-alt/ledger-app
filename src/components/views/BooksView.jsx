@@ -176,7 +176,7 @@ export default function BooksView() {
 
       {/* Search + filters */}
       <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search supplier, amount, date, invoice number…"
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendor, amount, date, invoice number…"
           style={{ flex:"1 1 280px", minWidth:0, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:10, padding:"10px 14px", fontSize:14, color:"var(--sc-text)", outline:"none" }} />
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
@@ -188,7 +188,7 @@ export default function BooksView() {
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, padding:"8px 12px", borderRadius:9, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border)", fontSize:13 }}>
           <span>Showing only <strong>{vendorFilter}</strong> · {rows.length} transaction{rows.length!==1?"s":""}</span>
           <button onClick={()=>setVendorFilter && setVendorFilter("all")}
-            style={{ marginLeft:"auto", background:"none", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"4px 10px", fontSize:12, color:"var(--sc-text-2)", cursor:"pointer" }}>Show all suppliers ×</button>
+            style={{ marginLeft:"auto", background:"none", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"4px 10px", fontSize:12, color:"var(--sc-text-2)", cursor:"pointer" }}>Show all vendors ×</button>
         </div>
       )}
 

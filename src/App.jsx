@@ -8271,7 +8271,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // C546 — nothing resolved is a DIFFERENT outcome from a write that failed, and the person
       // can act on the difference. Said as itself rather than folded into "couldn't save".
       if (!toRecode.length) {
-        failures.push({ label: `recode → ${action.gl_name}`, reason: "I couldn't find the transaction you meant — tell me the supplier and the date and I'll try again." });
+        failures.push({ label: `recode → ${action.gl_name}`, reason: "I couldn't find the transaction you meant — tell me the vendor and the date and I'll try again." });
         logAudit("ai_recode_unresolved", `Recode named ${action.invoiceIds.length} id(s) that matched no transaction`, null, { ids: action.invoiceIds, gl_code: action.gl_code });
         return { summary, failures };
       }

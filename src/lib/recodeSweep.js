@@ -37,7 +37,7 @@ export function planRecodeSweep({ rows = [], subject, fromCode, toCode, toName, 
   const eligible = same.filter((r) => !isSigned(r));
   const blocked = same.filter((r) => isSigned(r));
   if (!eligible.length && !blocked.length) return empty;
-  const who = subject?.vendor || "this supplier";
+  const who = subject?.vendor || "this vendor";
   const target = toName || toCode;
   const n = eligible.length;
   let sentence = null;

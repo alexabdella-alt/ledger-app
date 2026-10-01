@@ -137,7 +137,7 @@ describe("★★ C347 — scoping the list to one supplier", () => {
     expect(html).not.toContain("Bluebonnet");
     expect(html).not.toContain("Franklin Ave");
     expect(html).toContain("Showing only");
-    expect(html).toContain("Show all suppliers");
+    expect(html).toContain("Show all vendors");
     // The mutation this exists for — BooksView reading `invoices` instead of the scope —
     // puts Bluebonnet back on the page.
   });

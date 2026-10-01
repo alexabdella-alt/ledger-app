@@ -26,7 +26,7 @@ describe("C472 · bookableAccounts", () => {
 describe("C472 · disableAccountBlocker", () => {
   it("refuses a structural role, names a rule, a recurring charge, a linked bank account; otherwise null", () => {
     expect(disableAccountBlocker(chart[0])).toMatch(/books run on/);
-    expect(disableAccountBlocker(chart[1], { rules: [{ vendor: "Meta", gl_code: "6300" }] })).toMatch(/supplier rule \(Meta\)/);
+    expect(disableAccountBlocker(chart[1], { rules: [{ vendor: "Meta", gl_code: "6300" }] })).toMatch(/vendor rule \(Meta\)/);
     expect(disableAccountBlocker(chart[1], { recurring: [{ name: "Ad spend", gl_code: "6300" }] })).toMatch(/recurring charge \(Ad spend\)/);
     expect(disableAccountBlocker(chart[1], { recurring: [{ name: "Old", gl_code: "6300", active: false }] })).toBeNull();
     expect(disableAccountBlocker(chart[0] && { ...chart[0], system_role: null }, { bankAccounts: [{ name: "Chase", gl_code: "1000" }] })).toMatch(/Chase/);

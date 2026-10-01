@@ -29,7 +29,7 @@ export function disableAccountBlocker(account, { rules = [], recurring = [], ban
     return `${account.name} is one of the categories your books run on, so it can't be turned off.`;
   }
   const byRule = (rules || []).filter((r) => r && String(r.gl_code) === code).map((r) => r.vendor).filter(Boolean);
-  if (byRule.length) return `${byRule.length === 1 ? `A supplier rule (${byRule[0]}) points` : `${byRule.length} supplier rules point`} at ${account.name} — change ${byRule.length === 1 ? "that rule" : "those rules"} first.`;
+  if (byRule.length) return `${byRule.length === 1 ? `A vendor rule (${byRule[0]}) points` : `${byRule.length} vendor rules point`} at ${account.name} — change ${byRule.length === 1 ? "that rule" : "those rules"} first.`;
   const byRec = (recurring || []).filter((r) => r && r.active !== false && String(r.gl_code) === code).map((r) => r.name || r.vendor).filter(Boolean);
   if (byRec.length) return `${byRec.length === 1 ? `A recurring charge (${byRec[0]}) is` : `${byRec.length} recurring charges are`} set to ${account.name} — change ${byRec.length === 1 ? "it" : "them"} first.`;
   const byBank = (bankAccounts || []).filter((b) => b && b.active !== false && String(b.gl_code) === code).map((b) => b.name).filter(Boolean);

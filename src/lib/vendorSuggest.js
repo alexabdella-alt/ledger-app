@@ -136,6 +136,6 @@ export function suggestVendorMerges(names = [], { asserted = [] } = {}) {
 export function suggestionCopy(pair) {
   if (!pair) return null;
   return pair.reason === SUGGEST_REASON.LIKELY_TYPO
-    ? `“${pair.a}” and “${pair.b}” are spelled almost identically. Same supplier?`
-    : `“${pair.a}” and “${pair.b}” look like the same supplier under a longer name. Same supplier?`;
+    ? `“${pair.a}” and “${pair.b}” are spelled almost identically. Same vendor?`
+    : `“${pair.a}” and “${pair.b}” look like the same vendor under a longer name. Same vendor?`;
 }

@@ -166,7 +166,7 @@ export function planSetSettlement({ cadence = null, periodPayments = [] } = {}) 
 // The card, when the counts disagree. States the two numbers and draws no conclusion about
 // why — the reference standard set by the payroll gate's refusals (O115 doctrine).
 export function countMismatchCopy({ vendor, period, counts } = {}) {
-  const who = vendor || "This supplier";
+  const who = vendor || "This vendor";
   const label = period || "this month";
   return `We have ${counts.invoices} ${who} invoice${counts.invoices === 1 ? "" : "s"} for ${label} but only ${counts.payments} payment${counts.payments === 1 ? "" : "s"} — one of them looks unpaid.`;
 }
@@ -232,7 +232,7 @@ export function isOffRhythm(gapDays, intervalDays) {
 // States the vendor's rhythm and this pair's spacing, and draws no conclusion about why —
 // the payroll gate's refusals are the reference standard (O115 doctrine).
 export function offRhythmCopy({ vendor, gapDays, intervalDays, amount } = {}) {
-  const who = vendor || "This supplier";
+  const who = vendor || "This vendor";
   const g = Math.round(Math.abs(Number(gapDays) || 0));
   const t = Math.round(Number(intervalDays) || 0);
   const amt = amount == null ? "" : ` for ${fmtMoney(Math.abs(Number(amount) || 0))}`;

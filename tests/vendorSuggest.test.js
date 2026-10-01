@@ -125,7 +125,7 @@ describe("it suggests and never decides", () => {
   it("the copy asks a question and shows both spellings", () => {
     const [p] = suggestVendorMerges(["Franklin Ave Properties", "FRANKLIN AVE PROPERTIES LP RENT"]);
     const t = suggestionCopy(p);
-    expect(t).toMatch(/Same supplier\?/);
+    expect(t).toMatch(/Same vendor\?/);
     expect(t).toContain("Franklin Ave Properties");
     expect(t).toContain("FRANKLIN AVE PROPERTIES LP RENT");
     expect(suggestionCopy(null)).toBe(null);

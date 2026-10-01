@@ -13,10 +13,10 @@ export default function RulesView() {
             <div>
               <div style={{ marginBottom:28 }}>
                 <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>SETTINGS</div>
-                <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Supplier rules</h1>
+                <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Vendor rules</h1>
                 <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Rules auto-apply when invoices are uploaded. Create them by chatting with the AI assistant.</div>
               </div>
-              {loadFailures?.vendor_rules ? <LoadFailedNotice what="supplier rules" table="vendor_rules" /> : !companyDataLoaded ? <LoadingList what="your rules" /> : rules.length===0 ? (
+              {loadFailures?.vendor_rules ? <LoadFailedNotice what="vendor rules" table="vendor_rules" /> : !companyDataLoaded ? <LoadingList what="your rules" /> : rules.length===0 ? (
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:40, textAlign:"center" }}>
                   <div style={{ fontSize:32, marginBottom:12 }}>⚡</div>
                   <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No rules yet</div>
@@ -45,7 +45,7 @@ export default function RulesView() {
                           <td style={{ padding:"14px 20px" }}><span style={{ background:"var(--sc-border)", padding:"4px 12px", borderRadius:20, fontSize:12, color:"var(--sc-gold)" }}>{rule.gl_code} · {rule.gl_name}</span></td>
                           <td style={{ padding:"14px 20px", fontSize:13, color:"var(--sc-text-2)" }}>{rule.project||"—"}</td>
                           <td style={{ padding:"14px 20px" }}>
-                            <button onClick={async()=>{ /* C397 — the screen wrote local state only; the rule came back on reload and kept coding the vendor. One writer with the chat (deleteVerified). */ const r = await removeRule(rule.vendor); if (!r?.ok) { showNotification(`Couldn't remove the rule for ${rule.vendor} — nothing was changed. ${plainWriteError(r?.error, "")}`.trim(), "error"); return; } logAudit("rule_deleted", `Supplier rule removed: ${rule.vendor} → ${rule.gl_name || rule.gl_code}`, null, { vendor: rule.vendor, gl_code: rule.gl_code }); showNotification(`Rule for ${rule.vendor} removed ✓`); }} style={{ background:"none", border:"1px solid var(--sc-border-2)", color:"var(--sc-error)", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer" }}>Remove</button>
+                            <button onClick={async()=>{ /* C397 — the screen wrote local state only; the rule came back on reload and kept coding the vendor. One writer with the chat (deleteVerified). */ const r = await removeRule(rule.vendor); if (!r?.ok) { showNotification(`Couldn't remove the rule for ${rule.vendor} — nothing was changed. ${plainWriteError(r?.error, "")}`.trim(), "error"); return; } logAudit("rule_deleted", `Vendor rule removed: ${rule.vendor} → ${rule.gl_name || rule.gl_code}`, null, { vendor: rule.vendor, gl_code: rule.gl_code }); showNotification(`Rule for ${rule.vendor} removed ✓`); }} style={{ background:"none", border:"1px solid var(--sc-border-2)", color:"var(--sc-error)", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer" }}>Remove</button>
                           </td>
                         </tr>
                       ))}

@@ -20,7 +20,7 @@ describe("C445", () => {
   });
   it("what it says about Google matches the logo fetch", () => {
     expect(fs.readFileSync("src/lib/vendorLogo.js", "utf8")).toMatch(/google\.com\/s2\/favicons/);
-    expect(legal).toMatch(/asks Google for the logo of a supplier's public website/);
+    expect(legal).toMatch(/asks Google for the logo of a vendor's public website/);
   });
 });
 

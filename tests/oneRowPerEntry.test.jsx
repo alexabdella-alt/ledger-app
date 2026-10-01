@@ -92,7 +92,7 @@ describe("C510 · the Full entry page names the party by direction", () => {
     expect(sale).not.toMatch(/Vendor\s+Acme/);
     const bill = text(renderViewHtml(DetailView, { ...ctx, selectedInvoice: rows.find((r) => r.id === "b2") }));
     expect(bill).toContain("PURCHASE");
-    expect(bill).toMatch(/Supplier\s+Roma/);
+    expect(bill).toMatch(/Vendor\s+Roma/);
   });
 });
 

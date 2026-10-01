@@ -156,7 +156,7 @@ export function shadowReport({
   if (counts.phantom > 0 || phantoms.length) {
     blockers.push(`${Math.max(counts.phantom, phantoms.length)} line(s) where a vendor we have never seen was given a real account. Rule 2 says those park in Uncategorized.`);
   }
-  if (merges.length) blockers.push(`${merges.length} supplier key(s) covering more than one name — each needs a person to confirm they are the same business.`);
+  if (merges.length) blockers.push(`${merges.length} vendor key(s) covering more than one name — each needs a person to confirm they are the same business.`);
   if (variance.length) blockers.push(`${variance.length} line(s) got a different answer on a re-run of the same data.`);
   if (gaps.length) blockers.push(`${gaps.length} line(s) produced no result at all, so the totals below do not describe the whole month.`);
   if (unresolvedDisagreements.length) blockers.push(`${unresolvedDisagreements.length} disagreement(s) with the signed books still need reviewing one by one.`);
@@ -191,8 +191,8 @@ export function shadowReportCopy(report) {
     if (counts.park) {
       const why = Object.entries(parkBasis)
         .map(([k, n]) => `${n} ${({
-          stranger: "from suppliers we had never seen",
-          no_attested_mapping: "where no account had been attested for that supplier",
+          stranger: "from vendors we had never seen",
+          no_attested_mapping: "where no account had been attested for that vendor",
           directory_role_absent_from_chart: "where the shared list named an account this company does not have",
           no_directory_mapping: "where the shared list had no entry",
         })[k] || k}`)

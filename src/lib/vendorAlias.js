@@ -95,7 +95,7 @@ export function validateAlias(raw, contact = {}, others = []) {
   // punctuation or digits normalises to something that is not a name, and accepting it
   // would mint an identity keyed on noise.
   if (!key || !/[a-z]/i.test(key)) {
-    return { ok: false, reason: ALIAS_REJECT.UNKEYABLE, message: "That doesn't look like a supplier name." };
+    return { ok: false, reason: ALIAS_REJECT.UNKEYABLE, message: "That doesn't look like a vendor name." };
   }
 
   const own = entityKeyFor(contact.name);
@@ -117,6 +117,6 @@ export function validateAlias(raw, contact = {}, others = []) {
 // not the one being made (§9).
 export function aliasExplainer(contact = {}) {
   const n = (contact.aliases || []).length;
-  if (!n) return `If ${contact.name || "this supplier"} shows up on your bank statement under a different name, add it here and we'll treat them as one.`;
-  return `We'll treat ${n} other name${n === 1 ? "" : "s"} as ${contact.name || "this supplier"}.`;
+  if (!n) return `If ${contact.name || "this vendor"} shows up on your bank statement under a different name, add it here and we'll treat them as one.`;
+  return `We'll treat ${n} other name${n === 1 ? "" : "s"} as ${contact.name || "this vendor"}.`;
 }

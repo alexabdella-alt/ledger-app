@@ -38,7 +38,7 @@ export const CARD_CATEGORY = {
 export const CARD_TAXONOMY = {
   // ── lifecycle asks ──
   amount_differs: { category: CARD_CATEGORY.JUDGMENT, why: "an invoice and its payment differ by a real amount — a bookkeeper stops on that" },
-  identity_differs: { category: CARD_CATEGORY.TEACHING, why: "one supplier under two names; asked once, then remembered (O111)" },
+  identity_differs: { category: CARD_CATEGORY.TEACHING, why: "one vendor under two names; asked once, then remembered (O111)" },
   multiple_candidates: { category: CARD_CATEGORY.JUDGMENT, why: "genuinely several payments it could belong to" },
   period_count_mismatch: { category: CARD_CATEGORY.JUDGMENT, why: "a flat-fee vendor's period does not balance — five invoices against four charges" },
   // ★ NOT a judgment about the ledger at all: a report that WE failed to record something.
@@ -49,11 +49,11 @@ export const CARD_TAXONOMY = {
   duplicate_payment: { category: CARD_CATEGORY.JUDGMENT, why: "a true double-payment is worth stopping on (was category 1 on lifecycle pairs and weekly vendors until O114/O117)" },
   large_transaction: { category: CARD_CATEGORY.JUDGMENT, why: "capitalize-or-expense on a big charge (was category 1 while it fired on payroll — fixed)" },
   round_number: { category: CARD_CATEGORY.JUDGMENT, why: "an exact round amount can be an estimate booked as an actual (was category 1 while it fired on payroll — fixed)" },
-  missing_recurring: { category: CARD_CATEGORY.JUDGMENT, why: "a regular supplier stopped billing (was category 1 while it measured against wall-clock instead of the books' period — fixed)" },
+  missing_recurring: { category: CARD_CATEGORY.JUDGMENT, why: "a regular vendor stopped billing (was category 1 while it measured against wall-clock instead of the books' period — fixed)" },
   category_spike: { category: CARD_CATEGORY.JUDGMENT, why: "spending in a category jumped" },
-  vendor_spike: { category: CARD_CATEGORY.JUDGMENT, why: "one supplier's charges jumped" },
-  rapid_sequential: { category: CARD_CATEGORY.JUDGMENT, why: "several charges from one supplier in quick succession" },
-  outside_expected_range: { category: CARD_CATEGORY.JUDGMENT, why: "a charge outside the band the person declared for this supplier (C474)" },
+  vendor_spike: { category: CARD_CATEGORY.JUDGMENT, why: "one vendor's charges jumped" },
+  rapid_sequential: { category: CARD_CATEGORY.JUDGMENT, why: "several charges from one vendor in quick succession" },
+  outside_expected_range: { category: CARD_CATEGORY.JUDGMENT, why: "a charge outside the band the person declared for this vendor (C474)" },
 
   // ── clarifications ──
   gl: { category: CARD_CATEGORY.JUDGMENT, why: "which account this belongs to — shrinks toward category 2 as vendors become known" },

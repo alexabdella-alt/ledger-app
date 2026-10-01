@@ -14,14 +14,14 @@ describe("Settings rows", () => {
     const labels = Object.fromEntries(NAV_SECTION_SETTINGS.items);
     for (const l of Object.values(labels)) expect([l, containsOwnerJargon(l)]).toEqual([l, false]);
     expect(labels.coa).toBe("Categories");
-    expect(labels.rules).toBe("Supplier rules");
+    expect(labels.rules).toBe("Vendor rules");
     expect(labels.recurring).toBe("Recurring charges");
     expect(labels["opening-balances"]).toBe("Starting balances");   // C482 — the screen has no bank-account form; that lives on Company
     expect(labels.tax1099).toBe("Tax forms (1099s)");
   });
   it("the screen headings match their rows", () => {
     expect(read("src/components/views/CoaView.jsx")).toContain(">Categories</h1>");
-    expect(read("src/components/views/RulesView.jsx")).toContain(">Supplier rules</h1>");
+    expect(read("src/components/views/RulesView.jsx")).toContain(">Vendor rules</h1>");
     expect(read("src/components/views/RecurringView.jsx")).toContain(">Recurring charges</h1>");
     expect(read("src/components/views/OpeningBalancesView.jsx")).toContain(">Starting balances</h1>");
     for (const f of ["CoaView", "RulesView", "RecurringView"]) expect(read(`src/components/views/${f}.jsx`)).not.toMatch(/<h1[^>]*>(Chart of Accounts|Vendor Rules|Recurring Transactions)<\/h1>/);

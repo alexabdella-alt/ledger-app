@@ -12,7 +12,7 @@ export default function DetailView() {
   // a settlement says which; the kicker follows.
   const dirCls = selectedInvoice ? classifyTxn(selectedInvoice, {}) : null;
   const settleKind = dirCls?.settle || null;
-  const partyLabel = settleKind === "ar_collection" ? "Customer" : settleKind === "ap_payment" ? "Supplier" : (dirCls?.inflow ? "Customer" : "Supplier");
+  const partyLabel = settleKind === "ar_collection" ? "Customer" : settleKind === "ap_payment" ? "Vendor" : (dirCls?.inflow ? "Customer" : "Vendor");
   const pageKicker = settleKind === "ar_collection" ? "PAYMENT RECEIVED" : settleKind === "ap_payment" ? "PAYMENT MADE" : (dirCls?.inflow ? "SALE" : "PURCHASE");
   return (
             <div style={{ maxWidth:580 }}>

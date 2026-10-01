@@ -28,7 +28,7 @@ export function plainPeriodSummary({ rangeInvoices = [], allInvoices = [], range
   }
   const owedParts = [];
   if (owed != null) owedParts.push(owed > 0 ? `Customers owe you ${fmtMoney(owed)}` : `No customer owes you anything`);
-  if (owe != null) owedParts.push(owe > 0 ? `you owe suppliers ${fmtMoney(owe)}` : `you owe suppliers nothing`);
+  if (owe != null) owedParts.push(owe > 0 ? `you owe vendors ${fmtMoney(owe)}` : `you owe vendors nothing`);
   if (owedParts.length) parts.push(owedParts.join(", and ") + ".");
   return { text: parts.join(" "), revenue, expenses, net, owed, owe };
 }

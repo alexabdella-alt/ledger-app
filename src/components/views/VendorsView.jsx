@@ -300,7 +300,7 @@ export default function VendorsView() {
                   companyId={currentCompany?.id}
                 />
 
-                {loadFailures?.contacts ? <LoadFailedNotice what="suppliers" table="contacts" /> : !companyDataLoaded ? <LoadingList what="your suppliers" /> : allVendors.length===0 ? (
+                {loadFailures?.contacts ? <LoadFailedNotice what="vendors" table="contacts" /> : !companyDataLoaded ? <LoadingList what="your vendors" /> : allVendors.length===0 ? (
                   <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center" }}>
                     <div style={{ fontSize:32, marginBottom:12 }}>◈</div>
                     <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No vendors yet</div>
@@ -521,7 +521,7 @@ function VendorMergeSuggestions({ allVendors, contacts, persistContact, showNoti
   return (
     <div style={{ marginBottom:20, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"14px 18px" }}>
       <div style={{ fontSize:11, letterSpacing:2, color:"var(--sc-text-2)", marginBottom:10 }}>
-        POSSIBLY THE SAME SUPPLIER
+        POSSIBLY THE SAME VENDOR
       </div>
       {suggestions.slice(0, 4).map((p) => {
         const id = `${p.a}|${p.b}`;

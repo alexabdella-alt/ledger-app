@@ -56,9 +56,9 @@ const r2 = (n) => Math.round(n * 100) / 100;
 export function vendorCreepCopy(report, { monthLabel = (p) => p, money = (n) => fmtMoney(Number(n)) } = {}) {
   if (!report || !report.ok) return { headline: "We need three signed-off months before we can say who's charging more than usual.", lines: [] };
   const when = monthLabel(report.latest) || report.latest;
-  if (!report.items.length) return { headline: `In ${when}, no supplier charged noticeably more than usual.`, lines: [] };
+  if (!report.items.length) return { headline: `In ${when}, no vendor charged noticeably more than usual.`, lines: [] };
   return {
-    headline: `In ${when}, ${report.items.length === 1 ? "one supplier" : `${report.items.length} suppliers`} charged more than usual:`,
+    headline: `In ${when}, ${report.items.length === 1 ? "one vendor" : `${report.items.length} vendors`} charged more than usual:`,
     lines: report.items.map((i) => `${i.vendor}: ${money(i.latest)}, against about ${money(i.usual)} a month before — ${Math.round((i.ratio - 1) * 100)}% more.`),
   };
 }

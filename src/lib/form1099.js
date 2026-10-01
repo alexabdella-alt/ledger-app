@@ -113,7 +113,7 @@ export function reportablePayments(rows = [], roleOfCode = () => null) {
 
 // One vendor's verdict, with the reason a CPA would need to sign it.
 export function verdictFor(contact = {}, payments = { byKind: {}, total: 0 }, { threshold = IRS_1099_THRESHOLD } = {}) {
-  const name = contact.name || "this supplier";
+  const name = contact.name || "this vendor";
   if (contact.sent_1099_2025) return { verdict: VERDICT.ALREADY_SENT, why: `A 1099 has already been sent to ${name} for this year.`, amount: payments.total };
   if (contact.is_1099_exempt) return { verdict: VERDICT.MARKED_EXEMPT, why: `${name} has been marked exempt.`, amount: payments.total };
 
@@ -212,9 +212,9 @@ export function plan1099Copy(plan = {}, { year = null } = {}) {
   const e = (plan.eligible || []).length;
   const n = (plan.needsInfo || []).length;
   const when = year ? `for ${year}` : "this year";
-  if (!e && !n) return `No suppliers look like they need a 1099 ${when}.`;
+  if (!e && !n) return `No vendors look like they need a 1099 ${when}.`;
   const parts = [];
-  if (e) parts.push(`${e} supplier${e === 1 ? "" : "s"} look${e === 1 ? "s" : ""} like ${e === 1 ? "it needs" : "they need"} a 1099`);
+  if (e) parts.push(`${e} vendor${e === 1 ? "" : "s"} look${e === 1 ? "s" : ""} like ${e === 1 ? "it needs" : "they need"} a 1099`);
   if (n) parts.push(`${n} we can't decide without knowing more`);
   return parts.join(" · ");
 }

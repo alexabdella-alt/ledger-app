@@ -62,7 +62,7 @@ export default function DocsView() {
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name, supplier, amount or type…"
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name, vendor, amount or type…"
           style={{ flex: "1 1 240px", minWidth: 0, height: 36, borderRadius: 9, border: "1px solid var(--sc-border-2)", background: "var(--sc-surface)", color: "var(--sc-text)", padding: "0 12px", fontSize: 13 }} />
         <label style={{ fontSize: 12, color: "var(--sc-text-2)", display: "flex", alignItems: "center", gap: 6 }}>From
           <input type="date" value={from} onChange={e => setFrom(e.target.value)}

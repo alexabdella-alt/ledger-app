@@ -137,11 +137,11 @@ describe("★★ the proposal counts what a person must act on", () => {
   });
 
   it("★ and says so in the sentence", () => {
-    expect(plan1099Copy(plan)).toMatch(/1 supplier looks like it needs a 1099 · 1 we can't decide/);
+    expect(plan1099Copy(plan)).toMatch(/1 vendor looks like it needs a 1099 · 1 we can't decide/);
   });
 
   it("an empty year says so plainly", () => {
-    expect(plan1099Copy(plan1099({ contacts: [], vendorRowsFor: () => [], roleOfCode: role }))).toMatch(/No suppliers look like/);
+    expect(plan1099Copy(plan1099({ contacts: [], vendorRowsFor: () => [], roleOfCode: role }))).toMatch(/No vendors look like/);
   });
 });
 

@@ -144,7 +144,7 @@ describe("the copy is a claim about what was measured (§6)", () => {
     run.rows[4] = row(4, { verdict: "park", proposed_account_id: null, tier: "stranger" });
     run.counts = { agree: 23, park: 1, disagree: 0, phantom: 0 };
     run.parkBasis = { stranger: 1 };
-    expect(shadowReportCopy(shadowReport({ ...CLEAN, runs: [run] }))).toMatch(/suppliers we had never seen/);
+    expect(shadowReportCopy(shadowReport({ ...CLEAN, runs: [run] }))).toMatch(/vendors we had never seen/);
   });
 
   it("a STOP names what is outstanding rather than just refusing", () => {

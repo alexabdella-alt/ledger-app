@@ -70,10 +70,10 @@ describe("C549 — the 1099 year comes off the deadline, not off today's date", 
 describe("C549 — the card's sentence names the year instead of saying 'this year'", () => {
   const EMPTY = { eligible: [], needsInfo: [], outstanding: 0 };
   it("names it when given one", () => {
-    expect(plan1099Copy(EMPTY, { year: 2026 })).toBe("No suppliers look like they need a 1099 for 2026.");
+    expect(plan1099Copy(EMPTY, { year: 2026 })).toBe("No vendors look like they need a 1099 for 2026.");
   });
   it("keeps the old wording for a caller with no year to name", () => {
-    expect(plan1099Copy(EMPTY)).toBe("No suppliers look like they need a 1099 this year.");
+    expect(plan1099Copy(EMPTY)).toBe("No vendors look like they need a 1099 this year.");
   });
   it("★ 'this year' is wrong for three months of every year, which is why the year is passed", () => {
     // In January the card is about the year just ended; "this year" would name the wrong one.
