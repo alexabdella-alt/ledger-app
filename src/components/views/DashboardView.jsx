@@ -10,6 +10,9 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural, monthsLeftYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { plan1099ForYear } from "../../lib/form1099";
+// C557 — the business-type list is the template list. It was typed out here, so a new type
+// needed two edits and the second one could be missed (C556 recorded it).
+import { BUSINESS_TYPES } from "../../lib/coaTemplates";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
 import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
@@ -411,7 +414,7 @@ export default function DashboardView() {
                       <label style={{ fontSize:12, fontWeight:600, color:"var(--sc-text-2)", display:"block", marginBottom:6 }}>Business type</label>
                       <select value={bizType||companySettings.businessType||""} onChange={e=>setBizType(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--sc-border-2)", fontSize:14, color:"var(--sc-text)", background:"var(--sc-surface)", marginBottom:16 }}>
                         <option value="">Select…</option>
-                        {["SaaS/Software","Consulting/Services","Restaurant/Food","Retail","Construction","Healthcare","Real Estate","Other"].map(t=><option key={t} value={t}>{t}</option>)}
+                        {BUSINESS_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
                       </select>
                       <label style={{ fontSize:12, fontWeight:600, color:"var(--sc-text-2)", display:"block", marginBottom:6 }}>Fiscal year end</label>
                       <select value={bizFye||companySettings.fiscalYearEnd||"12-31"} onChange={e=>setBizFye(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--sc-border-2)", fontSize:14, color:"var(--sc-text)", background:"var(--sc-surface)" }}>

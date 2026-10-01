@@ -234,6 +234,16 @@ const ROLE_PHRASE = {
   taxes_licenses: "taxes or a license",
   merchandise_cost: "inventory",
   inventory_shrinkage: "inventory loss",
+  // C556/C557 — the per-type accounts added for the niche months. Without words they read
+  // "a general business expense": honest, but not the answer we have.
+  subcontractor_costs: "contractors you hired",
+  vehicle_expenses: "vehicle costs",
+  education_training: "training or education",
+  dues_memberships: "membership dues",
+  hoa_dues: "HOA dues",
+  property_taxes: "property tax",
+  property_management: "property management",
+  security_deposits_held: "a tenant's deposit",
 };
 // A keyword the owner might type that round-trips back through answerToCategory to the
 // same role (so a chip built from a role resolves deterministically when clicked).

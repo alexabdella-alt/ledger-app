@@ -8,7 +8,7 @@ each kind of business actually goes wrong.
 | Niche | Company to create (exact name) | Business type at onboarding | Documents |
 |---|---|---|---|
 | Solo consultant | **Lakeview Strategy LLC** | Consulting/Services | 19 |
-| Online coach & course creator | **Bright Path Coaching LLC** | Consulting/Services | 19 |
+| Online coach & course creator | **Bright Path Coaching LLC** | **Coaching & Courses** (added C557) | 19 |
 | Small landlord (two properties) | **Oakmont Rentals LLC** | Real Estate | 18 |
 | HVAC & home-services shop | **Cedar Creek Home Services LLC** | Construction | 20 |
 | Solo therapist | **Clear Water Counseling PLLC** | Healthcare | 18 |
@@ -70,13 +70,13 @@ a clean run there is the strongest evidence the product is ready for it.
 > one is added — **Vehicle Expenses** (Construction, Real Estate), **Taxes & Licenses / Education &
 > Training / Dues & Memberships** (Consulting/Services; the last two also Healthcare), and a
 > **Tenant Security Deposits** liability (Real Estate). They sit on the business types whose month
-> needed them, not on every company. The one left is course sales for coaches — a product choice.
+> needed them, not on every company. Course sales got a business type of its own (**Coaching & Courses**, C557).
 
-### Nowhere correct to file it — the chart has no category — ✅ SIX OF SEVEN FIXED (C556); course sales is YOUR decision
+### Nowhere correct to file it — the chart has no category — ✅ ALL SEVEN FIXED (C556, C557)
 
 | Niche | Document | Needs |
 |---|---|---|
-| Coach | Kajabi course sales (×2) | Product Revenue — the Consulting/Services set **hides** it. **▶ OPEN — your call:** a new *Coaching & Courses* business type, or stop hiding Product Revenue for Consulting/Services. |
+| Coach | Kajabi course sales (×2) | Product Revenue — the Consulting/Services set **hides** it. **✅ C557:** a *Coaching & Courses* business type with its own Course & Digital Product Sales line. |
 | Coach | Certification course | Education & training |
 | Consultant | City business license | Taxes & Licenses (the Consulting/Services set lacks it) |
 | Landlord | Tenant's security deposit | A *liability* for deposits held — the only "Security Deposits" account is an asset |

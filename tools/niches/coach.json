@@ -4,7 +4,7 @@
  "company": {
   "name": "Bright Path Coaching LLC",
   "address": "88 Mueller Blvd #210, Austin TX 78723",
-  "business_type": "Consulting/Services",
+  "business_type": "Coaching & Courses",
   "form": "single-member LLC, taxed as a sole proprietor"
  },
  "documents": [
@@ -143,12 +143,12 @@
     ]
    ],
    "expect": [
-    "product_revenue",
+    "digital_product_revenue",
     "merchant_processing_fees"
    ],
    "treatment": "A digital-product sale at gross; fees as an expense.",
    "total_label": "Net payout to bank",
-   "planted": "A DIGITAL PRODUCT: course sales are product income. The Consulting/Services category set HIDES Product Revenue — so where does it go?"
+   "planted": "A DIGITAL PRODUCT: course sales go to Course & Digital Product Sales (the Coaching & Courses set, C557) — not to coaching income, so the owner can see what the course makes."
   },
   {
    "layout": "statement",
@@ -168,7 +168,7 @@
     ]
    ],
    "expect": [
-    "product_revenue",
+    "digital_product_revenue",
     "merchant_processing_fees"
    ],
    "treatment": "A digital-product sale at gross; fees as an expense.",

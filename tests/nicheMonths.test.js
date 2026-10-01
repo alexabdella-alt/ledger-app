@@ -51,7 +51,7 @@ const KNOWN = {
   // ★ C556 closed six of the seven chart gaps by adding accounts per business type; the one
   // left is a product decision (a coaching business type, or unhide Product Revenue for
   // Consulting/Services) and stays pinned until it is made. C555 emptied every "wrong" list.
-  coach: { gaps: ["05 product_revenue", "06 product_revenue"], wrong: [] },
+  coach: { gaps: [], wrong: [] },   // C557 — course sales now have a home (Coaching & Courses)
   consultant: { gaps: [], wrong: [] },
   landlord: { gaps: [], wrong: [] },
   therapist: { gaps: [], wrong: [] },

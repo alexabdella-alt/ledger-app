@@ -123,6 +123,28 @@ const TEMPLATES = {
     ],
     hide: ["4000"],   // a services firm bills services, not product
   },
+  // ★★ C557 — COACHING & COURSES. The coach niche month (C554) had nowhere to put course sales:
+  // the nearest type, Consulting/Services, hides Product Revenue. Built the way bookkeepers who
+  // serve creators lay a chart out — ONE INCOME LINE PER STREAM, because "how much did my course
+  // make?" is the first question and a single revenue line cannot answer it: coaching sessions
+  // and programmes stay on Service Revenue, memberships on Subscription Revenue, and courses,
+  // sponsorships and affiliate commissions each get their own. Stripe/Kajabi/Circle fees are
+  // already Merchant Processing Fees (UNIVERSAL), so no second fee account to split them across.
+  // ★ PRODUCT REVENUE IS NOT HIDDEN: a coach who sells a printed journal or a book has physical
+  // product income, and a digital-products line would mislabel it. Hiding is for what a type
+  // never uses, and this one sometimes does.
+  "Coaching & Courses": {
+    add: [
+      { code: "4010", name: "Course & Digital Product Sales", category: "Revenue", system_role: "digital_product_revenue" },
+      { code: "4450", name: "Sponsorships & Brand Deals", category: "Revenue", system_role: "sponsorship_revenue" },
+      { code: "4460", name: "Affiliate Income", category: "Revenue", system_role: "affiliate_revenue" },
+      { code: "5110", name: "Contractors & Freelancers", category: "Expenses", system_role: "subcontractor_costs" },
+      { code: "6820", name: "Education & Training", category: "Expenses", system_role: "education_training" },
+      { code: "6830", name: "Dues & Memberships", category: "Expenses", system_role: "dues_memberships" },
+      { code: "6910", name: "Taxes & Licenses", category: "Expenses", system_role: "taxes_licenses" },
+    ],
+    hide: [],
+  },
   Construction: {
     add: [
       { code: "5110", name: "Subcontractor Costs", category: "Expenses", system_role: "subcontractor_costs" },
