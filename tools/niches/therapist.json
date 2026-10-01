@@ -1,0 +1,414 @@
+{
+ "niche": "therapist",
+ "label": "Solo therapist (private practice)",
+ "company": {
+  "name": "Clear Water Counseling PLLC",
+  "address": "6001 W Parmer Ln #370, Austin TX 78727",
+  "business_type": "Healthcare",
+  "form": "single-member PLLC, taxed as a sole proprietor"
+ },
+ "documents": [
+  {
+   "layout": "statement",
+   "party": "SimplePractice Payments",
+   "date": "08/08/2026",
+   "number": "SP-PO-0808",
+   "items": [
+    [
+     "Client card payments — sessions",
+     9,
+     140
+    ],
+    [
+     "Late-cancellation fee (A. Romero, 08/05)",
+     1,
+     75
+    ],
+    [
+     "Processing fees (3.15%)",
+     1,
+     -42.05
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Session income at gross; fees as an expense.",
+   "total_label": "Net payout to bank",
+   "planted": "PRIVACY: names a client. Under HIPAA that name is protected health information — and this upload sends it to the AI provider. That is the 11c gap made concrete, not a categorisation question."
+  },
+  {
+   "layout": "statement",
+   "party": "SimplePractice Payments",
+   "date": "08/15/2026",
+   "number": "SP-PO-0815",
+   "items": [
+    [
+     "Client card payments — sessions",
+     11,
+     140
+    ],
+    [
+     "Processing fees (3.15%)",
+     1,
+     -48.51
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Session income at gross.",
+   "total_label": "Net payout to bank"
+  },
+  {
+   "layout": "statement",
+   "party": "SimplePractice Payments",
+   "date": "08/22/2026",
+   "number": "SP-PO-0822",
+   "items": [
+    [
+     "Client card payments — sessions",
+     10,
+     140
+    ],
+    [
+     "Late-cancellation fee (D. Park, 08/19)",
+     1,
+     75
+    ],
+    [
+     "Processing fees (3.15%)",
+     1,
+     -46.46
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Session income at gross.",
+   "total_label": "Net payout to bank"
+  },
+  {
+   "layout": "statement",
+   "party": "SimplePractice Payments",
+   "date": "08/29/2026",
+   "number": "SP-PO-0829",
+   "items": [
+    [
+     "Client card payments — sessions",
+     8,
+     140
+    ],
+    [
+     "Processing fees (3.15%)",
+     1,
+     -35.28
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Session income at gross.",
+   "total_label": "Net payout to bank"
+  },
+  {
+   "layout": "statement",
+   "party": "Blue Cross Blue Shield of Texas",
+   "date": "08/18/2026",
+   "number": "ERA-449120",
+   "items": [
+    [
+     "Claims billed — 11 sessions (90837)",
+     11,
+     150
+    ],
+    [
+     "Contractual adjustment",
+     1,
+     -387.2
+    ],
+    [
+     "Patient responsibility (copays/coinsurance)",
+     1,
+     -275
+    ],
+    [
+     "Denied — not covered (J. Okafor, DOS 08/04)",
+     1,
+     -150
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "insurance_receivable"
+   ],
+   "treatment": "Income is what the plan allows, not what was billed.",
+   "total_label": "Paid amount",
+   "planted": "BILLED IS NOT EARNED: the $387.20 contractual adjustment is never income; copays are collected from clients separately; the denied claim is not income. Booking $1,650 as income overstates it by $537.20. Also names a client (privacy, as above)."
+  },
+  {
+   "layout": "statement",
+   "party": "Aetna",
+   "date": "08/30/2026",
+   "number": "ERA-77120",
+   "items": [
+    [
+     "Claims billed — 6 sessions (90837)",
+     6,
+     150
+    ],
+    [
+     "Contractual adjustment",
+     1,
+     -198
+    ],
+    [
+     "Patient responsibility (copays/coinsurance)",
+     1,
+     -120
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "insurance_receivable"
+   ],
+   "treatment": "Income is what the plan allows.",
+   "total_label": "Paid amount"
+  },
+  {
+   "layout": "invoice",
+   "party": "Northside Wellness Suites",
+   "date": "08/01/2026",
+   "number": "NWS-R3-0826",
+   "items": [
+    [
+     "Office sublease — Room 3, Tue/Thu/Sat, August",
+     1,
+     650
+    ]
+   ],
+   "expect": [
+    "rent_occupancy"
+   ],
+   "treatment": "Rent.",
+   "answer": "office rent"
+  },
+  {
+   "layout": "invoice",
+   "party": "SimplePractice",
+   "date": "08/01/2026",
+   "number": "SP-SUB-0826",
+   "items": [
+    [
+     "Plus plan — monthly",
+     1,
+     99
+    ]
+   ],
+   "expect": [
+    "technology_software"
+   ],
+   "treatment": "Software.",
+   "answer": "my practice management software"
+  },
+  {
+   "layout": "invoice",
+   "party": "Paubox",
+   "date": "08/01/2026",
+   "number": "PBX-55102",
+   "items": [
+    [
+     "HIPAA-compliant email — monthly",
+     1,
+     29
+    ]
+   ],
+   "expect": [
+    "technology_software"
+   ],
+   "treatment": "Software.",
+   "answer": "secure email"
+  },
+  {
+   "layout": "statement",
+   "party": "HPSO",
+   "date": "08/03/2026",
+   "number": "HPSO-LPC-2026",
+   "items": [
+    [
+     "Professional liability (malpractice) — annual premium",
+     1,
+     412
+    ]
+   ],
+   "expect": [
+    [
+     "malpractice_insurance",
+     "prepaid_expenses"
+    ]
+   ],
+   "treatment": "Malpractice insurance (annual; small enough to expense).",
+   "planted": "AN ANNUAL PREMIUM: strictly prepaid over 12 months; at $412 most bookkeepers expense it. Either is defensible.",
+   "answer": "malpractice insurance"
+  },
+  {
+   "layout": "statement",
+   "party": "Texas Behavioral Health Executive Council",
+   "date": "08/09/2026",
+   "number": "BHEC-LPC-77120",
+   "items": [
+    [
+     "LPC license renewal (biennial)",
+     1,
+     211
+    ]
+   ],
+   "expect": [
+    "taxes_licenses"
+   ],
+   "treatment": "License fee.",
+   "answer": "license renewal"
+  },
+  {
+   "layout": "invoice",
+   "party": "PESI",
+   "date": "08/12/2026",
+   "number": "PESI-4410291",
+   "items": [
+    [
+     "CE workshop — Trauma-Informed Care (6 CE hours)",
+     1,
+     249.99
+    ]
+   ],
+   "expect": [
+    "education_training"
+   ],
+   "treatment": "Continuing education.",
+   "answer": "continuing education course"
+  },
+  {
+   "layout": "invoice",
+   "party": "Dr. Elena Ruiz, LPC-S",
+   "date": "08/15/2026",
+   "number": "ER-0826",
+   "items": [
+    [
+     "Clinical supervision — August",
+     2,
+     90
+    ]
+   ],
+   "expect": [
+    "professional_services"
+   ],
+   "treatment": "Professional fees.",
+   "answer": "my clinical supervisor"
+  },
+  {
+   "layout": "invoice",
+   "party": "Psychology Today",
+   "date": "08/18/2026",
+   "number": "PT-881203",
+   "items": [
+    [
+     "Therapist directory listing — monthly",
+     1,
+     29.95
+    ]
+   ],
+   "expect": [
+    "marketing_advertising"
+   ],
+   "treatment": "Advertising.",
+   "answer": "psychology today profile"
+  },
+  {
+   "layout": "statement",
+   "party": "American Counseling Association",
+   "date": "08/20/2026",
+   "number": "ACA-M-55102",
+   "items": [
+    [
+     "Professional membership — annual dues",
+     1,
+     199
+    ]
+   ],
+   "expect": [
+    "dues_subscriptions"
+   ],
+   "treatment": "Professional dues.",
+   "answer": "professional association membership"
+  },
+  {
+   "layout": "receipt",
+   "party": "Target",
+   "date": "08/22/2026",
+   "number": "TGT-0822-1180",
+   "items": [
+    [
+     "Sand tray figures, assorted",
+     1,
+     42.97
+    ],
+    [
+     "Art supplies — markers, clay, paper",
+     1,
+     36.48
+    ]
+   ],
+   "expect": [
+    [
+     "office_supplies",
+     "medical_supplies"
+    ]
+   ],
+   "treatment": "Therapy supplies.",
+   "tax_rate": 0.0825,
+   "answer": "supplies for play therapy"
+  },
+  {
+   "layout": "receipt",
+   "party": "Office Depot",
+   "date": "08/25/2026",
+   "number": "OD-221840",
+   "items": [
+    [
+     "Locking file cabinet, 2-drawer",
+     1,
+     189.0
+    ]
+   ],
+   "expect": [
+    "office_supplies"
+   ],
+   "treatment": "Office equipment (expensed).",
+   "tax_rate": 0.0825,
+   "answer": "locking file cabinet for client records"
+  },
+  {
+   "layout": "statement",
+   "party": "IRS — Form 1040-ES",
+   "date": "08/28/2026",
+   "number": "1040ES-Q3",
+   "items": [
+    [
+     "Estimated tax payment — Q3 2026",
+     1,
+     2800
+    ]
+   ],
+   "expect": [
+    "owners_draw"
+   ],
+   "treatment": "The owner's personal income tax — NOT a business expense.",
+   "planted": "NOT AN EXPENSE (as for the consultant).",
+   "answer": "quarterly taxes"
+  }
+ ]
+}

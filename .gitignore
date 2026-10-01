@@ -26,3 +26,6 @@ tools/drive-fixtures/
 
 # The pile drives 1-3 used — not reproducible (the generator used a salted hash), kept by hand.
 tools/drive-fixtures-drives1-3/
+
+# Niche test months — regenerate with `python3 tools/makeNicheMonths.py`.
+tools/niche-fixtures/

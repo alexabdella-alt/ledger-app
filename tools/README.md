@@ -62,6 +62,12 @@ The run sheet and pass/fail criteria are `docs/DRIVE4_ACCEPTANCE.md` §14.
 - `drive-fixtures-drives1-3/` (also gitignored) holds the pile the first three drives used,
   which can no longer be regenerated.
 
+## `makeNicheMonths.py` — five more test months, one per target niche
+
+Consultant, coach, landlord, trades, therapist — 94 documents from `tools/niches/*.json`, rendered
+to `tools/niche-fixtures/<niche>/` with answer keys. The same JSON is checked offline in the suite
+(`tests/nicheMonths.test.js`). Run sheet and findings: `docs/NICHE_MONTHS.md`.
+
 ## `O107` note
 
 `tests/perfProfile.test.js` and `docs/O107_SLOW_SCREENS.md` cover derivation cost; nothing in

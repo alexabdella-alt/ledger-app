@@ -1,0 +1,404 @@
+{
+ "niche": "consultant",
+ "label": "Solo consultant",
+ "company": {
+  "name": "Lakeview Strategy LLC",
+  "address": "1200 Lakeview Ave, Suite 4, Austin TX 78702",
+  "business_type": "Consulting/Services",
+  "form": "single-member LLC, taxed as a sole proprietor"
+ },
+ "documents": [
+  {
+   "layout": "our_invoice",
+   "party": "Brightline Health Inc.",
+   "date": "08/01/2026",
+   "number": "LS-1041",
+   "items": [
+    [
+     "Strategy engagement — August retainer",
+     1,
+     6500
+    ]
+   ],
+   "expect": [
+    "service_revenue"
+   ],
+   "treatment": "August consulting income; owed to you until paid (money owed to you)."
+  },
+  {
+   "layout": "invoice",
+   "party": "Capital Factory Coworking",
+   "date": "08/01/2026",
+   "number": "CF-77812",
+   "items": [
+    [
+     "Dedicated desk — August",
+     1,
+     425
+    ]
+   ],
+   "expect": [
+    "rent_occupancy"
+   ],
+   "treatment": "Rent.",
+   "answer": "coworking desk rent"
+  },
+  {
+   "layout": "invoice",
+   "party": "Google Workspace",
+   "date": "08/02/2026",
+   "number": "GW-552190",
+   "items": [
+    [
+     "Business Standard — 2 users",
+     2,
+     14.4
+    ]
+   ],
+   "expect": [
+    "technology_software"
+   ],
+   "treatment": "Software.",
+   "answer": "email and docs software"
+  },
+  {
+   "layout": "invoice",
+   "party": "Adobe",
+   "date": "08/03/2026",
+   "number": "AD-9930124",
+   "items": [
+    [
+     "Creative Cloud All Apps — monthly",
+     1,
+     59.99
+    ]
+   ],
+   "expect": [
+    "technology_software"
+   ],
+   "treatment": "Software.",
+   "answer": "design software subscription"
+  },
+  {
+   "layout": "invoice",
+   "party": "Hartwell Design Studio",
+   "date": "08/05/2026",
+   "number": "HDS-208",
+   "items": [
+    [
+     "Slide deck design — Brightline board meeting",
+     1,
+     1850
+    ]
+   ],
+   "expect": [
+    "subcontractor_costs"
+   ],
+   "treatment": "A subcontractor.",
+   "terms": "Net 15",
+   "planted": "1099 WATCH: a sole-proprietor designer paid $1,850 by bank transfer — needs a 1099-NEC at year end. The 1099 tracker should list them.",
+   "answer": "designer I hired for a client deck"
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Mesa Verde Foods",
+   "date": "08/07/2026",
+   "number": "LS-1042",
+   "items": [
+    [
+     "Market entry assessment — phase 1",
+     1,
+     9800
+    ]
+   ],
+   "expect": [
+    "service_revenue"
+   ],
+   "treatment": "Consulting income."
+  },
+  {
+   "layout": "receipt",
+   "party": "Apple Store Domain",
+   "date": "08/08/2026",
+   "number": "R-48821",
+   "items": [
+    [
+     "MacBook Air 15-inch M4",
+     1,
+     1899.0
+    ]
+   ],
+   "expect": [
+    [
+     "office_supplies",
+     "fixed_assets"
+    ]
+   ],
+   "treatment": "Equipment under $2,500 — expensed under the de minimis safe harbor.",
+   "tax_rate": 0.0825,
+   "planted": "OVER $2,000 SO THE APP SHOULD ASK whether to treat it as equipment; the right answer is to expense it — it is under the $2,500 de minimis safe harbor.",
+   "answer": "new laptop for work"
+  },
+  {
+   "layout": "receipt",
+   "party": "Uchiko",
+   "date": "08/12/2026",
+   "number": "T-3318",
+   "items": [
+    [
+     "Lunch entrees",
+     2,
+     38.0
+    ],
+    [
+     "Iced tea",
+     2,
+     4.5
+    ]
+   ],
+   "expect": [
+    "travel_entertainment"
+   ],
+   "treatment": "A client meal (50% deductible).",
+   "tax_rate": 0.0825,
+   "planted": "A MEAL OUT — for a consultant this IS a meal, unlike food bought by a restaurant (C553's 'a meal out stays a meal').",
+   "answer": "lunch with a client"
+  },
+  {
+   "layout": "invoice",
+   "party": "Southwest Airlines",
+   "date": "08/14/2026",
+   "number": "SW-2KQ9LP",
+   "items": [
+    [
+     "Flight AUS–PHX round trip — Mesa Verde site visit",
+     1,
+     384.2
+    ]
+   ],
+   "expect": [
+    "travel_entertainment"
+   ],
+   "treatment": "Business travel.",
+   "answer": "flight to see a client"
+  },
+  {
+   "layout": "invoice",
+   "party": "Hilton Phoenix Downtown",
+   "date": "08/15/2026",
+   "number": "HPD-77341",
+   "items": [
+    [
+     "Room — 2 nights",
+     2,
+     189.0
+    ],
+    [
+     "Occupancy tax",
+     1,
+     51.03
+    ]
+   ],
+   "expect": [
+    [
+     "client_reimbursables",
+     "travel_entertainment"
+    ]
+   ],
+   "treatment": "Travel the client is paying back.",
+   "planted": "REBILLED: the client reimburses this on invoice LS-1044. Client Reimbursable Expenses is the tidy home; Travel is defensible.",
+   "answer": "hotel for the client trip, the client is paying me back"
+  },
+  {
+   "layout": "statement",
+   "party": "The Hartford",
+   "date": "08/15/2026",
+   "number": "POL-55E-20417",
+   "items": [
+    [
+     "Professional liability (E&O) — monthly premium",
+     1,
+     112.0
+    ]
+   ],
+   "expect": [
+    "insurance"
+   ],
+   "treatment": "Insurance.",
+   "answer": "liability insurance"
+  },
+  {
+   "layout": "invoice",
+   "party": "Kim & Avery CPAs",
+   "date": "08/18/2026",
+   "number": "KA-3091",
+   "items": [
+    [
+     "Q2 bookkeeping review & tax planning",
+     1,
+     650
+    ]
+   ],
+   "expect": [
+    "professional_services"
+   ],
+   "treatment": "Accountant's fees.",
+   "answer": "my accountant"
+  },
+  {
+   "layout": "invoice",
+   "party": "LinkedIn",
+   "date": "08/20/2026",
+   "number": "LI-88213044",
+   "items": [
+    [
+     "Premium Business — monthly",
+     1,
+     59.99
+    ]
+   ],
+   "expect": [
+    [
+     "marketing_advertising",
+     "technology_software"
+    ]
+   ],
+   "treatment": "Prospecting tool.",
+   "answer": "linkedin premium for finding clients"
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Mesa Verde Foods",
+   "date": "08/22/2026",
+   "number": "LS-1044",
+   "items": [
+    [
+     "Reimbursable travel — airfare, Phoenix site visit",
+     1,
+     384.2
+    ],
+    [
+     "Reimbursable travel — hotel, Phoenix site visit",
+     1,
+     429.03
+    ]
+   ],
+   "expect": [
+    [
+     "client_reimbursables",
+     "service_revenue"
+    ]
+   ],
+   "treatment": "A reimbursement of costs, not new consulting income.",
+   "planted": "NOT NEW INCOME: billing a client back for travel. Booked as fresh consulting revenue it double-counts the trip as both income and expense."
+  },
+  {
+   "layout": "statement",
+   "party": "City of Austin",
+   "date": "08/25/2026",
+   "number": "BL-2026-118842",
+   "items": [
+    [
+     "Business license renewal",
+     1,
+     75
+    ]
+   ],
+   "expect": [
+    "taxes_licenses"
+   ],
+   "treatment": "A license fee.",
+   "answer": "city business license"
+  },
+  {
+   "layout": "invoice",
+   "party": "Strategy Summit Austin",
+   "date": "08/26/2026",
+   "number": "SSA-4410",
+   "items": [
+    [
+     "Conference pass — 2 days",
+     1,
+     895
+    ]
+   ],
+   "expect": [
+    [
+     "education_training",
+     "travel_entertainment"
+    ]
+   ],
+   "treatment": "Professional development / conference.",
+   "answer": "conference ticket"
+  },
+  {
+   "layout": "statement",
+   "party": "IRS — Form 1040-ES",
+   "date": "08/28/2026",
+   "number": "1040ES-Q3",
+   "items": [
+    [
+     "Estimated tax payment — Q3 2026",
+     1,
+     3200
+    ]
+   ],
+   "expect": [
+    "owners_draw"
+   ],
+   "treatment": "The owner's personal income tax — NOT a business expense.",
+   "planted": "NOT AN EXPENSE: a single-member LLC's income tax is the owner's. It comes out of owner's draw. Booked as a business expense it understates profit by $3,200.",
+   "answer": "quarterly taxes"
+  },
+  {
+   "layout": "receipt",
+   "party": "Office Depot",
+   "date": "08/30/2026",
+   "number": "OD-118230",
+   "items": [
+    [
+     "Printer paper, 5 reams",
+     1,
+     32.45
+    ],
+    [
+     "Toner cartridge",
+     1,
+     74.99
+    ],
+    [
+     "Notebooks, 6 pk",
+     1,
+     12.49
+    ]
+   ],
+   "expect": [
+    "office_supplies"
+   ],
+   "treatment": "Office supplies.",
+   "tax_rate": 0.0825,
+   "answer": "office supplies"
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Brightline Health Inc.",
+   "date": "08/31/2026",
+   "number": "LS-1045",
+   "items": [
+    [
+     "Strategy engagement — SEPTEMBER retainer (billed in advance)",
+     1,
+     6500
+    ]
+   ],
+   "expect": [
+    [
+     "deferred_revenue"
+    ]
+   ],
+   "treatment": "Billed in August for September work — September's income.",
+   "terms": "Due 09/15/2026",
+   "planted": "TIMING: invoiced Aug 31 for September. It is September's revenue; in August it is money received/owed in advance (deferred revenue). Booked as August income it overstates August by $6,500."
+  }
+ ]
+}

@@ -1,0 +1,420 @@
+{
+ "niche": "landlord",
+ "label": "Small landlord (two properties)",
+ "company": {
+  "name": "Oakmont Rentals LLC",
+  "address": "PO Box 4410, Austin TX 78765",
+  "business_type": "Real Estate",
+  "form": "single-member LLC; properties: Elm St duplex (units A and B), Burnet Rd condo #12"
+ },
+ "documents": [
+  {
+   "layout": "statement",
+   "party": "Cornerstone Property Management",
+   "date": "08/05/2026",
+   "number": "OS-ELM-0826",
+   "items": [
+    [
+     "Rent collected — Elm St Unit A",
+     1,
+     1650
+    ],
+    [
+     "Rent collected — Elm St Unit B",
+     1,
+     1595
+    ],
+    [
+     "Late fee — Unit B",
+     1,
+     50
+    ],
+    [
+     "Management fee (8% of rent)",
+     1,
+     -259.6
+    ],
+    [
+     "Repair — Unit A garbage disposal",
+     1,
+     -185
+    ]
+   ],
+   "expect": [
+    "rental_income",
+    "property_management",
+    "repairs_maintenance"
+   ],
+   "treatment": "Rent at GROSS; the manager's fee and the repair are expenses.",
+   "total_label": "Owner distribution",
+   "planted": "GROSS NOT NET: $3,295 of rental income, $444.60 of expenses. Booking the $2,850.40 transfer as income understates both. Property: Elm St."
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Dana Whitfield",
+   "date": "08/01/2026",
+   "number": "RENT-BR12-0826",
+   "items": [
+    [
+     "Rent — August, Burnet Rd condo #12",
+     1,
+     1875
+    ]
+   ],
+   "expect": [
+    "rental_income"
+   ],
+   "treatment": "Rental income. Property: Burnet Rd.",
+   "terms": "Due 08/01/2026"
+  },
+  {
+   "layout": "statement",
+   "party": "Rocket Mortgage",
+   "date": "08/01/2026",
+   "number": "LN-4471-0826",
+   "items": [
+    [
+     "Principal",
+     1,
+     612.18
+    ],
+    [
+     "Interest",
+     1,
+     1489.32
+    ],
+    [
+     "Escrow — property tax & insurance",
+     1,
+     701.4
+    ]
+   ],
+   "expect": [
+    "long_term_debt",
+    "interest_expense",
+    "prepaid_expenses"
+   ],
+   "treatment": "Only the interest is an expense.",
+   "total_label": "Payment due",
+   "planted": "ONLY INTEREST IS AN EXPENSE: principal pays down the loan; escrow is money held for taxes and insurance. Booking the whole $2,802.90 as an expense overstates expenses by $1,313.58. Property: Elm St.",
+   "answer": "mortgage payment"
+  },
+  {
+   "layout": "statement",
+   "party": "Chase Home Lending",
+   "date": "08/01/2026",
+   "number": "LN-9902-0826",
+   "items": [
+    [
+     "Principal",
+     1,
+     402.77
+    ],
+    [
+     "Interest",
+     1,
+     1018.45
+    ],
+    [
+     "Escrow — insurance",
+     1,
+     88.2
+    ]
+   ],
+   "expect": [
+    "long_term_debt",
+    "interest_expense",
+    "prepaid_expenses"
+   ],
+   "treatment": "Only the interest is an expense. Property: Burnet Rd.",
+   "total_label": "Payment due",
+   "answer": "condo mortgage"
+  },
+  {
+   "layout": "statement",
+   "party": "Travis County Tax Office",
+   "date": "08/08/2026",
+   "number": "PT-2026-BR12",
+   "items": [
+    [
+     "2026 property tax — first-half installment, Burnet Rd condo #12",
+     1,
+     2214.5
+    ]
+   ],
+   "expect": [
+    "property_taxes"
+   ],
+   "treatment": "Property tax. Property: Burnet Rd.",
+   "planted": "PAID DIRECTLY, not from escrow — so it is an expense now. (Elm St's tax comes out of escrow and must not be counted twice.)",
+   "answer": "property tax on the condo"
+  },
+  {
+   "layout": "statement",
+   "party": "Austin Water",
+   "date": "08/10/2026",
+   "number": "AW-55120-0826",
+   "items": [
+    [
+     "Water & wastewater — Elm St duplex (owner-paid)",
+     1,
+     142.88
+    ]
+   ],
+   "expect": [
+    "utilities"
+   ],
+   "treatment": "Utilities. Property: Elm St.",
+   "answer": "water bill for the duplex"
+  },
+  {
+   "layout": "invoice",
+   "party": "Balcones Roofing",
+   "date": "08/12/2026",
+   "number": "BR-2291",
+   "items": [
+    [
+     "Tear-off & replace, architectural shingles (28 squares)",
+     28,
+     465
+    ],
+    [
+     "City permit",
+     1,
+     185
+    ]
+   ],
+   "expect": [
+    "fixed_assets"
+   ],
+   "treatment": "An improvement — capitalised and depreciated over 27.5 years.",
+   "terms": "Due on completion",
+   "planted": "CAPITALISE, 27.5 YEARS: a new roof on a residential rental is an improvement, depreciated over 27.5 years. The app suggests 39 years for buildings (the commercial life). Property: Elm St."
+  },
+  {
+   "layout": "invoice",
+   "party": "Lone Oak Plumbing",
+   "date": "08/14/2026",
+   "number": "LOP-7731",
+   "items": [
+    [
+     "Water heater replacement — Unit B, 40 gal",
+     1,
+     1385
+    ]
+   ],
+   "expect": [
+    [
+     "repairs_maintenance",
+     "fixed_assets"
+    ]
+   ],
+   "treatment": "Under the $2,500 de minimis safe harbor — expensing is defensible.",
+   "planted": "EITHER WAY: under $2,500 it can be expensed; capitalising is also defensible. The app should ask or say which. Property: Elm St.",
+   "answer": "new water heater for unit B"
+  },
+  {
+   "layout": "statement",
+   "party": "Steadily Insurance",
+   "date": "08/15/2026",
+   "number": "STD-BR12-0826",
+   "items": [
+    [
+     "Landlord policy — Burnet Rd condo #12, monthly",
+     1,
+     64
+    ]
+   ],
+   "expect": [
+    "insurance"
+   ],
+   "treatment": "Insurance. Property: Burnet Rd.",
+   "answer": "landlord insurance"
+  },
+  {
+   "layout": "statement",
+   "party": "Burnet Place Condominium Association",
+   "date": "08/01/2026",
+   "number": "HOA-12-0826",
+   "items": [
+    [
+     "HOA dues — August, unit 12",
+     1,
+     385
+    ]
+   ],
+   "expect": [
+    "hoa_dues"
+   ],
+   "treatment": "HOA dues. Property: Burnet Rd.",
+   "answer": "HOA dues"
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Marcus Bell",
+   "date": "08/20/2026",
+   "number": "DEP-ELMA-0920",
+   "items": [
+    [
+     "Security deposit — Unit A lease starting 09/01",
+     1,
+     1650
+    ],
+    [
+     "First month's rent — September (paid early)",
+     1,
+     1650
+    ]
+   ],
+   "expect": [
+    "security_deposits_held",
+    "deferred_revenue"
+   ],
+   "treatment": "Neither is August income.",
+   "planted": "NOT INCOME: the deposit is owed back to the tenant (a liability); September's rent paid early is September's income. The chart's 'Security Deposits' account is an ASSET — deposits YOU paid — the wrong side. Property: Elm St."
+  },
+  {
+   "layout": "invoice",
+   "party": "Zillow Rental Manager",
+   "date": "08/22/2026",
+   "number": "ZRM-552201",
+   "items": [
+    [
+     "Listing — Elm St Unit A, 30 days",
+     1,
+     29.99
+    ]
+   ],
+   "expect": [
+    "marketing_advertising"
+   ],
+   "treatment": "Advertising. Property: Elm St.",
+   "answer": "listing the unit for rent"
+  },
+  {
+   "layout": "invoice",
+   "party": "TransUnion SmartMove",
+   "date": "08/24/2026",
+   "number": "SM-9921-03",
+   "items": [
+    [
+     "Tenant screening reports",
+     3,
+     40
+    ]
+   ],
+   "expect": [
+    [
+     "professional_services",
+     "marketing_advertising"
+    ]
+   ],
+   "treatment": "Tenant screening. Property: Elm St.",
+   "answer": "background checks on applicants"
+  },
+  {
+   "layout": "receipt",
+   "party": "The Home Depot",
+   "date": "08/24/2026",
+   "number": "HD-6612-0824",
+   "items": [
+    [
+     "Interior paint, 5 gal",
+     1,
+     189.0
+    ],
+    [
+     "Rollers & trays",
+     1,
+     32.97
+    ],
+    [
+     "Caulk, 4 pk",
+     1,
+     18.48
+    ]
+   ],
+   "expect": [
+    "repairs_maintenance"
+   ],
+   "treatment": "Turnover repairs. Property: Elm St.",
+   "tax_rate": 0.0825,
+   "answer": "paint and supplies to fix up the unit"
+  },
+  {
+   "layout": "invoice",
+   "party": "Sparkle Clean ATX",
+   "date": "08/26/2026",
+   "number": "SC-1180",
+   "items": [
+    [
+     "Move-out cleaning — Elm St Unit A",
+     1,
+     240
+    ]
+   ],
+   "expect": [
+    "repairs_maintenance"
+   ],
+   "treatment": "Cleaning & maintenance. Property: Elm St.",
+   "answer": "cleaning after the tenant moved out"
+  },
+  {
+   "layout": "receipt",
+   "party": "Shell",
+   "date": "08/26/2026",
+   "number": "SH-44012",
+   "items": [
+    [
+     "Unleaded, 12.4 gal @ $3.19",
+     1,
+     39.56
+    ]
+   ],
+   "expect": [
+    [
+     "car_truck_expenses",
+     "travel_entertainment"
+    ]
+   ],
+   "treatment": "Local driving to a rental (auto & travel).",
+   "planted": "AUTO: driving to inspect a rental. Schedule E 'auto and travel'; the standard mileage rate is often better than gas receipts.",
+   "answer": "gas driving to the rental"
+  },
+  {
+   "layout": "invoice",
+   "party": "Kim & Avery CPAs",
+   "date": "08/28/2026",
+   "number": "KA-3112",
+   "items": [
+    [
+     "Rental property tax planning",
+     1,
+     350
+    ]
+   ],
+   "expect": [
+    "professional_services"
+   ],
+   "treatment": "Accountant's fees.",
+   "answer": "my accountant"
+  },
+  {
+   "layout": "statement",
+   "party": "Ally Bank",
+   "date": "08/31/2026",
+   "number": "ALLY-0831",
+   "items": [
+    [
+     "Interest earned — reserve savings",
+     1,
+     4.12
+    ]
+   ],
+   "expect": [
+    "interest_income"
+   ],
+   "treatment": "Interest income."
+  }
+ ]
+}

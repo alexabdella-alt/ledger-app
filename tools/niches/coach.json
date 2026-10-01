@@ -1,0 +1,484 @@
+{
+ "niche": "coach",
+ "label": "Online coach & course creator",
+ "company": {
+  "name": "Bright Path Coaching LLC",
+  "address": "88 Mueller Blvd #210, Austin TX 78723",
+  "business_type": "Consulting/Services",
+  "form": "single-member LLC, taxed as a sole proprietor"
+ },
+ "documents": [
+  {
+   "layout": "statement",
+   "party": "Stripe",
+   "date": "08/04/2026",
+   "number": "po_1Pq8X2",
+   "items": [
+    [
+     "1:1 coaching sessions",
+     6,
+     150
+    ],
+    [
+     "Group program — August cohort",
+     4,
+     497
+    ],
+    [
+     "Stripe processing fees",
+     1,
+     -86.75
+    ],
+    [
+     "Refund — session canceled 07/30",
+     1,
+     -150
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Income at GROSS, fees as an expense, the refund reducing income.",
+   "total_label": "Net payout to bank",
+   "planted": "GROSS NOT NET: $2,888 of income, $86.75 of fees, a $150 refund. Booking the $2,651.25 deposit as income understates both income and fees."
+  },
+  {
+   "layout": "statement",
+   "party": "Stripe",
+   "date": "08/11/2026",
+   "number": "po_1PrA91",
+   "items": [
+    [
+     "1:1 coaching sessions",
+     5,
+     150
+    ],
+    [
+     "VIP intensive day",
+     1,
+     1200
+    ],
+    [
+     "Stripe processing fees",
+     1,
+     -58.35
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Income at gross, fees as an expense.",
+   "total_label": "Net payout to bank"
+  },
+  {
+   "layout": "statement",
+   "party": "Stripe",
+   "date": "08/18/2026",
+   "number": "po_1PsB30",
+   "items": [
+    [
+     "1:1 coaching sessions",
+     7,
+     150
+    ],
+    [
+     "Stripe processing fees",
+     1,
+     -32.55
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Income at gross, fees as an expense.",
+   "total_label": "Net payout to bank"
+  },
+  {
+   "layout": "statement",
+   "party": "Stripe",
+   "date": "08/25/2026",
+   "number": "po_1PtC77",
+   "items": [
+    [
+     "1:1 coaching sessions",
+     4,
+     150
+    ],
+    [
+     "Group program — late enrollment",
+     1,
+     497
+    ],
+    [
+     "Stripe processing fees",
+     1,
+     -33.31
+    ]
+   ],
+   "expect": [
+    "service_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Income at gross, fees as an expense.",
+   "total_label": "Net payout to bank"
+  },
+  {
+   "layout": "statement",
+   "party": "Kajabi Payments",
+   "date": "08/15/2026",
+   "number": "KJ-PO-20816",
+   "items": [
+    [
+     "'Clarity Blueprint' online course",
+     9,
+     197
+    ],
+    [
+     "Kajabi Payments fees",
+     1,
+     -54.12
+    ]
+   ],
+   "expect": [
+    "product_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "A digital-product sale at gross; fees as an expense.",
+   "total_label": "Net payout to bank",
+   "planted": "A DIGITAL PRODUCT: course sales are product income. The Consulting/Services category set HIDES Product Revenue — so where does it go?"
+  },
+  {
+   "layout": "statement",
+   "party": "Kajabi Payments",
+   "date": "08/31/2026",
+   "number": "KJ-PO-20831",
+   "items": [
+    [
+     "'Clarity Blueprint' online course",
+     12,
+     197
+    ],
+    [
+     "Kajabi Payments fees",
+     1,
+     -72.16
+    ]
+   ],
+   "expect": [
+    "product_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "A digital-product sale at gross; fees as an expense.",
+   "total_label": "Net payout to bank"
+  },
+  {
+   "layout": "statement",
+   "party": "Circle",
+   "date": "08/31/2026",
+   "number": "CIR-0831-7712",
+   "items": [
+    [
+     "Community membership — monthly members",
+     38,
+     29
+    ],
+    [
+     "Payment processing",
+     1,
+     -43.36
+    ]
+   ],
+   "expect": [
+    "subscription_revenue",
+    "merchant_processing_fees"
+   ],
+   "treatment": "Membership income at gross.",
+   "total_label": "Net payout to bank"
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Lumen Wellness Co.",
+   "date": "08/10/2026",
+   "number": "BP-2026-07",
+   "items": [
+    [
+     "Sponsored Instagram series — 3 posts + 2 stories",
+     1,
+     2500
+    ]
+   ],
+   "expect": [
+    [
+     "sponsorship_revenue",
+     "other_income",
+     "service_revenue"
+    ]
+   ],
+   "treatment": "Brand-deal income.",
+   "terms": "Net 30",
+   "planted": "A BRAND DEAL: business income, fully taxable; the brand may send a 1099-NEC."
+  },
+  {
+   "layout": "invoice",
+   "party": "Kajabi",
+   "date": "08/01/2026",
+   "number": "KJ-INV-88120",
+   "items": [
+    [
+     "Growth plan — monthly",
+     1,
+     199
+    ]
+   ],
+   "expect": [
+    "technology_software"
+   ],
+   "treatment": "Software.",
+   "answer": "my course platform subscription"
+  },
+  {
+   "layout": "invoice",
+   "party": "Zoom",
+   "date": "08/01/2026",
+   "number": "ZM-55102391",
+   "items": [
+    [
+     "Zoom Pro — monthly",
+     1,
+     15.99
+    ]
+   ],
+   "expect": [
+    "technology_software"
+   ],
+   "treatment": "Software.",
+   "answer": "zoom for client calls"
+  },
+  {
+   "layout": "invoice",
+   "party": "Canva",
+   "date": "08/02/2026",
+   "number": "CNV-0098812",
+   "items": [
+    [
+     "Canva Pro — monthly",
+     1,
+     14.99
+    ]
+   ],
+   "expect": [
+    "technology_software"
+   ],
+   "treatment": "Software.",
+   "answer": "canva for my graphics"
+  },
+  {
+   "layout": "statement",
+   "party": "Meta Platforms",
+   "date": "08/31/2026",
+   "number": "FB-ADS-0826",
+   "items": [
+    [
+     "Campaign — 'Free clarity call' lead ads",
+     1,
+     812.4
+    ],
+    [
+     "Campaign — course retargeting",
+     1,
+     428.15
+    ]
+   ],
+   "expect": [
+    "marketing_advertising"
+   ],
+   "treatment": "Advertising.",
+   "answer": "facebook and instagram ads"
+  },
+  {
+   "layout": "invoice",
+   "party": "Upwork",
+   "date": "08/12/2026",
+   "number": "UPW-T88213",
+   "items": [
+    [
+     "Video editing — 6 short-form videos (contract #88213)",
+     6,
+     85
+    ],
+    [
+     "Upwork service fee",
+     1,
+     25.5
+    ]
+   ],
+   "expect": [
+    "subcontractor_costs"
+   ],
+   "treatment": "A freelancer, paid through a platform.",
+   "planted": "1099 TRAP: paid THROUGH Upwork — the platform reports it on a 1099-K, so you do NOT send a 1099-NEC. A tracker that says this editor needs a 1099 is wrong.",
+   "answer": "video editor I hired"
+  },
+  {
+   "layout": "receipt",
+   "party": "B&H Photo",
+   "date": "08/09/2026",
+   "number": "BH-7710223",
+   "items": [
+    [
+     "Sony ZV-E10 II camera kit",
+     1,
+     1099.0
+    ],
+    [
+     "SanDisk 128GB card",
+     1,
+     24.99
+    ]
+   ],
+   "expect": [
+    [
+     "office_supplies",
+     "fixed_assets"
+    ]
+   ],
+   "treatment": "Equipment under $2,500 — expensed under the de minimis safe harbor.",
+   "tax_rate": 0.0825,
+   "answer": "a camera for my videos"
+  },
+  {
+   "layout": "receipt",
+   "party": "Amazon",
+   "date": "08/09/2026",
+   "number": "114-7720931",
+   "items": [
+    [
+     "Ring light, 18-inch",
+     1,
+     89.99
+    ],
+    [
+     "Lavalier mic, wireless pair",
+     1,
+     129.0
+    ]
+   ],
+   "expect": [
+    "office_supplies"
+   ],
+   "treatment": "Small equipment.",
+   "tax_rate": 0.0825,
+   "answer": "lighting and a mic for filming"
+  },
+  {
+   "layout": "invoice",
+   "party": "Coach Mastery Institute",
+   "date": "08/05/2026",
+   "number": "CMI-INST2-4471",
+   "items": [
+    [
+     "Advanced coaching certification — installment 2 of 3",
+     1,
+     600
+    ]
+   ],
+   "expect": [
+    "education_training"
+   ],
+   "treatment": "Professional education.",
+   "answer": "my coaching certification course"
+  },
+  {
+   "layout": "card_statement",
+   "party": "Chase Ink Business — card ending 4417",
+   "date": "08/31/2026",
+   "number": "STMT-0826",
+   "items": [
+    [
+     "08/03  NOTION LABS INC",
+     1,
+     10.0
+    ],
+    [
+     "08/06  WHOLE FOODS MKT #10234",
+     1,
+     86.42
+    ],
+    [
+     "08/09  NETFLIX.COM",
+     1,
+     15.49
+    ],
+    [
+     "08/14  STARBUCKS #2281",
+     1,
+     6.85
+    ],
+    [
+     "08/17  GODADDY.COM",
+     1,
+     21.99
+    ],
+    [
+     "08/22  USPS PO 4823",
+     1,
+     12.4
+    ],
+    [
+     "08/27  SPOTIFY USA",
+     1,
+     11.99
+    ]
+   ],
+   "expect": [
+    "technology_software",
+    "office_supplies",
+    "owners_draw"
+   ],
+   "treatment": "Business software and postage; the rest is personal.",
+   "total_label": "New balance",
+   "planted": "PERSONAL CHARGES ON THE BUSINESS CARD: Whole Foods, Netflix, Starbucks and Spotify are personal — owner's draw, not expenses. A book that expenses Netflix overstates deductions."
+  },
+  {
+   "layout": "statement",
+   "party": "Spectrum",
+   "date": "08/20/2026",
+   "number": "SPEC-8817002",
+   "items": [
+    [
+     "Home internet — August",
+     1,
+     79.99
+    ]
+   ],
+   "expect": [
+    "utilities"
+   ],
+   "treatment": "Home internet used for the business.",
+   "planted": "HOME OFFICE: only the business share is deductible — books it in full and the tax side applies the percentage, or books the share. Either, but it must not be silent.",
+   "answer": "home internet I use for work"
+  },
+  {
+   "layout": "statement",
+   "party": "IRS — Form 1040-ES",
+   "date": "08/28/2026",
+   "number": "1040ES-Q3",
+   "items": [
+    [
+     "Estimated tax payment — Q3 2026",
+     1,
+     2400
+    ]
+   ],
+   "expect": [
+    "owners_draw"
+   ],
+   "treatment": "The owner's personal income tax — NOT a business expense.",
+   "planted": "NOT AN EXPENSE (as for the consultant).",
+   "answer": "quarterly taxes"
+  }
+ ]
+}

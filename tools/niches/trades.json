@@ -1,0 +1,449 @@
+{
+ "niche": "trades",
+ "label": "HVAC & home-services shop (owner + 2 technicians)",
+ "company": {
+  "name": "Cedar Creek Home Services LLC",
+  "address": "9407 Research Blvd, Austin TX 78759",
+  "business_type": "Construction",
+  "form": "single-member LLC with two W-2 technicians"
+ },
+ "documents": [
+  {
+   "layout": "our_invoice",
+   "party": "Laura Chen",
+   "date": "08/04/2026",
+   "number": "CC-3301",
+   "items": [
+    [
+     "Diagnostic & service call",
+     1,
+     129
+    ],
+    [
+     "Run capacitor 45/5 MFD",
+     1,
+     68
+    ],
+    [
+     "Contactor, 2-pole 40A",
+     1,
+     54
+    ],
+    [
+     "Labor, hours",
+     1.5,
+     115
+    ]
+   ],
+   "expect": [
+    "service_revenue"
+   ],
+   "treatment": "Job income. Job: Chen.",
+   "terms": "Due on receipt"
+  },
+  {
+   "layout": "invoice",
+   "party": "Johnstone Supply",
+   "date": "08/03/2026",
+   "number": "JS-881204",
+   "items": [
+    [
+     "Run capacitors",
+     6,
+     22.4
+    ],
+    [
+     "Contactors",
+     4,
+     18.75
+    ],
+    [
+     "R-410A refrigerant, 25 lb",
+     1,
+     289.0
+    ]
+   ],
+   "expect": [
+    "job_materials"
+   ],
+   "treatment": "Job materials.",
+   "terms": "Net 30",
+   "answer": "parts for jobs"
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Riverside Dental Group",
+   "date": "08/08/2026",
+   "number": "CC-3302",
+   "items": [
+    [
+     "Commercial HVAC maintenance — August",
+     1,
+     850
+    ]
+   ],
+   "expect": [
+    "service_revenue"
+   ],
+   "treatment": "Job income on terms (money owed to you).",
+   "terms": "Net 30"
+  },
+  {
+   "layout": "receipt",
+   "party": "Shell",
+   "date": "08/06/2026",
+   "number": "SH-55120",
+   "items": [
+    [
+     "Diesel, 24.6 gal @ $3.29",
+     1,
+     80.93
+    ]
+   ],
+   "expect": [
+    [
+     "car_truck_expenses"
+    ]
+   ],
+   "treatment": "Truck fuel.",
+   "answer": "gas for the work truck",
+   "planted": "VEHICLE COSTS have no category on this chart — watch where fuel lands (it should not be Travel & Entertainment)."
+  },
+  {
+   "layout": "receipt",
+   "party": "Shell",
+   "date": "08/13/2026",
+   "number": "SH-55871",
+   "items": [
+    [
+     "Diesel, 22.1 gal @ $3.29",
+     1,
+     72.71
+    ]
+   ],
+   "expect": [
+    [
+     "car_truck_expenses"
+    ]
+   ],
+   "treatment": "Truck fuel.",
+   "answer": "fuel for the truck"
+  },
+  {
+   "layout": "receipt",
+   "party": "Valero",
+   "date": "08/20/2026",
+   "number": "VL-20918",
+   "items": [
+    [
+     "Diesel, 25.3 gal @ $3.25",
+     1,
+     82.23
+    ]
+   ],
+   "expect": [
+    [
+     "car_truck_expenses"
+    ]
+   ],
+   "treatment": "Truck fuel.",
+   "answer": "gas for the work truck"
+  },
+  {
+   "layout": "statement",
+   "party": "Ford Credit",
+   "date": "08/05/2026",
+   "number": "FC-2290-0826",
+   "items": [
+    [
+     "Principal",
+     1,
+     598.22
+    ],
+    [
+     "Interest",
+     1,
+     141.7
+    ]
+   ],
+   "expect": [
+    "long_term_debt",
+    "interest_expense"
+   ],
+   "treatment": "Only the interest is an expense.",
+   "total_label": "Payment due",
+   "planted": "ONLY INTEREST IS AN EXPENSE on the truck loan.",
+   "answer": "truck payment"
+  },
+  {
+   "layout": "invoice",
+   "party": "Bright Spark Electric",
+   "date": "08/11/2026",
+   "number": "BSE-0412",
+   "items": [
+    [
+     "Electrical — new circuit for condenser, 7811 Ranch Rd",
+     1,
+     780
+    ]
+   ],
+   "expect": [
+    "subcontractor_costs"
+   ],
+   "treatment": "A subcontractor.",
+   "terms": "Net 15",
+   "planted": "1099-NEC NEEDED: a sole-proprietor electrician paid $780 by check.",
+   "answer": "electrician I subbed out"
+  },
+  {
+   "layout": "statement",
+   "party": "Gusto",
+   "date": "08/15/2026",
+   "number": "GUS-0815",
+   "items": [
+    [
+     "Gross wages — 2 technicians, Aug 1–15",
+     1,
+     5400
+    ],
+    [
+     "Employer payroll taxes",
+     1,
+     413.1
+    ],
+    [
+     "Gusto platform fee",
+     1,
+     52
+    ]
+   ],
+   "expect": [
+    "salaries_wages",
+    "payroll_tax"
+   ],
+   "treatment": "Payroll.",
+   "planted": "PAYROLL (known: C3) — Home does not take a payroll register; it must route it or say so, never book it as a supplier bill."
+  },
+  {
+   "layout": "statement",
+   "party": "Gusto",
+   "date": "08/31/2026",
+   "number": "GUS-0831",
+   "items": [
+    [
+     "Gross wages — 2 technicians, Aug 16–31",
+     1,
+     5400
+    ],
+    [
+     "Employer payroll taxes",
+     1,
+     413.1
+    ],
+    [
+     "Gusto platform fee",
+     1,
+     52
+    ]
+   ],
+   "expect": [
+    "salaries_wages",
+    "payroll_tax"
+   ],
+   "treatment": "Payroll."
+  },
+  {
+   "layout": "invoice",
+   "party": "Sunbelt Rentals",
+   "date": "08/14/2026",
+   "number": "SB-7720411",
+   "items": [
+    [
+     "Mini excavator — 1 day",
+     1,
+     395
+    ]
+   ],
+   "expect": [
+    "equipment_rental"
+   ],
+   "treatment": "Equipment rental.",
+   "answer": "rented a mini excavator"
+  },
+  {
+   "layout": "receipt",
+   "party": "The Home Depot",
+   "date": "08/16/2026",
+   "number": "HD-3381-0816",
+   "items": [
+    [
+     "Milwaukee M18 drill/impact kit",
+     1,
+     399.0
+    ]
+   ],
+   "expect": [
+    [
+     "small_tools",
+     "office_supplies"
+    ]
+   ],
+   "treatment": "Small tools — expensed.",
+   "tax_rate": 0.0825,
+   "answer": "new drill set"
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Tom & Ana Ruiz",
+   "date": "08/18/2026",
+   "number": "CC-3303",
+   "items": [
+    [
+     "Deposit — new HVAC system install, scheduled 09/08 (30% of $9,400)",
+     1,
+     2820
+    ]
+   ],
+   "expect": [
+    "deferred_revenue"
+   ],
+   "treatment": "A deposit for September work — not August income.",
+   "terms": "Due on receipt",
+   "planted": "A DEPOSIT, NOT INCOME: the job is in September. Booked as August income it overstates August by $2,820."
+  },
+  {
+   "layout": "statement",
+   "party": "Texas Department of Licensing & Regulation",
+   "date": "08/20/2026",
+   "number": "TDLR-ACR-55120",
+   "items": [
+    [
+     "Air conditioning contractor license renewal",
+     1,
+     115
+    ]
+   ],
+   "expect": [
+    "taxes_licenses"
+   ],
+   "treatment": "License fee.",
+   "answer": "contractor license renewal"
+  },
+  {
+   "layout": "statement",
+   "party": "Progressive Commercial",
+   "date": "08/01/2026",
+   "number": "PGR-CA-0826",
+   "items": [
+    [
+     "Commercial auto — monthly",
+     1,
+     286
+    ]
+   ],
+   "expect": [
+    "insurance"
+   ],
+   "treatment": "Insurance.",
+   "answer": "truck insurance"
+  },
+  {
+   "layout": "statement",
+   "party": "Next Insurance",
+   "date": "08/01/2026",
+   "number": "NXT-GL-0826",
+   "items": [
+    [
+     "General liability — monthly",
+     1,
+     94
+    ]
+   ],
+   "expect": [
+    "insurance"
+   ],
+   "treatment": "Insurance.",
+   "answer": "liability insurance"
+  },
+  {
+   "layout": "invoice",
+   "party": "Big Tex Trailers",
+   "date": "08/22/2026",
+   "number": "BTT-11908",
+   "items": [
+    [
+     "7x14 enclosed cargo trailer",
+     1,
+     5890
+    ]
+   ],
+   "expect": [
+    "fixed_assets"
+   ],
+   "treatment": "Equipment — capitalised, 5 years.",
+   "planted": "CAPITALISE: over $2,500 and lasts years. The app should ask, and the answer is equipment."
+  },
+  {
+   "layout": "receipt",
+   "party": "Austin Community Landfill",
+   "date": "08/23/2026",
+   "number": "ACL-90231",
+   "items": [
+    [
+     "Disposal — old condenser & ductwork",
+     1,
+     65
+    ]
+   ],
+   "expect": [
+    [
+     "waste_removal",
+     "job_materials"
+    ]
+   ],
+   "treatment": "Job disposal cost.",
+   "answer": "dump fee for old equipment"
+  },
+  {
+   "layout": "statement",
+   "party": "Verizon Wireless",
+   "date": "08/25/2026",
+   "number": "VZ-0826-3L",
+   "items": [
+    [
+     "3 lines — August",
+     1,
+     168
+    ]
+   ],
+   "expect": [
+    "utilities"
+   ],
+   "treatment": "Phones.",
+   "answer": "work phones"
+  },
+  {
+   "layout": "our_invoice",
+   "party": "Hernandez Family",
+   "date": "08/28/2026",
+   "number": "CC-3304",
+   "items": [
+    [
+     "Furnace tune-up",
+     1,
+     159
+    ],
+    [
+     "Filter, 16x25x1",
+     1,
+     30
+    ]
+   ],
+   "expect": [
+    "service_revenue"
+   ],
+   "treatment": "Job income.",
+   "terms": "Due on receipt"
+  }
+ ]
+}
