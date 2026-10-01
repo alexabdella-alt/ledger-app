@@ -5798,13 +5798,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
                 // whole point — it stops the corrected mistake from re-applying). An AI-learned
                 // mapping only fills a blank or confirms a matching guess (never overrides).
                 const isHuman = learned.source === "human_correction";
+                // ★ C558 — an owner's ANSWER is not given the override a recode has: it applies when
+                // this bill's own reading is blank or agrees with it, and never silently replaces a
+                // different reading — a different reading still asks. That is the "asked seven
+                // months running with the right answer pre-filled" case, and only that case.
                 if (isHuman || !invoice.gl_code || String(invoice.gl_code) === String(learned.gl_code)) {
                   invoice.gl_code = isHuman ? learned.gl_code : (invoice.gl_code || learned.gl_code);
                   invoice.gl_name = isHuman ? learned.gl_name : (invoice.gl_name || learned.gl_name);
                   invoice.confidence = Math.max(Number(invoice.confidence) || 0, AI_CONFIDENCE_AUTO_BOOK);
                   invoice.reasoning = isHuman
                     ? `Coded ${invoice.vendor} to ${learned.gl_name} — you corrected this vendor before, so we apply your categorization.`
-                    : `${invoice.reasoning || ""} Recognized ${invoice.vendor} from past bookings — booked the way you've categorized it before.`.trim();
+                    : learned.source === "owner_answer"
+                      ? `${invoice.reasoning || ""} You told us what ${invoice.vendor} was for before, so we booked it the same way.`.trim()
+                      : `${invoice.reasoning || ""} Recognized ${invoice.vendor} from past bookings — booked the way you've categorized it before.`.trim();
                 }
               }
               // Book unless we're below the "ask, don't guess" floor (AI_CONFIDENCE_ASK_FLOOR)

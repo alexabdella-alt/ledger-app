@@ -184,15 +184,16 @@ Four figure defects shipped on 2026-09-15 that a drive can check in minutes. Eac
   in) and is gone after batch B is acceptable* — four identical bills is the bar for "flat"; note it
   if you saw it. **Wrong-reason pass:** the four totals are not all $145.00 (see 14.0 step 1).
 
-- **14b — How fast it stops asking, measured against the rule AS BUILT (`O64`).** The rule today:
-  **the app trusts a supplier once it has two bookings on record. Your answer to a card counts as
-  one. Changing the category on an entry (a recode) teaches it immediately.** So if batch A asked
-  about Alamo Ice (Aug 6) and you answered, batch B's Aug 13 Alamo **may** ask again — and batch B
-  is read in one go, so Aug 13 / 20 / 27 may all see the same one-booking history.
-  **Record which Alamo dates asked, in each batch.** **Fail** = an Alamo invoice asks when two Alamo
-  bookings already existed before its batch was dropped, or any Alamo bill lands in Miscellaneous.
-  *Three Alamo questions in batch B is the rule working as built — and it is the open product
-  question in C552's note (should one answer be enough?). Score it as RECORDED, not as a pass.*
+- **14b — It stops asking once you've answered (`C558`, updated 2026-10-01).** The rule now:
+  **your answer to a card teaches that supplier at once** — the next bill from them books without
+  a question **when the app's own reading of it agrees with what you told it** (or it has no
+  guess). If it reads a later bill differently, it still asks; it never silently overrides.
+  So: if batch A asked about Alamo Ice (Aug 6) and you answered, **none of the Aug 13 / 20 / 27
+  Alamo invoices should ask again** unless the app read one of them as something different.
+  **Fail** = Alamo asked again after you answered, with the SAME category pre-filled — the exact
+  case C558 exists for. Any Alamo bill in Miscellaneous is also a fail. **NOT EXERCISED** if batch
+  A booked Alamo without asking. *Record any repeat question that came with a DIFFERENT category
+  suggested — that is the rule working, and worth a look at why the reading differed.*
 
 - **14c — Nothing is filed while its own explanation says it belongs elsewhere (`C551`).** For
   every entry that booked **without** a question, open it and read *Why it was booked this way*.

@@ -16,7 +16,9 @@ export function emptyProfile() {
     business_type: null,
     // vendorLower -> { name, gl_code, gl_name, count, last_seen, source }
     // source: 'human_correction' (a recode/CPA override — authoritative, trusted immediately,
-    // never overwritten by AI) | 'ai_booking' (learned from an AI booking — needs repetition).
+    // never overwritten by AI) | 'owner_answer' (the owner answered a question card — trusted
+    // immediately, never overwritten by an AI booking, overridden by a recode; C558) |
+    // 'ai_booking' (learned from an AI booking — needs repetition).
     // Absent source on legacy entries is treated as 'ai_booking'.
     common_vendors: {},
     spending_patterns: {},  // category   -> { total, count, months: { "YYYY-MM": amount } }
@@ -67,10 +69,22 @@ export function learnFromBooking(profile, invoice) {
   // ── Vendor → GL mapping ──
   const vKey = vendor.toLowerCase();
   const prevV = next.common_vendors[vKey] || { name: vendor, count: 0 };
+  // ★★ C558 — AN ANSWERED QUESTION CARD IS NOT AN UNREVIEWED AUTOMATIC BOOKING. The card stamps
+  // `clarified` on the entry it books; until now nothing read it, so the owner's answer was
+  // recorded here exactly like an AI guess — count 1, trusted only from 2 — and the app asked
+  // about the same supplier again the next time (C552). It is graded BELOW a recode, on purpose
+  // (§9): on a card the owner describes the bill and the app picks the category, so the answer
+  // vouches for what the bill was, not for the mapping. A recode — the owner choosing the
+  // category itself — still overrides it.
+  const source = invoice?.clarified ? "owner_answer" : "ai_booking";
+  const seenAgain = { ...prevV, name: vendor, count: (prevV.count || 0) + 1, last_seen: (invoice?.date || todayLocal()) };
   if (prevV.source === "human_correction") {
     // A human correction OUTRANKS an AI booking — keep the taught account; only record that
     // the vendor was seen again. The AI can never silently overwrite a human-taught mapping.
-    next.common_vendors[vKey] = { ...prevV, name: vendor, count: (prevV.count || 0) + 1, last_seen: (invoice?.date || todayLocal()) };
+    next.common_vendors[vKey] = seenAgain;
+  } else if (prevV.source === "owner_answer" && source === "ai_booking") {
+    // …and neither can an automatic booking overwrite what the owner told us.
+    next.common_vendors[vKey] = seenAgain;
   } else {
     next.common_vendors[vKey] = {
       name: vendor,
@@ -78,7 +92,7 @@ export function learnFromBooking(profile, invoice) {
       gl_name: name,
       count: (prevV.count || 0) + 1,
       last_seen: (invoice?.date || todayLocal()),
-      source: "ai_booking",
+      source,
     };
   }
   // Bound size: keep the most-seen vendors if we ever exceed the cap.
@@ -147,7 +161,9 @@ export function recallVendor(profile, vendor, { minCount = 2 } = {}) {
   const hit = (p.common_vendors || {})[v];
   if (!hit || !hit.gl_code) return null;
   const source = hit.source || "ai_booking";
-  if (source !== "human_correction" && (hit.count || 0) < minCount) return null;
+  // C558 — what a person told us (a recode, or an answer on a question card) is trusted at
+  // once; only an automatic booking has to repeat itself first.
+  if (source !== "human_correction" && source !== "owner_answer" && (hit.count || 0) < minCount) return null;
   return { gl_code: hit.gl_code, gl_name: hit.gl_name || hit.gl_code, count: hit.count || 0, source };
 }
 
