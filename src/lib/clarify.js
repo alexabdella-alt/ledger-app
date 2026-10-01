@@ -71,7 +71,10 @@ const ANSWER_MAP = [
   [/\bsoftware\b|\bsaas\b|\bsubscription\b|\bapp\b|\btool\b|\bhosting\b|\bcloud\b|\baws\b|\bdomain\b|\blicense\b/, "technology_software"],
   [/\bmarketing\b|\bads?\b|\badvertis|\bpromo|\bcampaign\b|\bseo\b/, "marketing_advertising"],
   [/\btravel\b|\bflight\b|\bhotel\b|\bairfare\b|\bmileage\b|\buber\b|\blyft\b|\brental car\b/, "travel_entertainment"],
-  [/\bmeal\b|\bfood\b|\blunch\b|\bdinner\b|\brestaurant\b|\bcoffee\b|\bclient (lunch|dinner|meal)\b/, "travel_entertainment"],
+  // C553 — "restaurant" was here, and for a restaurant OWNER it names their own premises:
+  // "linens for the restaurant" and "restaurant supplies" both filed as a meal. A meal out is
+  // still caught by meal / lunch / dinner / client.
+  [/\bmeal\b|\bfood\b|\blunch\b|\bdinner\b|\bcoffee\b|\bclient (lunch|dinner|meal)\b/, "travel_entertainment"],
   [/\blegal\b|\baccount(ing|ant)\b|\bconsult|\battorney\b|\blawyer\b|\bbookkeep|\bprofessional (service|fee)/, "professional_services"],
   [/\bcontractor\b|\bfreelanc|\bsubcontract|\b1099\b/, "professional_services"],
   [/\bpayroll\b|\bsalary\b|\bsalaries\b|\bwages\b|\bemployee pay\b/, "salaries_wages"],
@@ -87,6 +90,60 @@ export function answerToCategory(answer) {
   return null;   // too vague → caller must not auto-resolve
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ★★★ C553 — A RESTAURANT OWNER'S ANSWER "FOOD FOR THE RESTAURANT" WAS FILED AS A MEAL.
+// `ANSWER_MAP` is one vocabulary for every business, and in it `food` (and `restaurant`)
+// meant lunch with a client. For a business that SELLS food that is backwards: food is what
+// it buys to sell. So "food", "produce for the kitchen", "linens for the restaurant" and
+// "restaurant supplies" all booked to Travel & Entertainment, immediately, with no confirm
+// step — and the Sept 3 Red River review recorded Bluebonnet (linen) and Lone Star (supplies)
+// booked there without ever saying how. C302–C304 fixed the DESCRIPTION of food accounts;
+// this is the BOOKING side, which that fix's own comment names and leaves alone.
+//
+// ★★ THE TEST IS WHAT THIS COMPANY'S CHART CONTAINS, NOT WHAT THE BUSINESS TYPE IS CALLED.
+// A company with a Food Cost category buys food to sell; one without it does not. So each
+// rule below fires only when the role it maps to resolves on THIS chart — a consultancy's
+// "food" still means a meal, exactly as before.
+//
+// ★ A MEAL OUT STAYS A MEAL even for a restaurant: "lunch with a client", "took a customer
+// to dinner". And a REPAIR to the ice machine is not drinks inventory.
+// ═════════════════════════════════════════════════════════════════════════════
+const MEAL_OUT_RE = /\bclients?\b|\bcustomers?\b|\btook\b|\bbusiness (lunch|dinner|meal)\b|\b(lunch|dinner|meal|drinks|coffee) with\b|\bteam (lunch|dinner|meal)\b|\btravel|\btrip\b|\bconference\b/;
+const NOT_GOODS_RE = /\brepairs?\b|\bmaintenance\b|\bmachine\b|\bequipment\b|\binstall|\bservice call\b|\bfreezer\b|\bfridge\b|\bcooler\b|\boven\b/;
+const FOOD_GOODS_RE = /\bfood\b|\bproduce\b|\bingredients?\b|\bgroceries\b|\bflour\b|\bcheese\b|\bmeats?\b|\bvegetables?\b|\bveggies\b|\bfruits?\b|\bdairy\b|\bseafood\b|\bpoultry\b|\bdough\b|\bsauces?\b|\bspices?\b|\bfor the menu\b/;
+const DRINK_GOODS_RE = /\bbeverages?\b|\bdrinks?\b|\bsodas?\b|\bsyrups?\b|\bbeer\b|\bwine\b|\bliquor\b|\bspirits\b|\bco2\b|\bice\b|\bcoffee\b|\bmixers?\b/;
+const RESALE_RE = /\bfor resale\b|\bto resell\b|\bresale\b|\binventory\b|\braw materials?\b|\bstock (to|we) sell\b|\b(things|what) we sell\b/;
+// Specific categories a business-type template adds. Each fires only when the role exists.
+const CHART_ANSWERS = [
+  [/\blinens?\b|\blaundry\b|\buniforms?\b|\baprons?\b|\bbar mops?\b/, ["linen_laundry"]],
+  [/\b(trash|garbage|dumpster|waste|recycling)\b/, ["waste_removal"]],
+  [/\b(to-?go|takeout|take-out) (boxes|containers|bags|cups)\b|\bpackaging\b|\bnapkins\b/, ["paper_packaging"]],
+  [/\b(kitchen|restaurant) supplies\b|\bsmallwares\b|\bsheet pans?\b|\bdeli containers?\b|\bgloves\b/, ["kitchen_supplies"]],
+];
+
+function chartAnswerAccount(answer, getAccountByRole) {
+  const a = String(answer || "").toLowerCase().trim();
+  if (a.length < 3 || typeof getAccountByRole !== "function") return null;
+  const pick = (roles) => {
+    for (const role of roles) {
+      const acct = getAccountByRole(role);
+      const code = acct && (acct.code || acct.gl_code);
+      if (code) return { gl_code: code, gl_name: acct.name || acct.gl_name || role, role, confidence: 90, via: "chart_category" };
+    }
+    return null;
+  };
+  for (const [re, roles] of CHART_ANSWERS) if (re.test(a)) { const hit = pick(roles); if (hit) return hit; }
+  // Goods rules only — a meal out or a repair is never goods, whichever goods word it contains
+  // ("team dinner after the inventory count" is a dinner; the first draft filed it as food).
+  if (MEAL_OUT_RE.test(a) || NOT_GOODS_RE.test(a)) return null;
+  // Each rule fires only if its category is on THIS chart — `pick` returns null otherwise and
+  // the answer falls through to the shared vocabulary, so a consultancy's "food" is a meal.
+  if (FOOD_GOODS_RE.test(a)) { const hit = pick(["food_cost"]); if (hit) return hit; }
+  if (DRINK_GOODS_RE.test(a)) { const hit = pick(["beverage_cost", "food_cost"]); if (hit) return hit; }
+  if (RESALE_RE.test(a)) return pick(["food_cost", "merchandise_cost", "cogs"]);
+  return null;
+}
+
 // 3+4) ANSWER → ACCOUNT: turn the plain-language answer into a real GL account via roles
 // (so the human answer becomes correct accounting silently). Returns { gl_code, gl_name,
 // role, confidence } or null when unmappable (ambiguous). Vendor rules win when present.
@@ -97,6 +154,9 @@ export function answerToAccount(answer, { getAccountByRole, rules = [], vendor =
     const rule = rules.find((r) => r.vendor && String(r.vendor).toLowerCase().trim() === v);
     if (rule && rule.gl_code) return { gl_code: rule.gl_code, gl_name: rule.gl_name || rule.gl_code, role: null, confidence: 99, via: "rule" };
   }
+  // C553 — this company's own specific categories first, when the owner's words name them.
+  const specific = chartAnswerAccount(answer, getAccountByRole);
+  if (specific) return specific;
   const role = answerToCategory(answer);
   if (!role) return null;
   const acct = typeof getAccountByRole === "function" ? getAccountByRole(role) : null;
@@ -339,12 +399,20 @@ export function clarificationChips(invoice = {}, { minConfidence = 55 } = {}) {
   if (invoice.ask_reason === REASONING_CONTRADICTS) return [];
   const conf = invoice.confidence == null ? 0 : Number(invoice.confidence);
   if (conf < minConfidence) return [];                     // not a strong-enough guess → no chip
-  const role = inferRole(invoice);
+  // ★★★ C553 — THE BUTTON SAID ONE THING AND DID ANOTHER. The label came from
+  // `plainCategoryPhrase` (which reads the account through the guarded `roleFromAccount`) and
+  // the ANSWER from `inferRole` (which keyword-matches the account NAME through the ask
+  // vocabulary, unguarded). On a correct Food Cost guess the button read "It was food" and
+  // sent "a meal" — one tap filed a restaurant's produce as Travel & Entertainment, over a
+  // guess that was right. One role for both, and the chip carries the account it describes,
+  // so a tap books exactly what the label says rather than re-deriving it from words.
+  const coded = String(invoice.gl_code || "").trim();
+  const role = coded ? roleFromAccount(invoice) : inferRole(invoice);
   const keyword = role && ROLE_KEYWORD[role];
   const phrase = plainCategoryPhrase(invoice);
   if (!keyword && phrase === "a general business expense") return [];   // nothing specific to suggest
   const answer = keyword || phrase;
-  return [{ label: `It was ${phrase}`, answer }];
+  return [{ label: `It was ${phrase}`, answer, ...(coded ? { gl_code: coded, gl_name: invoice.gl_name || null } : {}) }];
 }
 
 // ── Cardinal-Principle jargon lint (shared by the guard tests) ──

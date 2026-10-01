@@ -222,6 +222,14 @@ Four figure defects shipped on 2026-09-15 that a drive can check in minutes. Eac
   **Fail** = it reports success and nothing moved, or it moves a different entry, or it says
   *"check your connection/permissions"* (that sentence no longer exists).
 
+- **14i — Your answers file where a bookkeeper would put them (`C553`).** On any food supplier's
+  card, answer in your own words — *"food for the restaurant"*, *"produce"*. It must file under
+  **Food Cost**, never Travel & Entertainment. On Alamo, *"ice and soda syrup"* → **Beverage Cost**.
+  On Bluebonnet, *"linens for the restaurant"* → **Linen & Laundry**. And if a card offers
+  *"It was food"*, tapping it must file **Food Cost** — before C553 that exact button filed a meal.
+  **Fail** = any of these in Travel & Entertainment. **Wrong-reason pass:** the bill booked without
+  a question at all — then this criterion was not exercised for that supplier; say so.
+
 - **14h — The pile fits in the budget (`087`).** All 35 are read without a "limit reached" message.
   **Fail** = a limit message before 35 — the deployed limit is not the one the repo says (100
   files / 300 AI calls an hour), which is a finding about the live function, not the app.

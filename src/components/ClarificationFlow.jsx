@@ -454,6 +454,20 @@ function ClarificationCard({ item }) {
     interpretFreeText(text);   // keyword map couldn't place it → let the AI read it
   };
 
+  // C553 — a chip books the account its label describes. Only if that account is on this
+  // company's chart; otherwise its words go through the ordinary answer path.
+  const tapChip = (chip) => {
+    if (interpreting || done || inFlight.current) return;
+    const acct = chip && chip.gl_code ? (CHART_OF_ACCOUNTS || []).find(a => String(a.code) === String(chip.gl_code)) : null;
+    if (acct) {
+      doBookGl({ code: acct.code, name: acct.name }, {
+        reasoning: `You confirmed: ${String(chip.label || "").replace(/^It was /, "")}.`, audit: "user confirmed", answer: chip.label,
+      });
+      return;
+    }
+    submitAnswer(chip.answer);
+  };
+
   // Send the user's free-text description to the AI, map it to a GL account
   // (creating a new one if nothing fits), then book immediately — no confirm step.
   const interpretFreeText = async (overrideText) => {
@@ -621,7 +635,7 @@ function ClarificationCard({ item }) {
                 {clarificationChips(inv).length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                     {clarificationChips(inv).map((chip, ci) => (
-                      <button key={ci} onClick={() => submitAnswer(chip.answer)} disabled={interpreting || busy} style={pill(false)}
+                      <button key={ci} onClick={() => tapChip(chip)} disabled={interpreting || busy} style={pill(false)}
                         onMouseEnter={e => { e.currentTarget.style.background = "var(--sc-gold-soft)"; e.currentTarget.style.borderColor = "var(--sc-gold)"; }}
                         onMouseLeave={e => { e.currentTarget.style.background = "var(--sc-surface)"; e.currentTarget.style.borderColor = "var(--sc-border-2)"; }}>
                         {chip.label}
