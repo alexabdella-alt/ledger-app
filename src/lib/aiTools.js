@@ -211,7 +211,7 @@ async function getTaxSummary(input, ctx) {
   const deductions = deductionBreakdown(led, year, ctx.getAccountByRole)
     .filter(d => (d.amount || 0) > 0)
     .map(d => ({ category: d.label, amount: r2(d.amount) }));
-  const next = getTaxDeadlines(new Date()).find(d => d.days >= 0);
+  const next = getTaxDeadlines(new Date(), { legalForm: ctx.legalForm }).find(d => d.days >= 0);   // C559 — this company's deadlines, not every company's
   return {
     year,
     net_income: r2(est.net),

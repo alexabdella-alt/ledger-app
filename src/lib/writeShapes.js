@@ -86,6 +86,7 @@ export function mapCompanyRow(co = {}) {
     logoBase64: co.logo_path || null,   // O62: read the persisted logo back
     aliases: co.aliases || "",          // O75: self-identity (DBA/aka), comma-separated
     businessType: co.business_type || "",
+    legalForm: co.legal_form || "",      // O140/C559 — migration 093; "" until it is applied and answered
     salesTaxRate: Number(co.sales_tax_rate) || 0,
     onboardingComplete: !!co.onboarding_complete,
   };

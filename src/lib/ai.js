@@ -216,7 +216,7 @@ async function classifyIntent(userMessage, recentHistory) {
   }
 }
 
-async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, anomalies, businessType, supabase, companyId, getAccountByRole, recurring, onToolCall, aliasIndex = null }) {
+async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, anomalies, businessType, supabase, companyId, getAccountByRole, recurring, onToolCall, aliasIndex = null, legalForm = null }) {
   // ── 1. Truncate history to last 10 turns (5 user + 5 assistant) ───────────────
   const truncatedHistory = chatHistory.slice(-10);
 
@@ -318,7 +318,7 @@ ${ledgerSection}`;
     try {
       let _ledger = null;
       const ctx = {
-        supabase, companyId, chartOfAccounts, getAccountByRole, cashBalance, anomalies, recurring, aliasIndex,   // C488 — one supplier under two names is one vendor in the tools too
+        supabase, companyId, chartOfAccounts, getAccountByRole, cashBalance, anomalies, recurring, aliasIndex, legalForm,   // C559 legalForm · C488 — one supplier under two names is one vendor in the tools too
         getLedger: async () => { if (!_ledger) _ledger = await fetchLedger(supabase, companyId, chartOfAccounts); return _ledger; },
       };
       const ledgerContext = buildContext(true);

@@ -2,12 +2,12 @@ import React from "react";
 import { fmtMoney } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
-import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE, filedKey, taxYearFor1099 } from "../../lib/tax";
+import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE, filedKey, taxYearFor1099, LEGAL_FORMS } from "../../lib/tax";
 import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
@@ -88,7 +88,8 @@ export default function TaxView() {
   const workFromHome = !!taxState.workFromHome;
 
   const est = taxEstimate(invoices, year, estPaid);
-  const deadlines = getTaxDeadlines(new Date());
+  const legalForm = companySettings?.legalForm || "";
+  const deadlines = getTaxDeadlines(new Date(), { legalForm: legalForm || null });   // O140/C559
   const deductions = deductionBreakdown(invoices, year, getAccountByRole);
   const totalDeductible = deductions.reduce((s, d) => s + (d.amount || 0), 0);
   // ── 1099s ARE WORKED OUT, NOT COUNTED OFF A FLAG ─────────────────────────────
@@ -164,6 +165,23 @@ export default function TaxView() {
       {/* ── DEADLINE TRACKER ── */}
       <div style={{ ...card, marginBottom: 16, padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--sc-surface-2)", fontSize: 13, fontWeight: 600 }}>Upcoming tax deadlines</div>
+        {/* ★★ O140/C559 — THE CALENDAR NEEDS TO KNOW HOW THE BUSINESS FILES. Until it does it shows
+            every deadline (a partnership return to a sole owner, a personal return to a
+            corporation), and says so rather than leaving the reader to wonder. The control sits
+            beside the list it changes (O129). */}
+        <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <label htmlFor="tax-legal-form" style={{ fontSize: 12, color: "var(--sc-text-2)" }}>How does your business file taxes?</label>
+          <select id="tax-legal-form" value={legalForm} onChange={e => saveLegalForm && saveLegalForm(e.target.value)}
+            style={{ flex: "1 1 260px", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--sc-border-2)", fontSize: 13, color: "var(--sc-text)", background: "var(--sc-surface)" }}>
+            <option value="">I'm not sure</option>
+            {LEGAL_FORMS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+          {!legalForm && (
+            <div style={{ fontSize: 12, color: "var(--sc-text-mut)", flexBasis: "100%" }}>
+              Until you choose, we show every deadline — some of them won't apply to your business.
+            </div>
+          )}
+        </div>
         {deadlines.map(d => {
           const isFiled = !!filed[filedKey(d)];
           return (

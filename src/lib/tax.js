@@ -28,27 +28,74 @@ export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid =
   return { revenue, expenses, net, taxableNet, federal, seTax, total, estPaid: paid, owed: Math.max(0, total - paid), quarterly: total / 4 };
 }
 
+// ── HOW THE BUSINESS FILES ITS TAXES (O140, C559) ─────────────────────────────
+// The calendar showed the S-Corp/Partnership return to a sole proprietor and the personal
+// return to a corporation — every deadline to every company, because nothing knew the legal
+// form. These are tax CLASSIFICATIONS, not legal labels: a one-person LLC files like a sole
+// proprietor, a multi-member LLC like a partnership, and an LLC that elected S status like an
+// S corporation — which is what decides the deadlines. Labels are the owner's words; the form
+// numbers stay on the deadline itself, where a preparer looks.
+export const LEGAL_FORMS = [
+  { value: "sole_prop", label: "Just me — it goes on my personal tax return (includes a one-person LLC)" },
+  { value: "partnership", label: "A partnership, or an LLC with more than one owner" },
+  { value: "s_corp", label: "An S corporation (or an LLC taxed as one)" },
+  { value: "c_corp", label: "A C corporation" },
+];
+const PASS_THROUGH = ["sole_prop", "partnership", "s_corp"];   // owners pay personal estimated tax
+
+// ★ A DEADLINE ON A WEEKEND MOVES TO THE NEXT BUSINESS DAY — the IRS rule. Without this the
+// calendar told people the 1099 deadline was Sunday, January 31, 2027 (it is Monday, February 1).
+// Federal holidays are NOT applied (Emancipation Day can move April 15 in some years) — the
+// recorded limit; a weekend is the common case.
+function nextBusinessDay(d) {
+  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  while (out.getDay() === 0 || out.getDay() === 6) out.setDate(out.getDate() + 1);
+  return out;
+}
+
 // All recurring federal deadlines, resolved to their next occurrence from `now`.
-export function getTaxDeadlines(now = new Date()) {
+// `legalForm` (C559): known → only the deadlines that apply, in that form's words; unknown →
+// the full list as before (no deadline may disappear because we did not ask).
+export function getTaxDeadlines(now = new Date(), { legalForm = null } = {}) {
+  const known = LEGAL_FORMS.some((f) => f.value === legalForm);
   const defs = [
-    { m: 0, d: 15, label: "Q4 estimated tax payment", plain: "Pay your 4th-quarter estimated taxes for last year", form: "Form 1040-ES", url: "https://www.irs.gov/payments", est: true },
+    { m: 0, d: 15, label: "Q4 estimated tax payment", plain: "Pay your 4th-quarter estimated taxes for last year", form: "Form 1040-ES", url: "https://www.irs.gov/payments", est: true, forms: PASS_THROUGH },
     { m: 0, d: 31, kind: "1099", label: "W-2s & 1099s to recipients", plain: "Send W-2s and 1099-NEC forms to your employees and contractors", form: "W-2 / 1099-NEC", url: "https://www.irs.gov/forms-pubs/about-form-1099-nec" },
     { m: 1, d: 28, kind: "1099", label: "1099s to IRS (paper filing)", plain: "File your 1099s with the IRS if you're filing on paper", form: "Form 1096 / 1099", url: "https://www.irs.gov/forms-pubs/about-form-1096" },
-    { m: 2, d: 15, label: "S-Corp & Partnership returns", plain: "File your S-Corp (1120-S) or Partnership (1065) tax return", form: "Form 1120-S / 1065", url: "https://www.irs.gov/forms-pubs/about-form-1120-s" },
+    { m: 2, d: 15, label: "S-Corp & Partnership returns", plain: "File your S-Corp (1120-S) or Partnership (1065) tax return", form: "Form 1120-S / 1065", url: "https://www.irs.gov/forms-pubs/about-form-1120-s", forms: ["partnership", "s_corp"],
+      byForm: {
+        s_corp: { label: "S corporation return", plain: "File your S corporation's tax return", form: "Form 1120-S" },
+        partnership: { label: "Partnership return", plain: "File your partnership's tax return", form: "Form 1065", url: "https://www.irs.gov/forms-pubs/about-form-1065" },
+      } },
     { m: 2, d: 31, kind: "1099", label: "1099s to IRS (e-filing)", plain: "File your 1099s with the IRS electronically", form: "Form 1099", url: "https://www.irs.gov/filing/e-file-forms-1099-with-iris" },
-    { m: 3, d: 15, label: "Personal return + Q1 estimated", plain: "File your individual return (1040) and pay 1st-quarter estimated taxes", form: "Form 1040 / 1040-ES", url: "https://www.irs.gov/payments", est: true },
-    { m: 5, d: 16, label: "Q2 estimated tax payment", plain: "Pay your 2nd-quarter estimated taxes", form: "Form 1040-ES", url: "https://www.irs.gov/payments", est: true },
-    { m: 8, d: 15, label: "Q3 estimated + extended business returns", plain: "Pay 3rd-quarter estimated taxes; extended S-Corp/Partnership returns are also due", form: "Form 1040-ES / 1120-S / 1065", url: "https://www.irs.gov/payments", est: true },
-    { m: 9, d: 15, label: "Extended personal return", plain: "File your extended individual return (1040)", form: "Form 1040", url: "https://www.irs.gov/forms-pubs/about-form-1040" },
+    { m: 3, d: 15, label: "Personal return + Q1 estimated", plain: "File your individual return (1040) and pay 1st-quarter estimated taxes", form: "Form 1040 / 1040-ES", url: "https://www.irs.gov/payments", est: true,
+      byForm: { c_corp: { label: "Corporate return + Q1 estimated", plain: "File your corporation's tax return and pay its 1st-quarter estimated tax", form: "Form 1120 / 1120-W", url: "https://www.irs.gov/forms-pubs/about-form-1120" } } },
+    // ★ JUNE 15, NOT 16. The 16th was right only in a year when the 15th fell on a weekend; the
+    // weekend rule above now handles that year by year.
+    { m: 5, d: 15, label: "Q2 estimated tax payment", plain: "Pay your 2nd-quarter estimated taxes", form: "Form 1040-ES", url: "https://www.irs.gov/payments", est: true,
+      byForm: { c_corp: { plain: "Pay your corporation's 2nd-quarter estimated tax", form: "Form 1120-W" } } },
+    { m: 8, d: 15, label: "Q3 estimated + extended business returns", plain: "Pay 3rd-quarter estimated taxes; extended S-Corp/Partnership returns are also due", form: "Form 1040-ES / 1120-S / 1065", url: "https://www.irs.gov/payments", est: true,
+      byForm: {
+        sole_prop: { label: "Q3 estimated tax payment", plain: "Pay your 3rd-quarter estimated taxes", form: "Form 1040-ES" },
+        partnership: { plain: "Pay 3rd-quarter estimated taxes; an extended partnership return is also due", form: "Form 1040-ES / 1065" },
+        s_corp: { plain: "Pay 3rd-quarter estimated taxes; an extended S corporation return is also due", form: "Form 1040-ES / 1120-S" },
+        c_corp: { label: "Q3 estimated tax payment", plain: "Pay your corporation's 3rd-quarter estimated tax", form: "Form 1120-W" },
+      } },
+    { m: 9, d: 15, label: "Extended personal return", plain: "File your extended individual return (1040)", form: "Form 1040", url: "https://www.irs.gov/forms-pubs/about-form-1040",
+      byForm: { c_corp: { label: "Extended corporate return", plain: "File your corporation's extended tax return", form: "Form 1120", url: "https://www.irs.gov/forms-pubs/about-form-1120" } } },
+    // A corporation's 4th estimate is due in December, not January — shown only to a C corporation.
+    { m: 11, d: 15, label: "Q4 corporate estimated tax", plain: "Pay your corporation's 4th-quarter estimated tax", form: "Form 1120-W", url: "https://www.irs.gov/payments", est: true, forms: ["c_corp"], onlyWhenKnown: true },
   ];
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return defs
-    .map(def => {
+    .filter((def) => (known ? (!def.forms || def.forms.includes(legalForm)) : !def.onlyWhenKnown))
+    .map(({ forms, byForm, onlyWhenKnown, ...def }) => {
+      const words = known && byForm && byForm[legalForm] ? byForm[legalForm] : {};
       let year = now.getFullYear();
-      let date = new Date(year, def.m, def.d);
-      if (date < today) { year += 1; date = new Date(year, def.m, def.d); }
+      let date = nextBusinessDay(new Date(year, def.m, def.d));
+      if (date < today) { year += 1; date = nextBusinessDay(new Date(year, def.m, def.d)); }
       const days = Math.round((date - today) / 86400000);
-      return { ...def, key: `${def.m}-${def.d}`, date, year, days, color: days <= 14 ? "#D92D20" : days <= 30 ? "#DC6803" : "#039855" };
+      return { ...def, ...words, key: `${def.m}-${def.d}`, date, year, days, color: days <= 14 ? "#D92D20" : days <= 30 ? "#DC6803" : "#039855" };
     })
     .sort((a, b) => a.date - b.date);
 }
@@ -95,8 +142,8 @@ export function deadlineIsWaiting(d, estimate, { has1099s = true } = {}) {
   if (!d.est) return true;
   return !!(estimate && Number(estimate.total) > 0);
 }
-export function nextUrgentDeadline(now = new Date(), withinDays = 30, { filed = {} } = {}) {
-  return getTaxDeadlines(now).find(d => d.days <= withinDays && d.days >= 0 && !(filed && filed[filedKey(d)])) || null;
+export function nextUrgentDeadline(now = new Date(), withinDays = 30, { filed = {}, legalForm = null } = {}) {
+  return getTaxDeadlines(now, { legalForm }).find(d => d.days <= withinDays && d.days >= 0 && !(filed && filed[filedKey(d)])) || null;
 }
 
 // The 12 authoritative deduction categories, keyed to the company's GL accounts by

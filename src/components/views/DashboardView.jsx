@@ -13,6 +13,7 @@ import { plan1099ForYear } from "../../lib/form1099";
 // C557 — the business-type list is the template list. It was typed out here, so a new type
 // needed two edits and the second one could be missed (C556 recorded it).
 import { BUSINESS_TYPES } from "../../lib/coaTemplates";
+import { LEGAL_FORMS } from "../../lib/tax";
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
 import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
@@ -79,6 +80,7 @@ export default function DashboardView() {
   const [anomExpanded, setAnomExpanded] = React.useState(false); // anomaly card expand/collapse
   const [bizType, setBizType] = React.useState(""); // business-type modal draft
   const [bizFye, setBizFye] = React.useState("12-31");
+  const [bizForm, setBizForm] = React.useState(null);   // C559 — null = untouched, "" = "I'm not sure"
   const [accountantNotice, setAccountantNotice] = React.useState(false); // "coming soon" inline message
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
@@ -423,10 +425,17 @@ export default function DashboardView() {
                         <option value="06-30">June 30</option>
                         <option value="09-30">September 30</option>
                       </select>
+                      {/* O140/C559 — decides which tax deadlines this company is shown. Optional: an
+                          unanswered question keeps the full calendar, never a shorter wrong one. */}
+                      <label style={{ fontSize:12, fontWeight:600, color:"var(--sc-text-2)", display:"block", margin:"14px 0 6px" }}>How does your business file taxes?</label>
+                      <select value={bizForm ?? (companySettings.legalForm || "")} onChange={e=>setBizForm(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--sc-border-2)", fontSize:14, color:"var(--sc-text)", background:"var(--sc-surface)" }}>
+                        <option value="">I'm not sure</option>
+                        {LEGAL_FORMS.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}
+                      </select>
                     </div>
                     <div style={{ padding:"0 22px 20px", display:"flex", gap:10, justifyContent:"flex-end" }}>
                       <button onClick={()=>setBusinessModalOpen(false)} style={{ padding:"9px 16px", borderRadius:9, fontSize:13, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>Cancel</button>
-                      <button onClick={()=>saveBusinessProfile({ businessType: bizType||companySettings.businessType||"Other", fiscalYearEnd: bizFye||companySettings.fiscalYearEnd||"12-31" })}
+                      <button onClick={()=>saveBusinessProfile({ businessType: bizType||companySettings.businessType||"Other", fiscalYearEnd: bizFye||companySettings.fiscalYearEnd||"12-31", ...(bizForm !== null ? { legalForm: bizForm } : {}) })}
                         disabled={!(bizType||companySettings.businessType)}
                         style={{ padding:"9px 18px", borderRadius:9, fontSize:13, fontWeight:600, color:"var(--sc-on-accent)", background:(bizType||companySettings.businessType)?"var(--sc-gold)":"var(--sc-gold)", border:"none", cursor:(bizType||companySettings.businessType)?"pointer":"default" }}>Save</button>
                     </div>
@@ -865,7 +874,7 @@ export default function DashboardView() {
 export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
-    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines } = useERP();
+    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings } = useERP();
   const [busy, setBusy] = React.useState(null);
   const cockpit = !!navSeat?.isReviewerSeat;
   const today = todayLocal();
@@ -873,7 +882,7 @@ export function HomeWaitingList({ navTo }) {
   const unpaid = openPayablesGL(invoices || [], apCode);
   const overdueBills = unpaid.filter(i => i.due_date && i.due_date < today);
   const overdueTotal = overdueBills.reduce((t, i) => t + (Number(i.amount) || 0), 0);
-  const dl0 = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlines });   // C388 — a deadline marked filed on the Taxes screen is not waiting
+  const dl0 = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlines, legalForm: companySettings?.legalForm || null });   // C559 — this company's deadlines   // C388 — a deadline marked filed on the Taxes screen is not waiting
   const est = dl0 && dl0.est ? taxEstimate(invoices || [], new Date().getFullYear()) : null;
   const has1099s = React.useMemo(() => dl0 && dl0.kind === "1099" ? plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: dl0.year - 1 }).outstanding > 0 : true, [dl0?.kind, dl0?.year, invoices, contacts, CHART_OF_ACCOUNTS]);   // C435 — 1099s are filed for the PREVIOUS year
   const dl = deadlineIsWaiting(dl0, est, { has1099s }) ? dl0 : null;   // C434/C435 — an estimated payment with nothing to pay, or a 1099 with nobody to file for, is not waiting
