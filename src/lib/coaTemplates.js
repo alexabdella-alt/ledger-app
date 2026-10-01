@@ -76,6 +76,12 @@ const UNIVERSAL = [
 // tax, a franchise tax and a liquor license in the one place a preparer looks for all
 // three. Dedupe is by CODE, so an existing company keeps its own name for 6910 and gains
 // nothing duplicated — the rename reaches new companies only, and a rename is theirs.
+// ★★ C556 — PER-TYPE, AND EACH ONE FROM A DOCUMENT THAT HAD NOWHERE TO GO. Five niche months
+// run offline (C554) found a trades shop's fuel (x3), a consultant's business license, a
+// therapist's CE workshop and dues, a coach's certification course, and a landlord's tenant
+// deposit with no correct account. NOT added to UNIVERSAL: that list is reserved for what
+// every business has (a bank account), and "Other" deliberately gets no industry opinion —
+// a test holds both. So each addition sits on the types whose month showed the need.
 const TEMPLATES = {
   "Restaurant/Food": {
     add: [
@@ -111,6 +117,9 @@ const TEMPLATES = {
     add: [
       { code: "5110", name: "Subcontractor Costs", category: "Expenses", system_role: "subcontractor_costs" },
       { code: "6410", name: "Client Reimbursable Expenses", category: "Expenses", system_role: "client_reimbursables" },
+      { code: "6910", name: "Taxes & Licenses", category: "Expenses", system_role: "taxes_licenses" },
+      { code: "6820", name: "Education & Training", category: "Expenses", system_role: "education_training" },
+      { code: "6830", name: "Dues & Memberships", category: "Expenses", system_role: "dues_memberships" },
     ],
     hide: ["4000"],   // a services firm bills services, not product
   },
@@ -121,6 +130,7 @@ const TEMPLATES = {
       { code: "5130", name: "Equipment Rental", category: "Expenses", system_role: "equipment_rental" },
       { code: "6910", name: "Taxes & Licenses", category: "Expenses", system_role: "taxes_licenses" },
       { code: "2150", name: "Retainage Payable", category: "Liabilities", system_role: "retainage_payable" },
+      { code: "6460", name: "Vehicle Expenses", category: "Expenses", system_role: "vehicle_expenses" },
     ],
     hide: ["4200"],
   },
@@ -130,6 +140,8 @@ const TEMPLATES = {
       { code: "6710", name: "Malpractice Insurance", category: "Expenses", system_role: "malpractice_insurance" },
       { code: "6910", name: "Taxes & Licenses", category: "Expenses", system_role: "taxes_licenses" },
       { code: "1150", name: "Insurance Receivable", category: "Assets", system_role: "insurance_receivable" },
+      { code: "6820", name: "Education & Training", category: "Expenses", system_role: "education_training" },
+      { code: "6830", name: "Dues & Memberships", category: "Expenses", system_role: "dues_memberships" },
     ],
     hide: ["4200"],
   },
@@ -139,6 +151,10 @@ const TEMPLATES = {
       { code: "6290", name: "Property Management Fees", category: "Expenses", system_role: "property_management" },
       { code: "6295", name: "HOA & Association Dues", category: "Expenses", system_role: "hoa_dues" },
       { code: "6740", name: "Property Taxes", category: "Expenses", system_role: "property_taxes" },
+      { code: "6460", name: "Vehicle Expenses", category: "Expenses", system_role: "vehicle_expenses" },
+      // A TENANT'S DEPOSIT IS OWED BACK — a liability. The only "Security Deposits" account (1700)
+      // is an ASSET (deposits the business has PAID), so the nearest name was the wrong side.
+      { code: "2170", name: "Tenant Security Deposits", category: "Liabilities", system_role: "security_deposits_held" },
     ],
     hide: [],
   },

@@ -48,26 +48,14 @@ function findings(spec) {
 
 // ── THE PINNED FINDINGS (2026-10-01) ─────────────────────────────────────────
 const KNOWN = {
-  coach: {
-    gaps: ["05 product_revenue", "06 product_revenue", "16 education_training"],
-    wrong: [],
-  },
-  consultant: {
-    gaps: ["15 taxes_licenses"],
-    wrong: [],   // C555 — was: "city business license" → technology_software
-  },
-  landlord: {
-    gaps: ["11 security_deposits_held"],
-    wrong: [],   // C555 — was: listing → rent_occupancy; paint/fix up → office_supplies
-  },
-  therapist: {
-    gaps: ["12 education_training", "15 dues_subscriptions"],
-    wrong: [],   // C555 — was: malpractice → insurance; license renewal → technology_software
-  },
-  trades: {
-    gaps: ["04 car_truck_expenses", "05 car_truck_expenses", "06 car_truck_expenses"],
-    wrong: [],   // C555 — was: electrician → utilities; contractor license → technology_software
-  },
+  // ★ C556 closed six of the seven chart gaps by adding accounts per business type; the one
+  // left is a product decision (a coaching business type, or unhide Product Revenue for
+  // Consulting/Services) and stays pinned until it is made. C555 emptied every "wrong" list.
+  coach: { gaps: ["05 product_revenue", "06 product_revenue"], wrong: [] },
+  consultant: { gaps: [], wrong: [] },
+  landlord: { gaps: [], wrong: [] },
+  therapist: { gaps: [], wrong: [] },
+  trades: { gaps: [], wrong: [] },
 };
 
 describe("the five niche months are well-formed", () => {

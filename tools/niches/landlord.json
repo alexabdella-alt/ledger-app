@@ -373,7 +373,7 @@
    ],
    "expect": [
     [
-     "car_truck_expenses",
+     "vehicle_expenses",
      "travel_entertainment"
     ]
    ],

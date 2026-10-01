@@ -66,11 +66,17 @@ a clean run there is the strongest evidence the product is ready for it.
 
 ## 4. Findings from the offline run (2026-10-01)
 
-### Nowhere correct to file it — the chart has no category
+> **Where it stands after C555/C556:** every wrong answer is fixed, and every missing category but
+> one is added — **Vehicle Expenses** (Construction, Real Estate), **Taxes & Licenses / Education &
+> Training / Dues & Memberships** (Consulting/Services; the last two also Healthcare), and a
+> **Tenant Security Deposits** liability (Real Estate). They sit on the business types whose month
+> needed them, not on every company. The one left is course sales for coaches — a product choice.
+
+### Nowhere correct to file it — the chart has no category — ✅ SIX OF SEVEN FIXED (C556); course sales is YOUR decision
 
 | Niche | Document | Needs |
 |---|---|---|
-| Coach | Kajabi course sales (×2) | Product Revenue — the Consulting/Services set **hides** it |
+| Coach | Kajabi course sales (×2) | Product Revenue — the Consulting/Services set **hides** it. **▶ OPEN — your call:** a new *Coaching & Courses* business type, or stop hiding Product Revenue for Consulting/Services. |
 | Coach | Certification course | Education & training |
 | Consultant | City business license | Taxes & Licenses (the Consulting/Services set lacks it) |
 | Landlord | Tenant's security deposit | A *liability* for deposits held — the only "Security Deposits" account is an asset |

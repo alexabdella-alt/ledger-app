@@ -340,7 +340,7 @@
     ]
    ],
    "expect": [
-    "dues_subscriptions"
+    "dues_memberships"
    ],
    "treatment": "Professional dues.",
    "answer": "professional association membership"

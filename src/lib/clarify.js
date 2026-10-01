@@ -126,6 +126,14 @@ const CHART_ANSWERS = [
   [/\blicen[cs]es?\b|\bpermits?\b/, ["taxes_licenses"], /\bsoftware\b|\bapp\b|\bsaas\b|\bseats?\b|\bmicrosoft\b|\boffice 365\b|\badobe\b/],
   [/\bmalpractice\b|\bprofessional liability\b/, ["malpractice_insurance"]],
   [/\bsubbed\b|\bsub ?out\b|\bsubcontract(ed|or|ors)?\b/, ["subcontractor_costs"]],
+  // C556 — the per-type accounts C556 added, so a natural answer reaches them directly.
+  [/\bhoa\b|\bassociation dues\b|\bcondo (fees|dues)\b/, ["hoa_dues"]],
+  [/\bproperty tax/, ["property_taxes"]],
+  // No exception list: "gas bill" and "truck insurance" never match these words, and a guard
+  // on "payment" would have refused "mileage reimbursement payment" (a mutation said so).
+  [/\bfuel\b|\bdiesel\b|\bgasoline\b|\bgas (for|in|to|driving)\b|\bmileage\b|\boil change\b|\btolls?\b|\bparking\b/, ["vehicle_expenses"]],
+  [/\bcontinuing education\b|\bce (course|workshop|hours|credits)\b|\bcertification\b|\bworkshop\b|\bseminar\b|\bconference\b|\btraining\b|\bcourse\b/, ["education_training"], /\bsubscription\b|\bplatform\b|\bsoftware\b|\bapp\b|\bsales\b|\bsold\b/],
+  [/\bdues\b|\bmembership\b|\bassociation\b/, ["dues_memberships"], /\bhoa\b|\bcondo\b|\bgym\b/],
   [/\blinens?\b|\blaundry\b|\buniforms?\b|\baprons?\b|\bbar mops?\b/, ["linen_laundry"]],
   [/\b(trash|garbage|dumpster|waste|recycling)\b/, ["waste_removal"]],
   [/\b(to-?go|takeout|take-out) (boxes|containers|bags|cups)\b|\bpackaging\b|\bnapkins\b/, ["paper_packaging"]],
