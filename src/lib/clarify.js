@@ -67,9 +67,12 @@ import { TEMPLATE_ACCOUNTS } from "./coaTemplates";
 
 const ANSWER_MAP = [
   [/\binsurance\b|\bliability\b|\bworkers?[' ]?comp\b/, "insurance"],
+  // C555 — MARKETING BEFORE RENT: "listing the unit for rent" is advertising, and first match wins.
+  [/\bmarketing\b|\bads?\b|\badvertis|\bpromo|\bcampaign\b|\bseo\b|\blisting\b|\bdirectory\b/, "marketing_advertising"],
   [/\brent\b|\blease\b|\boffice space\b|\bcowork|\bwework\b/, "rent_occupancy"],
-  [/\bsoftware\b|\bsaas\b|\bsubscription\b|\bapp\b|\btool\b|\bhosting\b|\bcloud\b|\baws\b|\bdomain\b|\blicense\b/, "technology_software"],
-  [/\bmarketing\b|\bads?\b|\badvertis|\bpromo|\bcampaign\b|\bseo\b/, "marketing_advertising"],
+  // C555 — `license` was here, so "city business license" and "contractor license renewal"
+  // filed as Software. A software licence still says software / app / a product name.
+  [/\bsoftware\b|\bsaas\b|\bsubscription\b|\bapp\b|\btool\b|\bhosting\b|\bcloud\b|\baws\b|\bdomain\b|\bmicrosoft\b|\boffice 365\b|\badobe\b/, "technology_software"],
   [/\btravel\b|\bflight\b|\bhotel\b|\bairfare\b|\bmileage\b|\buber\b|\blyft\b|\brental car\b/, "travel_entertainment"],
   // C553 — "restaurant" was here, and for a restaurant OWNER it names their own premises:
   // "linens for the restaurant" and "restaurant supplies" both filed as a meal. A meal out is
@@ -78,7 +81,11 @@ const ANSWER_MAP = [
   [/\blegal\b|\baccount(ing|ant)\b|\bconsult|\battorney\b|\blawyer\b|\bbookkeep|\bprofessional (service|fee)/, "professional_services"],
   [/\bcontractor\b|\bfreelanc|\bsubcontract|\b1099\b/, "professional_services"],
   [/\bpayroll\b|\bsalary\b|\bsalaries\b|\bwages\b|\bemployee pay\b/, "salaries_wages"],
-  [/\butilit|\belectric|\bwater bill\b|\bgas bill\b|\binternet\b|\bphone bill\b|\bcomcast\b|\bverizon\b/, "utilities"],
+  // C555 — `\belectric` (no end boundary) matched "electrician" and "electrical work".
+  [/\butilit|\belectric\b|\belectricity\b|\bwater bill\b|\bgas bill\b|\binternet\b|\bphone bill\b|\bcomcast\b|\bverizon\b/, "utilities"],
+  // C555 — THERE WAS NO REPAIRS LINE, so "paint and supplies to fix up the unit" reached
+  // `supplies` below and filed as Office Supplies. Before supplies, deliberately.
+  [/\brepairs?\b|\brepaired\b|\bfix\b|\bfixing\b|\bfix(ed)? up\b|\bmaintenance\b|\bpaint(ing)?\b|\bhandyman\b|\bplumb(er|ing)\b/, "repairs_maintenance"],
   [/\boffice supplies?\b|\bsupplies\b|\bpaper\b|\bstaples\b|\bprinter\b|\bink\b/, "office_supplies"],
   [/\bbank fee\b|\bservice charge\b|\bmerchant fee\b|\bprocessing fee\b/, "miscellaneous_expense"],
   [/\binterest\b/, "interest_expense"],
@@ -115,6 +122,10 @@ const DRINK_GOODS_RE = /\bbeverages?\b|\bdrinks?\b|\bsodas?\b|\bsyrups?\b|\bbeer
 const RESALE_RE = /\bfor resale\b|\bto resell\b|\bresale\b|\binventory\b|\braw materials?\b|\bstock (to|we) sell\b|\b(things|what) we sell\b/;
 // Specific categories a business-type template adds. Each fires only when the role exists.
 const CHART_ANSWERS = [
+  // C555 — a licence or permit fee, unless the answer is about software.
+  [/\blicen[cs]es?\b|\bpermits?\b/, ["taxes_licenses"], /\bsoftware\b|\bapp\b|\bsaas\b|\bseats?\b|\bmicrosoft\b|\boffice 365\b|\badobe\b/],
+  [/\bmalpractice\b|\bprofessional liability\b/, ["malpractice_insurance"]],
+  [/\bsubbed\b|\bsub ?out\b|\bsubcontract(ed|or|ors)?\b/, ["subcontractor_costs"]],
   [/\blinens?\b|\blaundry\b|\buniforms?\b|\baprons?\b|\bbar mops?\b/, ["linen_laundry"]],
   [/\b(trash|garbage|dumpster|waste|recycling)\b/, ["waste_removal"]],
   [/\b(to-?go|takeout|take-out) (boxes|containers|bags|cups)\b|\bpackaging\b|\bnapkins\b/, ["paper_packaging"]],
@@ -132,7 +143,9 @@ function chartAnswerAccount(answer, getAccountByRole) {
     }
     return null;
   };
-  for (const [re, roles] of CHART_ANSWERS) if (re.test(a)) { const hit = pick(roles); if (hit) return hit; }
+  for (const [re, roles, unless] of CHART_ANSWERS) {
+    if (re.test(a) && !(unless && unless.test(a))) { const hit = pick(roles); if (hit) return hit; }
+  }
   // Goods rules only — a meal out or a repair is never goods, whichever goods word it contains
   // ("team dinner after the inventory count" is a dinner; the first draft filed it as food).
   if (MEAL_OUT_RE.test(a) || NOT_GOODS_RE.test(a)) return null;

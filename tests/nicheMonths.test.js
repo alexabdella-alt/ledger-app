@@ -54,19 +54,19 @@ const KNOWN = {
   },
   consultant: {
     gaps: ["15 taxes_licenses"],
-    wrong: ['15 "city business license" → technology_software'],
+    wrong: [],   // C555 — was: "city business license" → technology_software
   },
   landlord: {
     gaps: ["11 security_deposits_held"],
-    wrong: ['12 "listing the unit for rent" → rent_occupancy', '14 "paint and supplies to fix up the unit" → office_supplies'],
+    wrong: [],   // C555 — was: listing → rent_occupancy; paint/fix up → office_supplies
   },
   therapist: {
     gaps: ["12 education_training", "15 dues_subscriptions"],
-    wrong: ['10 "malpractice insurance" → insurance', '11 "license renewal" → technology_software'],
+    wrong: [],   // C555 — was: malpractice → insurance; license renewal → technology_software
   },
   trades: {
     gaps: ["04 car_truck_expenses", "05 car_truck_expenses", "06 car_truck_expenses"],
-    wrong: ['08 "electrician I subbed out" → utilities', '14 "contractor license renewal" → technology_software'],
+    wrong: [],   // C555 — was: electrician → utilities; contractor license → technology_software
   },
 };
 

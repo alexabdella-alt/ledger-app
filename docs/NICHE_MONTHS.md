@@ -77,7 +77,7 @@ a clean run there is the strongest evidence the product is ready for it.
 | Therapist | CE workshop · association dues | Education & training · Dues & subscriptions |
 | Trades | Truck fuel (×3) | Vehicle expenses |
 
-### An owner's answer files instantly to the wrong place — bugs for every business
+### An owner's answer files instantly to the wrong place — bugs for every business — ✅ ALL FIXED (C555)
 
 - *"city business license"*, *"license renewal"*, *"contractor license renewal"* → **Software**
   (`license` is read as a software license).
