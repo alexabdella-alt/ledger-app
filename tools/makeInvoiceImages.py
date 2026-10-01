@@ -23,10 +23,31 @@ Deliberate variety, so it is not uniformly easy:
 
     python3 tools/makeInvoiceImages.py
 """
-import os, math, random
+import os, math, random, zlib
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 random.seed(20260901)                      # deterministic — the same pile every run
+
+# ★★ 2026-10-01 — THE "DETERMINISTIC" ABOVE WAS ONLY HALF TRUE. The seed fixes `random`, but
+# the per-delivery wobble and every invoice number came from Python's built-in string hash,
+# which is SALTED PER PROCESS (PYTHONHASHSEED). So each run produced a different pile —
+# different totals, different invoice numbers — and a re-run drive could not be compared
+# with the last one. `stable()` is a fixed function of its inputs.
+def stable(*parts):
+    return zlib.crc32(repr(parts).encode("utf-8"))
+
+# The company the bills are addressed to. A drive runs on a FRESH company (C299c) and the
+# bill-to is what tells extraction which party is us, so the company must be created with
+# exactly this name. Changed for drive 4 so it does not collide with the "Red River Pizza
+# Co." the first three drives left in the company switcher.
+BILL_TO = "Riverbend Pizza Co."
+
+# ★★★ SUPPLIERS WHO BILL THE IDENTICAL AMOUNT EVERY TIME. Bluebonnet was PLANTED as the
+# flat-fee case (O117/O127 — "identical every week, must never read as a duplicate payment")
+# and then run through `wobble` with everyone else, so its four totals varied by ~3%. The
+# flat-fee rule only recognises a supplier whose bills vary by under 2% (FLAT_SD_RATIO), so
+# three drives ran without the planted case ever being present. Kept flat now: $145.00 x4.
+FLAT = {"BLS"}
 OUT = os.path.join(os.path.dirname(__file__), "drive-fixtures")
 F = "/System/Library/Fonts/Supplemental/"
 
@@ -44,8 +65,10 @@ BOLD, REG, MONO = "Arial Bold.ttf", "Arial.ttf", "Courier New.ttf"
 # volume rather than at variety:
 #   · repeats test whether the questions TAPER as a vendor becomes familiar. A vendor asked
 #     about on the 4th and again on the 25th is a defect, not a question (O122).
-#   · volume tests what the queue does when the pile is longer than the hourly budget —
-#     behaviour that changed with the rolling window and has never been watched on a backlog.
+#   · volume tests what the queue does with a pile. ★ 2026-10-01: this said "longer than the
+#     hourly budget"; `087` raised the budget to 300 AI calls and 100 files an hour, so 35
+#     documents now fit inside one hour and the BACKLOG case is no longer exercised by this
+#     pile. A run that hits a limit before all 35 are read is therefore itself a finding.
 #
 # `expect` is what a competent bookkeeper would say. It is NOT shown to the app; it is the
 # answer key, to be read AFTER the run.
@@ -134,19 +157,19 @@ def wobble(items, k):
     """Real invoices from one vendor are not identical week to week."""
     out = []
     for desc, qty, rate in items:
-        r = round(rate * (1 + ((hash((desc, k)) % 21) - 10) / 100.0), 2)
+        r = round(rate * (1 + ((stable(desc, k) % 21) - 10) / 100.0), 2)
         out.append((desc, qty, r))
     return out
 
 INVOICES = []
 for vendor, layout, days, items, expect, pre in RECURRING:
     for k, day in enumerate(days):
-        INVOICES.append(dict(vendor=vendor, layout=layout, num=f"{pre}-{40000 + hash((pre, day)) % 9000}",
+        INVOICES.append(dict(vendor=vendor, layout=layout, num=f"{pre}-{40000 + stable(pre, day) % 9000}",
                              date=f"08/{day:02d}/2026", terms="Net 30" if layout == "invoice" else "",
-                             items=wobble(items, k), expect=expect))
+                             items=items if pre in FLAT else wobble(items, k), expect=expect))
 for vendor, layout, day, items, expect, pre in MONTHLY + ONE_OFFS:
     date = "Aug 14, 2026" if pre == "HM" else f"08/{day:02d}/2026"
-    INVOICES.append(dict(vendor=vendor, layout=layout, num=f"{pre}-{10000 + hash((pre, day)) % 9000}",
+    INVOICES.append(dict(vendor=vendor, layout=layout, num=f"{pre}-{10000 + stable(pre, day) % 9000}",
                          date=date, terms="Net 30" if layout == "invoice" else "Due on receipt",
                          items=items, expect=expect))
 INVOICES.sort(key=lambda x: (x["date"][-4:], x["date"][:2], x["date"][3:5]))
@@ -163,7 +186,7 @@ def draw_invoice(d, inv, subtotal, tax, total):
     d.text((640, 102), f"Date       {inv['date']}", font=font(MONO, 18), fill=INK)
     if inv["terms"]: d.text((640, 130), f"Terms      {inv['terms']}", font=font(MONO, 18), fill=INK)
     d.line([(60, 175), (940, 175)], fill=(180, 180, 190), width=2)
-    d.text((60, 200), "Bill to:  Red River Pizza Co.", font=font(REG, 17), fill=(90, 90, 100))
+    d.text((60, 200), f"Bill to:  {BILL_TO}", font=font(REG, 17), fill=(90, 90, 100))
     d.text((60, 224), "          2401 Red River St, Austin TX 78705", font=font(REG, 17), fill=(90, 90, 100))
     y = 300
     d.text((60, y), "DESCRIPTION", font=font(BOLD, 15), fill=(110, 110, 120))

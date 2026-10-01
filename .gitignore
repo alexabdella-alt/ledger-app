@@ -23,3 +23,6 @@ shadow-code.zip
 # Drive fixtures — regenerate with `python3 tools/makeInvoiceImages.py` rather than
 # committing 800KB of images. The GENERATOR is the artifact worth keeping.
 tools/drive-fixtures/
+
+# The pile drives 1-3 used — not reproducible (the generator used a salted hash), kept by hand.
+tools/drive-fixtures-drives1-3/

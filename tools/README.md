@@ -48,6 +48,20 @@ Two sane routes, whichever suits:
 Whichever is used, create the demo company through normal onboarding first so it gets a real
 chart of accounts — **the point of a demo company is that it is not special.**
 
+## `makeInvoiceImages.py` — the invoice drive's month
+
+Thirty-five photographed-looking invoices and receipts for August 2026, billed to
+**Riverbend Pizza Co.**, plus `drive-fixtures/ANSWER-KEY.txt` (what a competent bookkeeper
+would say — read it AFTER a run). Images are gitignored; run `python3 tools/makeInvoiceImages.py`.
+The run sheet and pass/fail criteria are `docs/DRIVE4_ACCEPTANCE.md` §14.
+
+- **It is reproducible** (fixed 2026-10-01, C552). It used Python's string hash, which changes
+  every process, so each run made a different pile. Two runs now produce byte-identical files.
+- **Bluebonnet Linen bills exactly $145.00 every week** — the flat-fee trap. Every other
+  weekly supplier's amounts vary a little, as real ones do.
+- `drive-fixtures-drives1-3/` (also gitignored) holds the pile the first three drives used,
+  which can no longer be regenerated.
+
 ## `O107` note
 
 `tests/perfProfile.test.js` and `docs/O107_SLOW_SCREENS.md` cover derivation cost; nothing in

@@ -7,6 +7,14 @@ arrive for the wrong reason, names the wrong reason.
 Twenty-two commits shipped between the third drive (2026-09-10) and this document (C324–C345).
 Most were found by asking *who reads this?*; none has been driven live. This is their test.
 
+> **★★ UPDATED 2026-10-01 — READ §14 FIRST.** The drive has still not been run, and ~200 commits
+> have shipped since this was written. §14 is the run sheet (fresh company, two batches) and the
+> criteria added for what shipped since. **The invoice pile was also regenerated (C552)**: the old
+> generator was not reproducible and the linen supplier it planted as the flat weekly fee was never
+> actually flat, so three drives ran without that case in the pile. Regenerate before running:
+> `python3 tools/makeInvoiceImages.py`. The pile drives 1–3 used is kept in
+> `tools/drive-fixtures-drives1-3/`.
+
 ---
 
 ## 0. PRECONDITIONS — WITHOUT THESE THE DRIVE PROVES NOTHING
@@ -16,7 +24,9 @@ Most were found by asking *who reads this?*; none has been driven live. This is 
 *"No month has been signed off yet…"* or *"Reviewed and signed off through …"* (`C343`). If that
 line is absent, the app is serving an old bundle — stop.
 
-**0.2 ★ A FRESH COMPANY, OR THE RESIDUE NAMED.** The third drive's 28 documents are stored unlinked
+**0.2 ★ A FRESH COMPANY — NOW REQUIRED, SEE §14.0.** *(The original text follows; the residue route
+no longer applies, because the regenerated pile is billed to a different company name.)*
+**A FRESH COMPANY, OR THE RESIDUE NAMED.** The third drive's 28 documents are stored unlinked
 (`O136`). On the same company, every "no source document" you see on a pre-2026-09-11 entry is that
 residue, not a failure of `C324`. Either run on a fresh company, or run
 `supabase/verify/O136_repair_from_upload_log.sql` (a) first and note the verdict counts.
@@ -142,6 +152,79 @@ Four figure defects shipped on 2026-09-15 that a drive can check in minutes. Eac
 - **13b — Customers, "Still owed to you" (`C452`/`C454`).** A customer whose sale arrived as a **bank deposit** (card payment) shows **$0.00** owed; a customer with an **issued invoice** carrying sales tax shows the **taxed** total. Wrong-reason pass: a company with no deposits proves nothing on the first half — Red River has Toast payouts.
 - **13c — Vendors, "Bills you still owe" / "Paid YTD" (`C453`).** A supplier paid at the till (a bank-line purchase) shows **Paid YTD > 0 and Owed $0.00**; a supplier with an open uploaded bill shows the bill under owed. Wrong-reason pass: a supplier with both kinds must show both halves right.
 - **13d — The invoice email (`C437`/`C450`/`C451`).** Send an invoice with a sales-tax rate and **no due date typed**, terms Net 30. The email body says **"for <taxed total>"** and **"Total due: <taxed total>"**, the printed invoice's *Due Date* is issue + 30 days (not *On Receipt*), and the sent-invoice list shows the taxed total. Wrong-reason pass: an invoice with no tax cannot fail the total half.
+
+---
+
+## 14. THE RUN SHEET, AND WHAT SHIPPED SINCE (`C346`–`C551`) — ADDED 2026-10-01
+
+### 14.0 Setting up — in this order
+
+1. **Regenerate the pile:** `python3 tools/makeInvoiceImages.py`. Then open `ANSWER-KEY.txt` and
+   check the four Bluebonnet totals all read **$145.00**. If they don't, you have the old pile — stop.
+2. **Create a new company named exactly `Riverbend Pizza Co.`** The invoices are billed to that
+   name, and the bill-to is how extraction tells which side of the bill we are on. A different
+   name will turn every bill into a "did you pay this or receive it?" question.
+3. **Onboarding:** business type **Restaurant** (gives it a Food Cost category), one real bank
+   account, and starting balances with **Day One = 2026-08-01** and any non-zero cash (e.g.
+   $25,000). Every invoice is dated August 2026; a Day One after Aug 1 refuses the early ones.
+   *Do not invite an accountant* — §14e needs a company with none.
+4. **Drop in two batches.** **Batch A = files `01`–`10`** (Aug 1–8, one of each weekly supplier).
+   **Answer every question card it raises.** Then **batch B = files `11`–`35`.**
+   *Why two batches:* dropped all at once, every Alamo Ice invoice is read before you have answered
+   anything, so "does it stop asking once you've told it" (§14b) cannot be observed at all.
+5. The August bank statement from the earlier drives lives outside the repo. Drop it **after**
+   batch B if you have it — §5, §8 and §13b–c need it. It names the old company; if that confuses
+   it, mark those **NOT EXERCISED** rather than failed.
+
+### 14.1 Criteria
+
+- **14a — The flat weekly fee is not a duplicate (`O117`/`O127`, `C220`).** After batch B, there is
+  **no open card** calling Bluebonnet Linen a possible double payment or "charged twice".
+  **Fail** = such a card is open at the end. *A card that appeared after batch A (two of the four
+  in) and is gone after batch B is acceptable* — four identical bills is the bar for "flat"; note it
+  if you saw it. **Wrong-reason pass:** the four totals are not all $145.00 (see 14.0 step 1).
+
+- **14b — How fast it stops asking, measured against the rule AS BUILT (`O64`).** The rule today:
+  **the app trusts a supplier once it has two bookings on record. Your answer to a card counts as
+  one. Changing the category on an entry (a recode) teaches it immediately.** So if batch A asked
+  about Alamo Ice (Aug 6) and you answered, batch B's Aug 13 Alamo **may** ask again — and batch B
+  is read in one go, so Aug 13 / 20 / 27 may all see the same one-booking history.
+  **Record which Alamo dates asked, in each batch.** **Fail** = an Alamo invoice asks when two Alamo
+  bookings already existed before its batch was dropped, or any Alamo bill lands in Miscellaneous.
+  *Three Alamo questions in batch B is the rule working as built — and it is the open product
+  question in C552's note (should one answer be enough?). Score it as RECORDED, not as a pass.*
+
+- **14c — Nothing is filed while its own explanation says it belongs elsewhere (`C551`).** For
+  every entry that booked **without** a question, open it and read *Why it was booked this way*.
+  **Fail** = the explanation says the bill belongs in a different category from the one it was
+  filed under (the Lone Star → Travel & Entertainment shape). At minimum read the Alamo, Corner
+  Market, Lone Star Restaurant Supply, Travis County and Waterloo entries.
+  **And** on any question card, if the card offers a one-tap *"It was …"* answer, that answer must
+  not be a category the card's own text casts doubt on.
+
+- **14d — The 1099 tracker shows August's suppliers (`C549`).** Taxes → *Open 1099 tracker*: the
+  heading reads **2026**, and the suppliers you paid in August are listed under *Vendors paid in
+  2026*. **Fail** = it reads 2025, or *"No vendor payments recorded for 2025 yet."* The Taxes card's
+  sentence names the same year (*"…for 2026"*).
+
+- **14e — The screens don't claim a reviewer you don't have (`C550`).** With no accountant invited,
+  the Taxes footer reads *"Nobody is reviewing your books yet — add your accountant under Settings
+  → Team…"*. Settings → Team's heading names three choices and does not say "members".
+  **Fail** = *"CFAI advisor"* or *"reviews your books monthly"* anywhere.
+
+- **14f — Ordinary bookings still save under the new database rules (`091`/`092`).** Every one of
+  the 35 that books does so with **no** *"couldn't save"* error. **Fail** = any save error, above all
+  one mentioning a category or a different company — that would be the new tenancy keys refusing
+  an ordinary booking (the `079` direction, live).
+
+- **14g — Chat recode on a real entry (`C546`).** In the chat: *"Move the Corner Market receipt from
+  Aug 8 to Office Supplies."* **Pass** = that one receipt moves and nothing else does.
+  **Fail** = it reports success and nothing moved, or it moves a different entry, or it says
+  *"check your connection/permissions"* (that sentence no longer exists).
+
+- **14h — The pile fits in the budget (`087`).** All 35 are read without a "limit reached" message.
+  **Fail** = a limit message before 35 — the deployed limit is not the one the repo says (100
+  files / 300 AI calls an hour), which is a finding about the live function, not the app.
 
 ## SCORING
 
