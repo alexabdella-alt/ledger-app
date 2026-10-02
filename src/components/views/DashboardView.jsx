@@ -83,8 +83,7 @@ export default function DashboardView() {
   const [bizFye, setBizFye] = React.useState("12-31");
   const [bizForm, setBizForm] = React.useState(null);
   const [teachOpen, setTeachOpen] = React.useState(false);   // C563 — vendor teach-in from the setup checklist
-  const { isViewer } = useERP();   // C563 — a viewer cannot write rules, so is not offered teach-in   // C559 — null = untouched, "" = "I'm not sure"
-  const [accountantNotice, setAccountantNotice] = React.useState(false); // "coming soon" inline message
+  const { isViewer, isOwner } = useERP();   // C563 — a viewer cannot write rules, so is not offered teach-in · C564 — only the owner can invite   // C559 — null = untouched, "" = "I'm not sure"
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
   const goToSection = (view, anchorId) => {
@@ -374,7 +373,11 @@ export default function DashboardView() {
                   opening: { key:"opening", done: obHasOpening, ...ONBOARDING_STEP_COPY.opening, go:()=>goToSection("opening-balances","opening-balances-section") },
                 };
                 const steps = ONBOARDING_STEP_ORDER.map(k => stepByKey[k]);
-                const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Your accountant can review and sign off each month", go:()=>{ setAccountantNotice(true); dismissAccountantStep(); }, optional:true };
+                // ★★ C564 — THIS STEP SAID "TEAM INVITES ARE COMING SOON" — AND KEPT SAYING IT. Invites
+                // shipped in August (C225, Settings → Team); clicking the step showed the sentence
+                // and dismissed the step, so the false notice then sat on the checklist for good. It
+                // now takes the owner to Team, and "Not now" hides it without claiming anything.
+                const optional = { key:"accountant", done: false, label:"Connect with your accountant", hint:"Invite them from Settings → Team — they can review and sign off each month", go:()=>navTo("team"), optional:true, actionLabel:"Invite →" };
                 const required = requiredDone;
                 if (obAllDone) {
                   // The effect above persists onboarding_complete after a short delay.
@@ -392,7 +395,10 @@ export default function DashboardView() {
                       <div style={{ fontSize: 13, fontWeight:500, color:s.done?"var(--sc-text-mut)":"var(--sc-text)", textDecoration:s.done?"line-through":"none" }}>{s.label}{s.optional?" (optional)":""}</div>
                       <div style={{ fontSize: 12, color:"var(--sc-text-mut)", marginTop:1 }}>{s.hint}</div>
                     </div>
-                    {!s.done && <span style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:600 }}>{s.optional?"Dismiss":"Set up →"}</span>}
+                    {!s.done && <span style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:600 }}>{s.actionLabel || "Set up →"}</span>}
+                    {!s.done && s.optional && s.key === "accountant" && (
+                      <span onClick={(e)=>{ e.stopPropagation(); dismissAccountantStep(); }} style={{ fontSize:12, color:"var(--sc-text-mut)", marginLeft:10, cursor:"pointer" }}>Not now</span>
+                    )}
                   </div>
                 );
                 return (
@@ -411,12 +417,7 @@ export default function DashboardView() {
                         <span style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:600 }}>Start →</span>
                       </div>
                     )}
-                    {(accountantNotice || accountantDismissed) ? (
-                      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid var(--sc-surface-2)" }}>
-                        <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, background:"var(--sc-gold-soft)", color:"var(--sc-gold)" }}>✦</span>
-                        <div style={{ fontSize: 13, color:"var(--sc-text-2)", lineHeight:1.4 }}>Team invites are coming soon — we'll notify you when this feature is available.</div>
-                      </div>
-                    ) : renderStep(optional)}
+                    {isOwner && !accountantDismissed ? renderStep(optional) : null}
                   </div>
                 );
               })()}
