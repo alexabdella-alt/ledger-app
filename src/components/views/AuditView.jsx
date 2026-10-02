@@ -6,9 +6,10 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, plural } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { scrubOwnerActivity } from "../../lib/activityFeed";
+import { auditCoverage, auditCsv, auditRowsForDownload } from "../../lib/auditTrail";
 
 export default function AuditView() {
-  const { CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat, loadFailures, companyDataLoaded } = useERP();
+  const { CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditTotal, readFullAuditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat, loadFailures, companyDataLoaded } = useERP();
   // C408 — the Audit trail is a client Settings screen. An owner reads the same rows the
   // CPA does, with the trailing bookkeeping notation older rows carry ("· GL Dr AP/Cr Cash
   // posted") stripped; the reviewer's seat and the CSV keep the raw detail.
@@ -35,16 +36,16 @@ export default function AuditView() {
               return matchesAction && matchesSearch;
             });
 
-            // CSV download — exports the FULL unfiltered log
-            const downloadCSV = () => {
-              const headers = ["Timestamp","Action","Detail","User"];
-              const rows = auditLog.map(e => [
-                (e.ts||"").replace("T"," ").slice(0,19),
-                e.action||"",
-                `"${(e.detail||"").replace(/"/g,'""')}"`,
-                e.user||"owner"
-              ]);
-              const csv = [headers.join(","), ...rows.map(r=>r.join(","))].join("\n");
+            // C568 — how much of the trail is on screen, from the database's exact count.
+            const coverage = auditCoverage(auditLog.length, auditTotal);
+            const allCount = coverage.total ?? auditLog.length;
+
+            // CSV download — reads EVERY event at click time. It used to export the newest
+            // 1,000 the screen holds, under a comment saying it was the full log.
+            const downloadCSV = async () => {
+              const { rows, error } = await auditRowsForDownload({ loaded: auditLog, total: auditTotal, readFull: readFullAuditLog });
+              if (error || !rows) { showNotification("We couldn't read the whole audit trail just now, so nothing was downloaded. Try again in a moment.", "error"); return; }
+              const csv = auditCsv(rows);
               const blob = new Blob([csv], {type:"text/csv"});
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a"); a.href=url; a.download="audit_trail.csv"; a.click();
@@ -60,14 +61,18 @@ export default function AuditView() {
                     <div style={{fontSize:13,color:"var(--sc-text-2)"}}>Permanent, immutable record of every action. Entries are never modified or deleted.</div>
                   </div>
                   <button onClick={downloadCSV} style={{background:"var(--sc-border)",border:"1px solid var(--sc-border-2)",color:"var(--sc-gold)",borderRadius:10,padding:"9px 18px",fontSize:13,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                    ↓ Download CSV ({plural(auditLog.length, "event")})
+                    {`↓ Download CSV (${allCount.toLocaleString("en-US")} ${allCount === 1 ? "event" : "events"})`}
                   </button>
                 </div>
+
+                {coverage.line && (
+                  <div data-audit-coverage style={{fontSize:12.5,color:"var(--sc-text-2)",marginBottom:12}}>{coverage.line}</div>
+                )}
 
                 {/* Stats row */}
                 <div style={{display:"flex",gap:14,marginBottom:20,flexWrap:"wrap"}}>
                   {[
-                    {label:"Total Events",  value: auditLog.length,                                                                            color:"var(--sc-gold)"},
+                    {label:"Total Events",  value: allCount,                                                                            color:"var(--sc-gold)"},
                     {label:"Bookings",      value: auditLog.filter(e=>e.action==="invoice_booked").length,                                     color:"var(--sc-success)"},
                     {label:"Deletions",     value: auditLog.filter(e=>e.action==="invoice_deleted"||e.action==="contract_deleted").length,      color:"var(--sc-error)"},
                     {label:"Recodes",       value: auditLog.filter(e=>e.action==="ai_recode").length,                                          color:"var(--sc-gold)"},
@@ -117,7 +122,7 @@ export default function AuditView() {
                           ? `Showing ${filteredLog.length} of ${plural(auditLog.length, "event")}`
                           : `${auditLog.length} event${auditLog.length!==1?"s":""}`}
                       </div>
-                      <div style={{fontSize:11,color:"var(--sc-text-2)"}}>Newest first · scroll to see all</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)"}}>{coverage.partial ? "Newest first · older events are in the download" : "Newest first · scroll to see all"}</div>
                     </div>
                     {filteredLog.length===0 ? (
                       <div style={{padding:40,textAlign:"center",color:"var(--sc-text-2)",fontSize:13}}>No events match your search.</div>

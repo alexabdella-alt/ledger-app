@@ -34,7 +34,10 @@ describe("★★ the write surface is one table", () => {
 
   it("the client is INJECTED, never imported — a module that reaches for its own can widen its own surface", () => {
     const full = fs.readFileSync(path.join(process.cwd(), "src/lib/shadowIo.js"), "utf8");
-    expect(full.match(/^import .* from "([^"]+)";$/gm)).toEqual(['import { planShadowRun } from "./shadowRun.js";']);
+    // C569 — `pagedRead` pages a query built from the INJECTED client; it holds no client
+    // of its own, so it cannot widen the surface this test guards.
+    expect(full.match(/^import .* from "([^"]+)";$/gm)).toEqual(['import { readAllRows } from "./pagedRead.js";', 'import { planShadowRun } from "./shadowRun.js";']);
+    expect(code("src/lib/pagedRead.js")).not.toMatch(/^import /m);
     expect(src).not.toMatch(/createClient|from "\.\/supabase/);
   });
 
@@ -54,6 +57,7 @@ const q = (result) => {
   const o = {};
   for (const m of ["select", "eq", "gte", "lte", "order", "limit"]) o[m] = () => o;
   o.insert = () => ({ select: () => Promise.resolve(result) });
+  o.range = () => Promise.resolve(result);   // C569 — the unbounded reads page
   o.then = (res) => res(result);
   return o;
 };

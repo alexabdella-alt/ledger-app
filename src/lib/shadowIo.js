@@ -16,6 +16,7 @@
 // module that reaches for its own client can widen its own surface later.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { readAllRows } from "./pagedRead.js";
 import { planShadowRun } from "./shadowRun.js";
 
 const SHADOW_TABLE = "calibration_shadow_records";
@@ -40,13 +41,17 @@ export async function readShadowInputs({ supabase, companyId, from, to }) {
   const [signoffs, accounts, states, directory, lines] = await Promise.all([
     supabase.from("period_signoffs").select("period").eq("company_id", companyId),
     supabase.from("accounts").select("id, code, system_role").eq("company_id", companyId),
-    supabase.from("vendor_state").select("entity_key, tier, attested_account_id").eq("company_id", companyId),
-    supabase.from("universal_vendor_directory").select("*").eq("active", true),
-    supabase.from("journal_entry_lines")
+    // C569 — these three grow without bound; read every row, not PostgREST's first 1,000.
+    // A year of a busy company's lines is several thousand, and the calibration verdict
+    // was being computed over whichever thousand came back.
+    readAllRows(() => supabase.from("vendor_state").select("entity_key, tier, attested_account_id").eq("company_id", companyId).order("entity_key")),
+    readAllRows(() => supabase.from("universal_vendor_directory").select("*").eq("active", true).order("id")),
+    readAllRows(() => supabase.from("journal_entry_lines")
       .select("id, account_id, debit, credit, journal_entries!inner(id, entry_date, description, source, deleted_at, company_id)")
       .eq("company_id", companyId)
       .gte("journal_entries.entry_date", from)
-      .lte("journal_entries.entry_date", to),
+      .lte("journal_entries.entry_date", to)
+      .order("id")),
   ]);
 
   const err = [signoffs, accounts, states, directory, lines].find((r) => r && r.error);
