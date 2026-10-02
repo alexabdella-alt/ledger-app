@@ -694,7 +694,10 @@ Existing AP history for duplicate/anomaly check (JSON):
 
   // ── Payroll export parse (PAYROLL data slot) ──
   "parse-payroll": {
-    model: MODEL_MAIN, max_tokens: 2000, tools: null,
+    // C570 — the reply lists every employee, then the totals. 2,000 held about sixty people;
+    // 8,000 holds a register as long as the 60,000-character input the client sends (C566).
+    // A reply that still runs out is refused, never half-read (C565).
+    model: MODEL_MAIN, max_tokens: 8000, tools: null,
     system:
 `You are a payroll accountant. Parse the payroll export in the DATA below (Gusto, ADP, or generic CSV) and return ONLY valid JSON:
 {
