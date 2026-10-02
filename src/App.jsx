@@ -67,6 +67,7 @@ import { makeKeyedInFlight } from "./lib/oneInFlight";
 import { readDeclinedRecurring, writeDeclinedRecurring } from "./lib/declinedRecurring";
 import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
+import { splitCsvForParse, batches, mergeParsedPieces } from "./lib/statementChunks";   // C562
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
 import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, pendingStatementStashes, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
@@ -6063,47 +6064,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const account = null;
           const offsetCode = rc("cash");
           const offsetName = rn("cash");
-          // Parse bank statement
-          let rawTxns = [];
-          if (isSpreadsheet) {
-            const text = await new Promise(res => { const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsText(file); });
-            const parseRes = await fetch(AI_PROXY_URL, {
-              // x-rate-kind:upload — spreadsheets skip classifyFile, so count the file here
-              method:"POST", headers:{ ...getAuthHeaders(), "x-rate-kind":"upload" },
-              body: JSON.stringify({
-                profile: "parse-bank-csv",   // model/max_tokens/system server-owned; statement text via untrusted slot
-                slots: { STATEMENT: text.slice(0,8000) },
-                messages:[{role:"user", content:"Parse the bank statement text in the instructions."}]
-              })
-            });
-            const pd = await okAIResponse(parseRes);
-            rawTxns = aiJson(pd, []);
-          } else {
-            const parseRes = await fetch(AI_PROXY_URL, {
-              method:"POST", headers:getAuthHeaders(),
-              body: JSON.stringify({
-                profile: "parse-bank-pdf",   // model/max_tokens/system server-owned
-                messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},{type:"text",text:"Extract all transactions."}]}]
-              })
-            });
-            const pd = await okAIResponse(parseRes);
-            rawTxns = aiJson(pd, []);
-          }
-
-          // Categorize transactions
-          const catRes = await fetch(AI_PROXY_URL, {
-            method:"POST", headers:getAuthHeaders(),
-            body: JSON.stringify({
-              profile: "categorize-bank",   // model/max_tokens/system server-owned; chart + transactions via untrusted slots
-              slots: {
-                CHART: BOOKABLE_ACCOUNTS.filter(a=>a.category==="Revenue"||a.category==="Expenses").map(a=>`${a.code} - ${a.name}`).join("\n"),
-                TRANSACTIONS: JSON.stringify(rawTxns.slice(0,80)),
-              },
-              messages:[{role:"user", content:`Categorize the ${rawTxns.length} transactions provided in the instructions.`}]
-            })
-          });
-          const catData = await okAIResponse(catRes);
-          const categorized = aiJson(catData, []);
+          // C562 — the shared reader (this backstop carried its own copy of both truncations).
+          const { rawTxns, categorized } = await readBankStatement(file, { countAsUpload: isSpreadsheet });
           // ONE stable, truthy id per parsed line, used for BOTH matching and booking
           // (bankTxns below reuses it verbatim). NEVER the categorizer's id:0 — that's
           // falsy, so a `t.id || …` fallback would silently regenerate a divergent id
@@ -6883,6 +6845,73 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     return { reconciled, alreadyReconciled, offered: rv.ready && !reconciled, rv };
   };
 
+  // ★★★ C562 — ONE READER FOR A BANK STATEMENT, AND IT READS THE WHOLE THING. Both places that
+  // parsed a statement carried their own copy of these calls, and both truncated in silence: a
+  // CSV was cut at 8,000 characters before the AI saw it, and only the first 80 lines went to be
+  // categorised — everything after that was never recorded, with no message. A busy month's
+  // statement booked part of itself. Two parse call-sites is also how the O83 BUG-1 regression
+  // happened; this is one. Long CSVs are read in pieces (header repeated, preamble kept with
+  // the first); lines are categorised in batches of 80 and merged back IN ORDER, because the
+  // callers assign line ids by position. Vendor teach-in (C563) reads statements through it too.
+  const readBankStatement = async (file, { onStage = null, countAsUpload = false } = {}) => {
+    const ext = "." + String(file?.name || "").split(".").pop().toLowerCase();
+    let parsed;
+    if (ext === ".pdf") {
+      const base64 = await fileToBase64(file);
+      onStage?.("categorizing", 40);
+      const res = await fetch(AI_PROXY_URL, {
+        method:"POST", headers:getAuthHeaders(),
+        body: JSON.stringify({
+          profile: "parse-bank-pdf",   // model/max_tokens/system server-owned
+          messages:[{role:"user",content:[
+            {type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},
+            {type:"text",text:"Extract all transactions from this bank statement as JSON."}
+          ]}]
+        })
+      });
+      parsed = mergeParsedPieces([aiJson(await okAIResponse(res), [])]);
+    } else {
+      const text = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsText(file);
+      });
+      onStage?.("categorizing", 30);
+      const pieces = [];
+      const chunks = splitCsvForParse(text);
+      for (let i = 0; i < chunks.length; i++) {
+        const res = await fetch(AI_PROXY_URL, {
+          // x-rate-kind:upload — counted once per FILE (a spreadsheet skips classifyFile), never per piece
+          method:"POST", headers: { ...getAuthHeaders(), ...(countAsUpload && i === 0 ? { "x-rate-kind": "upload" } : {}) },
+          body: JSON.stringify({
+            profile: "parse-bank-csv",   // model/max_tokens/system server-owned; statement text via untrusted slot
+            slots: { STATEMENT: chunks[i] },
+            messages:[{role:"user",content:"Parse the bank statement text in the instructions and extract all transactions."}]
+          })
+        });
+        pieces.push(aiJson(await okAIResponse(res), []));
+      }
+      parsed = mergeParsedPieces(pieces);
+    }
+    const rawTxns = parsed.transactions;
+    onStage?.("categorizing", 60);
+    if (!rawTxns.length) return { ...parsed, rawTxns, categorized: [] };
+    onStage?.("categorizing", 70);
+    const categorized = [];
+    for (const batch of batches(rawTxns)) {
+      const res = await fetch(AI_PROXY_URL, {
+        method:"POST", headers:getAuthHeaders(),
+        body: JSON.stringify({
+          profile: "categorize-bank",   // model/max_tokens/system server-owned; chart + transactions via untrusted slots
+          slots: { CHART: BOOKABLE_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n"), TRANSACTIONS: JSON.stringify(batch) },
+          messages:[{role:"user",content:`Categorize the ${batch.length} bank transactions provided in the instructions.`}]
+        })
+      });
+      categorized.push(...aiJson(await okAIResponse(res), []));
+    }
+    return { ...parsed, rawTxns, categorized };
+  };
+
   const handleBankFile = async (file, account = null, { intakeId: callerIntakeId = null } = {}) => {
     if (!file) return;
     // C459 — the account must be a STORED one. Bank Import's picker defaults to
@@ -6920,71 +6949,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     let pipelineAutoReconciled = false, pipelineAlreadyReconciled = false, pipelineBooked = 0, pipelineTotal = 0;   // C198·2 — what the owner is told at the end
 
     try {
-      let fileContent = "";
-      if (ext === ".pdf") {
-        // PDF: send as base64 image/document to Claude
-        const base64 = await fileToBase64(file);
-        setBankStep("categorizing"); setBankProgress(40);
-        const res = await fetch(AI_PROXY_URL, {
-          method:"POST", headers:getAuthHeaders(),
-          body: JSON.stringify({
-            profile: "parse-bank-pdf",   // model/max_tokens/system server-owned
-            messages:[{role:"user",content:[
-              {type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},
-              {type:"text",text:"Extract all transactions from this bank statement as JSON."}
-            ]}]
-          })
-        });
-        const d = await okAIResponse(res);
-        const raw = aiJson(d, []);
-        fileContent = raw;
-      } else {
-        // CSV/Excel: read as text
-        fileContent = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = e => resolve(e.target.result);
-          reader.readAsText(file);
-        });
-        setBankStep("categorizing"); setBankProgress(30);
-        // Send raw text to Claude to parse + extract transactions
-        const res = await fetch(AI_PROXY_URL, {
-          method:"POST", headers:getAuthHeaders(),
-          body: JSON.stringify({
-            profile: "parse-bank-csv",   // model/max_tokens/system server-owned; statement text via untrusted slot
-            slots: { STATEMENT: fileContent.slice(0,8000) },
-            messages:[{role:"user",content:"Parse the bank statement text in the instructions and extract all transactions."}]
-          })
-        });
-        const d = await okAIResponse(res);
-        fileContent = aiJson(d, []);
-      }
-
-      // The parse profile returns the object shape { opening_balance, period_start,
-      // transactions } OR (legacy) a bare transactions array — the SHARED normalizer handles
-      // both (same one the Reconcile flow uses). Stated opening + period start feed the O83
-      // opening-balance proposal below; the stated period (C198·3c (ii)) feeds the persisted
-      // statement's period, in preference to the transaction span.
-      const { transactions: rawTxns, statedOpening, statedPeriodStart, statedPeriodEnd } = normalizeBankParse(fileContent);
-      setBankProgress(60);
+      // C562 — the shared reader: the whole statement, parsed in pieces and categorised in batches.
+      const { rawTxns, statedOpening, statedPeriodStart, statedPeriodEnd, categorized } =
+        await readBankStatement(file, { onStage: (step, pct) => { setBankStep(step); setBankProgress(pct); } });
 
       // Now batch-categorize all transactions with GL coding + vendor extraction
       if (rawTxns.length === 0) { markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: "no transactions found — held for review" }); showNotification("No transactions found in file.", "error"); setBankProcessing(false); return; }
-
-      setBankStep("categorizing"); setBankProgress(70);
-      const categorizeRes = await fetch(AI_PROXY_URL, {
-        method:"POST", headers:getAuthHeaders(),
-        body: JSON.stringify({
-          profile: "categorize-bank",   // model/max_tokens/system server-owned; chart + transactions via untrusted slots
-          slots: {
-            CHART: BOOKABLE_ACCOUNTS.map(a=>`${a.code} - ${a.name} (${a.category})`).join("\n"),
-            TRANSACTIONS: JSON.stringify(rawTxns.slice(0,80)),
-          },
-          messages:[{role:"user",content:`Categorize the ${rawTxns.length} bank transactions provided in the instructions.`}]
-        })
-      });
-
-      const catData = await okAIResponse(categorizeRes);
-      const categorized = aiJson(catData, []);
 
       // Apply vendor rules to any matches
       const withRules = categorized.map(t => {

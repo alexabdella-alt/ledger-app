@@ -46,7 +46,9 @@ describe("C472 · disableAccountBlocker", () => {
 describe("C472 · the choosers read the bookable list", () => {
   const app = fs.readFileSync("src/App.jsx", "utf8");
   it("all seven AI chart slots, and none of the full chart", () => {
-    expect((app.match(/CHART: BOOKABLE_ACCOUNTS\./g) || []).length).toBe(7);
+    // C562 — SIX: the two statement parsers' categorise slots became ONE shared reader. The
+    // property is that every slot reads the bookable list; the count catches a new slot.
+    expect((app.match(/CHART: BOOKABLE_ACCOUNTS\./g) || []).length).toBe(6);
     expect(app).not.toMatch(/CHART: CHART_OF_ACCOUNTS\./);
   });
   it("persistAccountEdit refuses a disable with the blocker's reason before the write", () => {
