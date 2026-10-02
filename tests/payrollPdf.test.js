@@ -39,7 +39,7 @@ describe("★★ payroll accepts the file an owner actually has", () => {
   });
 });
 
-import { payrollRequestBody, isPdfFile } from "../src/lib/payroll.js";
+import { payrollRequestBody, isPdfFile, PAYROLL_TEXT_LIMIT, PAYROLL_TOO_LONG, payrollFailureCopy } from "../src/lib/payroll.js";
 
 describe("★★ a PDF register goes as a DOCUMENT, not as text", () => {
   // ★ TWO FILES NOW, BECAUSE O116 SPLIT THEM: the PIPELINE moved to `App.jsx` (so the Home
@@ -65,8 +65,19 @@ describe("★★ a PDF register goes as a DOCUMENT, not as text", () => {
     expect(typeof body.messages[0].content).toBe("string");
   });
 
-  it("caps the text slot, as it always did", () => {
-    expect(payrollRequestBody({ text: "x".repeat(9000) }).slots.PAYROLL).toHaveLength(8000);
+  // ★★ C566 — THIS TEST USED TO PIN THE BUG: "caps the text slot, as it always did" asserted a
+  // 9,000-character register came out as 8,000. A register's TOTALS are at the bottom, so the
+  // cap silently dropped them and the later employees. The property now: sent whole, or refused.
+  it("★★★ a long register is sent WHOLE — never cut", () => {
+    const text = "x".repeat(9000);
+    expect(payrollRequestBody({ text }).slots.PAYROLL).toBe(text);
+    const big = "y".repeat(PAYROLL_TEXT_LIMIT);
+    expect(payrollRequestBody({ text: big }).slots.PAYROLL).toHaveLength(PAYROLL_TEXT_LIMIT);
+  });
+  it("★★★ and past the limit it is REFUSED with a code — a cut register reads as a smaller, complete payroll", () => {
+    let err = null;
+    try { payrollRequestBody({ text: "z".repeat(PAYROLL_TEXT_LIMIT + 1) }); } catch (e) { err = e; }
+    expect(err && err.code).toBe(PAYROLL_TOO_LONG);
   });
 
   it("★ the SAME server-owned profile handles both — the register is the register", () => {
@@ -94,5 +105,18 @@ describe("★★ a PDF register goes as a DOCUMENT, not as text", () => {
 
   it("the file picker offers PDF, or the accept list contradicts the guard", () => {
     expect(view).toMatch(/accept=".*\.pdf"/);
+  });
+});
+
+describe("C566 — a payroll failure is said, and says the right thing", () => {
+  it("★★ each recorded cause has its own sentence, and every one says nothing was recorded", () => {
+    expect(payrollFailureCopy({ code: PAYROLL_TOO_LONG })).toMatch(/too long to read in one go/);
+    expect(payrollFailureCopy({ code: "AI_REPLY_CUT_OFF" })).toMatch(/lists more people than we can read in one go/);
+    expect(payrollFailureCopy(new Error("anything else"))).toMatch(/couldn't read that payroll file/);
+    for (const e of [{ code: PAYROLL_TOO_LONG }, { code: "AI_REPLY_CUT_OFF" }, new Error("x")]) expect(payrollFailureCopy(e)).toMatch(/Nothing was recorded|nothing was recorded/);
+  });
+  it("★★★ the upload's catch now TELLS the person — it logged to the console and stopped", () => {
+    const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    expect(app).toMatch(/payroll parse error: \$\{e\?\.message\|\|e\}` \}\); console\.error\(e\);\s*\n(\s*\/\/.*\n)*\s*showNotification\(payrollFailureCopy\(e\), "error"\);/);
   });
 });

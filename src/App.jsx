@@ -13,7 +13,7 @@ import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeE
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount, mealsOverrideAllowed } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
-import { payrollRequestBody, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata } from "./lib/payroll";
+import { payrollRequestBody, payrollFailureCopy, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata } from "./lib/payroll";
 import { validateComment } from "./lib/anomalyNotes";
 import { buildAliasIndex, applyAlias, validateAlias, aliasExplainer } from "./lib/vendorAlias";
 import { planOpeningRedo, redoAuditDetail } from "./lib/openingRedo";
@@ -6517,7 +6517,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         ? `Payroll read — it needs a look before posting.${why ? " " + why : ""} It's waiting in Payroll.`
         : `We've read your payroll and set it aside for your accountant to post.${why ? " " + why : ""}`,
         "info");
-    } catch(e) { markIntake && markIntake(pIntakeId, INTAKE_STATUS.FAILED, { detail: `payroll parse error: ${e?.message||e}` }); console.error(e); }
+    } catch(e) {
+      markIntake && markIntake(pIntakeId, INTAKE_STATUS.FAILED, { detail: `payroll parse error: ${e?.message||e}` }); console.error(e);
+      // ★ C566 — THE FAILURE IS SAID. This catch logged to the console and the intake row and
+      // told the person nothing: the upload simply stopped. The sentence reads the recorded error.
+      showNotification(payrollFailureCopy(e), "error");
+    }
     setPayrollProcessing(false);
   };
   // Consume a file routed here from another importer's misroute warning (O37).

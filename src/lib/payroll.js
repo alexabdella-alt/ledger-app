@@ -504,6 +504,24 @@ export function planPayrollBankLines(standalone = [], ledger = [], { dateWindowD
 // The SAME server-owned profile handles both: the system prompt describing a register does
 // not care which container the register arrived in, and forking it would create two things
 // to keep in step.
+// ★★★ C566 — A PAYROLL FILE WAS CUT AT 8,000 CHARACTERS BEFORE THE AI READ IT. A register
+// lists every employee and puts the TOTALS AT THE BOTTOM, so a restaurant's 30–40 staff pushed
+// the totals and the later employees past the cut — payroll understated, with nothing said.
+// The model reads far more than that; the limit is now generous, and ABOVE it the file is
+// refused with a sentence, never cut. A truncated register is worse than none: it reads as a
+// complete, smaller payroll.
+export const PAYROLL_TEXT_LIMIT = 60000;
+export const PAYROLL_TOO_LONG = "PAYROLL_TOO_LONG";
+export function payrollTextTooLong(text) { return String(text || "").length > PAYROLL_TEXT_LIMIT; }
+
+// What the person is told when a payroll file could not be read — from the RECORDED error, so
+// it never names a cause that did not happen (§9). Nothing is recorded in every case.
+export function payrollFailureCopy(err) {
+  if (err && err.code === PAYROLL_TOO_LONG) return "That payroll file is too long to read in one go — upload the summary or totals page instead. Nothing was recorded.";
+  if (err && err.code === "AI_REPLY_CUT_OFF") return "That payroll register lists more people than we can read in one go — upload the summary or totals page instead. Nothing was recorded.";
+  return "We couldn't read that payroll file, so nothing was recorded. Try a Gusto or ADP export.";
+}
+
 export function payrollRequestBody({ isPdf = false, base64 = null, text = "" } = {}) {
   if (isPdf) {
     return {
@@ -517,7 +535,10 @@ export function payrollRequestBody({ isPdf = false, base64 = null, text = "" } =
   }
   return {
     profile: "parse-payroll",
-    slots: { PAYROLL: String(text || "").slice(0, 8000) },
+    slots: { PAYROLL: (() => {
+      if (payrollTextTooLong(text)) throw Object.assign(new Error("payroll file too long to read in one go"), { code: PAYROLL_TOO_LONG });
+      return String(text || "");
+    })() },
     messages: [{ role: "user", content: "Parse the payroll export text in the instructions." }],
   };
 }
