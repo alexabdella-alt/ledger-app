@@ -63,6 +63,7 @@ export function draftClientQuestion(txn = {}) {
 // too vague to disambiguate — so a still-ambiguous answer NEVER falsely resolves a flag.
 import { DEFAULT_CHART_OF_ACCOUNTS } from "./constants";
 import { REASONING_CONTRADICTS } from "./confidenceFlag";
+import { ruleForVendor } from "./vendorRules.js";
 import { TEMPLATE_ACCOUNTS } from "./coaTemplates";
 
 const ANSWER_MAP = [
@@ -171,8 +172,7 @@ function chartAnswerAccount(answer, getAccountByRole) {
 export function answerToAccount(answer, { getAccountByRole, rules = [], vendor = null } = {}) {
   // a known vendor rule is the strongest signal
   if (vendor && Array.isArray(rules)) {
-    const v = String(vendor).toLowerCase().trim();
-    const rule = rules.find((r) => r.vendor && String(r.vendor).toLowerCase().trim() === v);
+    const rule = ruleForVendor(rules, vendor);   // C563 — the same matcher the booking paths use
     if (rule && rule.gl_code) return { gl_code: rule.gl_code, gl_name: rule.gl_name || rule.gl_code, role: null, confidence: 99, via: "rule" };
   }
   // C553 — this company's own specific categories first, when the owner's words name them.

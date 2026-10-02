@@ -14,6 +14,7 @@ import { plan1099ForYear } from "../../lib/form1099";
 // needed two edits and the second one could be missed (C556 recorded it).
 import { BUSINESS_TYPES } from "../../lib/coaTemplates";
 import { LEGAL_FORMS } from "../../lib/tax";
+import VendorTeachIn from "../VendorTeachIn";   // C563
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
 import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
@@ -80,7 +81,9 @@ export default function DashboardView() {
   const [anomExpanded, setAnomExpanded] = React.useState(false); // anomaly card expand/collapse
   const [bizType, setBizType] = React.useState(""); // business-type modal draft
   const [bizFye, setBizFye] = React.useState("12-31");
-  const [bizForm, setBizForm] = React.useState(null);   // C559 — null = untouched, "" = "I'm not sure"
+  const [bizForm, setBizForm] = React.useState(null);
+  const [teachOpen, setTeachOpen] = React.useState(false);   // C563 — vendor teach-in from the setup checklist
+  const { isViewer } = useERP();   // C563 — a viewer cannot write rules, so is not offered teach-in   // C559 — null = untouched, "" = "I'm not sure"
   const [accountantNotice, setAccountantNotice] = React.useState(false); // "coming soon" inline message
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
@@ -345,6 +348,7 @@ export default function DashboardView() {
 
   return (
             <div>
+              {teachOpen && <VendorTeachIn onClose={()=>setTeachOpen(false)} />}
               {/* O90 — owner trust panel (CR-27): the owner's at-a-glance "my books are handled
                   and correct," a plain-language projection of the same trust data the CPA reviews.
                   Frame paints INSTANTLY: TrustPanel renders a shimmer skeleton while data loads
@@ -396,6 +400,17 @@ export default function DashboardView() {
                     <div style={{ fontSize:17, fontWeight:700, color:"var(--sc-text)" }}>Welcome to Shadow — let's get your books set up</div>
                     <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:3, marginBottom:6 }}>{required} of {steps.length} done. Knock these out and you're ready to roll.</div>
                     {steps.map(renderStep)}
+                    {/* C563 — OPTIONAL, and offered here because the first month is when it pays. */}
+                    {!isViewer && (
+                      <div onClick={()=>setTeachOpen(true)} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid var(--sc-surface-2)", cursor:"pointer" }}>
+                        <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, background:"var(--sc-gold-soft)", color:"var(--sc-gold)" }}>★</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize: 13, fontWeight:500, color:"var(--sc-text)" }}>Teach us your vendors (optional)</div>
+                          <div style={{ fontSize: 12, color:"var(--sc-text-mut)", marginTop:1 }}>Upload 2–3 old bank statements and confirm your vendors once — their bills then file themselves</div>
+                        </div>
+                        <span style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:600 }}>Start →</span>
+                      </div>
+                    )}
                     {(accountantNotice || accountantDismissed) ? (
                       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid var(--sc-surface-2)" }}>
                         <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, background:"var(--sc-gold-soft)", color:"var(--sc-gold)" }}>✦</span>
