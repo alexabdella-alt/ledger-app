@@ -13,7 +13,8 @@ import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
 import { validateUpload } from "../../lib/uploadGuard";
-import { normalizeBankParse } from "../../lib/openingBalanceProposal";
+import { mergeParsedPieces } from "../../lib/statementChunks";
+import { readPdfStatementPieces, openPdfPages, statementReadFailureCopy } from "../../lib/pdfStatement";
 import { aiJson } from "../../lib/aiJson";
 
 // ── CSV helpers (Chase / Bank of America / generic 3-column) ──
@@ -623,24 +624,31 @@ export default function ReconView() {
       setProcessing(true);
       try {
         const base64 = await fileToB64(file);
-        const res = await fetch(AI_PROXY_URL, {
-          method:"POST", headers:getAuthHeaders(),
-          body: JSON.stringify({ profile:"parse-bank-pdf", messages:[{ role:"user", content:[
-            { type:"document", source:{ type:"base64", media_type:"application/pdf", data:base64 } },
-            { type:"text", text:'Extract EVERY transaction from this bank statement. Use NEGATIVE amounts for money out (debits/withdrawals/payments) and POSITIVE for money in (deposits/credits). Include every single row.' },
-          ] }] }),
+        const readPdf = async (data, text) => {
+          const res = await fetch(AI_PROXY_URL, {
+            method:"POST", headers:getAuthHeaders(),
+            body: JSON.stringify({ profile:"parse-bank-pdf", messages:[{ role:"user", content:[
+              { type:"document", source:{ type:"base64", media_type:"application/pdf", data } },
+              { type:"text", text },
+            ] }] }),
+          });
+          return aiJson(await okAIResponse(res), []);
+        };
+        // C571 — the same reader as Bank Import: whole first, split into pages only when too long.
+        const pieces = await readPdfStatementPieces({
+          readWhole: () => readPdf(base64, 'Extract EVERY transaction from this bank statement. Use NEGATIVE amounts for money out (debits/withdrawals/payments) and POSITIVE for money in (deposits/credits). Include every single row.'),
+          openPages: () => openPdfPages(base64),
+          readPiece: readPdf,
         });
-        const data = await okAIResponse(res);
 
-        // The parse profile now returns { opening_balance, period_start, transactions[] }
-        // (165b075) — the SHARED normalizer accepts that OR a legacy bare array, so the
-        // Reconcile flow can't go stale on the shape (O83 "can't read PDF" regression).
-        const { transactions: arr, statedOpening } = normalizeBankParse(aiJson(data, []));
+        // The parse profile returns { opening_balance, period_start, transactions[] }; the
+        // shared merge normalises each piece (legacy bare arrays too) and keeps page order.
+        const { transactions: arr, statedOpening } = mergeParsedPieces(pieces);
         setStmtOpening(statedOpening != null && !isNaN(Number(statedOpening)) ? Number(statedOpening) : null);   // for the books-opening discrepancy flag (O83)
         const rows = (Array.isArray(arr)?arr:[]).map((t,i)=>({ id:"p_"+i+"_"+Math.random().toString(36).slice(2,6), date: normDate(t.date), description:(t.description||"Transaction").slice(0,140), amount: parseFloat(t.amount), _matchBook:null })).filter(r=>!isNaN(r.amount));
         if (!rows.length) showNotification && showNotification("Couldn't read transactions from that PDF — try a CSV export instead.","error");
         else { setBankTxns(rows); showNotification && showNotification(`Extracted ${rows.length} transactions from your statement ✓`); }
-      } catch(e){ console.error("[recon] PDF extract failed:", e); showNotification && showNotification("Couldn't read that PDF — try a CSV export from your bank instead.","error"); }
+      } catch(e){ console.error("[recon] PDF extract failed:", e); showNotification && showNotification(statementReadFailureCopy(e) || "Couldn't read that PDF — try a CSV export from your bank instead.","error"); }
       setProcessing(false);
       return;
     }

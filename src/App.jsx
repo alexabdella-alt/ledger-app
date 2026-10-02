@@ -132,6 +132,7 @@ import TaxView from "./components/views/TaxView";
 import DocsView from "./components/views/DocsView";
 import AuditView from "./components/views/AuditView";
 import { readAllRows } from "./lib/pagedRead";
+import { readPdfStatementPieces, openPdfPages, statementReadFailureCopy } from "./lib/pdfStatement";
 import { AUDIT_SCREEN_ROWS, auditRowFromDb, slimAuditState, readFullAuditLog as readFullAuditLogFrom } from "./lib/auditTrail";
 import AdminView from "./components/views/AdminView";
 import QBOImportView from "./components/views/QBOImportView";
@@ -6879,17 +6880,25 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (ext === ".pdf") {
       const base64 = await fileToBase64(file);
       onStage?.("categorizing", 40);
-      const res = await fetch(AI_PROXY_URL, {
-        method:"POST", headers:getAuthHeaders(),
-        body: JSON.stringify({
-          profile: "parse-bank-pdf",   // model/max_tokens/system server-owned
-          messages:[{role:"user",content:[
-            {type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},
-            {type:"text",text:"Extract all transactions from this bank statement as JSON."}
-          ]}]
-        })
-      });
-      parsed = mergeParsedPieces([aiJson(await okAIResponse(res), [])]);
+      const readPdf = async (data, text) => {
+        const res = await fetch(AI_PROXY_URL, {
+          method:"POST", headers:getAuthHeaders(),
+          body: JSON.stringify({
+            profile: "parse-bank-pdf",   // model/max_tokens/system server-owned
+            messages:[{role:"user",content:[
+              {type:"document",source:{type:"base64",media_type:"application/pdf",data}},
+              {type:"text",text}
+            ]}]
+          })
+        });
+        return aiJson(await okAIResponse(res), []);
+      };
+      // C571 — whole first; only a statement too long for one reply is split into pages.
+      parsed = mergeParsedPieces(await readPdfStatementPieces({
+        readWhole: () => readPdf(base64, "Extract all transactions from this bank statement as JSON."),
+        openPages: () => openPdfPages(base64),
+        readPiece: readPdf,
+      }));
     } else {
       const text = await new Promise((resolve) => {
         const reader = new FileReader();
@@ -7130,7 +7139,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // bankPreview useMemo) — no async preview call needed; the booking re-derives the same matches.
     } catch(e) {
       markIntake(bankIntakeId, INTAKE_STATUS.FAILED, { detail: `bank parse error: ${e?.message || e}` });   // non-terminal → surfaced
-      showNotification("Failed to process bank statement. Please try again.", "error");
+      showNotification(statementReadFailureCopy(e) || "Failed to process bank statement. Please try again.", "error");   // C571
       console.error(e);
     }
     setBankProcessing(false);
