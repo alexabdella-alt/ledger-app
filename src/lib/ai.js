@@ -5,6 +5,7 @@ import { fmtSignedMoney, todayLocal } from "./format";
 import { fetchLedger } from "./ledger";
 import { perEntry } from "./txnPresent";
 import { executeAITool } from "./aiTools";
+import { capToolResult } from "./toolResultCap";
 import { classifyAIFailure } from "./aiFailure";
 import { readBudgetHeaders, recordBudget } from "./aiBudget";
 import { aiTextOf } from "./aiJson";
@@ -341,7 +342,7 @@ ${ledgerSection}`;
             let out;
             try { if (onToolCall) onToolCall(tu.name, tu.input || {}); out = await executeAITool(tu.name, tu.input || {}, ctx); }
             catch (e) { out = { error: String(e?.message || e) }; }
-            toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out).slice(0, 50000) });
+            toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: capToolResult(out) });   // C567 — whole rows, and says so
           }
           messages.push({ role: "user", content: toolResults });
           continue;
