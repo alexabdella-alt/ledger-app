@@ -83,7 +83,7 @@ describe("C562 — both statement paths read through the one reader", () => {
   });
   it("★★ Bank Import and the drop-zone backstop both call readBankStatement", () => {
     expect((app.match(/await readBankStatement\(file/g) || []).length).toBe(2);
-    expect(app).toMatch(/for \(const batch of batches\(rawTxns\)\)/);
+    expect(app).toMatch(/const categorized = await readInHalves\(rawTxns, async \(batch\) => \{/);   // C565 — batches of 80, halved on a cut-off
     expect(app).toMatch(/const chunks = splitCsvForParse\(text\);/);
   });
 });

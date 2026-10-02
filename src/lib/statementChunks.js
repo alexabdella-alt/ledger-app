@@ -12,6 +12,7 @@
 // categorising, and merge the pieces back in order.
 // ─────────────────────────────────────────────────────────────────────────────
 import { normalizeBankParse } from "./openingBalanceProposal";
+import { isCutOff } from "./aiJson.js";
 
 export const CSV_CHUNK_CHARS = 6000;    // ~70 lines; the parse reply is capped at 4,000 tokens
 export const CATEGORIZE_BATCH = 80;     // the categoriser's proven batch size (6,000-token reply)
@@ -63,4 +64,25 @@ export function mergeParsedPieces(pieces = []) {
     statedPeriodStart: parts.map((p) => p.statedPeriodStart).find(Boolean) || null,
     statedPeriodEnd: [...parts].reverse().map((p) => p.statedPeriodEnd).find(Boolean) || null,
   };
+}
+
+// ★ C565 — READ A LIST IN BATCHES, HALVING ANY BATCH WHOSE REPLY RUNS OUT OF ROOM. A cut-off
+// reply is now refused (aiJson) rather than half-used; this turns that refusal into a retry on
+// smaller pieces, so a dense statement still goes through. Results come back IN INPUT ORDER —
+// callers assign line ids by position — and a single item that still cannot fit fails loudly.
+export async function readInHalves(items, readBatch, { size = CATEGORIZE_BATCH } = {}) {
+  const out = [];
+  const go = async (batch) => {
+    try {
+      const got = await readBatch(batch);
+      out.push(...(Array.isArray(got) ? got : [got]));
+    } catch (e) {
+      if (!isCutOff(e) || batch.length < 2) throw e;
+      const mid = Math.ceil(batch.length / 2);
+      await go(batch.slice(0, mid));
+      await go(batch.slice(mid));
+    }
+  };
+  for (const b of batches(items, size)) await go(b);
+  return out;
 }

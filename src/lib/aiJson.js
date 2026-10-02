@@ -78,7 +78,20 @@ export function aiTextOf(data) {
   return (block && block.text) || "";
 }
 
+// ★★★ C565 — A REPLY THAT RAN OUT OF ROOM IS REFUSED, NEVER HALF-USED. The model stops at its
+// token limit mid-list and says so (`stop_reason: "max_tokens"`); nothing read that. And
+// `extractFirstJson` cannot close the cut-off list, so it skips past it and returns the FIRST
+// COMPLETE ITEM INSIDE IT — a reply listing ten invoices came back as one invoice, the batch
+// extractor wrapped it as a list of one, and nine invoices vanished with nothing on screen.
+// Every structured read goes through here, so one check covers them all; the callers' existing
+// error handling then says what happened instead of booking a fragment.
+export const AI_REPLY_CUT_OFF = "AI_REPLY_CUT_OFF";
+export function isCutOff(err) { return !!err && err.code === AI_REPLY_CUT_OFF; }
+
 export function aiJson(data, fallback) {
+  if (data && data.stop_reason === "max_tokens") {
+    throw Object.assign(new Error("The AI's reply was cut off before it finished, so nothing was taken from it."), { code: AI_REPLY_CUT_OFF });
+  }
   const text = String(aiTextOf(data) || "").trim();
   if (!text) return fallback;
   const parsed = extractFirstJson(text);

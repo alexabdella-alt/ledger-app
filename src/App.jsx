@@ -68,7 +68,7 @@ import { readDeclinedRecurring, writeDeclinedRecurring } from "./lib/declinedRec
 import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { ruleForVendor } from "./lib/vendorRules";   // C563 — one rule matcher
-import { splitCsvForParse, batches, mergeParsedPieces } from "./lib/statementChunks";   // C562
+import { splitCsvForParse, mergeParsedPieces, readInHalves } from "./lib/statementChunks";   // C562
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
 import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, pendingStatementStashes, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
@@ -88,7 +88,7 @@ import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 // matching destructure in DashboardView outlived it. The planner itself stays — it is the
 // pure core `autoPostDepreciation` is built on and it is unit-tested.
 import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, depreciationDue, planDepreciationAutoPost } from "./lib/depreciation";
-import { aiJson, aiTextOf } from "./lib/aiJson";
+import { aiJson, aiTextOf, isCutOff } from "./lib/aiJson";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
@@ -5554,7 +5554,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // What was ON the document is a property of the bytes; the direction, duplicate
           // and coding decisions below still run on it fresh, against today's books.
           const cachedExtract = Array.isArray(prior?.extraction?.extract) && prior.extraction.extract.length ? prior.extraction.extract : null;
-          let extractedList = [];
+          let extractedList = []; let extractError = null;   // C565 — why nothing came back, if something went wrong
           if (cachedExtract) {
             extractedList = cachedExtract;
             reused.extract = true;
@@ -5583,7 +5583,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           try {
             const parsed = aiJson(extractData, []);
             extractedList = Array.isArray(parsed) ? parsed : [parsed];
-          } catch (e) { extractedList = []; }
+          } catch (e) { extractedList = []; extractError = e; }
           // C329 — store the RAW reading against the durable document, before any coding
           // touches it. `extractionToStore` cannot carry a coding, so this is safe by
           // construction; `storeExtraction` is best-effort and reports its own failure.
@@ -5603,9 +5603,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           }
 
           if (extractedList.length === 0) {
-            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:"Could not extract invoice data — try a clearer scan"} : q));
-            logUploadUpdate(item.upload_log_id, { status:"error", error:"Could not extract invoice data — try a clearer scan" });
-            markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: EXTRACT_FAILED_DETAIL });   // terminal — and READ BACK by C369's card, so "visible" is true after a reload too
+            // ★ C565 — SAY WHY, FROM THE RECORDED ERROR. A reply that ran out of room is not a
+            // bad scan: the file holds more invoices than one reading can return, and the fix is
+            // to split it. Telling the owner to rescan sends them after the wrong problem (§9).
+            const why = isCutOff(extractError) ? EXTRACT_CUT_OFF_REASON : "Could not extract invoice data — try a clearer scan";
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error:why} : q));
+            logUploadUpdate(item.upload_log_id, { status:"error", error:why });
+            // The hold MUST carry the unreadable prefix: that is what the trust panel and Home's
+            // "we couldn't read" card look for. Without it a cut-off file would count as
+            // "accounted for" — the false all-clear this whole class of bug produces.
+            if (isCutOff(extractError)) markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `${UNREADABLE_HOLD_PREFIX}${EXTRACT_CUT_OFF_REASON}` });
+            else markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: EXTRACT_FAILED_DETAIL });   // terminal — and READ BACK by C369's card, so "visible" is true after a reload too
             return;
           }
 
@@ -6846,6 +6854,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     return { reconciled, alreadyReconciled, offered: rv.ready && !reconciled, rv };
   };
 
+  // C565 — what a cut-off invoice reading tells the owner. One sentence, used by the queue, the
+  // upload log and the held document, so the three cannot drift apart.
+  const EXTRACT_CUT_OFF_REASON = "This file has more invoices than we can read in one go — split it into smaller files and upload them again. Nothing from it was recorded.";
   // ★★★ C562 — ONE READER FOR A BANK STATEMENT, AND IT READS THE WHOLE THING. Both places that
   // parsed a statement carried their own copy of these calls, and both truncated in silence: a
   // CSV was cut at 8,000 characters before the AI saw it, and only the first 80 lines went to be
@@ -6879,27 +6890,35 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       });
       onStage?.("categorizing", 30);
       const pieces = [];
-      const chunks = splitCsvForParse(text);
-      for (let i = 0; i < chunks.length; i++) {
+      // C565 — a piece whose reply runs out of room is split in half and read again, so a dense
+      // statement still goes through rather than failing outright (or, before, being half-used).
+      const parsePiece = async (piece, first, depth = 0) => {
         const res = await fetch(AI_PROXY_URL, {
           // x-rate-kind:upload — counted once per FILE (a spreadsheet skips classifyFile), never per piece
-          method:"POST", headers: { ...getAuthHeaders(), ...(countAsUpload && i === 0 ? { "x-rate-kind": "upload" } : {}) },
+          method:"POST", headers: { ...getAuthHeaders(), ...(countAsUpload && first ? { "x-rate-kind": "upload" } : {}) },
           body: JSON.stringify({
             profile: "parse-bank-csv",   // model/max_tokens/system server-owned; statement text via untrusted slot
-            slots: { STATEMENT: chunks[i] },
+            slots: { STATEMENT: piece },
             messages:[{role:"user",content:"Parse the bank statement text in the instructions and extract all transactions."}]
           })
         });
-        pieces.push(aiJson(await okAIResponse(res), []));
-      }
+        try { pieces.push(aiJson(await okAIResponse(res), [])); }
+        catch (e) {
+          const halves = isCutOff(e) && depth < 3 ? splitCsvForParse(piece, { maxChars: Math.ceil(piece.length / 2) }) : null;
+          if (!halves || halves.length < 2) throw e;
+          for (const h of halves) await parsePiece(h, false, depth + 1);
+        }
+      };
+      const chunks = splitCsvForParse(text);
+      for (let i = 0; i < chunks.length; i++) await parsePiece(chunks[i], i === 0);
       parsed = mergeParsedPieces(pieces);
     }
     const rawTxns = parsed.transactions;
     onStage?.("categorizing", 60);
     if (!rawTxns.length) return { ...parsed, rawTxns, categorized: [] };
     onStage?.("categorizing", 70);
-    const categorized = [];
-    for (const batch of batches(rawTxns)) {
+    // C565 — batches of 80; a batch whose reply runs out of room is halved and read again, in order.
+    const categorized = await readInHalves(rawTxns, async (batch) => {
       const res = await fetch(AI_PROXY_URL, {
         method:"POST", headers:getAuthHeaders(),
         body: JSON.stringify({
@@ -6908,8 +6927,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           messages:[{role:"user",content:`Categorize the ${batch.length} bank transactions provided in the instructions.`}]
         })
       });
-      categorized.push(...aiJson(await okAIResponse(res), []));
-    }
+      return aiJson(await okAIResponse(res), []);
+    });
     return { ...parsed, rawTxns, categorized };
   };
 
