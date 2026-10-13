@@ -1,12 +1,20 @@
 import { OBE_CODE, OBE_ROLE } from "../../lib/openingBalances";
 import React from "react";
+import { showCodesFor } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 
 export default function OpeningBalancesView() {
-  const { BOOKABLE_ACCOUNTS, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, redoOpeningPlan, redoOpeningSetup, isOwner, isAdmin, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view } = useERP();
+  const { BOOKABLE_ACCOUNTS, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, redoOpeningPlan, redoOpeningSetup, isOwner, isAdmin, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat } = useERP();
+  const showCodes = showCodesFor(navSeat);   // C578
+  // C578 — the three groups in an owner's words; the accounting name stays for the accountant.
+  const SECTION_LABEL = {
+    Assets:      { title: "WHAT THE BUSINESS HAS",  hint: showCodes ? "assets — bank, cash, money owed to you" : "bank accounts, cash, money customers owe you" },
+    Liabilities: { title: "WHAT THE BUSINESS OWES", hint: showCodes ? "liabilities — cards, loans, unpaid bills" : "credit cards, loans, bills you haven't paid" },
+    Equity:      { title: "WHAT'S LEFT OVER",       hint: showCodes ? "equity" : "the owner's share — usually you can leave this to balance itself" },
+  };
             const fmt = fmtMoney;
             const bsAccts = (BOOKABLE_ACCOUNTS||[]).filter(a=>["Assets","Liabilities","Equity"].includes(a.category));   // C472 — a disabled account is not offered a starting balance
             // Bank-linked cash GL codes are OWNED by the bank flow (bank-as-source-of-truth):
@@ -50,15 +58,15 @@ export default function OpeningBalancesView() {
                 <div id="opening-balances-section" style={{marginBottom:24,scrollMarginTop:16}}>
                   <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>SETUP</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Starting balances</h1>
-                  <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Enter your account balances as of the date you're starting your books. This sets the baseline for all reports.</div>
+                  <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>What the business had and owed on the day you start using this app — bank balances, credit cards, loans. Everything after that day comes from what you upload.</div>
                 </div>
 
                 {/* Cutoff (Day One) — editable until the opening entry is posted, then locked */}
                 <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
-                  <div style={{fontSize:13,color:"var(--sc-text-2)",flexShrink:0}}>Cutoff date (Day One):</div>
+                  <div style={{fontSize:13,color:"var(--sc-text-2)",flexShrink:0}}>Start date:</div>
                   <input type="date" value={cutoffDate||""} disabled={openingPosted} onChange={e=>saveCutoffDate(e.target.value)}
                     style={{background: openingPosted?"var(--sc-surface-2)":"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",cursor:openingPosted?"not-allowed":"text"}}/>
-                  {openingPosted && <span style={{fontSize:12,color:"var(--sc-text-2)"}}>🔒 locked — opening balances posted</span>}
+                  {openingPosted && <span style={{fontSize:12,color:"var(--sc-text-2)"}}>🔒 locked — starting balances saved, so your reports stay consistent</span>}
                   {/* ── §12's DEFERRED ESCAPE HATCH, NOW REACHABLE ────────────────────────
                       The lock is right: the whole starting position is one entry dated at
                       this date, and moving it afterwards would silently re-date every
@@ -82,10 +90,10 @@ export default function OpeningBalancesView() {
                     </button>
                   )}
                   <div style={{marginLeft:"auto",fontSize:12,color:"var(--sc-success)",fontWeight:500}}>
-                    {hasEntry ? <>✓ Auto-balanced{Math.abs(obePlug)>=0.01 ? <span style={{color:"var(--sc-text-2)",fontWeight:400}}> — {fmt(obePlug)} to Opening Balance Equity</span> : null}</> : "Enter your day-one balances"}
+                    {hasEntry ? <>✓ Balanced for you{Math.abs(obePlug)>=0.01 ? <span style={{color:"var(--sc-text-2)",fontWeight:400}}> — {fmt(obePlug)} recorded as your starting equity</span> : null}</> : "Enter what you had and owed on your start date"}
                   </div>
                 </div>
-                {!cutoffDate && <div style={{background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize: 13,color:"var(--sc-warning)"}}>Set your cutoff date first — it's the day your books begin. No transactions may be dated before it; everything before it is captured here as opening balances.</div>}
+                {!cutoffDate && <div style={{background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize: 13,color:"var(--sc-warning)"}}>Pick your start date first — the day your books begin. Nothing before it is entered one by one; it's summed up here instead.</div>}
 
                 {/* Balance sheet input by category. OBE (3400) is excluded from inputs — it's the
                     auto-plug, shown as a computed line under Equity so the user SEES where the
@@ -96,13 +104,13 @@ export default function OpeningBalancesView() {
                   return (
                   <div key={cat} style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,overflow:"hidden",marginBottom:12}}>
                     <div style={{padding:"12px 20px",background:"var(--sc-surface-2)",borderBottom:"1px solid var(--sc-border)",display:"flex",justifyContent:"space-between"}}>
-                      <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5}}>{cat.toUpperCase()}</div>
+                      <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5}}>{SECTION_LABEL[cat].title}<span style={{fontWeight:400,color:"var(--sc-text-2)",letterSpacing:0,marginLeft:8}}>{SECTION_LABEL[cat].hint}</span></div>
                       <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:"var(--sc-text)"}}>{fmt(catTotal)}</div>
                     </div>
                     {accts.map((acct,i)=>(
                       <div key={acct.code} style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:i>0?"1px solid var(--sc-border)":"none"}}>
                         <div style={{flex:1}}>
-                          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{acct.code}</span>
+                          {showCodes && <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{acct.code}</span>}
                           <span style={{fontSize:13}}>{acct.name}</span>
                         </div>
                         {bankLinked.has(acct.code) && bankBalFor(acct.code)>0 && <span style={{fontSize:10,color:"var(--sc-gold)",marginRight:8}} title="Pre-filled from the linked bank account — editable">from bank</span>}
@@ -116,9 +124,9 @@ export default function OpeningBalancesView() {
                     {cat==="Equity" && (
                       <div style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:accts.length?"1px solid var(--sc-border)":"none",background:"var(--sc-gold-soft)"}}>
                         <div style={{flex:1}}>
-                          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{OBE}</span>
-                          <span style={{fontSize:13}}>Opening Balance Equity</span>
-                          <span style={{fontSize:11,color:"var(--sc-gold)",marginLeft:8}}>auto-balanced</span>
+                          {showCodes && <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{OBE}</span>}
+                          <span style={{fontSize:13}}>{showCodes ? "Opening Balance Equity" : "Starting equity"}</span>
+                          <span style={{fontSize:11,color:"var(--sc-gold)",marginLeft:8}}>balances itself</span>
                         </div>
                         <div style={{width:140,textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:13,color:"var(--sc-text)",paddingRight:12}} title="The app posts this balancing figure for you — no manual entry needed">{fmt(obePlug)}</div>
                       </div>
@@ -129,7 +137,7 @@ export default function OpeningBalancesView() {
 
                 {/* Summary */}
                 <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:12,padding:"14px 20px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,textAlign:"center"}}>
-                  {[["Total Assets",totalAssets,"var(--sc-success)"],["Total Liabilities",totalLiab,"var(--sc-error)"],["Total Equity",totalEquity+obePlug,"var(--sc-gold)"]].map(([l,v,c])=>(
+                  {[["What it has",totalAssets,"var(--sc-success)"],["What it owes",totalLiab,"var(--sc-error)"],["What's left over",totalEquity+obePlug,"var(--sc-gold)"]].map(([l,v,c])=>(
                     <div key={l}>
                       <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>{l}</div>
                       <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:c}}>{fmt(v)}</div>
@@ -139,7 +147,7 @@ export default function OpeningBalancesView() {
 
                 {(() => { const canPost = !!cutoffDate && hasEntry; return (
                 <button onClick={post} disabled={!canPost} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:canPost?"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))":"var(--sc-border)",border:"none",color:canPost?"var(--sc-surface)":"var(--sc-text-2)",cursor:canPost?"pointer":"not-allowed"}}>
-                  {openingPosted ? "Update Opening Balances" : "Post Opening Balances"}
+                  {openingPosted ? "Update starting balances" : "Save starting balances"}
                 </button> ); })()}
               </div>
             );

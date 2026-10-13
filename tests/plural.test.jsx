@@ -14,8 +14,10 @@ describe("plural", () => {
   });
   it("the Categories and Audit trail screens agree with their counts", () => {
     const coa = renderViewHtml(CoaView, { accountsLoadOk: true, CHART_OF_ACCOUNTS: [{ code: "2000", name: "Accounts Payable", category: "Liabilities" }] }).replace(/<!-- -->/g, "");
-    expect(coa).toMatch(/LIABILITIES — 1 account\b/);
-    expect(coa).not.toMatch(/1 accounts/);
+    expect(coa).toMatch(/LIABILITIES — 1 category\b/);   // no seat = the accountant's view (C578)
+    expect(coa).not.toMatch(/1 categories/);
+    const owner = renderViewHtml(CoaView, { navSeat: { isReviewerSeat: false }, accountsLoadOk: true, CHART_OF_ACCOUNTS: [{ code: "2000", name: "Accounts Payable", category: "Liabilities" }] }).replace(/<!-- -->/g, "");
+    expect(owner).toMatch(/WHAT THE BUSINESS OWES — 1 category\b/);   // C578 — the owner's words for liabilities
     const audit = renderViewHtml(AuditView, { auditLog: [{ id: 1, action: "invoice_booked", detail: "x", created_at: "2026-09-01T00:00:00Z" }], auditActionFilter: "all", auditSearch: "", companyDataLoaded: true, loadFailures: {} }).replace(/<!-- -->/g, "");
     expect(audit).toMatch(/\(1 event\)/);
     expect(audit).not.toMatch(/1 events/);

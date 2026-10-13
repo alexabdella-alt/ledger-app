@@ -93,5 +93,5 @@ export const ONBOARDING_STEP_ORDER = ["biz", "bank", "upload", "opening"];
 // "we'll read it from your statement" sits beside the order that makes that true.
 export const ONBOARDING_STEP_COPY = {
   upload:  { label: "Upload your first bank statement", hint: "Drag it onto the zone below — we'll read your starting cash from it" },
-  opening: { label: "Confirm your opening balances",     hint: "We'll take them from your first statement — you just confirm. Or set them in Settings." },
+  opening: { label: "Confirm your starting balances",     hint: "We'll take them from your first statement — you just confirm. Or set them in Settings." },
 };

@@ -1,4 +1,5 @@
 import React from "react";
+import { showCodesFor, codeForNewCategory, CATEGORY_KIND_LABEL, CATEGORY_KIND_OPTION } from "../../lib/categoryLabel";
 import { plural } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
@@ -7,8 +8,9 @@ export default function CoaView() {
   const {
     CHART_OF_ACCOUNTS, persistAccountEdit, deleteAccount, addCustomAccount,
     coaEditingCode, setCoaEditingCode, coaEditDraft, setCoaEditDraft,
-    coaAddDraft, setCoaAddDraft, coaShowAdd, setCoaShowAdd, showNotification, setDeleteConfirm, accountsLoadOk,
+    coaAddDraft, setCoaAddDraft, coaShowAdd, setCoaShowAdd, showNotification, setDeleteConfirm, accountsLoadOk, navSeat,
   } = useERP();
+  const showCodes = showCodesFor(navSeat);   // C578 — numbers are the accountant's; an owner names and picks a type
 
   const editingId = coaEditingCode; const setEditingId = setCoaEditingCode;
   const editDraft = coaEditDraft; const setEditDraft = setCoaEditDraft;
@@ -28,18 +30,21 @@ export default function CoaView() {
   const saveEdit = async (acct) => {
     const err = codeError(editDraft.code, acct.code);
     if (err) { showNotification(err, "error"); return; }
-    if (!String(editDraft.name || "").trim()) { showNotification("Account name can't be empty.", "error"); return; }
+    if (!String(editDraft.name || "").trim()) { showNotification("The category needs a name.", "error"); return; }
     setBusy(acct.db_id || acct.code);
     const ok = await persistAccountEdit(acct, { code: editDraft.code.trim(), name: editDraft.name.trim(), category: editDraft.category });
     setBusy(null);
     if (ok) setEditingId(null);
   };
   const addAccount = async () => {
-    const err = codeError(addDraft.code, null);
+    if (!String(addDraft.name || "").trim()) { showNotification("Please enter a name for the category.", "error"); return; }
+    // C578 — an owner is never asked for a number; a blank code (either seat) is chosen for them.
+    const code = codeForNewCategory(addDraft, CHART_OF_ACCOUNTS);
+    if (!code) { showNotification("There's no room left for another category of that type — ask your accountant.", "error"); return; }
+    const err = codeError(code, null);
     if (err) { showNotification(err, "error"); return; }
-    if (!String(addDraft.name || "").trim()) { showNotification("Please enter an account name.", "error"); return; }
     setBusy("add");
-    const ok = await addCustomAccount({ code: addDraft.code.trim(), name: addDraft.name.trim(), category: addDraft.category });
+    const ok = await addCustomAccount({ code, name: addDraft.name.trim(), category: addDraft.category });
     setBusy(null);
     if (ok) { setAddDraft({ code: "", name: "", category: "Expenses" }); setShowAdd(false); }
   };
@@ -48,7 +53,7 @@ export default function CoaView() {
     // Confirm before deleting a chart-of-accounts account (deleteAccount already blocks
     // system accounts + accounts with transactions, but deletion still warrants a confirm).
     setDeleteConfirm({
-      label: `Delete account ${acct.code} · ${acct.name}? This can't be undone. (System accounts and accounts with transactions are protected.)`,
+      label: `Delete the category "${acct.name}"? This can't be undone. (Built-in categories, and any category with transactions in it, are protected.)`,
       onConfirm: async () => { setBusy(acct.db_id || acct.code); await deleteAccount(acct); setBusy(null); },
     });
   };
@@ -78,30 +83,30 @@ export default function CoaView() {
         <div>
           <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>SETTINGS</div>
           <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Categories</h1>
-          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Every transaction is filed under one of these. Rename or renumber any of them freely — the app tracks them by what they are for, so reports keep working. System accounts can be renamed but not deleted.</div>
+          <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Every transaction is filed under one of these. Rename or renumber any of them freely — the app tracks them by what they are for, so reports keep working. Built-in categories can be renamed but not deleted.</div>
         </div>
-        <button onClick={() => setShowAdd(v => !v)} style={{ padding: "9px 20px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>+ Add Account</button>
+        <button onClick={() => setShowAdd(v => !v)} style={{ padding: "9px 20px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>+ Add category</button>
       </div>
 
       {showAdd && (
         <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-gold-soft)", borderRadius: 12, padding: 20, marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: "var(--sc-gold)", fontWeight: 600, marginBottom: 14, letterSpacing: 0.5 }}>NEW ACCOUNT</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr auto", gap: 12, alignItems: "flex-end" }}>
-            <div>
-              <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 4 }}>CODE</div>
+          <div style={{ fontSize: 12, color: "var(--sc-gold)", fontWeight: 600, marginBottom: 14, letterSpacing: 0.5 }}>NEW CATEGORY</div>
+          <div style={{ display: "grid", gridTemplateColumns: showCodes ? "1fr 2fr 1fr auto" : "2fr 1.4fr auto", gap: 12, alignItems: "flex-end" }}>
+            {showCodes && <div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 4 }}>CODE <span style={{ color: "var(--sc-text-mut)" }}>(blank = next free)</span></div>
               <input value={addDraft.code} onChange={e => setAddDraft(d => ({ ...d, code: e.target.value }))} placeholder="e.g. 6550"
                 style={{ width: "100%", boxSizing: "border-box", background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", color: "var(--sc-text)", fontSize: 13, outline: "none", fontFamily: "'DM Mono',monospace" }} />
-            </div>
+            </div>}
             <div>
               <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 4 }}>NAME</div>
               <input value={addDraft.name} onChange={e => setAddDraft(d => ({ ...d, name: e.target.value }))} placeholder="e.g. Research & Development"
                 style={{ width: "100%", boxSizing: "border-box", background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", color: "var(--sc-text)", fontSize: 13, outline: "none" }} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 4 }}>CATEGORY</div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 4 }}>TYPE</div>
               <select value={addDraft.category} onChange={e => setAddDraft(d => ({ ...d, category: e.target.value }))}
                 style={{ width: "100%", background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", color: "var(--sc-text)", fontSize: 13, outline: "none" }}>
-                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                {categories.map(c => <option key={c} value={c}>{showCodes ? c : CATEGORY_KIND_OPTION[c]}</option>)}
               </select>
             </div>
             <button onClick={addAccount} disabled={busy === "add"} style={{ padding: "9px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: busy === "add" ? "var(--sc-gold)" : "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border: "none", color: "var(--sc-on-accent)", cursor: busy === "add" ? "default" : "pointer" }}>{busy === "add" ? "Adding…" : "Add"}</button>
@@ -111,7 +116,7 @@ export default function CoaView() {
 
       {grouped.map(({ cat, accounts }) => (
         <div key={cat} style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color: "var(--sc-text-2)", letterSpacing: 2, marginBottom: 10, paddingLeft: 4 }}>{cat.toUpperCase()} — {plural(accounts.length, "account")}</div>
+          <div style={{ fontSize: 11, color: "var(--sc-text-2)", letterSpacing: 2, marginBottom: 10, paddingLeft: 4 }}>{showCodes ? cat.toUpperCase() : CATEGORY_KIND_LABEL[cat]} — {plural(accounts.length, "category", "categories")}</div>
           <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 12, overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
@@ -126,7 +131,7 @@ export default function CoaView() {
                         {isEditing
                           ? <input value={editDraft.code} onChange={e => setEditDraft(d => ({ ...d, code: e.target.value }))}
                               style={{ width: 64, background: "var(--sc-surface-2)", border: "1px solid var(--sc-gold)", borderRadius: 6, padding: "4px 8px", color: "var(--sc-text)", fontSize: 12, outline: "none", fontFamily: "'DM Mono',monospace" }} />
-                          : <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: "var(--sc-text-2)" }}>{acct.code}</span>}
+                          : showCodes ? <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: "var(--sc-text-2)" }}>{acct.code}</span> : null}
                       </td>
                       <td style={{ padding: "11px 16px" }}>
                         {isEditing
@@ -134,14 +139,14 @@ export default function CoaView() {
                               style={{ width: "100%", background: "var(--sc-surface-2)", border: "1px solid var(--sc-gold)", borderRadius: 6, padding: "4px 8px", color: "var(--sc-text)", fontSize: 13, outline: "none" }} />
                           : <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 500, color: isInactive ? "var(--sc-text-2)" : "var(--sc-text)" }}>
                               {acct.name}
-                              {isSystem && <span title="System account — rename freely but cannot be deleted" style={{ color: "var(--sc-text-mut)", display: "inline-flex" }}>{lockIcon}</span>}
+                              {isSystem && <span title="Built-in category — rename it freely; it can't be deleted" style={{ color: "var(--sc-text-mut)", display: "inline-flex" }}>{lockIcon}</span>}
                             </span>}
                       </td>
                       <td style={{ padding: "11px 16px", width: 130 }}>
                         {isEditing
                           ? <select value={editDraft.category} onChange={e => setEditDraft(d => ({ ...d, category: e.target.value }))}
                               style={{ background: "var(--sc-surface-2)", border: "1px solid var(--sc-gold)", borderRadius: 6, padding: "4px 6px", color: "var(--sc-text)", fontSize: 12, outline: "none" }}>
-                              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                              {categories.map(c => <option key={c} value={c}>{showCodes ? c : CATEGORY_KIND_OPTION[c]}</option>)}
                             </select>
                           : <span style={{ fontSize: 11, background: "var(--sc-border)", color: "var(--sc-text-2)", borderRadius: 20, padding: "2px 9px" }}>{acct.category}</span>}
                       </td>
@@ -157,7 +162,7 @@ export default function CoaView() {
                               <button onClick={() => startEdit(acct)} disabled={rowBusy} style={{ padding: "4px 12px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer", opacity: rowBusy ? 0.6 : 1 }}>Edit</button>
                               <button onClick={() => toggleActive(acct)} disabled={rowBusy} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid var(--sc-border-2)", color: isInactive ? "var(--sc-success)" : "var(--sc-text-2)", cursor: "pointer", opacity: rowBusy ? 0.6 : 1 }}>{isInactive ? "Enable" : "Disable"}</button>
                               {isSystem
-                                ? <span title="System account — cannot be deleted" style={{ padding: "4px 8px", color: "var(--sc-border-2)", display: "inline-flex", alignItems: "center" }}>{lockIcon}</span>
+                                ? <span title="Built-in category — can't be deleted" style={{ padding: "4px 8px", color: "var(--sc-border-2)", display: "inline-flex", alignItems: "center" }}>{lockIcon}</span>
                                 : <button onClick={() => removeAccount(acct)} disabled={rowBusy} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid var(--sc-error-soft)", color: "var(--sc-error)", cursor: rowBusy ? "default" : "pointer", opacity: rowBusy ? 0.6 : 1 }}>{rowBusy ? "…" : "Delete"}</button>}
                             </>
                           )}

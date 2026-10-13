@@ -91,7 +91,7 @@ describe("★★ it unlocks rather than deleting, in the code as well as the cop
     // O129's lesson: a repair that exists with no button is invisible; one that asks for a
     // database id is unusable. This is next to the padlock.
     const view = fs.readFileSync(path.join(process.cwd(), "src/components/views/OpeningBalancesView.jsx"), "utf8");
-    const lock = view.indexOf("locked — opening balances posted");
+    const lock = view.indexOf("locked — starting balances saved");   // C578 — plain words, same padlock
     const button = view.indexOf("start again");
     expect(lock).toBeGreaterThan(-1);
     expect(button).toBeGreaterThan(lock);
