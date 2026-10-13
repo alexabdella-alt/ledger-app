@@ -1,4 +1,5 @@
 import React from "react";
+import { docTypeLabel } from "../../lib/plainLabels";
 import NextStep from "../NextStep";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
@@ -57,7 +58,7 @@ export default function DocsView() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {types.map(t => (
-            <button key={t} onClick={() => setFilterType(t)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, background: filterType === t ? "var(--sc-gold)" : "var(--sc-border)", border: "none", color: filterType === t ? "var(--sc-surface)" : "var(--sc-text-2)", cursor: "pointer", textTransform: "capitalize" }}>{t}</button>
+            <button key={t} onClick={() => setFilterType(t)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, background: filterType === t ? "var(--sc-gold)" : "var(--sc-border)", border: "none", color: filterType === t ? "var(--sc-surface)" : "var(--sc-text-2)", cursor: "pointer", textTransform: "capitalize" }}>{docTypeLabel(t)}</button>
           ))}
         </div>
       </div>
@@ -145,7 +146,7 @@ export default function DocsView() {
                     );
                   })()}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontSize: 10, background: "var(--sc-border)", color: "var(--sc-text-2)", borderRadius: 20, padding: "2px 8px", textTransform: "capitalize" }}>{doc.type}</span>
+                    <span style={{ fontSize: 10, background: "var(--sc-border)", color: "var(--sc-text-2)", borderRadius: 20, padding: "2px 8px", }}>{docTypeLabel(doc.type)}</span>
                     {(doc.tags || []).map(t => <span key={t} style={{ fontSize: 10, background: "var(--sc-surface-2)", color: "var(--sc-gold)", borderRadius: 20, padding: "2px 8px" }}>{t === "by-email" ? "by email" : t}</span>)}
                     {legacy && <span title="Uploaded before files were kept" style={{ fontSize: 10, color: "var(--sc-text-mut)" }}>file not kept — upload it again to view it</span>}
                   </div>

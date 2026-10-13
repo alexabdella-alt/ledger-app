@@ -799,6 +799,7 @@ export default function DashboardView() {
                     </div>
                     {showCommit && (
                       <div style={{ borderTop:"1px solid var(--sc-surface-2)" }}>
+                        {!cockpit && <div data-commit-note style={{ padding:"10px 20px 0", fontSize:12, color:"var(--sc-text-2)" }}>Each one is recorded for you every month. The agreements themselves are in Documents.</div>}
                         {active.map((c,i)=>{
                           const ml = monthsLeft(c);
                           return (

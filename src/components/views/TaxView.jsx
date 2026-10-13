@@ -139,10 +139,10 @@ export default function TaxView() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Your estimated tax picture · {year}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
           {[
-            ["YTD Net Income", fmt(est.net), est.net >= 0 ? "var(--sc-text)" : "var(--sc-error)"],
+            ["Profit so far this year", fmt(est.net), est.net >= 0 ? "var(--sc-text)" : "var(--sc-error)"],
             ["Estimated Federal Tax (25%)", fmt(est.federal), "var(--sc-text)"],
             ["Self-Employment Tax (15.3%)", fmt(est.seTax), "var(--sc-text)"],
-            ["Total Estimated Liability", fmt(est.total), "var(--sc-gold)"],
+            ["Estimated tax for the year", fmt(est.total), "var(--sc-gold)"],
             ["Estimated Payments Made", fmt(estPaid), "var(--sc-success)"],
             ["Still Owed", fmt(est.owed), est.owed > 0 ? "var(--sc-warning)" : "var(--sc-success)"],
           ].map(([k, v, col]) => (
@@ -227,7 +227,7 @@ export default function TaxView() {
                 {workFromHome ? "✓ I work from home" : "Do you work from home?"}
               </button>
             ) : d.ask ? (
-              <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontStyle: "italic" }}>Tag to track</span>
+              <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontStyle: "italic" }}>Not tracked here — mention it at tax time</span>
             ) : (
               <>
                 <div style={{ textAlign: "right", minWidth: 110 }}>

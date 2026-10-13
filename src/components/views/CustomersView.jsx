@@ -76,6 +76,7 @@ export default function CustomersView() {
                   <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
                     <VendorAvatar vendor={c} size={52} radius={14} fontSize={18} />
                     <h1 style={{ fontSize:26, fontWeight:600, margin:0, letterSpacing:-0.5 }}>{c.name}</h1>
+                    <span style={{ marginLeft:"auto" }}><NextStep label="Send an invoice →" onClick={()=>setView("send-invoice")} /></span>
                   </div>
 
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>

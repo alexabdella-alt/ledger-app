@@ -149,7 +149,7 @@ export default function BooksView() {
     // C470 — one word for one state: the panel says "Removed · DATE", so does the list.
     if (rev) return <span style={pill("var(--sc-error)")} title={`Removed${rev.date?` on ${fmtDate(rev.date)}`:""} — a correction dated that day cancels it`}>↩ Removed{rev.date?` · ${fmtDate(rev.date)}`:""}</span>;
     if (i.status==="voided") return <span style={pill("var(--sc-text-mut)")}>Voided</span>;
-    if (needsReview(i)) return <span style={pill("var(--sc-warning)")}>Needs Review</span>;
+    if (needsReview(i)) return <span title="We weren't sure about this one — open it to check the category" style={pill("var(--sc-warning)")}>Needs Review</span>;
     const cls = classifyTxn(i, { apCode, arCode, settled });
     const st = txnStatus(i, cls);
     const tone = st.tone==="success" ? "var(--sc-success)" : st.tone==="warning" ? "var(--sc-warning)" : "var(--sc-info)";
@@ -185,6 +185,11 @@ export default function BooksView() {
           {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{cockpit && fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
         </div>
       </div>
+      {filter==="review" && (
+        <div data-review-explainer style={{ fontSize:13, color:"var(--sc-text-2)", margin:"-4px 0 14px" }}>
+          These are ones we weren't sure about. Open one — if it's in the wrong place, use "Change category" and we'll remember for next time.
+        </div>
+      )}
       {vendorScoped && (
         /* The scope is SAID, and removable in place — a filtered list with nothing on screen
            naming the filter reads as "where did everything go". */

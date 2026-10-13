@@ -19,7 +19,7 @@ export default function RulesView() {
               <div style={{ marginBottom:28 }}>
                 <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>SETTINGS</div>
                 <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Vendor rules</h1>
-                <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Rules auto-apply when invoices are uploaded. Create them by chatting with the AI assistant.</div>
+                <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Tell us once where a vendor goes, and we'll file them there every time. Rules are made for you when you change a transaction's category — or ask the assistant, e.g. "always put Adobe under Software".</div>
                 {/* C563 — vendor teach-in: learn the vendors from old statements, confirm once. */}
                 {!teachViewer && (
                   <button onClick={()=>setTeachOpen(true)} style={{ marginTop:12, padding:"8px 14px", borderRadius:9, fontSize:13, fontWeight:600, background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", color:"var(--sc-gold)", cursor:"pointer" }}>
@@ -40,7 +40,7 @@ export default function RulesView() {
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead>
                       <tr style={{ background:"var(--sc-surface-2)" }}>
-                        {["Vendor","Category","Project",""].map(h=>(
+                        {["Vendor","Category","Project (optional)",""].map(h=>(
                           <th key={h} style={{ padding:"13px 20px", textAlign:"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1.5, fontWeight:500 }}>{h.toUpperCase()}</th>
                         ))}
                       </tr>

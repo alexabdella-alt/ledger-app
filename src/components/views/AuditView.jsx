@@ -1,4 +1,5 @@
 import React from "react";
+import { auditActionLabel } from "../../lib/plainLabels";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
@@ -32,7 +33,7 @@ export default function AuditView() {
             const filteredLog = auditLog.filter(e => {
               const matchesAction = auditActionFilter === "all" || e.action === auditActionFilter;
               const q = auditSearch.toLowerCase();
-              const matchesSearch = !q || (e.detail||"").toLowerCase().includes(q) || (e.action||"").replace(/_/g," ").includes(q);
+              const matchesSearch = !q || (e.detail||"").toLowerCase().includes(q) || auditActionLabel(e.action).toLowerCase().includes(q) || (e.action||"").replace(/_/g," ").includes(q);
               return matchesAction && matchesSearch;
             });
 
@@ -58,7 +59,7 @@ export default function AuditView() {
                   <div>
                     <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>COMPLIANCE</div>
                     <h1 style={{fontSize:28,fontWeight:600,margin:"0 0 6px",letterSpacing:-0.5}}>Audit trail</h1>
-                    <div style={{fontSize:13,color:"var(--sc-text-2)"}}>Permanent, immutable record of every action. Entries are never modified or deleted.</div>
+                    <div style={{fontSize:13,color:"var(--sc-text-2)"}}>A permanent history of every change — who did what, and when. Nothing here can be edited or deleted.</div>
                   </div>
                   <button onClick={downloadCSV} style={{background:"var(--sc-border)",border:"1px solid var(--sc-border-2)",color:"var(--sc-gold)",borderRadius:10,padding:"9px 18px",fontSize:13,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                     {`↓ Download CSV (${allCount.toLocaleString("en-US")} ${allCount === 1 ? "event" : "events"})`}
@@ -96,7 +97,7 @@ export default function AuditView() {
                   <select value={auditActionFilter} onChange={e=>setAuditActionFilter(e.target.value)}
                     style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 14px",color:"var(--sc-text)",fontSize:13,outline:"none",cursor:"pointer"}}>
                     {actionTypes.map(a=>(
-                      <option key={a} value={a}>{a==="all"?"All actions":a.replace(/_/g," ")}</option>
+                      <option key={a} value={a}>{a==="all"?"All actions":auditActionLabel(a)}</option>
                     ))}
                   </select>
                   {(auditSearch||auditActionFilter!=="all") && (
@@ -145,7 +146,7 @@ export default function AuditView() {
                                 </td>
                                 <td style={{padding:"11px 16px",verticalAlign:"top",whiteSpace:"nowrap"}}>
                                   <span style={{fontSize:11,background:c+"22",color:c,borderRadius:20,padding:"3px 10px",fontWeight:600}}>
-                                    {(entry.action||"").replace(/_/g," ")}
+                                    {auditActionLabel(entry.action)}
                                   </span>
                                 </td>
                                 <td style={{padding:"11px 16px",fontSize:13,color:"var(--sc-text-2)",lineHeight:1.5}}>

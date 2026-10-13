@@ -280,7 +280,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                 {[
                   ["Description", sel.description || "—"],
                   ["Category", `${sel.gl_name || sel.gl_code || "—"}${entryLineCount(sel, invoices) > 1 ? ` · ${entryLineCount(sel, invoices)} lines (see Full entry)` : ""}`],
-                  ["Against", sel.secondary_gl_code ? (sel.secondary_gl_name || sel.secondary_gl_code) : "—"],
+                  [showCodes ? "Against" : "Paid from / into", sel.secondary_gl_code ? (sel.secondary_gl_name || sel.secondary_gl_code) : "—"],   // C580
                   ["Type", settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? "Revenue" : "Expense"],
                   ["How sure we were", sel.confidence != null ? `${sel.confidence}%` : "—"],
                   sel.payment_status === "paid" ? ["Payment", `${methodLabel(sel.payment_method_used)}${sel.paid_at ? ` · ${fmtDate(sel.paid_at)}` : ""}${sel.payment_reference ? ` · ${sel.payment_reference}` : ""}`] : null,
