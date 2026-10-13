@@ -36,7 +36,7 @@ export default function RecurringView() {
               const jeId = await bookToDb(inv);
               if (!jeId) {
                 setInvoices(prev => prev.filter(i => i.id !== inv.id));
-                showNotification(`${r.name} was NOT posted — the entry couldn't be written. Nothing changed.`, "error");
+                showNotification(`${r.name} wasn't added to your bills — the entry couldn't be written. Nothing changed.`, "error");
                 return;
               }
               // C492 — never overflow a month (Jan 31 + 1 → Feb 28, not Mar 3), and a
@@ -65,20 +65,20 @@ export default function RecurringView() {
             return (
               <div>
                 <div style={{marginBottom:24}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>AUTOMATION</div>
+                  <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>REGULAR COSTS</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Recurring charges</h1>
-                  <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Set up transactions that repeat automatically. You can also tell the AI chat — "set up rent as $4,500/month starting June 1".</div>
+                  <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Rent, subscriptions and other costs that come round on a schedule. When one is due it's flagged here — press "Add to bills" and it goes into Bills to pay. You can also ask the assistant, e.g. "set up rent as $4,500/month starting June 1".</div>
                 </div>
                 {/* Due now alert */}
                 {due.length>0 && (
                   <div style={{background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:12,padding:"14px 20px",marginBottom:20,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{fontSize:13,color:"var(--sc-warning)",fontWeight:500}}>⏰ {due.length} recurring transaction{due.length!==1?"s":""} due today</div>
-                    <button onClick={()=>due.forEach(runRecurring)} style={{padding:"7px 16px",borderRadius:8,fontSize:12,fontWeight:600,background:"var(--sc-warning)",border:"none",color:"#000",cursor:"pointer"}}>Post All Due</button>
+                    <div style={{fontSize:13,color:"var(--sc-warning)",fontWeight:500}}>⏰ {due.length} regular cost{due.length!==1?"s are":" is"} due — add {due.length!==1?"them":"it"} to your bills</div>
+                    <button onClick={()=>due.forEach(runRecurring)} style={{padding:"7px 16px",borderRadius:8,fontSize:12,fontWeight:600,background:"var(--sc-warning)",border:"none",color:"#000",cursor:"pointer"}}>Add all to bills</button>
                   </div>
                 )}
                 {/* Add new */}
                 <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:20,marginBottom:20}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",marginBottom:14,letterSpacing:0.5}}>+ NEW RECURRING TRANSACTION</div>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",marginBottom:14,letterSpacing:0.5}}>+ NEW REGULAR COST</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:12}}>
                     {[{k:"name",l:"Name",p:"e.g. Office Rent"},{k:"vendor",l:"Vendor",p:"Landlord name"},{k:"amount",l:"Amount ($)",p:"4500"}].map(f=>(
                       <div key={f.k}>
@@ -102,16 +102,16 @@ export default function RecurringView() {
                       </select>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>First / Next Date</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>Next due date</div>
                       <input type="date" value={newRec.next_date} onChange={e=>setNewRec(d=>({...d,next_date:e.target.value}))}
                         style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}/>
                     </div>
                   </div>
-                  <button onClick={addRecurring} disabled={!newRec.name||!newRec.amount} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:(!newRec.name||!newRec.amount)?"var(--sc-border)":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:"var(--sc-text)",cursor:(!newRec.name||!newRec.amount)?"not-allowed":"pointer"}}>Save Recurring Transaction</button>
+                  <button onClick={addRecurring} disabled={!newRec.name||!newRec.amount} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:(!newRec.name||!newRec.amount)?"var(--sc-border)":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:"var(--sc-text)",cursor:(!newRec.name||!newRec.amount)?"not-allowed":"pointer"}}>Save</button>
                 </div>
                 {/* List */}
                 {loadFailures?.recurring_transactions ? <LoadFailedNotice what="recurring charges" table="recurring_transactions" /> : !companyDataLoaded ? <LoadingList what="your recurring charges" /> : recurring.length===0 ? (
-                  <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:40,textAlign:"center",color:"var(--sc-text-2)",fontSize:13}}>No recurring transactions yet.</div>
+                  <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:40,textAlign:"center",color:"var(--sc-text-2)",fontSize:13}}>No regular costs yet. Add one above — rent and software subscriptions are the usual first ones.</div>
                 ) : (
                   <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,overflow:"clip"}}>
                     <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -135,7 +135,7 @@ export default function RecurringView() {
                               <td style={{padding:"12px 16px",fontSize:12,color:isDue?"var(--sc-warning)":"var(--sc-text-2)",}}>{fmtDate(r.next_date)||"—"}</td>
                               <td style={{padding:"12px 16px"}}>
                                 <div style={{display:"flex",gap:6}}>
-                                  {isDue && <button onClick={()=>runRecurring(r)} style={{padding:"5px 12px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--sc-warning)",border:"none",color:"#000",cursor:"pointer"}}>Post</button>}
+                                  {isDue && <button onClick={()=>runRecurring(r)} style={{padding:"5px 12px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--sc-warning)",border:"none",color:"#000",cursor:"pointer"}}>Add to bills</button>}
                                   <button onClick={async()=>{ const res = await setRecurringActive(r, !r.active); if (!res?.ok) showNotification(`Couldn't ${r.active?"pause":"resume"} ${r.name} — nothing was changed. ${plainWriteError(res?.error, "")}`.trim(), "error"); }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",cursor:"pointer"}}>{r.active?"Pause":"Resume"}</button>
                                   <button onClick={async()=>{ const res = await removeRecurring(r); if (!res?.ok) { showNotification(`Couldn't delete ${r.name} — nothing was changed. ${plainWriteError(res?.error, "")}`.trim(), "error"); return; } showNotification(`${r.name} deleted ✓`); }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,background:"transparent",border:"1px solid var(--sc-border-2)",color:"var(--sc-error)",cursor:"pointer"}}>×</button>
                                 </div>

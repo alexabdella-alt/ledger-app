@@ -47,7 +47,7 @@ const SCREENS = [
   ["CustomersView", CustomersView, "contacts", /No customers yet/],
   ["DocsView", DocsView, "documents", /No documents yet/],
   ["RulesView", RulesView, "vendor_rules", /No rules yet/],
-  ["RecurringView", RecurringView, "recurring_transactions", /No recurring transactions yet/],
+  ["RecurringView", RecurringView, "recurring_transactions", /No regular costs yet/],
   ["AuditView", AuditView, "audit_log", /No activity recorded yet/],
   ["SendInvoiceView", SendInvoiceView, "ar_invoices", /No invoices yet/],
 ];

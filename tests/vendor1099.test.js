@@ -57,8 +57,9 @@ describe("★★ the flag round-trips", () => {
     }
     expect(offenders).toEqual([]);
 
-    // The vendor list still shows the badge, so it still reads the mapped name.
-    expect(vendors.split("\n").filter((l) => !/^\s*(\/\/|\*|\{\/\*)/.test(l)).join("\n")).toMatch(/is1099/);
+    // C579 — and Vendors no longer reads the flag either: its second pill read `is1099` and could
+    // contradict the derived badge beside it, so it went. Like TaxView, only the derivation answers.
+    expect(vendors.split("\n").filter((l) => !/^\s*(\/\/|\*|\{\/\*)/.test(l)).join("\n")).not.toMatch(/\bis1099\b/);
   });
 });
 

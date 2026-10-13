@@ -98,7 +98,6 @@ export default function VendorsView() {
             // And paid spend is the EXPENSE-account movement (C216) — never the A/P leg row itself.
             const baseOf = i => String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
             const paidYTDfor = (txns, name) => { const yearRows = txns.filter(inYear); const open = new Set((name ? openBillsFor(name) : openPayablesGL(yearRows, apRoleCode)).map(baseOf)); return yearRows.filter(i => !open.has(baseOf(i)) && glIsExpense(i.gl_code)).reduce((s,i)=>s+signedPL(i),0); };   // C491 — a correction subtracts rather than counting as a second payment
-            const status1099 = v => v.is_1099_exempt ? {label:"1099 exempt", color:"var(--sc-text-2)"} : v.is1099 ? {label:"1099 required", color:"var(--sc-warning)"} : {label:"Not flagged", color:"var(--sc-text-mut)"};
 
             // ── VENDOR DETAIL DRILL ──
             if (selectedContact) {
@@ -115,7 +114,6 @@ export default function VendorsView() {
               const openAP = openAPfor(v.name);
               const lastDate = vTxns[0]?.date || "—";
               const payHistory = vList.filter(i=>!isOpenRow(i));   // C522 — one per entry, and a purchase paid at the till counts
-              const st = status1099(v);
               const infoRows = [
                 ["Email", v.email], ["Phone", v.phone], ["Website", v.website],
                 ["Mailing address", v.mailing_address], ["Payment terms", v.payment_terms],
@@ -129,7 +127,8 @@ export default function VendorsView() {
                     <div>
                       <h1 style={{ fontSize:26, fontWeight:600, margin:0, letterSpacing:-0.5 }}>{v.name}</h1>
                       <div style={{ display:"flex", gap:8, marginTop:6, alignItems:"center" }}>
-                        <span style={{ fontSize:11, fontWeight:600, color:st.color, background:st.color+"18", border:`1px solid ${st.color}44`, borderRadius:20, padding:"3px 10px" }}>{st.label}</span>
+                        {/* C579 — a second 1099 pill read `is1099`, a flag nothing else consults since C316, so it could
+                            say "Not flagged" beside a derived "Needs a 1099". One answer: the derived badge below. */}
                         {(() => { const b = badge1099(v); const why = verdict1099(v)?.why; return b && <span title={why || undefined} style={{ fontSize:11, color:b.tone, border:`1px solid ${b.tone}44`, background:b.tone+"18", borderRadius:20, padding:"3px 10px" }}>{b.text}</span>; })()}
                       </div>
                     </div>

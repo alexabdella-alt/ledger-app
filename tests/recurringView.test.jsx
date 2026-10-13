@@ -20,7 +20,7 @@ describe("★★ C360 — posting a recurring transaction WRITES it, and says so
     const run = code.slice(code.indexOf("const runRecurringOnce = async (r) => {"), code.indexOf("const newRec = recurringNewRec"));   // C402: the guarded body
     expect(run.length).toBeGreaterThan(200);
     expect(run).toMatch(/const jeId = await bookToDb\(inv\);\s*if \(!jeId\) \{/);
-    expect(run).toMatch(/was NOT posted/);
+    expect(run).toMatch(/wasn't added to your bills/);   // C579 — plain words, same refusal
     // the optimistic row is removed on failure — the screen follows the database
     expect(run).toMatch(/if \(!jeId\) \{\s*setInvoices\(prev => prev\.filter\(i => i\.id !== inv\.id\)\)/);
   });
@@ -48,6 +48,6 @@ describe("★★ C360 — posting a recurring transaction WRITES it, and says so
   });
   it("renders the due banner for a rule that is due", () => {
     const html = renderViewHtml(RecurringView, { ...POPULATED, recurring: [{ id: "r1", name: "Rent", vendor: "Franklin Ave", amount: 2400, frequency: "monthly", next_date: "2020-01-01", active: true, gl_code: "6100", gl_name: "Rent" }] });
-    expect(html).toContain("due today");
+    expect(html.replace(/<!-- -->/g, "")).toMatch(/is due — add it to your bills/);   // C579
   });
 });

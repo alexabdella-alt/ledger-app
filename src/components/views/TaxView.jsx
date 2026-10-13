@@ -202,10 +202,8 @@ export default function TaxView() {
                 style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", background: isFiled ? "var(--sc-success-soft)" : "var(--sc-surface-2)", border: `1px solid ${isFiled ? "var(--sc-success-soft)" : "var(--sc-border-2)"}`, color: isFiled ? "var(--sc-success)" : "var(--sc-text-2)" }}>
                 {isFiled ? "✓ Filed" : "Mark filed"}
               </button>
-              <button onClick={() => showNotification(`We'll keep "${d.plain}" front and center until ${d.date.toLocaleDateString()}.`)}
-                style={{ flexShrink: 0, padding: "6px 10px", borderRadius: 8, fontSize: 12, cursor: "pointer", background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)" }}>
-                Remind me
-              </button>
+              {/* C579 — "Remind me" showed a toast and set nothing; a reminder that does not remind is
+                  worse than none. Deadlines inside the window already come to Home's waiting list. */}
             </div>
           );
         })}
