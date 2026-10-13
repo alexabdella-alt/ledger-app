@@ -234,7 +234,7 @@ function SoloSignOff({ signOffPeriod, signOffReadinessFor, acknowledgementFor, s
   // C407 — what stands in the way is said BEFORE the click, in the owner's words, and the
   // control is disabled while it does (O124). A refusal after the click reads the same map.
   let notYet = [];
-  try { const r = signOffReadinessFor ? signOffReadinessFor(period) : null; if (r && !r.ok) notYet = ownerSignOffBlockers(r.blockers, { periodLabel: label }); } catch { notYet = []; }
+  try { const r = signOffReadinessFor ? signOffReadinessFor(period) : null; if (r && !r.ok) notYet = ownerSignOffBlockers(r.blockers, { periodLabel: label, hasAccountant: false }); } catch { notYet = []; }
   const blocked = notYet.length > 0;
 
   const sign = async () => {
@@ -244,7 +244,7 @@ function SoloSignOff({ signOffPeriod, signOffReadinessFor, acknowledgementFor, s
       const r = await signOffPeriod(period, { acknowledged: true });
       // §9 — the message reads the RESULT. A refusal names what actually stopped it rather
       // than a generic "try again", because most refusals here are things to act on.
-      if (!r || !r.ok) setProblem((r && (r.error || ownerSignOffBlockers(r.blockers || [], { periodLabel: label })[0])) || "we couldn't record that just now");
+      if (!r || !r.ok) setProblem((r && (r.error || ownerSignOffBlockers(r.blockers || [], { periodLabel: label, hasAccountant: false })[0])) || "we couldn't record that just now");
       else setAck(false);
     } finally { setBusy(false); }
   };

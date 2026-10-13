@@ -53,7 +53,7 @@ describe("★ the card", () => {
   });
   it("the click path reads the same map, and the button is gated on `blocked` (source)", () => {
     const src = fs.readFileSync("src/components/views/TrustPanel.jsx", "utf8");
-    expect(src).toMatch(/ownerSignOffBlockers\(r\.blockers \|\| \[\], \{ periodLabel: label \}\)\[0\]/);
+    expect(src).toMatch(/ownerSignOffBlockers\(r\.blockers \|\| \[\], \{ periodLabel: label, hasAccountant: false \}\)\[0\]/);   // C574 — solo card, solo wording
     expect(src).toMatch(/disabled=\{!ack \|\| busy \|\| blocked\}/);
     expect(src).toMatch(/if \(!ack \|\| busy \|\| blocked \|\| !signOffPeriod\) return;/);
   });

@@ -302,17 +302,19 @@ export function intakeAdvanceFromLines(lineStatuses = []) {
 // the right one: without the second, a clean run onto an already-reconciled month drops
 // the tail entirely and undersells to "we filed your paperwork". NEITHER clause is ever
 // rendered on a guess — both are passed in only where the coverage fact is actually known.
-export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, reconciled = false, alreadyReconciled = false } = {}) {
+export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, reconciled = false, alreadyReconciled = false, hasAccountant = true } = {}) {
   const t = Math.max(0, Number(total) || 0);
   const n = Math.max(0, Number(exceptions) || 0);
   const b = Math.max(0, Number(booked) || 0);
-  if (!t) return "We couldn't find any transactions on that statement — your accountant will take a look.";
+  if (!t) return hasAccountant ? "We couldn't find any transactions on that statement — your accountant will take a look."
+    : "We couldn't find any transactions on that statement. Check it's a bank statement — or download it from your bank as a CSV and drop that in.";
   if (n === 0) {
     const tail = reconciled ? ", and everything matches your bank to the penny."
       : alreadyReconciled ? ", and this month was already checked against your bank ✓"
       : ".";
     return `All ${t} transaction${t === 1 ? "" : "s"} from your statement ${t === 1 ? "is" : "are"} in your books${tail}`;
   }
+  if (!hasAccountant) return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} an accountant's eyes first. Invite yours from Settings → Team.`;   // C574
   return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} your accountant's eyes first.`;
 }
 

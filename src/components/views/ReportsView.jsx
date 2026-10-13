@@ -1,4 +1,5 @@
 import React from "react";
+import { reminderMailto } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
 import { isCancelledOrCancelling, glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, todayLocal, ymdLocal } from "../../lib/format";
@@ -834,7 +835,7 @@ export default function ReportsView() {
                                         <td style={{ padding:"0 12px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace" }}>{fmt(r.amount)}</td>
                                         <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
                                           {side==="ar" && r.days_overdue>0 && (
-                                            <a href={`mailto:${r.email||""}?subject=${encodeURIComponent(`Payment reminder from ${companySettings.name||"us"}`)}&body=${encodeURIComponent(`Hi ${r.party},\n\nA friendly reminder that ${fmt(r.amount)} is now ${r.days_overdue} days past due. Could you let us know when we can expect payment?\n\nThank you,\n${companySettings.name||""}`)}`}
+                                            <a href={reminderMailto({ email: r.email, customer: r.party, amount: r.amount, daysOverdue: r.days_overdue, companyName: companySettings.name })}
                                               style={{ fontSize:12, color:"var(--sc-gold)", textDecoration:"none", fontWeight:600 }}>Send reminder →</a>
                                           )}
                                           {side==="ap" && (

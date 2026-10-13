@@ -310,11 +310,15 @@ export function ownerTrustState({
 // it would re-create the double-statement this fix exists to remove.
 //
 // Returns a single plain string, or null when there is nothing to say. Pure.
-export function ownerAnomalyLine(anomalies = []) {
+export function ownerAnomalyLine(anomalies = [], { hasAccountant = true } = {}) {
   const quiet = (anomalies || []).filter(a => a && a.severity !== "high");
   const n = quiet.length;
   if (!n) return null;
   const small = quiet.every(a => a.severity === "low") ? " small" : "";
+  // C574 — with nobody to look it over, say how to find out, rather than who will.
+  if (!hasAccountant) return n === 1
+    ? `One${small} thing noted — ask the assistant about it, or invite your accountant to look it over.`
+    : `${n}${small} things noted — ask the assistant about them, or invite your accountant to look them over.`;
   return n === 1
     ? `One${small} thing noted — your accountant will look it over.`
     : `${n}${small} things noted — your accountant will look them over.`;
@@ -330,7 +334,11 @@ export function ownerAnomalyLine(anomalies = []) {
 // sentence; a net this map does not know is reported as "something your accountant can
 // see", never dropped — a blocker that vanishes from the list is a sign-off nobody meant.
 // ─────────────────────────────────────────────────────────────────────────────
-export function ownerSignOffBlockers(blockers = [], { periodLabel = "this month" } = {}) {
+export function ownerSignOffBlockers(blockers = [], { periodLabel = "this month", hasAccountant = true } = {}) {
+  // C574 — this card is the SOLO owner's sign-off; "your accountant can see which" sent them
+  // to someone who does not exist.
+  const someoneCanSee = hasAccountant ? "your accountant can see which" : "invite your accountant to find which";
+  const stillOpen = hasAccountant ? "Something your accountant can see is still open." : "Something is still open that an accountant would need to check — invite yours from Settings → Team.";
   const out = [];
   for (const b of blockers || []) {
     if (!b) continue;
@@ -339,7 +347,7 @@ export function ownerSignOffBlockers(blockers = [], { periodLabel = "this month"
     switch (b.net) {
       case "completeness": out.push(`${n || "Some"} document${n === "1" ? " isn't" : "s aren't"} in your books yet.`); break;
       case "confidence":   out.push(`${n || "Some"} transaction${n === "1" ? " still needs" : "s still need"} a look.`); break;
-      case "accuracy":     out.push("Some figures don't add up yet — your accountant can see which."); break;
+      case "accuracy":     out.push(`Some figures don't add up yet — ${someoneCanSee}.`); break;
       case "bank":         out.push(`Your books haven't been matched to your bank yet — drop your latest statement.`); break;
       case "anomaly":      out.push(`Something unusual in ${periodLabel} hasn't been looked at yet.`); break;
       case "readiness":
@@ -347,9 +355,9 @@ export function ownerSignOffBlockers(blockers = [], { periodLabel = "this month"
         else if (/opening balance/i.test(r)) out.push("Your starting balances haven't been set yet.");
         else if (/no transactions/i.test(r)) out.push(`Nothing is recorded in ${periodLabel} yet.`);
         else if (/reconciled/i.test(r)) out.push(`${periodLabel} hasn't been matched to your bank statement yet — drop that month's statement.`);
-        else out.push("Something your accountant can see is still open.");
+        else out.push(stillOpen);
         break;
-      default: out.push("Something your accountant can see is still open.");
+      default: out.push(stillOpen);
     }
   }
   return [...new Set(out)];

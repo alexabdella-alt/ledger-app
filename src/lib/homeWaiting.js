@@ -35,6 +35,7 @@ export function homeWaitingList({
   recurringSuggestions = [],
   uploadQueue = [],          // for the contract / unknown-doc prompts
   cockpit = false,           // reviewer seat: the accountant-side actions are theirs
+  hasAccountant = true,      // C574 — false: nobody else is on this company, so "your accountant will…" is a promise nobody keeps
 } = {}) {
   const items = [];
 
@@ -121,21 +122,25 @@ export function homeWaitingList({
   }
 
   // ── INFO (an accountant's job; the owner may look) ──
+  // C574 — a solo owner was told "your accountant will…" with no buttons: a dead end dressed
+  // as reassurance. Without an accountant the line says so and offers the way to get one.
+  const invite = { kind: "nav", label: "Invite your accountant", view: "team" };
+  const solo = !cockpit && !hasAccountant;
   const q = uploadQueue || [];
   if (q.some((x) => x && x.status === "done" && x.type === "contract")) {
     items.push({ id: "contract_ready", urgency: WAIT.INFO,
-      text: cockpit ? "A contract is ready to record." : "We've read your agreement — your accountant will record it.",
-      actions: cockpit ? [{ kind: "nav", label: "Open Contracts", view: "contracts" }] : [] });
+      text: cockpit ? "A contract is ready to record." : solo ? "We've read your agreement and saved it in Documents. Recording a contract in your books is an accountant's job — invite yours and they'll take it from there." : "We've read your agreement — your accountant will record it.",
+      actions: cockpit ? [{ kind: "nav", label: "Open Contracts", view: "contracts" }] : solo ? [invite] : [] });
   }
   if (q.some((x) => x && x.status === "done" && x.type === "unknown")) {
     items.push({ id: "unknown_doc", urgency: WAIT.INFO,
-      text: cockpit ? "Some documents need accountant review." : "We couldn't tell what one of your files was — your accountant will take a look.",
-      actions: cockpit ? [{ kind: "nav", label: "Open Review", view: "review" }] : [] });
+      text: cockpit ? "Some documents need accountant review." : solo ? "We couldn't tell what one of your files was. It's saved in Documents — an accountant can file it for you." : "We couldn't tell what one of your files was — your accountant will take a look.",
+      actions: cockpit ? [{ kind: "nav", label: "Open Review", view: "review" }] : solo ? [{ kind: "nav", label: "Open Documents", view: "docs", secondary: true }, invite] : [] });
   }
   if (q.some((x) => x && x.status === "done" && x.type === "bank_statement" && x.result?.needsReview > 0)) {
     items.push({ id: "bank_review", urgency: cockpit ? WAIT.NOW : WAIT.INFO,
-      text: cockpit ? "Some bank transactions need your review before they're added." : "A few things from your statement need a second look — your accountant is on it.",
-      actions: cockpit ? [{ kind: "nav", label: "Review matches", view: "matching" }] : [] });
+      text: cockpit ? "Some bank transactions need your review before they're added." : solo ? "A few things from your statement need a second look before they're added. An accountant reviews these — invite yours to finish them." : "A few things from your statement need a second look — your accountant is on it.",
+      actions: cockpit ? [{ kind: "nav", label: "Review matches", view: "matching" }] : solo ? [invite] : [] });
   }
 
   // Stable: urgency first, then the order the inputs arrived in.

@@ -1,4 +1,5 @@
 import React from "react";
+import { reminderMailto, customerEmail } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -189,7 +190,9 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                               {!isCollected && (
                                 <div style={{ padding:"10px 20px", borderTop:"1px solid var(--sc-border)", background:"var(--sc-surface-2)", display:"flex", gap:8 }}>
                                   <button onClick={()=>markCollected(inv.id)} style={{ padding:"6px 16px", borderRadius:8, fontSize:12, fontWeight:600, background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:"pointer" }}>✓ Mark Collected</button>
-                                  <button style={{ padding:"6px 14px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }} onClick={()=>setArView("collections")}>Follow Up →</button>
+                                  {/* C574 — "Follow Up →" only switched tabs to a table with no follow-up in it. It writes the reminder now. */}
+                                  <a href={reminderMailto({ email: customerEmail(contacts, inv.vendor), customer: inv.vendor, amount: arAmt(inv), daysOverdue: daysUntilDue != null && daysUntilDue < 0 ? -daysUntilDue : 0, companyName: companySettings?.name })}
+                                    style={{ padding:"6px 14px", borderRadius:8, fontSize:12, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", textDecoration:"none" }}>Send reminder →</a>
                                 </div>
                               )}
                             </div>
@@ -203,7 +206,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                 {/* ── COLLECTIONS QUEUE ── */}
                 {arView==="collections" && (
                   <div>
-                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:16 }}>Overdue invoices sorted by amount — largest first.</div>
+                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:16 }}>Overdue invoices, largest first. "Send reminder" opens your email with a polite note already written; "Collected" records that they paid.</div>
                     {!companyDataLoaded && collectionsQueue.length===0 ? <LoadingList what="your invoices" /> : collectionsQueue.length===0 ? (
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:32, textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>
                         ✓ Nothing overdue — every customer is up to date.
@@ -237,7 +240,9 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                                     <span style={{ fontSize:12, fontFamily:"'DM Mono',monospace", color:urgencyColor, fontWeight:600 }}>{daysOverdue}d</span>
                                   </td>
                                   <td style={{ padding:"13px 16px", fontSize:14, fontFamily:"'DM Mono',monospace", color:"var(--sc-success)", fontWeight:600 }}>{fmt(arAmt(inv))}</td>
-                                  <td style={{ padding:"13px 16px" }}>
+                                  <td style={{ padding:"13px 16px", whiteSpace:"nowrap" }}>
+                                    <a href={reminderMailto({ email: customerEmail(contacts, inv.vendor), customer: inv.vendor, amount: arAmt(inv), daysOverdue, companyName: companySettings?.name })}
+                                      style={{ fontSize:12, color:"var(--sc-gold)", textDecoration:"none", fontWeight:600, marginRight:12 }}>Send reminder →</a>
                                     <button onClick={()=>markCollected(inv.id)} style={{ padding:"5px 14px", borderRadius:8, fontSize:11, fontWeight:600, background:"#D1FAE522", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>✓ Collected</button>
                                   </td>
                                 </tr>

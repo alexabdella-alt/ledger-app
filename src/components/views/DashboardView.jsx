@@ -37,7 +37,7 @@ const drillLabel = (l) => {
   if (l.type === "txn") return l.label || "Transaction";
   if (l.type === "expenses") return l.vendor || l.cat || "Expenses";
   if (l.type === "burn") return l.month ? (l.monthLabel || l.month) : "Burn Rate";
-  return ({ revenue: "Revenue", net: "Net Income", cash: "Cash & Bank", runway: "Runway", ap: "Accounts Payable", ar: "Accounts Receivable", expenses: "Expenses" })[l.type] || l.type;
+  return ({ revenue: "Revenue", net: "Net Income", cash: "Cash & Bank", runway: "Runway", ap: "Bills you owe", ar: "Money owed to you", expenses: "Expenses" })[l.type] || l.type;
 };
 
 // C543 — drill subtitles count entries, not flattened lines.
@@ -83,7 +83,8 @@ export default function DashboardView() {
   const [bizFye, setBizFye] = React.useState("12-31");
   const [bizForm, setBizForm] = React.useState(null);
   const [teachOpen, setTeachOpen] = React.useState(false);   // C563 — vendor teach-in from the setup checklist
-  const { isViewer, isOwner } = useERP();   // C563 — a viewer cannot write rules, so is not offered teach-in · C564 — only the owner can invite   // C559 — null = untouched, "" = "I'm not sure"
+  const { isViewer, isOwner, hasAttester } = useERP();
+  const hasAccountant = hasAttester !== false;   // C574 — unknown counts as "has one", so we never claim they have none on a failed read   // C563 — a viewer cannot write rules, so is not offered teach-in · C564 — only the owner can invite   // C559 — null = untouched, "" = "I'm not sure"
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
   const goToSection = (view, anchorId) => {
@@ -283,7 +284,7 @@ export default function DashboardView() {
         </div>
       </div>);
     } else if (d.type==="ap") {
-      title = "Open accounts payable"; subtitle = `${openAP.length} unpaid · ${fmt(openAP.reduce((s,i)=>s+signedPL(i),0))}`;
+      title = "Bills you owe"; subtitle = `${openAP.length} unpaid · ${fmt(openAP.reduce((s,i)=>s+signedPL(i),0))}`;
       const methodOpts = [["ach","ACH / Bank Transfer"],["check","Check"],["wire","Wire Transfer"],["card","Credit Card"],["zelle","Zelle"],["venmo","Venmo"],["paypal","PayPal"],["other","Other"]];
       body = openAP.length===0
         ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>Nothing outstanding — you're all paid up.</div>
@@ -316,7 +317,7 @@ export default function DashboardView() {
             </div>
           ));
     } else if (d.type==="ar") {
-      title = "Open accounts receivable"; subtitle = `${openAR.length} uncollected · ${fmt(openAR.reduce((s,i)=>s+signedPL(i),0))}`;
+      title = "Unpaid invoices from customers"; subtitle = `${openAR.length} uncollected · ${fmt(openAR.reduce((s,i)=>s+signedPL(i),0))}`;
       body = txnRows(openAR, "var(--sc-success)");
     }
 
@@ -592,7 +593,7 @@ export default function DashboardView() {
                                       <span>{statementSummaryCopy({ total:item.result.total||0, handled:(item.result.total||0)-(item.result.exceptions||0), needInput:item.result.exceptions||0 })}</span>
                                     )
                                   ) : (
-                                    <span>{dropZoneOutcomeCopy({ total:item.result.total||0, booked:item.result.booked||0, exceptions:item.result.exceptions||0, reconciled:!!item.result.reconciled, alreadyReconciled:!!item.result.alreadyReconciled })}</span>
+                                    <span>{dropZoneOutcomeCopy({ total:item.result.total||0, booked:item.result.booked||0, exceptions:item.result.exceptions||0, reconciled:!!item.result.reconciled, alreadyReconciled:!!item.result.alreadyReconciled, hasAccountant })}</span>
                                   )
                                 ) :
                                 item.result.txnCount == null ? (
@@ -606,7 +607,7 @@ export default function DashboardView() {
                                       📄 Ready in Bank Import — review &amp; book your transactions there →
                                     </span>
                                   ) : (
-                                    <span>📄 We've got your statement — your accountant will add these to your books.</span>
+                                    <span>{hasAccountant ? "📄 We've got your statement — your accountant will add these to your books." : "📄 We've got your statement. Adding these needs an accountant's review — invite yours from Settings → Team."}</span>
                                   )
                                 ) : (
                                   cockpit ? (
@@ -712,7 +713,7 @@ export default function DashboardView() {
                           <div key={c.key} style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
                             <span style={{ width:6, height:6, borderRadius:"50%", background: c.severity==="high"?"var(--sc-error)":"var(--sc-warning)", flexShrink:0 }} />
                             <span style={{ fontSize: 13, color:"var(--sc-text-2)", flex:1, minWidth:120 }}>{c.text}</span>
-                            {c.actionView && <button onClick={()=>setDashDrill({ type:c.actionView })} style={{ padding:"5px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer", flexShrink:0 }}>{c.actionLabel} →</button>}
+                            {c.actionView && <button onClick={()=>{ if (c.key === "ar") { navTo("ar", () => setArView && setArView("collections")); return; } setDashDrill({ type:c.actionView }); }} style={{ padding:"5px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer", flexShrink:0 }}>{c.actionLabel} →</button>}
                           </div>
                         ))}
                       </div>
@@ -727,7 +728,7 @@ export default function DashboardView() {
                   the trust panel directly above them ("Nothing needs your attention" over
                   "⚠ 5 unusual patterns detected"). One muted line, no colour, no cards. */}
               {!cockpit && Array.isArray(anomalies) && anomalies.length > 0 && (() => {
-                const line = ownerAnomalyLine(anomalies);
+                const line = ownerAnomalyLine(anomalies, { hasAccountant });
                 if (!line) return null;
                 return (
                   <div style={{ fontSize:12.5, color:"var(--sc-text-2)", marginBottom:24, paddingLeft:2 }}>{line}</div>
@@ -767,7 +768,7 @@ export default function DashboardView() {
                                       cause is fixed (auto-resolve). */}
                                   {cockpit
                                     ? <button onClick={()=>navTo("review")} style={{ fontSize:12, fontWeight:600, color:"var(--sc-warning)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Review →</button>
-                                    : <span style={{ fontSize:12, color:"var(--sc-text-2)" }}>Your accountant is taking a look at this.</span>}
+                                    : <span style={{ fontSize:12, color:"var(--sc-text-2)" }}>{hasAccountant ? "Your accountant is taking a look at this." : "Ask the assistant about this, or invite your accountant to look at it."}</span>}
                                 </div>
                               </div>
                             </div>
@@ -890,7 +891,7 @@ export default function DashboardView() {
 export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
-    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings } = useERP();
+    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester } = useERP();
   const [busy, setBusy] = React.useState(null);
   const cockpit = !!navSeat?.isReviewerSeat;
   const today = todayLocal();
@@ -909,7 +910,7 @@ export function HomeWaitingList({ navTo }) {
     heldInbound: Array.isArray(heldInbound) ? heldInbound : [], canDecideMail: !!(isAdmin || isOwner),
     bankMatch, taxDeadline: dl, taxEstimateText, overdueBills, overdueTotal,
     recurringSuggestions: Array.isArray(recurringSuggestions) ? recurringSuggestions : [],
-    uploadQueue: uploadQueue || [], cockpit,
+    uploadQueue: uploadQueue || [], cockpit, hasAccountant: hasAttester !== false,   // C574 — defaults to "has one" while unknown
   });
   if (!items.length) return null;
   // Every door goes through `navTo` — the seat-aware one — never a bare setView (C313).

@@ -50,7 +50,10 @@ export default function BooksView() {
   const [sort, setSort] = React.useState({ col: null, dir: null }); // col=null → default (Date desc)
 
   const fmt = fmtMoney;
-  const filter = booksFilter || "all";
+  // C574 — the contracts list is the reviewer's (ASC 842 workbench). An owner who reached
+  // that filter — the pill, or the chat asking for "contracts" — got an EMPTY PAGE: its table
+  // is cockpit-only and the main table hides itself under that filter. Owners see everything.
+  const filter = (!cockpit && booksFilter === "contracts") ? "all" : (booksFilter || "all");
   // A selection is about the rows you were LOOKING at. Carrying it across a filter change is
   // how "3 selected" ends up sitting over a list those three rows are not in.
   //
@@ -179,7 +182,7 @@ export default function BooksView() {
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendor, amount, date, invoice number…"
           style={{ flex:"1 1 280px", minWidth:0, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:10, padding:"10px 14px", fontSize:14, color:"var(--sc-text)", outline:"none" }} />
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
+          {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{cockpit && fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
         </div>
       </div>
       {vendorScoped && (

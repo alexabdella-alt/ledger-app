@@ -7127,7 +7127,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C198·2 (a1) — the OWNER hears what happened to their money, not how many rows a
       // review table holds. The reviewer keeps the workbench count they actually use.
       if (pipelineRan && !navSeat.isReviewerSeat) {
-        showNotification(dropZoneOutcomeCopy({ total: pipelineTotal, booked: pipelineBooked, exceptions: pipelineRemaining, reconciled: pipelineAutoReconciled, alreadyReconciled: pipelineAlreadyReconciled }));
+        showNotification(dropZoneOutcomeCopy({ total: pipelineTotal, booked: pipelineBooked, exceptions: pipelineRemaining, reconciled: pipelineAutoReconciled, alreadyReconciled: pipelineAlreadyReconciled, hasAccountant: hasAttester !== false }));
       } else {
         // C198·3b — count what actually happened: a re-upload whose every line was
         // already booked imported nothing, and must not claim otherwise.
