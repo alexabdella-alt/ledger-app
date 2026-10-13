@@ -1,4 +1,5 @@
 import React from "react";
+import NextStep from "../NextStep";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
@@ -166,9 +167,9 @@ export default function CustomersView() {
               <div>
                 <div style={{ marginBottom:24, display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
                   <div>
-                    <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>CUSTOMER MANAGEMENT</div>
+                    <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>MONEY IN</div>
                     <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Customers</h1>
-                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Or just tell the AI chat — "Add Metro Cafe as a customer, they're on Net 15"</div>
+                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Everyone who pays you. Customers are added when you send or upload an invoice — or ask the assistant, e.g. "Add Metro Cafe as a customer, they pay in 15 days".</div>
                   </div>
                   <button onClick={()=>setChatOpen(true)} style={{ padding:"9px 18px", borderRadius:10, fontSize:13, background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:"pointer" }}>+ Add via Chat</button>
                 </div>
@@ -177,8 +178,9 @@ export default function CustomersView() {
                   <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center" }}>
                     <div style={{ fontSize:32, marginBottom:12 }}>◉</div>
                     <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No customers yet</div>
-                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:20 }}>Customers appear when you upload revenue invoices, or tell the AI chat to add one.</div>
+                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:20 }}>Customers are added when you send an invoice, or upload one you sent. You can also ask the assistant to add one.</div>
                     <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", borderRadius:10, padding:"10px 24px", fontSize:13, cursor:"pointer" }}>Open AI Assistant</button>
+                    <span style={{ marginLeft:10 }}><NextStep secondary label="Send an invoice →" onClick={()=>setView("send-invoice")} /></span>
                   </div>
                 ) : (
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>

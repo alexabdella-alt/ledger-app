@@ -27,7 +27,7 @@ describe("C528", () => {
     expect(rows.find(r => r.id === "inv1").payment_status).toBe("uncollected");   // the shape under test
     const t = text(renderViewHtml(ArView, { ...POPULATED, invoices: rows, companyDataLoaded: true, getAccountByRole: (r) => chart.find(a => a.system_role === r) || null }));
     expect(t).toMatch(/COLLECTED \(TOTAL\)\s*\$500\.00\s*1 invoices/);
-    expect(t).toMatch(/TOTAL OUTSTANDING\s*\$300\.00/);
+    expect(t).toMatch(/OWED TO YOU\s*\$300\.00/);
   });
 });
 

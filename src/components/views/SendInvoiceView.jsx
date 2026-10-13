@@ -354,8 +354,10 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
             return (
               <div>
                 <div style={{marginBottom:24}}>
+                  <button onClick={()=>setView("ar")} style={{background:"none",border:"none",color:"var(--sc-text-2)",fontSize:13,cursor:"pointer",padding:0,marginBottom:10}}>← Money owed to you</button>
                   <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>SEND AN INVOICE</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Send Invoice</h1>
+                  <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Bill a customer. Once it's sent, it waits in Money owed to you until they pay.</div>
                 </div>
 
                 {showPreview && (

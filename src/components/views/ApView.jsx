@@ -1,4 +1,5 @@
 import React from "react";
+import NextStep from "../NextStep";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
@@ -72,8 +73,8 @@ export default function ApView() {
       {/* Header */}
       <div style={{ marginBottom:18 }}>
         <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>MONEY OUT</div>
-        <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Bills & Payments</h1>
-        <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Your outstanding bills and payment history. Mark a bill paid in one step — it's logged to the audit trail.</div>
+        <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Bills to pay</h1>
+        <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Bills you've received and haven't paid yet. Pay them the way you usually do, then mark each one paid here to record it — this doesn't send any money.</div>
       </div>
 
       {/* Summary */}
@@ -108,7 +109,7 @@ export default function ApView() {
       {active==="unpaid" && (
         !companyDataLoaded && unpaid.length===0 ? <LoadingList what="your bills" /> :
         unpaid.length===0
-          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}>🎉</div><div style={{ fontSize:14, color:"var(--sc-text)", marginBottom:4 }}>All caught up</div>No outstanding bills. Upload a bill and it'll appear here.</div>
+          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}>🎉</div><div style={{ fontSize:14, color:"var(--sc-text)", marginBottom:4 }}>All caught up</div>No unpaid bills. When a bill arrives, drop it on Home and it'll show up here.<div style={{ marginTop:16 }}><NextStep label="Upload a bill on Home →" onClick={()=>setView("home")} /></div></div>
           : <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
               {unpaid.map(inv=>{
                 const link = payLink(inv);
@@ -162,13 +163,13 @@ export default function ApView() {
       {active==="paid" && (
         !companyDataLoaded && paid.length===0 ? <LoadingList what="your bills" /> :
         paid.length===0
-          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}>💸</div>No payments recorded yet.</div>
+          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}>💸</div>No payments recorded yet. When you mark a bill paid, it moves here.</div>
           : <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
                 <thead><tr style={{ background:"var(--sc-surface-2)" }}>{["Vendor","Category","Method","Reference","Date Paid","Amount"].map(h=><th key={h} style={{ padding:"12px 18px", textAlign:h==="Amount"?"right":"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1, fontWeight:600, borderBottom:"1px solid var(--sc-border)" }}>{h.toUpperCase()}</th>)}</tr></thead>
                 <tbody>
                   {paid.map((inv,i)=>(
-                    <tr key={inv.id} onClick={()=>{ setReturnTo({view:"ap",label:"Payables"}); setSelectedInvoice(inv); setView("detail"); }} style={{ cursor:"pointer", background:i%2?"var(--sc-bg)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-surface-2)" }} onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2?"var(--sc-bg)":"var(--sc-surface)"}>
+                    <tr key={inv.id} onClick={()=>{ setReturnTo({view:"ap",label:"Bills to pay"}); setSelectedInvoice(inv); setView("detail"); }} style={{ cursor:"pointer", background:i%2?"var(--sc-bg)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-surface-2)" }} onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2?"var(--sc-bg)":"var(--sc-surface)"}>
                       <td style={{ padding:"12px 18px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><Avatar name={inv.vendor} size={28} /><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor}</span></div></td>
                       <td style={{ padding:"12px 18px", fontSize:12, color:"var(--sc-text-2)", fontFamily: showCodes ? "'DM Mono',monospace" : undefined }}>{categoryLabel(inv.gl_code, inv.gl_name, { withCode: showCodes })}</td>
                       <td style={{ padding:"12px 18px" }}><span style={{ fontSize:11, fontWeight:600, color:"var(--sc-gold)", background:"var(--sc-gold-soft)", border:"1px solid var(--sc-border)", borderRadius:20, padding:"2px 10px" }}>{methodLabel(inv.payment_method_used)}</span></td>

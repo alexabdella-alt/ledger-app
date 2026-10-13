@@ -443,6 +443,7 @@ export default function DashboardView() {
                         <option value="06-30">June 30</option>
                         <option value="09-30">September 30</option>
                       </select>
+                      <div style={{ fontSize:11.5, color:"var(--sc-text-2)", marginTop:5, lineHeight:1.45 }}>The month your business's year ends for taxes. Most small businesses: December 31. Not sure? Leave it — your accountant can change it.</div>
                       {/* O140/C559 — decides which tax deadlines this company is shown. Optional: an
                           unanswered question keeps the full calendar, never a shorter wrong one. */}
                       <label style={{ fontSize:12, fontWeight:600, color:"var(--sc-text-2)", display:"block", margin:"14px 0 6px" }}>How does your business file taxes?</label>
@@ -489,7 +490,7 @@ export default function DashboardView() {
                   {universalDragOver ? "Release to upload" : "Drop anything here"}
                 </div>
                 <div style={{ fontSize:14, color:"var(--sc-text-mut)", marginBottom:18, lineHeight:1.5 }}>
-                  Invoices, receipts, bank statements, contracts — your AI controller handles the rest
+                  Invoices, receipts, bank statements, contracts — we read it and file it in your books
                 </div>
                 <div style={{ display:"inline-flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
                   {["PDF","JPG","PNG","CSV","XLSX"].map(f=>(

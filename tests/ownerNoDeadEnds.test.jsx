@@ -107,3 +107,37 @@ describe("C574 — every door marked 'chase' chases", () => {
     expect(readFileSync("src/components/views/ReportsView.jsx", "utf8")).toMatch(/href=\{reminderMailto\(/);
   });
 });
+
+import ApView from "../src/components/views/ApView.jsx";
+import VendorsView from "../src/components/views/VendorsView.jsx";
+import CustomersView from "../src/components/views/CustomersView.jsx";
+import DocsView from "../src/components/views/DocsView.jsx";
+
+describe("C577 — every empty owner screen says what it's for and where to go next", () => {
+  const base = { navSeat: OWNER, companyDataLoaded: true, invoices: [], contacts: [], docLibrary: [], loadFailures: {}, arView: "inbox", apView: "unpaid", vendorsSelectedContact: null, vendorSummary: [], vendorFilter: "" };
+  const cases = [
+    ["Bills to pay", ApView, /Bills to pay/, /Upload a bill on Home →/],
+    ["Money owed to you", ArView, /No unpaid invoices/, /Send an invoice →/],
+    ["Vendors", VendorsView, /Everyone you pay/, /Upload a bill on Home/],
+    ["Customers", CustomersView, /Everyone who pays you/, /Send an invoice →/],
+    ["Documents", DocsView, /No documents yet/, /Upload on Home →/],
+  ];
+  for (const [name, View, purpose, next] of cases) {
+    it(`${name}: purpose and a next-step button`, () => {
+      const html = renderViewHtml(View, base);
+      expect(text(html), name).toMatch(purpose);
+      expect(text(html), name).toMatch(next);
+      expect(html, name).toContain("data-next-step");
+    });
+  }
+  it("Money owed to you's empty page has its own two buttons (the header's 'Send an invoice' doesn't count)", () => {
+    const html = renderViewHtml(ArView, base);
+    expect((html.match(/data-next-step/g) || []).length).toBe(2);
+  });
+  it("no owner screen still says 'tell the AI chat' or 'AI controller'", () => {
+    for (const f of ["VendorsView", "CustomersView", "DashboardView"]) {
+      const src = readFileSync(`src/components/views/${f}.jsx`, "utf8");
+      expect(src, f).not.toMatch(/tell the AI chat|AI controller/);
+    }
+  });
+});

@@ -1,4 +1,5 @@
 import React from "react";
+import NextStep from "../NextStep";
 import { reminderMailto, customerEmail } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
@@ -117,9 +118,9 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                 {/* Summary cards */}
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
                   {[
-                    { label:"Total Outstanding", value:fmt(totalAR),         sub:`${arOpen.length} open invoices`,          color:"var(--sc-success)" },
+                    { label:"Owed to you", value:fmt(totalAR),         sub:`${arOpen.length} open invoices`,          color:"var(--sc-success)" },
                     { label:"Overdue",            value:arOverdue.length,     sub:fmt(arOverdue.reduce((s,i)=>s+arAmt(i),0))+" past due", color:"var(--sc-error)" },
-                    { label:"Current (0–30d)",    value:fmt(aging.current.total), sub:`${aging.current.count} invoices`,     color:"var(--sc-gold)" },
+                    { label:"Not late yet (0–30 days)", value:fmt(aging.current.total), sub:`${aging.current.count} invoices`,     color:"var(--sc-gold)" },
                     { label:"Collected (Total)",  value:fmt(arCollected.reduce((s,i)=>s+arAmt(i),0)), sub:`${arCollected.length} invoices`, color:"var(--sc-text-2)" },
                   ].map(c=>(
                     <div key={c.label} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:"16px 18px" }}>
@@ -132,7 +133,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
 
                 {/* Tab bar */}
                 <div style={{ display:"flex", gap:2, background:"var(--sc-surface-2)", borderRadius:10, padding:3, border:"1px solid var(--sc-border)", marginBottom:20, width:"fit-content" }}>
-                  {[["inbox","📥 Inbox"],["collections","📞 Collections"],["aging","📊 Aging"]].map(([id,label])=>(
+                  {[["inbox","📥 All unpaid"],["collections","📞 Overdue"],["aging","📊 By how late"]].map(([id,label])=>(
                     <button key={id} onClick={()=>setArView(id)} style={{ padding:"8px 18px", borderRadius:8, fontSize:13, fontWeight:arView===id?600:400,
                       background:arView===id?"var(--sc-border)":"transparent", border:"none", color:arView===id?"var(--sc-success)":"var(--sc-text-2)", cursor:"pointer",
                       display:"flex", alignItems:"center", gap:6 }}>
@@ -148,8 +149,9 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                     {!companyDataLoaded && arAll.length===0 ? <LoadingList what="your invoices" /> : arAll.length===0 ? (
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center" }}>
                         <div style={{ fontSize:32, marginBottom:12 }}>📥</div>
-                        <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No revenue invoices yet</div>
-                        <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>Upload invoices you've sent to customers — anything they haven't paid yet shows up here.</div>
+                        <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No unpaid invoices</div>
+                        <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>When you bill a customer, the invoice shows up here until they pay. Send one from here, or drop an invoice you sent some other way on Home.</div>
+                        <div style={{ marginTop:16, display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}><NextStep label="Send an invoice →" onClick={()=>setView("send-invoice")} /><NextStep secondary label="Upload on Home" onClick={()=>setView("home")} /></div>
                       </div>
                     ) : (
                       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -267,7 +269,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                   <div>
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
                       {[
-                        { label:"Current (0–30d)", bucket:aging.current, color:"var(--sc-success)" },
+                        { label:"Not late yet (0–30 days)", bucket:aging.current, color:"var(--sc-success)" },
                         { label:"31–60 Days",      bucket:aging.d60,     color:"var(--sc-warning)" },
                         { label:"61–90 Days",      bucket:aging.d90,     color:"var(--sc-error)" },
                         { label:"90+ Days",        bucket:aging.d90plus, color:"var(--sc-error-soft)" },
@@ -286,15 +288,15 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                     {/* AI Commentary */}
                     <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:20, marginBottom:20 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:arAgingNarration||arAgingLoading?16:0 }}>
-                        <div style={{ fontSize:13, fontWeight:500 }}>✦ CFO Commentary</div>
+                        <div style={{ fontSize:13, fontWeight:500 }}>✦ What should I do?</div>
                         <button onClick={handleArAging} disabled={arAgingLoading}
                           style={{ padding:"7px 16px", borderRadius:8, fontSize:12, background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:arAgingLoading?"wait":"pointer" }}>
-                          {arAgingLoading?"⟳ Analyzing...":"Generate Analysis"}
+                          {arAgingLoading?"⟳ Thinking…":"Get advice"}
                         </button>
                       </div>
                       {arAgingLoading && <div style={{ display:"flex", gap:5 }}>{[0,1,2].map(i=><div key={i} style={{ width:6,height:6,borderRadius:"50%",background:"var(--sc-text-2)",animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}</div>}
                       {arAgingNarration && <div style={{ fontSize:13, color:"var(--sc-text-2)", lineHeight:1.8, whiteSpace:"pre-wrap" }}>{arAgingNarration}</div>}
-                      {!arAgingNarration && !arAgingLoading && <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>Click Generate Analysis for AI commentary on your AR position and collection risk.</div>}
+                      {!arAgingNarration && !arAgingLoading && <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>Press "Get advice" for a plain read on who to chase first and how much of what you're owed is at risk.</div>}
                     </div>
 
                     {/* Aging detail table */}

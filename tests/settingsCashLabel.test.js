@@ -8,6 +8,6 @@ describe("C462", () => {
     const sv = fs.readFileSync("src/components/views/SettingsView.jsx", "utf8");
     expect(sv).not.toMatch(/Total cash across accounts/);
     expect(sv).toMatch(/Statement balances you entered, added up/);
-    expect(sv).toMatch(/Your cash on hand on Home comes from your books/);
+    expect(sv).toMatch(/The cash figure on Home comes from your books/);   // C577 — reworded, same claim
   });
 });

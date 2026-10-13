@@ -109,8 +109,9 @@ export default function SettingsView() {
             return (
               <div style={{maxWidth:720}}>
                 <div style={{marginBottom:28}}>
-                  <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>CONFIGURATION</div>
-                  <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Settings</h1>
+                  <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>SETTINGS</div>
+                  <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Company</h1>
+                  <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Your business details and bank accounts — used on the invoices you send and on your tax forms.</div>
                 </div>
                 {loadFailures?.companies && <div style={{marginBottom:20}}><LoadFailedNotice what="company details" table="companies" /></div>}   {/* C456 — the form below would show the reset defaults */}
 
@@ -147,7 +148,7 @@ export default function SettingsView() {
 
                 {/* Accounting settings */}
                 <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:24,marginBottom:16}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5,marginBottom:16}}>ACCOUNTING</div>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5,marginBottom:16}}>YOUR BUSINESS YEAR</div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
                     <div>
                       <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:4}}>FISCAL YEAR END</div>
@@ -155,6 +156,7 @@ export default function SettingsView() {
                         style={{width:"100%",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}>
                         {[["12-31","December 31"],["03-31","March 31"],["06-30","June 30"],["09-30","September 30"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
                       </select>
+                      <div style={{fontSize:11,color:"var(--sc-text-mut)",marginTop:4,lineHeight:1.4}}>The month your business's year ends for taxes. Most small businesses: December 31. Not sure? Leave it — your accountant can change it.</div>
                     </div>
                     {/* C476 — the "Default cash account" and "Currency" pickers are gone: both were saved to
                         the company row and read by nothing. Cash comes from the bank account a statement is
@@ -211,7 +213,7 @@ export default function SettingsView() {
                     ))}
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingTop:10,borderTop:"1px solid var(--sc-surface-2)"}}>
-                    <div style={{fontSize:12,color:"var(--sc-text-2)"}}>Statement balances you entered, added up<div style={{fontSize:11,color:"var(--sc-text-mut)",marginTop:2}}>Your cash on hand on Home comes from your books, not from these figures.</div></div>   {/* C462 — §12: a bank's stated balance is the reconciliation target, never the displayed cash on hand */}
+                    <div style={{fontSize:12,color:"var(--sc-text-2)"}}>Statement balances you entered, added up<div style={{fontSize:11,color:"var(--sc-text-mut)",marginTop:2}}>We use these to check your books against what your bank says. The cash figure on Home comes from your books.</div></div>   {/* C462 — §12: a bank's stated balance is the reconciliation target, never the displayed cash on hand */}
                     <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--sc-success)"}}>${bankAccounts.reduce((s,b)=>s+(parseFloat(b.current_balance)||0),0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
                   </div>
                   <button onClick={()=>setBankAccounts(prev=>[...prev,{id:Date.now()+Math.random(),name:"",type:"checking",gl_code:getAccountByRole("cash")?.code,institution:"",current_balance:0}])}

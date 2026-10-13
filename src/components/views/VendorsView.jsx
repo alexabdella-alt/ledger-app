@@ -1,4 +1,5 @@
 import React from "react";
+import NextStep from "../NextStep";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
@@ -285,9 +286,9 @@ export default function VendorsView() {
               <div>
                 <div style={{ marginBottom:24, display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
                   <div>
-                    <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>VENDOR MANAGEMENT</div>
+                    <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>MONEY OUT</div>
                     <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Vendors</h1>
-                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Or just tell the AI chat — "Add Johnson Electric as a vendor, Net 30, around $2k/month"</div>
+                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>Everyone you pay. Vendors are added for you when you upload a bill, receipt or bank statement — or ask the assistant, e.g. "Add Johnson Electric as a vendor, they bill monthly".</div>
                   </div>
                   <button onClick={()=>{ setChatOpen(true); }} style={{ padding:"9px 18px", borderRadius:10, fontSize:13, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>+ Add via Chat</button>
                 </div>
@@ -309,8 +310,9 @@ export default function VendorsView() {
                   <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center" }}>
                     <div style={{ fontSize:32, marginBottom:12 }}>◈</div>
                     <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No vendors yet</div>
-                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:20 }}>Vendors appear automatically when you upload invoices, or tell the AI chat to add one.</div>
+                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:20 }}>Vendors are added for you when you upload a bill, receipt or bank statement. You can also ask the assistant to add one.</div>
                     <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", borderRadius:10, padding:"10px 24px", fontSize:13, cursor:"pointer" }}>Open AI Assistant</button>
+                    <span style={{ marginLeft:10 }}><NextStep secondary label="Upload a bill on Home" onClick={()=>setView("home")} /></span>
                   </div>
                 ) : (
                   <>
