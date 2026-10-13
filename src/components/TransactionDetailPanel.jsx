@@ -1,4 +1,5 @@
 import React from "react";
+import { categoryLabel, showCodesFor } from "../lib/categoryLabel";
 import { plainWriteError } from "../lib/plainWriteError";
 import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
@@ -111,8 +112,9 @@ function SourceDocPreview({ doc, onExpand }) {
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
     invoices, signoffs, CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
-    setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer, attachDepreciationToExistingAsset, isOwner, isAdmin,
+    navSeat, setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer, attachDepreciationToExistingAsset, isOwner, isAdmin,
   } = useERP();
+  const showCodes = showCodesFor(navSeat);   // C575 — the owner's "Change category" list reads as names
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
   const [sweepOffer, setSweepOffer] = React.useState(null);   // O105 — the "also change the others?" offer
@@ -414,7 +416,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
 
                   <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 6, letterSpacing: 0.5 }}>CHANGE CATEGORY</div>
                   <select defaultValue={sel.gl_code} onChange={e => doRecode(sel, e.target.value)} style={{ width: "100%", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 9, padding: "10px 12px", fontSize: 13, color: "var(--sc-text)", outline: "none" }}>
-                    {(BOOKABLE_ACCOUNTS || []).filter(a => a.code >= "4000").map(a => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
+                    {(BOOKABLE_ACCOUNTS || []).filter(a => a.code >= "4000").map(a => <option key={a.code} value={a.code}>{categoryLabel(a.code, a.name, { withCode: showCodes, sep: " — " })}</option>)}
                   </select>
                   <button onClick={() => setRecodeOpen(false)} style={{ marginTop: 8, background: "none", border: "none", color: "var(--sc-text-2)", fontSize: 12, cursor: "pointer", padding: 0 }}>Cancel</button>
                 </div>

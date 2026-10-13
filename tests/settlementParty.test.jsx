@@ -52,7 +52,8 @@ describe("C541 — the opening entry", () => {
   it("renders so on the list and on Home", () => {
     const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
     const list = text(renderViewHtml(BooksView, { ...POPULATED, navSeat, companyDataLoaded: true }));
-    expect(list).toMatch(/1000 Cash \+\$10,000\.00 Starting balance/);
+    expect(list).toMatch(/Cash \+\$10,000\.00 Starting balance/);
+    expect(list).not.toMatch(/1000 Cash/);   // C575 — an owner sees the category's name, not its number
     const home = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, companyDataLoaded: true }));
     expect(home).toMatch(/🏁 Starting balances recorded[^🧾💰]*\+\$10,000\.00/);
     expect(home).not.toContain("Opening balances as of 2026-01-01 — Cash");

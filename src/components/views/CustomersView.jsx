@@ -1,4 +1,5 @@
 import React from "react";
+import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { openReceivables } from "../../lib/receivables";
@@ -110,7 +111,7 @@ export default function CustomersView() {
                               <tr key={i.id||idx} style={{ borderBottom:"1px solid var(--sc-surface-2)" }}>
                                 <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)", whiteSpace:"nowrap" }}>{fmtDate(i.date)}</td>
                                 <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
-                                <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{i.gl_code} {i.gl_name}{i._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {i._lineCount} lines</span>}</td>
+                                <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{categoryLabel(i.gl_code, i.gl_name, { withCode: cockpit })}{i._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {i._lineCount} lines</span>}</td>
                                 <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:collected?"var(--sc-success)":"var(--sc-warning)" }}>{collected?"Collected":"Open"}</span></td>
                                 <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(owedAmount(i))}</td>
                               </tr>

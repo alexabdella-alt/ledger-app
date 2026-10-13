@@ -1,4 +1,5 @@
 import React from "react";
+import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { openPayablesGL, signedPL } from "../../lib/reports";
@@ -170,7 +171,7 @@ export default function VendorsView() {
                               style={{ borderBottom:"1px solid var(--sc-surface-2)", cursor:"pointer" }}>
                               <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)", whiteSpace:"nowrap" }}>{fmtDate(i.date)}</td>
                               <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
-                              <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{i.gl_code} {i.gl_name}{i._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {i._lineCount} lines</span>}</td>
+                              <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{categoryLabel(i.gl_code, i.gl_name, { withCode: cockpit })}{i._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {i._lineCount} lines</span>}</td>
                               <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:isOpenRow(i)?"var(--sc-warning)":"var(--sc-success)" }}>{isOpenRow(i)?"Open":"Paid"}</span></td>
                               <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(listAmount(i))}</td>
                             </tr>

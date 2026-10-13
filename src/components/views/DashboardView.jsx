@@ -1,4 +1,5 @@
 import React from "react";
+import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { homeWaitingList, waitingHeadline, WAIT } from "../../lib/homeWaiting";
 import { createPortal } from "react-dom";
@@ -158,7 +159,7 @@ export default function DashboardView() {
               </div>
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-              <span style={{ fontSize:10, color:"var(--sc-text-2)", fontFamily:"monospace", background:"var(--sc-surface-2)", padding:"1px 6px", borderRadius:4 }}>{inv.gl_code}</span>
+              <span style={{ fontSize:10, color:"var(--sc-text-2)", fontFamily: cockpit ? "monospace" : undefined, background:"var(--sc-surface-2)", padding:"1px 6px", borderRadius:4 }}>{cockpit ? inv.gl_code : categoryLabel(inv.gl_code, inv.gl_name)}</span>
               <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color, width:104, textAlign:"right" }}>{fmt(inv.amount)}</span>
             </div>
           </div>
@@ -296,7 +297,7 @@ export default function DashboardView() {
                   <span style={{ width:28, height:28, borderRadius:8, background:vendorColor(inv.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"var(--sc-on-accent)", flexShrink:0 }}>{initials(inv.vendor)}</span>
                   <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{inv.vendor||"—"}</div>
-                    <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{inv.gl_code} {inv.gl_name}</div>
+                    <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{categoryLabel(inv.gl_code, inv.gl_name, { withCode: cockpit, sep: " " })}</div>
                   </div>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
