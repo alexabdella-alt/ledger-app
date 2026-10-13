@@ -1,4 +1,5 @@
 import React from "react";
+import { reportTabsFor, REPORT_GUIDE, REPORTS_PURPOSE, BASIS_LABELS, BASIS_EXPLAINER } from "../../lib/reportGuide";
 import { reminderMailto } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
 import { isCancelledOrCancelling, glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -21,7 +22,7 @@ import MonthlyReportsPanel from "./MonthlyReportsPanel";
 // bill was two, a payroll register two); a person counts entries.
 const entryCount = (rows) => new Set((rows || []).map((r) => String(r.db_entry_id != null ? r.db_entry_id : String(r.id ?? "").split("_")[0]))).size;
 export default function ReportsView() {
-  const { aliasIndex, signoffs, ownerTrust, reviewedThrough, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, isOwner, isAdmin, cutoffDate, glCash, cashGlCodes, getAccountByRole, reconciliations, anomalies, setReturnTo, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setChatPrefill, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, signoffsLoadOk, companyDataLoaded } = useERP();
+  const { aliasIndex, signoffs, ownerTrust, reviewedThrough, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, isOwner, isAdmin, cutoffDate, glCash, cashGlCodes, getAccountByRole, reconciliations, anomalies, setReturnTo, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setChatPrefill, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, signoffsLoadOk, companyDataLoaded, navSeat } = useERP();
   // plDrill / drill / drillSel are now LIFTED to ERP context (above) so they survive the
   // transaction-detail round-trip — Back returns to the line-item list, not the report top.
   // In-report Back pops exactly one drill level via the shared reportNavBack state machine.
@@ -228,6 +229,7 @@ export default function ReportsView() {
                 <div style={{ marginBottom:24 }}>
                   <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>REPORTING</div>
                   <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Reports</h1>
+                  <div data-reports-purpose style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>{REPORTS_PURPOSE}</div>
                   {/* C343 — O104's core promise: a report never sounds surer than the books. One
                       line, from the sign-off rows, on every report. */}
                   <div data-attestation style={{ fontSize:12.5, color:"var(--sc-text-2)", marginTop:8 }}>
@@ -247,7 +249,7 @@ export default function ReportsView() {
 
                 {/* Controls */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
-                  {[["pl","P&L"],["balance","Balance Sheet"],["trial","All account balances"],["araging","Money owed to you"],["apaging","Bills to pay"],["kpis","KPIs"],["vendor","By Vendor"],["gl","By Category"],["cashflow","Cash Flow"],["project","By Project"],["monthly","Monthly Reports"]].map(([id,label])=>(
+                  {reportTabsFor({ reviewer: !!navSeat?.isReviewerSeat || !navSeat }).map(([id,label])=>(
                     <button key={id} onClick={()=>{ setReportType(id); setPlDrill(null); setDrill(null); setDrillSel(null); }} style={pill(reportType===id)}>{label}</button>
                   ))}
                   <div style={{ flex:1 }} />
@@ -259,6 +261,7 @@ export default function ReportsView() {
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
+                {REPORT_GUIDE[reportType] && <div data-report-guide style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:-12, marginBottom:16 }}>{REPORT_GUIDE[reportType]}</div>}
                 {/* C441 — a custom range whose start is after its end matches nothing and read as "$0.00" with no explanation */}
                 {reportRange === "custom" && reportDateFrom && reportDateTo && reportDateFrom > reportDateTo && (
                   <div data-range-inverted style={{ marginTop: 8, fontSize: 12.5, color: "var(--sc-warning)" }}>The start date is after the end date, so nothing is in this range — swap them to see your figures.</div>
@@ -282,7 +285,7 @@ export default function ReportsView() {
                 {/* Monthly Reports — the immutable archive, always reachable regardless of live ledger state. */}
                 {reportType==="monthly" && <MonthlyReportsPanel />}
 
-                {reportType!=="monthly" && invoices.length===0 && <div style={{ color:"var(--sc-text-2)", fontSize:14 }}>No data yet. Upload invoices or a bank statement to generate reports.</div>}
+                {reportType!=="monthly" && invoices.length===0 && <div style={{ color:"var(--sc-text-2)", fontSize:14 }}>Nothing to report yet — your reports fill in as soon as you add a bill, receipt or bank statement. <button onClick={()=>setView("home")} style={{ marginLeft:8, background:"none", border:"none", color:"var(--sc-gold)", fontWeight:600, fontSize:14, cursor:"pointer", padding:0 }}>Go to Home to upload →</button></div>}
 
                 {reportType!=="monthly" && invoices.length>0 && (
                   <div>
@@ -363,10 +366,11 @@ export default function ReportsView() {
                           <div style={{ padding:"18px 24px", borderBottom:"1px solid var(--sc-border)", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
                             <div>
                               <div style={{ fontSize:14, fontWeight:600 }}>Profit & Loss Statement</div>
-                              <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{basisMode==="cash"?"Cash basis":"Accrual basis"} · {rangeLabels[reportRange]} · {entryCount(plFiltered)} transactions</div>
+                              <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{BASIS_LABELS[basisMode==="cash"?"cash":"accrual"].subtitle} · {rangeLabels[reportRange]} · {entryCount(plFiltered)} transactions</div>
+                              <div data-basis-explainer style={{ fontSize:11.5, color:"var(--sc-text-2)", marginTop:4, maxWidth:420, lineHeight:1.45 }}>{BASIS_EXPLAINER}</div>
                             </div>
                             <div style={{ display:"flex", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:8, overflow:"hidden" }}>
-                              {[["accrual","Accrual"],["cash","Cash"]].map(([m,label])=>(
+                              {[["accrual",BASIS_LABELS.accrual.button],["cash",BASIS_LABELS.cash.button]].map(([m,label])=>(
                                 <button key={m} onClick={()=>setBasisMode(m)} style={{ padding:"6px 14px", fontSize:12, border:"none", cursor:"pointer", background:basisMode===m?"var(--sc-border-2)":"transparent", color:basisMode===m?"var(--sc-text)":"var(--sc-text-2)", fontWeight:basisMode===m?600:400 }}>{label}</button>
                               ))}
                             </div>
@@ -547,7 +551,7 @@ export default function ReportsView() {
                           <div style={{padding:"18px 24px",borderBottom:"1px solid var(--sc-border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                             <div>
                               <div style={{fontSize:14,fontWeight:600}}>Balance Sheet</div>
-                              <div style={{fontSize:11,color:"var(--sc-text-2)",marginTop:3}}>As of {new Date(asOf+"T12:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · GAAP basis</div>
+                              <div style={{fontSize:11,color:"var(--sc-text-2)",marginTop:3}}>As of {new Date(asOf+"T12:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}</div>
                             </div>
                             <div style={{display:"flex",alignItems:"center",gap:10}}>
                               {!isBalanced && <div style={{fontSize:11,color:"var(--sc-warning)",background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:8,padding:"4px 10px"}}>⚠ Out of balance by {bsFmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
@@ -839,7 +843,7 @@ export default function ReportsView() {
                                               style={{ fontSize:12, color:"var(--sc-gold)", textDecoration:"none", fontWeight:600 }}>Send reminder →</a>
                                           )}
                                           {side==="ap" && (
-                                            <button onClick={()=>{ markPaid && markPaid(r.id, "ach", { date: today }); }} style={{ fontSize:12, color:"var(--sc-success)", background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontWeight:600 }}>Mark Paid</button>
+                                            <button title="Opens Bills to pay, where you choose the date and how it was paid" onClick={()=>{ setView("ap"); }} style={{ fontSize:12, color:"var(--sc-success)", background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontWeight:600 }}>Mark paid →</button>
                                           )}
                                         </td>
                                       </tr>

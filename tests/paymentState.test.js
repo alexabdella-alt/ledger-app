@@ -150,7 +150,10 @@ describe("all 'mark paid' surfaces resolve to the one shared writer", () => {
 
   it("the Payables button and the AP Aging button both call the shared markPaid", () => {
     expect(ap).toMatch(/markPaid\(/);
-    expect(rep).toMatch(/markPaid\(/);
+    // C576 — the aging row no longer writes a payment (it recorded "ACH, today" without asking);
+    // it opens Bills to pay, whose button asks the date and method and calls the shared writer.
+    expect(rep).not.toMatch(/markPaid\(/);
+    expect(rep).toMatch(/onClick=\{\(\)=>\{ setView\("ap"\); \}\}/);
     expect(books).toMatch(/markPaid\(/);
   });
   it("AR 'Mark Collected' routes through the canonical writer (not local-only)", () => {

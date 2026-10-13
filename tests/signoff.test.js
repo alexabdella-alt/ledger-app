@@ -51,6 +51,6 @@ describe("reportAttestationLine — one honest line on every report", () => {
     const src = fs.readFileSync(new URL("../src/components/views/ReportsView.jsx", import.meta.url), "utf8");
     expect(src).toMatch(/reportAttestationLine\(\{ reviewedThrough, selfSigned: ownerTrust\?\.selfSigned, monthLabel, checked: signoffsLoadOk !== false \}\)/);
     // above the report-type pills, so it is on screen whichever report is open
-    expect(src.indexOf("reportAttestationLine({")).toBeLessThan(src.indexOf('["pl","P&L"]'));
+    expect(src.indexOf("reportAttestationLine({")).toBeLessThan(src.indexOf("reportTabsFor({"));   // C576 — the tabs come from reportGuide.js
   });
 });

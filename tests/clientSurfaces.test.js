@@ -154,7 +154,7 @@ describe("(2) client-visible copy assumes zero accounting knowledge", () => {
     // the word would leave a client unable to ask their accountant for it by name — the
     // Cardinal Principle is about not assuming CONCEPTS, not about refusing proper nouns.
     "Balance Sheet": "the statement's actual name",
-    "Accrual basis": "the statement's actual name",
+    // "Accrual basis" was here; C576 says "Counted when billed" instead, so the licence is gone.
     // (TIER 1 #7a's four — "Trial Balance", the two TOTAL OUTSTANDING headings and
     // "AI Confidence" — were paid off in C327. An exemption whose string is gone is a
     // licence left lying open, and the REACHED check below is what made them leave.)
