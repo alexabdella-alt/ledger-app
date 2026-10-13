@@ -147,7 +147,8 @@ describe("★★ the proposal counts what a person must act on", () => {
 
 describe("★ already handled is not the same as not eligible", () => {
   it("a sent 1099 and a marked exemption each say which they are", () => {
-    expect(v({ name: "Ace", sent_1099_2025: true }, [paid(5000, 6250)]).verdict).toBe(VERDICT.ALREADY_SENT);
+    // C573 — "sent" is about a YEAR; the legacy flag means 2025.
+    expect(verdictFor({ name: "Ace", sent_1099_2025: true }, reportablePayments([paid(5000, 6250)], role), { year: 2025 }).verdict).toBe(VERDICT.ALREADY_SENT);
     expect(v({ name: "Ace", is_1099_exempt: true }, [paid(5000, 6250)]).verdict).toBe(VERDICT.MARKED_EXEMPT);
   });
 });

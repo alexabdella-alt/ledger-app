@@ -4,6 +4,7 @@ import { useERP } from "../ERPContext";
 import { glIsExpense } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { taxYearFor1099 } from "../../lib/tax";
+import { sent1099For } from "../../lib/form1099";
 
 const TYPE_OPTIONS = [
   { v:"individual",  label:"Individual / Sole Proprietor", exempt:false },
@@ -50,7 +51,7 @@ export default function Tax1099View() {
     const exempt = c && (c.is_1099_exempt || isExemptType(c.business_type));
     const eligible = c && ["individual","smllc","partnership","sole_prop"].includes(c.business_type);
     if (exempt) return { key:"none", label:"Not required", color:"var(--sc-text-2)" };
-    if (v.paid >= 600 && eligible) return c.sent_1099_2025 ? { key:"sent", label:"Sent ✓", color:"var(--sc-success)" } : { key:"needs", label:"Needs 1099", color:"var(--sc-error)" };
+    if (v.paid >= 600 && eligible) return sent1099For(c, taxYear) ? { key:"sent", label:"Sent ✓", color:"var(--sc-success)" } : { key:"needs", label:"Needs 1099", color:"var(--sc-error)" };
     if (v.paid >= 600 && (!c || !c.business_type)) return { key:"unknown", label:"Unknown", color:"var(--sc-warning)" };
     if (v.paid >= 1 && v.paid < 600) return { key:"tracking", label:"Tracking", color:"var(--sc-warning)" };
     return { key:"none", label:"Not required", color:"var(--sc-text-2)" };
@@ -83,9 +84,16 @@ export default function Tax1099View() {
 
   const markSent = async (v) => {
     const c = v.contact;
-    const merged = c ? { ...c, sent_1099_2025:true } : { id:Date.now()+Math.random(), name:v.name, type:"vendor", sent_1099_2025:true, business_type:"individual", created_at:new Date().toISOString() };
+    // C573 — the YEAR is recorded, not a flag named for 2025.
+    const years = [...new Set([...((c && c.sent_1099_years) || []).map(Number), taxYear])].sort();
+    const mark = { sent_1099_years: years, ...(taxYear === 2025 ? { sent_1099_2025: true } : {}) };
+    const merged = c ? { ...c, ...mark } : { id:Date.now()+Math.random(), name:v.name, type:"vendor", ...mark, business_type:"individual", created_at:new Date().toISOString() };
     const r = await persistContact(merged);
     if (!r?.ok) { showNotification(`We couldn't record that ${v.name}'s 1099 was sent — it still shows as needing one. ${plainWriteError(r?.error, "")}`.trim(), "error"); return; }
+    // ★ READ THE SAVED ROW, NOT THE INTENT: before migration 094 the save quietly drops the
+    // years column and still reports success, and "Marked sent" would be a claim about a write
+    // that did not happen.
+    if (!sent1099For(r.row || {}, taxYear)) { showNotification(`We couldn't record that ${v.name}'s 1099 was sent for ${taxYear} — the database needs a small update first. Nothing was changed.`, "error"); return; }
     const saved = r.row?.id ? { ...merged, db_id: r.row.id } : merged;
     setContacts(prev => c ? prev.map(x=>x.id===c.id?saved:x) : [saved, ...prev]);
     logAudit && logAudit("1099_sent", `Marked 1099 as sent for ${v.name} (${taxYear})`, null, { vendor:v.name, taxYear });

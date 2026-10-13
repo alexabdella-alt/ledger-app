@@ -5,6 +5,8 @@ import { fmtSignedMoney, todayLocal } from "./format";
 import { fetchLedger } from "./ledger";
 import { perEntry } from "./txnPresent";
 import { executeAITool } from "./aiTools";
+import { sent1099For } from "./form1099";
+import { taxYearFor1099 } from "./tax";
 import { capToolResult } from "./toolResultCap";
 import { classifyAIFailure } from "./aiFailure";
 import { readBudgetHeaders, recordBudget } from "./aiBudget";
@@ -244,7 +246,7 @@ ${ledgerEntries.length === 0 ? "Empty." : ledgerEntries.slice(0, 80).map(inv =>
   const contactsSection = needsContacts && contacts.length > 0
     ? `Contacts (${contacts.length}):
 ${contacts.map(c =>
-  `- [${c.type.toUpperCase()}] ${c.name} | BizType: ${c.business_type||"unknown"}${c.is_1099_exempt?" (1099-exempt)":""}${c.sent_1099_2025?" (1099 sent)":""} | Terms: ${c.payment_terms||"—"} | GL: ${c.gl_code||"—"} ${c.gl_name||""} | Email: ${c.email||"—"} | Phone: ${c.phone||"—"} | Tags: ${(c.tags||[]).join(", ")||"none"}`
+  `- [${c.type.toUpperCase()}] ${c.name} | BizType: ${c.business_type||"unknown"}${c.is_1099_exempt?" (1099-exempt)":""}${sent1099For(c, taxYearFor1099())?` (1099 sent for ${taxYearFor1099()})`:""} | Terms: ${c.payment_terms||"—"} | GL: ${c.gl_code||"—"} ${c.gl_name||""} | Email: ${c.email||"—"} | Phone: ${c.phone||"—"} | Tags: ${(c.tags||[]).join(", ")||"none"}`
 ).join("\n")}`
     : contacts.length > 0
       ? `Contacts: ${contacts.length} on file (not loaded — ask about a specific vendor or customer to query).`

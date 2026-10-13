@@ -111,10 +111,21 @@ export function reportablePayments(rows = [], roleOfCode = () => null) {
   return { byKind, total };
 }
 
+// ★ C573 — WAS A 1099 SENT FOR THIS YEAR? The column used to be `sent_1099_2025`, read for
+// EVERY year: from the 2026 tax year on, a vendor marked sent last year read "already sent",
+// and the 1099 they are owed this year was never flagged. `sent_1099_years` (migration 094)
+// holds every year it was sent; the old flag still means 2025, and only 2025. No year → false:
+// a sent mark that cannot say which year it is about cannot answer this question.
+export function sent1099For(contact = {}, year = null) {
+  const y = Number(year);   // null/undefined → 0 or NaN, which matches no year
+  if ((contact.sent_1099_years || []).map(Number).includes(y)) return true;
+  return y === 2025 && !!contact.sent_1099_2025;
+}
+
 // One vendor's verdict, with the reason a CPA would need to sign it.
-export function verdictFor(contact = {}, payments = { byKind: {}, total: 0 }, { threshold = IRS_1099_THRESHOLD } = {}) {
+export function verdictFor(contact = {}, payments = { byKind: {}, total: 0 }, { threshold = IRS_1099_THRESHOLD, year = null } = {}) {
   const name = contact.name || "this vendor";
-  if (contact.sent_1099_2025) return { verdict: VERDICT.ALREADY_SENT, why: `A 1099 has already been sent to ${name} for this year.`, amount: payments.total };
+  if (sent1099For(contact, year)) return { verdict: VERDICT.ALREADY_SENT, why: `A 1099 has already been sent to ${name} for ${year}.`, amount: payments.total };
   if (contact.is_1099_exempt) return { verdict: VERDICT.MARKED_EXEMPT, why: `${name} has been marked exempt.`, amount: payments.total };
 
   const k = payments.byKind || {};
@@ -168,12 +179,12 @@ function money(n) {
 }
 
 // The whole proposal. `vendorRowsFor(contact)` returns that vendor's ledger rows for the year.
-export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode = () => null, threshold = IRS_1099_THRESHOLD } = {}) {
+export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode = () => null, threshold = IRS_1099_THRESHOLD, year = null } = {}) {
   const rows = [];
   for (const c of contacts || []) {
     if (!c || c.type !== "vendor") continue;
     const payments = reportablePayments(vendorRowsFor(c), roleOfCode);
-    rows.push({ contact: c, name: c.name, ...verdictFor(c, payments, { threshold }), payments });
+    rows.push({ contact: c, name: c.name, ...verdictFor(c, payments, { threshold, year }), payments });
   }
   const by = (v) => rows.filter((r) => r.verdict === v);
   return {
@@ -200,7 +211,7 @@ export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year
     if (!k) continue;
     (byName.get(k) || byName.set(k, []).get(k)).push(r);
   }
-  return plan1099({ contacts, vendorRowsFor: (c) => byName.get(key(c.name)) || [], roleOfCode, threshold });
+  return plan1099({ contacts, vendorRowsFor: (c) => byName.get(key(c.name)) || [], roleOfCode, threshold, year });
 }
 
 // ★ C549 — THE SENTENCE NAMES THE YEAR, because "this year" is not what it means for three

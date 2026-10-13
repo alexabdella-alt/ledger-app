@@ -3772,6 +3772,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         business_type: contact.business_type||null, ein_ssn: contact.ein_ssn||null,
         mailing_address: contact.mailing_address||null,
         is_1099_exempt: contact.is_1099_exempt ?? false, sent_1099_2025: contact.sent_1099_2025 ?? false,
+        ...(Array.isArray(contact.sent_1099_years) ? { sent_1099_years: contact.sent_1099_years } : {}),   // C573 — migration 094
         vendor_account_number: contact.vendor_account_number||null, tax_id: contact.tax_id||null,
       };
       const normKey = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");

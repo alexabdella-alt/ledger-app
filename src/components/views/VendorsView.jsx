@@ -6,6 +6,7 @@ import { collapseExpandedRows, listAmount } from "../../lib/txnPresent";
 import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { verdictFor, reportablePayments, VERDICT } from "../../lib/form1099";
+import { taxYearFor1099 } from "../../lib/tax";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 import { applyAlias } from "../../lib/vendorAlias";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -46,12 +47,15 @@ export default function VendorsView() {
     (x) => applyAlias(vendorGroupKey(x) || String(x || "").trim().toLowerCase(), aliasIndex),
     [aliasIndex]);
   // Same inputs as the Tax page, same function — the two cannot disagree by construction.
+  // ★ C573 — and the same YEAR: this counted every year's payments while the Tax page counted
+  // the 1099 year's, so a vendor could "need a 1099" here on last year's money and not there.
+  const year1099 = taxYearFor1099();
   const verdict1099 = React.useCallback((vendor) => {
     if (!vendor?.fromContact) return null;
     const k = keyOf(vendor.name);
-    const rows = (invoices || []).filter(i => (i.vendor_key || keyOf(i.vendor)) === k);
-    return verdictFor(vendor, reportablePayments(rows, roleOfCode));
-  }, [invoices, roleOfCode, keyOf]);
+    const rows = (invoices || []).filter(i => (i.vendor_key || keyOf(i.vendor)) === k && String(i.date || "").startsWith(String(year1099)));
+    return verdictFor(vendor, reportablePayments(rows, roleOfCode), { year: year1099 });
+  }, [invoices, roleOfCode, keyOf, year1099]);
   const badge1099 = (v) => {
     const r = verdict1099(v);
     if (!r) return null;

@@ -92,7 +92,7 @@ describe("★★ the retired flag stays retired", () => {
   it("★ the Vendors badge reads the DERIVATION — the same function the Tax page uses", () => {
     const v = fs.readFileSync(new URL("../src/components/views/VendorsView.jsx", import.meta.url), "utf8");
     expect(v).toMatch(/import \{[^}]*verdictFor[^}]*\} from "\.\.\/\.\.\/lib\/form1099"/);
-    expect(v).toMatch(/verdictFor\(vendor, reportablePayments\(rows, roleOfCode\)\)/);
+    expect(v).toMatch(/verdictFor\(vendor, reportablePayments\(rows, roleOfCode\), \{ year: year1099 \}\)/);   // C573 — and the same year
     // …and it is not a button any more: a control that changes nothing is worse than none.
     expect(v).not.toMatch(/Flag for 1099|Unflag 1099/);
   });
