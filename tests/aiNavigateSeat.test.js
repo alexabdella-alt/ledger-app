@@ -14,7 +14,7 @@ const start = app.indexOf('if (action.type === "navigate" && action.view) {');
 const block = app.slice(start, app.indexOf('if (action.type === "add_account")', start));
 
 describe("★★ the navigate action is seat-gated (structure)", () => {
-  it("finds the block (anti-vacuity)", () => { expect(block.length).toBeGreaterThan(500); expect(block).toContain("viewAliases"); });
+  it("finds the block (anti-vacuity)", () => { expect(block.length).toBeGreaterThan(300); expect(block).toContain("resolveChatView(action.view, action.filter)"); });
   it("consults canSeeView with the live seat BEFORE any setView, and lands Home when refused", () => {
     const gate = block.indexOf("if (!canSeeView(target, seatOpts))");
     const first = block.indexOf("setView(");

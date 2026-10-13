@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { resolveChatView } from "../src/lib/chatNav.js";
 import fs from "node:fs";
 
 // C312 named three router branches that were `setView("books")` SIDE EFFECTS CALLED DURING
@@ -19,10 +20,8 @@ describe("C335 — router branches render, they do not redirect", () => {
     for (const id of ["ledger", "money-in", "money-out", "invoices"]) {
       expect(APP).not.toMatch(new RegExp(`\\{view\\s*===\\s*"${id}"`));
     }
-    // the navigate alias map is what makes "take me to the ledger" still land somewhere
-    expect(APP).toMatch(/ledger:"books", invoices:"books"/);
-    expect(APP).toMatch(/"money-in":"books"/);
-    expect(APP).toMatch(/"money-out":"books"/);
+    // the chat's screen resolver (C572, chatNav.js) is what makes "take me to the ledger" still land somewhere
+    for (const w of ["ledger", "invoices", "money-in", "money-out"]) expect(resolveChatView(w).target, w).toBe("books");
   });
   it("every view component in src/components/views is imported by something", () => {
     const dir = new URL("../src/components/views/", import.meta.url);

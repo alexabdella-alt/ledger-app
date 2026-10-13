@@ -132,6 +132,7 @@ import TaxView from "./components/views/TaxView";
 import DocsView from "./components/views/DocsView";
 import AuditView from "./components/views/AuditView";
 import { readAllRows } from "./lib/pagedRead";
+import { resolveChatView } from "./lib/chatNav";
 import { readPdfStatementPieces, openPdfPages, statementReadFailureCopy } from "./lib/pdfStatement";
 import { AUDIT_SCREEN_ROWS, auditRowFromDb, slimAuditState, readFullAuditLog as readFullAuditLogFrom } from "./lib/auditTrail";
 import AdminView from "./components/views/AdminView";
@@ -8523,31 +8524,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           continue;
         }
         if (action.type === "navigate" && action.view) {
-          // Map any view name (old or new) to the 5-tab structure: home, books, reports, contracts, settings
-          const viewAliases = {
-            // home
-            dashboard:"home", overview:"home", home:"home",
-            // books (consolidated ledger / money in / money out)
-            books:"books", ledger:"books", invoices:"books", invoice:"books", transactions:"books",
-            "money-in":"books", receivables:"books", ar:"books", "money-out":"books", payables:"books", ap:"books",
-            bills:"books", unpaid:"books",
-            // sub-tools that live under Books — keep their dedicated views reachable
-            bank:"bank", "bank-feed":"bank", recon:"recon", reconciliation:"recon",
-            reconcile:"recon", "match-bank":"recon", "match bank":"recon", "bank-match":"recon", "match-statement":"recon", "match statement":"recon",
-            "send-invoice":"send-invoice", customers:"customers", payroll:"payroll", docs:"docs", documents:"docs",
-            // reports
-            reports:"reports", report:"reports", pl:"reports", "p&l":"reports", "profit-loss":"reports",
-            "balance-sheet":"reports", "cash-flow":"reports",
-            audittrail:"audit", "audit-trail":"audit", "audit trail":"audit", audit:"audit",
-            "1099":"tax1099", "1099s":"tax1099", tax1099:"tax1099",
-            tax:"tax", taxes:"tax", "tax-center":"tax", "estimated-tax":"tax", "estimated taxes":"tax", "tax-compliance":"tax", deadlines:"tax",
-            // contracts now live inside Books (contracts filter)
-            contracts:"books", leases:"books", lease:"books", contract:"books",
-            settings:"settings", company:"settings", coa:"coa", "chart-of-accounts":"coa",
-            rules:"rules", vendors:"vendors", contacts:"vendors", recurring:"recurring",
-            "opening-balances":"opening-balances", "bank-accounts":"opening-balances",
-          };
-          const target = viewAliases[String(action.view).toLowerCase().trim()] || action.view;
+          // C572 — resolved against the sidebar's own rows (chatNav.js), never a hand-kept list.
+          const { target, booksFilter: chatBooksFilter } = resolveChatView(action.view, action.filter);
           // C382 — the model names a screen; the SEAT decides whether it opens. A bare
           // setView here used to say "Opened recon" and then have the route guard bounce
           // an owner Home — the chat claiming a door it had just been refused (C381's bell,
@@ -8558,16 +8536,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             setView("home");
             actionSummary.push(ALL_VIEW_IDS.includes(target) ? GATED_VIEW_REDIRECT_COPY : "I couldn't find a screen by that name — here's your home page.");
           } else {
-          // Apply a Books filter when the AI specifies one (e.g. "show unpaid bills")
-          if (target === "books") {
-            const f = String(action.filter || "").toLowerCase().trim();
-            const fMap = { unpaid:"unpaid", bills:"unpaid", payables:"unpaid", expenses:"expenses", expense:"expenses", revenue:"revenue", income:"revenue", review:"review", "needs-review":"review", contracts:"contracts", contract:"contracts", leases:"contracts", all:"all" };
-            // infer from the requested view if no explicit filter
-            const inferred = /contract|lease/.test(String(action.view).toLowerCase()) ? "contracts"
-                           : /money-out|payable|unpaid|bill/.test(String(action.view).toLowerCase()) ? "unpaid"
-                           : /money-in|receivable|revenue|income/.test(String(action.view).toLowerCase()) ? "revenue" : null;
-            setBooksFilter(fMap[f] || inferred || "all");
-          }
+          if (target === "books") setBooksFilter(chatBooksFilter || "all");
           setView(target);
           if (target === "contracts") setContractView("list");
           actionSummary.push(`Opened ${viewLabel(target) || "that screen"}`);

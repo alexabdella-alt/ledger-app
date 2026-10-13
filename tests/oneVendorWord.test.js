@@ -25,7 +25,7 @@ const files = [];
 })(ROOT);
 
 const VISIBLE = /"[^"\n]*\bsuppliers?\b[^"\n]*"|'[^'\n]*\bsuppliers?\b[^'\n]*'|`[^`\n]*\bsuppliers?\b[^`\n]*`|>[^<\n]*\bsuppliers?\b[^<\n]*</i;
-const ALLOWED = [/chatActions\.js$/];   // accepts "supplier" as input from the model
+const ALLOWED = [/chatActions\.js$/, /chatNav\.js$/];   // both accept "supplier" as INPUT (from the model, or a word the owner used) — never shown
 
 describe("C560 — one word on screen: vendor", () => {
   it("★★ no string or screen text says 'supplier'", () => {
