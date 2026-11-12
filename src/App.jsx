@@ -53,7 +53,7 @@ import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
 import { ownerTrustState } from "./lib/ownerTrust";
 import { planCoaTemplate, coaTemplateCopy } from "./lib/coaTemplates";
 import { documentTypeFor, isDurableDocId, PLACEHOLDER_DOCUMENT_TYPE, dedupePatch, documentDateFromExtraction } from "./lib/docLibrary";
-import { duplicateIsExpectedRhythm, deferDuplicateAsk } from "./lib/recurringVendor.js";
+import { duplicateIsExpectedRhythm, deferDuplicateAsk, filesStillArriving } from "./lib/recurringVendor.js";
 import { normalizeName as normVendorName } from "./lib/docDirection";
 import { buildVendorSummary, scopeInvoicesToVendor } from "./lib/vendorSummary";
 import { sentInvoiceFromRow } from "./lib/arInvoiceRows";
@@ -5830,10 +5830,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               : [];
             // How many files are still in flight — a lone drop is not a batch, and nothing
             // further is coming to change the answer.
-            const batchSize = (uploadQueueRef.current || []).length || 1;
+            // C597 — only files still waiting or being read; finished tiles on Home are not a batch.
+            const batchSize = filesStillArriving(uploadQueueRef.current);
+            // …and the SAME invoice number is never a vendor's rhythm and never deferred.
             const dupExisting = !rawDup ? null
+              : dupByNumber ? rawDup
               : duplicateIsExpectedRhythm(invoice, rawDup, vendorRows) ? null
-              : deferDuplicateAsk({ batchSize, sameVendorSoFar: vendorRows.length }) ? null
+              : deferDuplicateAsk({ batchSize, sameVendorSoFar: vendorRows.length, exactNumber: !!dupByNumber }) ? null
               : rawDup;
 
             // ── O114 — IS THIS INVOICE A SECOND DOCUMENT FOR A PAYMENT ALREADY BOOKED?

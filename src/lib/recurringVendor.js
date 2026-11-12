@@ -294,9 +294,26 @@ export function duplicateIsExpectedRhythm(invoice, dup, vendorRows = []) {
 // ledger — visible, and removable — and the detector re-raises it within the same session
 // if it is real. So during a bulk drop the ask is deferred rather than blocking the book.
 //
+// How many files of this drop are still arriving: waiting, or being read now.
+const STILL_ARRIVING = new Set(["pending", "processing"]);
+export function filesStillArriving(queue = []) {
+  return Math.max(1, (queue || []).filter((q) => q && STILL_ARRIVING.has(q.status)).length);
+}
+
 // ▶ A SINGLE document dropped on its own is NOT a batch: nothing further is coming, the
 // detector has all the evidence it will ever get, and asking immediately is right.
-export function deferDuplicateAsk({ batchSize = 1, sameVendorSoFar = 0 } = {}) {
+//
+// ★ C597 — TWO WAYS THIS DEFERRED A QUESTION IT SHOULD HAVE ASKED (review finding U6):
+//  (1) "batch" was the length of everything listed on Home, FINISHED tiles included, so with
+//      any earlier upload still showing, a single re-upload counted as a bulk drop and its
+//      duplicate question was put off — and nothing asks it later (the detector reads the
+//      ledger for anomalies; it does not reopen an upload's question). `filesStillArriving`
+//      counts only tiles still waiting or being read.
+//  (2) an EXACT invoice-number match from the same vendor was deferred too. The deferral
+//      exists because a fuzzy match's evidence may still be arriving; the same invoice number
+//      is not fuzzy and no later file changes it. `exactNumber` always asks.
+export function deferDuplicateAsk({ batchSize = 1, sameVendorSoFar = 0, exactNumber = false } = {}) {
+  if (exactNumber) return false;                        // the same invoice number: always ask
   if (batchSize <= 1) return false;                     // one file: no more evidence coming
   return sameVendorSoFar < MIN_OBSERVATIONS;            // the pattern cannot be seen yet
 }

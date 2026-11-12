@@ -72,7 +72,7 @@ describe("the upload path consults both", () => {
     const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
     expect(app).toMatch(/duplicateIsExpectedRhythm\(invoice, rawDup, vendorRows\)/);
-    expect(app).toMatch(/deferDuplicateAsk\(\{ batchSize, sameVendorSoFar: vendorRows\.length \}\)/);
+    expect(app).toMatch(/deferDuplicateAsk\(\{ batchSize, sameVendorSoFar: vendorRows\.length, exactNumber: !!dupByNumber \}\)/);   // C597
     // And the raw finder is no longer wired straight to the card.
     expect(app).not.toMatch(/const dupExisting = dupByNumber \|\| findDuplicate/);
   });
