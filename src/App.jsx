@@ -3310,6 +3310,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C466 — a restored payment re-pays its bill. The snapshots are counted with the
       // ledger because the ref lags the setInvoices above by a render.
       await resyncSettledFlags(restored, { entries: [...(invoicesRef.current || []), ...restored] });
+      // ★ C604 — THE DELETE TOOK MORE THAN THE ROWS IT SNAPSHOTTED: a paid bill's payment, and
+      // (C602) a correction, went with it and came back in the database here — but nothing put
+      // them back on screen, so the payment was missing until a reload and the bill read unpaid
+      // meanwhile. When the restore covered entries outside the snapshot, read the books again.
+      const snapBases = new Set(restored.map(baseOf));
+      if (allIds.some(id => !snapBases.has(String(id)))) { try { await loadAllData(); } catch {} }
       logAudit("invoice_restored", `Restored ${items.length} entr${items.length===1?"y":"ies"}`, null, null);
       showNotification("Restored ✓");
     });
@@ -8051,6 +8057,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       if (!undoRes.ok) {
         logAudit("booked_on_dismiss_undo_failed", `Couldn't undo the booking for ${entry.vendor || "transaction"} (${undoRes.reason})`, null, { journal_entry_id: String(jeId), reason: undoRes.reason });
         showNotification("Couldn't undo that — the transaction is still in your books. Nothing was lost; you can remove it from the transaction itself.", "error");
+        return;   // ★ C604 — it fell through to "Removed ✓", which replaced the error a moment later
       }
       try { await loadAllData(); } catch {}
       showNotification("Removed ✓");
