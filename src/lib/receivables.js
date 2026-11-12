@@ -16,9 +16,13 @@ import { isSettlementEntry } from "./bankMatch.js";
 import { isCancelledOrCancelling, settledBases, entryBaseOf } from "./gl.js";
 
 // Every issued receivable, settled or not (the aging report's universe).
+// ★ C619 — BUT NOT A VOIDED ONE, NOR THE CORRECTION THAT VOIDED IT. Neither is open, so the
+// screen's "Collected (Total)" — "every receivable that is no longer open" — counted both: a
+// voided $1,000 invoice added $2,000 of money collected that never arrived. A cancelled
+// invoice was cancelled, not collected.
 export function receivableEntries(invoices = [], arCode) {
   if (arCode == null) return [];
-  return (invoices || []).filter((i) => isLiveEntry(i) && isReceivableRow(i, arCode) && !isSettlementEntry(i));
+  return (invoices || []).filter((i) => isLiveEntry(i) && isReceivableRow(i, arCode) && !isSettlementEntry(i) && !isCancelledOrCancelling(i));
 }
 // The ones still open.
 export function openReceivables(invoices = [], arCode) {
