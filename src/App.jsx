@@ -3336,6 +3336,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (plan.mode === REMOVAL.CORRECT) {
       const revId = await reverseJournalEntry(invoice, `Correction — ${plan.period} already signed off`, byAI);
       if (!revId) return { ok: false, mode: plan.mode };   // reverseJournalEntry already said why
+      if (revId.already) {                                 // C603
+        showNotification(`${invoice.vendor || "That entry"} was already removed — nothing changed.`, "info");
+        return { ok: true, mode: plan.mode, already: true, id: revId.id };
+      }
       try { await loadAllData(); } catch {}
       showNotification(plan.done, "success");
       return { ok: true, mode: plan.mode, id: revId };
@@ -3362,16 +3366,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // ledger makes a repeat provably inert (no double-negation), and it can't depend on a
     // post-write that might have failed. The DB probe is a belt-and-suspenders backstop for
     // entries outside the loaded window.
+    // ★ C603 — "ALREADY REVERSED" IS SAID AS SUCH, NOT RETURNED AS A NEW REVERSAL. The existing
+    // correction's id used to come back exactly like a fresh one, so "Void" on an entry that was
+    // already voided showed "Reversed — tap Undo", and that Undo deleted the EARLIER correction:
+    // one click to un-void something the person never meant to touch. Callers read `already`.
     if (alreadyReversed(invoicesRef.current, origId)) {
-      showNotification("Already reversed", "error");
       const ex = (invoicesRef.current || []).find(r => r.import_metadata && String(r.import_metadata.reverses) === String(origId));
-      return ex ? resolveEntryDbId(ex) : true;
+      return { already: true, id: ex ? resolveEntryDbId(ex) : null };
     }
     try {
       const { data: existing } = await supabase.from("journal_entries").select("id")
         .eq("company_id", currentCompany.id).eq("import_metadata->>reverses", String(origId))
         .is("deleted_at", null).eq("status", "posted").limit(1);
-      if (Array.isArray(existing) && existing.length) { showNotification("Already reversed", "error"); return existing[0].id; }
+      if (Array.isArray(existing) && existing.length) return { already: true, id: existing[0].id };
     } catch { /* probe failed — GL-truth guard above already covers the common repeat */ }
 
     const { data: orig, error: loadErr } = await supabase.from("journal_entries")
@@ -3439,6 +3446,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const snap = { ...invoice };
     const revId = await reverseJournalEntry(invoice, reason || "Voided", byAI);
     if (!revId) return null;                           // failure already toasted; caller must not claim success
+    if (revId.already) {                               // C603 — nothing changed, so no Undo to offer
+      showNotification(`${invoice.vendor || "That entry"} was already removed — nothing changed.`, "info");
+      return revId;                                    // { already: true } — truthful to the caller, no Undo
+    }
     try { await loadAllData(); } catch {}              // original + reversal both visible, net zero
     showNotification(`Reversed ${snap.vendor || "entry"} — tap Undo to restore`, "success", async () => {
       // ★★ AN UNDO THAT FAILS SILENTLY IS THE WORST BUTTON IN THE PRODUCT. This was an
@@ -8473,7 +8484,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         const target = resolveActionTargets(action, { invoices, contracts })[0];   // C519
         if (target) {
           const revId = await voidInvoiceWithUndo(target, action.reason || "Voided via AI", true);
-          if (revId) summary.push(`Undid the entry for ${target.vendor}`);
+          if (revId && revId.already) summary.push(`${target.vendor} was already undone — nothing changed`);   // C603
+          else if (revId) summary.push(`Undid the entry for ${target.vendor}`);
           else failures.push(`void ${target.vendor}`);
         } else summary.push(`Couldn't find that transaction`);
       } else if (action.vendor) {
@@ -8482,7 +8494,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         // reply then reported "undid 1 · couldn't undo 2" about one bill.
         const toVoid = resolveActionTargets(action, { invoices, contracts });
         let voided = 0;
-        for (const t of toVoid) { const revId = await voidInvoiceWithUndo(t, action.reason || "Voided via AI", true); if (revId) voided++; }
+        for (const t of toVoid) { const revId = await voidInvoiceWithUndo(t, action.reason || "Voided via AI", true); if (revId && !revId.already) voided++; }
         if (voided) summary.push(`Undid ${voided} transaction${voided===1?"":"s"} for ${action.vendor}`);
         if (voided < toVoid.length) failures.push(`void ${toVoid.length - voided} entr${(toVoid.length-voided)===1?"y":"ies"} for ${action.vendor}`);
       }
@@ -8491,7 +8503,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       const toReverse = resolveActionTargets(action, { invoices, contracts })[0];   // C519
       if (toReverse) {
         const revId = await reverseJournalEntry(toReverse, action.reason || "Reversed via AI", true);
-        if (revId) { await loadAllData().catch(() => {}); summary.push(`Undid the entry for ${toReverse.vendor} (${fmtMoney(toReverse.amount)})`); }
+        if (revId && revId.already) summary.push(`${toReverse.vendor} (${fmtMoney(toReverse.amount)}) was already undone — nothing changed`);   // C603
+        else if (revId) { await loadAllData().catch(() => {}); summary.push(`Undid the entry for ${toReverse.vendor} (${fmtMoney(toReverse.amount)})`); }
         else failures.push(`reverse ${toReverse.vendor}`);
       }
     }
