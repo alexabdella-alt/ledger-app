@@ -516,6 +516,10 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C611 — A NEW BANK ACCOUNT WAS SAVED TWICE (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding F11, read and confirmed.
+  - Leaving the balance field saves (`onBlur`) and clicking Save saves again — two `persistBankAccounts` calls at once, both holding a list in which the new account had no database id yet, so BOTH inserted it. The account appeared twice after a reload.
+  - **Serializing alone would not fix it:** the second call's list is still the one from before the insert. So the inserted id is recorded by the account's local id (`bankDbIdsRef`, cleared with the company) and every later save UPDATES that row; the saves also run one after another (`bankSaveChainRef`).
+
 - **C610 — REVIEW'S "POST ENTRY TO LEDGER" POSTED ONLY THE FIRST TWO LINES, AND CALLED BANK-PAID ENTRIES UNPAID (2026-11-12). THREE MUTATIONS, THREE REDS.** Review finding F9, read and confirmed.
   - The handler took the FIRST debit line and the FIRST credit line and posted those two at the first debit's amount. A three-line proposal — a bill with sales tax, a split purchase — lost every line after the first pair, and the entry it did post meant something other than the proposal.
   - **`reviewEntryPlan`:** one debit against one equal credit → the ordinary two-line path; anything else → the balanced multi-line writer (`persistMultiLineEntry`), every line; debits ≠ credits → refused with a sentence, never trimmed to fit.

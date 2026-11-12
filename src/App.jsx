@@ -1179,7 +1179,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setContracts([]); setRecurring([]); setAuditLog([]); setAuditTotal(null); setDocLibrary([]);
     setBankTransactions([]); setUnknownDocs([]); setUploadQueue([]);
     setPendingOpeningProposal(null); setOpeningDiscrepancyFlag(null);
-    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]); payrollSeenRef.current = []; contractDbIdsRef.current = new Map();
+    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]); payrollSeenRef.current = []; contractDbIdsRef.current = new Map(); bankDbIdsRef.current = new Map();
     setReconciliations([]); setOpeningBalances([]);
     setSentInvoices([]); setClarificationQueue([]);
     setBankAccounts([{ id:"default", name:"Primary Checking", type:"checking", gl_code:rc("cash"), last4:"", institution:"" }]);
@@ -2291,7 +2291,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Upsert every bank account row (name/type/GL/institution/balance) and refresh the
   // dashboard cash balance from the sum. New rows (local numeric id) are inserted;
   // existing rows (uuid id) are updated. Best-effort and defensive.
-  const persistBankAccounts = async (accts) => {
+  // ★ C611 — ONE SAVE AT A TIME, AND A NEW ACCOUNT'S ROW IS REMEMBERED THE MOMENT IT EXISTS.
+  // Leaving the balance field saves (onBlur) and clicking Save saves again — two calls at once,
+  // both holding a list in which the new account had no database id yet, so both INSERTED it:
+  // every account added that way appeared twice after a reload. Serializing alone would not do
+  // it (the second call's list is still the old one), so the inserted id is recorded by the
+  // account's local id and every later save updates that row.
+  const bankDbIdsRef = useRef(new Map());
+  const bankSaveChainRef = useRef(Promise.resolve());
+  const persistBankAccounts = (accts) => {
+    const run = bankSaveChainRef.current.then(() => persistBankAccountsOnce(accts), () => persistBankAccountsOnce(accts));
+    bankSaveChainRef.current = run.catch(() => {});
+    return run;
+  };
+  const persistBankAccountsOnce = async (accts) => {
     const list = accts || bankAccounts;
     if (!currentCompany?.id) return { ok: false, failed: [] };
     const failed = [];
@@ -2303,7 +2316,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         gl_account_id: glId, institution: a.institution || null, last4: a.last4 || null,
         current_balance: Number(a.current_balance) || 0, active: true,
       };
-      const isUuid = typeof a.id === "string" && a.id.includes("-");
+      const knownId = bankDbIdsRef.current.get(String(a.id));
+      const rowId = knownId || a.id;
+      const isUuid = typeof rowId === "string" && rowId.includes("-");
       try {
         if (isUuid) {
           // ★ CHECKED. This was a bare `.update()` in a console.warn catch, and PostgREST
@@ -2313,14 +2328,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // balance), which is the worst thing to lose quietly: they have no reason to
           // suspect it and no way to notice until the value is simply gone.
           const r = await checkedRowUpdate({
-            supabase, table: "bank_accounts", id: a.id, companyId: currentCompany.id,
+            supabase, table: "bank_accounts", id: rowId, companyId: currentCompany.id,
             patch: row, label: "persistBankAccounts",
           });
           if (!r.ok) failed.push(a.name);
         } else {
           const { data, error } = await supabase.from("bank_accounts").insert(row).select("id").single();
           if (error || !data?.id) failed.push(a.name);
-          else setBankAccounts(prev => prev.map(x => x.id === a.id ? { ...x, id: data.id } : x));
+          else {
+            bankDbIdsRef.current.set(String(a.id), data.id);
+            setBankAccounts(prev => prev.map(x => x.id === a.id ? { ...x, id: data.id } : x));
+          }
         }
       } catch (e) {
         failed.push(a.name);
