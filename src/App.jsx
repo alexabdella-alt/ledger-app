@@ -93,6 +93,7 @@ import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/rev
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { bankFallbackFor } from "./lib/openingGrid";
+import { chatContactPatch } from "./lib/chatContactPatch";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { fetchLedger, resolveEntryDbId, alreadyReversed } from "./lib/ledger";
 import { bookableAccounts, disableAccountBlocker } from "./lib/chart";
@@ -3769,8 +3770,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         ? Object.fromEntries(Object.entries(updates).filter(([k]) => ALLOWED.includes(k)).map(([k, v]) => [k, k === "type" ? normalizeContactType(v) : v]))   // C535
         : { company_id: currentCompany.id, name, type: normalizeContactType(contact_type), email: email || null, phone: phone || null, payment_terms: payment_terms || null, notes: notes || null, tags: tags || [], expected_min: min_expected || null, expected_max: max_expected || null };
       if (updates && !Object.keys(payload).length) return { ok: false, error: "no recognized fields to update" };
+      // ★ C609 — AN EXISTING CONTACT IS UPDATED WITH WHAT WAS SAID, NEVER WITH BLANKS. Without
+      // `updates`, `payload` is a whole NEW record — email, phone, terms and notes null, tags
+      // empty — and it was written over the existing contact. "Always put Ace Plumbing under
+      // Repairs" (a vendor rule, which comes here with only a name and a category) erased Ace's
+      // saved email, phone and payment terms. On an existing row only the fields actually given
+      // are written; name and company never change.
+      const writePayload = existing && !updates ? chatContactPatch(payload, { typeGiven: !!contact_type }) : payload;
       let row, error;
-      if (existing) ({ data: row, error } = await supabase.from("contacts").update(payload).eq("id", existing.id).select().single());
+      if (existing && !Object.keys(writePayload).length) ({ data: row, error } = await supabase.from("contacts").select("*").eq("id", existing.id).single());
+      else if (existing) ({ data: row, error } = await supabase.from("contacts").update(writePayload).eq("id", existing.id).select().single());
       else ({ data: row, error } = await supabase.from("contacts").insert(payload).select().single());
       if (error || !row?.id) return { ok: false, error: error?.message || "no row returned" };
       const { data: confirmed } = await supabase.from("contacts").select("*").eq("id", row.id).maybeSingle();

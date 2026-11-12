@@ -516,6 +516,10 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C609 — ASKING THE ASSISTANT TO SET A VENDOR RULE WIPED THAT VENDOR'S SAVED DETAILS (2026-11-12). THREE MUTATIONS, THREE REDS.** Review finding F7, read and confirmed.
+  - `persistChatContact` without an explicit `updates` list builds a whole NEW record — email, phone, terms, notes null; tags empty — and wrote it over an EXISTING contact. A vendor rule ("always put Ace Plumbing under Repairs") arrives with only a name and a category, so it erased Ace's saved email, phone and payment terms.
+  - **`chatContactPatch`: on an existing contact only the fields actually supplied are written** — never the name or company, never a blank over a saved value, never the type unless one was stated (a missing type defaults to "vendor", which is not a statement). Nothing to write → the row is read back, not updated. A new contact is still created whole.
+
 - **C608 — A LONG HEADERLESS CSV READ ITS FIRST TRANSACTION ONCE PER PIECE (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding K6 — in this session's own C562 code.
   - `headerIndex` returned 0 when no line named a date column, so a headerless export's FIRST TRANSACTION was repeated at the top of every piece as its "header" — and the reader extracted it again from each: a file sent in nine pieces booked its first line nine times.
   - Now: a first line that carries a date is DATA — no header, nothing repeated; one that doesn't is a header worded without "date" ("Posted,Payee,Amount") and still repeats, as a header should. A test asserts every transaction appears exactly once across all pieces.
