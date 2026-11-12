@@ -274,6 +274,31 @@ export function autoBindAccount(bankAccounts = []) {
   return usable.length === 1 ? usable[0] : null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// C587 — WITH MORE THAN ONE ACCOUNT, ASK THE ONE PERSON WHO KNOWS.
+// `autoBindAccount` files a dropped statement only when there is exactly one account. With a
+// checking account AND a credit card — most businesses — there is a choice, and the choice
+// was only offered in Bank Import, a screen an owner cannot open: their statement was
+// "saved for your accountant", and a solo owner has none. Which account a statement is from
+// is exactly the kind of question only the owner can answer, so Home asks it: one button per
+// account. These are the buttons. Fewer than two usable accounts → nothing to ask.
+// ─────────────────────────────────────────────────────────────────────────────
+const ACCOUNT_KIND = { checking: "checking", savings: "savings", credit_card: "credit card", loan: "loan" };
+export function statementAccountChoices(bankAccounts = []) {
+  const usable = (bankAccounts || []).filter((b) => b && typeof b.id === "string" && UUID.test(b.id));
+  if (usable.length < 2) return [];
+  return usable.map((b) => {
+    const name = String(b.name || "").trim() || "Unnamed account";
+    const last4 = String(b.last4 || "").trim();
+    const kind = ACCOUNT_KIND[b.type] || "";
+    // The kind is said only when the name does not already say it ("Chase Checking" needs no "· checking").
+    const tail = [last4 ? `····${last4}` : "", kind && !name.toLowerCase().includes(kind.split(" ")[0]) ? kind : ""].filter(Boolean).join(" · ");
+    return { id: b.id, label: tail ? `${name} (${tail})` : name };
+  });
+}
+export const statementAccountQuestion = (fileName) =>
+  `Which account is ${fileName ? `“${fileName}”` : "this statement"} from? Pick one and we'll add it to your books.`;
+
 // (a2) May the machine COMPLETE the reconciliation itself? Every condition must
 // hold: all lines in the ledger, the balance verifiably ties, and no completed
 // reconciliation already covers the period (never a duplicate record). This is

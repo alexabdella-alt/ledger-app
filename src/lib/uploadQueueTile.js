@@ -41,7 +41,8 @@ export const QUEUE_TONE = {
 export function queueItemTone(item = {}, { pendingReview = false } = {}) {
   const status = String(item.status == null ? "" : item.status);
   if (status === "error") return item.transient ? QUEUE_TONE.WAITING : QUEUE_TONE.ERROR;
-  if (status === "done") return pendingReview ? QUEUE_TONE.REVIEW : QUEUE_TONE.SUCCESS;
+  // C587 — a statement waiting to be told which account it is from has asked a question.
+  if (status === "done") return (pendingReview || item.result?.to === "choose") ? QUEUE_TONE.REVIEW : QUEUE_TONE.SUCCESS;
   if (status === "classifying" || status === "processing") return QUEUE_TONE.PROGRESS;
   return QUEUE_TONE.NEUTRAL;
 }
@@ -55,7 +56,7 @@ export function queueItemTone(item = {}, { pendingReview = false } = {}) {
 export function queueItemChip(tone, item = {}) {
   switch (tone) {
     case QUEUE_TONE.SUCCESS: return "Done";
-    case QUEUE_TONE.REVIEW:  return "⚠ Needs Review";
+    case QUEUE_TONE.REVIEW:  return item.result?.to === "choose" ? "Needs your answer" : "⚠ Needs Review";
     case QUEUE_TONE.WAITING: return "Waiting its turn";
     case QUEUE_TONE.ERROR:
       // The pipeline's own outcome is more specific than the generic word, so prefer it.

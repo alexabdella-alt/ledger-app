@@ -608,6 +608,10 @@ export default function DashboardView() {
                                     <span>{dropZoneOutcomeCopy({ total:item.result.total||0, booked:item.result.booked||0, exceptions:item.result.exceptions||0, reconciled:!!item.result.reconciled, alreadyReconciled:!!item.result.alreadyReconciled, hasAccountant })}</span>
                                   )
                                 ) :
+                                item.result.to === "choose" ? (
+                                  // C587 — the question itself is in the list at the top of Home, with a button per account.
+                                  <span>📄 One question before we add this: which account is it from? <span onClick={()=>document.getElementById("waiting-on-you")?.scrollIntoView({ behavior:"smooth", block:"center" })} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }}>Answer at the top of this page ↑</span></span>
+                                ) :
                                 item.result.txnCount == null ? (
                                   // Routed to Bank Import — matching/booking happens THERE (after the
                                   // user reviews), so there are no match numbers at upload time. Don't
@@ -904,7 +908,7 @@ export default function DashboardView() {
 export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
-    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester } = useERP();
+    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo } = useERP();
   const [busy, setBusy] = React.useState(null);
   const cockpit = !!navSeat?.isReviewerSeat;
   const today = todayLocal();
@@ -939,6 +943,7 @@ export function HomeWaitingList({ navTo }) {
       else if (a.kind === "mail_allow") await releaseHeldInbound(a.message);
       else if (a.kind === "mail_ignore") await ignoreHeldInbound(a.message);
       else if (a.kind === "recurring_yes") await acceptRecurringSuggestion(a.suggestion);
+      else if (a.kind === "statement_account") await fileStatementTo(a.itemId, a.accountId);   // C587
       else if (a.kind === "recurring_no") dismissRecurringSuggestion(a.suggestion, false);
     } finally { setBusy(null); }
   };
@@ -957,7 +962,7 @@ export function HomeWaitingList({ navTo }) {
             </div>
           </div>
           {item.actions.length > 0 && (
-            <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+            <div style={{ display:"flex", gap:8, flexShrink:1, flexWrap:"wrap", minWidth:0 }}>
               {item.actions.map(a => (
                 <button key={a.kind + a.label} disabled={busy === item.id || a.busy} onClick={() => run(item, a)}
                   style={a.secondary

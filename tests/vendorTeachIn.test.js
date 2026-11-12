@@ -160,7 +160,7 @@ describe("C563 — learn only, and who may use it", () => {
   });
   it("the app hands the screen the shared statement reader and the rule writer", () => {
     const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
-    expect(app).toMatch(/readBankStatement, saveVendorRule: persistChatRule,/);
+    expect(app).toMatch(/readBankStatement, (fileStatementTo, )?saveVendorRule: persistChatRule,/);
   });
   it("it renders, and says up front that nothing is recorded", () => {
     const html = renderViewHtml(VendorTeachIn, { BOOKABLE_ACCOUNTS: BOOKABLE }).replace(/<!-- -->/g, "");

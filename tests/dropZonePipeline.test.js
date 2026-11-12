@@ -151,11 +151,13 @@ describe("C198·2b — the queue line tells the pipeline's truth", () => {
   const app2 = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 
   it("★ the tile is NOT 'done' until handleBankFile resolves (the live premature Done)", () => {
-    const start = app2.indexOf("const soleAccount = autoBindAccount(bankAccounts);");
+    // C587 moved this block, unchanged, into `fileDroppedStatement` — the single-account drop
+    // and the owner's "which account?" answer both run it, so both keep this ordering.
+    const start = app2.indexOf("const fileDroppedStatement = async (item, file, account) => {");
     expect(start).toBeGreaterThan(0);
-    const branch = app2.slice(start, app2.indexOf("// 0 or 2+ accounts", start));
+    const branch = app2.slice(start, app2.indexOf("// C587 — the owner answered", start));
     const processingAt = branch.indexOf('status:"processing", type:"bank_statement", result:{ routed:true, to:"pipeline", running:true }');
-    const awaitAt = branch.indexOf("await handleBankFile(file, soleAccount");
+    const awaitAt = branch.indexOf("await handleBankFile(file, account");
     const doneAt = branch.indexOf('status:"done", type:"bank_statement", result:{ routed:true, to:"pipeline", ...(outcome');
     expect(processingAt).toBeGreaterThan(-1);
     expect(awaitAt).toBeGreaterThan(processingAt);   // processing is stamped BEFORE the await…
@@ -163,8 +165,8 @@ describe("C198·2b — the queue line tells the pipeline's truth", () => {
   });
 
   it("a throw stamps a needs-attention state, never 'done'", () => {
-    const start = app2.indexOf("const soleAccount = autoBindAccount(bankAccounts);");
-    const branch = app2.slice(start, app2.indexOf("// 0 or 2+ accounts", start));
+    const start = app2.indexOf("const fileDroppedStatement = async (item, file, account) => {");
+    const branch = app2.slice(start, app2.indexOf("// C587 — the owner answered", start));
     expect(branch).toMatch(/catch \(e\) \{[\s\S]{0,400}status:"error", type:"bank_statement", result:\{ routed:true, to:"pipeline", failed:true \}/);
     // O97 moved the chip's wording into `uploadQueueTile.queueItemChip`, so the guarantee
     // is asserted where it now lives — a pipeline failure still reads "Needs a look", and
@@ -244,7 +246,7 @@ describe("C198·2c — one physical drop, one intake row (and orphans actually c
   });
 
   it("★ the pipeline branch REUSES the queue item's id — a second row is impossible", () => {
-    expect(app3).toMatch(/await handleBankFile\(file, soleAccount, \{ intakeId: item\.intake_id \}\)/);
+    expect(app3).toMatch(/await handleBankFile\(file, account, \{ intakeId: item\.intake_id \}\)/);
     // handleBankFile self-logs ONLY when no caller id was supplied.
     expect(app3).toMatch(/const bankIntakeId = callerIntakeId \|\| \(\(typeof crypto/);
     expect(app3).toMatch(/if \(!callerIntakeId\) logIntake\(bankIntakeId, file, "bank"\);/);
@@ -282,7 +284,8 @@ describe("(wiring) the drop reaches the pipeline, and the stash reaches storage"
 
   it("(a1) the universal bank branch auto-binds and runs the SAME handleBankFile pipeline", () => {
     expect(app).toMatch(/const soleAccount = autoBindAccount\(bankAccounts\);/);
-    expect(app).toMatch(/await handleBankFile\(file, soleAccount, \{ intakeId: item\.intake_id \}\);/);
+    expect(app).toMatch(/await fileDroppedStatement\(item, file, soleAccount\);/);
+    expect(app).toMatch(/await handleBankFile\(file, account, \{ intakeId: item\.intake_id \}\);/);
     // one arrival = one intake row (a second would look like a second document)
     expect(app).toMatch(/if \(!callerIntakeId\) logIntake\(bankIntakeId, file, "bank"\);/);
   });

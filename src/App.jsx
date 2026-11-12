@@ -132,6 +132,7 @@ import TaxView from "./components/views/TaxView";
 import DocsView from "./components/views/DocsView";
 import AuditView from "./components/views/AuditView";
 import { readAllRows } from "./lib/pagedRead";
+import { statementAccountChoices } from "./lib/statementLifecycle";
 import { resolveChatView } from "./lib/chatNav";
 import { readPdfStatementPieces, openPdfPages, statementReadFailureCopy } from "./lib/pdfStatement";
 import { AUDIT_SCREEN_ROWS, auditRowFromDb, slimAuditState, readFullAuditLog as readFullAuditLogFrom } from "./lib/auditTrail";
@@ -5356,6 +5357,49 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     processPending();
   }, [uploadQueue]); // eslint-disable-line
 
+  // ── THE STATEMENT PIPELINE FOR ONE FILE AND ONE ACCOUNT (C198·2 a1; shared since C587) ──
+  // Parse, record, match and reconcile a statement against the account it belongs to, and
+  // write what actually happened back onto its upload tile. Called with the only account when
+  // there is one, and with the account the owner picked when there are several.
+  const fileDroppedStatement = async (item, file, account) => {
+    // C198·2b — the tile said "Done" beside the stash sentence while the pipeline
+    // was still booking, because this branch stamped 'done' BEFORE awaiting and
+    // nothing wrote the result back. Order it honestly: PROCESSING first…
+    setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"processing", type:"bank_statement", result:{ routed:true, to:"pipeline", running:true }} : q));
+    logUploadUpdate(item.upload_log_id, { status:"processing", doc_type:"bank_statement", result:{ auto_bound: String(account.id) } });
+    // Same intake row, carried through — one arrival, one row. handleBankFile
+    // advances it to RECORDED (a4) once every line lands in the books.
+    try {
+      const outcome = await handleBankFile(file, account, { intakeId: item.intake_id });
+      // …and only NOW is it done — stamped with what actually happened, so the queue
+      // line renders the pipeline's own truth instead of the stash copy it replaced.
+      setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"pipeline", ...(outcome || { ran:false }) }} : q));
+      logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result: outcome || { ran:false } });
+    } catch (e) {
+      // Never "done" on a throw. The line says something needs a look, and the
+      // intake row stays non-terminal so the completeness net still sees it.
+      console.error("[pipeline] auto-run failed:", e);
+      setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", type:"bank_statement", result:{ routed:true, to:"pipeline", failed:true }} : q));
+      logUploadUpdate(item.upload_log_id, { status:"error", doc_type:"bank_statement", result:{ failed:true, error: String(e?.message || e) } });
+    }
+  };
+
+  // C587 — the owner answered "which account is this statement from?". The file was kept for
+  // exactly this (the upload's own copy is released when its turn ends); a durable copy is
+  // already in Documents either way, so a page reload loses the question, never the statement.
+  const statementChoiceFilesRef = useRef({});   // { [queueItemId]: File }
+  const fileStatementTo = async (itemId, accountId) => {
+    const file = statementChoiceFilesRef.current[itemId];
+    const account = (bankAccounts || []).find((b) => String(b.id) === String(accountId));
+    const item = (uploadQueue || []).find((q) => q.id === itemId);
+    if (!file || !account || !item) { showNotification("We couldn't find that statement any more — drop it on Home again and pick the account.", "error"); return { ok: false }; }
+    delete statementChoiceFilesRef.current[itemId];        // one answer, one run
+    setPendingImportFile(prev => (prev && prev.file === file ? null : prev));
+    logAudit("statement_account_chosen", `Chose ${account.name || "an account"} for ${file.name}`, null, { bank_account_id: String(account.id), file: file.name });
+    await fileDroppedStatement(item, file, account);
+    return { ok: true };
+  };
+
   const processUploadItem = async (item, file) => {
     try {
         const ext = item.name.split(".").pop().toLowerCase();
@@ -5500,26 +5544,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // nothing client-facing could reach it.
           const soleAccount = autoBindAccount(bankAccounts);
           if (soleAccount) {
-            // C198·2b — the tile said "Done" beside the stash sentence while the pipeline
-            // was still booking, because this branch stamped 'done' BEFORE awaiting and
-            // nothing wrote the result back. Order it honestly: PROCESSING first…
-            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"processing", type:"bank_statement", result:{ routed:true, to:"pipeline", running:true }} : q));
-            logUploadUpdate(item.upload_log_id, { status:"processing", doc_type:"bank_statement", result:{ auto_bound: String(soleAccount.id) } });
-            // Same intake row, carried through — one arrival, one row. handleBankFile
-            // advances it to RECORDED (a4) once every line lands in the books.
-            try {
-              const outcome = await handleBankFile(file, soleAccount, { intakeId: item.intake_id });
-              // …and only NOW is it done — stamped with what actually happened, so the queue
-              // line renders the pipeline's own truth instead of the stash copy it replaced.
-              setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"pipeline", ...(outcome || { ran:false }) }} : q));
-              logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result: outcome || { ran:false } });
-            } catch (e) {
-              // Never "done" on a throw. The line says something needs a look, and the
-              // intake row stays non-terminal so the completeness net still sees it.
-              console.error("[pipeline] auto-run failed:", e);
-              setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", type:"bank_statement", result:{ routed:true, to:"pipeline", failed:true }} : q));
-              logUploadUpdate(item.upload_log_id, { status:"error", doc_type:"bank_statement", result:{ failed:true, error: String(e?.message || e) } });
-            }
+            await fileDroppedStatement(item, file, soleAccount);
             return;
           }
           // 0 or 2+ accounts: a human still has to say which account this belongs to.
@@ -5537,6 +5562,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"bank" }} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result:{ routed:true } });
           markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: buildStashDetail({ fileName: file?.name }), documentId: stashDocId });   // (a3) the durable pointer
+          // C587 — SEVERAL ACCOUNTS, AND AN OWNER WHO CANNOT OPEN BANK IMPORT: ask them here.
+          // Everything above still ran (the statement is stored and held, so nothing is lost
+          // if they never answer); this replaces only "saved for your accountant" with the
+          // one question that was standing in the way.
+          const accountChoices = navSeat.isReviewerSeat ? [] : statementAccountChoices(bankAccounts);
+          if (accountChoices.length) {
+            statementChoiceFilesRef.current[item.id] = file;
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"choose", accounts: accountChoices }} : q));
+            showNotification("One question about your statement — which account is it from? It's at the top of Home.");
+            return;
+          }
           // C197 — same fact, told to the seat that's listening. The client is not
           // pointed at a tab they don't have, and their notification doesn't deep-link
           // into one (the route guard would only bounce them back).
@@ -8746,7 +8782,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const inputStyle = { width:"100%", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"10px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" };
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
-  const erpCtx = { CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyGaapAnswer, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditTotal, readFullAuditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, setChatPrefill, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, handlePayrollFile, postPayroll, payrollCodes, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, reconciliations, setReconciliations, recurring, recurringNewRec, createRecurring, recordRecurringRun, removeRule: deleteChatRule, setRecurringActive, removeRecurring, removeBankAccount, persistUnknownDocPatch, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, filedDeadlines, setFiledDeadlines, loadFailures, accountsLoadOk, anomaliesLoadOk, intakeLoadOk, attachDepreciationToExistingAsset, aliasIndex, validateAlias, aliasExplainer, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, saveLegalForm, applyCoaTemplate, readBankStatement, saveVendorRule: persistChatRule, accountantDismissed, dismissAccountantStep, completeOnboarding, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, redoOpeningPlan, redoOpeningSetup, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, removeEntry, removalPlanFor, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isViewer, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, signoffsLoadOk, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, hasAttester, canSoloAttest: canSelfAttest({ role: userRole, hasAttester }), selfAttestAcknowledgement, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, statementExceptionsLoadFailed, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, intakeRows, reloadHeldIntake, heldQuestions, heldUnreadable, heldPartial, settleClarification, runDrain, drainStatus, mailChannel, heldInbound, refreshMailState, setupMailChannel, allowMailSender, releaseHeldInbound, ignoreHeldInbound, sendChannelMail, aiDegraded, setAiDegraded, aiBudget, budgetCopy, runShadowCalibration, shadowResult };
+  const erpCtx = { CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyGaapAnswer, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditTotal, readFullAuditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, setChatPrefill, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, handlePayrollFile, postPayroll, payrollCodes, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, reconciliations, setReconciliations, recurring, recurringNewRec, createRecurring, recordRecurringRun, removeRule: deleteChatRule, setRecurringActive, removeRecurring, removeBankAccount, persistUnknownDocPatch, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, filedDeadlines, setFiledDeadlines, loadFailures, accountsLoadOk, anomaliesLoadOk, intakeLoadOk, attachDepreciationToExistingAsset, aliasIndex, validateAlias, aliasExplainer, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, saveLegalForm, applyCoaTemplate, readBankStatement, fileStatementTo, saveVendorRule: persistChatRule, accountantDismissed, dismissAccountantStep, completeOnboarding, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, redoOpeningPlan, redoOpeningSetup, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, removeEntry, removalPlanFor, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isViewer, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, signoffsLoadOk, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, hasAttester, canSoloAttest: canSelfAttest({ role: userRole, hasAttester }), selfAttestAcknowledgement, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, statementExceptionsLoadFailed, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, intakeRows, reloadHeldIntake, heldQuestions, heldUnreadable, heldPartial, settleClarification, runDrain, drainStatus, mailChannel, heldInbound, refreshMailState, setupMailChannel, allowMailSender, releaseHeldInbound, ignoreHeldInbound, sendChannelMail, aiDegraded, setAiDegraded, aiBudget, budgetCopy, runShadowCalibration, shadowResult };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // (`isPlatformAdmin` is derived once at the top of ERP, alongside the seat — C197.)
