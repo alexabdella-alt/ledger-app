@@ -110,6 +110,7 @@ import LegalView from "./components/LegalView";
 import { ERPContext } from "./components/ERPContext";
 import { usePersistedView } from "./hooks/usePersistedView";
 import DashboardView from "./components/views/DashboardView";
+import MoneyView from "./components/views/MoneyView";
 import BooksView from "./components/views/BooksView";
 import AddView from "./components/views/AddView";
 import ApView from "./components/views/ApView";
@@ -9356,8 +9357,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             // bill counted twice, the Sabine freezer not at all, and a till purchase as a bill.
             const apUnpaid = openPayablesGL(invoices, rc("accounts_payable")).length;
             const openCards = clarificationQueue.filter(c => !c.resolved).length;
-            const badgeFor = (id) => (id === "home" && openCards > 0 ? openCards : id === "ap" && apUnpaid > 0 ? apUnpaid : null);
-            const active = activeNavItem(view, { booksFilter });
+            const badgeFor = (id) => (id === "home" && openCards > 0 ? openCards : (id === "ap" || id === "money") && apUnpaid > 0 ? apUnpaid : null);
+            const active = activeNavItem(view, { booksFilter, seat: navSeat.seat });   // C636
             // ★ ONE RULE, WHERE THERE USED TO BE TWO. The old TAB handler reset the vendor
             // filter on every click and forced `booksFilter` back to "all"; the old SUB-NAV
             // handler cleared `booksFilter` only when it happened to be "contracts". So the
@@ -9366,6 +9367,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             // tab's rule wins because it is the predictable one: the row says Transactions,
             // you get transactions.
             const go = (id) => {
+              if (id === "ask") { setChatOpen(true); return; }   // C636 — Ask opens the assistant
               setVendorFilter("all");
               if (id === "books:contracts") { setBooksFilter("contracts"); setView("books"); return; }
               if (id === "books") { setBooksFilter("all"); setView("books"); return; }
@@ -9429,6 +9431,9 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
 
           {/* HOME (Dashboard) — renders for both "home" and legacy "dashboard" */}
           {(view==="home" || view==="dashboard") && <DashboardView />}
+
+          {/* C636 — MONEY: the owner's one door to every list */}
+          {view==="money" && <MoneyView />}
 
           {/* BOOKS — consolidated transactions */}
           {view==="books" && <BooksView />}

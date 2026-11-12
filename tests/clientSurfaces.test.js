@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { CLIENT_VIEW_IDS, visibleNav } from "../src/lib/nav.js";
+import { CLIENT_VIEW_IDS, visibleNav, activeNavItem } from "../src/lib/nav.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -88,10 +88,12 @@ describe("(1) no client-visible screen offers a control the client cannot follow
     const src = read("DetailView");
     expect(src).toMatch(/setVendorFilter\(selectedInvoice\.vendor\);[\s\S]{0,80}setView\("books"\)/);
     expect(src).not.toMatch(/setView\("invoices"\)/);
-    // …and "books" is genuinely a row on both sidebars, which is the property that matters.
+    // …and "books" is genuinely reachable: a row on the accountant's sidebar, and on the owner's
+    // seat one of the lists the Money row opens and highlights (C636).
     const rows = (nav) => nav.sections.flatMap((s) => s.items.map(([id]) => id));
-    expect(rows(visibleNav({ role: "owner" }))).toContain("books");
     expect(rows(visibleNav({ role: "accountant" }))).toContain("books");
+    expect(rows(visibleNav({ role: "owner" }))).toContain("money");
+    expect(activeNavItem("books", { seat: "client" })).toBe("money");
   });
 });
 

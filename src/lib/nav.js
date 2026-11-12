@@ -76,6 +76,23 @@ export const NAV_SECTIONS = [
 // CPA-shaped hangs off this screen rather than off the sidebar.
 export const NAV_SECTION_REVIEW = { id: "review", label: null, items: [["review", "Review"]] };
 
+// ★ C636 — THE OWNER'S MENU: FOUR PLACES AND SETTINGS (operator's call, 2026-11-12: "brain dead
+// simple"). The owner had the same eighteen rows as the accountant — a bookkeeper's tool. Now:
+//   Home    — the inbox: drop zone, what needs you, where you stand.
+//   Money   — one page that opens every list (bills, money owed, transactions, people, files).
+//   Reports — how the business is doing.
+//   Ask     — the assistant, which can answer and open any screen.
+// NOTHING IS REMOVED: every screen is still reachable from Money, from Settings, from the
+// assistant and from links — and the accountant's seat is unchanged.
+export const CLIENT_NAV_SECTIONS = [
+  { id: "main", label: null, items: [["home", "Home"], ["money", "Money"], ["reports", "Reports"], ["ask", "Ask"]] },
+  { id: "settings-entry", label: null, items: [["settings", "Settings"]] },
+];
+// Rows that are ACTIONS, not pages: "Ask" opens the assistant beside whatever you are on.
+export const NAV_ACTIONS = ["ask"];
+// The lists the Money page opens — a client standing on any of them sees "Money" highlighted.
+export const MONEY_GROUP = ["money", "books", "ap", "ar", "customers", "vendors", "docs", "send-invoice", "detail", "add", "contracts"];
+
 // ★ THE WORKBENCH SCREENS A REVIEWER CAN STILL OPEN, LISTED SO THE TOOL STRIP ON
 // THE REVIEW SCREEN AND THE ACTIVE-ROW LOGIC READ ONE LIST. None of these is a nav
 // row; each is a tool the review layer reaches for.
@@ -97,7 +114,7 @@ export const NAV_SECTION_SETTINGS = { id: "settings", label: "Settings", items: 
 // C382 — the human name of a view id, read off the same rows the sidebar draws, so a
 // sentence about a screen ("Opened Reconcile") says what the sidebar says and never leaks
 // a route id ("Opened recon"). Rowless views carry their own name; an unknown id is null.
-const ROWLESS_LABELS = { dashboard: "Home", "send-invoice": "Send Invoice", detail: "the transaction", add: "New entry", admin: "Admin", matching: "Matching", contracts: "Contracts", legal: "Legal" };
+const ROWLESS_LABELS = { money: "Money", ask: "Ask", dashboard: "Home", "send-invoice": "Send Invoice", detail: "the transaction", add: "New entry", admin: "Admin", matching: "Matching", contracts: "Contracts", legal: "Legal" };
 export function viewLabel(viewId) {
   const v = String(viewId || "");
   const rows = [...NAV_SECTIONS, NAV_SECTION_REVIEW, NAV_SECTION_SETTINGS].flatMap((s) => s.items).concat(REVIEW_TOOLS);
@@ -124,7 +141,7 @@ export const SETTINGS_VIEW_IDS = [
 // gating it would leave dead rows on screens the client is meant to use.
 // Everything absent from here is a job rather than a record.
 export const CLIENT_VIEW_IDS = [
-  "home", "dashboard", "reports", "detail",
+  "home", "dashboard", "money", "reports", "detail",
   "books", "ap", "ar", "customers", "vendors", "docs",
   // Billing your own customer is an OWNER capability (operator, 2026-09-11: "that should
   // definitely be an owner capability, but ideally we will pretty much automate that").
@@ -136,7 +153,7 @@ export const CLIENT_VIEW_IDS = [
 // Every top-level view id the ERP router can render — the truth-table domain.
 export const ALL_VIEW_IDS = [
   ...new Set([
-    "home", "dashboard", "add", "reports", "review", "admin",
+    "home", "dashboard", "money", "add", "reports", "review", "admin",
     ...BOOKS_GROUP, ...SETTINGS_VIEW_IDS,
   ]),
 ];
@@ -164,13 +181,15 @@ export function isReviewerSeat({ role = "owner", isPlatformAdmin = false, previe
 // their own company profile, taxes and audit trail, and always has.
 export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsOwner = false, inSettings = false } = {}) {
   const reviewer = isReviewerSeat({ role, isPlatformAdmin, previewAsOwner });
-  // Same rows for everyone; a reviewer gets the review layer on top (C320).
-  const sections = [...NAV_SECTIONS];
+  // C636 — the owner gets the four-place menu; the accountant keeps every row (C312/C320).
+  const sections = reviewer ? [...NAV_SECTIONS] : [...CLIENT_NAV_SECTIONS];
   if (reviewer) sections.push(NAV_SECTION_REVIEW);
   // The Admin panel is its own unlabelled section at the foot — a platform-admin
   // tool, deliberately not filed under any of the bookkeeping headings.
   if (reviewer && isPlatformAdmin) sections.push({ id: "admin", label: null, items: [["admin", "⚙ Admin"]] });
   if (inSettings) {
+    // C636 — on the owner's seat the single "Settings" row opens up into its pages while you are in them.
+    if (!reviewer) sections.splice(sections.findIndex((s) => s.id === "settings-entry"), 1);
     const items = NAV_SECTION_SETTINGS.items.filter(([id]) => {
       if (id === "team") return role === "owner";                                   // owner-only, as before
       return true;
@@ -188,9 +207,10 @@ export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsO
 // Which section a view belongs to, for the sidebar's active row. `books:contracts`
 // is a filter, so the caller supplies `booksFilter` to tell the two apart; anything
 // unknown returns null and simply highlights nothing (never an error).
-export function activeNavItem(view, { booksFilter = "all" } = {}) {
+export function activeNavItem(view, { booksFilter = "all", seat = "reviewer" } = {}) {
   const v = String(view || "");
   if (v === "dashboard") return "home";
+  if (seat === "client" && MONEY_GROUP.includes(v)) return "money";   // C636
   if (v === "detail" || v === "add" || v === "contracts" || v === "books") return "books";   // all live under Transactions
   if (v === "send-invoice") return "ar";                     // billing a customer belongs to Money owed to you
   // A workbench tool is the review layer at work: the sidebar highlights Review, so a

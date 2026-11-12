@@ -5,6 +5,7 @@ import {
   ALL_VIEW_IDS, CLIENT_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS,
   NAV_SECTIONS, NAV_SECTION_REVIEW, NAV_SECTION_SETTINGS, REVIEW_TOOLS, sectionViewIds, activeNavItem,
   GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL,
+  MONEY_GROUP, NAV_ACTIONS,
 } from "../src/lib/nav.js";
 import { heldPayrollCards, matchingCard, PAYROLL_HOLD_PREFIX } from "../src/lib/waitingOnYou.js";
 import { canAttestPeriod } from "../src/lib/signoff.js";
@@ -48,40 +49,36 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
   const client = { role: "owner" };
   const reviewer = { role: "accountant" };
 
-  it("★ the client seat sees their own RECORDS — eight rows, flat, in order (C313/C314)", () => {
-    // ★★ C197 CUT THIS TO TWO AND THAT WAS MORE THAN THE EVIDENCE SUPPORTED. The O83
-    // failures were all about OPERATING a workbench (bank checkboxes, matching); none
-    // was about looking at your own records. "What did I spend", "who do I buy from",
-    // "where did my receipt go" are owner questions, and answering them with a locked
-    // door forces a client to ask their accountant to look things up for them.
-    expect(navItems(visibleNav(client))).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports"]);
+  it("★ C636 — the owner's menu is four places and Settings (operator, 2026-11-12: brain dead simple)", () => {
+    // C313/C314 gave the owner the accountant's eight record rows; C636 folds the lists into ONE
+    // row — Money — and adds Ask. The records are still the owner's (next test); only the rows went.
+    expect(navItems(visibleNav(client))).toEqual(["home", "money", "reports", "ask", "settings"]);
     expect(visibleNav(client).seat).toBe("client");
-    // …and still no headings: eight rows do not need to be sorted into piles.
-    expect(visibleNav(client).sections.map(s => s.label)).toEqual([null]);
+    expect(visibleNav(client).sections.map(s => s.label)).toEqual([null, null]);
   });
 
   it("★ the line is VERB-shaped: records are the client's, jobs are the CPA's", () => {
-    const rows = navItems(visibleNav(client));
-    // Records you READ — yours.
-    for (const v of ["books", "ap", "ar", "customers", "vendors", "docs"]) expect([v, rows.includes(v)]).toEqual([v, true]);
-    // Billing your own customer is the owner's too (C321) — reached from Money owed to you.
-    expect(canSeeView("send-invoice", client)).toBe(true);
+    // Records you READ — yours, reached from Money (C636) rather than one row each.
+    for (const v of ["books", "ap", "ar", "customers", "vendors", "docs", "send-invoice"]) {
+      expect([v, canSeeView(v, client)]).toEqual([v, true]);
+      expect([v, MONEY_GROUP.includes(v)]).toEqual([v, true]);
+    }
     // Jobs you OPERATE — the cockpit's, and the reason the collapse exists at all.
+    const rows = navItems(visibleNav(client));
     for (const v of ["bank", "recon", "matching", "payroll", "review"]) {
       expect([v, rows.includes(v)]).toEqual([v, false]);
       expect([v, canSeeView(v, client)]).toEqual([v, false]);
     }
   });
 
-  it("★★ ONE SIDEBAR: the reviewer's rows are the owner's rows plus Review, and nothing else (C320)", () => {
-    // Operator, 2026-09-11: "the two views should not be too different… the full view for
-    // the CPA is more just an over-the-top review." So the nav is the SAME eight rows for
-    // everyone and a reviewer gets exactly one more.
-    const owner = navItems(visibleNav(client));
+  it("★★ the accountant keeps every list as a row; the owner reaches the same lists through Money (C320 → C636)", () => {
+    // C320 kept one sidebar for both seats. C636 (operator's call) gives the owner four places;
+    // what must still hold is that the owner can OPEN everything the accountant's rows show,
+    // except the review layer.
     const cpa = navItems(visibleNav(reviewer));
-    expect(cpa).toEqual([...owner, "review"]);
-    expect(navItems(visibleNav({ ...reviewer, isPlatformAdmin: true }))).toEqual([...owner, "review", "admin"]);
-    // …and there are no group headings any more; eight rows plus one do not need piles.
+    expect(cpa).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports", "review"]);
+    for (const v of cpa.filter((x) => x !== "review")) expect([v, canSeeView(v, client)]).toEqual([v, true]);
+    expect(navItems(visibleNav({ ...reviewer, isPlatformAdmin: true }))).toEqual([...cpa, "admin"]);
     expect(visibleNav(reviewer).sections.map(s => s.label)).toEqual([null, null]);
   });
 
@@ -141,7 +138,7 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     // A nav row the guard then refuses is worse than no row: it teaches you that
     // clicking is how you find out. Both seats, every row.
     for (const opts of [client, reviewer, { ...reviewer, isPlatformAdmin: true }])
-      for (const v of sectionViewIds(visibleNav(opts).sections))
+      for (const v of sectionViewIds(visibleNav(opts).sections).filter((x) => !NAV_ACTIONS.includes(x)))   // C636 — "Ask" opens the assistant
         expect([opts.role, v, canSeeView(v, opts)]).toEqual([opts.role, v, true]);
   });
 
