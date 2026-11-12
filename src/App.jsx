@@ -1178,7 +1178,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setContracts([]); setRecurring([]); setAuditLog([]); setAuditTotal(null); setDocLibrary([]);
     setBankTransactions([]); setUnknownDocs([]); setUploadQueue([]);
     setPendingOpeningProposal(null); setOpeningDiscrepancyFlag(null);
-    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]); payrollSeenRef.current = [];
+    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]); payrollSeenRef.current = []; contractDbIdsRef.current = new Map();
     setReconciliations([]); setOpeningBalances([]);
     setSentInvoices([]); setClarificationQueue([]);
     setBankAccounts([{ id:"default", name:"Primary Checking", type:"checking", gl_code:rc("cash"), last4:"", institution:"" }]);
@@ -3457,14 +3457,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     let committed = 0, anyError = false;
     const gone = [];
     for (const s of snaps) {
-      if (!s.db_id) { committed++; gone.push(s); continue; }   // session-only contract (never persisted) — already gone for good
+      const sDbId = s.db_id || contractDbIdsRef.current.get(String(s.id)) || null;   // C595
+      if (!sDbId) { committed++; gone.push(s); continue; }   // session-only contract (never persisted) — already gone for good
       if (!currentCompany?.id) { anyError = true; continue; }
       const r = await checkedRowUpdate({
-        supabase, table: "contracts", id: s.db_id, companyId: currentCompany.id,
+        supabase, table: "contracts", id: sDbId, companyId: currentCompany.id,
         patch: { deleted_at: new Date().toISOString(), deleted_by: uid }, label: "softDeleteContracts",
       });
       if (!r.ok) { anyError = true; continue; }
-      committed++; gone.push(s);
+      committed++; gone.push(s.db_id ? s : { ...s, db_id: sDbId });   // the undo restores by this id
     }
     // The audit row says what happened, written after it did (C240): before this every
     // snapshot was audited as deleted BEFORE the write, beside the failure that contradicted it.
@@ -3503,6 +3504,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     return { ok: !anyError && committed > 0, committed };   // caller gates "✓ removed" on this (O78)
   };
   const softDeleteContract = (contract, byAI=false) => softDeleteContracts([contract], byAI);
+  const contractDbIdsRef = useRef(new Map());   // C595 — local contract id → its database row
 
   // ── Chat-action persistence (O78 / O51) ────────────────────────────────────
   // Every AI chat mutation must DURABLY write + be VERIFIED, then re-sync the local
@@ -4441,17 +4443,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         journal_entries: contract.journal_entries || [],
         posted_entries: contract.posted_entries || [],
       };
-      if (contract.db_id) {
+      // ★ C593b/C595 — THE DATABASE ID IS LOOKED UP, NOT CARRIED. The upload saved the contract
+      // and wrote its id onto the LIST copy only; the detail view held a copy without it, so
+      // the first "Post" there inserted a SECOND contract (the original kept offering every
+      // entry), and Delete there removed nothing from the database.
+      const dbId = contract.db_id || contractDbIdsRef.current.get(String(contract.id)) || null;
+      if (dbId) {
         const { data, error } = await supabase.from("contracts")
-          .update(payload).eq("id", contract.db_id).eq("company_id", currentCompany.id).select("id");
+          .update(payload).eq("id", dbId).eq("company_id", currentCompany.id).select("id");
         if (error) { console.error("persistContract UPDATE error:", JSON.stringify(error)); return { ok: false, error: error.message || "update failed" }; }
-        if (!(data || []).length) { console.error("persistContract UPDATE matched no row:", contract.db_id); return { ok: false, error: "no contract row updated" }; }
-        return { ok: true, id: contract.db_id };
+        if (!(data || []).length) { console.error("persistContract UPDATE matched no row:", dbId); return { ok: false, error: "no contract row updated" }; }
+        return { ok: true, id: dbId };
       }
       const { data, error } = await supabase.from("contracts")
         .insert(payload).select("id").single();
       if (error) { console.error("persistContract INSERT error:", JSON.stringify(error)); return { ok: false, error: error.message || "insert failed" }; }
-      if (data?.id) setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
+      if (data?.id) {
+        contractDbIdsRef.current.set(String(contract.id), data.id);
+        setContracts(prev => prev.map(c => c.id === contract.id ? {...c, db_id: data.id} : c));
+        setSelectedContract(prev => prev && prev.id === contract.id ? { ...prev, db_id: data.id } : prev);
+      }
       return { ok: !!data?.id, id: data?.id || null, error: data?.id ? null : "no id returned" };
     } catch(e) { console.error("persistContract exception:", e); return { ok: false, error: e?.message || String(e) }; }
   };

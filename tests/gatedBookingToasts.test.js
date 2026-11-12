@@ -62,7 +62,7 @@ describe("booking ✓ sentences follow the awaited write", () => {
 describe("persistContract returns a verdict and its update is checked", () => {
   const body = fn("const persistContract = async (contract) => {", "\n  };\n");
   it("the update carries .select() and treats zero rows as a failure", () => {
-    expect(body).toMatch(/\.update\(payload\)\.eq\("id", contract\.db_id\)\.eq\("company_id", currentCompany\.id\)\.select\("id"\)/);
+    expect(body).toMatch(/\.update\(payload\)\.eq\("id", dbId\)\.eq\("company_id", currentCompany\.id\)\.select\("id"\)/);
     expect(body).toMatch(/if \(!\(data \|\| \[\]\)\.length\) \{[^}]*return \{ ok: false/);
   });
   it("every exit is a verdict", () => {
@@ -93,11 +93,11 @@ describe("a contract entry's posted-marker is awaited, and a lost marker is said
 describe("softDeleteContracts writes first, removes only what landed, audits after", () => {
   const body = fn("const softDeleteContracts = async (list, byAI=false) => {", "const softDeleteContract = ");
   it("each delete is a checked row update", () => {
-    expect(body).toMatch(/checkedRowUpdate\(\{\s*supabase, table: "contracts", id: s\.db_id/);
+    expect(body).toMatch(/checkedRowUpdate\(\{\s*supabase, table: "contracts", id: sDbId/);   // C595 — the looked-up id
     expect(body).not.toMatch(/\.update\(\{ deleted_at: new Date\(\)\.toISOString\(\), deleted_by: uid \}\)\s*\.eq/);
   });
   it("the screen, the audit row and the toast all follow the write and cover only `gone`", () => {
-    ordered(body, "const r = await checkedRowUpdate({", "if (!r.ok) { anyError = true; continue; }", "gone.push(s);",
+    ordered(body, "const r = await checkedRowUpdate({", "if (!r.ok) { anyError = true; continue; }", "gone.push(s.db_id ? s : { ...s, db_id: sDbId });",
       'gone.forEach(s => logAudit("contract_deleted"', "const idset = new Set(gone.map(", "setContracts(prev => prev.filter(", "if (anyError) {", "nothing was changed", "showNotification(`Deleted ${label} — tap Undo to restore`");
     expect(body).not.toMatch(/snaps\.forEach\(s => logAudit\("contract_deleted"/);
   });
