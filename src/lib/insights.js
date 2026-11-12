@@ -257,20 +257,26 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
   }
   const sortByDate = list => [...list].sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  // 1. Vendor spike — latest charge ≥ 2× the vendor's recent average.
+  // 1. Vendor spike — a recent charge ≥ 2× the vendor's average of its OTHER charges.
+  // ★ C616 — EVERY RECENT CHARGE, NOT ONLY THE LATEST. Only the latest was examined, so the day the
+  // vendor's next ordinary charge was booked the spike was no longer "detected" — and the queue
+  // reads "not detected" as "condition gone" (`reconcileAnomalies` auto-resolves it). A HIGH alert
+  // about a $4,000 charge from a $400 vendor closed itself, unreviewed, when the next $400 arrived.
+  // Each charge in the last 40 days is now judged against the vendor's other charges, so the
+  // spike stays raised while it is recent, whatever is booked after it.
   for (const [k, list] of Object.entries(byVendor)) {
     if (list.length < 2) continue;
-    const s = sortByDate(list);
-    const latest = s[s.length - 1];
-    const others = s.slice(0, -1);
-    const baseline = others.reduce((t, i) => t + (Number(i.amount) || 0), 0) / others.length;
-    const amt = Number(latest.amount) || 0;
-    if (baseline > 0 && amt >= 2 * baseline && within(latest.date, 40)) {
+    for (const c of sortByDate(list)) {
+      if (!within(c.date, 40)) continue;
+      const others = list.filter((o) => o !== c);
+      const baseline = others.reduce((t, i) => t + (Number(i.amount) || 0), 0) / others.length;
+      const amt = Number(c.amount) || 0;
+      if (!(baseline > 0 && amt >= 2 * baseline)) continue;
       const x = (amt / baseline).toFixed(1);
-      push({ id: `vendor_spike:${k}:${subjectKey(latest)}`, type: "vendor_spike", severity: "high",
-        title: `${latest.vendor} charged ${money(amt)} — ${x}× usual`,
-        description: `${latest.vendor} normally runs about ${money(baseline)}; this charge is ${x}× that. Worth a look.`,
-        invoice_ids: [latest.id] });
+      push({ id: `vendor_spike:${k}:${subjectKey(c)}`, type: "vendor_spike", severity: "high",
+        title: `${c.vendor} charged ${money(amt)} — ${x}× usual`,
+        description: `${c.vendor} normally runs about ${money(baseline)}; this charge is ${x}× that. Worth a look.`,
+        invoice_ids: [c.id] });
     }
   }
 
