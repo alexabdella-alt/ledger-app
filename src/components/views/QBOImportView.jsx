@@ -6,6 +6,7 @@ import { findDuplicate, downloadCSV } from "../../lib/insights";
 import { fmtSignedMoney } from "../../lib/format";
 import { validateUpload } from "../../lib/uploadGuard";
 import { buildAccountInsert } from "../../lib/writeShapes";
+import { splitQboRowsAtCutoff, qboBeforeCutoffCopy } from "../../lib/qboCutoff";
 
 const ROW_CAP = 10000;
 const FIELDS = [["date", "Date"], ["type", "Type"], ["num", "Num"], ["name", "Vendor / Name"], ["account", "Account"], ["split", "Split"], ["amount", "Amount"], ["debit", "Debit"], ["credit", "Credit"], ["memo", "Memo / Description"]];
@@ -15,6 +16,7 @@ export default function QBOImportView() {
   const { BOOKABLE_ACCOUNTS,
     currentCompany, session, supabase, CHART_OF_ACCOUNTS, getAccountByRole, getAccountByCode,
     invoices, isAdmin, logAudit, showNotification, setView, loadAllData, flagBookingVisibilityFailure, storeDocument, routeFileToType,
+    cutoffDate,
   } = useERP();
 
   const [step, setStep] = React.useState("instructions"); // instructions|upload|columns|accounts|importing|summary
@@ -111,7 +113,8 @@ export default function QBOImportView() {
   const runImport = async () => {
     setStep("importing"); setProgress(0);
     const cid = currentCompany.id;
-    const rows = parsed.rows;
+    // C596 — nothing dated before the start date: that history is the starting balances.
+    const { keep: rows, before: beforeStart } = splitQboRowsAtCutoff(parsed.rows, cutoffDate);
 
     // Resolve account ids (create any missing).
     const neededCodes = new Set([cashCode]);
@@ -286,7 +289,8 @@ export default function QBOImportView() {
       } catch (e) { console.warn("[qbo] visibility verify failed — not alarming:", e?.message || e); }
     }
 
-    setResult({ imported, skipped, failed: failedN, total, accounts: Object.keys(acctMap).length, batchId });
+    if (beforeStart.length) logAudit && logAudit("qbo_rows_before_start_date", `QuickBooks import set aside ${beforeStart.length} row(s) dated before the start date (${cutoffDate})`, null, { batch_id: batchId, count: beforeStart.length, cutoff: cutoffDate });
+    setResult({ imported, skipped, failed: failedN, total, accounts: Object.keys(acctMap).length, batchId, beforeStart: beforeStart.length });
     setStep("summary");
     loadRecent();
     loadAllData && loadAllData();
@@ -453,8 +457,10 @@ export default function QBOImportView() {
               ))}</tbody>
             </table>
           </div>
+          {(() => { const note = qboBeforeCutoffCopy(splitQboRowsAtCutoff(parsed.rows, cutoffDate).before.length, cutoffDate);
+            return note ? <div data-qbo-before-start style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: "var(--sc-warning-soft)", color: "var(--sc-warning)", fontSize: 13 }}>{note}</div> : null; })()}
           <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
-            <button style={btn(true)} disabled={!parsed.rows.length} onClick={() => setStep("accounts")}>Looks right — map accounts →</button>
+            <button style={btn(true)} disabled={!splitQboRowsAtCutoff(parsed.rows, cutoffDate).keep.length} onClick={() => setStep("accounts")}>Looks right — map accounts →</button>
             <button style={btn(false)} onClick={() => setStep("upload")}>← Choose a different file</button>
             {parsed.failed.length > 0 && <button style={{ ...btn(false), marginLeft: "auto" }} onClick={downloadSkipped}>↓ Download {parsed.failed.length} skipped row{parsed.failed.length !== 1 ? "s" : ""}</button>}
           </div>
@@ -488,7 +494,7 @@ export default function QBOImportView() {
             </table>
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-            <button style={btn(true)} onClick={runImport}>Import {parsed.rows.length.toLocaleString()} transactions →</button>
+            <button style={btn(true)} onClick={runImport}>Import {splitQboRowsAtCutoff(parsed.rows, cutoffDate).keep.length.toLocaleString()} transactions →</button>
             <button style={btn(false)} onClick={() => setStep("columns")}>← Back</button>
           </div>
         </div>
@@ -513,7 +519,7 @@ export default function QBOImportView() {
             <div style={{ fontSize: 18, fontWeight: 700 }}>Import complete</div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 18 }}>
-            {[["Imported", result.imported.toLocaleString()], ["Total", money(result.total)], ["Duplicates skipped", result.skipped.toLocaleString()], ["Accounts mapped", result.accounts]].map(([k, v]) => (
+            {[["Imported", result.imported.toLocaleString()], ["Total", money(result.total)], ["Duplicates skipped", result.skipped.toLocaleString()], ["Accounts mapped", result.accounts]].concat(result.beforeStart ? [["Before your start date", result.beforeStart.toLocaleString()]] : []).map(([k, v]) => (
               <div key={k} style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px" }}>
                 <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 4 }}>{k}</div>
                 <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--sc-text)" }}>{v}</div>
