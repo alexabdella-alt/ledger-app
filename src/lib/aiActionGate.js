@@ -35,14 +35,50 @@ export function partitionAIActions(actions = []) {
   return { safe, destructive };
 }
 
+// ★ C633 — AN ACTION THAT REPLACES SOMETHING SAVED ASKS FIRST. "Additive" actions ran straight
+// through, but three of them overwrite what a person set: a rule for a vendor that already has a
+// DIFFERENT one (the old rule is gone), a contact field that already holds a DIFFERENT value, and
+// pausing a recurring charge (it stops being tracked). A steered model — or a misread request —
+// could change all three with no card. New rules and new details still go straight through.
+const key = (s) => norm(s).replace(/[^a-z0-9]/g, "");
+const CONTACT_FIELD_ALIASES = { expected_min: "expected_min", expected_max: "expected_max" };
+export function replacesSavedValue(action, { rules = [], contacts = [] } = {}) {
+  const a = action || {};
+  if (a.type === "pause_recurring") return { replaces: true, what: `Pause the recurring charge “${a.name || "this charge"}”.` };
+  if (a.type === "add_rule" || a.type === "set_contact_rule") {
+    const vendor = a.vendor || a.name;
+    if (!a.gl_code || !vendor) return { replaces: false };
+    const existing = (rules || []).find((r) => r && key(r.vendor) === key(vendor));
+    if (existing && String(existing.gl_code) !== String(a.gl_code)) {
+      return { replaces: true, what: `Change the rule for ${vendor} from ${existing.gl_name || existing.gl_code} to ${a.gl_name || a.gl_code}.` };
+    }
+    return { replaces: false };
+  }
+  if (a.type === "update_contact") {
+    const c = (contacts || []).find((x) => x && key(x.name) === key(a.name));
+    if (!c) return { replaces: false };
+    const changed = Object.entries(a.updates || {}).filter(([k, v]) => {
+      const before = c[CONTACT_FIELD_ALIASES[k] || k];
+      const had = before != null && before !== "" && !(Array.isArray(before) && before.length === 0);
+      return had && JSON.stringify(before) !== JSON.stringify(v);
+    }).map(([k]) => k.replace(/_/g, " "));
+    if (changed.length) return { replaces: true, what: `Change ${a.name}'s saved ${changed.join(", ")}.` };
+    return { replaces: false };
+  }
+  return { replaces: false };
+}
+
 // Route actions to EXECUTE (now) vs STAGE (behind confirm). When the batch is
 // blocked (member role / ambiguous target / bulk-cap exceeded) nothing stages —
 // the reply handles the refusal. This is the single decision the dispatch code
 // makes: destructive → stage, never execute inline.
-export function routeAIActions(actions = [], { blocked = false } = {}) {
+export function routeAIActions(actions = [], { blocked = false, rules = [], contacts = [] } = {}) {
   const { safe, destructive } = partitionAIActions(actions);
-  if (blocked) return { execute: safe, stage: [] };
-  return { execute: safe, stage: destructive };
+  // C633 — a "safe" action that would replace something saved joins the staged set.
+  const replacing = safe.filter((a) => replacesSavedValue(a, { rules, contacts }).replaces);
+  const execute = safe.filter((a) => !replacing.includes(a));
+  if (blocked) return { execute, stage: [] };
+  return { execute, stage: [...destructive, ...replacing] };
 }
 
 // Resolve the concrete entries/contracts/rules a destructive action targets, purely
@@ -116,14 +152,25 @@ const VERB = {
   reverse_entry: "undo",
   delete_contract: "remove the contract for",
   delete_rule: "delete the coding rule for",
+  add_rule: "change the rule for",          // C633
+  set_contact_rule: "change the rule for",
+  update_contact: "change the details for",
+  pause_recurring: "pause",
 };
 
 // Build the confirmation proposal for a destructive action: a plain-English title,
 // the affected line items (with vendor/amount/date), and a count. This is what the
 // human approves — resolved from the CURRENT data so it shows exactly what will run.
-export function describeDestructiveAction(action, { invoices = [], contracts = [] } = {}) {
+export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [] } = {}) {
   const a = action || {};
   const verb = VERB[a.type] || "change";
+
+  // C633 — the replacing actions say exactly what will be replaced.
+  if (["add_rule", "set_contact_rule", "update_contact", "pause_recurring"].includes(a.type)) {
+    const r = replacesSavedValue(a, { rules, contacts: contactsList });
+    const label = a.vendor || a.name || "this item";
+    return { type: a.type, verb, count: 1, targets: [{ label }], description: r.what || `Change ${label}.` };
+  }
 
   if (a.type === "delete_rule") {
     const label = a.vendor || "this vendor";

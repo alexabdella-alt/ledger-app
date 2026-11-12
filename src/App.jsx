@@ -8559,6 +8559,27 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // false "✓ done"). This is the code-enforced human gate; the model can't bypass it.
   const executeDestructiveAction = async (action) => {
     const summary = [], failures = [];
+    // ★ C633 — the replacing actions, run after a person confirmed them (same writers as before).
+    if (action.type === "add_rule") {
+      const res = await persistChatRule({ vendor: action.vendor, gl_code: action.gl_code, gl_name: action.gl_name, project: action.project });
+      if (res.ok) summary.push(`Rule changed: ${action.vendor} → ${action.gl_name}`); else failures.push(`rule ${action.vendor} → ${action.gl_name}`);
+      return { summary, failures };
+    }
+    if (action.type === "set_contact_rule") {
+      const res = await persistChatContact({ name: action.name, gl_code: action.gl_code, gl_name: action.gl_name });
+      if (res.ok) summary.push(`Rule changed for ${action.name} → ${action.gl_name}`); else failures.push(`set rule for ${action.name}`);
+      return { summary, failures };
+    }
+    if (action.type === "update_contact") {
+      const res = await persistChatContact({ name: action.name }, action.updates || {});
+      if (res.ok) summary.push(`Updated contact: ${action.name}`); else failures.push(`update contact ${action.name}`);
+      return { summary, failures };
+    }
+    if (action.type === "pause_recurring") {
+      const res = await pauseChatRecurring(action.name);
+      if (res.ok) summary.push(`Recurring paused: ${action.name}`); else failures.push(`pause recurring ${action.name}`);
+      return { summary, failures };
+    }
     if (action.type === "recode" && action.invoiceIds?.length) {
       // ★★★ C546 — THE SAME RESOLVER THE CONFIRM CARD USED. This filtered `invoices` with a RAW
       // `.includes(inv.id)` while the card resolved string-normalised and (C546) by entry id too,
@@ -8807,7 +8828,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // nothing stages; the reply handles the refusal. Backstop for the part-1.5
       // tool_result residual (server owns instructions; tool outputs still flow in).
       const gateBlocked = memberBlocked || clarifyNeeded || bulkBlocked;
-      const { execute: safeActions, stage: destructiveActions } = routeAIActions(result.actions || [], { blocked: gateBlocked });
+      const { execute: safeActions, stage: destructiveActions } = routeAIActions(result.actions || [], { blocked: gateBlocked, rules, contacts });   // C633
 
       for (const action of safeActions) {
         // Member tried to change data — don't touch anything; the reply explains.
@@ -8956,7 +8977,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // Nothing has mutated for these — they run only when the user clicks Confirm
       // (confirmAIActions). Not staged when the batch was blocked (member/ambiguous/bulk).
       const staged = (!gateBlocked && destructiveActions.length)
-        ? buildPendingConfirmation(destructiveActions, { invoices, contracts })
+        ? buildPendingConfirmation(destructiveActions, { invoices, contracts, rules, contactsList: contacts })
         : null;
       if (staged) { setPendingAIActions({ ...staged, id: Date.now() + 2 }); logAI("ai_actions_staged", `Staged ${staged.actions.length} destructive action(s) for confirmation: ${staged.items.map(it => it.type).join(", ")}`); }
 

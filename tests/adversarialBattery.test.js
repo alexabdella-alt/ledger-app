@@ -252,11 +252,16 @@ describe("CLASS 6 — confirmation-gate bypass attempts (BLOCKED)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("FINDING (LOW, logged) — additive/reversible config runs friction-free (accepted residual)", () => {
   const SAFE_MUTATING = ["add_account", "add_rule", "add_recurring", "pause_recurring", "add_contact", "update_contact", "set_contact_rule"];
-  it("safe-mutating config actions are NOT gated (execute immediately) — reversible, logged, no money movement", () => {
+  it("safe-mutating config actions are NOT gated when they replace nothing (execute immediately)", () => {
+    // C633 — EXCEPT pause_recurring, which always asks, and any of these that would REPLACE a saved
+    // value (a different rule for a vendor, a filled-in contact field) — those stage behind the card.
+    // Pinned in tests/assistantAsksBeforeReplacing.test.js.
     for (const t of SAFE_MUTATING) {
       expect(isMutatingAIAction(t)).toBe(true);       // they DO change data
-      expect(isDestructiveAIAction(t)).toBe(false);   // …but are classified safe (run without confirm)
-      expect(routeAIActions([{ type: t }]).execute.map((a) => a.type)).toEqual([t]);
+      expect(isDestructiveAIAction(t)).toBe(false);   // …and are not in the always-confirm set
+      const routed = routeAIActions([{ type: t }]);
+      if (t === "pause_recurring") expect(routed.stage.map((a) => a.type)).toEqual([t]);
+      else expect(routed.execute.map((a) => a.type)).toEqual([t]);
     }
   });
   it("nothing that DESTROYS or ALTERS posted financial data is on the safe side", () => {
