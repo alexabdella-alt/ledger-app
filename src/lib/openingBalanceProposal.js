@@ -59,16 +59,52 @@ export function normalizeBankParse(parsed) {
 // statement ENDING balance (last running balance, else opening + net) — the reconciliation
 // target for the period, written to the account's current_balance on confirm (O83). Returns
 // { ok, openingBalance, endingBalance, periodStart, stated, derived, mismatch, source }.
+// ★ C607 — TWO WAYS THE STATEMENT'S OWN BALANCES WERE MISREAD (review finding K4):
+//  (1) ORDER. Rows were sorted by date only, and a stable sort keeps same-day rows in FILE
+//      order — so for a newest-first export the "first" row of the first day was really that
+//      day's LAST, and opening = its balance − its amount was off by everything else that day.
+//      The order that makes the running balances add up is the true one; with no balances to
+//      tell, the file's own date direction decides.
+//  (2) SIGN. One reading instruction lets amounts come back unsigned with a debit/credit
+//      type. "balance − amount" on an unsigned withdrawal ADDED it. Amounts are signed by type.
+export function signedStatementAmount(t = {}) {
+  const n = Number(t.amount);
+  if (!Number.isFinite(n)) return null;
+  const ty = String(t.type || "").toLowerCase();
+  if (/debit|withdraw|expense|payment|fee|charge/.test(ty)) return -Math.abs(n);
+  if (/credit|deposit|revenue|income|refund/.test(ty)) return Math.abs(n);
+  return n;
+}
+
+function chainScore(rows) {
+  let ok = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1], cur = rows[i];
+    const amt = signedStatementAmount(cur);
+    if (isNum(prev.balance) && isNum(cur.balance) && amt != null && Math.abs(Number(cur.balance) - (Number(prev.balance) + amt)) <= 0.02) ok++;
+  }
+  return ok;
+}
+
+export function chronologicalStatementRows(transactions = []) {
+  const dated = (transactions || []).filter((t) => t && t.date);
+  const byDate = (rows) => rows.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const asGiven = byDate(dated);
+  const reversed = byDate(dated.slice().reverse());
+  const a = chainScore(asGiven), b = chainScore(reversed);
+  if (a !== b) return a > b ? asGiven : reversed;
+  const newestFirst = dated.length > 1 && String(dated[0].date) > String(dated[dated.length - 1].date);
+  return newestFirst ? reversed : asGiven;
+}
+
 export function deriveStatementOpening({ transactions = [], statedOpening = null, statedPeriodStart = null, tolerance = 0.02 } = {}) {
-  const txns = (transactions || [])
-    .filter((t) => t && t.date)
-    .slice()
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const txns = chronologicalStatementRows(transactions);
   const first = txns[0] || null;
 
   let derived = null;
-  if (first && isNum(first.balance) && isNum(first.amount)) {
-    derived = r2(Number(first.balance) - Number(first.amount));
+  const firstAmt = first ? signedStatementAmount(first) : null;
+  if (first && isNum(first.balance) && firstAmt != null) {
+    derived = r2(Number(first.balance) - firstAmt);
   }
   const stated = isNum(statedOpening) ? r2(statedOpening) : null;
   const periodStart = statedPeriodStart || (first ? String(first.date) : null);
@@ -84,7 +120,7 @@ export function deriveStatementOpening({ transactions = [], statedOpening = null
   let endingBalance = null;
   if (last && isNum(last.balance)) endingBalance = r2(Number(last.balance));
   else if (openingBalance != null) {
-    const net = txns.reduce((s, t) => s + (isNum(t.amount) ? Number(t.amount) : 0), 0);
+    const net = txns.reduce((s, t) => s + (signedStatementAmount(t) ?? 0), 0);
     endingBalance = r2(openingBalance + net);
   }
   const source = stated != null && derived != null ? "both" : stated != null ? "stated" : derived != null ? "derived" : "none";
