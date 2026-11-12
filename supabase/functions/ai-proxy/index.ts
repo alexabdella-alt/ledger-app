@@ -32,6 +32,19 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 //   first upload four minutes in, to protect roughly fifty cents.
 const AI_LIMIT = 300;            // AI requests / user / hour   (= 100 documents)
 const UPLOAD_LIMIT = 100;        // file uploads / user / hour
+// C634 — the largest body a real call can be: a 15 MB file is ~20 MB as base64, plus the prompt.
+const MAX_REQUEST_CHARS = 22 * 1024 * 1024;
+// C634 — does this call carry a document or image? (A file is a content block of type document/image.)
+function carriesFile(body: Record<string, unknown>): boolean {
+  const msgs = Array.isArray((body as { messages?: unknown[] }).messages) ? (body as { messages: unknown[] }).messages : [];
+  return msgs.some((m) => {
+    const c = (m as { content?: unknown })?.content;
+    return Array.isArray(c) && c.some((b) => {
+      const t = (b as { type?: string })?.type;
+      return t === "document" || t === "image";
+    });
+  });
+}
 // ★ Daily caps bound what a stolen account can cost in total: ~400 documents, tens of
 //   dollars — survivable, and large enough to notice.
 const AI_DAILY_LIMIT = 1200;     // AI requests / user / day    (= 400 documents)
@@ -64,8 +77,21 @@ serve(async (req) => {
     const { data: { user }, error: userErr } = await admin.auth.getUser(jwt);
     if (userErr || !user) return json({ error: "Invalid or expired session." }, 401);
 
+    // ★ C634 — READ THE BODY FIRST, AND BOUND IT. The limiter counted REQUESTS, so one request the
+    //    size of fifty documents cost the same as one word; and only a call whose CLIENT added
+    //    `x-rate-kind: upload` was charged as an upload, so any caller could leave the header off.
+    //    The body is read once, refused above a ceiling no real document reaches (the app caps
+    //    files at 15 MB → ~20 MB as base64, plus the prompt), and a call that actually CARRIES a
+    //    file is charged as an upload whatever its headers say.
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_REQUEST_CHARS) {
+      return json({ error: "That request is too large. Please upload a smaller file." }, 413);
+    }
+    let clientBody: Record<string, unknown> = {};
+    try { clientBody = JSON.parse(rawBody || "{}"); } catch { clientBody = {}; }
+
     // 2. Rate limit. Every call counts against the AI limit; calls tagged
-    //    `x-rate-kind: upload` also count against the per-file upload limit.
+    //    `x-rate-kind: upload` — or carrying a file (C634) — also count against the upload limit.
     //
     // ★ O113a — A REFUSED CALL IS NOT CHARGED FOR. The previous shape called
     // `bump_rate_limit` (which increments and returns) and checked the result AFTER, so
@@ -78,7 +104,7 @@ serve(async (req) => {
     // all-or-nothing across every bucket, which is why both are passed in one call.
     // `consume_rate_limit` (migration 074) reads, decides, and only then charges, inside
     // one transaction.
-    const isUpload = (req.headers.get("x-rate-kind") || "").toLowerCase() === "upload";
+    const isUpload = (req.headers.get("x-rate-kind") || "").toLowerCase() === "upload" || carriesFile(clientBody);
     const buckets = isUpload ? ["ai", "upload"] : ["ai"];
     const limits  = isUpload ? [AI_LIMIT, UPLOAD_LIMIT] : [AI_LIMIT];
     const daily   = isUpload ? [AI_DAILY_LIMIT, UPLOAD_DAILY_LIMIT] : [AI_DAILY_LIMIT];
@@ -135,9 +161,6 @@ serve(async (req) => {
     //    unknown profile → 400. There is NO legacy passthrough. Function calling still
     //    works: the server injects the profile's `tools`, and any `tool_use` blocks
     //    (and `stop_reason`) come straight back to the client unmodified.
-    let clientBody: Record<string, unknown> = {};
-    try { clientBody = JSON.parse(await req.text() || "{}"); } catch { clientBody = {}; }
-
     const profileKey = typeof clientBody.profile === "string" ? clientBody.profile : "";
     if (!profileKey) {
       console.warn("[ai-proxy] rejected request with no profile — boundary is mandatory");
