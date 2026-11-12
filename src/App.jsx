@@ -92,6 +92,7 @@ import { aiJson, aiTextOf, isCutOff } from "./lib/aiJson";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
+import { bankFallbackFor } from "./lib/openingGrid";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { fetchLedger, resolveEntryDbId, alreadyReversed } from "./lib/ledger";
 import { bookableAccounts, disableAccountBlocker } from "./lib/chart";
@@ -2037,14 +2038,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // so opening cash can actually be set, including for a brand-new business whose bank
     // `current_balance` hasn't been recorded yet. Avoids both the "locked to 0" dead-end
     // and double-opening the same GL account.
-    const merged = { ...(gridBalancesByCode || {}) };
-    const bankSum = {};
-    for (const b of (bankAccounts || [])) {
-      if (b.gl_code) bankSum[b.gl_code] = (bankSum[b.gl_code] || 0) + (Number(b.current_balance) || 0);
-    }
-    for (const [code, val] of Object.entries(bankSum)) {
-      if (merged[code] == null || merged[code] === "" || Number(merged[code]) === 0) merged[code] = val;
-    }
+    // C590 — and ONLY on the first save: once a starting position exists, an empty cash field
+    // means zero. The bank's balance by then is a later statement's ending balance, and
+    // filling day one from it moved opening cash to the end of the month.
+    const merged = bankFallbackFor(gridBalancesByCode, bankAccounts, { hasSavedOpening: (openingBalances || []).length > 0 });
     // C341 — the plug account by ROLE (§4). `083` backfilled `opening_balance_equity` on every
     // company precisely so a chart holding it under another number resolves here; the literal
     // is the fallback for a chart that has none, where `ensureAccountIdForCode` materialises it.
@@ -2082,6 +2079,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     }
 
     // 3) Write opening_balances rows for the NEW entry (natural balance, linked to the JE).
+    let openingRowsSaved = true;
     try {
       const rows = [];
       for (const [code, val] of Object.entries(merged)) {
@@ -2092,8 +2090,24 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
       const obe = lines.find(l => l.code === obeCode);
       if (obe) { const aid = await ensureAccountIdForCode(obeCode); if (aid) rows.push({ company_id: cid, account_id: aid, balance: (obe.credit || 0) - (obe.debit || 0), as_of_date: cutoff, journal_entry_id: jeId, posted: true }); }
-      if (rows.length) await supabase.from("opening_balances").insert(rows);
-    } catch (e) { console.warn("[opening] rows insert:", e?.message || e); }
+      // C590 — UPSERT, AND READ THE ANSWER. The table allows one row per account
+      // (`opening_balances_company_id_account_id_key`), so on any EDIT a plain insert was
+      // refused whole — unread — and step 4 then deleted the old rows: the entry was right,
+      // no row said "posted", the start date unlocked and this screen came back empty.
+      if (rows.length) {
+        let { data: wrote, error: rowsErr } = await supabase.from("opening_balances").upsert(rows, { onConflict: "company_id,account_id" }).select("id");
+        // The repo cannot say whether that constraint is still live. Without it an upsert is
+        // refused ("no unique constraint matching") and a plain insert is exactly right.
+        if (rowsErr && /no unique or exclusion constraint/i.test(rowsErr.message || "")) {
+          ({ data: wrote, error: rowsErr } = await supabase.from("opening_balances").insert(rows).select("id"));
+        }
+        if (rowsErr || !(wrote || []).length) throw new Error(rowsErr?.message || "no rows written");
+      }
+    } catch (e) {
+      console.error("[opening] rows upsert:", e?.message || e);
+      openingRowsSaved = false;
+      logAudit("opening_rows_save_failed", "Starting balances were recorded in the books, but this screen's copy of them could not be saved", null, { je: String(jeId), error: String(e?.message || e).slice(0, 200) });
+    }
 
     // 4) NOW supersede the OLD opening entry(ies) — everything except the one just posted.
     // A failure here leaves the new position live (never none); log loudly for cleanup.
@@ -2113,8 +2127,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           showNotification("Saved the new opening balances, but couldn't remove the previous ones — please tell your accountant before relying on these figures.", "error");
         }
       }
-      await supabase.from("opening_balances").delete().eq("company_id", cid).neq("journal_entry_id", jeId);
-      await supabase.from("opening_balances").delete().eq("company_id", cid).is("journal_entry_id", null);  // legacy rows w/o a JE link
+      // Only once the new rows are in: deleting the old ones after a failed save would leave
+      // NO row saying a starting position exists (the lock, and this screen, read them).
+      if (openingRowsSaved) {
+        await supabase.from("opening_balances").delete().eq("company_id", cid).neq("journal_entry_id", jeId);
+        await supabase.from("opening_balances").delete().eq("company_id", cid).is("journal_entry_id", null);  // legacy rows w/o a JE link
+      }
     } catch (e) {
       console.warn("[opening] supersede prior failed:", e?.message || e);
       try { Sentry.captureException(e, { tags: { kind: "opening_supersede_failure" }, extra: { company_id: String(cid), new_je: String(jeId) } }); } catch {}
@@ -2123,6 +2141,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
     logAudit("opening_balances_posted", `Opening balances posted as of ${cutoff} (${lines.length} lines)`, null, { cutoff, je: jeId ? String(jeId) : null });
     try { await loadAllData(); } catch {}
+    setOpeningBalBalances({});   // the grid goes back to showing the record, not what was typed
+    if (!openingRowsSaved) { showNotification("Your starting balances are saved in your books, but this screen couldn't update its own copy — the figures shown here may be the previous ones. Press Save again in a moment.", "error"); return true; }
     showNotification(`Opening balances posted as of ${cutoff} ✓`);
     return true;
   };

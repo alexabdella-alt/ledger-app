@@ -1,4 +1,5 @@
 import { OBE_CODE, OBE_ROLE } from "../../lib/openingBalances";
+import { openingGridValues, openingGridToPost } from "../../lib/openingGrid";
 import React from "react";
 import { showCodesFor } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
@@ -17,14 +18,8 @@ export default function OpeningBalancesView() {
   };
             const fmt = fmtMoney;
             const bsAccts = (BOOKABLE_ACCOUNTS||[]).filter(a=>["Assets","Liabilities","Equity"].includes(a.category));   // C472 — a disabled account is not offered a starting balance
-            // Bank-linked cash GL codes are OWNED by the bank flow (bank-as-source-of-truth):
-            // shown read-only here, valued from the bank balance, so no account is opened twice.
-            const bankLinked = new Set((bankAccounts||[]).map(b=>b.gl_code).filter(Boolean));
-            const bankBalFor = code => (bankAccounts||[]).filter(b=>b.gl_code===code).reduce((s,b)=>s+(Number(b.current_balance)||0),0);
-
-            const existing = {}; (openingBalances||[]).forEach(b => { existing[b.account_code] = b.balance; });
-            const balancesInit = bsAccts.reduce((acc,a) => ({...acc,[a.code]: bankLinked.has(a.code) ? bankBalFor(a.code) : (existing[a.code] ?? "")}), {});
-            const balances = Object.keys(openingBalBalances).length > 0 ? { ...openingBalBalances } : balancesInit;
+            // C590 — saved wins over inferred, typed wins over saved; see `openingGrid.js`.
+            const { values: balances, fromBank } = openingGridValues({ accounts: bsAccts, saved: openingBalances, bankAccounts, typed: openingBalBalances });
             // Bank-linked cash is PRE-FILLED from the bank balance (when known) but stays
             // editable — an established business must be able to type its day-one cash, and a
             // new business whose bank balance isn't recorded yet shouldn't be locked to 0.
@@ -45,12 +40,8 @@ export default function OpeningBalancesView() {
             // persisted + saved to opening_balances (survives refresh). Bank-linked cash is
             // overridden from bank balances in the handler, so we send only grid values.
             const post = async () => {
-              const grid = {};
-              // Send ALL entered balances incl. bank-linked cash. postOpeningBalances uses the
-              // bank's recorded balance only as a FALLBACK when the grid omits a GL code, so the
-              // value shown here (bank pre-fill or a manual entry) is what actually posts.
-              bsAccts.forEach(a => { const v = parseFloat(balances[a.code]); if (v) grid[a.code] = v; });
-              await postOpeningBalances(grid);
+              // What is on the grid is what posts — every figure shown, not only the ones typed.
+              await postOpeningBalances(openingGridToPost(balances, bsAccts));
             };
 
             return (
@@ -113,7 +104,7 @@ export default function OpeningBalancesView() {
                           {showCodes && <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{acct.code}</span>}
                           <span style={{fontSize:13}}>{acct.name}</span>
                         </div>
-                        {bankLinked.has(acct.code) && bankBalFor(acct.code)>0 && <span style={{fontSize:10,color:"var(--sc-gold)",marginRight:8}} title="Pre-filled from the linked bank account — editable">from bank</span>}
+                        {fromBank.has(acct.code) && <span style={{fontSize:10,color:"var(--sc-gold)",marginRight:8}} title="Pre-filled from the linked bank account — editable">from bank</span>}
                         <input type="number" value={balances[acct.code]||""}
                           onChange={e=>setBalances(b=>({...b,[acct.code]:e.target.value}))}
                           placeholder="0.00" step="0.01"
