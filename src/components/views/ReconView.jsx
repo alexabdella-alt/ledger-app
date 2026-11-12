@@ -475,10 +475,16 @@ export default function ReconView() {
 
   const addToBooks = async (t, gl) => {
     const isRev = t.amount>0;
+    // C605 — booked against the account being RECONCILED, not always main Cash: a line added
+    // while reconciling savings or a card moved Cash instead, so this very reconciliation could
+    // not tie and Cash's never would.
+    const recAcct = (bankAccounts||[]).find(b => String(b.id)===String(accountId));
+    const offCode = recAcct?.gl_code || getAccountByRole("cash")?.code;
+    const offName = (recAcct?.gl_code && (CHART_OF_ACCOUNTS||[]).find(a => String(a.code)===String(recAcct.gl_code))?.name) || recAcct?.name || getAccountByRole("cash")?.name;
     const inv = {
       id: Date.now()+Math.random(), vendor: (t.description||"Bank transaction").slice(0,60), description: t.description||"Added during reconciliation",
       amount: Math.abs(t.amount), date: t.date, type: isRev?"revenue":"expense",
-      gl_code: gl.gl_code, gl_name: gl.gl_name, secondary_gl_code:getAccountByRole("cash")?.code, secondary_gl_name:getAccountByRole("cash")?.name,
+      gl_code: gl.gl_code, gl_name: gl.gl_name, secondary_gl_code: offCode, secondary_gl_name: offName,
       debit_credit: isRev?"credit":"debit", confidence: 90, reasoning:"Added during bank reconciliation",
       status:"booked", booked_at:new Date().toISOString(), source:"reconciliation", payment_status: isRev?"collected":"paid",
       _added: { date:t.date, vendor:t.description, amount:t.amount, gl_code:gl.gl_code },

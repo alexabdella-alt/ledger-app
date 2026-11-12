@@ -7532,7 +7532,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { autoCleared, queue } = await runMatchingEngine(parsedTxns, openItems);
       const plan2 = planBankImport({ parsedTxns, autoCleared, queue, openItems, codes: { apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"), arCode: rc("accounts_receivable"), cashCode: offsetCode, cashName: offsetName } });
       for (const c of plan2.clears) {
-        const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null });
+        const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null, cashCode: offsetCode, cashName: offsetName });
         if (ok && c.bankId != null) await setLine(c.bankId, { status: "matched" });   // clearing → statement line 'matched'
       }
       for (const m of plan2.review) {
@@ -7673,7 +7673,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // Post clearings — record success only when the JE actually committed (O69-B).
     let clearedOk = 0, clearFailed = 0;
     for (const c of plan.clears) {
-      const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null });
+      const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null, cashCode: offsetCode, cashName: offsetName });
       if (ok) clearedOk++; else clearFailed++;
     }
     // O72: before direct-booking the "new" lines, pull out payroll NET-pay lines. Ones that
@@ -8004,7 +8004,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // the match IN the queue (in-review), surface the error, and bail before history.
       const results = [];
       for (const id of (invoice_ids || [])) {
-        results.push(await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: bank_txn?.date || null }));
+        results.push(await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: bank_txn?.date || null, cashCode: matchRecord.importOffsetCode || null, cashName: matchRecord.importOffsetName || null }));
       }
       try { await loadAllData(); } catch {}
       if (!allClearingsPosted(results)) {
@@ -8163,7 +8163,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // and both post (C401's shape, on money). The second press runs nothing.
   const paymentsInFlight = useRef(makeKeyedInFlight());
   const markBillPaid = (entryId, opts = {}) => paymentsInFlight.current.run(entryId, () => markBillPaidOnce(entryId, opts));
-  const markBillPaidOnce = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap" } = {}) => {
+  // ★ C605 — `cashCode`/`cashName`: WHICH ACCOUNT THE MONEY MOVED THROUGH. A payment cleared from
+  // a savings or credit-card statement used to be posted against the main Cash account
+  // whatever the statement was — the card's balance never fell, Cash fell instead, and neither
+  // account's reconciliation could ever tie. Statement callers pass the statement's account;
+  // a person marking a bill paid by hand still defaults to Cash.
+  const markBillPaidOnce = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap", cashCode = null, cashName = null } = {}) => {
     const inv = (invoicesRef.current || []).find(i => String(i.id) === String(entryId) || String(i.db_entry_id) === String(entryId));
     if (!inv) { console.warn("[markBillPaid] no invoice for entryId", String(entryId)); return false; }
     // SIGNED-PERIOD guard (O83 Trap 2): a payment/collection dated into a signed month posts a
@@ -8271,7 +8276,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         : null;
       const payEntry = buildPaymentEntry(legRow || inv, side, {
         apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"),
-        arCode: rc("accounts_receivable"), cashCode: rc("cash"), cashName: rn("cash"),
+        arCode: rc("accounts_receivable"), cashCode: cashCode || rc("cash"), cashName: cashCode ? (cashName || cashCode) : rn("cash"),
         date: paidDate || at.slice(0, 10), billDbId: dbId,
       });
       if (payEntry) {
