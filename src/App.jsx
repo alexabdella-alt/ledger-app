@@ -45,7 +45,7 @@ import { nameMatchCensus } from "./lib/nameMatch";
 import { isDegradedMode, degradedBannerCopy, chatFailureCopy } from "./lib/aiFailure";
 import { runIntakeDrain, fetchStoredFile } from "./lib/intakeDrainIo";
 import { loadMailChannel, loadHeldInbound, createMailChannel, addAllowedSender, releaseInboundMessage, ignoreInboundMessage, sendMailViaFunction } from "./lib/mailClient";
-import { flaggedForReview, reviewSummary, autoBookDecision } from "./lib/confidenceFlag";
+import { flaggedForReview, reviewSummary, autoBookDecision, MISSING_FACT_REASONS, missingFact } from "./lib/confidenceFlag";
 import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "./lib/controlTotals";
 import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod, canSelfAttest, companyHasAttester, selfAttestAcknowledgement, isPeriodSignedOff } from "./lib/signoff";
 import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, planEntryRemoval, REMOVAL, isOpeningEntry, OPENING_KEEP_SENTENCE } from "./lib/signedPeriod";
@@ -5886,8 +5886,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // O75 — DIRECTION confirmed by the company's own identity → book straight as
             // revenue/AR (no "is this revenue?" nag; this is the "your own invoices just
             // work" case). The doc is coded to a 4xxx revenue account already.
-            } else if (extracted._direction === "revenue") {
+            } else if (extracted._direction === "revenue" && !missingFact(invoice)) {
               highConfidence.push(invoice);
+            } else if (extracted._direction === "revenue") {
+              // C598 — our own invoice, but the document didn't give us its amount or date: ask
+              // for that (the card's first questions), never book $0 or today.
+              invoice.ask_reason = missingFact(invoice);
+              needsClarification.push({ id: Date.now() + Math.random(), invoice, queueItemId: item.id, question: draftClientQuestion(invoice).question, suggestedCode: finalCode, suggestedName: finalName });
             // AMBIGUOUS (identity set but neither/both parties matched) OR the AI guessed
             // revenue without identity confirmation → ask direction FIRST, offering both a
             // revenue and an expense category (a type/direction correction, not a sub-detail).
@@ -5954,7 +5959,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               // C551 — the chart is what lets it notice a booking whose own reasoning names a
               // different category; without it that check is silently absent.
               const decision = autoBookDecision(invoice, { chart: CHART_OF_ACCOUNTS });
-              if (rule || decision.autoBook) {
+              // C598 — a rule decides the CATEGORY; it cannot supply an amount or date the document lacked.
+              if ((rule && !MISSING_FACT_REASONS.has(decision.reason)) || decision.autoBook) {
                 highConfidence.push(invoice);
               } else {
                 // Genuinely unsure (or missing the amount) → ask ONE plain-language question and

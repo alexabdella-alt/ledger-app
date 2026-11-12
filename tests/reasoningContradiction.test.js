@@ -183,6 +183,6 @@ describe("C551 — the upload path reads it", () => {
     expect(app).toMatch(/invoice\.ask_reason = decision\.reason/);
   });
   it("a supplier RULE still books straight through — it is the owner's own instruction", () => {
-    expect(app).toMatch(/if \(rule \|\| decision\.autoBook\)/);
+    expect(app).toMatch(/if \(\(rule && !MISSING_FACT_REASONS\.has\(decision\.reason\)\) \|\| decision\.autoBook\)/   /* C598 — except a missing amount or date */);
   });
 });

@@ -198,9 +198,20 @@ export function reasoningContradiction(txn = {}, { chart = [] } = {}) {
   return null;
 }
 
+// ★ C598 — A FACT THE DOCUMENT DID NOT GIVE US IS ASKED FOR, WHOEVER ELSE IS SURE. A vendor rule
+// and a recognised income document both booked straight past this function; the amount and
+// date are not about the category, so certainty about the category says nothing about them.
+export const MISSING_FACT_REASONS = new Set(["missing_amount", "missing_date"]);
+export function missingFact(txn = {}) {
+  if (!(Math.abs(num(txn.amount)) > 0)) return "missing_amount";
+  if (txn.date_missing && !txn.date) return "missing_date";   // an answered date clears it
+  return null;
+}
+
 export function autoBookDecision(txn = {}, { askFloor = AI_CONFIDENCE_ASK_FLOOR, chart = [], ...opts } = {}) {
   const conf = txn.confidence == null ? 100 : num(txn.confidence);
-  if (!(Math.abs(num(txn.amount)) > 0)) return { autoBook: false, reason: "missing_amount" };
+  const missing = missingFact(txn);
+  if (missing) return { autoBook: false, reason: missing };
   if (conf < askFloor) return { autoBook: false, reason: "below_confidence_floor" };
   // ★★ A CONFIDENT BOOKING INTO A BUCKET THAT MEANS "WE COULDN'T TELL" IS A CONTRADICTION.
   // Checked AFTER the floor so the reason is the most specific true one, and BEFORE the

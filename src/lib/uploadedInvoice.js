@@ -29,6 +29,7 @@
 import { glIsRevenue, glIsExpense } from "./gl.js";
 import { deriveDueDate } from "./format.js";
 import { alignDirectionToAccount } from "./bookingDirection.js";
+import { parseAmount, parseDate } from "./qboParser.js";
 
 export function buildUploadedInvoice({
   extracted = {}, coding = {}, rule = null, contact = null, rc, rn, id, bookedAt, today,
@@ -49,11 +50,19 @@ export function buildUploadedInvoice({
     id,
     vendor: extracted.vendor?.trim() || "Unknown",
     description: extracted.description || "",
-    amount: parseFloat(extracted.amount) || 0,
+    // ★ C598 — READ AS MONEY, NOT AS THE FIRST NUMBER IN A STRING. `parseFloat("1,344.85")` is
+    // 1, a perfectly bookable amount — so a total the model returned with a thousands
+    // separator booked as $1.00 with no question. Unreadable → 0, which asks.
+    amount: parseAmount(extracted.amount) ?? 0,
     // Sales tax pulled from the invoice → split to Sales Tax Payable (2350) at
     // booking for revenue invoices (persistJournalEntry), never lumped into revenue.
-    tax_amount: parseFloat(extracted.tax_amount) || 0,
-    date: extracted.date || today,
+    tax_amount: parseAmount(extracted.tax_amount) ?? 0,
+    // ★ C598 — NO DATE IS NOT TODAY. A document with no readable date was booked on the day it
+    // was uploaded — into whatever month that is — with no question. The date is read as a
+    // date (ISO, or MM/DD/YYYY); otherwise it is left empty and `date_missing` makes the card
+    // ask "What date was this from?" (the clarification flow's own first question).
+    date: parseDate(extracted.date) || "",
+    date_missing: !parseDate(extracted.date),
     // Classify `type` from the GL code (same basis as flattenJournalEntries +
     // the canonical layer) so the in-session row is never mis-slotted by an odd
     // AI `type` and always shows in the transactions tab the moment it's booked.
@@ -64,7 +73,7 @@ export function buildUploadedInvoice({
     // Due on receipt → date). Shown on the row immediately and persisted by
     // persistJournalEntry; AR/AP aging then ages from the real due date.
     payment_terms: terms,
-    due_date: (extracted.due_date && String(extracted.due_date).trim()) || deriveDueDate(extracted.date || today, terms) || null,
+    due_date: (extracted.due_date && String(extracted.due_date).trim()) || (parseDate(extracted.date) ? deriveDueDate(parseDate(extracted.date), terms) : null) || null,
     project: rule?.project || "General",
     gl_code: finalCode,
     gl_name: finalName,
