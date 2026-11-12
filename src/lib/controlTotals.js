@@ -16,6 +16,7 @@ import {
   glAccountBalance, computeAR, computeAP, trialBalance, isLiveEntry,
 } from "./reports.js";
 import { fmtMoney } from "./format.js";
+import { isCancelledOrCancelling } from "./gl.js";
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const glIsRevenueCode = (c) => String(c || "")[0] === "4";
@@ -49,7 +50,11 @@ function taxChargedOnInvoices(invoices = []) {
   const seen = new Set();
   let total = 0;
   for (const i of invoices) {
-    if (!isLiveEntry(i)) continue;
+    // ★ C617 — A VOIDED INVOICE CHARGED NO TAX. A void is a dated correction: the original stays
+    // posted (with `reversed_by`) and a mirror entry cancels it, so Sales Tax Payable nets to
+    // zero — but this still counted the original's tax figure. One voided taxed invoice left
+    // the check failing (HIGH, blocking sign-off) forever, on books that were right.
+    if (!isLiveEntry(i) || isCancelledOrCancelling(i)) continue;
     const tax = Number(i && i.import_metadata && i.import_metadata.tax_amount) || 0;
     if (tax <= 0) continue;
     const base = baseEntryId(i.id);
