@@ -31,19 +31,37 @@ export function attachPhrase(r = {}) {
 
 // The whole line. `pendingReview` is the caller's live view of whether anything is still
 // unanswered, which the stored result cannot know on its own.
+// ★ C623 — WHAT AN ANSWERED QUESTION ACTUALLY DID, read off the outcomes the card reported.
+function answeredPhrase(r = {}) {
+  const a = Array.isArray(r.answers) ? r.answers : [];
+  const who = `${r.reviewVendor ? `: ${r.reviewVendor}` : ""}${r.reviewAmount != null ? ` · ${money(r.reviewAmount)}` : ""}`;
+  if (a.some((x) => (x.kind === "booked" || x.kind === "attached") && x.landed)) return `✓ Booked${who}`;
+  if (a.some((x) => x.kind === "deferred")) return `Sent to your accountant${who}`;
+  if (a.length && a.every((x) => x.kind === "skipped")) return `Set aside — not booked${who}`;
+  if (a.length) return `⚠ Not booked yet${who} — open it again from Home`;
+  return `Answered${who}`;
+}
+function refusedPhrase(r = {}) {
+  const n = Number(r.refusedCount) || 0;
+  if (!n) return "";
+  return n === 1 ? `${r.refusedVendor || "1 invoice"} couldn't be booked` : `${n} couldn't be booked`;
+}
+
 export function invoiceOutcomeCopy(r = {}, { pendingReview = false } = {}) {
   const booked = Number(r.invoiceCount) || 0;
   const asking = Number(r.needsClarification) || 0;
   const attach = attachPhrase(r);
+  const refused = refusedPhrase(r);
+  // C623 — nothing landed and nothing to ask: say what did not happen, never "✓".
+  if (booked === 0 && asking === 0 && refused && !attach) return `⚠ ${refused} — see the message for why`;
 
   // Nothing booked and nothing asked, but something WAS filed → say that, on its own.
-  if (attach && booked === 0 && asking === 0) return `✓ ${attach}`;
+  if (attach && booked === 0 && asking === 0) return `✓ ${attach}` + (refused ? ` · ${refused}` : "");   // C623
 
   if (booked === 0 && asking > 0) {
     // Once the question has been answered and booked, flip to ✓.
     if (!pendingReview) {
-      return `✓ Booked${r.reviewVendor ? `: ${r.reviewVendor}` : ""}${r.reviewAmount != null ? ` · ${money(r.reviewAmount)}` : ""}`
-           + (attach ? ` · ${attach}` : "");
+      return answeredPhrase(r) + (attach ? ` · ${attach}` : "") + (refused ? ` · ${refused}` : "");
     }
     return `⚠ Needs your input · ${r.reviewVendor || "this entry"}${r.reviewAmount != null ? ` · ${money(r.reviewAmount)}` : ""}`
          + (asking > 1 ? ` (+${asking - 1} more)` : "")
@@ -57,6 +75,7 @@ export function invoiceOutcomeCopy(r = {}, { pendingReview = false } = {}) {
     ? `✓ Booked: ${r.vendor || "entry"} · ${money(r.amount)}${r.bookedAs ? ` as ${r.bookedAs}` : ""}`
     : `✓ ${booked} invoices booked · ${money(r.amount)} total`;
   if (attach) txt += ` · ${attach}`;
+  if (refused && booked > 0) txt += ` · ${refused}`;
   if (asking > 0 && pendingReview) txt += ` · ${asking} need${asking === 1 ? "s" : ""} your review`;
   return txt;
 }

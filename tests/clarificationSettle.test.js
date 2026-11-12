@@ -64,7 +64,7 @@ describe("the wiring in App.jsx (source)", () => {
   });
   it("settleClarification counts the OTHER open cards for that upload and plans purely", () => {
     const i = app.indexOf("const settleClarification = (item, outcome) => {");
-    const body = app.slice(i, i + 1200);
+    const body = app.slice(i, app.indexOf("\n  };", i));   // C623 — the whole function (it grew a tile update)
     expect(body).toMatch(/String\(c\.queueItemId \?\? ""\) === key && !c\.resolved && c\.id !== item\.id/);
     expect(body).toMatch(/const plan = settleIntakeAfterAnswers\(\{ outcomes: hold\.outcomes, existingIds: hold\.existingIds, remainingCards \}\)/);
     expect(body).toMatch(/if \(!plan\.status\) return/);

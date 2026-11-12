@@ -4892,6 +4892,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   };
   const settleClarification = (item, outcome) => {
     const key = String(item?.queueItemId ?? "");
+    // ★ C623 — THE TILE HEARS THE ANSWER. It flipped to "✓ Booked" when its question left the
+    // queue, whatever the answer was — "skip it", "it's personal", "send to my accountant" all
+    // read as booked. Each answer's outcome is recorded on the tile; the sentence reads it.
+    if (key && outcome && outcome.kind) setUploadQueue(prev => prev.map(q => String(q.id) !== key ? q
+      : { ...q, result: { ...(q.result || {}), answers: [ ...(((q.result || {}).answers) || []), { kind: outcome.kind, landed: outcome.jeId != null } ] } }));
     const hold = clarificationHoldsRef.current[key];
     if (!hold || !hold.intakeId) return { ok: false, reason: "no held intake row for this card" };
     hold.outcomes.push(outcome);
@@ -6177,7 +6182,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           if (mealsBooked > 0) showNotification(`Meals are 50% deductible — we booked ${mealsBooked===1?"it":"them"} at 50% per IRS rules.`);
 
           const newInvoices = [...highConfidence];
-          const totalAmt = newInvoices.reduce((s,i)=>s+i.amount, 0);
           // Link the source document to the first booked invoice; if NOTHING was
           // booked (everything needs clarification), link it to the first clarification
           // invoice's in-session id instead. When that entry is later booked from the
@@ -6225,8 +6229,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             catch (e) { console.warn("source-doc relink after booking failed:", e?.message || e); }
           }
           const entryLinks = recordedEntryLinks({ bookedCount: highConfidence.length, bookedIds: jeIds, attached });
+          // ★ C623 — WHAT LANDED, NOT WHAT WAS SENT. `jeIds[i]` is the result of booking
+          // `highConfidence[i]` (null when it was refused — a signed month, the start date, a
+          // failed write). The tile counted the attempts and said "✓ 3 invoices booked" over two.
+          const landedInvoices = highConfidence.filter((_, i) => jeIds[i]);
+          const refusedCount = highConfidence.length - landedInvoices.length;
+          const totalAmt = landedInvoices.reduce((s,i)=>s+i.amount, 0);
           logAudit("invoice_uploaded", `Uploaded ${item.name}: ${extractedList.length} invoice(s) extracted`);
-          const firstBooked = highConfidence[0] || null;
+          const firstBooked = landedInvoices[0] || null;
           const firstReview = needsClarification[0]?.invoice || null;
           // ★★ O128 — THE OUTCOME LINE COUNTS **EVERY** OUTCOME, NOT JUST THE BOOKED ONE.
           // `invoiceCount: highConfidence.length` is blind to `attached`, so a file whose
@@ -6237,7 +6247,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // being counted twice.
           const attachedAmt = attached.reduce((sum, p) => sum + (p.invoice?.amount || 0), 0);
           const invoiceResult = {
-            invoiceCount: highConfidence.length,
+            invoiceCount: landedInvoices.length,
+            refusedCount,
+            refusedVendor: refusedCount ? (highConfidence.find((_, i) => !jeIds[i])?.vendor ?? null) : null,
             attachedCount: attached.length,
             attachedAmount: attachedAmt,
             attachedVendor: attached[0]?.invoice?.vendor ?? null,
@@ -6248,7 +6260,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // (2) Plain-language trail for the owner — "as a client meal", never an account
             // name. Read off `firstBooked`'s ACCOUNT since O115, not its vendor text.
             bookedAs: firstBooked ? plainCategoryPhrase(firstBooked) : null,
-            confidence: highConfidence.length > 0 ? Math.round(highConfidence.reduce((s,i)=>s+(i.confidence||0),0)/highConfidence.length) : null,
+            confidence: landedInvoices.length > 0 ? Math.round(landedInvoices.reduce((s,i)=>s+(i.confidence||0),0)/landedInvoices.length) : null,
             reviewVendor: firstReview?.vendor ?? null,
             reviewAmount: firstReview?.amount ?? null,
           };
