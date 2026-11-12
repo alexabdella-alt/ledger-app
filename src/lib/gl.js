@@ -112,10 +112,17 @@ export const isCancelledOrCancelling = (i) => !!(i && (i.reversed_by || isRevers
 // settlement is proof of clearing); it never adds.
 // ═════════════════════════════════════════════════════════════════════════════
 export const isSettlementEntry = (i) => !!(i && i.import_metadata && i.import_metadata.payment_for != null);
+// ★ C599 — A REVERSED PAYMENT SETTLES NOTHING. A dated correction leaves the original payment
+// POSTED and adds a reversing entry (§12 #14), so "not voided, not deleted" was not enough: a
+// payment taken back still settled its bill — the bill read paid while the books said owed,
+// fell off every open list, and could never be paid again (both "mark paid" and the matcher
+// refused it). `reversed_by` (stamped by the flatten from the live reversal) and the reversal
+// itself are excluded, the same rule the open-bill readers use (`isCancelledOrCancelling`).
+export const isLiveSettlement = (i) => isSettlementEntry(i) && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && !isCancelledOrCancelling(i);
 export function settledBases(invoices = []) {
   const out = new Set();
   for (const i of invoices || []) {
-    if (!isSettlementEntry(i) || i.status === "voided" || i.status === "deleted" || i.deleted_at) continue;
+    if (!isLiveSettlement(i)) continue;
     out.add(String(i.import_metadata.payment_for));
   }
   return out;

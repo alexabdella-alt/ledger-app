@@ -8231,8 +8231,17 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           const { data } = await supabase.from("journal_entries").select("id")
             .eq("company_id", currentCompany.id)
             .eq("import_metadata->>payment_for", String(dbId))
-            .is("deleted_at", null).eq("status", "posted").limit(1);
-          already = Array.isArray(data) && data.length > 0;
+            .is("deleted_at", null).eq("status", "posted");
+          const payIds = (data || []).map(r => String(r.id));
+          // C599 — a payment that a live correction reversed does not count: the bill is owed again.
+          let reversed = new Set();
+          if (payIds.length) {
+            const { data: revs } = await supabase.from("journal_entries").select("import_metadata")
+              .eq("company_id", currentCompany.id).in("import_metadata->>reverses", payIds)
+              .is("deleted_at", null).eq("status", "posted");
+            reversed = new Set((revs || []).map(r => String(r?.import_metadata?.reverses)));
+          }
+          already = payIds.some(id => !reversed.has(id));
         } catch { /* probe failed — fall through and post; a true dup is rare and reversible */ }
         if (!already) {
           postedPaymentId = await persistJournalEntry(payEntry);

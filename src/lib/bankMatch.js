@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildPaymentEntry } from "./payments.js";
-import { isCancelledOrCancelling, isSettlementEntry } from "./gl.js";
+import { isCancelledOrCancelling, isSettlementEntry, isLiveSettlement } from "./gl.js";
 import { normalizeName } from "./docDirection.js";
 import { NAME_MATCH, nameMatchKind } from "./nameMatch.js";
 
@@ -159,7 +159,7 @@ export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode 
   // Bills/invoices that a LIVE (non-voided, non-deleted) settlement JE already settled.
   const cleared = new Set(
     (invoices || [])
-      .filter(i => isSettlementEntry(i) && i.status !== "voided" && !i.deleted_at)
+      .filter(i => isLiveSettlement(i))   // C599 — a reversed payment settles nothing
       .map(i => String(i.import_metadata.payment_for))
   );
   // "Open" is defined POSITIVELY: a bill/invoice that ESTABLISHES a payable/receivable and has
