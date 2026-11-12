@@ -115,3 +115,30 @@ export function nextInvoiceNumber(sentInvoices = []) {
   }
   return `INV-${String(max + 1).padStart(4, "0")}`;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C584 — "SEND AN INVOICE" FROM A CUSTOMER'S PAGE STARTS WITH THAT CUSTOMER.
+// C580 put the button on the customer's page; it opened a BLANK invoice, so the first thing
+// the owner did was retype the name they had just been looking at. This is the draft that
+// button opens: a new invoice with the customer's name, email, address and usual terms.
+//
+// ★ AN UNFINISHED INVOICE IS NEVER THROWN AWAY TO MAKE ROOM. If a draft is already in
+// progress with something in it — a customer, or a line with a description or an amount —
+// it is kept, and the caller is told so it can say whose invoice is still open.
+// ─────────────────────────────────────────────────────────────────────────────
+export function draftHasWork(draft) {
+  if (!draft) return false;
+  if (String(draft.customer || "").trim()) return true;
+  return (draft.line_items || []).some((l) => String(l?.description || "").trim() || Number(l?.rate) > 0 || Number(l?.amount) > 0);
+}
+
+export function draftForCustomer(contact = {}, { existingDraft = null, sentInvoices = [], salesTaxRate = 0 } = {}) {
+  const name = String(contact?.name || "").trim();
+  if (draftHasWork(existingDraft)) {
+    const same = String(existingDraft.customer || "").trim().toLowerCase() === name.toLowerCase();
+    return { draft: existingDraft, kept: true, keptFor: same ? null : (String(existingDraft.customer || "").trim() || "another customer") };
+  }
+  const base = newInvoiceDraft({ invoiceNumber: nextInvoiceNumber(sentInvoices), salesTaxRate });
+  const draft = { ...base, customer: name };
+  return { draft: { ...draft, ...customerDefaultsFor(contact, draft) }, kept: false, keptFor: null };
+}

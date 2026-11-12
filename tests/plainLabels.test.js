@@ -54,7 +54,7 @@ describe("C580 — the last of the owner audit", () => {
     expect(t).toMatch(/Profit so far this year/);
   });
   it("a customer's page offers to bill them; Vendor rules says what a rule does", () => {
-    expect(src("src/components/views/CustomersView.jsx")).toMatch(/<NextStep label="Send an invoice →" onClick=\{\(\)=>setView\("send-invoice"\)\} \/>/);
+    expect(src("src/components/views/CustomersView.jsx")).toMatch(/<NextStep label="Send an invoice →" onClick=\{\(\)=>\{[\s\S]{0,700}setView\("send-invoice"\);/);   // C584 — and it opens prefilled
     expect(src("src/components/views/RulesView.jsx")).toMatch(/Tell us once where a vendor goes/);
   });
   void renderToStaticMarkup;
