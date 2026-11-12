@@ -1,10 +1,10 @@
 import React from "react";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
-import { glIsExpense } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { taxYearFor1099 } from "../../lib/tax";
-import { sent1099For } from "../../lib/form1099";
+import { sent1099For, tracker1099Rows } from "../../lib/form1099";
+import { toCSV } from "../../lib/insights";
 
 const TYPE_OPTIONS = [
   { v:"individual",  label:"Individual / Sole Proprietor", exempt:false },
@@ -17,7 +17,7 @@ const TYPE_OPTIONS = [
 const isExemptType = t => ["corp","scorp","nonprofit"].includes(t);
 
 export default function Tax1099View() {
-  const { contacts, setContacts, invoices, companySettings, persistContact, logAudit, showNotification, setView } = useERP();
+  const { contacts, setContacts, invoices, companySettings, persistContact, logAudit, showNotification, setView, setVendorFilter, setBooksFilter, CHART_OF_ACCOUNTS, aliasIndex } = useERP();
 
   // C549 — the year the next 1099 deadline is about (`deadline.year - 1`, the C435 rule), not
   // `getFullYear() - 1`. That read "always the previous calendar year" and left this screen a
@@ -29,35 +29,12 @@ export default function Tax1099View() {
 
   const [editing, setEditing] = React.useState(null); // {name, contact, business_type, ein_ssn, mailing_address}
 
-  // Find a contact by fuzzy name match
-  const norm = s => (s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
-  const contactFor = (name) => {
-    const n = norm(name); if(!n) return null;
-    return (contacts||[]).find(c => { const cn=norm(c.name); return cn && (cn===n || cn.includes(n) || n.includes(cn)); }) || null;
-  };
-
-  // Total paid to each vendor in the tax year (expense entries, not voided)
-  const paidByVendor = {};
-  invoices.filter(i => glIsExpense(i.gl_code) && i.status!=="voided" && (i.date||"").startsWith(String(taxYear))).forEach(i => {
-    const v = i.vendor || "Unknown"; paidByVendor[v] = (paidByVendor[v]||0) + (i.amount||0);
-  });
-  const vendors = Object.entries(paidByVendor)
-    .map(([name, paid]) => ({ name, paid, contact: contactFor(name) }))
-    .filter(v => v.paid >= 1)
-    .sort((a,b) => b.paid - a.paid);
-
-  const statusOf = (v) => {
-    const c = v.contact;
-    const exempt = c && (c.is_1099_exempt || isExemptType(c.business_type));
-    const eligible = c && ["individual","smllc","partnership","sole_prop"].includes(c.business_type);
-    if (exempt) return { key:"none", label:"Not required", color:"var(--sc-text-2)" };
-    if (v.paid >= 600 && eligible) return sent1099For(c, taxYear) ? { key:"sent", label:"Sent ✓", color:"var(--sc-success)" } : { key:"needs", label:"Needs 1099", color:"var(--sc-error)" };
-    if (v.paid >= 600 && (!c || !c.business_type)) return { key:"unknown", label:"Unknown", color:"var(--sc-warning)" };
-    if (v.paid >= 1 && v.paid < 600) return { key:"tracking", label:"Tracking", color:"var(--sc-warning)" };
-    return { key:"none", label:"Not required", color:"var(--sc-text-2)" };
-  };
-
-  const rows = vendors.map(v => ({ ...v, status: statusOf(v) }));
+  // C589 — the rows come from the same derivation the Taxes card, the Vendors badge and Home
+  // read (`tracker1099Rows` → `verdictFor`): grouped by vendor, not by spelling; only what was
+  // bought, signed; goods are not services. This screen writes the file that gets filed.
+  const STATUS_COLOR = { needs:"var(--sc-error)", sent:"var(--sc-success)", unknown:"var(--sc-warning)", tracking:"var(--sc-warning)", none:"var(--sc-text-2)" };
+  const rows = tracker1099Rows({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: taxYear, aliasIndex })
+    .map(r => ({ ...r, status: { ...r.status, color: STATUS_COLOR[r.status.key] } }));
   const needs = rows.filter(r => r.status.key==="needs");
 
   // ── Save vendor classification to the contact (create if missing) ──
@@ -103,17 +80,18 @@ export default function Tax1099View() {
   // ── Export 1099 data CSV (for Track1099 / Tax1099) ──
   const exportCSV = (only) => {
     const list = (only ? [only] : needs);
-    const head = ["Recipient Name","Business Type","SSN_or_EIN","Mailing Address",`Total Paid ${taxYear}`,"Payer (You) EIN"];
-    const lines = [head];
-    list.forEach(r => lines.push([
-      (r.name||"").replace(/,/g," "),
+    // The amount is what is REPORTABLE (services, rent, legal, medical) — not everything paid:
+    // goods bought from the same vendor do not go on a 1099. Cells are quoted by `toCSV`.
+    const head = ["Recipient Name","Business Type","SSN_or_EIN","Mailing Address",`Reportable Amount ${taxYear}`,"Payer (You) EIN"];
+    const body = list.map(r => [
+      r.name||"",
       r.contact?.business_type||"",
       r.contact?.ein_ssn||"",
-      (r.contact?.mailing_address||"").replace(/,/g," ").replace(/\n/g," "),
-      r.paid.toFixed(2),
+      (r.contact?.mailing_address||"").replace(/\s*\n\s*/g,", "),
+      r.reportable.toFixed(2),
       yourEIN,
-    ]));
-    const blob = new Blob([lines.map(l=>l.join(",")).join("\n")], { type:"text/csv" });
+    ]);
+    const blob = new Blob([toCSV(head, body)], { type:"text/csv" });
     const u = URL.createObjectURL(blob); const a=document.createElement("a"); a.href=u; a.download=`1099_data_${taxYear}.csv`; a.click(); URL.revokeObjectURL(u);
     showNotification && showNotification("1099 file downloaded ✓ Next: send it to your accountant, or upload it to your filing service (e.g. Track1099 or the IRS's IRIS) before January 31.");
   };
@@ -173,11 +151,13 @@ export default function Tax1099View() {
                     <div style={{ minWidth:0 }}>
                       <div style={{ fontSize:14, fontWeight:500, color:"var(--sc-text)" }}>{r.name}</div>
                       <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{fmt(r.paid)} paid{c?.business_type?` · ${TYPE_OPTIONS.find(t=>t.v===c.business_type)?.label||c.business_type}`:""}</div>
+                      {st.key==="unknown" && r.why && <div data-1099-why style={{ fontSize:11, color:"var(--sc-warning)", marginTop:2, maxWidth:520 }}>{r.why}</div>}
                     </div>
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
                     {pill(st.color, st.label)}
-                    {st.key==="unknown" && <button onClick={()=>setEditing({ name:r.name, contact:c, business_type:"", ein_ssn:c?.ein_ssn||"", mailing_address:c?.mailing_address||"" })} style={{ padding:"7px 13px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", cursor:"pointer" }}>Tell us about this vendor</button>}
+                    {st.key==="unknown" && r.ask==="category" && <button data-1099-ask="category" onClick={()=>{ setVendorFilter && setVendorFilter(r.ledgerName); setBooksFilter && setBooksFilter("all"); setView("books"); }} style={{ padding:"7px 13px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", cursor:"pointer" }}>Choose a category for their transactions →</button>}
+                    {st.key==="unknown" && r.ask!=="category" && <button onClick={()=>setEditing({ name:r.name, contact:c, business_type:"", ein_ssn:c?.ein_ssn||"", mailing_address:c?.mailing_address||"" })} style={{ padding:"7px 13px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", cursor:"pointer" }}>Tell us about this vendor</button>}
                     {st.key==="needs" && <>
                       <button onClick={()=>setEditing({ name:r.name, contact:c, business_type:c?.business_type||"", ein_ssn:c?.ein_ssn||"", mailing_address:c?.mailing_address||"" })} style={{ padding:"7px 13px", borderRadius:8, fontSize:12, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>Add missing info</button>
                       <button onClick={()=>exportCSV(r)} style={{ padding:"7px 13px", borderRadius:8, fontSize:12, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>Export info</button>

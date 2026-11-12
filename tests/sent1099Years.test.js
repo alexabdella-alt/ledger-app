@@ -36,7 +36,9 @@ describe("C573 — a 1099 marked sent is sent for THAT year, not every year", ()
       expect(src, f).not.toMatch(/c\.sent_1099_2025\s*\?/);
     }
     const v = readFileSync("src/components/views/Tax1099View.jsx", "utf8");
-    expect(v).toMatch(/sent1099For\(c, taxYear\)/);
+    // C589 — the screen's rows now come from `tracker1099Rows`, which reads the year through
+    // `verdictFor` (pinned in tests/tracker1099.test.js); the screen keeps the read-back check.
+    expect(v).toMatch(/tracker1099Rows\(\{[^}]*year: taxYear/);
     expect(v).toMatch(/if \(!sent1099For\(r\.row \|\| \{\}, taxYear\)\)/);   // reads the SAVED row
     const vendors = readFileSync("src/components/views/VendorsView.jsx", "utf8");
     expect(vendors).toMatch(/verdictFor\(vendor, reportablePayments\(rows, roleOfCode\), \{ year: year1099 \}\)/);

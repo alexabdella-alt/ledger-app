@@ -1,4 +1,6 @@
 import { vendorGroupKey } from "./vendorIdentity.js";
+import { applyAlias, buildAliasIndex } from "./vendorAlias.js";
+import { isSettlementEntry } from "./gl.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // FULL 1099 ELIGIBILITY — worked out from what the supplier is and what they were paid,
 // not from a flag someone ticked.
@@ -70,9 +72,21 @@ const NOT_CORP = /\b(sole ?proprietor|individual|partnership|llc|lp|llp|contract
 
 // ★ READS THE STATED business_type FIRST, and only then the NAME — and a name is weak
 // evidence, so it can produce REPORTABLE or EXEMPT but never overrides a stated type.
+// ★ C589 — THE TYPES THE APP ITSELF SAVES. The 1099 screen stores `smllc`, `sole_prop`,
+// `corp`, `scorp`, `nonprofit`; the patterns below are written for words a person types
+// ("LLC", "Corporation"), and matched NONE of those five — so a vendor an accountant had
+// just classified as a single-member LLC read "we don't know whether they're incorporated".
+// The stored codes are answered first, exactly.
+const STATED_TYPE = {
+  individual: "reportable", sole_prop: "reportable", smllc: "reportable", partnership: "reportable", llc_multi: "reportable",
+  corp: "exempt", c_corp: "exempt", scorp: "exempt", s_corp: "exempt", nonprofit: "exempt",
+};
+
 export function entityStatus(contact = {}) {
   const stated = String(contact.business_type || "").trim();
   if (stated) {
+    const known = STATED_TYPE[stated.toLowerCase()];
+    if (known) return known === "exempt" ? ENTITY.EXEMPT : ENTITY.REPORTABLE;
     if (CORP.test(stated)) return ENTITY.EXEMPT;
     if (NOT_CORP.test(stated)) return ENTITY.REPORTABLE;
   }
@@ -93,6 +107,9 @@ export const VERDICT = {
   MARKED_EXEMPT: "marked_exempt",
 };
 
+const NOT_A_PURCHASE_DIGIT = new Set(["2", "3", "4"]);
+const MONEY_ROLES = new Set(["cash", "savings", "accounts_receivable", "undeposited_funds"]);
+
 // Payments to one vendor in one tax year, split by kind. `invoices` are flattened ledger
 // rows; `roleOfCode` maps a gl_code to its system_role.
 export function reportablePayments(rows = [], roleOfCode = () => null) {
@@ -100,6 +117,18 @@ export function reportablePayments(rows = [], roleOfCode = () => null) {
   let total = 0;
   for (const r of rows || []) {
     if (!r || r.status === "voided" || r.status === "deleted" || r.deleted_at) continue;
+    // ★ C589 — ONLY WHAT WAS BOUGHT COUNTS, NEVER HOW IT WAS PAID FOR. Every row carrying the
+    // vendor's name used to go in, so the PAYMENT of a bill (Dr Accounts Payable / Cr Cash)
+    // was counted as a second purchase "in an account we can't classify": a $1,000 legal bill
+    // paid three weeks later read "$2,000 — can't decide", and every vendor paid on terms
+    // landed in "needs info". A 1099 reports what the money was FOR. So: a settlement is
+    // skipped; so is a row whose account is a liability, equity or income (2/3/4 — the bill's
+    // payment, a loan, a sale to the same party), and money merely moving through cash or
+    // what a customer owes. An expense counts, and so does something bought and put on the
+    // balance sheet (equipment a contractor installed, a prepaid service) — that still asks.
+    const code = String(r.gl_code ?? "");
+    if (isSettlementEntry(r) || NOT_A_PURCHASE_DIGIT.has(code[0])) continue;
+    if (code[0] === "1" && MONEY_ROLES.has(roleOfCode(r.gl_code))) continue;
     const amt = Number(r.amount) || 0;
     if (amt <= 0) continue;
     // A credit to an expense account is a correction: it REDUCES what they were paid.
@@ -122,6 +151,13 @@ export function sent1099For(contact = {}, year = null) {
   return y === 2025 && !!contact.sent_1099_2025;
 }
 
+// What goes in the box on the form: services, rent, legal and medical. Never goods, and never
+// money we could not classify (that is a question first).
+export function reportableAmountOf(payments = {}) {
+  const k = payments.byKind || {};
+  return (k[PAYMENT_KIND.SERVICES] || 0) + (k[PAYMENT_KIND.RENT] || 0) + (k[PAYMENT_KIND.LEGAL] || 0) + (k[PAYMENT_KIND.MEDICAL] || 0);
+}
+
 // One vendor's verdict, with the reason a CPA would need to sign it.
 export function verdictFor(contact = {}, payments = { byKind: {}, total: 0 }, { threshold = IRS_1099_THRESHOLD, year = null } = {}) {
   const name = contact.name || "this vendor";
@@ -129,8 +165,7 @@ export function verdictFor(contact = {}, payments = { byKind: {}, total: 0 }, { 
   if (contact.is_1099_exempt) return { verdict: VERDICT.MARKED_EXEMPT, why: `${name} has been marked exempt.`, amount: payments.total };
 
   const k = payments.byKind || {};
-  const reportableAmount = (k[PAYMENT_KIND.SERVICES] || 0) + (k[PAYMENT_KIND.RENT] || 0)
-    + (k[PAYMENT_KIND.LEGAL] || 0) + (k[PAYMENT_KIND.MEDICAL] || 0);
+  const reportableAmount = reportableAmountOf(payments);
   const goods = k[PAYMENT_KIND.GOODS] || 0;
   const unknown = k[PAYMENT_KIND.UNKNOWN] || 0;
 
@@ -201,13 +236,19 @@ export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode =
 // `TaxView` (the vendor-key map, the role lookup); Home and the bell need the same answer to
 // decide whether a 1099 filing deadline is waiting at all, and a second assembly would be
 // the C316 mismatch waiting to recur. One builder, three readers.
-export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, threshold = IRS_1099_THRESHOLD } = {}) {
-  const key = keyOf || ((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase());
+// C589 — `aliasIndex` (the names a person has said are the same vendor) is applied to both the
+// rows and the contacts, the way the Vendors page groups: without it a contractor invoiced
+// under two names was two vendors here and one everywhere else.
+export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = IRS_1099_THRESHOLD } = {}) {
+  const base = keyOf || ((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase());
+  const idx = aliasIndex || buildAliasIndex(contacts);   // built from the contacts, so every caller gets it
+  const alias = (k) => applyAlias(k, idx);
+  const key = (s) => alias(base(s));
   const roleOfCode = (code) => (chart || []).find((a) => String(a.code) === String(code))?.system_role || null;
   const yearRows = (invoices || []).filter((i) => String(i?.date || "").startsWith(String(year)));
   const byName = new Map();
   for (const r of yearRows) {
-    const k = r.vendor_key || key(r.vendor);
+    const k = r.vendor_key ? alias(r.vendor_key) : key(r.vendor);
     if (!k) continue;
     (byName.get(k) || byName.set(k, []).get(k)).push(r);
   }
@@ -228,4 +269,59 @@ export function plan1099Copy(plan = {}, { year = null } = {}) {
   if (e) parts.push(`${e} vendor${e === 1 ? "" : "s"} look${e === 1 ? "s" : ""} like ${e === 1 ? "it needs" : "they need"} a 1099`);
   if (n) parts.push(`${n} we can't decide without knowing more`);
   return parts.join(" · ");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C589 — THE 1099 SCREEN'S ROWS, FROM THE SAME DERIVATION AS EVERYTHING ELSE.
+// The screen that produces the filing file had its own arithmetic: an UNSIGNED sum (a voided
+// and re-entered bill counted three times), keyed on the vendor's SPELLING (two spellings of
+// one contractor each stayed under $600 and neither was flagged), a fuzzy "name contains
+// name" contact match, and no idea of goods versus services — so it could say "Needs a 1099"
+// for a food supplier while the Taxes card, reading `verdictFor`, said nobody did.
+// One row per vendor paid in the year (grouped the way the Vendors page groups, aliases
+// included), judged by `verdictFor`. A vendor with no contact yet is judged on its name alone.
+// ─────────────────────────────────────────────────────────────────────────────
+export const TRACKER_STATUS = {
+  needs:    { key: "needs",    label: "Needs 1099" },
+  sent:     { key: "sent",     label: "Sent ✓" },
+  unknown:  { key: "unknown",  label: "Needs your answer" },
+  tracking: { key: "tracking", label: "Tracking" },
+  none:     { key: "none",     label: "Not required" },
+};
+const STATUS_FOR_VERDICT = {
+  [VERDICT.ELIGIBLE]: "needs", [VERDICT.ALREADY_SENT]: "sent", [VERDICT.NEEDS_INFO]: "unknown",
+  [VERDICT.BELOW_THRESHOLD]: "tracking", [VERDICT.GOODS_ONLY]: "none", [VERDICT.CORP_EXEMPT]: "none", [VERDICT.MARKED_EXEMPT]: "none",
+};
+
+export function tracker1099Rows({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = IRS_1099_THRESHOLD } = {}) {
+  const base = keyOf || ((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase());
+  const idx = aliasIndex || buildAliasIndex(contacts);   // built from the contacts, so every caller gets it
+  const alias = (k) => applyAlias(k, idx);
+  const key = (s) => alias(base(s));
+  const roleOfCode = (code) => (chart || []).find((a) => String(a.code) === String(code))?.system_role || null;
+  const groups = new Map();
+  for (const r of invoices || []) {
+    if (!r || !String(r.date || "").startsWith(String(year))) continue;
+    const k = r.vendor_key ? alias(r.vendor_key) : key(r.vendor);
+    if (!k) continue;
+    (groups.get(k) || groups.set(k, []).get(k)).push(r);
+  }
+  const contactByKey = new Map();
+  for (const c of contacts || []) { if (c && c.name) { const k = key(c.name); if (k && !contactByKey.has(k)) contactByKey.set(k, c); } }
+  const out = [];
+  for (const [k, rows] of groups) {
+    const payments = reportablePayments(rows, roleOfCode);
+    if (!(payments.total >= 1)) continue;                       // nothing bought from them this year
+    const contact = contactByKey.get(k) || null;
+    const latest = rows.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+    const name = contact?.name || latest?.vendor || "Unknown";
+    const v = verdictFor(contact || { name }, payments, { threshold, year });
+    // WHICH question an "unknown" row is asking, so the screen can offer the step that answers
+    // it: what kind of business they are, or what the money was for (a category on their
+    // transactions). Offering the business-type form for the second would be a dead end.
+    const ask = v.verdict !== VERDICT.NEEDS_INFO ? null : (payments.byKind[PAYMENT_KIND.UNKNOWN] || 0) > 0 ? "category" : "type";
+    out.push({ key: k, name, ledgerName: latest?.vendor || name, ask, contact, paid: Math.round(payments.total * 100) / 100, reportable: Math.round(reportableAmountOf(payments) * 100) / 100,
+      verdict: v.verdict, why: v.why, status: TRACKER_STATUS[STATUS_FOR_VERDICT[v.verdict] || "none"] });
+  }
+  return out.sort((a, b) => b.paid - a.paid);
 }

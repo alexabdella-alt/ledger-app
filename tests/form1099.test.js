@@ -233,7 +233,8 @@ describe("★★ the derivation reaches the screen", () => {
     expect(tax).toMatch(/const keyOf = React\.useCallback\(\(s\) => vendorGroupKey\(s\)/);
     // C435 — the map moved into the lib builder; the SAME key on both sides is pinned there
     const lib = fs.readFileSync(new URL("../src/lib/form1099.js", import.meta.url), "utf8");
-    expect(lib).toMatch(/r\.vendor_key \|\| key\(r\.vendor\)/);
+    // C589 — the saved-alias step runs on both sides too (`key` = alias ∘ base)
+    expect(lib).toMatch(/r\.vendor_key \? alias\(r\.vendor_key\) : key\(r\.vendor\)/);
     expect(lib).toMatch(/byName\.get\(key\(c\.name\)\)/);
     expect(tax).not.toMatch(/String\(c\.name \|\| ""\)\.toLowerCase\(\)/);
   });
