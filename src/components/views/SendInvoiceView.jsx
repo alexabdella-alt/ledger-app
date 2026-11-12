@@ -191,9 +191,18 @@ export default function SendInvoiceView() {
               const inv = {...draft, id: draft.id||Date.now()+Math.random(), status:"sent", sent_at:new Date().toISOString(), tax_rate: draft.tax_rate || "", tax_amount: taxAmount,
                 due_date: draft.due_date || deriveDueDate(draft.issue_date, draft.terms) || ""};   // C451 — the stored row and the A/R entry carry the due date the terms imply, so "overdue" can be told
               if (!inv.created_at) inv.created_at = new Date().toISOString();
-              // Book the A/R entry exactly once per invoice; keep it in sync on re-send.
+              // Book the A/R entry exactly once per invoice.
               if (inv.ledger_id) {
-                setInvoices(prev => prev.map(e => String(e.id)===String(inv.ledger_id) ? {...e, amount:total, date:inv.issue_date||today, vendor:inv.customer, due_date:inv.due_date||undefined} : e));
+                // ★ C626 — A SENT INVOICE'S AMOUNT IS WHAT THE BOOKS SAY IT IS. Re-sending repainted
+                // the screen's copy of the entry with the new amount and changed nothing in the
+                // database: the customer was emailed one figure, the books held another, and a
+                // reload put the old one back. Re-sending the SAME invoice (to email it again) is
+                // fine; a changed amount is refused, with the way to do it.
+                const before = (sentInvoices || []).find(x => String(x.id) === String(inv.id));
+                if (before && Math.abs(invoiceTotalOf(before) - total) >= 0.005) {
+                  showNotification(`Invoice ${inv.invoice_number} was already sent for ${fmt(invoiceTotalOf(before))}, and that's what your books hold. To change the amount, remove that invoice (Money owed to you → the invoice → Remove) and send a new one.`, "error");
+                  return;
+                }
               } else {
                 const jeId = await bookAR(inv);
                 if (!jeId) return;   // pre-cutoff issue date → blocked + toasted; don't send/persist

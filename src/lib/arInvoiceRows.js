@@ -57,6 +57,17 @@ export function arInvoiceRows(inv, { companyId, customerId = null, userId = null
 // The in-session shape from a stored row. `ledger_id` IS `journal_entry_id` — the reload
 // mapping used to drop it, which is why "mark paid" after a reload booked a second revenue
 // entry instead of clearing the A/R it had already booked.
+// ★ C626 — THE TAX RATE COMES BACK TOO. Only the tax AMOUNT was stored, and the editor recomputes
+// tax from the RATE — so after a reload a taxed invoice opened with no rate, its tax read $0, and
+// sending it again wrote the invoice without its tax. The rate is the stored tax over the stored
+// lines, to four places (8.625% stays 8.625%).
+function rateFromStored(ar) {
+  const sub = (ar.ar_invoice_lines || []).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  const tax = Number(ar.tax_amount) || 0;
+  if (!(sub > 0) || !(tax > 0)) return "";
+  return String(Math.round((tax / sub) * 100 * 10000) / 10000);
+}
+
 export function sentInvoiceFromRow(ar) {
   return {
     id: ar.id,
@@ -71,6 +82,7 @@ export function sentInvoiceFromRow(ar) {
     paid_at: ar.paid_at || null,
     ledger_id: ar.journal_entry_id || null,
     tax_amount: Number(ar.tax_amount) || 0,
+    tax_rate: rateFromStored(ar),
     line_items: (ar.ar_invoice_lines || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((l) => ({
       id: l.id, description: l.description, qty: Number(l.quantity), rate: Number(l.unit_rate), amount: Number(l.amount),
     })),

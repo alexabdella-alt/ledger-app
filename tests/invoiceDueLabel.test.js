@@ -27,7 +27,8 @@ describe("C451", () => {
   it("the sent invoice's due_date is typed-or-derived, and the re-send sync uses the total", () => {
     const src = fs.readFileSync("src/components/views/SendInvoiceView.jsx", "utf8");
     expect(src).toMatch(/due_date: draft\.due_date \|\| deriveDueDate\(draft\.issue_date, draft\.terms\) \|\| ""\}/);
-    expect(src).toMatch(/\{\.\.\.e, amount:total, date:inv\.issue_date\|\|today/);
-    expect(src).not.toMatch(/\{\.\.\.e, amount:subtotal,/);
+    // C626 — the re-send no longer repaints the entry at all (it changed nothing in the database);
+    // a changed amount on a sent invoice is refused. Pinned in tests/sentInvoiceAmount.test.js.
+    expect(src).not.toMatch(/\{\.\.\.e, amount:(total|subtotal),/);
   });
 });
