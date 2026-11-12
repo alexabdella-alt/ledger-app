@@ -66,7 +66,8 @@ describe("C572 — the chat's guide to the app describes the app that exists", (
       // Owners' questions and the filter values are quoted too; only button/box names are checked.
       .filter((q) => !/\?$/.test(q) && !/^(all|revenue|expenses|review|contracts|filter|always file.*|Match my bank statement|reconcile|Something is in the wrong category)$/i.test(q));
     const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : /\.(jsx?|tsx?)$/.test(e.name) ? [path.join(d, e.name)] : []);
-    const ui = walk("src/components").map((f) => readFileSync(f, "utf8")).join("\n");
+    // C583 — the first-run screens' words live in lib/firstRun.js and are rendered from there.
+    const ui = [...walk("src/components"), "src/lib/firstRun.js"].map((f) => readFileSync(f, "utf8")).join("\n");
     expect(quoted.length).toBeGreaterThan(6);
     for (const q of quoted) expect(ui, `"${q}" is named in the chat's guide but no screen shows it`).toContain(q);
   });

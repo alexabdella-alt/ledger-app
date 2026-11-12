@@ -2,6 +2,7 @@
 // since C330; Settings still said "Chart of Accounts", "Rules", "Recurring". The rows and the
 // screens they open now agree, and every Settings row label passes the jargon bar.
 import { describe, it, expect } from "vitest";
+import { CHECKLIST_COPY } from "../src/lib/firstRun.js";
 import fs from "node:fs";
 import path from "node:path";
 import { NAV_SECTION_SETTINGS } from "../src/lib/nav.js";
@@ -43,7 +44,9 @@ describe("C482 · the row name and the door agree", () => {
     const home = read("src/components/views/DashboardView.jsx");
     const step = home.slice(home.indexOf('bank:    { key:"bank"'), home.indexOf("}", home.indexOf('bank:    { key:"bank"')) + 1);
     expect(step).toMatch(/goToSection\("settings","bank-accounts-section"\)/);
-    expect(step).toMatch(/hint:"Settings → Company → Bank accounts"/);
+    // C583 — the hint moved to lib/firstRun.js and gained a reason; it must still name the page.
+    expect(step).toMatch(/\.\.\.CHECKLIST_COPY\.bank/);
+    expect(CHECKLIST_COPY.bank.hint).toMatch(/Settings → Company/);
     expect(read("src/components/views/SettingsView.jsx")).toContain('id="bank-accounts-section"');
   });
 });

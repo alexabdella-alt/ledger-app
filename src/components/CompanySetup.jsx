@@ -1,8 +1,10 @@
 import React from "react";
 import { plainWriteError } from "../lib/plainWriteError";
 import { supabase } from "../lib/supabase";
+import { companySetupCopy, COMPANY_NAME_PLACEHOLDER } from "../lib/firstRun";
 
-function CompanySetup({ session, onComplete }) {
+function CompanySetup({ session, onComplete, first = true, onCancel = null, onSignOut = null }) {
+  const copy = companySetupCopy({ first });
   const [name, setName] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
@@ -63,8 +65,9 @@ function CompanySetup({ session, onComplete }) {
   };
 
   const s = {
-    wrap: { minHeight:"100vh", background:"var(--sc-bg)", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',system-ui,sans-serif" },
-    card: { background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:20, padding:40, width:440, boxShadow:"0 24px 80px rgba(0,0,0,0.7)" },
+    wrap: { minHeight:"100vh", background:"var(--sc-bg)", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',system-ui,sans-serif", padding:16, boxSizing:"border-box" },
+    // C583 — a fixed 440px card ran off the side of a phone.
+    card: { background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:20, padding:"clamp(24px, 6vw, 40px)", width:"100%", maxWidth:440, boxSizing:"border-box", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" },
     h1: { fontSize:24, fontWeight:700, color:"var(--sc-text)", margin:"0 0 8px", letterSpacing:-0.5 },
     sub: { fontSize:13, color:"var(--sc-text-2)", marginBottom:28 },
     label: { fontSize:11, color:"var(--sc-text-2)", marginBottom:4, letterSpacing:0.5 },
@@ -76,15 +79,27 @@ function CompanySetup({ session, onComplete }) {
   return (
     <div style={s.wrap}>
       <div style={s.card}>
-        <div style={s.h1}>Create your company</div>
-        <div style={s.sub}>You can add more companies later and switch between them.</div>
+        <div style={s.h1}>{copy.title}</div>
+        <div style={s.sub}>{copy.sub}</div>
         {error && <div style={s.error}>{error}</div>}
-        <div style={s.label}>COMPANY NAME</div>
+        <div style={s.label}>BUSINESS NAME</div>
         <input style={s.input} value={name} onChange={e=>setName(e.target.value)}
-          placeholder="Acme Corp" autoFocus onKeyDown={e=>e.key==="Enter"&&create()}/>
+          placeholder={COMPANY_NAME_PLACEHOLDER} autoFocus autoComplete="organization" onKeyDown={e=>e.key==="Enter"&&create()}/>
         <button style={s.btn} onClick={create} disabled={loading||!name.trim()}>
-          {loading ? "Setting up..." : "Create Company →"}
+          {loading ? copy.busy : copy.button}
         </button>
+        {/* C583 — two ways off this screen that did not exist: back to the business you were in
+            (it opened from "New company" with no way out but creating one), and out of an
+            account you did not mean to sign in to. */}
+        {onCancel && !loading && (
+          <button data-setup-cancel onClick={onCancel} style={{ width:"100%", marginTop:10, padding:"11px", borderRadius:10, fontSize:13, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>← Back to your books</button>
+        )}
+        {onSignOut && !loading && (
+          <div data-setup-signout style={{ marginTop:18, fontSize:12, color:"var(--sc-text-mut)", textAlign:"center" }}>
+            Signed in as {session?.user?.email || "your account"}. Not you?{" "}
+            <span onClick={onSignOut} style={{ color:"var(--sc-gold)", cursor:"pointer", fontWeight:500 }}>Sign out</span>
+          </div>
+        )}
       </div>
     </div>
   );

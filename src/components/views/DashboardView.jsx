@@ -1,4 +1,5 @@
 import React from "react";
+import { CHECKLIST_COPY, BUSINESS_MODAL_INTRO, BUSINESS_SAVE_HINT, DROPZONE_COPY } from "../../lib/firstRun";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { homeWaitingList, waitingHeadline, WAIT } from "../../lib/homeWaiting";
@@ -88,6 +89,8 @@ export default function DashboardView() {
   const hasAccountant = hasAttester !== false;   // C574 — unknown counts as "has one", so we never claim they have none on a failed read   // C563 — a viewer cannot write rules, so is not offered teach-in · C564 — only the owner can invite   // C559 — null = untouched, "" = "I'm not sure"
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
+  // C583 — the visible upload box (the file input inside it is display:none and cannot be scrolled to).
+  const scrollToUploadZone = () => document.getElementById("universal-upload-zone")?.scrollIntoView({ behavior:"smooth", block:"center" });
   const goToSection = (view, anchorId) => {
     setView(view);
     setTimeout(() => document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
@@ -369,9 +372,9 @@ export default function DashboardView() {
                 // O132 (C352) — the statement comes BEFORE the opening balance, because the
                 // statement is what answers it. Order and copy live in lib/onboarding.js.
                 const stepByKey = {
-                  biz:     { key:"biz",     done: obHasBiz,     label:"Tell us about your business", hint:"Business type & fiscal year", go:()=>setBusinessModalOpen(true) },
-                  bank:    { key:"bank",    done: obHasBank,    label:"Add your bank account",       hint:"Settings → Company → Bank accounts",   go:()=>goToSection("settings","bank-accounts-section") },
-                  upload:  { key:"upload",  done: obHasUpload,  ...ONBOARDING_STEP_COPY.upload,  go:()=>document.getElementById("universal-upload")?.scrollIntoView({behavior:"smooth"}) },
+                  biz:     { key:"biz",     done: obHasBiz,     ...CHECKLIST_COPY.biz,  go:()=>setBusinessModalOpen(true) },
+                  bank:    { key:"bank",    done: obHasBank,    ...CHECKLIST_COPY.bank, go:()=>goToSection("settings","bank-accounts-section") },
+                  upload:  { key:"upload",  done: obHasUpload,  ...ONBOARDING_STEP_COPY.upload,  go:()=>scrollToUploadZone() },   // C583 — this scrolled to the HIDDEN file input, so the click did nothing
                   opening: { key:"opening", done: obHasOpening, ...ONBOARDING_STEP_COPY.opening, go:()=>goToSection("opening-balances","opening-balances-section") },
                 };
                 const steps = ONBOARDING_STEP_ORDER.map(k => stepByKey[k]);
@@ -431,12 +434,13 @@ export default function DashboardView() {
                   <div onClick={e=>e.stopPropagation()} style={{ background:"var(--sc-surface)", borderRadius:16, width:420, maxWidth:"100%", boxShadow:"0 20px 60px rgba(16,24,40,0.25)", overflow:"hidden" }}>
                     <div style={{ padding:"18px 22px", borderBottom:"1px solid var(--sc-surface-2)", fontSize:16, fontWeight:700, color:"var(--sc-text)" }}>Tell us about your business</div>
                     <div style={{ padding:"20px 22px" }}>
-                      <label style={{ fontSize:12, fontWeight:600, color:"var(--sc-text-2)", display:"block", marginBottom:6 }}>Business type</label>
+                      <div data-biz-intro style={{ fontSize:13, color:"var(--sc-text-2)", lineHeight:1.5, marginBottom:16 }}>{BUSINESS_MODAL_INTRO}</div>
+                      <label style={{ fontSize:12, fontWeight:600, color:"var(--sc-text-2)", display:"block", marginBottom:6 }}>What kind of business is it?</label>
                       <select value={bizType||companySettings.businessType||""} onChange={e=>setBizType(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--sc-border-2)", fontSize:14, color:"var(--sc-text)", background:"var(--sc-surface)", marginBottom:16 }}>
                         <option value="">Select…</option>
                         {BUSINESS_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
                       </select>
-                      <label style={{ fontSize:12, fontWeight:600, color:"var(--sc-text-2)", display:"block", marginBottom:6 }}>Fiscal year end</label>
+                      <label style={{ fontSize:12, fontWeight:600, color:"var(--sc-text-2)", display:"block", marginBottom:6 }}>When does your business year end?</label>
                       <select value={bizFye||companySettings.fiscalYearEnd||"12-31"} onChange={e=>setBizFye(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--sc-border-2)", fontSize:14, color:"var(--sc-text)", background:"var(--sc-surface)" }}>
                         <option value="12-31">December 31</option>
                         <option value="03-31">March 31</option>
@@ -452,11 +456,13 @@ export default function DashboardView() {
                         {LEGAL_FORMS.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}
                       </select>
                     </div>
-                    <div style={{ padding:"0 22px 20px", display:"flex", gap:10, justifyContent:"flex-end" }}>
+                    <div style={{ padding:"0 22px 20px", display:"flex", gap:10, justifyContent:"flex-end", alignItems:"center" }}>
+                      {/* C583 — the disabled Save was painted exactly like the enabled one, with nothing to say why it did nothing. */}
+                      {!(bizType||companySettings.businessType) && <span data-biz-save-hint style={{ fontSize:12, color:"var(--sc-text-mut)", marginRight:"auto" }}>{BUSINESS_SAVE_HINT}</span>}
                       <button onClick={()=>setBusinessModalOpen(false)} style={{ padding:"9px 16px", borderRadius:9, fontSize:13, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>Cancel</button>
                       <button onClick={()=>saveBusinessProfile({ businessType: bizType||companySettings.businessType||"Other", fiscalYearEnd: bizFye||companySettings.fiscalYearEnd||"12-31", ...(bizForm !== null ? { legalForm: bizForm } : {}) })}
                         disabled={!(bizType||companySettings.businessType)}
-                        style={{ padding:"9px 18px", borderRadius:9, fontSize:13, fontWeight:600, color:"var(--sc-on-accent)", background:(bizType||companySettings.businessType)?"var(--sc-gold)":"var(--sc-gold)", border:"none", cursor:(bizType||companySettings.businessType)?"pointer":"default" }}>Save</button>
+                        style={{ padding:"9px 18px", borderRadius:9, fontSize:13, fontWeight:600, color:"var(--sc-on-accent)", background:(bizType||companySettings.businessType)?"var(--sc-gold)":"var(--sc-border-2)", border:"none", cursor:(bizType||companySettings.businessType)?"pointer":"not-allowed" }}>Save</button>
                     </div>
                   </div>
                 </div>
@@ -487,11 +493,13 @@ export default function DashboardView() {
                 <input id="universal-upload" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>handleUniversalUpload(e.target.files)} />
                 <div className="sc-dropzone-icon" style={{ width:64, height:64, margin:"0 auto 18px", borderRadius:18, background:universalDragOver?"var(--sc-gold)":"var(--sc-gold-soft)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:universalDragOver?"var(--sc-surface)":"var(--sc-gold)", opacity: universalDragOver?1:0.92 }}>⬆</div>
                 <div style={{ fontSize:22, fontWeight:700, color:"var(--sc-text)", marginBottom:8, letterSpacing:-0.4 }}>
-                  {universalDragOver ? "Release to upload" : "Drop anything here"}
+                  {universalDragOver ? DROPZONE_COPY.dragging : DROPZONE_COPY.title}
                 </div>
-                <div style={{ fontSize:14, color:"var(--sc-text-mut)", marginBottom:18, lineHeight:1.5 }}>
-                  Invoices, receipts, bank statements, contracts — we read it and file it in your books
+                <div style={{ fontSize:14, color:"var(--sc-text-mut)", marginBottom:6, lineHeight:1.5 }}>
+                  {DROPZONE_COPY.sub}
                 </div>
+                {/* C583 — "drop" is not something a phone can do; the box is also a button, and said nothing of it. */}
+                <div data-dropzone-choose style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:500, marginBottom:18 }}>{DROPZONE_COPY.choose}</div>
                 <div style={{ display:"inline-flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
                   {["PDF","JPG","PNG","CSV","XLSX"].map(f=>(
                     <span key={f} style={{ fontSize:10, fontWeight:600, color:"var(--sc-text-mut)", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border)", borderRadius:6, padding:"3px 9px", letterSpacing:0.5 }}>{f}</span>
@@ -512,7 +520,7 @@ export default function DashboardView() {
                 <div style={{ marginBottom:24 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, gap:12, flexWrap:"wrap" }}>
                     <div style={{ fontSize: settled ? 13 : 11, color: settled ? "var(--sc-text)" : "var(--sc-text-2)", letterSpacing: settled ? 0 : 2, fontWeight: settled ? 600 : 400 }}>
-                      {settled ? `${census.error ? "" : "✓ "}${queueSummaryCopy(census)}` : "PROCESSING QUEUE"}
+                      {settled ? `${census.error ? "" : "✓ "}${queueSummaryCopy(census)}` : DROPZONE_COPY.reading}
                     </div>
                     {settled && (
                       <button onClick={()=>setQueueDetailsOpen(v => !v)} style={{ background:"none", border:"none", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer", padding:0 }}>{queueDetailsOpen ? "Hide details" : "Show details"}</button>
@@ -539,7 +547,7 @@ export default function DashboardView() {
                         invoice:       { icon:"🧾", label:"Invoice",         color:"var(--sc-gold)" },
                         bank_statement:{ icon:"🏦", label:"Bank Statement",  color:"var(--sc-gold)" },
                         contract:      { icon:"📋", label:"Contract",        color:"var(--sc-warning)" },
-                        unknown:       { icon:"❓", label:"Unknown",         color:"var(--sc-error)" },
+                        unknown:       { icon:"❓", label:"Not sure what this is", color:"var(--sc-error)" },
                       };
                       const tc = typeConfig[item.type] || { icon:"📄", label:"Document", color:"var(--sc-text-2)" };
                       const pendingReview = item.status==="done" && clarificationQueue.some(c => c.queueItemId === item.id && !c.resolved);

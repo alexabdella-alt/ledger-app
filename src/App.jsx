@@ -324,7 +324,7 @@ function AppWrapper() {
   if (session === undefined || appLoading) {
     return (
       <div style={{minHeight:"100vh",background:"var(--sc-bg)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
-        <div style={{color:"var(--sc-text-2)",fontSize:14}}>Loading...</div>
+        <div style={{color:"var(--sc-text-2)",fontSize:14}}>Opening your books…</div>
       </div>
     );
   }
@@ -350,7 +350,12 @@ function AppWrapper() {
   }
 
   if (showCompanySetup) {
-    return <CompanySetup session={session} onComplete={company=>{
+    // C583 — first company: offer a way out of the wrong account. Another company: a way back.
+    const hasCompany = (companies || []).length > 0 && !!currentCompany;
+    return <CompanySetup session={session} first={!hasCompany}
+      onCancel={hasCompany ? () => setShowCompanySetup(false) : null}
+      onSignOut={hasCompany ? null : handleSignOut}
+      onComplete={company=>{
       setCompanies(prev=>[...prev,company]);
       setCurrentCompany(company);
       setShowCompanySetup(false);

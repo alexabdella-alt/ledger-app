@@ -2,6 +2,7 @@ import React from "react";
 import { authErrorCopy } from "../lib/authErrorCopy";
 import { supabase } from "../lib/supabase";
 import LegalView from "./LegalView";
+import { AUTH_TAGLINE, AUTH_FEATURES, AUTH_FOOTER, AUTH_HEADINGS, inviteRoleLabel, authFormProblem, confirmEmailCopy, PASSWORD_MIN } from "../lib/firstRun";
 
 // Shadow eclipse mark — a luminous disc partly occluded by shadow.
 function EclipseMark({ size = 40 }) {
@@ -35,34 +36,40 @@ function AuthScreen({ onAuth, invite }) {
   const [error, setError] = React.useState(null);
   const [message, setMessage] = React.useState(null);
   const [legal, setLegal] = React.useState(null); // "terms" | "privacy" | null
+  const [showPw, setShowPw] = React.useState(false);
 
   // Legal pages reachable before login.
   if (legal) return <LegalView initialTab={legal} onBack={()=>setLegal(null)} />;
 
   const handle = async () => {
-    setLoading(true); setError(null); setMessage(null);
+    setError(null); setMessage(null);
+    // C583 — what is wrong with the form is said before the request, in its own words.
+    const problem = authFormProblem({ mode, email, password });
+    if (problem) { setError(problem); return; }
+    setLoading(true);
     try {
       if (mode === "login") {
         const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
         onAuth(data.session);
       } else if (mode === "reset") {
-        if (!email.trim()) throw new Error("Enter your email address first.");
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
         if (error) throw error;
         // Generic wording avoids confirming whether an account exists.
         setMessage("If an account exists for that email, a password reset link is on its way. Check your inbox (and spam).");
       } else {
-        // Match the reset-screen rule (Supabase default min is 6) so signup fails
-        // fast with a clear message instead of a raw API error.
-        if (password.length < 6) throw new Error("Password must be at least 6 characters.");
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(), password,
           options: { data: { full_name: name } }
         });
         if (error) throw error;
         if (data.session) onAuth(data.session);
-        else setMessage("Check your email to confirm your account, then log in.");
+        else {
+          // C583 — the form stayed on "Create account" with the password still typed, under a
+          // line saying to log in. It now IS the sign-in form, waiting for them to come back.
+          setMode("login"); setPassword("");
+          setMessage(confirmEmailCopy(email));
+        }
       }
     } catch(e) { console.warn("[auth]", e?.message || e); setError(authErrorCopy(e?.message)); }
     setLoading(false);
@@ -71,14 +78,13 @@ function AuthScreen({ onAuth, invite }) {
   const label = { fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1, fontWeight:500 };
   const input = { width:"100%", boxSizing:"border-box", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:11, padding:"12px 14px", color:"var(--sc-text)", fontSize:14, outline:"none", marginBottom:14, transition:"border-color .2s, box-shadow .2s", fontFamily:"'DM Sans', sans-serif" };
 
-  const features = [
-    ["Autonomous bookkeeping", "Drop any document — invoices, contracts, statements. It codes the GL, books the entry, and explains why."],
-    ["A CFO that never sleeps", "Ask for burn rate, runway, or a P&L in plain English and get an answer grounded in your real ledger."],
-    ["Audit-ready by default", "ASC 842 leases, full journal trails, and a tamper-evident audit log baked in from day one."],
-  ];
+  const features = AUTH_FEATURES;
 
   return (
-    <div style={{ minHeight:"100vh", display:"flex", flexWrap:"wrap", fontFamily:"'DM Sans', system-ui, sans-serif", color:"var(--sc-text)", position:"relative", overflow:"hidden" }}>
+    <div data-auth-layout style={{ minHeight:"100vh", display:"flex", flexWrap:"wrap-reverse", fontFamily:"'DM Sans', system-ui, sans-serif", color:"var(--sc-text)", position:"relative", overflow:"hidden" }}>
+      {/* C583 — wrap-REVERSE: side by side on a wide screen exactly as before; on a phone, where
+          the two stack, the sign-in form comes FIRST. It used to sit a full screen below the
+          pitch, so everyone signing in on a phone scrolled past the brochure every time. */}
       {/* ── Left: brand hero ── */}
       <div style={{ flex:"1 1 460px", minWidth:0, padding:"clamp(40px, 6vw, 96px)", display:"flex", flexDirection:"column", justifyContent:"space-between", gap:48, position:"relative" }}>
         <div className="sc-rise" style={{ display:"flex", alignItems:"center", gap:14 }}>
@@ -95,7 +101,7 @@ function AuthScreen({ onAuth, invite }) {
             <span className="sc-wordmark">in the shadows.</span>
           </h1>
           <p className="sc-rise-2" style={{ fontSize:16, lineHeight:1.65, color:"var(--sc-text-2)", margin:"0 0 40px", maxWidth:460 }}>
-            Shadow is the AI controller that does the books, watches the numbers, and tells you what matters — before you have to ask.
+            {AUTH_TAGLINE}
           </p>
           <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
             {features.map(([t, d], i) => (
@@ -111,17 +117,23 @@ function AuthScreen({ onAuth, invite }) {
         </div>
 
         <div className="sc-fade" style={{ fontSize:12, color:"var(--sc-text-mut)", letterSpacing:0.3 }}>
-          Tenant-isolated (RLS) · ASC 842 compliant · Full audit trail
+          {AUTH_FOOTER}
         </div>
       </div>
 
       {/* ── Right: auth card ── */}
       <div style={{ flex:"1 1 380px", display:"flex", alignItems:"center", justifyContent:"center", padding:"48px 32px", background:"var(--sc-surface)", borderLeft:"1px solid var(--sc-border)", boxShadow:"-1px 0 0 var(--sc-border)" }}>
         <div className="sc-scale" style={{ width:"100%", maxWidth:380 }}>
+          {/* Shown only when the two halves stack (under 840px, where 460 + 380 no longer fit side by side). */}
+          <style>{`.sc-auth-mini{display:none}@media (max-width:839px){.sc-auth-mini{display:flex}}`}</style>
+          <div className="sc-auth-mini" style={{ alignItems:"center", gap:10, marginBottom:22 }}>
+            <EclipseMark size={30} />
+            <div className="sc-wordmark" style={{ fontSize:15, fontWeight:700, letterSpacing:2.5, fontFamily:"'Space Grotesk','DM Sans',sans-serif" }}>SHADOW CFO</div>
+          </div>
           {invite && (
             inviteValid ? (
               <div style={{ background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold)", borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:13, color:"var(--sc-gold)", lineHeight:1.5 }}>
-                ✦ You've been invited to join <strong>{invite.companyName || "a team"}</strong> as {invite.role === "admin" ? "an admin" : "a member"} — sign up or log in to accept.
+                ✦ You've been invited to join <strong>{invite.companyName || "a team"}</strong> as {inviteRoleLabel(invite.role)} — create an account or sign in to accept.
               </div>
             ) : (
               <div style={{ background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:13, color:"var(--sc-error)", lineHeight:1.5 }}>
@@ -131,10 +143,10 @@ function AuthScreen({ onAuth, invite }) {
           )}
           <div style={{ marginBottom:28 }}>
             <h2 style={{ fontSize:24, fontWeight:700, margin:"0 0 6px", letterSpacing:-0.5, fontFamily:"'Space Grotesk','DM Sans',sans-serif" }}>
-              {mode === "login" ? "Welcome back" : mode === "signup" ? "Get started" : "Reset your password"}
+              {AUTH_HEADINGS[mode].title}
             </h2>
             <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>
-              {mode === "login" ? "Sign in to your Shadow workspace." : mode === "signup" ? "Create your workspace in seconds." : "Enter your email and we'll send you a secure reset link."}
+              {AUTH_HEADINGS[mode].sub}
             </div>
           </div>
 
@@ -144,11 +156,11 @@ function AuthScreen({ onAuth, invite }) {
           {mode === "signup" && (
             <>
               <div style={label}>FULL NAME</div>
-              <input style={input} value={name} onChange={e=>setName(e.target.value)} placeholder="Jane Smith"/>
+              <input style={input} value={name} onChange={e=>setName(e.target.value)} placeholder="Jane Smith" autoComplete="name" onKeyDown={e=>e.key==="Enter"&&handle()}/>
             </>
           )}
           <div style={label}>EMAIL</div>
-          <input style={input} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          <input style={input} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" autoComplete="email" onKeyDown={e=>e.key==="Enter"&&handle()}/>
           {mode !== "reset" && (
             <>
               <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between" }}>
@@ -157,7 +169,11 @@ function AuthScreen({ onAuth, invite }) {
                   <span style={{ fontSize:12, color:"var(--sc-gold)", cursor:"pointer", fontWeight:500 }} onClick={()=>{ setMode("reset"); setError(null); setMessage(null); }}>Forgot password?</span>
                 )}
               </div>
-              <input style={input} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&handle()}/>
+              <div style={{ position:"relative" }}>
+                <input style={{ ...input, paddingRight:64, marginBottom: mode === "signup" ? 6 : 14 }} type={showPw ? "text" : "password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" autoComplete={mode === "signup" ? "new-password" : "current-password"} onKeyDown={e=>e.key==="Enter"&&handle()}/>
+                <button type="button" onClick={()=>setShowPw(v=>!v)} aria-label={showPw ? "Hide password" : "Show password"} style={{ position:"absolute", right:10, top:10, background:"none", border:"none", color:"var(--sc-text-2)", fontSize:12, fontWeight:600, cursor:"pointer", padding:"4px 6px" }}>{showPw ? "Hide" : "Show"}</button>
+              </div>
+              {mode === "signup" && <div data-pw-hint style={{ fontSize:12, color:"var(--sc-text-mut)", marginBottom:14 }}>At least {PASSWORD_MIN} characters.</div>}
             </>
           )}
 

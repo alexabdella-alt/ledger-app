@@ -110,7 +110,7 @@ describe("C376 — the batch in one sentence", () => {
     expect(settled).toContain("Show details");
     expect(settled).not.toContain("b.pdf");                 // the tile is folded
     const running = strip(renderViewHtml(DashboardView, { ...base, uploadQueue: [{ id: 1, name: "a.pdf", status: "processing", type: "invoice" }] }));
-    expect(running).toContain("PROCESSING QUEUE");
+    expect(running).toContain("READING YOUR FILES…");   // C583 — said in the owner's words
     expect(running).toContain("a.pdf");                     // the tile is on screen while it runs
     expect(running).not.toContain("Show details");
   });
