@@ -44,10 +44,10 @@ describe("the page", () => {
     // The balance report renders no rows from this sample company; its two number badges are pinned in the source below.
     const src = readFileSync("src/components/views/ReportsView.jsx", "utf8");
     expect((src.match(/\{!ownerSeat && <span style=\{\{color:"var\(--sc-text-mut\)",marginRight:8,fontFamily:"monospace",fontSize:11\}\}>\{a\.code\}<\/span>\}/g) || []).length).toBe(2);
-    for (const reportType of ["pl"]) {
+    for (const reportType of ["pl", "gl"]) {   // gl = "Where the money goes" (it printed "6000 · Salaries" to owners)
       const o = renderViewHtml(ReportsView, ctx(owner, { reportType, reportRange: "all" }));
       const c = renderViewHtml(ReportsView, ctx(cpa, { reportType, reportRange: "all" }));
-      const codeBadges = (h) => (h.match(/>[1-8]\d{3}</g) || []).length;
+      const codeBadges = (h) => (h.match(/>[1-8]\d{3}(?:<| ·)/g) || []).length;
       expect([reportType, codeBadges(c) > 0]).toEqual([reportType, true]);   // the accountant sees them — so the check has something to find
       expect([reportType, codeBadges(o)]).toEqual([reportType, 0]);
     }

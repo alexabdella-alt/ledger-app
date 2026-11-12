@@ -715,7 +715,7 @@ export default function ReportsView() {
                                 onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
                                 style={{ borderTop:"1px solid var(--sc-border)", background:i%2===0?"transparent":"var(--sc-bg)", cursor:"pointer" }}>
                                 <td style={{ padding:"13px 20px" }}>
-                                  <span style={{ background:"var(--sc-border)", padding:"3px 10px", borderRadius:20, fontSize:12, color:"var(--sc-gold)" }}>{row.code} · {row.name}</span>
+                                  <span style={{ background:"var(--sc-border)", padding:"3px 10px", borderRadius:20, fontSize:12, color:"var(--sc-gold)" }}>{ownerSeat ? row.name : `${row.code} · ${row.name}`}</span>
                                 </td>
                                 <td style={{ padding:"13px 20px", fontSize:13, color:"var(--sc-text-2)" }}>{row.count}</td>
                                 <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-error)" }}>({fmt(row.total)})</td>
