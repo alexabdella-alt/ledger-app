@@ -7413,6 +7413,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { data: pend } = await supabase.from("bank_statement_lines")
         .select("id, fingerprint, status").eq("company_id", currentCompany.id).eq("statement_id", stmtId).in("status", ["pending", "excepted"]);   // C195(1) — EXCEPTED lines resolved by manual booking were never picked up
       if (!pend || !pend.length) return;
+      // ★ C631 — AN ENTRY ALREADY LINKED TO A STATEMENT LINE IS TAKEN. Two same-day, same-amount
+      // charges share a fingerprint; this handed a pending line the FIRST matching entry even when
+      // another statement's line already owned it, so one entry carried two lines and the real
+      // second booking stayed unlinked — read as "not in the books" by everything downstream.
+      const { data: claimedRows } = await readAllRows(() => supabase.from("bank_statement_lines")
+        .select("journal_entry_id").eq("company_id", currentCompany.id).not("journal_entry_id", "is", null).order("id"));
+      const claimed = new Set((claimedRows || []).map(r => String(r.journal_entry_id)));
       // Multiset of live ledger entries touching THIS account's cash/offset, keyed by fingerprint,
       // carrying the DB entry id + whether it's a settlement (→ 'matched') vs a direct book (→ 'booked').
       const seen = new Map();
@@ -7421,6 +7428,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         if (String(inv.secondary_gl_code) !== String(offsetCode) && String(inv.gl_code) !== String(offsetCode)) continue;
         const k = bankTxnKey({ date: inv.date, amount: inv.amount, direction: bookedLineDirection(inv, offsetCode) });
         const jeId = inv.db_entry_id || String(inv.id).split("_")[0];   // the journal_entries.id (FK target)
+        if (claimed.has(String(jeId))) continue;   // C631 — owned by another statement line
         if (!seen.has(k)) seen.set(k, []);
         seen.get(k).push({ jeId, matched: isSettlementEntry(inv) });
       }
@@ -8117,6 +8125,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         logAudit("match_apply_failed", `Match for ${bank_txn?.vendor || bank_txn?.description || "transaction"} couldn't post a clearing entry — left in review (nothing cleared)`);
         showNotification("Couldn't post the clearing entry — nothing was cleared; left in review.", "error");
         return;   // do NOT remove from queue, do NOT record to history, do NOT claim success
+      }
+      // ★ C631 — AND THE STATEMENT LINE LEARNS IT. Confirming a match here cleared the bill and left
+      // the stored statement line "excepted / unmatched", so the review exception stayed open and
+      // the statement never read settled. The same GL-truth sweep the import uses links it now.
+      const stmtId = bank_txn?._stmtId || null;
+      if (stmtId) {
+        const lineAcct = (bankAccounts || []).find(b => String(b.id) === String(bank_txn?._accountId)) || (matchRecord.importOffsetCode ? { gl_code: matchRecord.importOffsetCode } : null);
+        try { await linkStatementLinesAfterBooking(stmtId, lineAcct); await loadStatementExceptions(currentCompany.id); } catch (e) { console.warn("[match] statement line link skipped:", e?.message || e); }
       }
     } else {
       // Partial match — flag only for now (partial GL clearing is a separate feature).
