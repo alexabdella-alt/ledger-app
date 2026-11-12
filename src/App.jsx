@@ -6475,39 +6475,26 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const d1 = await okAIResponse(res1);
           const contract = aiJson(d1, {});
 
-          // Generate all monthly entries in JS (no second API call needed)
-          const monthlyEntries = [];
-          let calcLeaseTermMonths = contract.lease_term_months || 0;
-          if (!calcLeaseTermMonths && contract.start_date && contract.end_date) {
-            calcLeaseTermMonths = Math.round((new Date(contract.end_date) - new Date(contract.start_date)) / (1000 * 60 * 60 * 24 * 30.44));
-          }
-          if (contract.contract_type === "lease" && calcLeaseTermMonths > 0) {
-            const ibr = contract.discount_rate_used || DEFAULT_IBR;
-            const ibrM = ibr / 12;
-            const pmt = parseFloat(contract.payment_amount) || 0;
-            const sl = contract.monthly_straight_line_expense || pmt;
-            let liab = (parseFloat(contract.lease_liability_current)||0) + (parseFloat(contract.lease_liability_noncurrent)||0);
-            if (liab === 0 && pmt > 0) liab = ibrM > 0 ? pmt * (1 - Math.pow(1+ibrM,-calcLeaseTermMonths)) / ibrM : pmt * calcLeaseTermMonths;
-            const leaseStartYMD = contract.start_date || todayLocal();
-            for (let i = 0; i < calcLeaseTermMonths; i++) {
-              // Local-safe schedule date (CR-4/CR-5): month-add on the YMD string, never a
-              // UTC toISOString() of a Date (which day-shifts the period for non-UTC users).
-              const ds = addMonthsClampedYMD(leaseStartYMD, i + 1);
-              const interest = liab * ibrM;
-              const principal = Math.min(pmt - interest, liab);
-              liab = Math.max(0, liab - principal);
-              monthlyEntries.push({ date:ds, description:`Operating lease payment — Month ${i+1}`, memo:`ASC 842-20: Straight-line $${sl.toFixed(2)}/mo`,
-                lines:[{account_code:rc("operating_lease_expense"),account_name:rn("operating_lease_expense"),debit:parseFloat(sl.toFixed(2)),credit:0},{account_code:rc("cash"),account_name:rn("cash"),debit:0,credit:parseFloat(pmt.toFixed(2))}]});
-              if (principal > 0.01) monthlyEntries.push({ date:ds, description:`Lease liability reduction — Month ${i+1}`, memo:`ASC 842-20: Principal $${principal.toFixed(2)}`,
-                lines:[{account_code:rc("lease_liability_current"),account_name:rn("lease_liability_current"),debit:parseFloat(principal.toFixed(2)),credit:0},{account_code:rc("rou_asset"),account_name:"Right-of-Use Asset",debit:0,credit:parseFloat(principal.toFixed(2))}]});
-            }
-            contract.lease_term_months = calcLeaseTermMonths;
-          }
+          // ★ C624 — THE SAME PLANNER AS THE CONTRACTS SCREEN. This branch carried its own older
+          // copy of the lease schedule (it predated `contractEntries.js`, O89): a contract dropped
+          // on Home got different monthly entries from the same contract dropped on Contracts —
+          // the copy's months could be unbalanced — and its save was never checked.
+          const planned = planContractEntries({ contract, rc, rn, today: todayLocal(), defaultIbr: DEFAULT_IBR });
+          const monthlyEntries = planned.monthlyEntries;
+          if (planned.leaseTermMonths) contract.lease_term_months = planned.leaseTermMonths;
 
           contract.journal_entries = [...(contract.journal_entries||[]), ...monthlyEntries];
           const saved = { ...contract, id:Date.now()+Math.random(), file_name:item.name, uploaded_at:new Date().toISOString(), posted_entries:[] };
           setContracts(prev => [saved, ...prev]);
-          persistContract(saved);
+          const keptHome = await persistContract(saved);   // C624 — read the answer
+          if (!keptHome?.ok) {
+            setContracts(prev => prev.filter(c => c.id !== saved.id));
+            const why = `We read ${item.name} but couldn't save it — nothing was kept. Please add it again.`;
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"error", error: why} : q));
+            logUploadUpdate(item.upload_log_id, { status:"error", error: why });
+            logAudit("contract_save_failed", `Contract ${item.name} was read but not saved (${keptHome?.error || "unknown"})`);
+            return;
+          }
           storeDocument(item.name, base64, mediaType, "contract", saved.id, ["contract"], item.id, file);
           logAudit("contract_uploaded", `Contract uploaded: ${item.name}`);
           const contractResult = {
