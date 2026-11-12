@@ -190,6 +190,24 @@ describe("★ send-mail — a row before the provider, and no relay", () => {
   it("★★ a provider refusal marks the row failed and reports NOT sent", () => {
     expect(code).toMatch(/status: "failed"[\s\S]{0,300}it was not sent/);
   });
+  it("★★ no client-callable kind is free of a recipient rule — 'receipt' is not accepted", () => {
+    const kinds = code.match(/const KINDS = new Set\(\[([^\]]*)\]\)/)[1];
+    expect(kinds).not.toMatch(/receipt/);
+    // every accepted kind is either member-only or the invoice branch
+    for (const k of kinds.match(/"([a-z]+)"/g).map(x => x.replace(/"/g, ""))) {
+      expect(["question", "report", "digest", "invoice"], `kind "${k}" has no recipient rule`).toContain(k);
+    }
+  });
+  it("★★ a view-only member cannot send, and volume is checked BEFORE the row and the provider", () => {
+    expect(code).toMatch(/SENDER_ROLES = new Set\(\["owner", "admin", "accountant"\]\)/);
+    const role = code.indexOf("SENDER_ROLES.has("), limit = code.indexOf("SEND_LIMIT_HOUR)"),
+          row = code.indexOf('from("outbound_messages").insert('), send = code.indexOf('fetch("https://api.resend.com/emails"');
+    expect(role).toBeGreaterThan(0);
+    expect(limit).toBeGreaterThan(role);
+    expect(row).toBeGreaterThan(limit);
+    expect(send).toBeGreaterThan(row);
+    expect(code).toMatch(/hour\.error \|\| day\.error[\s\S]{0,200}503/);   // fails closed
+  });
   it("★ questions and reports go only to a member; an invoice only about this company's invoice", () => {
     expect(code).toMatch(/MEMBER_ONLY_KINDS = new Set\(\["question", "report", "digest"\]\)/);
     expect(code).toMatch(/inv\.company_id !== companyId/);

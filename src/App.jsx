@@ -1801,25 +1801,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         return newId;
       }
 
-      // A real posting failure (e.g. unbalanced) must surface and stop — only
-      // fall back to the legacy inserts if the RPC simply isn't deployed yet.
-      const rpcMissing = /post_journal_entry|could not find the function|does not exist|schema cache|PGRST202|PGRST302/i.test(rpcErr.message || "");
-      if (!rpcMissing) {
-        console.error("post_journal_entry failed:", rpcErr.message);
-        showNotification(`Couldn't save the entry — nothing was recorded. ${plainWriteError(rpcErr.message, "Please try again.")}`, "error");
-        return null;
-      }
-      console.warn("post_journal_entry RPC not found — using legacy insert. Apply migration 010_post_journal_entry.sql.");
-      const baseEntry = { company_id: currentCompany.id, entry_date: entryDate, description, source, status: "posted", posted_at: new Date().toISOString(), created_by: session.user.id };
-      let { data: je, error: jeErr } = await supabase.from("journal_entries").insert({ ...baseEntry, ...meta }).select().single();
-      if (jeErr && /ai_reasoning|ai_confidence|column/i.test(jeErr.message || "")) {
-        ({ data: je, error: jeErr } = await supabase.from("journal_entries").insert(baseEntry).select().single());
-      }
-      if (jeErr) { console.error("JE insert error:", jeErr); return null; }
-      const legacyLines = lines.map(l => ({ ...l, journal_entry_id: je.id, company_id: currentCompany.id }));
-      const { error: lineErr } = await supabase.from("journal_entry_lines").insert(legacyLines);
-      if (lineErr) console.error("JE lines insert error (entry may be unbalanced):", lineErr.message);
-      return je.id;
+      // ★ ONE WRITER, AND IT IS ATOMIC. This used to fall back to two separate inserts —
+      //   a header, then its lines — whenever the error TEXT looked like "the function is
+      //   missing". That text also matches a transient schema-cache error, so an ordinary
+      //   hiccup could route a booking down a path that is not a transaction, does not
+      //   check the balance, and returned the entry's id even when its lines were refused.
+      //   Migration 010 has been live for months; a failed post is a failed post.
+      console.error("post_journal_entry failed:", rpcErr.message);
+      showNotification(`Couldn't save the entry — nothing was recorded. ${plainWriteError(rpcErr.message, "Please try again.")}`, "error");
+      return null;
     } catch(e) { console.error("persistJournalEntry error:", e); return null; }
   };
 

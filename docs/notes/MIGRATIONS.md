@@ -2,6 +2,11 @@
 
 What each applied migration's checks returned, verbatim as recorded at the time — newest first. The applied ledger itself stays on CLAUDE.md §6.
 
+> **`094` APPLIED (date not recorded; between 2026-10-13 and 2026-11-12) — CONFIRMED PRESENT 2026-11-12. `contacts.sent_1099_years` (C573).** Ledger: through `061`, plus `063`, `064`, `066`, `068`–`087`, `091`–`094`.
+>   · **How it was confirmed, without a login:** `GET /rest/v1/contacts?select=sent_1099_years&limit=1` with the public key answered `[]`; the control `select=zz_not_a_column` answered *`42703 column contacts.zz_not_a_column does not exist`*, and a known column answered `[]`. **The control is what makes `[]` mean something** — row security hides every row from an anonymous caller, so an empty list alone would say nothing.
+>   · **What that proves and what it does not:** the migration is one `begin … commit`, so the column existing means the 2025 backfill in the same transaction committed too. It does NOT prove the column's type or count the backfilled rows — the file's two editor checks were never run. Low risk; recorded rather than claimed.
+>   · **▶ `095` (journal_entry_must_balance, a deferred constraint trigger) is WRITTEN AND HELD.** Reviewed 2026-11-12: the only live writers of lines are `post_journal_entry` (one call, balanced) and the QuickBooks importer (one multi-row insert of both legs), so it should refuse nothing ordinary — its probe's (B) is the check of exactly that. Run probe (0) and (A) BEFORE applying.
+
 > **★★★ `092` APPLIED & VERIFIED LIVE 2026-09-28 — EVERY TENANT→TENANT REFERENCE IS A COMPOSITE KEY, AND APPLYING IT AUDITED THE WHOLE DATABASE (O139, the rest). FOUR CHECKS, FOUR PASSES.** Ledger: through `061`, plus `063`, `064`, `066`, `068`–`087`, `091`, `092`.
 >   · **(A) BEFORE, ON A SECOND REFERENCE: *"FAIL - a contact in this company now defaults to another company's category"*.** `091` had closed the ledger's own line→account reference with a trigger; this proves the shape was general rather than particular to that one, on live data, before anything was changed.
 >   · **(B) THE IDENTICAL PROBE AFTER — clipboard checksum verified against the file both times, so before and after differ in nothing but the migration: *"PASS - refused by the database: violates foreign key constraint `contacts_default_account_id_company_fkey`"*.**

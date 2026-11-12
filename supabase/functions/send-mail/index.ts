@@ -35,7 +35,20 @@ const cors = {
 const json = (obj: unknown, status: number) =>
   new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-const KINDS = new Set(["receipt", "question", "invoice", "report", "digest"]);
+// ★ NO "receipt" HERE. A receipt is an acknowledgement of mail WE received; `receive-mail`
+//   sends its own with the service role and never calls this function. Accepting the kind
+//   from a browser gave every signed-in user a way to send any text to any address from
+//   our domain, with no recipient rule at all — a relay, on an endpoint whose header says
+//   "no relay". Nothing in the client ever sent one.
+const KINDS = new Set(["question", "invoice", "report", "digest"]);
+// ★ SENDING IS A WRITE. A view-only teammate may read the books and nothing else.
+const SENDER_ROLES = new Set(["owner", "admin", "accountant"]);
+// ★ AN INVOICE GOES TO AN ADDRESS THE CALLER TYPES — that is what an invoice email is, so
+//   it cannot be pinned to a member list. What bounds it is volume: per company, counted
+//   from the rows this function already writes BEFORE it sends (so a refused or failed
+//   send still counts — retrying is not free). Chosen so no real billing run meets it.
+const SEND_LIMIT_HOUR = 30;
+const SEND_LIMIT_DAY = 100;
 const MEMBER_ONLY_KINDS = new Set(["question", "report", "digest"]);
 const newToken = () => (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "").slice(0, 24);
 
@@ -55,6 +68,17 @@ serve(async (req) => {
     // Membership — the caller must be an accepted member of the company the message is about.
     const { data: membership } = await admin.from("company_users").select("role").eq("company_id", companyId).eq("user_id", user.id).not("accepted_at", "is", null).maybeSingle();
     if (!membership) return json({ error: "Not a member of this company." }, 403);
+    if (!SENDER_ROLES.has(String(membership.role))) return json({ error: "Your access to this company is view-only, so it can't send email." }, 403);
+
+    // Volume — FAIL CLOSED: if the count cannot be read we do not know the budget.
+    const since = (ms: number) => new Date(Date.now() - ms).toISOString();
+    const [hour, day] = await Promise.all([
+      admin.from("outbound_messages").select("id", { count: "exact", head: true }).eq("company_id", companyId).gte("created_at", since(3600_000)),
+      admin.from("outbound_messages").select("id", { count: "exact", head: true }).eq("company_id", companyId).gte("created_at", since(86_400_000)),
+    ]);
+    if (hour.error || day.error || hour.count == null || day.count == null) return json({ error: "Couldn't check the sending limit, so nothing was sent. Please try again in a moment." }, 503);
+    if (hour.count >= SEND_LIMIT_HOUR) return json({ error: `Email limit reached — ${SEND_LIMIT_HOUR} per hour for this company. Nothing was sent; try again within the hour.` }, 429);
+    if (day.count >= SEND_LIMIT_DAY) return json({ error: `Email limit reached — ${SEND_LIMIT_DAY} per day for this company. Nothing was sent; try again tomorrow.` }, 429);
 
     // Recipient rules (§4.1): our domain is not a relay.
     const toNorm = String(to).trim().toLowerCase();

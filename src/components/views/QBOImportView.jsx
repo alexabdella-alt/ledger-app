@@ -228,7 +228,23 @@ export default function QBOImportView() {
           if (a >= 0) { lines.push({ journal_entry_id: je.id, company_id: cid, account_id: pId, debit: amt, credit: 0 }, { journal_entry_id: je.id, company_id: cid, account_id: oId, debit: 0, credit: amt }); }
           else { lines.push({ journal_entry_id: je.id, company_id: cid, account_id: pId, debit: 0, credit: amt }, { journal_entry_id: je.id, company_id: cid, account_id: oId, debit: amt, credit: 0 }); }
         });
-        await supabase.from("journal_entry_lines").insert(lines);
+        // ★ THE LINES ARE THE ENTRY. This insert's error was never read, so a refused chunk
+        //   left 50 headers with no legs — entries that move no money, counted as imported,
+        //   and invisible to a balance check because nothing sums to nothing. A header whose
+        //   lines did not land is withdrawn (same soft-removal the undo uses) and the chunk
+        //   is counted FAILED; if even the withdrawal fails, that is audited by name rather
+        //   than left as a quiet orphan.
+        const { data: lineRows, error: lineErr } = await supabase.from("journal_entry_lines").insert(lines).select("id");
+        if (lineErr || !lineRows || lineRows.length !== lines.length) {
+          const ids = (created || []).map(je => je.id);
+          const { data: withdrawn, error: wErr } = await supabase.from("journal_entries")
+            .update({ deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null })
+            .in("id", ids).eq("company_id", cid).select("id");
+          if (wErr || !withdrawn || withdrawn.length !== ids.length) {
+            logAudit && logAudit("qbo_import_orphan_headers", `QuickBooks import: ${ids.length} entries saved without their amounts and could not be withdrawn — they need removing by hand (batch ${batchId})`, null, { batch_id: batchId, entry_ids: ids.map(String) });
+          }
+          throw new Error(lineErr?.message || `only ${lineRows ? lineRows.length : 0} of ${lines.length} lines saved`);
+        }
         imported += (created || []).length;
       } catch (e) { console.warn("[qbo] chunk insert failed:", e?.message || e); failedN += chunk.length; }
       setProgress(Math.round(((i + chunk.length) / Math.max(1, toBook.length)) * 100));
