@@ -36,9 +36,28 @@ export function statementBalanceVerified(statementBalance, emptyConfirmed = fals
 
 // Can this reconciliation be completed? Books must balance to the statement (diff ≈ 0)
 // AND the ending balance must be verified. Pure predicate shared by the button + guard.
-export function canCompleteReconciliation({ statementBalance = "", difference = 0, emptyConfirmed = false } = {}) {
+//
+// ★ C594 — AND NO BANK LINE MAY BE LEFT OUT OF THE BOOKS. The difference SUBTRACTS bank lines
+// the books don't have (the textbook "reconciling item"), so a month with three unbooked
+// fees showed $0.00 and "Balanced — ready to complete", and was locked in as reconciled while
+// the books were short exactly those three. A reconciling item on the BANK side is a to-do —
+// the books are wrong until it is added — not a timing difference like an uncleared cheque.
+// `unbookedBankLines` defaults to 0 for callers (the automatic pipeline) that only ever
+// complete when every line is already booked.
+export function canCompleteReconciliation({ statementBalance = "", difference = 0, emptyConfirmed = false, unbookedBankLines = 0 } = {}) {
   const balanced = Math.abs(Number(difference) || 0) < 0.005;
-  return balanced && statementBalanceVerified(statementBalance, emptyConfirmed);
+  return balanced && !(Number(unbookedBankLines) > 0) && statementBalanceVerified(statementBalance, emptyConfirmed);
+}
+
+// What the bar beside the button says — the reason it is (or isn't) ready, in that order.
+export function reconcileReadinessCopy({ statementBalance = "", difference = 0, emptyConfirmed = false, unbookedBankLines = 0 } = {}) {
+  const n = Number(unbookedBankLines) || 0;
+  if (n > 0) return `${n} bank line${n === 1 ? " isn't" : "s aren't"} in your books yet — add or match ${n === 1 ? "it" : "them"} above to finish.`;
+  if (Math.abs(Number(difference) || 0) >= 0.005) return "Difference must be $0.00 to complete.";
+  if (!statementBalanceVerified(statementBalance, emptyConfirmed)) {
+    return String(statementBalance ?? "").trim() === "" ? "Enter your bank statement's ending balance to finish." : "Confirm the account is empty or closed to finish.";
+  }
+  return "Balanced — ready to complete.";
 }
 
 // Normalize the reconciled-account cash code(s) to a string Set. Accepts a single

@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { isDbId } from "../../lib/contactIds";
 import { prefillEndingBalance, statementForPeriod, statementOfferCopy, statementToOffer, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
 import { monthLabel } from "../../lib/ownerTrust";
-import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
+import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, reconcileReadinessCopy, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
 import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
 import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy, outstandingClearedCopy, MATCH_EXISTING_ACTION_LABEL } from "../../lib/workbench";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
@@ -503,6 +503,10 @@ export default function ReconView() {
       showNotification && showNotification(!statementBalance ? "Enter your bank statement's ending balance to finish." : "Confirm the account is empty/closed (its balance is $0.00) to finish.", "error");
       return;
     }
+    // C594 — the SAME gate as the button, re-asserted at the write: lines added or un-matched
+    // between the summary and this click must still stop it.
+    const finalGate = { statementBalance, difference: diff, emptyConfirmed, unbookedBankLines: unmatchedBank.length };
+    if (!canCompleteReconciliation(finalGate)) { showNotification && showNotification(reconcileReadinessCopy(finalGate), "error"); return; }
     const at=new Date().toISOString(); const uid=session?.user?.id||null;  // reconciliations.completed_by is a uuid column
     const ids = bankTxns.filter(t=>t._matchBook).map(t=>t._matchBook);
 
@@ -1077,13 +1081,15 @@ export default function ReconView() {
         )}
         <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5 }}>WHAT YOUR BOOKS SHOW</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace" }}>{fmt(booksBalance)}</div></div>
         <div><div style={{ fontSize:10, color:"var(--sc-text-2)", letterSpacing:0.5 }}>DIFFERENCE</div><div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color: Math.abs(diff)<0.005?"var(--sc-success)":"var(--sc-error)" }}>{fmt(diff)}</div></div>
-        <div style={{ flex:1, minWidth:140, fontSize:11, color:"var(--sc-text-2)" }}>{Math.abs(diff)<0.005?"Balanced — ready to complete.":"Difference must be $0.00 to complete."}</div>
-        {(() => { const ready = canCompleteReconciliation({ statementBalance, difference: diff, emptyConfirmed });
+        {(() => { const gate = { statementBalance, difference: diff, emptyConfirmed, unbookedBankLines: unmatchedBank.length };   // C594
+          const ready = canCompleteReconciliation(gate); const why = reconcileReadinessCopy(gate);
+          return (<>
+        <div data-recon-readiness style={{ flex:1, minWidth:140, fontSize:11, color: ready ? "var(--sc-success)" : "var(--sc-text-2)" }}>{why}</div>
           return (
             <button disabled={!ready} onClick={()=>setStep("summary")}
               style={{ padding:"11px 22px", borderRadius:10, border:"none", fontSize:14, fontWeight:600, cursor: ready?"pointer":"not-allowed", background: ready?"var(--sc-gold)":"var(--sc-border)", color: ready?"var(--sc-surface)":"var(--sc-text-mut)" }}
-              title={!statementBalance?"Enter your bank statement's ending balance to finish":(stmtNum===0&&!emptyConfirmed)?"Confirm the account is empty/closed to finish":(Math.abs(diff)>=0.005?"Difference must be $0.00 to complete":"")}>Complete Match</button>
-          ); })()}
+              title={ready ? "" : why}>Complete Match</button>
+          </>); })()}
       </div>
     </div>
   );
