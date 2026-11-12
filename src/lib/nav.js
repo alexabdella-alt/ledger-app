@@ -88,6 +88,12 @@ export const CLIENT_NAV_SECTIONS = [
   { id: "main", label: null, items: [["home", "Home"], ["money", "Money"], ["reports", "Reports"], ["ask", "Ask"]] },
   { id: "settings-entry", label: null, items: [["settings", "Settings"]] },
 ];
+// ★ C638 — THE OWNER'S SETTINGS: FOUR ROWS, NOT TEN. "Your business", "Team", "Taxes", and one
+// "More settings" page that lists the rest with a line each on what it is for. The accountant
+// keeps every Settings row. Nothing is removed — every page is still one click from "More settings".
+export const OWNER_SETTINGS_ITEMS = [["settings", "Your business"], ["team", "Team"], ["tax", "Taxes"], ["settings-more", "More settings"]];
+// The pages "More settings" opens — a client standing on any of them sees "More settings" highlighted.
+export const MORE_SETTINGS_GROUP = ["settings-more", "coa", "opening-balances", "rules", "recurring", "audit", "onboard", "legal"];
 // Rows that are ACTIONS, not pages: "Ask" opens the assistant beside whatever you are on.
 export const NAV_ACTIONS = ["ask"];
 // The lists the Money page opens — a client standing on any of them sees "Money" highlighted.
@@ -114,7 +120,7 @@ export const NAV_SECTION_SETTINGS = { id: "settings", label: "Settings", items: 
 // C382 — the human name of a view id, read off the same rows the sidebar draws, so a
 // sentence about a screen ("Opened Reconcile") says what the sidebar says and never leaks
 // a route id ("Opened recon"). Rowless views carry their own name; an unknown id is null.
-const ROWLESS_LABELS = { money: "Money", ask: "Ask", dashboard: "Home", "send-invoice": "Send Invoice", detail: "the transaction", add: "New entry", admin: "Admin", matching: "Matching", contracts: "Contracts", legal: "Legal" };
+const ROWLESS_LABELS = { "settings-more": "More settings", money: "Money", ask: "Ask", dashboard: "Home", "send-invoice": "Send Invoice", detail: "the transaction", add: "New entry", admin: "Admin", matching: "Matching", contracts: "Contracts", legal: "Legal" };
 export function viewLabel(viewId) {
   const v = String(viewId || "");
   const rows = [...NAV_SECTIONS, NAV_SECTION_REVIEW, NAV_SECTION_SETTINGS].flatMap((s) => s.items).concat(REVIEW_TOOLS);
@@ -131,7 +137,7 @@ export const sectionViewIds = (sections) =>
 // IA collapse — a client still owns their company profile, team, taxes and audit
 // trail. Listed here so the guard never bounces a client out of their own setup.
 export const SETTINGS_VIEW_IDS = [
-  "settings", "team", "coa", "opening-balances", "onboard", "rules", "recurring",
+  "settings", "settings-more", "team", "coa", "opening-balances", "onboard", "rules", "recurring",
   "tax1099", "tax", "audit", "legal",
 ];
 
@@ -190,7 +196,7 @@ export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsO
   if (inSettings) {
     // C636 — on the owner's seat the single "Settings" row opens up into its pages while you are in them.
     if (!reviewer) sections.splice(sections.findIndex((s) => s.id === "settings-entry"), 1);
-    const items = NAV_SECTION_SETTINGS.items.filter(([id]) => {
+    const items = (reviewer ? NAV_SECTION_SETTINGS.items : OWNER_SETTINGS_ITEMS).filter(([id]) => {   // C638
       if (id === "team") return role === "owner";                                   // owner-only, as before
       return true;
     });
@@ -211,6 +217,8 @@ export function activeNavItem(view, { booksFilter = "all", seat = "reviewer" } =
   const v = String(view || "");
   if (v === "dashboard") return "home";
   if (seat === "client" && MONEY_GROUP.includes(v)) return "money";   // C636
+  if (seat === "client" && MORE_SETTINGS_GROUP.includes(v)) return "settings-more";   // C638
+  if (seat === "client" && v === "tax1099") return "tax";                              // C638 — 1099s live under Taxes
   if (v === "detail" || v === "add" || v === "contracts" || v === "books") return "books";   // all live under Transactions
   if (v === "send-invoice") return "ar";                     // billing a customer belongs to Money owed to you
   // A workbench tool is the review layer at work: the sidebar highlights Review, so a

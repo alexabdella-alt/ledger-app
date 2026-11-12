@@ -260,7 +260,7 @@ The owner's menu is just: Home, Money, Reports, Ask (you) and Settings. Money [m
   • Documents [docs] — every file uploaded, searchable by name, type and date.
   • Reports [reports] — opens with this month in plain words, then Profit & Loss, Balance Sheet and Cash Flow.
 
-Settings (the gear at the top right):
+Settings (the gear at the top right, or Settings in the menu). An owner's Settings shows four rows — Your business [settings], Team [team], Taxes [tax] and More settings [settings-more]; every other page below is listed on More settings with a line on what it's for:
   • Company [settings] — business details and bank accounts.
   • Team [team] — invite an accountant or a teammate (owner only).
   • Categories [coa] — the list of categories transactions are filed into.

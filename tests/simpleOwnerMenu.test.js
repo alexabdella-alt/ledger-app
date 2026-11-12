@@ -24,11 +24,19 @@ describe("the owner's menu", () => {
     expect(rows(visibleNav({ role: "accountant" }))).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports", "review"]);
     expect(activeNavItem("ap", { seat: "reviewer" })).toBe("ap");
   });
-  it("in Settings, the Settings row opens into its pages (and is not shown twice)", () => {
+  it("★ in Settings, the owner sees four rows (C638) — and every setup page is still openable", () => {
     const r = rows(visibleNav({ ...owner, inSettings: true }));
-    expect(r).toContain("coa");
-    expect(r).toContain("tax1099");
+    expect(r.slice(-4)).toEqual(["settings", "team", "tax", "settings-more"]);
     expect(r.filter((x) => x === "settings")).toHaveLength(1);
+    for (const v of ["coa", "opening-balances", "rules", "recurring", "audit", "onboard", "tax1099"]) {
+      expect([v, canSeeView(v, owner)]).toEqual([v, true]);
+      expect([v, activeNavItem(v, { seat: "client" })]).toEqual([v, v === "tax1099" ? "tax" : "settings-more"]);
+    }
+  });
+  it("the accountant's Settings keeps every row", () => {
+    const r = rows(visibleNav({ role: "accountant", inSettings: true }));
+    for (const v of ["coa", "opening-balances", "rules", "recurring", "tax1099", "audit", "onboard"]) expect(r).toContain(v);
+    expect(r).not.toContain("settings-more");
   });
   it("★ Ask is an action that opens the assistant, not a page", () => {
     expect(NAV_ACTIONS).toEqual(["ask"]);

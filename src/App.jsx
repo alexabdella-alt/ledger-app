@@ -111,6 +111,7 @@ import { ERPContext } from "./components/ERPContext";
 import { usePersistedView } from "./hooks/usePersistedView";
 import DashboardView from "./components/views/DashboardView";
 import MoneyView from "./components/views/MoneyView";
+import MoreSettingsView from "./components/views/MoreSettingsView";
 import BooksView from "./components/views/BooksView";
 import AddView from "./components/views/AddView";
 import ApView from "./components/views/ApView";
@@ -9431,6 +9432,9 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
 
           {/* HOME (Dashboard) — renders for both "home" and legacy "dashboard" */}
           {(view==="home" || view==="dashboard") && <DashboardView />}
+
+          {/* C638 — MORE SETTINGS: every setup page an owner rarely needs, one line each */}
+          {view==="settings-more" && <MoreSettingsView />}
 
           {/* C636 — MONEY: the owner's one door to every list */}
           {view==="money" && <MoneyView />}
