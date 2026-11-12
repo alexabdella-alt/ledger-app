@@ -19,7 +19,7 @@ import { LEGAL_FORMS } from "../../lib/tax";
 import VendorTeachIn from "../VendorTeachIn";   // C563
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
 import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
-import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
+import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
 import { ownerAnomalyLine } from "../../lib/ownerTrust";
@@ -373,7 +373,7 @@ export default function DashboardView() {
                 // statement is what answers it. Order and copy live in lib/onboarding.js.
                 const stepByKey = {
                   biz:     { key:"biz",     done: obHasBiz,     ...CHECKLIST_COPY.biz,  go:()=>setBusinessModalOpen(true) },
-                  bank:    { key:"bank",    done: obHasBank,    ...CHECKLIST_COPY.bank, go:()=>goToSection("settings","bank-accounts-section") },
+                  bank:    { key:"bank",    done: obHasBank,    ...CHECKLIST_COPY.bank, go:()=>goToSection("settings","bank-accounts-section"), optional:true },
                   upload:  { key:"upload",  done: obHasUpload,  ...ONBOARDING_STEP_COPY.upload,  go:()=>scrollToUploadZone() },   // C583 — this scrolled to the HIDDEN file input, so the click did nothing
                   opening: { key:"opening", done: obHasOpening, ...ONBOARDING_STEP_COPY.opening, go:()=>goToSection("opening-balances","opening-balances-section") },
                 };
@@ -422,6 +422,8 @@ export default function DashboardView() {
                         <span style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:600 }}>Start →</span>
                       </div>
                     )}
+                    {/* C586 — optional: the first upload does not wait on it, and once named it simply ticks. */}
+                    {ONBOARDING_OPTIONAL_STEPS.map(k => renderStep(stepByKey[k]))}
                     {isOwner && !accountantDismissed ? renderStep(optional) : null}
                   </div>
                 );

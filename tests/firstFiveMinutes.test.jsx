@@ -10,7 +10,7 @@ import {
 } from "../src/lib/firstRun.js";
 
 const text = (h) => h.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ");
-const JARGON = /\b(GL|ledger|journal|ASC ?842|RLS|tenant|burn rate|runway|P&L|controller|accrual|debit|credit|workspace|fiscal|chart of accounts|reconcil\w*|posted?)\b/i;
+const JARGON = /\b(GL|ledger|journal|ASC ?842|RLS|tenant|burn rate|runway|P&L|controller|accrual|debit|credit(?! card)|workspace|fiscal|chart of accounts|reconcil\w*|posted?)\b/i;
 
 describe("C583 — the sign-in page speaks to a business owner", () => {
   it("nothing it says about the product uses an accounting or engineering term", () => {
@@ -115,7 +115,11 @@ describe("C583 — the first-run checklist and the upload box", () => {
   });
   it("each setup step says why it's asked; the questions say what they're for", () => {
     expect(CHECKLIST_COPY.biz.hint).toMatch(/right categories/);
-    expect(CHECKLIST_COPY.bank.hint).toMatch(/which account a statement belongs to/);
+    // C586 — the bank step is optional now, and says the account already exists
+    expect(CHECKLIST_COPY.bank.hint).toMatch(/We've set one up for you/);
+    expect(CHECKLIST_COPY.bank.hint).toMatch(/more than one account or a credit card/);
+    expect(home).toMatch(/\.\.\.CHECKLIST_COPY\.bank, go:\(\)=>goToSection\("settings","bank-accounts-section"\), optional:true \}/);
+    expect(home).toMatch(/\{ONBOARDING_OPTIONAL_STEPS\.map\(k => renderStep\(stepByKey\[k\]\)\)\}/);
     expect(BUSINESS_MODAL_INTRO).toMatch(/change them later in Settings/);
     for (const s of [CHECKLIST_COPY.biz.hint, CHECKLIST_COPY.bank.hint, BUSINESS_MODAL_INTRO, ...Object.values(DROPZONE_COPY)]) expect(s).not.toMatch(JARGON);
     expect(home).not.toMatch(/>Fiscal year end</);

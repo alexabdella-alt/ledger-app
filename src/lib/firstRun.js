@@ -68,7 +68,9 @@ export const COMPANY_NAME_PLACEHOLDER = "e.g. Riverside Bakery";
 // The first-run checklist's two setup steps. (Upload and starting balances: lib/onboarding.js.)
 export const CHECKLIST_COPY = {
   biz:  { label: "Tell us about your business", hint: "What kind of business it is — so we set up the right categories. About 20 seconds." },
-  bank: { label: "Add your bank account", hint: "Its name and bank, in Settings → Company — so we know which account a statement belongs to" },
+  // C586 — optional. We already created one account ("Primary Checking"); this is for naming it,
+  // or adding a second, so a statement lands in the right one.
+  bank: { label: "Name your bank account", hint: "We've set one up for you. Rename it or add another in Settings → Company — worth doing if you have more than one account or a credit card" },
 };
 export const BUSINESS_MODAL_INTRO = "Three quick questions. They set up the right categories and tax dates for your kind of business — you can change them later in Settings.";
 export const BUSINESS_SAVE_HINT = "Pick a business type to continue.";

@@ -69,7 +69,7 @@ describe("onboardingSteps — per-step completion + all-done roll-up", () => {
     expect(onboardingSteps({ invoices: [{ source: "bank_statement" }] }).obHasOpening).toBe(false);
   });
 
-  it("all four done → obAllDone + requiredDone 4", () => {
+  it("the three required steps done → obAllDone + requiredDone 3", () => {
     const s = onboardingSteps({
       companySettings: { name: "Acme", businessType: "SaaS" },
       bankAccounts: [{ id: "x", name: "Chase", institution: "Chase", last4: "9999" }],
@@ -77,7 +77,20 @@ describe("onboardingSteps — per-step completion + all-done roll-up", () => {
       onboardingUploadDone: true,
     });
     expect(s.obAllDone).toBe(true);
-    expect(s.requiredDone).toBe(4);
+    expect(s.requiredDone).toBe(3);
+  });
+  it("★ C586 — setup completes with the bank account still the one we created: it is optional", () => {
+    const seeded = [{ id: "x", name: "Primary Checking" }];
+    const s = onboardingSteps({ companySettings: { name: "Acme", businessType: "SaaS" }, bankAccounts: seeded, openingBalances: [{ id: 1 }], onboardingUploadDone: true });
+    expect(s.obHasBank).toBe(false);          // still reported, for the optional row
+    expect(s.obAllDone).toBe(true);
+    expect(s.requiredDone).toBe(3);
+  });
+  it("and naming the bank account does not stand in for a required step", () => {
+    const s = onboardingSteps({ companySettings: { name: "Acme", businessType: "SaaS" }, bankAccounts: [{ id: "x", name: "Chase", institution: "Chase" }], onboardingUploadDone: true });
+    expect(s.obHasBank).toBe(true);
+    expect(s.obAllDone).toBe(false);          // starting balances not confirmed
+    expect(s.requiredDone).toBe(2);
   });
 });
 
@@ -89,13 +102,14 @@ describe("onboardingSteps — per-step completion + all-done roll-up", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 import fs from "node:fs";
 import path from "node:path";
-import { ONBOARDING_STEP_ORDER, ONBOARDING_STEP_COPY } from "../src/lib/onboarding.js";
+import { ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../src/lib/onboarding.js";
 import { containsOwnerJargon } from "../src/lib/clarify.js";
 
 describe("★ O132 — the first statement is asked for BEFORE the opening balance", () => {
   it("upload precedes opening, and both are still required", () => {
     expect(ONBOARDING_STEP_ORDER.indexOf("upload")).toBeLessThan(ONBOARDING_STEP_ORDER.indexOf("opening"));
-    expect(ONBOARDING_STEP_ORDER).toEqual(["biz", "bank", "upload", "opening"]);
+    expect(ONBOARDING_STEP_ORDER).toEqual(["biz", "upload", "opening"]);
+    expect(ONBOARDING_OPTIONAL_STEPS).toEqual(["bank"]);   // C586 — offered, never required
   });
   it("the copy asks for a STATEMENT and says the opening comes from it", () => {
     expect(ONBOARDING_STEP_COPY.upload.label).toMatch(/bank statement/i);

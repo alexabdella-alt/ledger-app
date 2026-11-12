@@ -64,8 +64,14 @@ export function onboardingSteps({ companySettings = {}, bankAccounts = [], openi
   // Durable across reloads: opening balances post journal entries (source "opening_balance").
   const obHasOpening = (openingBalances || []).length > 0 || (invoices || []).some((i) => i.source === "opening_balance");
   const obHasUpload = !!onboardingUploadDone;
-  const obAllDone = obHasBiz && obHasBank && obHasOpening && obHasUpload;
-  const requiredDone = [obHasBiz, obHasBank, obHasOpening, obHasUpload].filter(Boolean).length;
+  // ★ C586 — THE BANK ACCOUNT IS NOT REQUIRED (operator, 2026-11-12). The step sent a
+  // brand-new owner to Settings to type an account name before their first upload — and the
+  // upload does not need it: a company is created with one account, and a statement dropped on
+  // Home is filed against it automatically (`autoBindAccount`, C198·2). Naming the account is
+  // still worth offering, so it stays on the checklist as OPTIONAL; it no longer holds setup
+  // open. `obHasBank` is still reported for that row.
+  const obAllDone = obHasBiz && obHasOpening && obHasUpload;
+  const requiredDone = [obHasBiz, obHasOpening, obHasUpload].filter(Boolean).length;
   return { obHasBiz, obHasBank, obHasOpening, obHasUpload, obAllDone, requiredDone };
 }
 
@@ -87,7 +93,9 @@ export function onboardingChecklistVisible({ companyDataLoaded = false, onboardi
 // starting cash from a bank statement". The order now says it too.
 //
 // One list, read by the checklist and pinned by a test, so the order cannot drift back.
-export const ONBOARDING_STEP_ORDER = ["biz", "bank", "upload", "opening"];
+export const ONBOARDING_STEP_ORDER = ["biz", "upload", "opening"];
+// Offered, never required, and listed after the required ones (C586).
+export const ONBOARDING_OPTIONAL_STEPS = ["bank"];
 
 // The copy for the two steps the order is about. Derived here so the hint that promises
 // "we'll read it from your statement" sits beside the order that makes that true.
