@@ -125,6 +125,17 @@ export function reconBooksBalance(invoices, cashCodes, { asOf = null } = {}) {
   return r2c(bal);
 }
 
+// ★ C627 — THE CASH THE BOOKS CARRY INTO A PERIOD: everything before its first day, PLUS the
+// starting-balances entry when it is dated ON that day. "As of the day before" excluded the
+// opening entry on the first month (it is dated at the start date, which is the statement's
+// first day) — so books read $0 against the statement's opening and the first reconciliation
+// always said "the opening balance doesn't match". Shared by the statement import and Reconcile.
+export function cashCarriedIntoPeriod(invoices = [], cashCodes, periodStart) {
+  if (!periodStart) return reconBooksBalance(invoices, cashCodes, {});
+  const rows = (invoices || []).filter((r) => r && (String(r.date || "") < String(periodStart) || isOpeningPositionRow(r, periodStart)));
+  return reconBooksBalance(rows, cashCodes, {});
+}
+
 // The STILL-UNDECIDED book items (the "sort out" queue): live cash rows NOT matched to a
 // bank line, NOT yet marked outstanding, and NOT the opening position. These are unexplained
 // until the user matches them or marks them outstanding — so they do NOT net the difference

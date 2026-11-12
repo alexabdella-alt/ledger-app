@@ -3,7 +3,7 @@ import { useERP } from "../ERPContext";
 import { isDbId } from "../../lib/contactIds";
 import { prefillEndingBalance, statementForPeriod, statementOfferCopy, statementToOffer, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
 import { monthLabel } from "../../lib/ownerTrust";
-import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, reconcileReadinessCopy, isOpeningPositionRow, reconBooksBalance, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
+import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, reconcileReadinessCopy, isOpeningPositionRow, reconBooksBalance, cashCarriedIntoPeriod, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
 import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
 import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy, outstandingClearedCopy, MATCH_EXISTING_ACTION_LABEL } from "../../lib/workbench";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
@@ -308,7 +308,7 @@ export default function ReconView() {
   // cash at period start = opening + all prior activity, so comparing to the opening entry false-
   // fires by exactly the prior period's net income (O83 Feb). Same reconBooksBalance source as the
   // "what your books show" figure above. Auto-resolved either way (a real gap is a flag, not a task).
-  const glCashAtPeriodStart = reconBooksBalance(invoices, reconCashCodes, { asOf: addDaysYMD(periodStart, -1) });
+  const glCashAtPeriodStart = cashCarriedIntoPeriod(invoices, reconCashCodes, periodStart);   // C627 — incl. an opening entry dated that day
   const openingMismatch = (stmtOpening != null) ? openingDiscrepancy({ statedOpening: stmtOpening, recordedOpening: glCashAtPeriodStart }) : { mismatch:false, diff:0 };
   // C195(8) — how many KNOWN uncashed items (from the prior period's chain) account for the gap?
   const openingExplainedCount = React.useMemo(() => {

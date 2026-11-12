@@ -22,7 +22,7 @@ import { checkedRowUpdate, checkedIdsUpdate, getWriteFailures, resetWriteFailure
 import { planInvoiceArrival, withPaymentClaimed, ARRIVAL, ASK_REASON } from "./lib/invoicePayment";
 import { DIRECTORY_SEED } from "./lib/vendorDirectory";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
-import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
+import { reconBooksBalance, cashCarriedIntoPeriod, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation, resolveActionTargets } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection, perEntry } from "./lib/insights";
@@ -7279,7 +7279,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // so comparing to the row false-fires by exactly the prior period's net income (the O83
             // Feb finding: a $3,174.33 phantom = January's net income). Same canonical glAccountBalance
             // source the reconcile fix uses. dayBefore(periodStart) excludes the period's own activity.
-            const glCashAtPeriodStart = glAccountBalance(cashCode, invoicesRef.current, { asOf: addDaysYMD(der.periodStart, -1) });
+            const glCashAtPeriodStart = cashCarriedIntoPeriod(invoicesRef.current, [cashCode], der.periodStart);   // C627 — incl. an opening entry dated that day
             const disc = openingDiscrepancy({ statedOpening: der.openingBalance, recordedOpening: glCashAtPeriodStart });
             if (disc.mismatch) {
               setOpeningDiscrepancyFlag({ ...disc, periodStart: der.periodStart, accountCode: cashCode, accountName: acctName });
