@@ -58,6 +58,11 @@ async function verifySvix(req: Request, rawBody: string): Promise<boolean> {
   const given = sig.split(" ").map((s) => s.split(",")[1]).filter(Boolean);
   return given.some((g) => g.length === expected.length && timingSafeEqual(g, expected));
 }
+// C635 — what one inbound message may store (the app's own upload ceiling per file).
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MAX_HELD_ATTACHMENTS = 5;        // a sender the company has not allowed
+const MAX_ACCEPTED_ATTACHMENTS = 25;   // an allowed sender
+
 function timingSafeEqual(a: string, b: string) { let r = 0; for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i); return r === 0; }
 
 // ── Resend inbound API (isolated so a URL change is one edit) ───────────────
@@ -179,10 +184,18 @@ serve(async (req) => {
   const storeAttachments = plan.status === INBOUND_STATUS.ACCEPTED || plan.status === INBOUND_STATUS.UNKNOWN_SENDER;
   if (storeAttachments) {
     const classified = plan.status === INBOUND_STATUS.ACCEPTED ? plan.intake : attachmentsMeta.map(classifyAttachment);
+    // ★ C635 — BOUNDED. Anyone who learns the address can send to it; a refused sender's files
+    // were stored without limit, so one stranger could fill the company's storage. A refused
+    // sender's message keeps at most a few files; any single file is kept only up to the app's
+    // own upload ceiling.
+    const keepAtMost = plan.status === INBOUND_STATUS.UNKNOWN_SENDER ? MAX_HELD_ATTACHMENTS : MAX_ACCEPTED_ATTACHMENTS;
     for (const [i, item] of classified.entries()) {
+      if (i >= keepAtMost) { console.warn(`[receive-mail] kept the first ${keepAtMost} attachments; ${classified.length - keepAtMost} more were not stored`); break; }
       const meta = attachmentsMeta[i];
+      if (Number(meta?.size) > MAX_ATTACHMENT_BYTES) { console.warn("[receive-mail] attachment over the size ceiling — not stored", meta?.filename); continue; }
       let bytes: Uint8Array;
       try { bytes = await fetchAttachmentBytes(emailId, meta); } catch (e) { console.error("[receive-mail] attachment fetch failed", e); continue; }
+      if (bytes.length > MAX_ATTACHMENT_BYTES) { console.warn("[receive-mail] attachment over the size ceiling — not stored", meta?.filename); continue; }
       const hash = await sha256Hex(bytes);
       const path = `${companyId}/${Date.now()}_${safeName(item.filename)}`;
       // Bytes FIRST (O97): a row that says "received" over bytes that were never stored is
@@ -223,9 +236,10 @@ serve(async (req) => {
       replyToOutboundId = out.id; replyText = replyBodyOf(full?.text || d.text || "");
       await admin.from("outbound_messages").update({ answered_at: now }).eq("id", out.id).select("id");
       if (out.related_intake_id && replyText) {
-        const { data: row } = await admin.from("document_intake").select("detail").eq("id", out.related_intake_id).maybeSingle();
-        await admin.from("document_intake").update({ detail: `${row?.detail || ""}\nOwner replied by email: ${replyText}`.trim(), updated_at: now })
-          .eq("id", out.related_intake_id).select("id");
+        // C635 — scoped to THIS company: the id alone could name another company's row.
+        const { data: row } = await admin.from("document_intake").select("detail").eq("id", out.related_intake_id).eq("company_id", companyId).maybeSingle();
+        if (row) await admin.from("document_intake").update({ detail: `${row?.detail || ""}\nOwner replied by email: ${replyText}`.trim(), updated_at: now })
+          .eq("id", out.related_intake_id).eq("company_id", companyId).select("id");
       }
     }
   }

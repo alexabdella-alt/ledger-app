@@ -89,6 +89,14 @@ serve(async (req) => {
       const ok = (users || []).some((u: any) => String(u.email || "").toLowerCase() === toNorm);
       if (!ok) return json({ error: "A question or report can only be sent to a member of the company." }, 403);
     }
+    // ★ C635 — EVERY related id must be in THIS company, not only the invoice's. The intake and
+    // anomaly ids were stored as given, so a member of one company could attach another
+    // company's records to a message (and a reply would then write to them).
+    for (const [table, id, what] of [["document_intake", related.intakeId, "document"], ["anomalies", related.anomalyId, "alert"]] as const) {
+      if (!id) continue;
+      const { data: rel } = await admin.from(table).select("id, company_id").eq("id", id).maybeSingle();
+      if (!rel || rel.company_id !== companyId) return json({ error: `That ${what} is not in this company.` }, 403);
+    }
     if (kind === "invoice") {
       if (!related.arInvoiceId) return json({ error: "An invoice email needs the posted invoice it is about." }, 400);
       const { data: inv } = await admin.from("ar_invoices").select("id, company_id").eq("id", related.arInvoiceId).maybeSingle();
