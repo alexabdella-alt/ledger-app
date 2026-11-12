@@ -28,6 +28,7 @@
 
 import { glIsRevenue, glIsExpense } from "./gl.js";
 import { deriveDueDate } from "./format.js";
+import { alignDirectionToAccount } from "./bookingDirection.js";
 
 export function buildUploadedInvoice({
   extracted = {}, coding = {}, rule = null, contact = null, rc, rn, id, bookedAt, today,
@@ -94,5 +95,11 @@ export function buildUploadedInvoice({
     },
   };
 
-  return { invoice, finalCode, finalName, confidence, isRevenue };
+  // C591 — the category decides the direction. A rule's category (or the AI's) and the AI's
+  // "this is income" could disagree; the entry then posted on the wrong side.
+  const aligned = alignDirectionToAccount(invoice, {
+    ar: { code: rc("accounts_receivable"), name: rn("accounts_receivable") },
+    ap: { code: rc("accounts_payable"), name: rn("accounts_payable") },
+  });
+  return { invoice: aligned, finalCode, finalName, confidence, isRevenue };
 }

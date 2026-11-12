@@ -3,6 +3,8 @@ import { useERP } from "./ERPContext";
 import { fmtDate , fmtSignedMoney, todayLocal } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
 import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
+import { alignDirectionToAccount, incomeAccountForAnswer } from "../lib/bookingDirection";
+import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { makeOneInFlight } from "../lib/oneInFlight";
 import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
 import { rightHalf } from "../lib/vendorIdentity";
@@ -184,7 +186,11 @@ function ClarificationCard({ item }) {
     if (!correctedType) return item;
     if (correctedType === baseInv.type && !item.directionFirst) return item;
     const isRev = correctedType === "revenue";
-    const acct = (CHART_OF_ACCOUNTS || []).find(a => a.category === (isRev ? "Revenue" : "Expenses")) || {};
+    // C591 — keep the document's own category when it is already the right kind. "We received
+    // it" on a bill the AI had coded to Repairs used to swap that for the FIRST expense
+    // category on the chart before asking.
+    const own = (isRev ? glIsRevenue : glIsExpense)(String(baseInv.gl_code ?? "")) ? { code: baseInv.gl_code, name: baseInv.gl_name } : null;
+    const acct = own || (CHART_OF_ACCOUNTS || []).find(a => a.category === (isRev ? "Revenue" : "Expenses")) || {};
     const effInv = {
       ...baseInv, type: correctedType,
       gl_code: acct.code, gl_name: acct.name,
@@ -406,7 +412,11 @@ function ClarificationCard({ item }) {
   const doBookGl = (chosen, { reasoning, audit = "user confirmed", answer = null } = {}) => {
     const bp = answers.business_purpose;
     const amt = (answers.amount != null && answers.amount !== "") ? (parseFloat(answers.amount) || inv.amount) : inv.amount;
-    const finalInv = {
+    // C591 — the chosen category decides the side and who owes whom (`bookingDirection.js`).
+    // "We sent it" used to change the category and leave `debit_credit` on the AI's first
+    // guess: income posted backwards.
+    const role = (r, code, name) => { const a = getAccountByRole?.(r); return { code: a?.code || code, name: a?.name || name }; };
+    const finalInv = alignDirectionToAccount({
       ...inv,
       amount: amt,
       date: answers.date || inv.date,
@@ -416,7 +426,7 @@ function ClarificationCard({ item }) {
       ...(chosen.typeOverride || {}),
       ...(reasoning ? { reasoning } : {}),
       ...(answer ? { clarified: true, learned_from_answer: answer } : {}),
-    };
+    }, { ar: role("accounts_receivable", "1100", "Money owed to you"), ap: role("accounts_payable", "2000", "Bills to pay") });
     if (bp && /project/i.test(bp)) finalInv.notes = (finalInv.notes ? finalInv.notes + " · " : "") + "Project expense";
     if (answers.vendor) finalInv._contact = { ...(inv._contact || {}), name: answers.vendor };
     // Structured learning signal, keyed to the company (O64-68). Captured now; the full
@@ -444,6 +454,13 @@ function ClarificationCard({ item }) {
   const submitAnswer = (rawText) => {
     const text = String(rawText != null ? rawText : freeText).trim();
     if (!text || interpreting || done || inFlight.current) return;
+    // C591 — an INCOME document's answer is read against income categories. The map below is
+    // the expense vocabulary; "a consulting project" would have been booked as income on
+    // Professional Services.
+    if (inv.type === "revenue") {
+      const inc = incomeAccountForAnswer(text, { getAccountByRole, chart: CHART_OF_ACCOUNTS, fallback: inv });
+      if (inc) { doBookGl({ code: inc.gl_code, name: inc.gl_name }, { reasoning: `From what you told us: "${text}".`, audit: "user described", answer: text }); return; }
+    }
     const mapped = answerToAccount(text, { getAccountByRole, rules, vendor: answers.vendor || inv.vendor });
     if (mapped && mapped.gl_code) {
       doBookGl({ code: mapped.gl_code, name: mapped.gl_name }, {
