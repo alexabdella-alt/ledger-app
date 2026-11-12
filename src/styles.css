@@ -206,3 +206,50 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
   *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
   body::before { display: none; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   C585 — A PHONE LAYOUT. The signed-in app had none: a fixed 212px side menu on
+   every screen left a 375px phone about 160px of content. Everything here applies
+   ONLY at 760px and under, so a laptop or a tablet held sideways is untouched.
+   `!important` throughout because the app styles inline, and inline wins otherwise.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 760px) {
+  /* top bar: logo, company, bell, gear, sign out — no email, no "Settings" word */
+  .sc-topbar { padding: 0 12px !important; height: 54px !important; }
+  .sc-topbar > div { gap: 8px !important; min-width: 0; }
+  .sc-hide-narrow { display: none !important; }
+
+  /* the side menu becomes one row you swipe sideways */
+  .sc-shell-body { flex-direction: column !important; }
+  .sc-sidenav { width: 100% !important; display: flex; flex-direction: row; flex-shrink: 0;
+    overflow-x: auto; overflow-y: hidden !important; padding: 0 4px !important;
+    border-right: none !important; border-bottom: 1px solid var(--sc-border);
+    -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .sc-sidenav::-webkit-scrollbar { display: none; }
+  .sc-sidenav > div { display: flex; flex-direction: row; flex-shrink: 0; margin-top: 0 !important; }
+  .sc-sidenav > div > div { display: none; }                 /* section headings */
+  .sc-sidenav .sc-navtab { width: auto !important; flex-shrink: 0; min-height: 44px !important;
+    padding: 0 12px !important; border-left: none !important;
+    border-bottom: 3px solid transparent !important; background: transparent !important; }
+  .sc-sidenav .sc-navtab.active { border-bottom-color: var(--sc-gold) !important; }
+  .sc-sidenav .sc-navtab > span:first-child { overflow: visible !important; }
+
+  /* the page: full width, room at the bottom for the assistant button */
+  .sc-page { padding: 18px 14px 96px !important; }
+  /* side-by-side columns stack; ones that already adapt (auto-fit / auto-fill) are left alone */
+  .sc-page [style*="grid-template-columns"]:not([style*="auto-fit"]):not([style*="auto-fill"]) { grid-template-columns: 1fr !important; }
+  /* a wide table scrolls sideways inside its own box instead of being cut off */
+  .sc-page table { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+  /* form controls: 16px stops iOS zooming the page when a field is tapped */
+  .sc-page input, .sc-page select, .sc-page textarea { font-size: 16px !important; max-width: 100%; }
+
+  /* a row of side-by-side fields that has stacked reads as one group per item */
+  .sc-page .sc-stack-row { padding-bottom: 14px; margin-bottom: 4px; border-bottom: 1px solid var(--sc-border); }
+  .sc-topbar button { white-space: nowrap; }
+
+  /* the assistant: nearly full width, never taller than the screen */
+  .sc-chat-panel { left: 8px !important; right: 8px !important; width: auto !important;
+    bottom: 88px !important; height: min(560px, calc(100dvh - 150px)) !important; }
+}
+@media (max-width: 420px) { .sc-hide-tiny { display: none !important; } }   /* the wordmark; the logo stays */

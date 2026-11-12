@@ -177,15 +177,17 @@ export default function SettingsView() {
                 {/* Bank accounts */}
                 <div id="bank-accounts-section" style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:24,marginBottom:16,scrollMarginTop:16}}>
                   <div style={{fontSize:12,fontWeight:600,color:"var(--sc-gold)",letterSpacing:0.5,marginBottom:16}}>BANK ACCOUNTS</div>
-                  <div style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,marginBottom:6,fontSize:10,fontWeight:600,letterSpacing:0.4,color:"var(--sc-text-mut)"}}>
+                  {/* C585 — on a phone the six columns stack, so this heading row (which would read as a list of
+                      words above unlabelled boxes) is hidden and each box names itself. */}
+                  <div className="sc-hide-narrow" style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,marginBottom:6,fontSize:10,fontWeight:600,letterSpacing:0.4,color:"var(--sc-text-mut)"}}>
                     <div>ACCOUNT NAME</div><div>TYPE</div><div>CATEGORY</div><div>BANK</div><div style={{textAlign:"right"}}>CURRENT BALANCE</div><div/>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
                     {bankAccounts.map(ba=>(
-                      <div key={ba.id} style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,alignItems:"center"}}>
-                        <input value={ba.name} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,name:e.target.value}:b))}
+                      <div key={ba.id} className="sc-stack-row" style={{display:"grid",gridTemplateColumns:"2fr 0.9fr 0.8fr 1.3fr 1.2fr auto",gap:10,alignItems:"center"}}>
+                        <input aria-label="Account name" value={ba.name} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,name:e.target.value}:b))}
                           placeholder="Account name" style={{background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}/>
-                        <select value={ba.type} onChange={e=>{
+                        <select aria-label="Account type" value={ba.type} onChange={e=>{
                             const type = e.target.value;
                             // Default the GL to the type's natural account so a card offsets to
                             // Credit Card Liability (2200), not Cash. (Still overridable at right.)
@@ -195,20 +197,20 @@ export default function SettingsView() {
                           style={{background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}>
                           {["checking","savings","credit_card","loan","other"].map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}
                         </select>
-                        <select value={ba.gl_code} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,gl_code:e.target.value}:b))}
+                        <select aria-label="Category" value={ba.gl_code} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,gl_code:e.target.value}:b))}
                           style={{background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}>
                           {(BOOKABLE_ACCOUNTS||[]).filter(a=>["Assets","Liabilities"].includes(a.category)).map(a=><option key={a.code} value={a.code}>{categoryLabel(a.code, a.name, { withCode: showCodesFor(navSeat) })}</option>)}
                         </select>
-                        <input value={ba.institution||""} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,institution:e.target.value}:b))}
+                        <input aria-label="Bank name" value={ba.institution||""} onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,institution:e.target.value}:b))}
                           placeholder="Bank name" style={{background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}/>
                         <div style={{position:"relative"}}>
                           <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"var(--sc-text-mut)",fontSize:12,pointerEvents:"none"}}>$</span>
-                          <input type="number" inputMode="decimal" step="0.01" value={ba.current_balance ?? ""}
+                          <input aria-label="Current balance on your statement" type="number" inputMode="decimal" step="0.01" value={ba.current_balance ?? ""}
                             onChange={e=>setBankAccounts(prev=>prev.map(b=>b.id===ba.id?{...b,current_balance:e.target.value}:b))}
                             onBlur={()=>persistBankAccounts && persistBankAccounts()}
-                            placeholder="0.00" style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px 8px 18px",color:"var(--sc-text)",fontSize:12,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
+                            placeholder="Balance on your statement" style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px 8px 18px",color:"var(--sc-text)",fontSize:12,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
                         </div>
-                        <button onClick={async()=>{ const r = await removeBankAccount(ba); if (!r?.ok) showNotification(`Couldn't remove ${ba.name||"that account"} — nothing was changed.`, "error"); }} style={{background:"transparent",border:"1px solid var(--sc-border-2)",borderRadius:7,padding:"7px 10px",color:"var(--sc-error)",cursor:"pointer",fontSize:13}}>×</button>
+                        <button aria-label={`Remove ${ba.name || "this account"}`} title="Remove this account" onClick={async()=>{ const r = await removeBankAccount(ba); if (!r?.ok) showNotification(`Couldn't remove ${ba.name||"that account"} — nothing was changed.`, "error"); }} style={{background:"transparent",border:"1px solid var(--sc-border-2)",borderRadius:7,padding:"7px 10px",color:"var(--sc-error)",cursor:"pointer",fontSize:13}}>×</button>
                       </div>
                     ))}
                   </div>

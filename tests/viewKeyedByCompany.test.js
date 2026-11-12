@@ -5,7 +5,7 @@ import fs from "node:fs";
 describe("C426", () => {
   it("the view container's key carries the company id", () => {
     const src = fs.readFileSync("src/App.jsx", "utf8");
-    expect(src).toMatch(/<div key=\{`\$\{view\}:\$\{currentCompany\?\.id \|\| "none"\}`\} className="sc-rise"/);
+    expect(src).toMatch(/<div key=\{`\$\{view\}:\$\{currentCompany\?\.id \|\| "none"\}`\} className="sc-rise sc-page"/);   // C585 added the phone-layout hook; the key is what this pins
     expect(src).not.toMatch(/<div key=\{view\} className="sc-rise"/);
   });
 });

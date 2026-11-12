@@ -1150,6 +1150,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   useLayoutEffect(() => {
     if (mainContentRef.current) mainContentRef.current.scrollTop = 0;
   }, [view]);
+  // C585 — on a phone the menu is a strip that scrolls sideways; keep the screen you are on in
+  // sight. "nearest" means a desktop sidebar that already shows the row does not move at all.
+  useEffect(() => {
+    try { document.querySelector(".sc-sidenav .sc-navtab.active")?.scrollIntoView({ block: "nearest", inline: "center" }); } catch { /* older browsers: the strip still scrolls by hand */ }
+  }, [view]);
 
   // ── COMPANY STATE RESET ────────────────────────────────────
   // Wipe every piece of company-scoped state back to its initial value so nothing
@@ -8940,7 +8945,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         {/* Top Bar */}
         <div style={{ background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", flexShrink:0 }}>
           {/* Brand + Company + User row */}
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 32px", height:64 }}>
+          <div className="sc-topbar" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 32px", height:64 }}>
             <div onClick={()=>setView("home")} title="Go to Home" style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
               {/* Eclipse logomark — a gold disc partly eclipsed by a midnight disc → a "shadow" crescent */}
               <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
@@ -8953,7 +8958,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                 <circle cx="24" cy="24" r="14" fill="url(#scTopMark)" />
                 <circle cx="30.5" cy="20" r="11.5" fill="var(--sc-surface)" />
               </svg>
-              <span className="sc-wordmark sc-display" style={{ fontSize:21, letterSpacing:1, fontWeight:600 }}>Shadow</span>
+              <span className="sc-wordmark sc-display sc-hide-tiny" style={{ fontSize:21, letterSpacing:1, fontWeight:600 }}>Shadow</span>
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:14 }}>
               <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
@@ -8993,9 +8998,9 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                   <circle cx="12" cy="12" r="3"></circle>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                 </svg>
-                <span style={{ fontSize:13, fontWeight:500 }}>Settings</span>
+                <span className="sc-hide-narrow" style={{ fontSize:13, fontWeight:500 }}>Settings</span>
               </button>
-              <span style={{ fontSize:11, color:"var(--sc-text-ph)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session?.user?.email}</span>
+              <span className="sc-hide-narrow" style={{ fontSize:11, color:"var(--sc-text-ph)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session?.user?.email}</span>
               <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
@@ -9012,7 +9017,10 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             The rows themselves come from `navSeat.sections` — the same pure module
             the route guard reads, so what is on screen and what may be opened can
             never disagree. */}
-        <div style={{ display:"flex", flex:1, minHeight:0 }}>
+        {/* C585 — `sc-shell-body` / `sc-sidenav` / `sc-page`: on a narrow screen (styles.css) the
+            side menu becomes a strip you swipe across the top, and the page takes the full width.
+            It was a fixed 212px column on every screen, which left a phone ~160px of content. */}
+        <div className="sc-shell-body" style={{ display:"flex", flex:1, minHeight:0 }}>
           {(() => {
             // Payables badge = the SAME source the Payables screen lists (openPayables →
             // live bills booked to A/P still unpaid). An older inline filter counted every
@@ -9040,7 +9048,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               setView(id);
             };
             return (
-              <nav aria-label="Main" style={{ width:212, flexShrink:0, background:"var(--sc-surface)", borderRight:"1px solid var(--sc-border)", overflowY:"auto", padding:"14px 0 24px" }}>
+              <nav aria-label="Main" className="sc-sidenav" style={{ width:212, flexShrink:0, background:"var(--sc-surface)", borderRight:"1px solid var(--sc-border)", overflowY:"auto", padding:"14px 0 24px" }}>
                 {navSeat.sections.map((section, si) => (
                   <div key={section.id} style={{ marginTop: si ? 18 : 0 }}>
                     {section.label && (
@@ -9091,7 +9099,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               keyed by view alone it survived a company switch, so three transactions ticked
               on one company read "3 selected" over the next one's table. The same locality
               rule as the composer's key (C297). */}
-          <div key={`${view}:${currentCompany?.id || "none"}`} className="sc-rise" style={{ maxWidth:1296, margin:"0 auto", padding:"32px 48px" }}>
+          <div key={`${view}:${currentCompany?.id || "none"}`} className="sc-rise sc-page" style={{ maxWidth:1296, margin:"0 auto", padding:"32px 48px" }}>
 
           {/* Top-level tab redirects (legacy → new consolidated views) */}
 
@@ -9258,7 +9266,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
 
       {/* Chat panel */}
       {chatOpen && (
-        <div style={{
+        <div className="sc-chat-panel" style={{
           position:"fixed", bottom:100, right:28, width:440, height:560,
           background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:20,
           boxShadow:"0 24px 80px rgba(0,0,0,0.7)", display:"flex", flexDirection:"column",
