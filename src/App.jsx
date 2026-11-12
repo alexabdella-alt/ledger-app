@@ -4265,12 +4265,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // double-post. Incomplete/ambiguous rows are NOT guessed — they're flagged to review. Runs
   // once per company session (autoDepRunRef guard) so re-renders don't re-trigger.
   const autoDepRunRef = useRef(null);
+  const depreciationHoldToldRef = useRef(false);   // C600 — said once a session, recorded every load
   const autoPostDepreciation = async () => {
     if (!currentCompany?.id) return { posted: 0, flagged: 0 };
     let rows;
     try {
       const { data, error } = await supabase.from("depreciation_schedule")
-        .select("id, asset_id, period_index, period_date, amount, status, fixed_assets!inner(vendor, description, dep_expense_code, accum_dep_code, useful_life_months)")
+        .select("id, asset_id, period_index, period_date, amount, status, fixed_assets!inner(vendor, description, dep_expense_code, accum_dep_code, useful_life_months, source_journal_entry_id)")
         .eq("company_id", currentCompany.id).eq("status", "pending");   // status is a fast prefilter; the GL is the real guard
       if (error) throw error;
       rows = data || [];
@@ -4279,7 +4280,16 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
     const ledger = invoicesRef.current || invoices;
     const today = todayLocal();
-    const { post, incomplete, assetsToFlip } = planDepreciationAutoPost(rows, ledger, today);
+    const { post, incomplete, assetsToFlip, orphaned } = planDepreciationAutoPost(rows, ledger, today);
+    // C600 — held back, and said: the purchase each of these came from is no longer in the books.
+    if (orphaned.length) {
+      const names = [...new Set(orphaned.map(r => (r.fixed_assets && (r.fixed_assets.vendor || r.fixed_assets.description)) || "an asset"))];
+      logAudit("depreciation_held_source_removed", `Stopped spreading the cost of ${names.join(", ")} over time — the purchase it came from was removed or reversed`, null, { asset_ids: [...new Set(orphaned.map(r => String(r.asset_id)))], rows: orphaned.length });
+      if (!depreciationHoldToldRef.current) {
+        depreciationHoldToldRef.current = true;
+        showNotification(`We've stopped spreading the cost of ${names.length === 1 ? names[0] : `${names.length} purchases`} over time — the purchase ${names.length === 1 ? "it" : "they"} came from is no longer in your books. Restore that purchase to continue, or ask your accountant to remove it from your equipment list.`, "info");
+      }
+    }
 
     let posted = 0;
     for (const row of post) {

@@ -84,12 +84,27 @@ export function depreciationAlreadyPosted(ledger, assetId, periodIndex) {
 //   skipped    → DUE but a live depreciation JE already exists (GL-truth) → idempotent no-op
 //   incomplete → DUE but ambiguous/malformed (no amount, no asset/period) → DO NOT guess; flag
 // `assetsToFlip` = assets whose EVERY input row will be posted this run (→ fully_depreciated).
+// ★ C600 — IS THE PURCHASE THIS ASSET CAME FROM STILL IN THE BOOKS? Deleting or correcting a
+// capitalised purchase took the asset off the balance sheet and left its schedule running:
+// every month on load the app posted depreciation for equipment the books no longer held —
+// expense for nothing, and accumulated depreciation against an asset of zero. An asset that
+// recorded its source entry is depreciated only while that entry is live (not deleted, not
+// voided, not reversed). An asset with no recorded source (older ones) is unchanged.
+export function sourcePurchaseLive(ledger = [], sourceEntryId = null) {
+  if (sourceEntryId == null || sourceEntryId === "") return true;      // nothing recorded → cannot tell → as before
+  const want = String(sourceEntryId);
+  return (ledger || []).some((i) => i
+    && String(i.db_entry_id != null ? i.db_entry_id : String(i.id ?? "").split("_")[0]) === want
+    && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && !i.reversed_by);
+}
+
 export function planDepreciationAutoPost(scheduleRows, ledger, throughDate) {
   const cutoff = String(throughDate || todayLocal());   // "run through today" — local period boundary
-  const post = [], skipped = [], incomplete = [];
+  const post = [], skipped = [], incomplete = [], orphaned = [];
   for (const r of (scheduleRows || [])) {
     if (!r) continue;
     if (String(r.period_date || "") > cutoff) continue;                 // not due yet — never post early
+    if (!sourcePurchaseLive(ledger, r.fixed_assets && r.fixed_assets.source_journal_entry_id)) { orphaned.push(r); continue; }   // C600
     if (r.asset_id == null || r.period_index == null) { incomplete.push(r); continue; }
     if (depreciationAlreadyPosted(ledger, r.asset_id, r.period_index)) { skipped.push(r); continue; }
     if (!(Number(r.amount) > 0)) { incomplete.push(r); continue; }      // ambiguous amount → don't guess
@@ -102,7 +117,7 @@ export function planDepreciationAutoPost(scheduleRows, ledger, throughDate) {
   post.forEach(r => { postByAsset[r.asset_id] = (postByAsset[r.asset_id] || 0) + 1; });
   incomplete.forEach(r => { if (r.asset_id != null) incByAsset[r.asset_id] = (incByAsset[r.asset_id] || 0) + 1; });
   const assetsToFlip = Object.keys(postByAsset).filter(a => !incByAsset[a] && postByAsset[a] === totalByAsset[a]);
-  return { post, skipped, incomplete, assetsToFlip };
+  return { post, skipped, incomplete, assetsToFlip, orphaned };
 }
 
 // One period's depreciation entry (Dr Dep Exp / Cr Accum Dep), as a buildJournalEntry
