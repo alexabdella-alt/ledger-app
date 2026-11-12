@@ -168,6 +168,7 @@ export function openingDiscrepancy({ statedOpening = null, recordedOpening = nul
 // (withdrawal/money-out). Prefers an explicit type, then the sign of the amount.
 export function bankLineDirection(t = {}) {
   if (t.direction === "in" || t.direction === "out") return t.direction;
+  if (typeof t.money_in === "boolean") return t.money_in ? "in" : "out";   // C630 — the statement's own direction
   if (t.type === "revenue") return "in";
   if (t.type === "expense") return "out";
   const n = Number(t.amount);

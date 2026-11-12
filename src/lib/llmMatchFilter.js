@@ -87,7 +87,14 @@ export function planLlmMatches({
     handledBankIds.add(String(match.bank_txn_id));
     for (const x of invoice_ids) handledInvIds.add(String(x));
 
-    if (match.auto_clear) autoCleared.push(record);
+    // ★ C630 — AUTO-CLEAR ONLY TO THE CENT. The model is allowed to call a match "auto_clear" when
+    // the amounts are within 2%; clearing then books the BILL's amount, not the bank's, so a
+    // $980 payment on a $1,000 bill took $1,000 out of the books and the account could never
+    // reconcile. A proposal whose bank amount differs from what it clears goes to a person.
+    const owedTotal = (matched_invoices || []).reduce((s, i) => s + Math.abs(Number(i && (i.ar_amount != null ? i.ar_amount : i.amount)) || 0), 0);
+    const bankAmt = Math.abs(Number(record.bank_txn && record.bank_txn.amount) || 0);
+    const toTheCent = matched_invoices && matched_invoices.length > 0 && Math.abs(Math.round(bankAmt * 100) - Math.round(owedTotal * 100)) === 0;
+    if (match.auto_clear && toTheCent) autoCleared.push(record);
     else queue.push(record);
   }
 

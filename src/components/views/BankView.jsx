@@ -9,6 +9,10 @@ import { autoMatchBankLines, matchableOpenItems, planBankImport, bankLineFates, 
 import { openingMismatchCopy, statementSummaryCopy } from "../../lib/workbench";
 import { priorOutstandingCandidates } from "../../lib/outstandingItems";
 
+// C630 — which way the money moved, from the statement (`money_in`), not the category type: a
+// refund filed under an expense is money IN and must not show as "−" in red.
+const isInflow = (t) => (typeof t.money_in === "boolean" ? t.money_in : t.type === "revenue");
+
 export default function BankView() {
   const { BOOKABLE_ACCOUNTS, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, rc, rn, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, createBankAccountInline, pendingImportFile, setPendingImportFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, reconciliations } = useERP();
@@ -409,7 +413,7 @@ export default function BankView() {
                             </div>
                           </div>
                           <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-                            <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:t.type==="revenue"?"var(--sc-success)":"var(--sc-error)" }}>{t.type==="revenue"?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+                            <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:isInflow(t)?"var(--sc-success)":"var(--sc-error)" }}>{isInflow(t)?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</span>
                             <span style={{ fontSize:11, fontWeight:600, color:"var(--sc-success)", background:"var(--sc-success-soft)", border:"1px solid var(--sc-success)", borderRadius:20, padding:"3px 10px", whiteSpace:"nowrap" }}>✓ Already in your books</span>
                           </div>
                         </div>
@@ -431,8 +435,8 @@ export default function BankView() {
                               <div style={{ fontSize:13, fontWeight:500 }}>{t.description}</div>
                               <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:2 }}>{fmtDate(t.date)} · Detected vendor: <span style={{ color:"var(--sc-gold)" }}>{t.vendor||"Unknown"}</span></div>
                             </div>
-                            <div style={{ fontSize:14, fontFamily:"'DM Mono', monospace", color:t.type==="revenue"?"var(--sc-success)":"var(--sc-error)", textAlign:"right" }}>
-                              {t.type==="revenue"?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
+                            <div style={{ fontSize:14, fontFamily:"'DM Mono', monospace", color:isInflow(t)?"var(--sc-success)":"var(--sc-error)", textAlign:"right" }}>
+                              {isInflow(t)?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
                             </div>
                             <select value={t.gl_code} onChange={e=>{
                               const acct = CHART_OF_ACCOUNTS.find(a=>a.code===e.target.value);
@@ -515,8 +519,8 @@ export default function BankView() {
                                   );
                                 })()}
                               </td>
-                              <td style={{ padding:"11px 14px", fontSize:13, fontFamily:"'DM Mono', monospace", color:t.type==="revenue"?"var(--sc-success)":"var(--sc-error)" }}>
-                                {t.type==="revenue"?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
+                              <td style={{ padding:"11px 14px", fontSize:13, fontFamily:"'DM Mono', monospace", color:isInflow(t)?"var(--sc-success)":"var(--sc-error)" }}>
+                                {isInflow(t)?"+":"-"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
                               </td>
                             </tr>
                           ))}

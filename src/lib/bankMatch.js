@@ -308,6 +308,11 @@ export function buildBankLineEntry(txn, { offsetCode = "1000", offsetName = "Cas
   const amount = Math.abs(Number(txn && txn.amount) || 0);
   const date = (txn && txn.date) || null;
   const isRevenue = txn && txn.type === "revenue";
+  // ★ C630 — THE DIRECTION IS WHICH WAY THE MONEY MOVED (`money_in`, read from the statement), not
+  // the category's type. A refund from a supplier is money IN filed under an expense: by type it
+  // was booked Dr expense / Cr cash — cash down for money that arrived. Money in credits the
+  // category; money out debits it. Rows without `money_in` keep the type rule.
+  const moneyIn = txn && typeof txn.money_in === "boolean" ? txn.money_in : isRevenue;
   // The `reasoning` field must explain the GL CLASSIFICATION (why this account), NOT the
   // provenance ("imported from bank statement" — that's already shown via `source`/the UI).
   // Prefer the categorizer's reason; else a real classification fallback (vendor → account).
@@ -316,7 +321,7 @@ export function buildBankLineEntry(txn, { offsetCode = "1000", offsetName = "Cas
     type: txn && txn.type, project: "General",
     gl_code: txn && txn.gl_code, gl_name: txn && txn.gl_name,
     secondary_gl_code: offsetCode, secondary_gl_name: offsetName,
-    debit_credit: isRevenue ? "credit" : "debit",
+    debit_credit: moneyIn ? "credit" : "debit",
     confidence: txn && txn.confidence,
     reasoning: classifyBankReason(txn),
     status: "booked", source: "bank_statement",

@@ -94,6 +94,7 @@ import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { bankFallbackFor } from "./lib/openingGrid";
 import { chatContactPatch } from "./lib/chatContactPatch";
+import { mergeCategorized } from "./lib/categorizedMerge";
 import { nextRecurringDate } from "./lib/recurringSchedule";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { fetchLedger, resolveEntryDbId, alreadyReversed } from "./lib/ledger";
@@ -6335,7 +6336,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const bankTxns = withRules.map((t) => ({
             id: t.id,
             date: t.date, description: t.description, vendor: t.vendor,
-            amount: t.type === "revenue" ? Math.abs(t.amount) : -Math.abs(t.amount),
+            amount: (typeof t.money_in === "boolean" ? t.money_in : t.type === "revenue") ? Math.abs(t.amount) : -Math.abs(t.amount),   // C630
             type: t.type, gl_code: t.gl_code, gl_name: t.gl_name, confidence: t.confidence,
           }));
 
@@ -7181,7 +7182,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       });
       return aiJson(await okAIResponse(res), []);
     });
-    return { ...parsed, rawTxns, categorized };
+    // C630 — the statement's lines are the record; the reply contributes only the classification.
+    return { ...parsed, rawTxns, categorized: mergeCategorized(rawTxns, categorized) };
   };
 
   const handleBankFile = async (file, account = null, { intakeId: callerIntakeId = null } = {}) => {
