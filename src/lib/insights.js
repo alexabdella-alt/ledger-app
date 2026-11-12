@@ -131,8 +131,19 @@ export function detectRecurringPatterns(invoices, recurring, now = new Date()) {
 }
 
 // ── CSV ──
+// ★ C632 — A CELL THAT STARTS WITH = + - @ (or a tab/return) IS RUN AS A FORMULA by Excel, Sheets and
+// Numbers. Every name, memo and description in an export came from a document, a bank feed or a
+// person — a vendor called `=HYPERLINK("http://…","Invoice")` became a live link in the accountant's
+// spreadsheet. Such a cell is prefixed with an apostrophe (shown as text, not run). Plain numbers —
+// including negative ones — are left alone so the figures stay numbers.
+export function csvSafe(v) {
+  const s = String(v ?? "");
+  if (/^[=+\-@\t\r]/.test(s) && !/^[+-]?\d+(\.\d+)?$/.test(s)) return "'" + s;
+  return s;
+}
+
 export function toCSV(headers, rows) {
-  const esc = v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const esc = v => { const s = csvSafe(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const head = (headers || []).map(esc).join(",");
   const body = (rows || []).map(r => (Array.isArray(r) ? r : [r]).map(esc).join(",")).join("\n");
   return head + (body ? "\n" + body : "");

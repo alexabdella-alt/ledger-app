@@ -1,4 +1,5 @@
 import React from "react";
+import { toCSV } from "../../lib/insights";
 import { useERP } from "../ERPContext";
 import { isDbId } from "../../lib/contactIds";
 import { prefillEndingBalance, statementForPeriod, statementOfferCopy, statementToOffer, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
@@ -912,9 +913,8 @@ export default function ReconView() {
   // ════════ DONE ════════
   if (step==="done") {
     const csv = () => {
-      const lines=[["date","description","amount","matched"]];
-      bankTxns.forEach(t=>lines.push([t.date,(t.description||"").replace(/,/g," "),t.amount, t._matchBook?"yes":"no"]));
-      const blob=new Blob([lines.map(r=>r.join(",")).join("\n")],{type:"text/csv"}); const u=URL.createObjectURL(blob);
+      const lines = bankTxns.map(t=>[t.date, t.description||"", t.amount, t._matchBook?"yes":"no"]);
+      const blob=new Blob([toCSV(["date","description","amount","matched"], lines)],{type:"text/csv"}); const u=URL.createObjectURL(blob);   // C632 — formula-safe, commas kept
       const a=document.createElement("a"); a.href=u; a.download=`reconciliation_${accountName}_${periodEnd}.csv`; a.click(); URL.revokeObjectURL(u);
     };
     return (

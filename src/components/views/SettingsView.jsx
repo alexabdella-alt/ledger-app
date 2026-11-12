@@ -1,4 +1,5 @@
 import React from "react";
+import { toCSV } from "../../lib/insights";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
@@ -76,8 +77,7 @@ export default function SettingsView() {
             };
             // ── Export all data (CSV safety net) ──
             const downloadCSV = (filename, rows) => {
-              const esc = v => { if (v==null) return ""; const s=String(v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
-              const csv = rows.map(r => r.map(esc).join(",")).join("\n");
+              const csv = toCSV(rows[0] || [], rows.slice(1));   // C632 — the shared, formula-safe writer
               const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");

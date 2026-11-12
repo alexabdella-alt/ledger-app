@@ -20,6 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { readAllRows } from "./pagedRead.js";
+import { csvSafe } from "./insights.js";
 
 export const AUDIT_SCREEN_ROWS = 1000;
 export const AUDIT_LIST_KEEP = 25;
@@ -74,7 +75,7 @@ export async function auditRowsForDownload({ loaded = [], total = null, readFull
   return { rows: data, error: null };
 }
 
-const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+const cell = (v) => `"${csvSafe(v).replace(/"/g, '""')}"`;   // C632 — formula cells defused
 export function auditCsv(rows) {
   const headers = ["Timestamp", "Action", "Detail", "User"];
   const lines = (rows || []).map(e => [
