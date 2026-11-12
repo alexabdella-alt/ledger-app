@@ -1,5 +1,5 @@
 import React from "react";
-import { reportTabsFor, REPORT_GUIDE, REPORTS_PURPOSE, BASIS_LABELS, BASIS_EXPLAINER } from "../../lib/reportGuide";
+import { reportTabsFor, ownerReportTabs, REPORT_GUIDE, REPORTS_PURPOSE, BASIS_LABELS, BASIS_EXPLAINER } from "../../lib/reportGuide";
 import { reminderMailto } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
 import { isCancelledOrCancelling, glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -32,6 +32,8 @@ export default function ReportsView() {
     if (prev) { setPlDrill(prev.plDrill); setDrill(prev.drill); setDrillSel(null); }
   };
   const [tbAdjusted, setTbAdjusted] = React.useState(true); // trial balance: adjusted (exclude voided) vs unadjusted
+  const [moreReports, setMoreReports] = React.useState(false);   // C640 — the owner's "More reports"
+  const ownerSeat = !!navSeat && !navSeat.isReviewerSeat;          // C640 — the accountant (or no seat) keeps every tab
   // Depreciation posts AUTOMATICALLY when due (App.jsx autoPostDepreciation, GL-truth
   // idempotent). There is no manual trigger and, since O129, no maintenance tool here
   // either — nothing about depreciation belongs on the view-your-statements tab.
@@ -260,14 +262,19 @@ export default function ReportsView() {
 
                 {/* Controls */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
-                  {reportTabsFor({ reviewer: !!navSeat?.isReviewerSeat || !navSeat }).map(([id,label])=>(
+                  {(ownerSeat ? ownerReportTabs({ showMore: moreReports, current: reportType }) : reportTabsFor({ reviewer: true })).map(([id,label])=>(
                     <button key={id} onClick={()=>{ setReportType(id); setPlDrill(null); setDrill(null); setDrillSel(null); }} style={pill(reportType===id)}>{label}</button>
                   ))}
+                  {/* C640 — the owner's other reports, one click away */}
+                  {ownerSeat && <button data-more-reports onClick={()=>setMoreReports(m=>!m)} style={{ background:"none", border:"none", color:"var(--sc-gold)", fontSize:13, fontWeight:600, cursor:"pointer", padding:"6px 4px" }}>{moreReports ? "Fewer reports ▴" : "More reports ▾"}</button>}
                   <div style={{ flex:1 }} />
                   {/* Date range — custom inputs always visible, preset buttons for quick selection */}
+                  {/* C640 — an owner picks a period from the menu; the two date boxes appear for "Custom" (the accountant always has them). */}
+                  {(!ownerSeat || reportRange === "custom") && <>
                   <input type="date" value={reportDateFrom} onChange={e=>{ setReportDateFrom(e.target.value); setReportRange("custom"); }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"7px 10px", color:"var(--sc-text)", fontSize:13, outline:"none" }} />
                   <span style={{ color:"var(--sc-text-2)", fontSize:13 }}>to</span>
                   <input type="date" value={reportDateTo} onChange={e=>{ setReportDateTo(e.target.value); setReportRange("custom"); }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"7px 10px", color:"var(--sc-text)", fontSize:13, outline:"none" }} />
+                  </>}
                   <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const now=new Date(); if(e.target.value==="thismonth"){setReportDateFrom(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-01");setReportDateTo(ymdLocal(now));} else if(e.target.value==="ytd"){setReportDateFrom(now.getFullYear()+"-01-01");setReportDateTo(ymdLocal(now));} else if(e.target.value==="all"){setReportDateFrom("");setReportDateTo("");} }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", cursor:"pointer" }}>
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
@@ -396,7 +403,7 @@ export default function ReportsView() {
                                     onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
-                                      <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      {!ownerSeat && <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>}
                                       {row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -420,7 +427,7 @@ export default function ReportsView() {
                                     onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
-                                      <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      {!ownerSeat && <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>}
                                       {row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -444,7 +451,7 @@ export default function ReportsView() {
                                     onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
-                                      <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>
+                                      {!ownerSeat && <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>}
                                       {row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -532,7 +539,7 @@ export default function ReportsView() {
                             onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                             style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid var(--sc-surface-2)",cursor:"pointer"}}>
                             <div style={{fontSize:13,color:"var(--sc-text-2)"}}>
-                              <span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}
+                              {!ownerSeat && <span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>}{a.name}
                             </div>
                             <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:bal<0?"var(--sc-error)":"var(--sc-text)"}}>{bsFmt(bal)}</div>
                           </div>
@@ -599,7 +606,7 @@ export default function ReportsView() {
                               <div key={a.code} onClick={()=>setDrill({scope:"bsacct",value:a.code,label:a.name})} title="View transactions"
                                 onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                 style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid var(--sc-surface-2)",cursor:"pointer"}}>
-                                <div style={{fontSize:13,color:"var(--sc-text-2)"}}><span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>{a.name}</div>
+                                <div style={{fontSize:13,color:"var(--sc-text-2)"}}>{!ownerSeat && <span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>}{a.name}</div>
                                 <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"var(--sc-error)":"var(--sc-text)"}}>{bsFmt(getBal(a.code))}</div>
                               </div>
                             ))}

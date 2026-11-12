@@ -258,7 +258,7 @@ The owner's menu is just: Home, Money, Reports, Ask (you) and Settings. Money [m
   • Customers [customers] — the people and businesses who pay you.
   • Vendors [vendors] — the people and businesses you pay. If one vendor shows up under two names, add the other name on that vendor and they are treated as one.
   • Documents [docs] — every file uploaded, searchable by name, type and date.
-  • Reports [reports] — opens with this month in plain words, then Profit & Loss, Balance Sheet and Cash Flow.
+  • Reports [reports] — opens with this month in plain words. An owner sees four reports — Profit & loss, Where the money goes, Who you pay, Cash in and out — and More reports opens the rest (what you own and owe, key numbers, customers who owe you, bills you owe, by project, monthly summaries). An accountant sees every report, including the Balance Sheet and all account balances.
 
 Settings (the gear at the top right, or Settings in the menu). An owner's Settings shows four rows — Your business [settings], Team [team], Taxes [tax] and More settings [settings-more]; every other page below is listed on More settings with a line on what it's for:
   • Company [settings] — business details and bank accounts.

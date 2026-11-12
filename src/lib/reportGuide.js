@@ -9,7 +9,7 @@
 // and the trial balance kept for the accountant's seat, where it is a working tool.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const REPORTS_PURPOSE = "Pick a report below. Start with Profit & Loss to see whether you made money.";
+export const REPORTS_PURPOSE = "Pick a report below. Start with Profit & loss to see whether you made money.";
 
 const TABS = [
   ["pl", "Profit & Loss"], ["balance", "Balance Sheet"], ["trial", "All account balances"],
@@ -22,6 +22,22 @@ const REVIEWER_ONLY = new Set(["trial"]);
 
 export function reportTabsFor({ reviewer = false } = {}) {
   return TABS.filter(([id]) => reviewer || !REVIEWER_ONLY.has(id));
+}
+
+// ★ C640 — THE OWNER'S REPORTS: FOUR, IN AN OWNER'S WORDS; THE REST BEHIND "MORE REPORTS".
+// An owner had ten tabs. The four an owner asks about — did I make money, where does it go, who
+// do I pay, what came in and out of the bank — are always shown; the rest are one click away and
+// named plainly. Nothing is removed. The accountant's tabs (above) are unchanged.
+export const OWNER_REPORT_TABS = [["pl", "Profit & loss"], ["gl", "Where the money goes"], ["vendor", "Who you pay"], ["cashflow", "Cash in and out"]];
+export const OWNER_MORE_REPORT_TABS = [
+  ["balance", "What you own and owe"], ["kpis", "Key numbers"], ["araging", "Customers who owe you"],
+  ["apaging", "Bills you owe"], ["project", "By project"], ["monthly", "Monthly summaries"],
+];
+// The tabs an owner sees: the four, plus the rest when "More reports" is open — and the report
+// currently on screen is always shown, so a report opened from elsewhere is never a hidden tab.
+export function ownerReportTabs({ showMore = false, current = null } = {}) {
+  const extra = OWNER_MORE_REPORT_TABS.filter(([id]) => showMore || id === current);
+  return [...OWNER_REPORT_TABS, ...extra];
 }
 
 // What each report answers. One sentence, no accounting terms.
