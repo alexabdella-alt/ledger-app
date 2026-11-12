@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderViewHtml, VIEW_CONTEXT } from "./helpers/renderView.jsx";
 import { POPULATED, INVOICES } from "./helpers/populatedFixture.js";
 import DashboardView from "../src/components/views/DashboardView.jsx";
-import { CLIENT_VIEW_IDS } from "../src/lib/nav.js";
+import { ALL_VIEW_IDS, CLIENT_VIEW_IDS } from "../src/lib/nav.js";
 
 // C527 — Home's Activity feed lists one line per entry. With the render fixture now coming out of
 // the real flatten, the two-line Sysco bill (i7) rendered as THREE lines — its Food line, its
@@ -31,7 +31,7 @@ describe("C538 — Home's activity feed describes settlements", () => {
   const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
   it("the payment reads 'Paid Hill Country Milling Co.' as money out; the A/P leg's name never shows", () => {
     expect(INVOICES.find((r) => r.id === "i9").import_metadata.payment_for).toBe("i1");   // the shape under test
-    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, companyDataLoaded: true }));
+    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
     expect(t).toContain("Paid Hill Country Milling Co.");
     expect(t).not.toContain("Accounts Payable");
     expect(t).not.toContain("Payment —");
@@ -49,7 +49,7 @@ describe("C540 — a correction is labelled as one", () => {
   it("reads '↩ Corrected: Bluebonnet Linen Service'", () => {
     const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
     expect(INVOICES.find((r) => r.id === "i10").import_metadata.reverses).toBe("i3");   // the shape under test
-    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, companyDataLoaded: true }));
+    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
     expect(t).toContain("↩ Corrected: Bluebonnet Linen Service");
     expect(t).not.toMatch(/💰 Bluebonnet/);
   });

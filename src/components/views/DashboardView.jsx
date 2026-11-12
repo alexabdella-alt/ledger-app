@@ -46,6 +46,9 @@ const drillLabel = (l) => {
 
 // C543 — drill subtitles count entries, not flattened lines.
 const entryCount = (rows) => new Set((rows || []).map((r) => String(r.db_entry_id != null ? r.db_entry_id : String(r.id ?? "").split("_")[0]))).size;
+// C639 — how many recent items an owner's Home lists before pointing at Money.
+export const HOME_OWNER_ACTIVITY_COUNT = 5;
+
 export default function DashboardView() {
   const { CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyGaapAnswer, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, glCash, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, reconciliations, bankMatch, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, companyDataLoaded, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, aiBudget, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat, heldQuestions, heldUnreadable, reloadHeldIntake, setChatPrefill, filedDeadlines } = useERP();
   // C197 — CPA cockpit vs client seat. Home is the ONE surface both seats share, so
@@ -109,7 +112,8 @@ export default function DashboardView() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obAllDone, companySettings.onboardingComplete]);
-  const [feedCount, setFeedCount] = React.useState(20); // activity feed page size
+  // C639 — the owner sees the latest 5 and a door to the full list on Money; the accountant keeps 20 + "Load more".
+  const [feedCount, setFeedCount] = React.useState(cockpit ? 20 : HOME_OWNER_ACTIVITY_COUNT);
   const [showCommit, setShowCommit] = React.useState(false); // active commitments expander
   const [apPayId, setApPayId] = React.useState(null); // inline "mark paid" row in the AP drill
   const [apPayMethod, setApPayMethod] = React.useState("ach");
@@ -478,6 +482,11 @@ export default function DashboardView() {
                 </div>
               ), document.body)}
 
+              {/* ★ C639 — ON THE OWNER'S HOME, WHAT NEEDS THEM COMES FIRST. The list of things waiting on
+                  the owner sat below the drop zone and the Ask box — the one part of the page that is
+                  their job was the fourth thing they saw. The accountant's layout is unchanged. */}
+              {!cockpit && <HomeWaitingList navTo={navTo} />}
+
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
               <style>{`
                 .sc-dropzone{ transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
@@ -689,7 +698,7 @@ export default function DashboardView() {
               </form>
 
               {/* ── U1 (C375) — ONE LIST OF THINGS WAITING ON YOU. Replaces nine banners; see lib/homeWaiting.js. ── */}
-              <HomeWaitingList navTo={navTo} />
+              {cockpit && <HomeWaitingList navTo={navTo} />}
 
               {/* ── CLARIFICATION QUEUE (conversational flow) ── */}
               <ClarificationStepper />
@@ -894,7 +903,13 @@ export default function DashboardView() {
                         </div>
                       ))
                     }
-                    {items.length > feedCount && (
+                    {!cockpit && items.length > feedCount && (
+                      /* C639 — the full list lives on Money; Home is not a second copy of it. */
+                      <div style={{ padding:"14px", textAlign:"center", borderTop:"1px solid var(--sc-border)" }}>
+                        <button data-home-see-all onClick={()=>navTo("money")} style={{ background:"none", border:"none", color:"var(--sc-gold)", fontSize:13, fontWeight:600, cursor:"pointer" }}>See everything in Money →</button>
+                      </div>
+                    )}
+                    {cockpit && items.length > feedCount && (
                       <div style={{ padding:"14px", textAlign:"center", borderTop:"1px solid var(--sc-border)" }}>
                         <button onClick={()=>setFeedCount(c=>c+20)} style={{ background:"none", border:"none", color:"var(--sc-gold)", fontSize:13, fontWeight:600, cursor:"pointer" }}>Load more</button>
                       </div>

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import { renderViewHtml } from "./helpers/renderView.jsx";
 import { POPULATED, INVOICES } from "./helpers/populatedFixture.js";
-import { CLIENT_VIEW_IDS } from "../src/lib/nav.js";
+import { ALL_VIEW_IDS, CLIENT_VIEW_IDS } from "../src/lib/nav.js";
 import BooksView from "../src/components/views/BooksView.jsx";
 import { displayParty } from "../src/lib/txnPresent.js";
 
@@ -54,7 +54,7 @@ describe("C541 — the opening entry", () => {
     const list = text(renderViewHtml(BooksView, { ...POPULATED, navSeat, companyDataLoaded: true }));
     expect(list).toMatch(/Cash \+\$10,000\.00 Starting balance/);
     expect(list).not.toMatch(/1000 Cash/);   // C575 — an owner sees the category's name, not its number
-    const home = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, companyDataLoaded: true }));
+    const home = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
     expect(home).toMatch(/🏁 Starting balances recorded[^🧾💰]*\+\$10,000\.00/);
     expect(home).not.toContain("Opening balances as of 2026-01-01 — Cash");
   });
