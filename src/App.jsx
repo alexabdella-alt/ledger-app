@@ -3144,7 +3144,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           .eq("status", "posted")
           .is("deleted_at", null)
           .ilike("description", `${prefix}%`);
-        if (matches?.length) { for (const m of matches) await mark(m.id); }
+        // ★ C602 — ONLY WHEN IT IS UNAMBIGUOUS. This deleted EVERY same-day entry whose
+        // description began with the vendor's first word: removing one "Home Depot" receipt
+        // took every other "Home …" entry booked that day with it. One match is this entry;
+        // several means we cannot tell, and deleting a guess is worse than deleting nothing.
+        if (matches?.length === 1) await mark(matches[0].id);
+        else if ((matches?.length || 0) > 1) {
+          logAudit("delete_ambiguous_refused", `Didn't delete ${invoice.vendor} on ${invoice.date} — ${matches.length} entries that day could be it`, null, { vendor: invoice.vendor, date: invoice.date, candidates: matches.length });
+          showNotification(`We couldn't tell which ${invoice.vendor} entry on that day this is, so nothing was deleted. Reload the page and try again.`, "error");
+        }
       }
     } catch(e) { console.error("softDeleteJournalEntry error:", e); }
     // Step 1 integrity: reverse any GL payment entry linked to a deleted/voided bill,
@@ -3159,6 +3167,23 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         for (const p of (pays || [])) await mark(p.id);
       }
     } catch (e) { console.warn("reverse linked payments on delete failed:", e?.message || e); }
+    // ★ C602 — AND THE CORRECTION THAT CANCELLED IT. A dated correction is a second, mirror
+    // entry pointing at the original (`import_metadata.reverses`). Deleting an original that
+    // had already been corrected left the correction live with nothing to cancel — the books
+    // went NEGATIVE by the full amount (income below zero, a supplier owed back). The two are
+    // removed together, and restored together (they join `ids`, which the Undo reads).
+    try {
+      const deleted = [...ids].map(String);
+      if (deleted.length) {
+        const { data: revs } = await supabase.from("journal_entries").select("id")
+          .eq("company_id", currentCompany.id).in("import_metadata->>reverses", deleted)
+          .is("deleted_at", null).eq("status", "posted");
+        for (const r of (revs || [])) if (!ids.map(String).includes(String(r.id))) await mark(r.id);
+      }
+    } catch (e) {
+      console.error("remove linked correction on delete failed:", e?.message || e);
+      logAudit("delete_correction_left_behind", "An entry was deleted, but we couldn't check for a correction that canceled it — your totals may be off by that amount until it is removed too", null, { entry_ids: [...ids].map(String) });
+    }
     // O76 display-sync (CLASS fix): drop every just-deleted entry from the live ledger
     // immediately, anchored HERE at the single DB-delete function — so EVERY delete path
     // (the Undo-batch wrapper, the AI chat delete_invoice, any future caller) re-syncs the
