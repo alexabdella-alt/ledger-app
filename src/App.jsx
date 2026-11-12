@@ -1497,6 +1497,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         loadFiledDeadlines(cid),        // C388 — deadlines already marked filed
         loadStatementExceptions(cid),   // C186 — pipeline exceptions for the CPA Review queue
       ]);
+      // ★ C613 — THE TAIL WAITED AND THEN WROTE WITHOUT LOOKING. Six loads are awaited above;
+      // switch company while they run and everything below landed in the NEW company: the old
+      // company's unclassified documents on its screen, and — worst — the old company's learned
+      // profile in `clientProfileRef`, which the next booking would save AS the new company's.
+      if (!stillOn(cid)) return;
       if (helpers[1].status === "fulfilled") clientProfileRef.current = helpers[1].value;
       for (const h of helpers) if (h.status === "rejected") console.warn("[loadAllData] a secondary load failed:", h.reason?.message || h.reason);
 
@@ -2212,11 +2217,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const recordBookingLearning = (invoice) => {
     try {
       if (!invoice || !invoice.vendor || !invoice.gl_code || invoice.source === "reversal") return;
-      clientProfileRef.current = learnFromBooking(clientProfileRef.current, invoice);
-      if (profilePersistTimer.current) clearTimeout(profilePersistTimer.current);
+      // ★ C613 — ONE COMPANY'S LEARNING NEVER LANDS IN ANOTHER'S PROFILE. The profile lives in a
+      // ref shared across company switches; a booking that finished after a switch taught the
+      // NEW company's profile the OLD company's vendor and saved the result under the old id,
+      // and the delayed save read the ref when it fired — a switch inside that 1.5s saved one
+      // company's whole profile as the other's. Learn only while still on the company, and save
+      // the snapshot taken now, to that company, only if still on it.
       const cid = currentCompany?.id;
+      if (!stillOn(cid)) return;
+      clientProfileRef.current = learnFromBooking(clientProfileRef.current, invoice);
+      const snapshot = clientProfileRef.current;
+      if (profilePersistTimer.current) clearTimeout(profilePersistTimer.current);
       profilePersistTimer.current = setTimeout(() => {
-        persistClientProfile(supabase, cid, clientProfileRef.current);
+        if (stillOn(cid)) persistClientProfile(supabase, cid, snapshot);
       }, 1500);
     } catch { /* learning is best-effort — never block a booking */ }
   };
@@ -5539,6 +5552,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   };
 
   const processUploadItem = async (item, file) => {
+    const itemCid = currentCompanyIdRef.current;   // C613 — the company this file was dropped in
     try {
         const ext = item.name.split(".").pop().toLowerCase();
         const isSpreadsheet = ["csv","xlsx","xls"].includes(ext);
@@ -5830,6 +5844,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             codings = Array.isArray(parsed) ? parsed : [parsed];
           } catch(e) { codings = []; }
 
+          // ★ C613 — THE COMPANY CHANGED WHILE THE AI WAS READING. Everything below either books
+          // or puts a question card on screen; a card shown in the NEW company, answered there,
+          // booked the old company's document into the new company's books. Stop here: the file
+          // is already stored in its own company (durable-first intake, O97) and its intake row
+          // is still open, so it waits there to be finished — nothing is lost and nothing crosses.
+          if (!stillOn(itemCid)) {
+            logAudit("upload_paused_company_switch", `${item.name} was being read when the company changed — left waiting in its own company`, null, { intake_id: String(item.intake_id ?? "") });
+            return;
+          }
           // Split invoices by confidence — high confidence books immediately, low confidence asks user
           const highConfidence = [];
           const needsClarification = [];
@@ -7789,6 +7812,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const contractIntakeId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
     logIntake(contractIntakeId, file, "contract");
     setContractProcessing(true);
+    const contractCid = currentCompany?.id;   // C613
     try {
       const base64 = await fileToBase64(file);
       const mediaType = ext===".pdf" ? "application/pdf" : `image/${ext.slice(1)}`;
@@ -7808,6 +7832,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
       const data1 = await okAIResponse(res1);
       if (!data1.content) throw new Error(`API error: ${JSON.stringify(data1)}`);
+      // ★ C613 — the read took a while; if the company changed meanwhile, this contract belongs
+      // to the one it was dropped in, not the one now on screen. Nothing is saved; it is said.
+      if (!stillOn(contractCid)) {
+        showNotification(`You switched companies while we were reading ${file.name}, so it wasn't saved. Add it again in the company it belongs to.`, "info");
+        setContractProcessing(false);
+        return;
+      }
       const contract = aiJson(data1, {});
 
       // O89 — the ASC 842 / ASC 606 entry generation moved to `contractEntries.js` so it can
@@ -8457,6 +8488,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         .select("*").eq("company_id", cid)
         .order("created_at", { ascending: false }).limit(50);
       if (error) { console.warn("[chat] load:", error.message); return; }
+      if (!stillOn(cid)) return;   // C613 — a late history for a company we have left
       const msgs = (data || []).slice().reverse().map(m => {
         // actions_taken is either the legacy string array, or { actions, rich }.
         const at = m.actions_taken;
@@ -8633,6 +8665,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     setChatHistory(h => [...h, userMsg]);
     setChatLoading(true);
     persistChatMessage("user", msg);  // persist the user turn immediately
+    const sentCid = currentCompany?.id;   // C613 — the company this question was asked in
 
     try {
       const historyForAI = chatHistory.filter(m => m.id !== 0).map(m => ({ role: m.role, content: m.content }));
@@ -8648,6 +8681,11 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         supabase, companyId: currentCompany?.id, getAccountByRole, recurring, aliasIndex,
         onToolCall: (name, params) => { try { logAI("ai_tool_call", `AI called tool: ${name} with params: ${JSON.stringify(params)}`); } catch {} },
       });
+      // ★ C613 — SWITCHED COMPANY WHILE THE ANSWER WAS COMING: DROP IT. Its actions would run with
+      // this company's handlers while the screen shows another, and its reply would appear in
+      // the other company's chat. Nothing is executed; the question stays in the first company's
+      // history and can be asked again there.
+      if (!stillOn(sentCid)) { setChatLoading(false); return false; }
 
       // Execute actions
       let actionSummary = [];
