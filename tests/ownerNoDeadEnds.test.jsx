@@ -10,7 +10,7 @@ const CPA = { isReviewerSeat: true, seat: "reviewer" };
 describe("C574 — Transactions never strands an owner on the contracts filter", () => {
   it("an owner has no Contracts filter to click", () => {
     const t = text(renderViewHtml(BooksView, { navSeat: OWNER, invoices: [], booksFilter: "all", companyDataLoaded: true }));
-    expect(t).toMatch(/Needs Review/);
+    expect(t).toMatch(/Needs a look/);   // C637 — the owner's word for it (the accountant keeps "Needs Review")
     expect(t).not.toMatch(/\bContracts\b/);
   });
   it("an owner sent to that filter anyway (the chat, a stale setting) sees their transactions, not a blank page", () => {

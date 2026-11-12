@@ -10,9 +10,11 @@ import { planBulkRemoval } from "../../lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "../../lib/ownerTrust";
 import { classifyTxn, txnStatus, collapseExpandedRows, listAmount, displayParty } from "../../lib/txnPresent";
 import { pill } from "../../lib/ui";
+import { OWNER_MONEY_FILTERS } from "../../lib/moneyPage";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 
-export default function BooksView() {
+// C637 — `embedded`: drawn inside the owner's Money page, which carries its own title.
+export default function BooksView({ embedded = false } = {}) {
   const {
     invoices, setInvoices, markPaid, markBillPaid, loadAllData, getAccountByRole, persistRecode, logAudit,
     setSelectedInvoice, setView, CHART_OF_ACCOUNTS,
@@ -90,6 +92,8 @@ export default function BooksView() {
     // settlement, not voided, not yet paid) so the tab and the row never disagree — no money-IN
     // collection can leak in, and direct-to-cash expenses (never payables) are excluded.
     if (filter==="unpaid") return classifyTxn(i, { apCode, arCode, settled }).settleAction === "pay";
+    // C637 — the mirror: invoices a customer has not paid yet (the same classifier's "collect").
+    if (filter==="owed") return classifyTxn(i, { apCode, arCode, settled }).settleAction === "collect";
     if (filter==="review") return needsReview(i) && i.status!=="voided";
     return true;
   });
@@ -163,7 +167,7 @@ export default function BooksView() {
 
   return (
     <div>
-      <div style={{ marginBottom:18, display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
+      {!embedded && <div style={{ marginBottom:18, display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
         <div>
           <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>BOOKS</div>
           <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>All transactions</h1>
@@ -175,14 +179,17 @@ export default function BooksView() {
           style={{ flexShrink:0, padding:"10px 18px", borderRadius:9, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer" }}>
           + Add entry
         </button>}
-      </div>
+      </div>}
 
       {/* Search + filters */}
       <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendor, amount, date, invoice number…"
           style={{ flex:"1 1 280px", minWidth:0, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:10, padding:"10px 14px", fontSize:14, color:"var(--sc-text)", outline:"none" }} />
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          {fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{cockpit && fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}
+          {cockpit
+            ? <>{fpill("all","All")}{fpill("revenue","Revenue")}{fpill("expenses","Expenses")}{fpill("contracts","Contracts")}{fpill("unpaid","Unpaid")}{fpill("review","Needs Review")}</>
+            /* C637 — the owner's words: what they owe, what they're owed, what came in and went out. */
+            : OWNER_MONEY_FILTERS.map(([id, label]) => fpill(id, label))}
         </div>
       </div>
       {filter==="review" && (

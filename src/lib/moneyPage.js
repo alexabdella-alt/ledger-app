@@ -1,37 +1,48 @@
 // ═════════════════════════════════════════════════════════════════════════════
-// C636 — THE MONEY PAGE'S TILES, IN AN OWNER'S WORDS. Pure: the figures are passed in (the same
-// GL balances Home's tiles read), so what a tile says can be tested without rendering anything.
-// One tile per list the owner's old menu had a row for, in the order an owner reaches for them:
-// what they owe, what they're owed, sending an invoice, then everything else.
+// C636 / C637 — THE OWNER'S MONEY PAGE, IN AN OWNER'S WORDS.
+// Step one (C636) was a page of tiles, one per list. Step two (C637): the lists ARE the page —
+// one searchable list of everything, with filters an owner would name (what I owe, what I'm
+// owed, what came in, what went out), two figures that set those filters, and the people and
+// files one click away. Pure, so the words and figures are tested without rendering anything.
 // ═════════════════════════════════════════════════════════════════════════════
+import { fmtMoney } from "./format.js";
 
 export const MONEY_PAGE_COPY = {
-  intro: "Everything coming in and going out, in one place. Pick what you want to look at.",
+  intro: "Everything coming in and going out, in one list. Search for anyone or anything, or pick a filter.",
   askHint: "Can't find something? The assistant can find it or open the right page for you.",
   askButton: "Ask →",
 };
 
-import { fmtMoney } from "./format.js";
+// The list's filters on the owner's seat, in the order an owner reaches for them. The ids are
+// the list's own filter values ("unpaid" = bills still to pay, "owed" = invoices not yet paid).
+export const OWNER_MONEY_FILTERS = [
+  ["all", "All"],
+  ["unpaid", "Bills to pay"],
+  ["owed", "Owed to you"],
+  ["revenue", "Income"],
+  ["expenses", "Spending"],
+  ["review", "Needs a look"],
+];
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const entryCount = (invoices = []) => new Set((invoices || [])
-  .filter((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && i.source !== "opening_balance")
-  .map((i) => String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]))).size;
 
-export function moneyTiles({ owe = 0, billsOpen = 0, owed = 0, invoicesOpen = 0, invoices = [], contacts = [], docs = [] } = {}, { money = fmtMoney } = {}) {
+// The two figures above the list. Each sets the list's filter when clicked.
+export function moneySummary({ owe = 0, billsOpen = 0, owed = 0, invoicesOpen = 0 } = {}, { money = fmtMoney } = {}) {
+  return [
+    { filter: "unpaid", label: "You owe", figure: money(owe),
+      sub: billsOpen ? `${plural(billsOpen, "bill", "bills")} to pay` : "All paid up", attention: billsOpen > 0 },
+    { filter: "owed", label: "Owed to you", figure: money(owed),
+      sub: invoicesOpen ? `${plural(invoicesOpen, "invoice", "invoices")} not paid yet` : "Nothing outstanding", attention: false },
+  ];
+}
+
+// The people and files, one click away below the list.
+export function moneyLinks({ contacts = [], docs = [] } = {}) {
   const vendors = (contacts || []).filter((c) => c && c.type !== "customer").length;
   const customers = (contacts || []).filter((c) => c && (c.type === "customer" || c.type === "both")).length;
-  const entries = entryCount(invoices);
   return [
-    { view: "ap", title: "Bills to pay", what: "Bills you've received and haven't paid yet.",
-      figure: billsOpen ? `${plural(billsOpen, "bill", "bills")} · ${money(owe)}` : "All paid up", attention: billsOpen > 0 },
-    { view: "ar", title: "Money owed to you", what: "Invoices your customers haven't paid yet.",
-      figure: invoicesOpen ? `${plural(invoicesOpen, "invoice", "invoices")} · ${money(owed)}` : "Nothing outstanding", attention: false },
-    { view: "send-invoice", title: "Send an invoice", what: "Bill a customer and email it from here.", figure: null },
-    { view: "books", title: "Transactions", what: "Everything in your books, newest first. Search, fix or remove an entry.",
-      figure: entries ? plural(entries, "entry", "entries") : "Nothing yet — drop a document on Home" },
-    { view: "customers", title: "Customers", what: "The people and businesses who pay you.", figure: customers ? plural(customers, "customer", "customers") : null },
-    { view: "vendors", title: "Vendors", what: "Who you pay, and how much this year.", figure: vendors ? plural(vendors, "vendor", "vendors") : null },
-    { view: "docs", title: "Documents", what: "Every receipt, invoice and statement you've added.", figure: (docs || []).length ? plural(docs.length, "file", "files") : null },
+    { view: "customers", label: "Customers", count: customers },
+    { view: "vendors", label: "Vendors", count: vendors },
+    { view: "docs", label: "Documents", count: (docs || []).length },
   ];
 }

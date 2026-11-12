@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { visibleNav, activeNavItem, canSeeView, MONEY_GROUP, NAV_ACTIONS } from "../src/lib/nav.js";
-import { moneyTiles, MONEY_PAGE_COPY } from "../src/lib/moneyPage";
+import { moneySummary, moneyLinks, OWNER_MONEY_FILTERS, MONEY_PAGE_COPY } from "../src/lib/moneyPage";
+import BooksView from "../src/components/views/BooksView.jsx";
 import { renderViewHtml } from "./helpers/renderView.jsx";
 import MoneyView from "../src/components/views/MoneyView.jsx";
 
@@ -37,31 +38,44 @@ describe("the owner's menu", () => {
   });
 });
 
-describe("the Money page", () => {
-  const tiles = moneyTiles({ owe: 4306, billsOpen: 2, owed: 1086.25, invoicesOpen: 1,
-    invoices: [{ id: "a_1", db_entry_id: "a" }, { id: "a_2", db_entry_id: "a" }, { id: "b", db_entry_id: "b" }, { id: "o", db_entry_id: "o", source: "opening_balance" }],
-    contacts: [{ type: "vendor" }, { type: "vendor" }, { type: "customer" }], docs: [{}, {}, {}] });
-  const by = (v) => tiles.find((t) => t.view === v);
+describe("the Money page is one list (C637)", () => {
+  it("★ two figures that set the list's filter, in plain words", () => {
+    const [owe, owed] = moneySummary({ owe: 4306, billsOpen: 2, owed: 1086.25, invoicesOpen: 1 });
+    expect([owe.filter, owe.label, owe.figure, owe.sub]).toEqual(["unpaid", "You owe", "$4,306.00", "2 bills to pay"]);
+    expect([owed.filter, owed.label, owed.figure, owed.sub]).toEqual(["owed", "Owed to you", "$1,086.25", "1 invoice not paid yet"]);
+    const [z1, z2] = moneySummary({});
+    expect([z1.sub, z2.sub]).toEqual(["All paid up", "Nothing outstanding"]);
+  });
 
-  it("★ one tile per list, in plain words, with the amounts Home's tiles use", () => {
-    expect(tiles.map((t) => t.view)).toEqual(["ap", "ar", "send-invoice", "books", "customers", "vendors", "docs"]);
-    expect(by("ap").figure).toBe("2 bills · $4,306.00");
-    expect(by("ar").figure).toBe("1 invoice · $1,086.25");
-    expect(by("books").figure).toBe("2 entries");   // entries, not lines; the starting balances not counted
-    expect([by("customers").figure, by("vendors").figure, by("docs").figure]).toEqual(["1 customer", "2 vendors", "3 files"]);
+  it("★ the owner's filters are named the way an owner would", () => {
+    expect(OWNER_MONEY_FILTERS.map(([, l]) => l)).toEqual(["All", "Bills to pay", "Owed to you", "Income", "Spending", "Needs a look"]);
   });
-  it("an empty company reads as a place to start, not as zeros", () => {
-    const empty = moneyTiles({});
-    expect(empty.find((t) => t.view === "ap").figure).toBe("All paid up");
-    expect(empty.find((t) => t.view === "books").figure).toBe("Nothing yet — drop a document on Home");
+
+  it("people and files stay one click away", () => {
+    expect(moneyLinks({ contacts: [{ type: "vendor" }, { type: "customer" }, { type: "vendor" }], docs: [{}] }).map((l) => [l.view, l.count]))
+      .toEqual([["customers", 1], ["vendors", 2], ["docs", 1]]);
   });
-  it("renders every tile and the way to ask", () => {
-    const html = renderViewHtml(MoneyView, { invoices: [], contacts: [], docLibrary: [], getAccountByRole: () => null });
-    for (const v of ["ap", "ar", "send-invoice", "books", "customers", "vendors", "docs"]) expect(html).toContain(`data-money-tile="${v}"`);
-    expect(html).toContain(MONEY_PAGE_COPY.intro);
-    expect(html).toContain("Ask →");
+
+  it("★ renders the figures, the embedded list with the owner's filters, and the links", () => {
+    const html = renderViewHtml(MoneyView, { invoices: [], contacts: [], docLibrary: [], getAccountByRole: () => null, navSeat: { isReviewerSeat: false }, booksFilter: "all", companyDataLoaded: true });
+    for (const f of ["unpaid", "owed"]) expect(html).toContain(`data-money-figure="${f}"`);
+    for (const [, label] of OWNER_MONEY_FILTERS) expect(html).toContain(`>${label}<`);
+    for (const v of ["customers", "vendors", "docs"]) expect(html).toContain(`data-money-link="${v}"`);
+    expect(html).toContain("data-money-send-invoice");
+    expect(html).not.toContain("All transactions");   // the list's own title is not repeated inside Money
   });
-  it("the Money page's lists are exactly the group Money highlights", () => {
-    for (const t of tiles) expect([t.view, MONEY_GROUP.includes(t.view)]).toEqual([t.view, true]);
+
+  it("★ 'Owed to you' lists exactly the invoices not paid yet", () => {
+    const AR = { id: "ar", code: "1100", name: "A/R", system_role: "accounts_receivable" };
+    const rows = [
+      { id: "i1", vendor: "Harbor Cafe", amount: 900, date: "2026-03-01", gl_code: "4100", gl_name: "Sales", secondary_gl_code: "1100", debit_credit: "credit", status: "booked", payment_status: "unpaid" },
+      { id: "i2", vendor: "Paid Co", amount: 500, date: "2026-03-02", gl_code: "4100", gl_name: "Sales", secondary_gl_code: "1100", debit_credit: "credit", status: "booked", payment_status: "collected" },
+      { id: "b1", vendor: "Ace", amount: 100, date: "2026-03-03", gl_code: "6250", gl_name: "Repairs", secondary_gl_code: "2000", debit_credit: "debit", status: "booked", payment_status: "unpaid" },
+    ];
+    const html = renderViewHtml(BooksView, { invoices: rows, navSeat: { isReviewerSeat: false }, booksFilter: "owed", companyDataLoaded: true,
+      getAccountByRole: (r) => (r === "accounts_receivable" ? AR : r === "accounts_payable" ? { code: "2000" } : null), rc: (r) => (r === "accounts_receivable" ? "1100" : r === "accounts_payable" ? "2000" : null) }, { embedded: true });
+    expect(html).toContain("Harbor Cafe");
+    expect(html).not.toContain("Paid Co");
+    expect(html).not.toContain(">Ace<");
   });
 });
