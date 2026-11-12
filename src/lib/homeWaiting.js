@@ -12,7 +12,7 @@
 // Urgency, in order: STOPS (a wrong answer books silently wrong) · NOW (not in the books
 // until you act) · SOON (a date is coming) · INFO (someone else will handle it; you may look).
 // ─────────────────────────────────────────────────────────────────────────────
-import { statementAccountQuestion } from "./statementLifecycle.js";
+import { statementAccountQuestion, heldStatementAddCopy } from "./statementLifecycle.js";
 import { countByUrgency, queueBannerCopy } from "./cardUrgency";
 import { heldQuestionsCopy, heldUnreadableCopy, heldPartialCopy } from "./waitingOnYou";
 import { unknownSenderCopy } from "../../supabase/functions/_shared/mailChannel.js";
@@ -35,6 +35,7 @@ export function homeWaitingList({
   overdueTotal = 0,
   recurringSuggestions = [],
   uploadQueue = [],          // for the contract / unknown-doc prompts
+  heldStatements = [],       // C588 — heldStatementQuestions(...): statements stored and waiting, from the record
   cockpit = false,           // reviewer seat: the accountant-side actions are theirs
   hasAccountant = true,      // C574 — false: nobody else is on this company, so "your accountant will…" is a promise nobody keeps
 } = {}) {
@@ -127,6 +128,14 @@ export function homeWaitingList({
     if (!s || s.status !== "done" || s.result?.to !== "choose" || !(s.result.accounts || []).length) continue;
     items.push({ id: `statement_account:${s.id}`, urgency: WAIT.NOW, text: statementAccountQuestion(s.name),
       actions: s.result.accounts.map((a) => ({ kind: "statement_account", label: a.label, itemId: s.id, accountId: a.id, secondary: true })) });
+  }
+
+  // C588 — and the ones whose tile is gone (a reload, another device): asked from the held row.
+  for (const h of (cockpit ? [] : heldStatements || [])) {
+    if (!h || !(h.accounts || []).length) continue;
+    items.push({ id: `statement_held:${h.intakeId}`, urgency: WAIT.NOW,
+      text: h.mode === "choose" ? statementAccountQuestion(h.fileName) : heldStatementAddCopy(h.fileName),
+      actions: h.accounts.map((a) => ({ kind: "statement_held", label: a.label, intakeId: h.intakeId, accountId: a.id, secondary: h.mode === "choose" })) });
   }
 
   // ── INFO (an accountant's job; the owner may look) ──

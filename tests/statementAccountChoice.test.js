@@ -73,3 +73,55 @@ describe("C587 — with more than one account, Home asks which one a statement i
     expect(home).toMatch(/a\.kind === "statement_account"\) await fileStatementTo\(a\.itemId, a\.accountId\)/);
   });
 });
+
+import { heldStatementQuestions, heldStatementAddCopy, buildStashDetail } from "../src/lib/statementLifecycle.js";
+import { keepUnanswered } from "../src/lib/uploadQueueTile.js";
+
+describe("C588 — a held statement is asked about again, from the record", () => {
+  const held = (n, name) => ({ id: `in${n}`, status: "held_for_review", document_id: `doc${n}`, filename: name, detail: buildStashDetail({ fileName: name }), received_at: `2026-11-0${n}T00:00:00Z` });
+  it("two accounts: the same question, per waiting statement, newest first", () => {
+    const qs = heldStatementQuestions({ intakeRows: [held(1, "feb.pdf"), held(2, "mar.pdf")], bankAccounts: [checking, card] });
+    expect(qs.map((q) => [q.intakeId, q.mode, q.accounts.length])).toEqual([["in2", "choose", 2], ["in1", "choose", 2]]);
+    const items = homeWaitingList({ heldStatements: qs });
+    expect(items[0]).toMatchObject({ id: "statement_held:in2", urgency: WAIT.NOW, text: statementAccountQuestion("mar.pdf") });
+    expect(items[0].actions[1]).toEqual({ kind: "statement_held", label: "Amex (····1009 · credit card)", intakeId: "in2", accountId: id(2), secondary: true });
+  });
+  it("one account: nothing to choose — one button that adds it", () => {
+    const qs = heldStatementQuestions({ intakeRows: [held(1, "feb.pdf")], bankAccounts: [checking] });
+    expect(qs).toEqual([{ intakeId: "in1", fileName: "feb.pdf", mode: "add", accounts: [{ id: id(1), label: "Add it to my books" }] }]);
+    const [item] = homeWaitingList({ heldStatements: qs });
+    expect(item.text).toBe(heldStatementAddCopy("feb.pdf"));
+    expect(item.actions).toEqual([{ kind: "statement_held", label: "Add it to my books", intakeId: "in1", accountId: id(1), secondary: false }]);
+  });
+  it("a statement whose tile is still on screen is left to the tile — one question, not two", () => {
+    expect(heldStatementQuestions({ intakeRows: [held(1, "feb.pdf")], bankAccounts: [checking, card], uploadQueue: [{ id: "q1", intake_id: "in1" }] })).toEqual([]);
+  });
+  it("only statements STILL held and stored count; no usable account → nothing is offered", () => {
+    const recorded = { ...held(1, "feb.pdf"), status: "recorded" };
+    const inReview = { ...held(2, "mar.pdf"), detail: "bank statement parsed — 20 line(s) in Bank Import review" };
+    const noFile = { ...held(3, "apr.pdf"), document_id: null };
+    expect(heldStatementQuestions({ intakeRows: [recorded, inReview, noFile], bankAccounts: [checking, card] })).toEqual([]);
+    expect(heldStatementQuestions({ intakeRows: [held(1, "feb.pdf")], bankAccounts: [{ id: "default", name: "Primary Checking" }] })).toEqual([]);
+  });
+  it("the accountant's seat is not asked on Home — they pick it up in Bank Import", () => {
+    const qs = heldStatementQuestions({ intakeRows: [held(1, "feb.pdf")], bankAccounts: [checking, card] });
+    expect(homeWaitingList({ heldStatements: qs, cockpit: true })).toEqual([]);
+  });
+  it("Clear × keeps a tile that is still waiting for its answer, and nothing else", () => {
+    const q = [{ id: "a", status: "done", result: { to: "pipeline" } }, { id: "b", status: "done", result: { to: "choose", accounts: [] } }, { id: "c", status: "error" }];
+    expect(keepUnanswered(q).map((x) => x.id)).toEqual(["b"]);
+    expect(readFileSync("src/components/views/DashboardView.jsx", "utf8")).toMatch(/setUploadQueue\(prev => keepUnanswered\(prev\)\)/);
+  });
+  it("the app files it from the stored copy, under the SAME intake row, one run at a time", () => {
+    const app = readFileSync("src/App.jsx", "utf8");
+    const i = app.indexOf("const fileHeldStatementTo = async (intakeId, accountId) => {");
+    const fn = app.slice(i, app.indexOf("const processUploadItem", i));
+    expect(fn).toMatch(/fetchStoredFile\(\{ supabase, documentId: row\.document_id \}\)/);
+    expect(fn).toMatch(/await handleBankFile\(got\.file, account, \{ intakeId: row\.id \}\);/);
+    expect(fn).toMatch(/if \(heldStatementRuns\.current\.has\(String\(intakeId\)\)\) return/);
+    expect(fn).toMatch(/finally \{ heldStatementRuns\.current\.delete\(String\(intakeId\)\); \}/);
+    const home = readFileSync("src/components/views/DashboardView.jsx", "utf8");
+    expect(home).toMatch(/a\.kind === "statement_held"\) await fileHeldStatementTo\(a\.intakeId, a\.accountId\)/);
+    expect(home).toMatch(/heldStatements: cockpit \? \[\] : heldStatementQuestions\(/);
+  });
+});

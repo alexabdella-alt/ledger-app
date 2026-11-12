@@ -364,6 +364,32 @@ export function pendingStatementStashes(intakeRows = []) {
     .sort((a, b) => String(b.received_at || "").localeCompare(String(a.received_at || "")));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// C588 — A HELD STATEMENT IS ASKED ABOUT AGAIN, FROM THE RECORD.
+// C587's question lived in the upload tile, which is this session's memory: reload before
+// answering and the statement was still stored and held, with NOTHING on screen saying so —
+// for an owner, who cannot open Bank Import, it simply waited forever. The held row is the
+// durable fact, so Home reads it: every statement still waiting, with what can be done.
+//   · two or more accounts → the same "which account?" buttons;
+//   · exactly one          → one button, because there is nothing to choose.
+// A statement whose tile is still on screen is left to the tile (one question, not two).
+// ─────────────────────────────────────────────────────────────────────────────
+export function heldStatementQuestions({ intakeRows = [], bankAccounts = [], uploadQueue = [] } = {}) {
+  const onScreen = new Set((uploadQueue || []).map((q) => q && q.intake_id).filter(Boolean).map(String));
+  const waiting = pendingStatementStashes(intakeRows).filter((r) => !onScreen.has(String(r.id)));
+  if (!waiting.length) return [];
+  const choices = statementAccountChoices(bankAccounts);
+  const sole = autoBindAccount(bankAccounts);
+  if (!choices.length && !sole) return [];                 // no usable account loaded: nothing honest to offer
+  return waiting.map((r) => ({
+    intakeId: r.id, fileName: r.filename || null,
+    mode: choices.length ? "choose" : "add",
+    accounts: choices.length ? choices : [{ id: sole.id, label: "Add it to my books" }],
+  }));
+}
+export const heldStatementAddCopy = (fileName) =>
+  `You dropped ${fileName ? `“${fileName}”` : "a statement"} and it hasn't been added to your books yet.`;
+
 export const STASH_WAITING_COPY = "You dropped a statement we haven't added yet.";
 export const STASH_PICKUP_LABEL = "Pick up where you left off →";
 export const AUTO_RECONCILED_AUDIT = "reconciliation_auto_completed";

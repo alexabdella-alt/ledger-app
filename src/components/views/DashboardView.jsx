@@ -1,4 +1,6 @@
 import React from "react";
+import { heldStatementQuestions } from "../../lib/statementLifecycle";
+import { keepUnanswered } from "../../lib/uploadQueueTile";
 import { CHECKLIST_COPY, BUSINESS_MODAL_INTRO, BUSINESS_SAVE_HINT, DROPZONE_COPY } from "../../lib/firstRun";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
@@ -540,7 +542,7 @@ export default function DashboardView() {
                       return line ? <span style={{ fontSize:11, color:"var(--sc-text-2)" }}>{line}</span> : null;
                     })()}
                     {queueIsSettled(uploadQueue) && (
-                      <button onClick={()=>setUploadQueue([])} style={{ background:"none", border:"none", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer", padding:0 }}>Clear ×</button>
+                      <button onClick={()=>setUploadQueue(prev => keepUnanswered(prev))} style={{ background:"none", border:"none", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer", padding:0 }}>Clear ×</button>
                     )}
                   </div>
                   {!folded && <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -908,7 +910,7 @@ export default function DashboardView() {
 export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
-    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo } = useERP();
+    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo, fileHeldStatementTo, intakeRows, bankAccounts } = useERP();
   const [busy, setBusy] = React.useState(null);
   const cockpit = !!navSeat?.isReviewerSeat;
   const today = todayLocal();
@@ -927,6 +929,7 @@ export function HomeWaitingList({ navTo }) {
     heldInbound: Array.isArray(heldInbound) ? heldInbound : [], canDecideMail: !!(isAdmin || isOwner),
     bankMatch, taxDeadline: dl, taxEstimateText, overdueBills, overdueTotal,
     recurringSuggestions: Array.isArray(recurringSuggestions) ? recurringSuggestions : [],
+    heldStatements: cockpit ? [] : heldStatementQuestions({ intakeRows: Array.isArray(intakeRows) ? intakeRows : [], bankAccounts: Array.isArray(bankAccounts) ? bankAccounts : [], uploadQueue: uploadQueue || [] }),   // C588
     uploadQueue: uploadQueue || [], cockpit, hasAccountant: hasAttester !== false,   // C574 — defaults to "has one" while unknown
   });
   if (!items.length) return null;
@@ -944,6 +947,7 @@ export function HomeWaitingList({ navTo }) {
       else if (a.kind === "mail_ignore") await ignoreHeldInbound(a.message);
       else if (a.kind === "recurring_yes") await acceptRecurringSuggestion(a.suggestion);
       else if (a.kind === "statement_account") await fileStatementTo(a.itemId, a.accountId);   // C587
+      else if (a.kind === "statement_held") await fileHeldStatementTo(a.intakeId, a.accountId);   // C588
       else if (a.kind === "recurring_no") dismissRecurringSuggestion(a.suggestion, false);
     } finally { setBusy(null); }
   };

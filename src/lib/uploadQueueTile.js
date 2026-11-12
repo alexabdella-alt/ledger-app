@@ -127,3 +127,10 @@ export function queueSummaryCopy(census = {}) {
   if (c.running || c.queued) parts.push(`${c.running + c.queued} still being read`);
   return parts.join(" · ");
 }
+
+// C588 — "Clear ×" tidies away what is finished. A statement still waiting to be told which
+// account it is from is NOT finished: clearing its tile would take the question off the page
+// with it (the statement itself stays stored and held). Those tiles stay.
+export function keepUnanswered(items = []) {
+  return (items || []).filter((q) => q && q.status === "done" && q.result?.to === "choose");
+}
