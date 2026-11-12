@@ -42,8 +42,9 @@ describe("★ the readers actually consult the map (source)", () => {
     // C559 — re-aimed at the property (both pass the filed map), since both now also pass the
     // company's legal form; and that second argument is pinned too, so neither reverts to the
     // every-company calendar.
-    expect(home).toMatch(/nextUrgentDeadline\(new Date\(\), 30, \{ filed: filedDeadlines, legalForm: companySettings\?\.legalForm \|\| null \}\)/);
-    expect(app).toMatch(/nextUrgentDeadline\(new Date\(\), 30, \{ filed: filedDeadlinesRef\.current, legalForm: legalFormRef\.current \|\| null \}\)/);
+    // C618 — through `nextWaitingDeadline`, with the same two arguments
+    expect(home).toMatch(/nextWaitingDeadline\(new Date\(\), 30, \{\s*\n\s*filed: filedDeadlines, legalForm: companySettings\?\.legalForm \|\| null,/);
+    expect(app).toMatch(/nextWaitingDeadline\(new Date\(\), 30, \{\s*\n\s*filed: filedDeadlinesRef\.current, legalForm: legalFormRef\.current \|\| null,/);
     expect(app).not.toMatch(/getTaxDeadlines\(new Date\(\)\)\.find/);
     const save = tax.slice(tax.indexOf("const save = async (next) => {"), tax.indexOf("const toggleFiled"));
     expect(save.indexOf("rowExists.current = true;")).toBeLessThan(save.indexOf("setFiledDeadlines(next.filed || {})"));

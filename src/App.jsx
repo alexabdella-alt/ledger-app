@@ -28,7 +28,7 @@ import { routeAIActions, buildPendingConfirmation, resolveActionTargets } from "
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection, perEntry } from "./lib/insights";
 import { multiLineMetaPatch } from "./lib/entryMetaStamp";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
-import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
+import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
 import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, recurringRunPatch, normalizeContactType, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
@@ -2709,10 +2709,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const generateNotifications = () => {
     try {
       // Tax deadline within 30 days, with the estimated amount.
-      const nextDue0 = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlinesRef.current, legalForm: legalFormRef.current || null });   // C388 — one reading with Home; a filed deadline is not due
-      const est = nextDue0 ? taxEstimate(invoicesRef.current, new Date().getFullYear()) : null;
-      const has1099s = nextDue0 && nextDue0.kind === "1099" ? plan1099ForYear({ invoices: invoicesRef.current, contacts: contactsRef.current || [], chart: CHART_OF_ACCOUNTS, year: nextDue0.year - 1 }).outstanding > 0 : true;   // C435
-      const nextDue = deadlineIsWaiting(nextDue0, est, { has1099s }) ? nextDue0 : null;   // C434/C435 — same rule as Home
+      // C618 — the same helper as Home: the first deadline that needs something, each estimate for its own year.
+      const waitingDue = nextWaitingDeadline(new Date(), 30, {
+        filed: filedDeadlinesRef.current, legalForm: legalFormRef.current || null,
+        estimateFor: (y) => taxEstimate(invoicesRef.current, y),
+        has1099sFor: (d) => plan1099ForYear({ invoices: invoicesRef.current, contacts: contactsRef.current || [], chart: CHART_OF_ACCOUNTS, year: d.year - 1 }).outstanding > 0,
+      });
+      const nextDue = waitingDue ? waitingDue.deadline : null;
+      const est = waitingDue ? waitingDue.estimate : null;
       if (nextDue) {
         const amt = nextDue.est && est.quarterly > 0 ? ` — est. ${fmtApprox(est.quarterly)}` : "";
         createNotification({ type: "tax_deadline", title: `${nextDue.label} due in ${nextDue.days} day${nextDue.days === 1 ? "" : "s"}${amt}`, description: nextDue.plain, link_view: "tax" });

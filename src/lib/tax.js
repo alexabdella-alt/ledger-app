@@ -142,6 +142,26 @@ export function deadlineIsWaiting(d, estimate, { has1099s = true } = {}) {
   if (!d.est) return true;
   return !!(estimate && Number(estimate.total) > 0);
 }
+// ★ C618 — THE YEAR AN ESTIMATED PAYMENT IS ABOUT. The January 15 payment is the 4th quarter of
+// the year just ENDED; every other one is about the year it falls in. Home and the bell
+// computed every estimate from `getFullYear()`, so on January 1–15 the Q4 reminder was sized
+// from a new year with a fortnight of profit — near zero, so it read "nothing to pay" and hid.
+export const estimateTaxYearFor = (d) => (d && d.m === 0 ? Number(d.year) - 1 : Number(d && d.year));
+
+// ★ C618 — THE FIRST DEADLINE THAT NEEDS SOMETHING, NOT THE FIRST DEADLINE. Home asked for the
+// next deadline and THEN checked whether it was waiting; when the first one had nothing to pay,
+// the answer was "nothing", and the January 31 1099 deadline right behind it was never looked at.
+// `estimateFor(year)` and `has1099sFor(deadline)` are the caller's (they need the ledger).
+export function nextWaitingDeadline(now = new Date(), withinDays = 30, { filed = {}, legalForm = null, estimateFor = () => null, has1099sFor = () => true } = {}) {
+  for (const d of getTaxDeadlines(now, { legalForm })) {
+    if (!(d.days <= withinDays && d.days >= 0) || (filed && filed[filedKey(d)])) continue;
+    const estimate = d.est ? estimateFor(estimateTaxYearFor(d)) : null;
+    const has1099s = d.kind === "1099" ? !!has1099sFor(d) : true;
+    if (deadlineIsWaiting(d, estimate, { has1099s })) return { deadline: d, estimate };
+  }
+  return null;
+}
+
 export function nextUrgentDeadline(now = new Date(), withinDays = 30, { filed = {}, legalForm = null } = {}) {
   return getTaxDeadlines(now, { legalForm }).find(d => d.days <= withinDays && d.days >= 0 && !(filed && filed[filedKey(d)])) || null;
 }

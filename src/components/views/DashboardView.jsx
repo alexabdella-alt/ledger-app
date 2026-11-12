@@ -19,7 +19,7 @@ import { plan1099ForYear } from "../../lib/form1099";
 import { BUSINESS_TYPES } from "../../lib/coaTemplates";
 import { LEGAL_FORMS } from "../../lib/tax";
 import VendorTeachIn from "../VendorTeachIn";   // C563
-import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
+import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
 import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
@@ -924,10 +924,15 @@ export function HomeWaitingList({ navTo }) {
   const unpaid = openPayablesGL(invoices || [], apCode);
   const overdueBills = unpaid.filter(i => i.due_date && i.due_date < today);
   const overdueTotal = overdueBills.reduce((t, i) => t + (Number(i.amount) || 0), 0);
-  const dl0 = nextUrgentDeadline(new Date(), 30, { filed: filedDeadlines, legalForm: companySettings?.legalForm || null });   // C559 — this company's deadlines   // C388 — a deadline marked filed on the Taxes screen is not waiting
-  const est = dl0 && dl0.est ? taxEstimate(invoices || [], new Date().getFullYear()) : null;
-  const has1099s = React.useMemo(() => dl0 && dl0.kind === "1099" ? plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: dl0.year - 1 }).outstanding > 0 : true, [dl0?.kind, dl0?.year, invoices, contacts, CHART_OF_ACCOUNTS]);   // C435 — 1099s are filed for the PREVIOUS year
-  const dl = deadlineIsWaiting(dl0, est, { has1099s }) ? dl0 : null;   // C434/C435 — an estimated payment with nothing to pay, or a 1099 with nobody to file for, is not waiting
+  // C618 — the first deadline that NEEDS something (C434/C435's rules), each estimate for the year
+  // it is about. C559 — this company's deadlines. C388 — a deadline marked filed is not waiting.
+  const waiting = React.useMemo(() => nextWaitingDeadline(new Date(), 30, {
+    filed: filedDeadlines, legalForm: companySettings?.legalForm || null,
+    estimateFor: (y) => taxEstimate(invoices || [], y),
+    has1099sFor: (d) => plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: d.year - 1 }).outstanding > 0,
+  }), [filedDeadlines, companySettings?.legalForm, invoices, contacts, CHART_OF_ACCOUNTS]);
+  const dl = waiting ? waiting.deadline : null;
+  const est = waiting ? waiting.estimate : null;
   const taxEstimateText = dl && dl.est && est && est.total > 0 ? ` — estimated amount ${fmtApprox(est.quarterly)}` : "";
   const items = homeWaitingList({
     openCards: (clarificationQueue || []).filter(c => !c.resolved),

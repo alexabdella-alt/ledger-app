@@ -516,6 +516,10 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C618 — JANUARY 1–15: THE Q4 REMINDER WAS SIZED FROM THE NEW YEAR, AND IT HID THE 1099 DEADLINE BEHIND IT (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding R7, confirmed.
+  - **The January 15 payment is the 4th quarter of the year just ENDED**, and Home and the bell sized every estimate from `getFullYear()` — on January 1–15, a new year with a fortnight of profit, so the reminder read "nothing to pay" and was hidden (C434's rule). `estimateTaxYearFor` names the year each estimate is about.
+  - **Home asked for the NEXT deadline and then checked whether it was waiting.** When that first one had nothing to do, the answer was "nothing" — and the January 31 1099 deadline right behind it was never considered. `nextWaitingDeadline` walks the deadlines in order and returns the first that needs something, with its estimate. Home and the bell share it; two older pins on the old two-step wiring were moved to it.
+
 - **C617 — THE SALES-TAX CHECK FAILED FOREVER AFTER A TAXED INVOICE WAS VOIDED (2026-11-12). ONE MUTATION, ONE RED.** Review finding R6, confirmed with real flattened entries. A void is a dated correction: the original stays posted (with `reversed_by`) and a mirror cancels it, so Sales Tax Payable nets to zero — but the "tax charged" side still counted the original's tax figure. One voided taxed invoice left a HIGH check failing permanently, blocking sign-off on correct books. Cancelled and cancelling entries are skipped (`isCancelledOrCancelling`).
 
 - **C616 — A HIGH "UNUSUAL CHARGE" ALERT CLOSED ITSELF WHEN THE VENDOR'S NEXT ORDINARY CHARGE WAS BOOKED (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding R5, confirmed.

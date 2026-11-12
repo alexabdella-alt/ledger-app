@@ -27,7 +27,8 @@ describe("deadlineIsWaiting", () => {
   it("Home and the bell both read it", () => {
     const home = fs.readFileSync("src/components/views/DashboardView.jsx", "utf8");
     const app = fs.readFileSync("src/App.jsx", "utf8");
-    expect(home).toMatch(/const dl = deadlineIsWaiting\(dl0, est, \{ has1099s \}\) \? dl0 : null;/);
-    expect(app).toMatch(/const nextDue = deadlineIsWaiting\(nextDue0, est, \{ has1099s \}\) \? nextDue0 : null;/);
+    // C618 — both read it through `nextWaitingDeadline`, which applies it to EACH deadline in turn.
+    expect(home).toMatch(/const waiting = React\.useMemo\(\(\) => nextWaitingDeadline\(new Date\(\), 30, \{/);
+    expect(app).toMatch(/const waitingDue = nextWaitingDeadline\(new Date\(\), 30, \{/);
   });
 });
