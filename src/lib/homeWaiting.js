@@ -21,6 +21,8 @@ import { fmtMoney } from "./format";
 export const WAIT = { STOPS: 0, NOW: 1, SOON: 2, INFO: 3 };
 const money = (n) => fmtMoney(Number(n) || 0);
 
+import { bankLinesWaitingCopy } from "./statementQuestions.js";
+
 export function homeWaitingList({
   openCards = [],            // unresolved clarification cards (this session)
   heldQuestions = [],        // C365 rows
@@ -36,6 +38,7 @@ export function homeWaitingList({
   recurringSuggestions = [],
   uploadQueue = [],          // for the contract / unknown-doc prompts
   heldStatements = [],       // C588 — heldStatementQuestions(...): statements stored and waiting, from the record
+  ownerBankLines = 0,        // C641 — bank lines the app couldn't categorise that an owner with no accountant can answer
   cockpit = false,           // reviewer seat: the accountant-side actions are theirs
   hasAccountant = true,      // C574 — false: nobody else is on this company, so "your accountant will…" is a promise nobody keeps
 } = {}) {
@@ -143,6 +146,11 @@ export function homeWaitingList({
   // as reassurance. Without an accountant the line says so and offers the way to get one.
   const invite = { kind: "nav", label: "Invite your accountant", view: "team" };
   const solo = !cockpit && !hasAccountant;
+  // C641 — an owner with no accountant answers their own uncategorised bank lines.
+  if (solo && ownerBankLines > 0) {
+    items.push({ id: "bank_answer", urgency: WAIT.NOW, text: bankLinesWaitingCopy(ownerBankLines),
+      actions: [{ kind: "bank_answer", label: "Answer these" }] });
+  }
   const q = uploadQueue || [];
   if (q.some((x) => x && x.status === "done" && x.type === "contract")) {
     items.push({ id: "contract_ready", urgency: WAIT.INFO,
@@ -154,7 +162,7 @@ export function homeWaitingList({
       text: cockpit ? "Some documents need accountant review." : solo ? "We couldn't tell what one of your files was. It's saved in Documents — an accountant can file it for you." : "We couldn't tell what one of your files was — your accountant will take a look.",
       actions: cockpit ? [{ kind: "nav", label: "Open Review", view: "review" }] : solo ? [{ kind: "nav", label: "Open Documents", view: "docs", secondary: true }, invite] : [] });
   }
-  if (q.some((x) => x && x.status === "done" && x.type === "bank_statement" && x.result?.needsReview > 0)) {
+  if (!(solo && ownerBankLines > 0) && q.some((x) => x && x.status === "done" && x.type === "bank_statement" && x.result?.needsReview > 0)) {   // C641 — not twice
     items.push({ id: "bank_review", urgency: cockpit ? WAIT.NOW : WAIT.INFO,
       text: cockpit ? "Some bank transactions need your review before they're added." : solo ? "A few things from your statement need a second look before they're added. An accountant reviews these — invite yours to finish them." : "A few things from your statement need a second look — your accountant is on it.",
       actions: cockpit ? [{ kind: "nav", label: "Review matches", view: "matching" }] : solo ? [invite] : [] });

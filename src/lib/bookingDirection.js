@@ -31,10 +31,15 @@ export function alignDirectionToAccount(inv, { ar = {}, ap = {} } = {}) {
   const other = rev ? ap : ar;     // the offset that belongs to the opposite direction
   const sec = inv.secondary_gl_code == null ? "" : String(inv.secondary_gl_code);
   const swap = !sec || (other.code != null && sec === String(other.code));
+  // ★ C641 — A LINE FROM A BANK STATEMENT CARRIES THE DIRECTION THE MONEY MOVED (`money_in`, C630).
+  // When the other side is that bank account (not money owed either way), the statement decides
+  // the side: a supplier's refund is money IN filed under an expense — a credit to the expense,
+  // not a second purchase.
+  const settledThroughBank = typeof inv.money_in === "boolean" && !swap && sec !== String(mine.code ?? "");
   const out = {
     ...inv,
     type: rev ? "revenue" : "expense",
-    debit_credit: rev ? "credit" : "debit",
+    debit_credit: settledThroughBank ? (inv.money_in ? "credit" : "debit") : rev ? "credit" : "debit",
     ...(swap && mine.code != null ? { secondary_gl_code: mine.code, secondary_gl_name: mine.name } : {}),
   };
   if (inv._contact) out._contact = { ...inv._contact, type: rev ? "customer" : "vendor" };

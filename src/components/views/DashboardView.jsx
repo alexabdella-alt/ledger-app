@@ -14,6 +14,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural, monthsLeftYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { plan1099ForYear } from "../../lib/form1099";
+import { bankLineQuestionCards } from "../../lib/statementQuestions";
 // C557 — the business-type list is the template list. It was typed out here, so a new type
 // needed two edits and the second one could be missed (C556 recorded it).
 import { BUSINESS_TYPES } from "../../lib/coaTemplates";
@@ -931,8 +932,14 @@ export default function DashboardView() {
 export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
-    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo, fileHeldStatementTo, intakeRows, bankAccounts } = useERP();
+    uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo, fileHeldStatementTo, intakeRows, bankAccounts,
+    statementExceptions, setClarificationQueue } = useERP();
   const [busy, setBusy] = React.useState(null);
+  // C641 — for an owner with no accountant: the bank lines they can answer, as question cards.
+  const soloOwner = !(navSeat ? navSeat.isReviewerSeat : true) && hasAttester === false;
+  const bankQuestionCards = soloOwner ? bankLineQuestionCards(Array.isArray(statementExceptions) ? statementExceptions : [], {
+    bankAccounts: Array.isArray(bankAccounts) ? bankAccounts : [], cashCode: getAccountByRole?.("cash")?.code || null, cashName: getAccountByRole?.("cash")?.name || null,
+  }) : [];
   const cockpit = !!navSeat?.isReviewerSeat;
   const today = todayLocal();
   const apCode = getAccountByRole?.("accounts_payable")?.code;
@@ -957,6 +964,7 @@ export function HomeWaitingList({ navTo }) {
     recurringSuggestions: Array.isArray(recurringSuggestions) ? recurringSuggestions : [],
     heldStatements: cockpit ? [] : heldStatementQuestions({ intakeRows: Array.isArray(intakeRows) ? intakeRows : [], bankAccounts: Array.isArray(bankAccounts) ? bankAccounts : [], uploadQueue: uploadQueue || [] }),   // C588
     uploadQueue: uploadQueue || [], cockpit, hasAccountant: hasAttester !== false,   // C574 — defaults to "has one" while unknown
+    ownerBankLines: bankQuestionCards.length,   // C641
   });
   if (!items.length) return null;
   // Every door goes through `navTo` — the seat-aware one — never a bare setView (C313).
@@ -964,6 +972,11 @@ export function HomeWaitingList({ navTo }) {
   const doors = { tax: () => go("tax"), ap: () => go("ap"), contracts: () => go("contracts"), review: () => go("review"), matching: () => go("matching") };
   const run = async (item, a) => {
     if (a.kind === "stepper") { window.dispatchEvent(new CustomEvent("sc:open-stepper")); return; }
+    if (a.kind === "bank_answer") {   // C641 — the bank lines become question cards, then the stepper opens
+      setClarificationQueue && setClarificationQueue(prev => { const have = new Set((prev || []).map(c => c.id)); return [...(prev || []), ...bankQuestionCards.filter(c => !have.has(c.id))]; });
+      setTimeout(() => window.dispatchEvent(new CustomEvent("sc:open-stepper")), 0);
+      return;
+    }
     if (a.kind === "upload") { document.getElementById("universal-upload-zone")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (a.kind === "nav") { (doors[a.view] || (() => go(a.view)))(); return; }
     setBusy(item.id);

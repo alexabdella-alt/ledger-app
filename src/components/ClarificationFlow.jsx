@@ -170,7 +170,7 @@ function deriveSession(item) {
 function ClarificationCard({ item }) {
   const {
     setClarificationQueue, setInvoices, bookToDb, createOrUpdateContact,
-    logAudit, showNotification, applyGaapAnswer, settleClarification,
+    logAudit, showNotification, applyGaapAnswer, settleClarification, settleStatementLine,
     CHART_OF_ACCOUNTS, addCustomAccount, getAccountByRole, rules,
   } = useERP();
   // O75 correction UX — let the user override the fundamental type/direction on ANY
@@ -186,6 +186,7 @@ function ClarificationCard({ item }) {
     if (!correctedType) return item;
     if (correctedType === baseInv.type && !item.directionFirst) return item;
     const isRev = correctedType === "revenue";
+    const bankLine = !!item.statementLine && typeof baseInv.money_in === "boolean";   // C641
     // C591 — keep the document's own category when it is already the right kind. "We received
     // it" on a bill the AI had coded to Repairs used to swap that for the FIRST expense
     // category on the chart before asking.
@@ -197,9 +198,16 @@ function ClarificationCard({ item }) {
       // C340 — the OFFSET comes from the company's chart by ROLE (§4), not from "1100"/"2000"
       // typed here. A renumbered A/R or A/P account would have sent every direction answer to
       // a code the company does not have. Found by the jargon guard reading the literal names.
-      secondary_gl_code: (getAccountByRole?.(isRev ? "accounts_receivable" : "accounts_payable")?.code) || (isRev ? "1100" : "2000"),
-      secondary_gl_name: (getAccountByRole?.(isRev ? "accounts_receivable" : "accounts_payable")?.name) || (isRev ? "Money owed to you" : "Bills to pay"),
-      debit_credit: isRev ? "credit" : "debit",
+      // C641 — a bank line already moved through its bank account: it keeps that account, and the
+      // statement's direction, whichever type the person picks. Only a document goes to owed/to pay.
+      ...(bankLine ? {
+        secondary_gl_code: baseInv.secondary_gl_code, secondary_gl_name: baseInv.secondary_gl_name,
+        debit_credit: baseInv.money_in ? "credit" : "debit",
+      } : {
+        secondary_gl_code: (getAccountByRole?.(isRev ? "accounts_receivable" : "accounts_payable")?.code) || (isRev ? "1100" : "2000"),
+        secondary_gl_name: (getAccountByRole?.(isRev ? "accounts_receivable" : "accounts_payable")?.name) || (isRev ? "Money owed to you" : "Bills to pay"),
+        debit_credit: isRev ? "credit" : "debit",
+      }),
       questions: [],
     };
     // Drop the old (wrong-premise) framing: no duplicate/gaap branch, ask a fresh,
@@ -283,6 +291,7 @@ function ClarificationCard({ item }) {
     if (audit) logAudit("invoice_booked", audit.detail, null, audit.meta || null);
     if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
     settleClarification?.(item, { kind: "booked", jeId });
+    if (item.statementLine) settleStatementLine?.(item.statementLine);   // C641 — a bank line answered by its owner
     finishWithSuccess(successText);
     return true;
   });
