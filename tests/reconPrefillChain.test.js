@@ -102,7 +102,7 @@ describe("★★ a manual reconcile offers the statement we already hold", () =>
     // resetting it, a CPA who has already taken one offer this session would click "Use it"
     // and watch nothing happen — the invisible-action defect, in the one place a user has
     // just been told we have their file.
-    expect(view).toMatch(/setOfferTaken\(false\); offerReconciliation\(saved\)/);
+    expect(view).toMatch(/offerTakenRef\.current = false; offerReconciliation\(saved\)/);
   });
 
   it("shows nothing when there is no saved statement — it never implies one exists", () => {

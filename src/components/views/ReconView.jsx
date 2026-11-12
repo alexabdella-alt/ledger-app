@@ -149,13 +149,16 @@ export default function ReconView() {
   // (O86 (j)/(l), live — the operator had to upload twice more and hand-type a number
   // the database was already holding). The balance lands in the field EDITABLE: it is
   // still the CPA's independent check, and anything they type governs from then on.
-  const [offerTaken, setOfferTaken] = React.useState(false);
+  // ★ C628 — A REF, NOT STATE. As state it was a dependency of the effect below, so marking the offer
+  // taken re-ran the effect, whose cleanup cancelled the load that had just started: "use the
+  // statement we already have" never loaded anything.
+  const offerTakenRef = React.useRef(false);
   const [prefilledFromStatement, setPrefilledFromStatement] = React.useState(false);
   React.useEffect(() => {
-    if (!reconcileOffer || offerTaken || !currentCompany?.id) return;
+    if (!reconcileOffer || offerTakenRef.current || !currentCompany?.id) return;
     let cancelled = false;
     (async () => {
-      setOfferTaken(true);
+      offerTakenRef.current = true;
       try {
         const { data: lines } = await supabase.from("bank_statement_lines")
           .select("id, line_date, description, vendor, amount")
@@ -172,12 +175,14 @@ export default function ReconView() {
         // (l) — prefill ONLY into an empty field; a typed value is never overwritten.
         const pre = prefillEndingBalance({ statement: { stated_ending_balance: reconcileOffer.statedEnding }, current: statementBalance });
         if (pre != null) { setStatementBalance(pre); setPrefilledFromStatement(true); }
-        if (rows.length) { setBankTxns(rows); setStep("match"); setTimeout(() => runAutoMatch(rows), 50); }
+        const offAcct = (bankAccounts || []).find(b => String(b.id) === String(reconcileOffer.accountId));
+        const offCodes = offAcct?.gl_code ? [String(offAcct.gl_code)] : reconCashCodes;
+        if (rows.length) { setBankTxns(rows); setStep("match"); setTimeout(() => runAutoMatch(rows, { from: reconcileOffer.periodStart || periodStart, to: reconcileOffer.periodEnd || periodEnd, cashCodes: offCodes }), 50); }
         setReconcileOffer && setReconcileOffer(null);
       } catch (e) { console.warn("[recon] offered session skipped:", e?.message || e); }
     })();
     return () => { cancelled = true; };
-  }, [reconcileOffer, offerTaken, currentCompany?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reconcileOffer, currentCompany?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // (l) — the same prefill for a session started by hand: once an account + month are
   // chosen and a statement exists for them, its stated ending balance fills the field.
@@ -251,7 +256,7 @@ export default function ReconView() {
       if (offeredStatement.period_end) setPeriodEnd(offeredStatement.period_end);
       const pre = prefillEndingBalance({ statement: offeredStatement, current: statementBalance });
       if (pre != null) { setStatementBalance(pre); setPrefilledFromStatement(true); }
-      setBankTxns(rows); setStep("match"); setTimeout(() => runAutoMatch(rows), 50);
+      setBankTxns(rows); setStep("match"); setTimeout(() => runAutoMatch(rows, { from: offeredStatement.period_start || periodStart, to: offeredStatement.period_end || periodEnd }), 50);   // C628
     } catch (e) {
       showNotification && showNotification("We couldn't open the statement we have on file — you can upload it instead.", "error");
       console.warn("[recon] offered statement failed:", e?.message || e);
@@ -416,8 +421,10 @@ export default function ReconView() {
   };
   const queueSave = () => { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(()=>saveNow("open"), 2000); };
 
-  const runAutoMatch = (txns) => {
-    const books = reconBooksSet(invoices, { cashCodes: reconCashCodes, from: periodStart, to: periodEnd });
+  // ★ C628 — the month and account are PASSED by a caller that has just set them: state set in the
+  // same tick is not in this closure yet, so the offered statement matched against the OLD month.
+  const runAutoMatch = (txns, { from = periodStart, to = periodEnd, cashCodes = reconCashCodes } = {}) => {
+    const books = reconBooksSet(invoices, { cashCodes, from, to });
     const used = new Set(); let n=0;
     const out = txns.map(t => {
       if (t._matchBook) return t;
@@ -812,7 +819,7 @@ export default function ReconView() {
                 {accountName || "This account"} · {(periodStart||"").slice(0,7)} — read when it was uploaded, with its transactions and closing balance.
               </div>
             </div>
-            <button onClick={()=>{ setOfferTaken(false); offerReconciliation(saved); }}
+            <button onClick={()=>{ offerTakenRef.current = false; offerReconciliation(saved); }}
               style={{ padding:"9px 16px", borderRadius:9, fontSize:13, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer", flexShrink:0 }}>
               Use it →
             </button>
