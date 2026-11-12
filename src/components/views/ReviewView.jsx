@@ -14,6 +14,8 @@ import { draftClientQuestion, answerToAccount } from "../../lib/clarify";
 import { isPeriodSignedOff } from "../../lib/signoff";
 import { cardRateForPeriod, cardRateCopy } from "../../lib/cardRate";
 import { anomalySubjectPeriod } from "../../lib/anomalies";
+import { reviewEntryPlan } from "../../lib/reviewEntryPlan";
+import { buildJournalEntry } from "../../lib/journalEntries";
 
 // O50 — CPA Review Dashboard. Consumes O60 (dropped/incomplete docs via reconcileDroppedDocs)
 // and O49 (low-confidence-and-material txns via flagsForReview) into one review surface.
@@ -21,7 +23,7 @@ const _m = fmtMoney;
 const _m0 = fmtMoney;
 
 export default function ReviewView() {
-  const { BOOKABLE_ACCOUNTS, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
+  const { persistMultiLineEntry, cashGlCodes, BOOKABLE_ACCOUNTS, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view,
     reconcileDroppedDocs, flagsForReview, reviewApprove, reviewOverride, resolveIntakeItem, setReturnTo, companyDataLoaded, statementExceptionsLoadFailed,
     controlTotals, signOffPeriod, reopenPeriod, signOffReadinessFor, reviewedThrough, signoffs, bankMatch, isOwner, isAdmin, isReviewer, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, statementExceptions, offerReconciliation, intakeRows, persistUnknownDocPatch, reloadHeldIntake, anomaliesLoadOk, signoffsLoadOk, intakeLoadOk } = useERP();
 
@@ -757,10 +759,26 @@ export default function ReviewView() {
                     // in-session — O97's class — so the marker is honest for this sitting.)
                     const postEntry = async () => {
                       if (!doc.journal_entry) return;
-                      // Build a ledger entry from the first debit line
-                      const debitLine = doc.journal_entry.lines.find(l=>l.debit>0);
-                      const creditLine = doc.journal_entry.lines.find(l=>l.credit>0);
-                      if (!debitLine) return;
+                      // ★ C610 — THE WHOLE PROPOSAL, OR NOTHING. This took the FIRST debit line and
+                      // the FIRST credit line and posted those two at the first debit's amount — a
+                      // three-line proposal (a bill with sales tax, a split purchase) lost every line
+                      // after the first pair. Anything that isn't one debit against one equal credit
+                      // goes through the balanced multi-line path; an unbalanced proposal is refused.
+                      const plan = reviewEntryPlan(doc.journal_entry.lines, { cashCodes: cashGlCodes, cashCode: getAccountByRole("cash")?.code });
+                      if (plan.mode === "refuse") { showNotification(plan.why, "error"); return; }
+                      if (plan.mode === "multi") {
+                        const je = buildJournalEntry({ lines: plan.lines, date: doc.journal_entry.date || todayLocal(), description: doc.journal_entry.description || doc.document_type, source: "needs_review" });
+                        if (!je.balanced) { showNotification("That proposed entry doesn't balance, so it wasn't posted.", "error"); return; }
+                        const mlId = await persistMultiLineEntry(je);
+                        if (!mlId) return;   // the writer said why
+                        const mk = await persistUnknownDocPatch(doc, { posted: true });
+                        setUnknownDocs(prev => prev.map(d => d.id===doc.id ? {...d, posted:true} : d));
+                        if (!mk?.ok) { showNotification(`Entry posted — but we couldn't record that it's been posted. Don't post it again.`, "error"); return; }
+                        showNotification(`Entry posted: ${doc.document_type} · ${fmt(plan.total)} ✓`);
+                        return;
+                      }
+                      const debitLine = plan.debit;
+                      const creditLine = plan.credit;
                       const newInvoice = {
                         id: Date.now()+Math.random(),
                         vendor: doc.document_type,
@@ -778,7 +796,9 @@ export default function ReviewView() {
                         status: "booked",
                         booked_at: new Date().toISOString(),
                         source: "needs_review",
-                        payment_status: "unpaid",
+                        // C610 — paid straight from the bank is paid; it used to be stamped unpaid and
+                        // sat on the bills list as money owed.
+                        payment_status: plan.paidFromCash ? "paid" : "unpaid",
                       };
                       setInvoices(prev => [newInvoice, ...prev]);
                       const jeId = await bookToDb(newInvoice);   // rolls the row back and says why on a refusal

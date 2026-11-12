@@ -516,6 +516,12 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C610 — REVIEW'S "POST ENTRY TO LEDGER" POSTED ONLY THE FIRST TWO LINES, AND CALLED BANK-PAID ENTRIES UNPAID (2026-11-12). THREE MUTATIONS, THREE REDS.** Review finding F9, read and confirmed.
+  - The handler took the FIRST debit line and the FIRST credit line and posted those two at the first debit's amount. A three-line proposal — a bill with sales tax, a split purchase — lost every line after the first pair, and the entry it did post meant something other than the proposal.
+  - **`reviewEntryPlan`:** one debit against one equal credit → the ordinary two-line path; anything else → the balanced multi-line writer (`persistMultiLineEntry`), every line; debits ≠ credits → refused with a sentence, never trimmed to fit.
+  - **Every entry was stamped `payment_status: "unpaid"`**, so a purchase paid straight from the bank sat on the bills list as money owed. A credit to a cash or bank account now marks it paid.
+  - Two older pins in `reviewPostWrites.test.js` were moved to the new shape (three "Entry posted" sentences in the section now, one multi-line write).
+
 - **C609 — ASKING THE ASSISTANT TO SET A VENDOR RULE WIPED THAT VENDOR'S SAVED DETAILS (2026-11-12). THREE MUTATIONS, THREE REDS.** Review finding F7, read and confirmed.
   - `persistChatContact` without an explicit `updates` list builds a whole NEW record — email, phone, terms, notes null; tags empty — and wrote it over an EXISTING contact. A vendor rule ("always put Ace Plumbing under Repairs") arrives with only a name and a category, so it erased Ace's saved email, phone and payment terms.
   - **`chatContactPatch`: on an existing contact only the fields actually supplied are written** — never the name or company, never a blank over a saved value, never the type unless one was stated (a missing type defaults to "vendor", which is not a statement). Nothing to write → the row is read back, not updated. A new contact is still created whole.

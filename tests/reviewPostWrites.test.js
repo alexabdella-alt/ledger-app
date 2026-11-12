@@ -26,7 +26,9 @@ const ordered = (body, ...marks) => {
 describe("Review — the document's Post button", () => {
   const view = read("src/components/views/ReviewView.jsx");
   it("awaits bookToDb and says ✓ only when the ledger has the entry", () => {
-    const i = view.indexOf("const postEntry = async () => {");
+    // C610 — the two-line path now starts after the plan decides; the multi-line path is
+    // pinned in tests/reviewEntryPlan.test.js.
+    const i = view.indexOf("const debitLine = plan.debit;");
     expect(i).toBeGreaterThan(0);
     const body = view.slice(i, view.indexOf("showNotification(`Entry posted: ${doc.document_type} · ", i) + 80);
     ordered(body, "setInvoices(prev => [newInvoice, ...prev]);", "const jeId = await bookToDb(newInvoice);", "if (!jeId) return;",
@@ -46,8 +48,9 @@ describe("Review — the document's Post button", () => {
     const start = view.indexOf("Unclassified documents");
     const end = view.indexOf("function ShadowCalibrationPanel", start) > 0 ? view.indexOf("function ShadowCalibrationPanel", start) : view.length;
     const section = view.slice(start, end);
-    expect((section.match(/Entry posted: /g) || []).length).toBe(2);
+    expect((section.match(/Entry posted: /g) || []).length).toBe(3);   // C610 — + the multi-line path
     expect((section.match(/await bookToDb\(newInvoice\)/g) || []).length).toBe(2);
+    expect((section.match(/await persistMultiLineEntry\(je\)/g) || []).length).toBe(1);
   });
 });
 
