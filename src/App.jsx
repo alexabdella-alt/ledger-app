@@ -19,7 +19,7 @@ import { buildAliasIndex, applyAlias, validateAlias, aliasExplainer } from "./li
 import { planOpeningRedo, redoAuditDetail } from "./lib/openingRedo";
 import { usableExtraction, extractionToStore, EXTRACTION_VERSION, cacheHitCopy } from "./lib/extractionCache";
 import { checkedRowUpdate, checkedIdsUpdate, getWriteFailures, resetWriteFailures, writeFailureSentence } from "./lib/checkedWrite";
-import { planInvoiceArrival, ARRIVAL, ASK_REASON } from "./lib/invoicePayment";
+import { planInvoiceArrival, withPaymentClaimed, ARRIVAL, ASK_REASON } from "./lib/invoicePayment";
 import { DIRECTORY_SEED } from "./lib/vendorDirectory";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
 import { reconBooksBalance, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
@@ -5861,6 +5861,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const highConfidence = [];
           const needsClarification = [];
           const attachPlans = [];   // O114 — decided in the loop, WRITTEN after it
+          // ★ C622 — ONE PAYMENT, ONE INVOICE. Every invoice in a file was matched against the SAME
+          // snapshot, and a claim was only written after the loop — so two same-amount invoices
+          // from one vendor both claimed one payment, the second "attached" too, and that bill
+          // was never booked. A payment claimed here is marked taken (in the view the next
+          // invoice is matched against) before the next invoice is looked at.
+          let arrivalLedger = invoicesRef.current || invoices;
+          const claimPayment = (entry) => { arrivalLedger = withPaymentClaimed(arrivalLedger, entry.db_entry_id ?? String(entry.id).split("_")[0]); };
           const attached = [];      // …the ones whose stamp actually landed
           let mealsBooked = 0;
 
@@ -5955,7 +5962,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // a payment to attach to. An invoice books Dr Expense / Cr AP while a bank
             // line books Dr Expense / Cr Cash, so without this the same charge lands
             // TWICE whenever the statement arrives first — which is the normal order.
-            const arrival = planInvoiceArrival(invoice, invoices, {
+            const arrival = planInvoiceArrival(invoice, arrivalLedger, {
               cashCodes: cashGlCodes, directory: DIRECTORY_SEED,
               // O111 — a merge this company's owner has asserted. Without it Franklin Ave's
               // invoice and its bank payment stay two vendors and the card asks a question
@@ -5974,6 +5981,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               // into an early exit from the whole handler), the decision is recorded
               // here and the awaited write happens once the loop is done.
               attachPlans.push({ invoice, target: arrival.candidate.entry, arrival });
+              claimPayment(arrival.candidate.entry);   // C622
             } else if (arrival.action === ARRIVAL.ASK) {
               needsClarification.push({
                 id: Date.now() + Math.random(), invoice, queueItemId: item.id,
@@ -6104,6 +6112,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               label: "o114_attach_invoice",
             });
             if (stamp.ok) {
+              // C622 — and the session's books say so, so the next FILE in this drop sees it taken.
+              const markAttached = (rows) => withPaymentClaimed(rows, targetId, plan.invoice.invoice_number || String(plan.invoice.id));
+              invoicesRef.current = markAttached(invoicesRef.current);
+              setInvoices(prev => markAttached(prev));
               logAudit("invoice_attached",
                 `${plan.invoice.vendor} · ${fmtMoney(plan.invoice.amount)} — filed with the payment already recorded on ${fmtDate(plan.target.date)}; nothing booked twice`,
                 null, { attached_to: String(targetId), invoice_number: plan.invoice.invoice_number || null });

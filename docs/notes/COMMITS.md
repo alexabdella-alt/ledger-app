@@ -516,6 +516,11 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C622 — ONE PAYMENT ABSORBED SEVERAL INVOICES; THE SECOND BILL WAS NEVER BOOKED (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding U3, confirmed with the real matcher.
+  - Every invoice in a file was matched (`planInvoiceArrival`) against the SAME ledger snapshot, and the claim stamp was written only after the loop — so two same-amount invoices from one vendor both planned ATTACH to one payment, both "attached", and the second bill was never booked. Nor did a successful attach reach the session's ledger, so the next FILE in the drop could claim the same payment again.
+  - A claim now marks the payment taken immediately in the running ledger the next invoice is matched against (`withPaymentClaimed`, in-memory, pure), and a successful database stamp updates `invoicesRef` and the screen. The second invoice no longer attaches; it goes through the ordinary path (booked, or asked).
+  - The `import_metadata` contract guard flags any literal object write not beside a checked DB write; the in-memory marking builds its object first and says in its comment it is not a DB write. One alias-test pin moved to the new argument name.
+
 - **C621 — THE MONTHLY REPORT'S HEALTH LINE WAS WORKED OUT OVER A DIFFERENT PERIOD FROM THE REPORT (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding R10, confirmed. `businessHealth` took net income to December 31 of the report's year — a March report counted April to December (and Home counted future-dated entries) — and computed its own burn excluding the report's month, while the report beside it counted that month. Net income now runs to the date the line is about; the monthly report passes its own burn in, so the two cannot disagree.
 
 - **C620 — REPORT DRILL-DOWNS LISTED DIFFERENT ROWS FROM THE LINE CLICKED (2026-11-12). ONE MUTATION, ONE RED.** Review finding R9, confirmed.

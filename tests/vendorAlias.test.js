@@ -142,7 +142,8 @@ describe("★ the asserted alias reaches every decision it should", () => {
   });
 
   it("★★ and the invoice/payment matcher is given it", () => {
-    const call = app.slice(app.indexOf("planInvoiceArrival(invoice, invoices, {"), app.indexOf("planInvoiceArrival(invoice, invoices, {") + 400);
+    // C622 — matched against the drop's running ledger (claims applied), not the bare snapshot
+    const call = app.slice(app.indexOf("planInvoiceArrival(invoice, arrivalLedger, {"), app.indexOf("planInvoiceArrival(invoice, arrivalLedger, {") + 400);
     expect(call).toMatch(/aliasIndex,/);
   });
 

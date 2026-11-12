@@ -441,3 +441,15 @@ export function matchResolutionFacts({ entryId, invoiceId, answer, recodedAccoun
     recode: recodedAccountId ? { account_id: String(recodedAccountId), attests_mapping: true } : null,
   };
 }
+
+// ★ C622 — IN-MEMORY ONLY: mark the payment entry `base` as having an invoice attached, in a copy
+// of the session's ledger rows. The database stamp is the checked write in App.jsx; this is what
+// the NEXT invoice in the same drop is matched against, so it cannot claim the same payment.
+export function withPaymentClaimed(rows = [], base, attachedId = null) {
+  const b = String(base);
+  return (rows || []).map((e) => {
+    if (String(e.db_entry_id ?? String(e.id).split("_")[0]) !== b) return e;
+    const meta = { ...(e.import_metadata || {}), invoice_attached: true, ...(attachedId ? { attached_invoice_id: attachedId } : {}) };
+    return { ...e, import_metadata: meta };
+  });
+}
