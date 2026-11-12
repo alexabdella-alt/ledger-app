@@ -26,7 +26,7 @@ describe("a held payroll register is an ISSUE on Review, read from the durable r
     // each pass their own test while the reasons never reached the record.
     const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
-    expect(app).toMatch(/INTAKE_STATUS\.HELD, \{ detail: payrollHoldDetail\(gate\.reasons\) \}/);
+    expect(app).toMatch(/INTAKE_STATUS\.HELD, \{ detail: payrollHoldDetail\(gate\.reasons\), /);   // C625 — and the stored file
     expect(app).not.toMatch(/payroll imported — review\/post in Payroll/);
   });
 

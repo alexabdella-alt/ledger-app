@@ -398,7 +398,7 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
 
     // Payroll is HANDLED instead — and, critically, handled BEFORE the seat check, so the
     // client path cannot fall through to a `setView` that would move them.
-    const payrollBranch = route.indexOf('if (type === "payroll") { handlePayrollFile(file); return; }');
+    const payrollBranch = route.indexOf('if (type === "payroll") { handlePayrollFile(file, { intakeId, documentId }); return; }');   // C625
     expect(payrollBranch).toBeGreaterThan(-1);
     expect(payrollBranch).toBeLessThan(route.indexOf("!navSeat.isReviewerSeat"));
 

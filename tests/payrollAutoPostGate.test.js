@@ -245,7 +245,7 @@ describe("the auto path and the manual path write the SAME entry", () => {
     // now asserts something else is worse than a failing one.** So it is scoped to the
     // payroll region and the assertion is unchanged.
     const app = fs.readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
-    const from = app.indexOf("const handlePayrollFile = async (file)");
+    const from = app.indexOf("const handlePayrollFile = async (file, ");   // C625 — gained the intake/document options
     const to = app.indexOf("const routeFileToType", from);
     expect(from).toBeGreaterThan(-1);
     expect(to).toBeGreaterThan(from);

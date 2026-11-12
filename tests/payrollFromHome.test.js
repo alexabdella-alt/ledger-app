@@ -24,7 +24,7 @@ const strip = (t) => t.split("\n").filter((l) => !l.trim().startsWith("//") && !
 describe("★★★ a payroll file dropped on Home is processed where it lands", () => {
   it("★★ routing runs the pipeline instead of navigating", () => {
     const route = strip(app.slice(app.indexOf("const routeFileToType"), app.indexOf("const persistBankStatement")));
-    expect(route).toMatch(/if \(type === "payroll"\) \{ handlePayrollFile\(file\); return; \}/);
+    expect(route).toMatch(/if \(type === "payroll"\) \{ handlePayrollFile\(file, \{ intakeId, documentId \}\); return; \}/);   // C625
     expect(route).not.toMatch(/setView\("payroll"\)/);
   });
 

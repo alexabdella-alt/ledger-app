@@ -5632,10 +5632,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           const det = await detectFileType(file);
           const route = planUniversalSpreadsheetRoute(det);
           if (route.to === "payroll" || route.to === "qbo") {
-            routeFileToType(route.to, file);
+            // C625 — payroll takes THIS intake row (and its stored file) and settles it itself.
+            routeFileToType(route.to, file, route.to === "payroll" ? { intakeId: item.intake_id, documentId: durableDocId } : {});
             setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:route.to, result:{ routed:true, to:route.to }} : q));
             logUploadUpdate(item.upload_log_id, { status:"done", doc_type:route.to, result:{ routed:true } });
-            markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `routed to ${route.to} importer` });   // terminal: in a visible queue, not lost
+            if (route.to !== "payroll") markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `routed to ${route.to} importer` });   // terminal: in a visible queue, not lost
             if (navSeat.isReviewerSeat) showNotification(`That looked like a ${TYPE_LABEL[route.to]} — routed it to the right importer.`);   // C197: the client seat gets routeFileToType's plain-language confirmation instead
             return;
           }
@@ -5672,10 +5673,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // QuickBooks export gets routed to its dedicated importer (was: no branch → it
         // fell through and did nothing). Same routing the spreadsheet path uses.
         if (docType === "payroll" || docType === "qbo") {
-          routeFileToType(docType, file);
+          routeFileToType(docType, file, docType === "payroll" ? { intakeId: item.intake_id, documentId: durableDocId } : {});   // C625
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:docType, result:{ routed:true, to:docType }} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:docType, result:{ routed:true } });
-          markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `routed to ${docType} importer` });   // terminal: in a visible queue
+          if (docType !== "payroll") markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: `routed to ${docType} importer` });   // terminal: in a visible queue
           if (navSeat.isReviewerSeat) showNotification(`That looked like a ${TYPE_LABEL[docType]} — routed it to the right importer.`);   // C197: ditto — no "importer" language for a client
           return;
         }
@@ -6661,14 +6662,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // context, so the drop zone, the Home queue and the manual Post button all run the same
   // code and cannot disagree about what a register does.
   // ═══════════════════════════════════════════════════════════════════════════
-  const handlePayrollFile = async (file) => {
+  // ★ C625 — `intakeId`/`documentId`: a file Home already logged and stored. Home opened an intake
+  // row (with the stored file) and then this opened a SECOND one, with no file — so a register
+  // set aside for review was held on the row that had nothing to re-read ("no stored file",
+  // which was false), and the completeness ledger counted one document as two arrivals.
+  const handlePayrollFile = async (file, { intakeId: givenIntakeId = null, documentId: givenDocId = null } = {}) => {
     if (!file) return;
     const v = validateUpload(file, "payroll");   // size + type guard (CR-34) — PDF allowed here
     if (!v.ok) { showNotification(v.error, "error"); return; }
     if (!(await guardImport(file, "payroll"))) return;   // misroute guard (O37)
     // O60 Phase 2: log the payroll file's arrival to the intake ledger.
-    const pIntakeId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
-    logIntake && logIntake(pIntakeId, file, "payroll");
+    const pIntakeId = givenIntakeId || ((typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()));
+    if (!givenIntakeId) logIntake && logIntake(pIntakeId, file, "payroll");
     setPayrollProcessing(true);
     logAudit("payroll_upload_started", `Uploading payroll file: ${file.name}`);
     try {
@@ -6726,7 +6731,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // ★ THE REAL MEDIA TYPE, NOT A HARDCODED ONE. This said "text/csv" always — harmless
       // while only spreadsheets could get here, wrong the moment a PDF can: the library
       // would store a PDF labelled as a CSV, and the preview reads that label.
-      storeDocument(file.name, null, file.type || (isPdf ? "application/pdf" : "text/csv"), "payroll", importRecord.id, ["payroll"], null, file);
+      // C625 — stored once (Home already stored it), and the stored file is linked to the intake row
+      // so a held register can be re-read.
+      const payrollDocId = givenDocId || await storeDocument(file.name, null, file.type || (isPdf ? "application/pdf" : "text/csv"), "payroll", importRecord.id, ["payroll"], null, file);
       if (gate.pass) {
         await postPayroll(importRecord, { auto: true });   // marks the intake row RECORDED
         setPayrollProcessing(false);
@@ -6736,7 +6743,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // write "payroll imported — review/post in Payroll" and put WHY only in audit — so the
       // one record that survives a reload could not say what was wrong, and the Review card
       // that reads it (heldPayrollCards) would have had nothing to show but a filename.
-      markIntake && markIntake(pIntakeId, INTAKE_STATUS.HELD, { detail: payrollHoldDetail(gate.reasons) });   // terminal: accounted for — and now on Review
+      markIntake && markIntake(pIntakeId, INTAKE_STATUS.HELD, { detail: payrollHoldDetail(gate.reasons), ...(isDurableDocId(payrollDocId) ? { documentId: payrollDocId } : {}) });   // terminal: accounted for — and now on Review
       // ★ O116 — THE HELD CASE MUST STILL BE AN OUTCOME, NOT A SILENCE. The gate refusing is
       // the CORRECT result for a register that doesn't foot or is outside this company's
       // norms — but without a word here, a client who dropped payroll on Home would see the
@@ -6836,7 +6843,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       + (stampRes.ok ? "" : " — we couldn't file it against this company's payroll history, so the next run will still need a person"));
     return true;
   };
-  const routeFileToType = (type, file) => {
+  const routeFileToType = (type, file, { intakeId = null, documentId = null } = {}) => {
     // ★★ O116 — PAYROLL IS NO LONGER HANDED OVER, ON EITHER SEAT.
     //
     // The home screen says "drop anything here and we'll handle the rest", and payroll was
@@ -6853,7 +6860,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // ▶ The other three keep routing DELIBERATELY. A bank statement opens a reconciliation
     // a person drives; a contract needs terms confirmed; QuickBooks is a mapping exercise.
     // Payroll is the one whose clean path is fully decided by a gate we already trust.
-    if (type === "payroll") { handlePayrollFile(file); return; }
+    if (type === "payroll") { handlePayrollFile(file, { intakeId, documentId }); return; }
 
     if (!navSeat.isReviewerSeat && (type === "bank_statement" || type === "qbo")) {
       setPendingImportFile({ type, file });
