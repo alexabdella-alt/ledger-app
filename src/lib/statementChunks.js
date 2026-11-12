@@ -19,9 +19,18 @@ export const CATEGORIZE_BATCH = 80;     // the categoriser's proven batch size (
 
 // The column-header line: the first line that names a date column. Lines above it are the
 // statement's preamble (account, period, opening balance) and belong to the FIRST piece only.
+// ★ C608 — NO "date" HEADER IS NOT "THE FIRST LINE IS THE HEADER". This returned 0 when no line
+// named a date column, so a headerless export's FIRST TRANSACTION was repeated at the top of
+// every piece as its "header" — and read again in each one: a 600-line file sent in nine
+// pieces booked its first line nine times. A first line that carries a date is data (no
+// header at all, -1); one that doesn't is a header worded without "date" ("Posted,Amount").
+const LOOKS_LIKE_DATE = /\b\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b/i;
 function headerIndex(lines) {
   const i = lines.findIndex((l) => /\bdate\b/i.test(l));
-  return i >= 0 ? i : 0;
+  if (i >= 0) return i;
+  const first = lines.findIndex((l) => l.trim());
+  if (first < 0) return -1;
+  return LOOKS_LIKE_DATE.test(lines[first]) ? -1 : first;
 }
 
 export function splitCsvForParse(text, { maxChars = CSV_CHUNK_CHARS } = {}) {
@@ -29,12 +38,13 @@ export function splitCsvForParse(text, { maxChars = CSV_CHUNK_CHARS } = {}) {
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   if (String(text || "").length <= maxChars) return [lines.join("\n")];
   const h = headerIndex(lines);
-  const preamble = lines.slice(0, h);
-  const header = lines[h];
-  const body = lines.slice(h + 1).filter((l) => l.trim());
+  const preamble = h >= 0 ? lines.slice(0, h) : [];
+  const header = h >= 0 ? lines[h] : null;
+  const body = (h >= 0 ? lines.slice(h + 1) : lines).filter((l) => l.trim());
   const chunks = [];
   let cur = [], size = 0;
-  const open = () => (chunks.length === 0 ? [...preamble, header] : [header]);
+  const top = header == null ? [] : [header];
+  const open = () => (chunks.length === 0 ? [...preamble, ...top] : [...top]);
   for (const line of body) {
     const base = open().join("\n").length;
     if (cur.length && base + size + line.length + 1 > maxChars) {
