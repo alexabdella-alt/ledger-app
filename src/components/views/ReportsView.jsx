@@ -9,6 +9,7 @@ import { signedPL, agingReport, trialBalance, computeKPIs, computeRevenue, compu
 import { downloadCSV } from "../../lib/insights";
 import { pill } from "../../lib/ui";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
+import { applyAlias } from "../../lib/vendorAlias";
 import { reportNavBack } from "../../lib/reportNav";
 import { inReportRange } from "../../lib/reportRange";
 import { reportAttestationLine, activeSignedPeriods } from "../../lib/signoff";
@@ -107,7 +108,9 @@ export default function ReportsView() {
             const glRows = Object.values(byGL).sort((a,b) => a.code?.localeCompare(b.code));
 
             // Group by vendor — canonical (P&L accounts only); equals the AI's get_vendor_summary.
-            const vendorRows = computeVendorTotals(filtered, {}, { aliasIndex }).map(v => ({ name: v.vendor, total: v.total, count: v.count }));
+            const vendorRows = computeVendorTotals(filtered, {}, { aliasIndex }).map(v => ({ key: v.key, name: v.vendor, total: v.total, count: v.count }));
+            // C620 — the vendor key the By Vendor report grouped by (spellings + confirmed aliases), so the drill finds the same rows.
+            const vendorKeyOf = (i) => { const raw = i.vendor_key || i.vendor || "Unknown"; return aliasIndex ? applyAlias(raw, aliasIndex) : raw; };
 
             // Cash flow by month — ACTUAL cash movements (CR-3): every entry whose LEG hits a
             // cash account, dated at the cash date, at the cash-leg amount, signed by direction.
@@ -153,9 +156,15 @@ export default function ReportsView() {
             const drillTxns = () => {
               if (!drill) return [];
               const byDate = (a,b)=>(b.date||"").localeCompare(a.date||"");
-              if (drill.scope==="vendor")   return filtered.filter(i=>glIsExpense(i.gl_code) && (i.vendor||"Unknown")===drill.value).sort(byDate);  // expenses only — matches the By-Vendor list (no revenue items)
+              // ★ C620 — the SAME rows the clicked line added up. By Vendor groups every spelling of a
+              // vendor and its confirmed aliases (C488); the drill matched the latest spelling
+              // exactly and showed a fraction of the total above it.
+              if (drill.scope==="vendor")   return filtered.filter(i=>(glIsExpense(i.gl_code) || glIsExpense(i.secondary_gl_code)) && vendorKeyOf(i)===drill.value).sort(byDate);
               if (drill.scope==="gl")       return plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===drill.value).sort(byDate);
-              if (drill.scope==="cashflow") return filtered.filter(i=>i.date && i.date.slice(0,7)===drill.value).sort(byDate);
+              // ★ C620 — the month's CASH movements, as the row was built (CR-3): it listed every entry
+              // DATED that month — unpaid bills, accruals, depreciation — under a cash-flow line.
+              if (drill.scope==="cashflow") return reconBooksSet(filtered, { cashCodes: cfCashCodes })
+                .filter(i=>i.date && i.date.slice(0,7)===drill.value && !(cfIsCashLeg(i.gl_code) && cfIsCashLeg(i.secondary_gl_code) && !String(i.id).includes("_"))).sort(byDate);
               if (drill.scope==="project")  return filtered.filter(i=>glPLType(i.gl_code) && (i.project||"General")===drill.value).sort(byDate);
               if (drill.scope==="bsacct") {
                 const asOf = reportDateTo || todayLocal();
@@ -176,6 +185,8 @@ export default function ReportsView() {
               // signed by their leg (C491), so a correction nets here as it does above.
               const total = (drill.scope==="bsacct" || drill.scope==="gl")
                 ? glAccountBalance(drill.value, txns)
+                : drill.scope==="cashflow" ? txns.reduce((s,i)=>s+cashLegSigned(i, cfCashCodes),0)   // C620 — net cash, as the row
+                : drill.total != null ? drill.total                                                   // C620 — the figure on the row clicked
                 : txns.reduce((s,i)=>s+signedPL(i),0);
               const scopeLabel = { vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project", bsacct:"Balance Sheet" }[drill.scope];
               const hideVendor = drill.scope==="vendor", hideGL = drill.scope==="gl";
@@ -653,7 +664,7 @@ export default function ReportsView() {
                           </tr></thead>
                           <tbody>
                             {vendorRows.map((v,i)=>(
-                              <tr key={v.name} onClick={()=>setDrill({scope:"vendor",value:v.name,label:v.name})} title="View transactions"
+                              <tr key={v.key || v.name} onClick={()=>setDrill({scope:"vendor",value:v.key,label:v.name,total:v.total})} title="View transactions"
                                 onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
                                 style={{ borderTop:"1px solid var(--sc-border)", background:i%2===0?"transparent":"var(--sc-bg)", cursor:"pointer" }}>
                                 <td style={{ padding:"13px 20px" }}>

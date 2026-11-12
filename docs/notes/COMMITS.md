@@ -516,6 +516,10 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C620 — REPORT DRILL-DOWNS LISTED DIFFERENT ROWS FROM THE LINE CLICKED (2026-11-12). ONE MUTATION, ONE RED.** Review finding R9, confirmed.
+  - **By Vendor** groups every spelling of a vendor and its confirmed aliases (C488); the drill matched the latest spelling exactly, so "Hill Country Milling — $600" opened onto one $200 row. `computeVendorTotals` now returns the `key` it grouped by; the drill filters by the same key (expense on either leg) and heads itself with the row's own total.
+  - **Cash flow by month** is built from CASH movements (CR-3); the drill listed every entry DATED that month — unpaid bills, accruals, depreciation — under a cash line, totalled by P&L sign. It now lists the month's cash movements, transfers excluded, totalled as net cash, exactly as the row.
+
 - **C619 — "COLLECTED (TOTAL)" COUNTED A VOIDED INVOICE, TWICE (2026-11-12). ONE MUTATION, TWO REDS.** Review finding R8, confirmed with real flattened entries. "Collected" is every receivable that is no longer open; a voided invoice and the correction that voided it are both not open, so a voided $1,000 invoice added $2,000 of money collected that never arrived. `receivableEntries` (the screen's universe, its only reader besides `openReceivables`) now excludes cancelled and cancelling entries: a cancelled invoice was cancelled, not collected.
 
 - **C618 — JANUARY 1–15: THE Q4 REMINDER WAS SIZED FROM THE NEW YEAR, AND IT HID THE 1099 DEADLINE BEHIND IT (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding R7, confirmed.
