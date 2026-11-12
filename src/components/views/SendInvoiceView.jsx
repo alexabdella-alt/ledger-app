@@ -80,17 +80,36 @@ export default function SendInvoiceView() {
               header.updated_at = new Date().toISOString();
               try {
                 let dbId = isDbInvoiceId(inv.id) ? inv.id : null;
+                let replaceLines = true;
                 if (dbId) {
+                  // ★ C601 — LINES FIRST, WHILE THE INVOICE IS STILL A DRAFT, AND COUNTED. The
+                  // database lets an invoice's lines be deleted only while it is a draft (`arl_delete`,
+                  // migration 061). This updated the header to "sent" FIRST, so the delete was then
+                  // refused — silently, zero rows, no error — and the new lines were added beside the
+                  // old ones: Save Draft then Send stored every line twice, and the invoice read double
+                  // after a reload. Now: read the old lines, delete them before the status changes, and
+                  // add new ones only if every old one went. An invoice already sent keeps its lines
+                  // (they are locked by design) and says so.
+                  const old = await supabase.from("ar_invoice_lines").select("id").eq("ar_invoice_id", dbId).eq("company_id", currentCompany.id);
+                  if (old.error) throw new Error(old.error.message);
+                  const oldIds = (old.data || []).map(r => r.id);
+                  if (oldIds.length) {
+                    const del = await supabase.from("ar_invoice_lines").delete().eq("ar_invoice_id", dbId).eq("company_id", currentCompany.id).select("id");
+                    if (del.error) throw new Error(del.error.message);
+                    if ((del.data || []).length !== oldIds.length) {
+                      replaceLines = false;
+                      logAudit("invoice_lines_locked", `Invoice ${inv.invoice_number} was already sent, so its line items were kept as sent`, null, { invoice_id: String(dbId), kept: oldIds.length });
+                      showNotification(`Invoice ${inv.invoice_number} was already sent, so its line items stay as they were sent — the other details were updated.`, "info");
+                    }
+                  }
                   const r = await checkedRowUpdate({ supabase, table: "ar_invoices", id: dbId, companyId: currentCompany.id, patch: header, label: "ar_invoice_update" });
                   if (!r.ok) throw new Error("the invoice could not be updated");
-                  const del = await supabase.from("ar_invoice_lines").delete().eq("ar_invoice_id", dbId).eq("company_id", currentCompany.id).select("id");
-                  if (del.error) throw new Error(del.error.message);
                 } else {
                   const ins = await supabase.from("ar_invoices").insert(header).select("id").single();
                   if (ins.error || !ins.data?.id) throw new Error(ins.error?.message || "no id returned");
                   dbId = ins.data.id;
                 }
-                if (lines.length) {
+                if (replaceLines && lines.length) {
                   const li = await supabase.from("ar_invoice_lines").insert(lines.map(l => ({ ...l, ar_invoice_id: dbId }))).select("id");
                   if (li.error) throw new Error(li.error.message);
                   if ((li.data || []).length !== lines.length) throw new Error(`${(li.data || []).length} of ${lines.length} lines saved`);
