@@ -1,4 +1,5 @@
 import { findContactForName } from "../../lib/contactMatch";
+import { canMarkInvoicePaid } from "../../lib/invoiceMarkPaid";
 import React from "react";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
@@ -262,7 +263,18 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
               // C399 — the list flips to "paid" only once the payment is in the books (C238:
               // the screen follows the database). It used to flip first, so a refused
               // payment left the invoice reading paid until the next reload.
+              // C593 — only a sent invoice is owed; a draft or a void one has nothing to collect.
+              const can = canMarkInvoicePaid(inv);
+              if (!can.ok) { showNotification(can.why, "error"); return; }
               const paintPaid = () => setSentInvoices(prev=>prev.map(i=>i.id===inv.id?{...i,status:"paid",paid_at:new Date().toISOString()}:i));
+              // The invoice row follows the books: paid there, paid here — on BOTH branches. The
+              // older branch below never saved it, so after a reload the invoice was unpaid again
+              // and the next click booked the income a second time.
+              const saveInvoicePaid = async () => {
+                if (!isDbInvoiceId(inv.id)) return;
+                const r = await checkedRowUpdate({ supabase, table: "ar_invoices", id: inv.id, companyId: currentCompany.id, patch: { status: "paid", paid_at: new Date().toISOString() }, label: "ar_invoice_paid" });
+                if (!r.ok) showNotification(`Payment recorded in your books, but the invoice list couldn't be updated — it may still show ${inv.invoice_number} as unpaid after a reload.`, "error");
+              };
               const amt = invoiceTotalOf(inv);   // C438 — with its sales tax
               if (inv.ledger_id) {
                 // Collect the existing A/R through the canonical poster: posts Dr Cash / Cr A/R
@@ -271,12 +283,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                 const ok = await markBillPaid(inv.ledger_id, { side: "ar" });
                 if (!ok) return;                      // the poster said why; the list is unchanged
                 paintPaid();
-                if (isDbInvoiceId(inv.id)) {
-                  // The invoice row follows the ledger: paid there, paid here. A failure is
-                  // reported — the books are right, and the list would be wrong after a reload.
-                  const r = await checkedRowUpdate({ supabase, table: "ar_invoices", id: inv.id, companyId: currentCompany.id, patch: { status: "paid", paid_at: new Date().toISOString() }, label: "ar_invoice_paid" });
-                  if (!r.ok) showNotification(`Payment recorded in your books, but the invoice list couldn't be updated — it may still show ${inv.invoice_number} as unpaid after a reload.`, "error");
-                }
+                await saveInvoicePaid();
                 try { await loadAllData(); } catch {}
               } else {
                 // Legacy invoice issued before A/R booking existed — book revenue now.
@@ -293,6 +300,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                 const jeId = await bookToDb(entry);   // C371 — the ✓ reads the write
                 if (!jeId) return;                    // the writer said why; nothing was marked
                 paintPaid();
+                await saveInvoicePaid();
                 logAudit("invoice_paid",`Invoice ${inv.invoice_number} marked paid – ${fmt(amt)}`);
               }
               showNotification(`${inv.invoice_number} marked paid ✓`);
@@ -497,8 +505,8 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                                 <span style={{fontSize:10,background:inv.status==="paid"?"var(--sc-success-soft)":inv.status==="draft"?"var(--sc-border)":"var(--sc-gold-soft)",color:inv.status==="paid"?"var(--sc-success)":inv.status==="draft"?"var(--sc-text-2)":"var(--sc-gold)",borderRadius:20,padding:"1px 7px"}}>{inv.status}</span>
                               </div>
                             </div>
-                            {inv.status!=="paid" && (
-                              <button onClick={e=>{e.stopPropagation();markInvoicePaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid var(--sc-success-soft)",color:"var(--sc-success)",cursor:"pointer"}}>Mark paid</button>
+                            {canMarkInvoicePaid(inv).ok && (
+                              <button data-mark-paid onClick={e=>{e.stopPropagation();markInvoicePaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid var(--sc-success-soft)",color:"var(--sc-success)",cursor:"pointer"}}>Mark paid</button>
                             )}
                           </div>
                         );
