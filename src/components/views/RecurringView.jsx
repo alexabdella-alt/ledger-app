@@ -27,7 +27,9 @@ export default function RecurringView() {
             const runRecurringOnce = async (r) => {
               const inv = {
                 id:Date.now()+Math.random(), vendor:r.vendor, description:r.description||r.name,
-                amount:r.amount, date:today, type:"expense", gl_code:r.gl_code, gl_name:r.gl_name,
+                // C612 — the occurrence's OWN date, not the day Post was pressed: a March rent posted
+                // on April 9 landed in April, and March's books were short a month of rent.
+                amount:r.amount, date:r.next_date || today, type:"expense", gl_code:r.gl_code, gl_name:r.gl_name,
                 project:r.project||"General", secondary_gl_code:getAccountByRole("accounts_payable")?.code, secondary_gl_name:getAccountByRole("accounts_payable")?.name,
                 debit_credit:"debit", confidence:99, reasoning:`Recurring: ${r.name}`,
                 status:"booked", booked_at:new Date().toISOString(), source:"recurring", payment_status:"unpaid"

@@ -94,6 +94,7 @@ import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid
 import { detectFileType, TYPE_LABEL, planUniversalSpreadsheetRoute, classifyDocReply } from "./lib/fileDetect";
 import { bankFallbackFor } from "./lib/openingGrid";
 import { chatContactPatch } from "./lib/chatContactPatch";
+import { nextRecurringDate } from "./lib/recurringSchedule";
 import { buildOpeningBalanceEntry, isBeforeCutoff, preCutoffActivity, hasPreCutoffActivity, bookingBlockedReason, PRE_CUTOFF_MESSAGE, OBE_CODE, OBE_ROLE } from "./lib/openingBalances";
 import { fetchLedger, resolveEntryDbId, alreadyReversed } from "./lib/ledger";
 import { bookableAccounts, disableAccountBlocker } from "./lib/chart";
@@ -2257,7 +2258,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!s) return;
     const res = await persistChatRecurring({
       name: s.vendor, vendor: s.vendor, amount: s.avgAmount, gl_code: s.gl_code, gl_name: s.gl_name,
-      frequency: "monthly", next_date: todayLocal(), project: "General",
+      // C612 — the NEXT occurrence after the last one already in the books. It was today, so a
+      // suggestion accepted on the 20th for a vendor booked on the 3rd was "due" at once for a
+      // month already recorded, and "Post now" booked that month twice.
+      frequency: "monthly", next_date: (s.lastDate && nextRecurringDate(s.lastDate, "monthly")) || todayLocal(), project: "General",
     });
     if (!res?.ok) {
       showNotification(`We couldn't set up ${s.vendor} as a recurring charge — nothing was created. ${plainWriteError(res?.error, "")}`.trim(), "error");

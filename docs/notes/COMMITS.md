@@ -516,6 +516,10 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C612 — RECURRING CHARGES WERE DATED THE DAY "POST NOW" WAS PRESSED, AND A NEW ONE WAS DUE AT ONCE FOR A MONTH ALREADY BOOKED (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding F10, read and confirmed.
+  - **The entry carried `date: today`.** A March rent posted on April 9 landed in April — March's books short a month of rent, April's long by one, and a signed March never seeing it. It now carries the occurrence's own date (`r.next_date`).
+  - **An accepted suggestion started at `next_date: today`.** The suggestion exists because the vendor was already being booked monthly, so accepting it on the 20th for a vendor last booked on the 3rd made it "due" immediately for a month already recorded — and "Post now" booked that month twice. It now starts at the occurrence after the last booked charge (`nextRecurringDate(s.lastDate)`), which the suggestion already carried.
+
 - **C611 — A NEW BANK ACCOUNT WAS SAVED TWICE (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding F11, read and confirmed.
   - Leaving the balance field saves (`onBlur`) and clicking Save saves again — two `persistBankAccounts` calls at once, both holding a list in which the new account had no database id yet, so BOTH inserted it. The account appeared twice after a reload.
   - **Serializing alone would not fix it:** the second call's list is still the one from before the insert. So the inserted id is recorded by the account's local id (`bankDbIdsRef`, cleared with the company) and every later save UPDATES that row; the saves also run one after another (`bankSaveChainRef`).
