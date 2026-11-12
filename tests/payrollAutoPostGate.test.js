@@ -168,7 +168,7 @@ describe("payrollHistoryFromLedger — the norm's input", () => {
     const h = payrollHistoryFromLedger([
       row({ import_metadata: { kind: "payroll", gross: 11800 }, amount: 11800 }),
     ], { salariesCode: SALARIES });
-    expect(h).toEqual([{ id: "e1", date: "2026-05-31", gross: 11800 }]);
+    expect(h).toHaveLength(1); expect(h[0]).toMatchObject({ id: "e1", date: "2026-05-31", gross: 11800 });   // C592 added the period fields
   });
 
   it("falls back to the Salaries & Wages debit for runs posted before the stamp existed", () => {
@@ -176,7 +176,7 @@ describe("payrollHistoryFromLedger — the norm's input", () => {
       row({ amount: 11800 }),                                                   // salaries leg = gross
       row({ gl_code: "1000", debit_credit: "credit", amount: 9000 }),           // cash leg — ignored
     ], { salariesCode: SALARIES });
-    expect(h).toEqual([{ id: "e1", date: "2026-05-31", gross: 11800 }]);
+    expect(h).toHaveLength(1); expect(h[0]).toMatchObject({ id: "e1", date: "2026-05-31", gross: 11800 });   // C592 added the period fields
   });
 
   it("never counts a voided run toward the norm", () => {

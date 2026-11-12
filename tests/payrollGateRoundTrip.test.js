@@ -203,7 +203,7 @@ describe("(i) THE ROUND TRIP — post → stamp → read back → extract → ga
   it("payrollHistoryFromLedger finds the run — ONE entry, gross from the stamp", async () => {
     await postAndStamp(db, JUNE);
     const history = payrollHistoryFromLedger(ledgerOf(db), { salariesCode: "6000" });
-    expect(history).toEqual([{ id: "je_1", date: "2026-06-19", gross: 4000 }]);   // deduped across the 4 legs
+    expect(history).toHaveLength(1); expect(history[0]).toMatchObject({ id: "je_1", date: "2026-06-19", gross: 4000 });   // C592 added the period fields   // deduped across the 4 legs
   });
 
   it("★ CONDITION 5 PASSES ON THE SECOND REGISTER — the gate is no longer inert", async () => {

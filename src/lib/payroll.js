@@ -183,6 +183,7 @@ export const PAYROLL_GATE = {
   CONSISTENT: "consistent",   // 3. internal consistency
   PAY_DATE: "pay_date",       // 4. pay date within/adjacent to the period
   NORM: "norm",               // 5. within this company's own norms
+  DUPLICATE: "duplicate",     // 6. not a run that is already in the books (C592)
 };
 
 // Gross may sit this far either side of the trailing average before a human looks.
@@ -283,7 +284,7 @@ export function payrollHistoryFromLedger(ledger = [], { salariesCode = null } = 
     if (row.status === "voided" || row.status === "deleted") continue;
     const id = String(row.db_entry_id ?? row.id ?? "");
     if (!id) continue;
-    if (!byEntry.has(id)) byEntry.set(id, { id, date: row.date || null, metaGross: null, salaryDebit: 0 });
+    if (!byEntry.has(id)) byEntry.set(id, { id, date: row.date || null, metaGross: null, salaryDebit: 0, payDate: ymdOrNull(m.pay_date), periodStart: ymdOrNull(m.period_start), periodEnd: ymdOrNull(m.period_end) });
     const rec = byEntry.get(id);
     const mg = numOrNull(m.gross);
     if (mg !== null) rec.metaGross = r2(mg);
@@ -292,7 +293,7 @@ export function payrollHistoryFromLedger(ledger = [], { salariesCode = null } = 
     }
   }
   return [...byEntry.values()]
-    .map(r => ({ id: r.id, date: r.date, gross: r.metaGross !== null ? r.metaGross : r.salaryDebit }))
+    .map(r => ({ id: r.id, date: r.date, gross: r.metaGross !== null ? r.metaGross : r.salaryDebit, payDate: r.payDate, periodStart: r.periodStart, periodEnd: r.periodEnd }))
     .filter(r => r.gross > 0)
     .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
 }
@@ -303,7 +304,42 @@ const historyGrosses = (history) =>
     .map(h => numOrNull(h && typeof h === "object" ? h.gross : h))
     .filter(g => g !== null && g > 0);
 
-export function payrollAutoPostGate(register = {}, history = []) {
+// ═════════════════════════════════════════════════════════════════════════════
+// C592 — THE SAME REGISTER, TWICE. Every check below asks whether a register is WELL-FORMED;
+// none asked whether it was already in the books. So the second drop of a file that had just
+// auto-posted passed all five — the first run was now its own "prior payroll", squarely
+// within the norm — and posted again: a whole pay run of wages, taxes and cash, doubled, with
+// two green confirmations. A well-formed register is exactly the kind that is dropped twice.
+//
+// A run is the same run when the gross agrees to the cent AND it covers the same pay period,
+// or (for a run recorded before periods were stamped) was paid on the same date. Two runs in
+// one period with identical gross to the cent is not a thing a payroll provider produces;
+// two in different periods with the same gross is every salaried company, and is NOT a match.
+// `session` is what was dropped in this sitting and may not be in the ledger yet.
+// ═════════════════════════════════════════════════════════════════════════════
+export function payrollAlreadyRecorded(register = {}, history = [], session = []) {
+  const gross = numOrNull(register.gross);
+  if (gross === null || !(gross > 0)) return null;
+  const ps = ymdOrNull(register.periodStart), pe = ymdOrNull(register.periodEnd), pd = ymdOrNull(register.payDate);
+  const same = (h) => {
+    if (!h || r2(numOrNull(h.gross) ?? -1) !== r2(gross)) return false;
+    const hs = ymdOrNull(h.periodStart), he = ymdOrNull(h.periodEnd);
+    if (hs && he && ps && pe) return hs === ps && he === pe;
+    const hd = ymdOrNull(h.payDate) || ymdOrNull(h.date);
+    return !!(hd && pd && hd === pd);
+  };
+  const posted = (history || []).find(same);
+  if (posted) return { ...posted, where: "books" };
+  const waiting = (session || []).find(same);
+  return waiting ? { ...waiting, where: waiting.posted ? "books" : "waiting" } : null;
+}
+
+// This sitting's registers, in the shape the check above reads.
+export function payrollRunsFromImports(imports = []) {
+  return (imports || []).map((i) => ({ id: i.id, gross: i.total_gross, payDate: i.pay_date, periodStart: i.period_start, periodEnd: i.period_end, date: i.pay_date, posted: !!i.posted }));
+}
+
+export function payrollAutoPostGate(register = {}, history = [], { session = [] } = {}) {
   const reasons = [];
   const fail = (code, text) => reasons.push({ code, text });
 
@@ -393,8 +429,20 @@ export function payrollAutoPostGate(register = {}, history = []) {
     }
   }
 
+  // 6. NOT ALREADY HERE (C592). Runs last so its sentence is the one a person reads last.
+  const prior = payrollAlreadyRecorded(register, history, session);
+  if (prior) {
+    const span = periodStart && periodEnd ? `${periodStart} to ${periodEnd}` : (payDate ? `paid ${payDate}` : "this period");
+    fail(PAYROLL_GATE.DUPLICATE, prior.where === "waiting"
+      ? `A payroll for ${span} with the same gross pay (${fmtMoney(gross)}) is already waiting here — this looks like the same file dropped twice.`
+      : `A payroll for ${span} with the same gross pay (${fmtMoney(gross)}) is already in the books — adding this one would count that pay run twice.`);
+  }
+
   return { pass: reasons.length === 0, reasons };
 }
+
+// Does a held register's gate say it is already recorded? (The card asks before posting.)
+export const gateSaysDuplicate = (gate) => !!(gate && (gate.reasons || []).some((r) => r && r.code === PAYROLL_GATE.DUPLICATE));
 
 // Plain narration for a run that posted itself. Jargon-scanned with a plain
 // fallback, the same safety net pipelineOutcomeCopy uses — the owner reads an

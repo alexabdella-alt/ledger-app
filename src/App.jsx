@@ -13,7 +13,7 @@ import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeE
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount, mealsOverrideAllowed } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
-import { payrollRequestBody, payrollFailureCopy, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata } from "./lib/payroll";
+import { payrollRequestBody, payrollFailureCopy, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata, payrollRunsFromImports } from "./lib/payroll";
 import { validateComment } from "./lib/anomalyNotes";
 import { buildAliasIndex, applyAlias, validateAlias, aliasExplainer } from "./lib/vendorAlias";
 import { planOpeningRedo, redoAuditDetail } from "./lib/openingRedo";
@@ -461,6 +461,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   currentCompanyIdRef.current = currentCompany?.id || null;
   const stillOn = (cid) => currentCompanyIdRef.current === cid;
   const invoicesRef = useRef([]); // always-current invoices for async lookups (e.g. doc relinking)
+  const payrollSeenRef = useRef([]);   // C592 — this sitting's payroll registers, readable mid-flight
   useEffect(() => { invoicesRef.current = invoices; }, [invoices]);
   const [rules, setRules] = useState([]); // { vendor, gl_code, gl_name, project }
   // Contacts: { id, name, type:"vendor"|"customer", gl_code, gl_name, payment_terms, email, phone, notes, tags:[], min_expected, max_expected, created_at }
@@ -1177,7 +1178,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setContracts([]); setRecurring([]); setAuditLog([]); setAuditTotal(null); setDocLibrary([]);
     setBankTransactions([]); setUnknownDocs([]); setUploadQueue([]);
     setPendingOpeningProposal(null); setOpeningDiscrepancyFlag(null);
-    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]);
+    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]); payrollSeenRef.current = [];
     setReconciliations([]); setOpeningBalances([]);
     setSentInvoices([]); setClarificationQueue([]);
     setBankAccounts([{ id:"default", name:"Primary Checking", type:"checking", gl_code:rc("cash"), last4:"", institution:"" }]);
@@ -6566,9 +6567,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // confirm card below with the failing reasons on it. The decision is
       // audited either way, so "why didn't this auto-post?" always has an answer.
       const register = registerFromParsedPayroll(parsed);
-      const history = payrollHistoryFromLedger(invoices, { salariesCode: payrollCodes().salariesCode });
-      const gate = payrollAutoPostGate(register, history);
+      // C592 — the ledger as it is NOW (the ref), not as it was when this function was created:
+      // a register dropped twice in one go must see the first one. `payrollSeenRef` covers the
+      // gap before the first lands in the ledger at all.
+      const history = payrollHistoryFromLedger(invoicesRef.current || invoices, { salariesCode: payrollCodes().salariesCode });
+      const gate = payrollAutoPostGate(register, history, { session: payrollRunsFromImports(payrollSeenRef.current) });
       const importRecord = { id:Date.now()+Math.random(), _intakeId: pIntakeId, _fileName: file?.name || null, _gate: gate, source:parsed.source||"Unknown", period:`${parsed.period_start} – ${parsed.period_end}`, period_start:parsed.period_start??null, period_end:parsed.period_end??null, pay_date:parsed.pay_date, total_gross:parsed.total_gross, total_net:parsed.total_net, total_withholdings:parsed.total_deductions??null, total_employer_taxes:parsed.total_employer_taxes, journal_entries:parsed.journal_entries||[], employees:parsed.employees||[], imported_at:new Date().toISOString(), file_name:file.name, posted:false };
+      payrollSeenRef.current = [importRecord, ...payrollSeenRef.current];
       setPayrollImports(prev => [importRecord, ...prev]);
       logAudit("payroll_parsed", `${parsed.source} payroll parsed: ${fmtMoney(parsed.total_gross)} gross, ${(parsed.employees||[]).length} employees`);
       logAudit("payroll_autopost_gate",
@@ -6660,6 +6665,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // find a prior run rather than claiming there wasn't one (the O87 Q2 lesson).
       logAudit("payroll_history_stamp_failed", `Payroll posted, but this run won't count toward this company's payroll norms (${stampRes.reason}) — the next register will still ask for a person.`, null, { journal_entry_id: String(jeId), reason: stampRes.reason });
     }
+    payrollSeenRef.current = payrollSeenRef.current.map(p => p.id===imp.id ? {...p, posted:true} : p);
     setPayrollImports(prev => prev.map(p => p.id===imp.id ? {...p, posted:true} : p));
     // C196(5) — the register is now REAL journal entries, so its intake row must say
     // RECORDED (with the entry it became). Live: both May registers kept nagging

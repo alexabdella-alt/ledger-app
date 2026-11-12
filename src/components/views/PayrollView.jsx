@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { heldRegistersToReload } from "../../lib/waitingOnYou";
-import { payrollRequestBody, isPdfFile } from "../../lib/payroll";
+import { payrollRequestBody, isPdfFile, gateSaysDuplicate, PAYROLL_GATE } from "../../lib/payroll";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -92,7 +92,14 @@ export default function PayrollView() {
                         <div style={{fontSize:11,color:"var(--sc-text-2)"}}>GROSS PAYROLL</div>
                         <div style={{fontSize:20,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--sc-error)"}}>{fmt(imp.total_gross)}</div>
                       </div>
-                      {!imp.posted && <button onClick={()=>postPayroll(imp)} style={{padding:"9px 20px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:"var(--sc-on-accent)",cursor:"pointer"}}>Post to Ledger</button>}
+                      {!imp.posted && <button data-payroll-post={gateSaysDuplicate(imp._gate) ? "ask" : "post"} onClick={()=>{
+                        // C592 — a register that matches a run already recorded is not posted on one click.
+                        if (gateSaysDuplicate(imp._gate) && setDeleteConfirm) {
+                          setDeleteConfirm({ title: "Post this payroll a second time?", message: `${(imp._gate.reasons.find(r=>r.code===PAYROLL_GATE.DUPLICATE)||{}).text || ""} Only post it if this really is a separate pay run.`, confirmLabel: "Post it anyway", onConfirm: async () => { await postPayroll(imp); } });
+                          return;
+                        }
+                        postPayroll(imp);
+                      }} style={{padding:"9px 20px",borderRadius:9,fontSize:13,fontWeight:600,background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:"var(--sc-on-accent)",cursor:"pointer"}}>Post to Ledger</button>}
                     </div>
                     {/* C198·3a — why this one still needs a person. A standard register that
                         proves itself never reaches this card; when it doesn't, say which
