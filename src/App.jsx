@@ -7169,7 +7169,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // so re-uploading a statement never double-books; already-booked lines default UNCHECKED.
       const dedupOffset = (account && account.gl_code) || rc("cash");
       const deduped = markAlreadyBooked(withRules, invoicesRef.current, { offsetCode: dedupOffset });
-      const withIds = deduped.map((t,i) => ({ ...t, id: `bank_${idStamp}_${i}`, checked: !t.needs_review && !t.already_booked }));
+      // C606 — each line remembers the account it was read FOR (`_accountId`), because the lines
+      // outlive the screen and the screen's account picker does not.
+      const withIds = deduped.map((t,i) => ({ ...t, id: `bank_${idStamp}_${i}`, checked: !t.needs_review && !t.already_booked, _accountId: account?.id ?? null }));
       // C195(5) — NO TRANSITIONAL FLASH. When the automatic pipeline is going to run, never render
       // the full parsed list first: it would appear and then vanish as the verdict replaces it
       // (raised 4× across O84). Stay in the processing state and resolve DIRECTLY into the final
@@ -7588,7 +7590,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     return parsedLines.filter((l) => exceptionIds.has(lineDbId(l))).map((l) => ({ ...l, needs_review: true, checked: false }));
   };
 
-  const bookBankTransactions = async (account = null) => {
+  // ★ C606 — THE LINES DECIDE THEIR ACCOUNT, NOT THE PICKER. The statement's lines are kept
+  // app-wide; Bank Import's account picker is the screen's own state and resets to the FIRST
+  // account when you leave and come back. Booking the leftovers then used whatever the picker
+  // showed — a card statement's charges booked against the checking account. Lines read for an
+  // account are booked to that account.
+  const accountForBankLines = (lines = [], fallback = null) => {
+    const boundId = (lines || []).find(t => t && t._accountId != null)?._accountId;
+    if (boundId == null) return fallback;
+    return (bankAccounts || []).find(a => String(a.id) === String(boundId)) || fallback;
+  };
+  const bookBankTransactions = async (picked = null) => {
+    const account = accountForBankLines(bankTransactions, picked);
     // P0 (bank-import N× duplication): hard re-entrancy guard. Without it, a second
     // invocation while the awaits are in flight (double-click, an effect re-firing, a
     // re-render re-triggering the Book button) re-books the SAME selected set — each line

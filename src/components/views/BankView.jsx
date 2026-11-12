@@ -529,7 +529,7 @@ export default function BankView() {
                   <div style={{ display:"flex", gap:12, alignItems:"center" }}>
                     {(() => { const nChecked = bankTransactions.filter(t=>t.checked).length; const disabled = bankProcessing || nChecked===0;
                       return (
-                    <button onClick={()=>bookBankTransactions(importAccount)} disabled={disabled} style={{
+                    <button data-bank-book onClick={()=>bookBankTransactions(importAccount)} disabled={disabled} title={(() => { const id = bankTransactions.find(t => t && t._accountId != null)?._accountId; const a = id != null ? (bankAccounts||[]).find(x => String(x.id)===String(id)) : importAccount; return a ? `Books to ${a.name}` : ""; })()} style={{
                       flex:1, padding:"14px", borderRadius:12, fontSize:14, fontWeight:600,
                       background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:disabled?(bankProcessing?"wait":"not-allowed"):"pointer", opacity:disabled?0.6:1
                     }}>

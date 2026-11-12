@@ -516,6 +516,10 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C606 — BANK IMPORT BOOKED LEFTOVER LINES TO WHATEVER ACCOUNT THE PICKER SHOWED AFTER YOU CAME BACK (2026-11-12). TWO MUTATIONS, TWO REDS.** Review finding K3, read and confirmed.
+  - The statement's lines live in app-wide state (`bankTransactions`) and survive leaving the screen; Bank Import's account picker is the screen's own state and resets to the FIRST account on return. "Book" then used the picker — a card statement's leftover charges booked against checking.
+  - **Each line is stamped with the account it was read for (`_accountId`)** and `bookBankTransactions` books to that account (`accountForBankLines`); the picker is used only for lines read without one. The Book button's tooltip names the account it books to.
+
 - **C605 — A PAYMENT FROM SAVINGS OR A CARD WAS POSTED AGAINST MAIN CASH (2026-11-12). THREE MUTATIONS, THREE REDS.** Review finding K2, read and confirmed.
   - **`markBillPaid` always credited `rc("cash")`.** The bank-import planner was told the statement's own account (`codes.cashCode: offsetCode`) and used it for new bookings — but every CLEARING it handed to `markBillPaid` went through main Cash. A bill paid from a credit card left the card's balance where it was and took the money out of Cash, so neither account's reconciliation could ever tie. Same for a match confirmed from the review queue (the queue item already carried `importOffsetCode`; nothing read it for the payment).
   - `markBillPaid` now takes `cashCode`/`cashName`; the pipeline, Bank Import and the review queue pass the statement's account. A person marking a bill paid by hand still defaults to Cash. The unreachable backstop path has no account and keeps Cash.
