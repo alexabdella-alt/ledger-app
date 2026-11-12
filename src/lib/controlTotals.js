@@ -300,11 +300,15 @@ export function bookedEntriesInPeriod(invoices = [], period = "") {
 // auto-created at import while still letting a genuinely-empty account be reconciled. Merely
 // uploading a statement must NOT satisfy the "period reconciled" precondition. Pure; the
 // [period_start, period_end] span must bracket the YYYY-MM month.
-export function reconciliationCoversPeriod(reconciliations = [], period = "") {
+// ★ C629 — `accountId`: a month reconciled for ONE account is not reconciled for another. Month-only,
+// reconciling checking for March made a savings statement for March read "already reconciled", so
+// the pipeline never checked the savings balance at all.
+export function reconciliationCoversPeriod(reconciliations = [], period = "", { accountId = null } = {}) {
   const p = String(period || "");
   if (!/^\d{4}-\d{2}$/.test(p)) return false;
   return (reconciliations || []).some((r) => {
     if (!isVerifiedReconciliation(r)) return false;                // real completion + verified balance only
+    if (accountId != null && r.account_id != null && String(r.account_id) !== String(accountId)) return false;
     const s = String(r.period_start || "").slice(0, 7);
     const e = String(r.period_end || "").slice(0, 7);
     if (!s && !e) return false;

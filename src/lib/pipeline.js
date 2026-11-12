@@ -116,7 +116,7 @@ export function planStatementPipeline({
   let attempt = true, reason = "ready";
   if (!period) { attempt = false; reason = "no_period"; }
   else if (isPeriodSignedOff(signoffs, period)) { attempt = false; reason = "period_signed_off"; }
-  else if (reconciliationCoversPeriod(reconciliations, period)) { attempt = false; reason = "already_reconciled"; }
+  else if (reconciliationCoversPeriod(reconciliations, period, { accountId: statement && statement.bank_account_id })) { attempt = false; reason = "already_reconciled"; }   // C629 — per account
   // "already matched": nothing happened AND the month is attested/reconciled (the Feb-re-upload case).
   const conclusion = (!attempt && toBook.length === 0 && exceptions.length === 0 && clearsOutstanding.length === 0) ? "already_matched" : null;
 

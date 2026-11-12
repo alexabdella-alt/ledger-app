@@ -1180,7 +1180,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setContracts([]); setRecurring([]); setAuditLog([]); setAuditTotal(null); setDocLibrary([]);
     setBankTransactions([]); setUnknownDocs([]); setUploadQueue([]);
     setPendingOpeningProposal(null); setOpeningDiscrepancyFlag(null);
-    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]); payrollSeenRef.current = []; contractDbIdsRef.current = new Map(); bankDbIdsRef.current = new Map();
+    setMatchQueue([]); setMatchHistory([]); setPayrollImports([]); payrollSeenRef.current = []; contractDbIdsRef.current = new Map(); bankDbIdsRef.current = new Map(); freshReconsRef.current = [];
     setReconciliations([]); setOpeningBalances([]);
     setSentInvoices([]); setClarificationQueue([]);
     setBankAccounts([{ id:"default", name:"Primary Checking", type:"checking", gl_code:rc("cash"), last4:"", institution:"" }]);
@@ -7049,7 +7049,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const completeReconciliationIfSettled = async (rv, { account = null } = {}) => {
     if (!rv || !rv.statement) return false;
     const st = rv.statement;
-    if (!shouldAutoCompleteReconciliation({ statement: st, lineStatuses: rv.lineStatuses || [], reconciliations, balanceSettled: rv.balanceSettled })) return false;
+    if (!shouldAutoCompleteReconciliation({ statement: st, lineStatuses: rv.lineStatuses || [], reconciliations: [...(reconciliations || []), ...freshReconsRef.current], balanceSettled: rv.balanceSettled })) return false;   // C629
     const acct = account || (bankAccounts || []).find(b => String(b.id) === String(st.bank_account_id));
     const cashCode = (acct && acct.gl_code) || rc("cash");
     const booksBalance = reconBooksBalance(invoicesRef.current, [cashCode], { asOf: st.period_end });
@@ -7444,6 +7444,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // ── C186 — the automatic clean-path pipeline (§11 ★ North Star Phase 1-B) ──────────────────
   // Completes + inserts a reconciliation for the auto-run, reusing ReconView's write shape +
   // the supersede cleanup (C184). Statement-derived ending IS a verified balance (§11).
+  const freshReconsRef = useRef([]);   // C629 — reconciliations completed this session, before state catches up
   const completePipelineReconciliation = async ({ account, periodStart, periodEnd, statementBalance, booksBalance, difference, outstandingBooks = [] }) => {
     const at = new Date().toISOString(); const uid = session?.user?.id || null;
     const payload = {
@@ -7458,7 +7459,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       completed_at: at, completed_by: uid,
     };
     let rid = null;
-    try { const { data } = await supabase.from("reconciliations").insert(payload).select("id").single(); rid = data?.id; } catch (e) { console.warn("[pipeline] recon insert failed:", e?.message || e); return; }
+    try {
+      const { data } = await supabase.from("reconciliations").insert(payload).select("id").single(); rid = data?.id;
+      // ★ C629 — REMEMBERED AT ONCE. The aftermath step below asks "is this month reconciled?" of
+      // `reconciliations` state, which does not have this row until a reload — so on the cleanest
+      // run it inserted a SECOND completed reconciliation for the same month.
+      if (rid) { freshReconsRef.current = [...freshReconsRef.current, { ...payload, id: rid }]; setReconciliations(prev => [...(prev || []), { ...payload, id: rid }]); }
+    } catch (e) { console.warn("[pipeline] recon insert failed:", e?.message || e); return; }
     // Same supersede cleanup ReconView.completeMatch runs — no stranded open row for the period.
     try {
       const { data: openRows } = await supabase.from("reconciliations").select("id, status, account_id, account_name, period_start, period_end").eq("company_id", currentCompany.id).eq("status", "open");
