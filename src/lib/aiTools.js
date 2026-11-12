@@ -156,8 +156,14 @@ async function getFinancialSummary(input, ctx) {
     runway_months: computeRunway(cash, burn),   // estimate — stays numeric/approximate
     cash_balance: cash, cash_balance_display: money(cash),
     top_expense_categories: computeCategoryTotals(led, { from, to }).slice(0, 5).map(c => ({ category: c.category, total: c.total, total_display: money(c.total) })),
+    // ★ C615 — "UNPAID" IS EVERYTHING UNPAID. `unpaid_ap_total` carried only the OVERDUE bills,
+    // so "how much do I owe?" was answered with the overdue part — $0 for a company whose bills
+    // were all simply not due yet, while Home said $4,306. Both totals are named for what they
+    // are, and each side gets both.
+    unpaid_ar_total: ar.total, unpaid_ar_total_display: money(ar.total),
     overdue_ar_total: ar.overdue, overdue_ar_total_display: money(ar.overdue),
-    unpaid_ap_total: ap.overdue, unpaid_ap_total_display: money(ap.overdue),
+    unpaid_ap_total: ap.total, unpaid_ap_total_display: money(ap.total),
+    overdue_ap_total: ap.overdue, overdue_ap_total_display: money(ap.overdue),
   };
 }
 
@@ -296,7 +302,7 @@ export const AI_TOOLS = [
   },
   {
     name: "get_financial_summary",
-    description: "Overall financial health: revenue, expenses, net income, burn rate, runway, cash, top expense categories, overdue AR, unpaid AP. Use for burn rate, runway, 'how are we doing', monthly/quarterly summaries.",
+    description: "Overall financial health: revenue, expenses, net income, burn rate, runway, cash, top expense categories, money owed to you (all unpaid, and the overdue part), bills you owe (all unpaid, and the overdue part). Use for burn rate, runway, 'how are we doing', monthly/quarterly summaries.",
     input_schema: {
       type: "object",
       properties: {
