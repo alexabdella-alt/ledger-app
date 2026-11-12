@@ -177,7 +177,11 @@ export function waitingHeadline(items = []) {
   if (!n) return null;
   const stops = items.filter((i) => i.urgency === WAIT.STOPS).length;
   const now = items.filter((i) => i.urgency <= WAIT.NOW).length;
-  if (stops) return `${now} ${now === 1 ? "thing needs" : "things need"} an answer from you`;
-  if (now) return `${now} ${now === 1 ? "thing is" : "things are"} waiting on you`;
+  // ★ C642 — THE HEADLINE ACCOUNTS FOR EVERY ROW UNDER IT. It counted only the urgent rows, so
+  // "1 thing is waiting on you" sat above two (the second only worth a look). The rest is said too.
+  const rest = n - now;
+  const more = now && rest ? ` · ${rest} more worth a look` : "";
+  if (stops) return `${now} ${now === 1 ? "thing needs" : "things need"} an answer from you${more}`;
+  if (now) return `${now} ${now === 1 ? "thing is" : "things are"} waiting on you${more}`;
   return `${n} ${n === 1 ? "thing" : "things"} worth a look`;
 }

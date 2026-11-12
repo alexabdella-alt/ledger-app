@@ -65,6 +65,10 @@ describe("every old banner is a row, and the order is urgency", () => {
     expect(waitingHeadline(homeWaitingList(everything))).toMatch(/things need an answer from you/);
     expect(waitingHeadline(homeWaitingList({ overdueBills: [{ amount: 1 }], overdueTotal: 1 }))).toBe("1 thing worth a look");
     expect(waitingHeadline([])).toBeNull();
+    // C642 — every row is accounted for: one urgent and one to look at
+    expect(waitingHeadline([{ urgency: WAIT.NOW }, { urgency: WAIT.INFO }])).toBe("1 thing is waiting on you · 1 more worth a look");
+    expect(waitingHeadline([{ urgency: WAIT.STOPS }, { urgency: WAIT.INFO }, { urgency: WAIT.SOON }])).toBe("1 thing needs an answer from you · 2 more worth a look");
+    expect(waitingHeadline([{ urgency: WAIT.NOW }, { urgency: WAIT.NOW }])).toBe("2 things are waiting on you");
   });
   it("money goes through the canonical formatter", () => {
     const b = homeWaitingList({ overdueBills: [{ amount: 1 }, { amount: 2 }], overdueTotal: 1234.5 }).find((i) => i.id === "overdue_bills");
