@@ -20,7 +20,7 @@ import { BUSINESS_TYPES } from "../../lib/coaTemplates";
 import { LEGAL_FORMS } from "../../lib/tax";
 import VendorTeachIn from "../VendorTeachIn";   // C563
 import { nextUrgentDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
-import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, openReceivablesGL, openPayablesGL } from "../../lib/reports";
+import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
@@ -144,12 +144,14 @@ export default function DashboardView() {
     // count/total and ties to glAccountBalance. (Was "any expense/revenue not paid/collected",
     // which pulled in direct-cash entries — e.g. a Stripe payout booked Dr Cash / Cr Revenue —
     // that never created a payable/receivable.)
+    const apCodeD = getAccountByRole?.("accounts_payable")?.code, arCodeD = getAccountByRole?.("accounts_receivable")?.code;   // C614
     const openAP = openPayablesGL(invoices, getAccountByRole?.("accounts_payable")?.code);
     const openAR = openReceivablesGL(invoices, getAccountByRole?.("accounts_receivable")?.code);
 
     // Breadcrumb + forward/back now come from the shared drill stack (drill.crumbs / drill.canBack…).
 
-    const txnRows = (arr, color="var(--sc-text)") => arr.length===0
+    // C614 — `amountOf`: what each row OWES (a taxed invoice's full receivable), for the open lists.
+    const txnRows = (arr, color="var(--sc-text)", amountOf = (i) => i.amount) => arr.length===0
       ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>No transactions here.</div>
       : [...arr].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(inv=>(
           <div key={inv.id} onClick={()=>drill.push({ type:"txn", id: inv.id, label: inv.vendor||"Transaction" })}
@@ -165,7 +167,7 @@ export default function DashboardView() {
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
               <span style={{ fontSize:10, color:"var(--sc-text-2)", fontFamily: cockpit ? "monospace" : undefined, background:"var(--sc-surface-2)", padding:"1px 6px", borderRadius:4 }}>{cockpit ? inv.gl_code : categoryLabel(inv.gl_code, inv.gl_name)}</span>
-              <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color, width:104, textAlign:"right" }}>{fmt(inv.amount)}</span>
+              <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color, width:104, textAlign:"right" }}>{fmt(amountOf(inv))}</span>
             </div>
           </div>
         ));
@@ -290,7 +292,11 @@ export default function DashboardView() {
         </div>
       </div>);
     } else if (d.type==="ap") {
-      title = "Bills you owe"; subtitle = `${openAP.length} unpaid · ${fmt(openAP.reduce((s,i)=>s+signedPL(i),0))}`;
+      // ★ C614 — THE HEADLINE READS THE SAME FIGURE AS THE TILE THAT OPENED IT. It summed the rows by
+      // their income/expense sign (`signedPL`): a multi-line bill, listed by its bills-to-pay line,
+      // counted NEGATIVE (−$520 for a $520 bill), and a taxed invoice counted without its tax
+      // ($1,000 under a tile saying $1,086.25). Both now read the books' balance, as the tile does.
+      title = "Bills you owe"; subtitle = `${openAP.length} unpaid · ${fmt(apCodeD ? glAccountBalance(apCodeD, invoices) : openAP.reduce((s,i)=>s+owedAmount(i),0))}`;
       const methodOpts = [["ach","ACH / Bank Transfer"],["check","Check"],["wire","Wire Transfer"],["card","Credit Card"],["zelle","Zelle"],["venmo","Venmo"],["paypal","PayPal"],["other","Other"]];
       body = openAP.length===0
         ? <div style={{ padding:"28px 18px", fontSize:13, color:"var(--sc-text-2)", textAlign:"center" }}>Nothing outstanding — you're all paid up.</div>
@@ -323,8 +329,8 @@ export default function DashboardView() {
             </div>
           ));
     } else if (d.type==="ar") {
-      title = "Unpaid invoices from customers"; subtitle = `${openAR.length} uncollected · ${fmt(openAR.reduce((s,i)=>s+signedPL(i),0))}`;
-      body = txnRows(openAR, "var(--sc-success)");
+      title = "Unpaid invoices from customers"; subtitle = `${openAR.length} uncollected · ${fmt(arCodeD ? glAccountBalance(arCodeD, invoices) : openAR.reduce((s,i)=>s+owedAmount(i),0))}`;
+      body = txnRows(openAR, "var(--sc-success)", owedAmount);
     }
 
     return (
