@@ -634,7 +634,12 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date(), arCod
 // (the bookkeeping the client pays us to do) and belong to the internal CPA review queue (O50),
 // NOT as a demerit on the owner's dashboard. Honest, not rosy — a real problem is stated plainly
 // with its number and a next step. Returns { tone, headline, facts[], concerns[] }.
-export function businessHealth(invoices = [], { cash = 0, now = new Date(), owedToYou = null, youOwe = null } = {}) {
+// ★ C621 — `now` IS THE DATE THE HEALTH LINE IS ABOUT, AND EVERY FIGURE STOPS THERE. Net income ran
+// to December 31 of that year, so a monthly report for March counted April through December
+// (and Home counted future-dated entries); and the burn left out the report's own month while
+// the report beside it counted it. Net is now year-to-`now`; a caller that has already worked out
+// the burn for the period (the monthly report) passes it, so the line cannot disagree with it.
+export function businessHealth(invoices = [], { cash = 0, now = new Date(), owedToYou = null, youOwe = null, burn: burnGiven = null } = {}) {
   const year = now.getFullYear();
   const today = ymdLocal(now);   // was toISOString (UTC) while `year` used local — now consistent, local
   // CANONICAL money display: the SAME exact-cents formatter the chatbot's tools
@@ -645,8 +650,8 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
   // cents) + one formatter here = dashboard === chatbot to the penny, by construction.
   const money = (n) => fmtSignedMoney(n);
 
-  const net = computeNetIncome(invoices, { from: `${year}-01-01`, to: `${year}-12-31` });
-  const burn = computeBurnRate(invoices, { asOf: today });
+  const net = computeNetIncome(invoices, { from: `${year}-01-01`, to: today });
+  const burn = burnGiven != null ? burnGiven : computeBurnRate(invoices, { asOf: today });
   const runwayRaw = computeRunway(cash, burn);                       // months, or null when there's no burn
   const runwayInfinite = runwayRaw === null;
   const runway = runwayInfinite ? Infinity : Math.floor(runwayRaw);
@@ -812,7 +817,7 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
     .map(k => ({ key: k.key, label: k.label, display: k.display, status: k.status, trend: k.trend, explanation: k.explanation }));
   // Owner-facing plain-language health (businessHealth) — the 0–100 grade/score was removed
   // (C120); the monthly report must not resurrect it. Same GL-truth inputs.
-  const bh = businessHealth(live, { cash, now: monthEnd });
+  const bh = businessHealth(live, { cash, now: monthEnd, burn });   // C621 — the report's own burn
 
   // Top 5 vendors by expense spend this month (canonical live gate + GL classification).
   const cur = liveEntries(live, curRange);
