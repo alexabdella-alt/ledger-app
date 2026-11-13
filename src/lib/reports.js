@@ -283,6 +283,12 @@ export function computeVendorTotals(invoices, range = {}, { side = "expense", al
 // like the Balance Sheet cash line, so every cash surface agrees by construction.
 // NB: this is NOT the bank statement balance. The bank balance is the external figure
 // GL cash is RECONCILED against; a difference between them is a reconciliation item.
+// ★ C666 — only ASSET accounts are cash. A credit card or loan linked as a "bank account" keeps a
+// liability code (2xxx); its balance is money owed, and adding it to cash inflated cash on hand by
+// exactly what was owed.
+export function cashOnHandCodes(codes = []) {
+  return [...new Set((codes || []).map(String))].filter((c) => /^1\d{3}$/.test(c));
+}
 export function glCashOnHand(invoices, cashCodes, { asOf = null } = {}) {
   return r2((cashCodes || []).reduce((s, code) => s + glAccountBalance(code, invoices, { asOf }), 0));
 }

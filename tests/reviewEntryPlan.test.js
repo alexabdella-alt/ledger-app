@@ -31,7 +31,7 @@ describe("the whole proposal is posted, or nothing", () => {
 
   it("the screen uses the plan, the multi-line writer, and the paid flag", () => {
     const v = readFileSync("src/components/views/ReviewView.jsx", "utf8");
-    expect(v).toMatch(/const plan = reviewEntryPlan\(doc\.journal_entry\.lines, \{ cashCodes: cashGlCodes, cashCode: getAccountByRole\("cash"\)\?\.code \}\);/);
+    expect(v).toMatch(/const plan = reviewEntryPlan\(doc\.journal_entry\.lines, \{ cashCodes: paymentSourceGlCodes \|\| cashGlCodes, cashCode: getAccountByRole\("cash"\)\?\.code \}\);/);   // C666 — a card payment is a payment
     expect(v).toMatch(/if \(plan\.mode === "refuse"\) \{ showNotification\(plan\.why, "error"\); return; \}/);
     expect(v).toMatch(/const mlId = await persistMultiLineEntry\(je\);\s*\n\s*if \(!mlId\) return;/);
     expect(v).toMatch(/payment_status: plan\.paidFromCash \? "paid" : "unpaid",/);
