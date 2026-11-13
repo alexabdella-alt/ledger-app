@@ -18,7 +18,7 @@ import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeE
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount, mealsOverrideAllowed } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
-import { payrollRequestBody, payrollFailureCopy, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata, payrollRunsFromImports } from "./lib/payroll";
+import { payrollRequestBody, payrollFailureCopy, isPdfFile, payrollEntryForImport, payrollAutoPostGate, payrollAutoPostNarration, payrollHistoryFromLedger, registerFromParsedPayroll, payrollImportMetadata, payrollRunsFromImports, netPayLinesReplacedBy } from "./lib/payroll";
 import { validateComment } from "./lib/anomalyNotes";
 import { buildAliasIndex, applyAlias, validateAlias, aliasExplainer } from "./lib/vendorAlias";
 import { planOpeningRedo, redoAuditDetail } from "./lib/openingRedo";
@@ -1914,8 +1914,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         logAudit("signed_period_booking_skipped", `Skipped an automatic entry dated ${entry.date} — ${heldPeriodML} is signed off`, null, { period: heldPeriodML, date: entry.date, source: entry.source || null });
         return null;
       }
-      setPendingSignedPeriodBooking({ invoice: entry, period: heldPeriodML, multiLine: true });
-      logAudit("signed_period_booking_held", `Held a multi-line entry dated ${entry.date} into signed period ${heldPeriodML} — awaiting decision`, null, { date: entry.date, period: heldPeriodML });
+      // ★★ C721 — REFUSED, NOT HELD. Every caller of this poster has work to do AFTER the entry
+      // lands — payroll marks the run posted and stamps it, a contract records which month posted,
+      // a prepaid or capitalized purchase links its document and builds its schedule. The hold
+      // dialog posted the entry later WITHOUT that work: the payroll card kept "Post to Ledger" and
+      // a second click booked the whole run again ($10,000 of wages became $20,000); "Post all"
+      // on a contract overwrote one held month with the next. Nothing is recorded; the person is
+      // told why and what to do, and the source (payroll card, contract, document) is unchanged.
+      const label = signedMonthLabel(heldPeriodML) || heldPeriodML;
+      showNotification(isReviewer
+        ? `${label} is signed off, so this wasn't recorded. Reopen ${label} first (Review → that month → Reopen), or use a date in a month that's still open.`
+        : `${label} is signed off, so this wasn't recorded. Your accountant can reopen it — or use a date in a month that's still open.`, "error");
+      logAudit("signed_period_booking_refused", `Refused a multi-line entry dated ${entry.date} — ${heldPeriodML} is signed off`, null, { date: entry.date, period: heldPeriodML, source: entry.source || null });
       return null;
     }
     try {
@@ -6961,6 +6971,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // find a prior run rather than claiming there wasn't one (the O87 Q2 lesson).
       logAudit("payroll_history_stamp_failed", `Payroll posted, but this run won't count toward this company's payroll norms (${stampRes.reason}) — the next register will still ask for a person.`, null, { journal_entry_id: String(jeId), reason: stampRes.reason });
     }
+    // ★ C721 — the net-pay line already booked from the bank before this register came in is
+    // replaced by the register's own cash leg (else the run is counted twice). Removed if its month
+    // is open; in a signed month it is left and SAID, because only the accountant can change it.
+    let replaced = 0, replacedHeld = 0;
+    for (const old of netPayLinesReplacedBy(invoicesRef.current || [], { net: imp.total_net, date: je.date })) {
+      const oldId = resolveEntryDbId(old) || old.db_entry_id;
+      if (!oldId) continue;
+      if (signedPeriodForDate(old.date, signoffs)) { replacedHeld++; continue; }
+      const r = await checkedRowUpdate({ supabase, table: "journal_entries", id: oldId, companyId: currentCompany?.id,
+        patch: { deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null }, label: "payroll:replace-net-pay-line" });
+      if (r.ok) { replaced++; logAudit("payroll_net_line_replaced", `Removed the ${fmtMoney(old.amount)} net-pay bank line from ${old.date} — the payroll register now records it in full`, null, { removed_entry_id: String(oldId), register_entry_id: String(jeId) }); }
+      else replacedHeld++;
+    }
     payrollSeenRef.current = payrollSeenRef.current.map(p => p.id===imp.id ? {...p, posted:true} : p);
     setPayrollImports(prev => prev.map(p => p.id===imp.id ? {...p, posted:true} : p));
     // C196(5) — the register is now REAL journal entries, so its intake row must say
@@ -6988,7 +7011,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     showNotification((auto
       ? payrollAutoPostNarration({ periodLabel: imp.period, net: imp.total_net, headcount: (imp.employees || []).length })
       : `Payroll posted: ${fmtMoney(imp.total_gross)} gross ✓`)
-      + (stampRes.ok ? "" : " — we couldn't file it against this company's payroll history, so the next run will still need a person"));
+      + (stampRes.ok ? "" : " — we couldn't file it against this company's payroll history, so the next run will still need a person")
+      + (replaced ? ` The ${fmtMoney(imp.total_net)} net-pay line already added from your bank statement was replaced by this, so it isn't counted twice.` : "")
+      + (replacedHeld ? ` A ${fmtMoney(imp.total_net)} net-pay line from your bank statement is still in the books too — it's in a signed-off month, so your accountant needs to remove it.` : ""));
     return true;
   };
   const routeFileToType = (type, file, { intakeId = null, documentId = null } = {}) => {

@@ -153,14 +153,16 @@ describe("★★ an automatic poster never asks a question nobody is there to an
   it("★★ in the background it AUDITS and returns, instead of raising the dialog", () => {
     const held = writer.slice(writer.indexOf("if (heldPeriodML)"));
     const skip = held.indexOf("signed_period_booking_skipped");
-    const prompt = held.indexOf("setPendingSignedPeriodBooking");
+    const prompt = held.indexOf("signed_period_booking_refused");   // C721 — the interactive branch refuses (and says why)
     expect(skip).toBeGreaterThan(-1);
     expect(skip).toBeLessThan(prompt);            // the background branch returns first
     expect(held).toMatch(/if \(background\) \{/);
   });
 
-  it("★ the interactive path is untouched — a person who just acted still gets the choice", () => {
-    expect(writer).toMatch(/setPendingSignedPeriodBooking\(\{ invoice: entry, period: heldPeriodML, multiLine: true \}\)/);
+  it("★ C721 — the interactive path REFUSES and says why: every multi-line caller has follow-up work a later re-post skipped (a payroll run posted twice)", () => {
+    expect(writer).not.toMatch(/setPendingSignedPeriodBooking\(\{ invoice: entry, period: heldPeriodML, multiLine: true \}\)/);
+    expect(writer).toMatch(/is signed off, so this wasn't recorded\. Reopen \$\{label\} first/);
+    expect(writer).toMatch(/is signed off, so this wasn't recorded\. Your accountant can reopen it/);
   });
 
   it("★★ depreciation is the ONE caller that passes it, and it COUNTS what it skipped", () => {

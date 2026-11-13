@@ -520,6 +520,28 @@ export function flagIncompletePayroll(txn = {}) {
   return { ...txn, confidence: 40, reasoning: PAYROLL_INCOMPLETE_NOTE, payroll_incomplete: true };
 }
 
+// ★ C721 — THE OTHER ORDER. A net-pay bank line that arrived BEFORE its register was booked on its
+// own (flagged with PAYROLL_INCOMPLETE_NOTE, which is stored as the entry's reasoning and so
+// survives a reload). When the register is then posted, its cash leg pays the same net — so the
+// earlier line is now counted twice ($3,150 net + a $4,000 register = $7,150 of salary). These are
+// the earlier lines the register replaces: same net to the cent, within the window, one per entry.
+export function netPayLinesReplacedBy(ledger = [], { net, date, dateWindowDays = 10 } = {}) {
+  const n = Math.round((Number(net) || 0) * 100) / 100;
+  if (!(n > 0) || !date) return [];
+  const day = (d) => new Date(String(d).slice(0, 10) + "T12:00:00").getTime();
+  const seen = new Set(), out = [];
+  for (const i of ledger || []) {
+    if (!i || i.status === "voided" || i.deleted_at || i.reversed_by) continue;
+    if (i.reasoning !== PAYROLL_INCOMPLETE_NOTE) continue;
+    if (Math.abs((Number(i.amount) || 0) - n) >= 0.005) continue;
+    if (!i.date || Math.abs(day(i.date) - day(date)) > dateWindowDays * 86400000) continue;
+    const b = String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
+    if (seen.has(b)) continue;
+    seen.add(b); out.push(i);
+  }
+  return out;
+}
+
 // Partition bank "standalone" lines (the ones about to be direct-booked) for payroll safety:
 //   matched     → payroll net lines that clear a booked register run  → SUPPRESS (no re-book)
 //   incomplete  → payroll net lines with no register                  → book net + flag (flagIncompletePayroll)
