@@ -11,7 +11,7 @@ import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
 import { ownerActivityText } from "../../lib/activityFeed";
 import { collapseExpandedRows, listAmount, classifyTxn, displayParty } from "../../lib/txnPresent";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural, monthsLeftYMD } from "../../lib/format";
+import { addDaysYMD, fmtSignedMoney, initials, vendorColor, fmtDate, fmtMoney, fmtApprox, todayLocal, ymdLocal, plural, monthsLeftYMD } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { plan1099ForYear } from "../../lib/form1099";
 import { bankLineQuestionCards } from "../../lib/statementQuestions";
@@ -947,6 +947,8 @@ export function HomeWaitingList({ navTo }) {
   const unpaid = openPayablesGL(invoices || [], apCode);
   const overdueBills = unpaid.filter(i => i.due_date && i.due_date < today);
   const overdueTotal = overdueBills.reduce((t, i) => t + (Number(i.amount) || 0), 0);
+  const weekOut = addDaysYMD(today, 7);   // C675
+  const dueSoonBills = unpaid.filter(i => i.due_date && i.due_date >= today && i.due_date <= weekOut);
   // C618 — the first deadline that NEEDS something (C434/C435's rules), each estimate for the year
   // it is about. C559 — this company's deadlines. C388 — a deadline marked filed is not waiting.
   const waiting = React.useMemo(() => nextWaitingDeadline(new Date(), 30, {
@@ -961,7 +963,7 @@ export function HomeWaitingList({ navTo }) {
     openCards: (clarificationQueue || []).filter(c => !c.resolved),
     heldQuestions: heldQuestions || [], heldUnreadable: heldUnreadable || [], heldPartial: heldPartial || [],
     heldInbound: Array.isArray(heldInbound) ? heldInbound : [], canDecideMail: !!(isAdmin || isOwner),
-    bankMatch, taxDeadline: dl, taxEstimateText, overdueBills, overdueTotal,
+    bankMatch, taxDeadline: dl, taxEstimateText, overdueBills, overdueTotal, dueSoonBills,
     recurringSuggestions: Array.isArray(recurringSuggestions) ? recurringSuggestions : [],
     heldStatements: cockpit ? [] : heldStatementQuestions({ intakeRows: Array.isArray(intakeRows) ? intakeRows : [], bankAccounts: Array.isArray(bankAccounts) ? bankAccounts : [], uploadQueue: uploadQueue || [] }),   // C588
     uploadQueue: uploadQueue || [], cockpit, hasAccountant: hasAttester !== false,   // C574 — defaults to "has one" while unknown

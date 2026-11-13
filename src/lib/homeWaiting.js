@@ -23,6 +23,15 @@ const money = (n) => fmtMoney(Number(n) || 0);
 
 import { bankLinesWaitingCopy } from "./statementQuestions.js";
 
+// C675 — "2 bills are due in the next 7 days ($1,240.00). Next: Adobe, $59.99, due Mon Nov 16."
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function dueSoonCopy({ n = 0, total = 0, next = null } = {}) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(next?.due_date || ""));
+  const when = m ? `${DOW[new Date(+m[1], +m[2] - 1, +m[3]).getDay()]} ${MON[+m[2] - 1]} ${+m[3]}` : "soon";
+  const head = n === 1 ? `1 bill is due in the next 7 days (${fmtMoney(total)}).` : `${n} bills are due in the next 7 days (${fmtMoney(total)}).`;
+  return next ? `${head} ${n === 1 ? "It's" : "Next:"} ${next.vendor || "a bill"}, ${fmtMoney(Number(next.amount) || 0)}, due ${when}.` : head;
+}
+
 export function homeWaitingList({
   openCards = [],            // unresolved clarification cards (this session)
   heldQuestions = [],        // C365 rows
@@ -35,6 +44,7 @@ export function homeWaitingList({
   taxEstimateText = "",      // "" or " — estimated amount $X"
   overdueBills = [],         // open A/P rows past due
   overdueTotal = 0,
+  dueSoonBills = [],         // C675 — open A/P rows due in the next 7 days (not yet past due)
   recurringSuggestions = [],
   uploadQueue = [],          // for the contract / unknown-doc prompts
   heldStatements = [],       // C588 — heldStatementQuestions(...): statements stored and waiting, from the record
@@ -114,6 +124,17 @@ export function homeWaitingList({
       id: "overdue_bills", urgency: WAIT.SOON,
       text: `${n} bill${n === 1 ? " is" : "s are"} past due — ${money(overdueTotal)} in total.`,
       actions: [{ kind: "nav", label: "See bills to pay", view: "ap" }],
+    });
+  }
+  // ★ C675 — BILLS COMING DUE, BEFORE THEY ARE LATE. Home only spoke up once a bill was already
+  // overdue. The next seven days, with the soonest named, so paying on time needs no searching.
+  if ((dueSoonBills || []).length) {
+    const list = [...dueSoonBills].sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)));
+    const n = list.length, total = list.reduce((t, i) => t + (Number(i.amount) || 0), 0), next = list[0];
+    items.push({
+      id: "bills_due_soon", urgency: WAIT.SOON,
+      text: dueSoonCopy({ n, total, next }),
+      actions: [{ kind: "nav", label: "Pay or mark paid", view: "ap" }],
     });
   }
   for (const s of recurringSuggestions || []) {
