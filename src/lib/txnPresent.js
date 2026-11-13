@@ -57,7 +57,13 @@ export function classifyTxn(inv = {}, { apCode, arCode, settled = null } = {}) {
 
   // Account to display. A collection's primary leg is Cash — show the A/R it CLEARED (the
   // offset) instead, which is what the entry is about. A payment's primary already IS the A/P.
-  const account = settle === "ar_collection"
+  // ★ C658 — money IN that isn't income (the owner's money, a loan received — C655) is a debit
+  // to the bank whose other side says what it was. Its row's primary leg is the bank, so it listed
+  // as "Cash +$2,000.00" — the account it went INTO, not what it was. Show the other side when it
+  // is a liability or equity. The opening position keeps "Cash" (C541): there the cash IS the point.
+  const sec = String(inv.secondary_gl_code || "");
+  const moneyInFromBalanceSheet = primaryIsAssetDebit && !opening && /^[23]\d{3}$/.test(sec);
+  const account = settle === "ar_collection" || moneyInFromBalanceSheet
     ? { code: inv.secondary_gl_code, name: inv.secondary_gl_name }
     : { code: inv.gl_code, name: inv.gl_name };
 
