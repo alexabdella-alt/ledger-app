@@ -1,6 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+vi.mock("react-dom", async (orig) => ({ ...(await orig()), createPortal: (c) => c }));   // the detail panel portals to document.body
 import { renderViewHtml, VIEW_CONTEXT } from "./helpers/renderView.jsx";
-import { POPULATED, ACCOUNTS } from "./helpers/populatedFixture.js";
+import { POPULATED, ACCOUNTS, INVOICES } from "./helpers/populatedFixture.js";
+import DetailView from "../src/components/views/DetailView.jsx";
+import TransactionDetailPanel, { txnStatusBadge } from "../src/components/TransactionDetailPanel.jsx";
+import { renderToString } from "react-dom/server";
 import { OWNER_JARGON_RE } from "../src/lib/clarify.js";
 import { ownerAccountName, categoryLabel } from "../src/lib/categoryLabel.js";
 import { CLIENT_VIEW_IDS, ALL_VIEW_IDS } from "../src/lib/nav.js";
@@ -40,7 +44,7 @@ const PAGES = {
 };
 const owner = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
 const textOf = (html) => html.replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<(option|input|textarea)[^>]*value="[^"]*"/g, "<$1").replace(/<[^>]+>/g, " ")
-  .replace(/&amp;/g, "&").replace(/&#x27;/g, "'").replace(/\s+/g, " ");
+  .replace(/&amp;/g, "&").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ");
 const render = (C, name, seat, extra = {}) => renderViewHtml(C, { ...POPULATED, ...(VIEW_CONTEXT[`${name}.jsx`] || {}), CHART_OF_ACCOUNTS: ACCOUNTS, BOOKABLE_ACCOUNTS: ACCOUNTS,
   navSeat: seat, companyDataLoaded: true, booksFilter: "all", ...extra });
 const jargonIn = (text) => [...text.matchAll(new RegExp(OWNER_JARGON_RE.source, "gi"))].map((m) => text.slice(Math.max(0, m.index - 30), m.index + 30));
@@ -90,5 +94,44 @@ describe("the plain names", () => {
     expect(ownerAccountName("Ace Equipment Loan")).toBe("Ace Equipment Loan");
     expect(categoryLabel("2000", "Accounts Payable")).toBe("Bills you owe");
     expect(categoryLabel("2000", "Accounts Payable", { withCode: true })).toBe("2000 · Accounts Payable");
+  });
+});
+
+// ★ C646 — WHAT AN OWNER SEES WHEN THEY TAP A ROW: the slide-in panel and the full-entry page, for
+// every entry in the fixture (bills, a split bill, a taxed invoice, payroll, a payment, a removal).
+// The full-entry page showed "5010 — Food Cost" and "2000 — Accounts Payable − $520.00".
+describe("a single transaction, on the owner's seat", () => {
+  globalThis.document = globalThis.document || { body: {} };   // createPortal is mocked; the panel only names the body
+  const reviewer = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS };
+  const panel = (inv, seat) => textOf(render(() => <TransactionDetailPanel invoiceId={inv.id} onClose={() => {}} />, "TransactionDetailPanel", seat));
+  const page = (inv, seat) => textOf(render(DetailView, "DetailView", seat, { selectedInvoice: inv }));
+  const ACCOUNT_CODE = /\b[1-8]\d{3} — /;
+  for (const inv of INVOICES) {
+    it(`★ ${inv.id} · ${inv.vendor}`, () => {
+      for (const t of [panel(inv, owner), page(inv, owner)]) {
+        expect(jargonIn(t)).toEqual([]);
+        expect(t).not.toMatch(ACCOUNT_CODE);
+        expect(t).not.toMatch(/ · —|— · /);
+      }
+    });
+  }
+  it("★ the split bill's full entry: plain names, amounts without debit/credit signs", () => {
+    const t = page(INVOICES.find((i) => i.id === "i7_0"), owner);
+    expect(t).toMatch(/THE WHOLE ENTRY · 3 LINES Food Cost \$500\.00 Freight \$20\.00 Bills you owe \$520\.00/);
+  });
+  it("the accountant's seat keeps codes, account names and signs", () => {
+    const t = page(INVOICES.find((i) => i.id === "i7_0"), reviewer);
+    expect(t).toMatch(/2000 — Accounts Payable −\s?\$520\.00/);
+    expect(panel(INVOICES.find((i) => i.id === "i1"), reviewer)).toMatch(/MATCHED SETTLEMENT/);
+  });
+  it("a paid entry with no recorded method reads 'Paid', not 'Paid · —'", () => {
+    const text = (inv) => renderToString(txnStatusBadge(inv)).replace(/<[^>]+>/g, "");
+    expect(text({ payment_status: "paid" })).toBe("Paid");
+    expect(text({ payment_status: "paid", payment_method_used: "check" })).toBe("Paid · Check");
+  });
+  it("a paid entry with neither method nor date: the Payment row says 'Paid', not an empty value", () => {
+    const bare = { ...INVOICES.find((i) => i.id === "i4"), id: "bare", payment_status: "paid", payment_method_used: null, paid_at: null, payment_reference: null };
+    const t = textOf(render(() => <TransactionDetailPanel invoiceId="bare" onClose={() => {}} />, "TransactionDetailPanel", owner, { invoices: [...INVOICES, bare] }));
+    expect(t).toMatch(/Payment Paid How paid/);
   });
 });

@@ -1,5 +1,5 @@
 import React from "react";
-import { categoryLabel, showCodesFor } from "../lib/categoryLabel";
+import { categoryLabel, showCodesFor, ownerAccountName } from "../lib/categoryLabel";
 import { plainWriteError } from "../lib/plainWriteError";
 import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
@@ -44,7 +44,8 @@ export function txnStatusBadge(i) {
   if (i.status === "voided") return <span style={badge("neutral")}>Voided</span>;
   if (isReversalEntry(i)) return <span style={badge("info")}>Correction</span>;   // C470 — not "Booked"
   if (i.reversed_by) return <span style={badge("neutral")}>Removed</span>;       // C470 — not "Paid · ACH" beside a Removed marker
-  if (i.payment_status === "paid") return <span style={badge("info")}>Paid · {methodLabel(i.payment_method_used).split(" ")[0]}</span>;
+  // C646 — "Paid · —" when no method was recorded; the dash said nothing.
+  if (i.payment_status === "paid") return <span style={badge("info")}>{i.payment_method_used ? `Paid · ${methodLabel(i.payment_method_used).split(" ")[0]}` : "Paid"}</span>;
   if (i.payment_status === "collected") return <span style={badge("success")}>Collected</span>;
   if (needsReview(i)) return <span style={badge("warning")}>Needs Review</span>;
   return <span style={badge("success")}>Booked</span>;
@@ -279,11 +280,12 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               <div>
                 {[
                   ["Description", sel.description || "—"],
-                  ["Category", `${sel.gl_name || sel.gl_code || "—"}${entryLineCount(sel, invoices) > 1 ? ` · ${entryLineCount(sel, invoices)} lines (see Full entry)` : ""}`],
-                  [showCodes ? "Against" : "Paid from / into", sel.secondary_gl_code ? (sel.secondary_gl_name || sel.secondary_gl_code) : "—"],   // C580
+                  ["Category", `${(showCodes ? sel.gl_name : ownerAccountName(sel.gl_name)) || sel.gl_code || "—"}${entryLineCount(sel, invoices) > 1 ? ` · ${entryLineCount(sel, invoices)} lines (see Full entry)` : ""}`],
+                  [showCodes ? "Against" : "Paid from / into", sel.secondary_gl_code ? ((showCodes ? sel.secondary_gl_name : ownerAccountName(sel.secondary_gl_name)) || sel.secondary_gl_code) : "—"],   // C580; C646 plain names
                   ["Type", settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? "Revenue" : "Expense"],
                   ["How sure we were", sel.confidence != null ? `${sel.confidence}%` : "—"],
-                  sel.payment_status === "paid" ? ["Payment", `${methodLabel(sel.payment_method_used)}${sel.paid_at ? ` · ${fmtDate(sel.paid_at)}` : ""}${sel.payment_reference ? ` · ${sel.payment_reference}` : ""}`] : null,
+                  // C646 — no "— · Feb 2": only the parts that were recorded.
+                  sel.payment_status === "paid" ? ["Payment", [sel.payment_method_used ? methodLabel(sel.payment_method_used) : null, sel.paid_at ? fmtDate(sel.paid_at) : null, sel.payment_reference || null].filter(Boolean).join(" · ") || "Paid"] : null,
                   (sel.payment_status === "paid" || sel.payment_status === "collected") ? ["How paid", (sel.auto_matched || sel.payment_method_used === "bank_transfer") ? `Auto-matched from bank statement${sel.matched_bank_date ? ` (${sel.matched_bank_date})` : ""}` : "Manually marked paid"] : null,
                 ].filter(Boolean).map(([k, v]) => (
                   <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 14, padding: "11px 0", borderBottom: "1px solid var(--sc-surface-2)", fontSize: 13 }}>
@@ -311,7 +313,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                     : `Settled by ${settledBy.actionNoun}${settledBy.date ? ` on ${fmtDate(settledBy.date)}` : ""} (${fmtM(settledBy.amount)})`;
                   return (
                     <div style={{ marginTop: 12, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "12px 14px" }}>
-                      <div style={{ fontSize: 10, letterSpacing: 1, color: "var(--sc-text-2)", fontWeight: 600, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "var(--sc-gold)" }}>↔</span> MATCHED SETTLEMENT</div>
+                      <div style={{ fontSize: 10, letterSpacing: 1, color: "var(--sc-text-2)", fontWeight: 600, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "var(--sc-gold)" }}>↔</span> {showCodes ? "MATCHED SETTLEMENT" : "LINKED PAYMENT"}</div>
                       <div style={{ fontSize: 13, color: "var(--sc-text)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                         <span style={{ wordBreak: "break-word" }}>{text}</span>
                         {onNavigate && <button onClick={() => onNavigate(link.id)} style={{ flexShrink: 0, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>View →</button>}

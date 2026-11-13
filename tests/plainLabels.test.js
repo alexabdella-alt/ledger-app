@@ -45,7 +45,7 @@ describe("C580 — the last of the owner audit", () => {
     expect(b).toMatch(/title="We weren't sure about this one — open it to check the category"/);
   });
   it("a transaction's other side reads 'Paid from / into' to an owner; the accountant keeps 'Against'", () => {
-    expect(src("src/components/views/DetailView.jsx")).toMatch(/showCodesFor\(navSeat\) \? "Against" : "Paid from \/ into"/);
+    expect(src("src/components/views/DetailView.jsx")).toMatch(/codesShown \? "Against" : "Paid from \/ into"/);   // C646 — one flag, read once
     expect(src("src/components/TransactionDetailPanel.jsx")).toMatch(/showCodes \? "Against" : "Paid from \/ into"/);
   });
   it("Taxes speaks plainly and promises no tracking it doesn't do", () => {

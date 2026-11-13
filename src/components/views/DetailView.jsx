@@ -1,5 +1,5 @@
 import React from "react";
-import { showCodesFor } from "../../lib/categoryLabel";
+import { showCodesFor, ownerAccountName } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
@@ -8,6 +8,11 @@ import { getAuthHeaders } from "../../lib/supabase";
 
 export default function DetailView() {
   const { returnTo, goBackFromDetail, setBooksFilter, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat } = useERP();
+  // ★ C646 — THE OWNER READS ACCOUNT NAMES, NOT CODES, AND NO +/− SIGNS. "5010 — Food Cost",
+  // "2000 — Accounts Payable − $520.00" was the full-entry page on the owner's seat; the signs are
+  // the debit/credit sides, which mean nothing to an owner. The accountant's seat is unchanged.
+  const codesShown = showCodesFor(navSeat);
+  const acctLabel = (code, name) => codesShown ? ([code, name].filter(Boolean).join(" — ") || null) : (name ? ownerAccountName(name) : (code || null));
   // C510 — the page said "INVOICE DETAIL · Vendor: Acme" over an invoice the owner SENT to
   // Acme. The direction decides the words: a sale names a Customer, a purchase a Supplier,
   // a settlement says which; the kicker follows.
@@ -37,9 +42,9 @@ export default function DetailView() {
                   ["Date", fmtDate(selectedInvoice.date)],
                   ["Project", selectedInvoice.project||"General"],
                   ["Amount", fmtMoney(entryTotalOf(selectedInvoice, invoices))],   // C509 — the whole entry's, not one line's
-                  ["Category", [selectedInvoice.gl_code, selectedInvoice.gl_name].filter(Boolean).join(" — ") || null],
+                  ["Category", acctLabel(selectedInvoice.gl_code, selectedInvoice.gl_name)],
                   // C580 — "Against" is the accountant's word for the other side of the entry; an owner reads where the money came from or went.
-                  [showCodesFor(navSeat) ? "Against" : "Paid from / into", showCodesFor(navSeat) ? ([selectedInvoice.secondary_gl_code, selectedInvoice.secondary_gl_name].filter(Boolean).join(" — ") || null) : (selectedInvoice.secondary_gl_name || selectedInvoice.secondary_gl_code || null)],
+                  [codesShown ? "Against" : "Paid from / into", acctLabel(selectedInvoice.secondary_gl_code, selectedInvoice.secondary_gl_name)],
                   ["How sure we were", selectedInvoice.confidence != null && selectedInvoice.confidence !== "" ? `${selectedInvoice.confidence}%` : null],
                 ].filter(([,value]) => value != null && value !== "").map(([label,value])=>(
                   <div key={label} style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", borderBottom:"1px solid var(--sc-border)" }}>
@@ -58,8 +63,8 @@ export default function DetailView() {
                       <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:8, letterSpacing:1.5, fontWeight:600 }}>THE WHOLE ENTRY · {lines.length} LINES</div>
                       {lines.map(l => (
                         <div key={l.id} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid var(--sc-border)", fontSize:13 }}>
-                          <span style={{ color:"var(--sc-text)" }}>{[l.gl_code, l.gl_name].filter(Boolean).join(" — ")}</span>
-                          <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-2)" }}>{l.debit_credit === "debit" ? "+" : "−"}{fmtMoney(l.amount)}</span>
+                          <span style={{ color:"var(--sc-text)" }}>{acctLabel(l.gl_code, l.gl_name)}</span>
+                          <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-2)" }}>{codesShown ? (l.debit_credit === "debit" ? "+" : "−") : ""}{fmtMoney(l.amount)}</span>
                         </div>
                       ))}
                     </div>
