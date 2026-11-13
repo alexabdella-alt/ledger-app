@@ -1,5 +1,6 @@
 import React from "react";
 import { useERP } from "../ERPContext";
+import { matchAmountProblem } from "../../lib/bankMatch";   // C711
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtMoney } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -131,9 +132,17 @@ export default function MatchingView() {
                               </div>
                             )}
 
+                            {/* ★ C711 — a different amount is said here, before the click, and Confirm is off
+                                (C710 refuses it anyway; refusing on click teaches people clicking is how you find out, §9) */}
+                            {(() => { const pb = matchAmountProblem(match, invoices || []) || ((match.amount_remaining || 0) >= 0.01 ? { bank: Math.abs(Number(match.bank_txn?.amount) || 0), owed: null } : null);
+                              return pb ? (
+                                <div data-amount-mismatch style={{ padding:"10px 20px", background:"var(--sc-warning-soft)", fontSize:12, color:"var(--sc-text)", borderBottom:"1px solid var(--sc-border)" }}>
+                                  The bank shows {fmt(pb.bank)}{pb.owed != null ? <> but this is {fmt(pb.owed)}</> : <>, which doesn't cover the whole amount</>}. Part-payments can't be matched yet — Dismiss to add the bank line on its own, or record it as paid in full from the bill if the difference was a fee or discount.
+                                </div>
+                              ) : null; })()}
                             {/* Actions */}
                             <div style={{ padding:"14px 20px", display:"flex", gap:10 }}>
-                              <button onClick={()=>applyMatch(match)} style={{ flex:1, padding:"10px", borderRadius:10, fontSize:13, fontWeight:600, background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:"pointer" }}>
+                              <button disabled={!!(matchAmountProblem(match, invoices || []) || (match.amount_remaining || 0) >= 0.01)} onClick={()=>applyMatch(match)} style={{ opacity: (matchAmountProblem(match, invoices || []) || (match.amount_remaining || 0) >= 0.01) ? 0.45 : 1, flex:1, padding:"10px", borderRadius:10, fontSize:13, fontWeight:600, background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:"pointer" }}>
                                 ✓ Confirm Match & Post Entry
                               </button>
                               <button onClick={()=>dismissMatch(match.id)} style={{ padding:"10px 18px", borderRadius:10, fontSize:13, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>
