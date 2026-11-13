@@ -8,6 +8,7 @@ import { mileageRatesFor } from "../../lib/mileage.js";
 import { plan1099, plan1099Copy, plan1099ForYear, tracker1099Rows } from "../../lib/form1099";
 import { taxPacketRows, taxPacketFilename, TAX_PACKET_HEADERS } from "../../lib/taxPacket.js";
 import { downloadCSV } from "../../lib/insights";
+import { sourcePurchaseLive } from "../../lib/depreciation.js";   // C705
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
@@ -103,6 +104,9 @@ export default function TaxView() {
   const homeOfficeSqft = profile.homeOfficeSqft;
   const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile, priorProfile: taxProfileFrom(filedDeadlinesPrev || {}, filed), cutoffDate: cutoffDate || null });   // C683, C690, C695, C698
   const passThrough = legalForm !== "c_corp";
+  // C705 — Schedule C line numbers only for a sole proprietor (a partnership files Form 1065, an S
+  // corporation 1120-S, a C corporation 1120 — different lines)
+  const scheduleC = !legalForm || legalForm === "sole_prop";
   // C704 — January's Q4 deadline is about LAST year: its own estimate, its own payments
   const lastYearEst = React.useMemo(() => taxEstimate(invoices, year - 1, estPaidPrevYear || 0, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...taxProfileFrom(filedDeadlinesPrev || {}, {}) }),
     [invoices, year, estPaidPrevYear, CHART_OF_ACCOUNTS, legalForm, taxAssets, filedDeadlinesPrev]);
@@ -190,7 +194,7 @@ export default function TaxView() {
       const d = deductionBreakdown(invoices, packetYear, getAccountByRole, opts);
       const f99 = tracker1099Rows({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: packetYear, bankAccounts: bankAccounts || [] });
       const rows = taxPacketRows({ year: packetYear, companyName: currentCompany?.name || "", legalForm, profile: p, est: e, deductions: d,
-        assets: (taxAssets && taxAssets.assets) || [], estPaid: paidThatYear, form1099: f99, preparedOn: fmtDate(todayLocal()), cutoffDate: cutoffDate || null, yearSoFar: packetYear === year });
+        assets: ((taxAssets && taxAssets.assets) || []).filter(a => a && !a.deleted_at && sourcePurchaseLive(invoices, a.source_journal_entry_id)), estPaid: paidThatYear, form1099: f99, preparedOn: fmtDate(todayLocal()), cutoffDate: cutoffDate || null, yearSoFar: packetYear === year });
       const ok = downloadCSV(taxPacketFilename(currentCompany?.name, packetYear), TAX_PACKET_HEADERS, rows);
       showNotification && showNotification(ok === false ? "The download didn't start — try again." : `Your ${packetYear} tax summary is downloading.`, ok === false ? "error" : "success");
     } finally { setPacketBusy(false); }
@@ -357,7 +361,7 @@ export default function TaxView() {
         {deductions.filter(d => !d.ask && d.line !== "none" && d.line !== "30" && d.line !== "personal").map(d => (   // C703 — personal-return items have their own rows
           <div key={d.key} data-deduction-line={d.line} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label} <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 400 }}>· {d.line === "4" ? "line 4" : `line ${d.line}`}</span></div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label}{scheduleC && <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 400 }}> · line {d.line}</span>}</div>
               <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}{d.notDeductible > 0.004 ? ` · ${fmt(d.notDeductible)} of this doesn't count (meals count at 50%)` : ""}{d.mileage ? " · your car by the IRS mileage rate, plus parking and tolls" : d.taxAdjusted ? " · for tax, equipment is mostly deducted in full in the year you start using it, not spread out like in your books" : ""}</div>
             </div>
             <div style={{ textAlign: "right", minWidth: 110 }}>
@@ -413,10 +417,10 @@ export default function TaxView() {
             <div style={{ textAlign: "right", minWidth: 110, fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace" }}>{fmt(mileageInfo ? mileageInfo.amount : 0)}</div>
           </div>
         )}
-        {deductions.filter(d => d.ask).map(d => (
+        {deductions.filter(d => d.ask && legalForm !== "c_corp").map(d => (   // C705 — a C corporation's owners have none of these here
           <div key={d.key} style={{ padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
             <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label}</div>
-            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}</div>
+            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{legalForm === "s_corp" ? (d.key === "retirement" ? "As an S corporation owner, what you can put into a retirement plan is based on the salary the company pays you, not its profit — your tax preparer or plan provider can work it out." : "") : d.hint}</div>
             {/* ★ C696 — the room, worked out from this year's profit so far, and what it would save */}
             {/* ★ C700 — premiums the owner pays, counted in the estimate (sole proprietor / partner) */}
             {d.key === "health" && legalForm === "s_corp" && (

@@ -26,6 +26,7 @@ export function taxPacketRows({ year, companyName = "", legalForm = "", profile 
   add("About", "Prepared", "", `${preparedOn ? `On ${preparedOn}, ` : ""}from the books — a planning summary for your tax preparer, not a tax return`);
   // ★ C701 (review) — say when the figures are not a whole year, and when an answer was carried
   if (cutoffDate && String(cutoffDate).startsWith(`${year}-`) && String(cutoffDate) > `${year}-01-01`) add("About", "Books start", "", `${cutoffDate} — anything earlier this year is only in the starting balances, not in these figures`);
+  if (cutoffDate && String(cutoffDate) > `${year}-12-31`) add("About", "Books start", "", `${cutoffDate} — after ${year}, so this year isn't in the books; these figures are empty`);   // C705
   if (yearSoFar) add("About", "Covers", "", "the year so far — not a full year yet");
   if (profile.carried) add("About", "Answers", "", "some answers were carried over from the other year — check them");
 
