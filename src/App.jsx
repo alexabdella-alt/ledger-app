@@ -939,6 +939,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (updates.code && updates.code !== account.code && CHART_OF_ACCOUNTS.find(a => a.code === updates.code)) {
       showNotification("That account code is already in use.", "error"); return false;
     }
+    // ★ C722 — A CATEGORY'S TYPE IS ITS NUMBER'S TYPE. Reports read the first digit; the
+    // categories list, the starting-balances grid and the opening entry read the stored type —
+    // so an expense re-typed "something the business has" took a starting balance and put it on
+    // the profit and loss on day one, and Cash renumbered into the 5000s vanished from cash on
+    // hand. The two can no longer disagree: a change that would make them is refused, and said.
+    {
+      const code = updates.code || account.code, wantType = updates.category || account.category;
+      const byNumber = categoryForCode(code);
+      if ((updates.code || updates.category) && byNumber && wantType && byNumber !== wantType) {
+        const plain = { Assets: "something the business has", Liabilities: "something the business owes", Equity: "the owner's share", Revenue: "money coming in", Expenses: "spending" };
+        showNotification(`${updates.name || account.name} would be numbered ${code}, which is a ${plain[byNumber] || byNumber} number, but typed as ${plain[wantType] || wantType}. A category's type has to match its number — add a new category of the type you want and move its transactions there.`, "error");
+        return false;
+      }
+    }
     const payload = {};
     for (const k of ["code", "name", "category", "active"]) if (updates[k] != null) payload[k] = updates[k];
     const r = await checkedRowUpdate({
@@ -964,8 +978,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!account?.db_id || !currentCompany?.id) return false;
     if (account.system_role) { showNotification("System accounts can't be deleted — rename it instead.", "error"); return false; }
     if (await accountHasTransactions(account)) { showNotification("This account has transactions and can't be deleted.", "error"); return false; }
-    const { error } = await supabase.from("accounts").delete().eq("id", account.db_id).eq("company_id", currentCompany.id);
-    if (error) { console.warn("[accounts] delete failed:", error.message); showNotification(`Couldn't remove that category — nothing was changed. ${plainWriteError(error.message, "Please try again.")}`, "error"); return false; }
+    // C722 — counted: a delete the database refused (a view-only seat) matched nothing, reported no
+    // error, logged "deleted" and showed nothing at all
+    const { data: gone, error } = await supabase.from("accounts").delete().eq("id", account.db_id).eq("company_id", currentCompany.id).select("id");
+    if (error || !(gone || []).length) { console.warn("[accounts] delete failed:", error?.message || "no rows"); showNotification(`Couldn't remove that category — nothing was changed. ${plainWriteError(error?.message, isViewer ? "You have view-only access." : "Please try again.")}`, "error"); return false; }
     logAudit("coa_deleted", `Account deleted: ${account.code} – ${account.name}`);
     await reloadAccounts();
     return true;
@@ -1257,6 +1273,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     setVendorsEditingId(null); setVendorsEditDraft({});
     setCustomersEditingId(null); setCustomersEditDraft({});
     setSettingsDraft(null); setSettingsSaved(false); setSettingsLogoPreview(null);
+    setPlDrill(null); setDrill(null); setDrillSel(null);   // C722 — a Reports drill showed company A's vendor and total under company B
     setCoaEditingCode(null); setCoaEditDraft({}); setCoaAddDraft({ code:"", name:"", category:"Expenses" }); setCoaShowAdd(false);
     setOpeningBalBalances({});
     setSendInvoiceDraftState(null); setSendInvoiceShowPreview(false); setSentInvoiceDraft(null);
@@ -2921,6 +2938,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (view === "settings" && !settingsDraft && companyDataLoaded && !loadFailures.companies) {   // C456 — and only when the company row itself loaded
       setSettingsDraft(companySettings);
     }
+    // ★ C722 — and DROPPED on leaving. A draft seeded once lived on while the business profile
+    // (type, fiscal year end) was answered on Home; the next Settings save wrote the old values
+    // back over it — the year end drives the retained-earnings split.
+    if (view !== "settings" && settingsDraft) { setSettingsDraft(null); setSettingsLogoPreview(null); }
   }, [view, companyDataLoaded, loadFailures.companies]); // eslint-disable-line
 
   // C424 — the "add your accountant" checklist step's dismissal is PER COMPANY: the key was
@@ -3859,6 +3880,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // (the load reads active=true, so "removed" is `active: false`, checked).
   const removeBankAccount = async (ba) => {
     if (!isDbId(ba?.id)) { setBankAccounts(prev => prev.filter(b => b.id !== ba?.id)); return { ok: true, local: true }; }
+    // ★ C722 — an account the books still hold money in is not removed: its category dropped out of
+    // "cash on hand" while the balance sheet kept it, so Home's cash fell by the balance (§12: Home's
+    // cash IS the balance sheet's). Shared categories (the main Cash) are not this account's alone.
+    {
+      const code = ba?.gl_code;
+      const shared = !code || String(code) === String(rc("cash")) || (bankAccounts || []).some(b => b && b.id !== ba.id && String(b.gl_code) === String(code));
+      const bal = !shared ? glAccountBalance(code, invoicesRef.current || []) : 0;
+      if (!shared && Math.abs(bal) >= 0.005) {
+        showNotification(`${ba.name || "This account"} still shows ${fmtMoney(Math.abs(bal))} in your books, so it can't be removed yet — record the transfer that emptied it (or its closing statement) first.`, "error");
+        return { ok: false, error: "balance" };
+      }
+    }
     const r = await checkedRowUpdate({ supabase, table: "bank_accounts", id: ba.id, companyId: currentCompany?.id, patch: { active: false }, label: "removeBankAccount" });
     if (r.ok) { setBankAccounts(prev => prev.filter(b => b.id !== ba.id)); logAudit("bank_account_removed", `Bank account removed: ${ba.name || ba.id}`, { name: ba.name, gl_code: ba.gl_code }, null); }
     return r;

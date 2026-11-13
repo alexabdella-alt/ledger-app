@@ -63,7 +63,9 @@ export default function TeamView() {
 
   const revoke = async (inv) => {
     try {
-      await supabase.from("company_invites").delete().eq("id", inv.id).eq("company_id", currentCompany.id);
+      // C722 — supabase-js RETURNS an error, it doesn't throw: a refused revoke was logged as done, silently
+      const { data: gone, error } = await supabase.from("company_invites").delete().eq("id", inv.id).eq("company_id", currentCompany.id).select("id");
+      if (error || !(gone || []).length) throw new Error(error?.message || "the invite wasn't removed");
       logAudit && logAudit("invite_revoked", `Revoked invite for ${inv.email}`, inv, null);
       if (lastLink && lastLink.includes(inv.token)) setLastLink(null);
       load();
@@ -124,7 +126,7 @@ export default function TeamView() {
                 the allowed set out of the schema, so the two cannot drift again. */}
             <option value="viewer">Viewer — can see the books, can't change anything</option>
             <option value="accountant">Accountant — can review and sign off a month</option>
-            <option value="admin">Admin — full access, can invite others</option>
+            <option value="admin">Admin — full access to the books and settings</option>
           </select>
           <button onClick={sendInvite} disabled={busy} style={{ height: 40, padding: "0 18px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: busy ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: busy ? "default" : "pointer" }}>
             {busy ? "Creating…" : "Create invite"}

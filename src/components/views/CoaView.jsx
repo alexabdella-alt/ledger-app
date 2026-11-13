@@ -8,7 +8,7 @@ export default function CoaView() {
   const {
     CHART_OF_ACCOUNTS, persistAccountEdit, deleteAccount, addCustomAccount,
     coaEditingCode, setCoaEditingCode, coaEditDraft, setCoaEditDraft,
-    coaAddDraft, setCoaAddDraft, coaShowAdd, setCoaShowAdd, showNotification, setDeleteConfirm, accountsLoadOk, navSeat,
+    coaAddDraft, setCoaAddDraft, coaShowAdd, setCoaShowAdd, showNotification, setDeleteConfirm, accountsLoadOk, navSeat, isViewer,
   } = useERP();
   const showCodes = showCodesFor(navSeat);   // C578 — numbers are the accountant's; an owner names and picks a type
 
@@ -85,7 +85,8 @@ export default function CoaView() {
           <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Categories</h1>
           <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Every transaction is filed under one of these. Rename or renumber any of them freely — the app tracks them by what they are for, so reports keep working. Built-in categories can be renamed but not deleted.</div>
         </div>
-        <button onClick={() => setShowAdd(v => !v)} style={{ padding: "9px 20px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>+ Add category</button>
+        {/* C722 — a view-only member sees the categories; the database refuses their changes, so they aren't offered */}
+        {isViewer ? <div data-coa-readonly style={{ fontSize: 12.5, color: "var(--sc-text-2)" }}>View-only access</div> : <button onClick={() => setShowAdd(v => !v)} style={{ padding: "9px 20px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>+ Add category</button>}
       </div>
 
       {showAdd && (
@@ -157,7 +158,7 @@ export default function CoaView() {
                               <button onClick={() => saveEdit(acct)} disabled={rowBusy} style={{ padding: "4px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: "linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border: "none", color: "var(--sc-success)", cursor: rowBusy ? "default" : "pointer", opacity: rowBusy ? 0.6 : 1 }}>{rowBusy ? "Saving…" : "Save"}</button>
                               <button onClick={() => setEditingId(null)} disabled={rowBusy} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>×</button>
                             </>
-                          ) : (
+                          ) : isViewer ? null : (
                             <>
                               <button onClick={() => startEdit(acct)} disabled={rowBusy} style={{ padding: "4px 12px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer", opacity: rowBusy ? 0.6 : 1 }}>Edit</button>
                               <button onClick={() => toggleActive(acct)} disabled={rowBusy} style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, background: "transparent", border: "1px solid var(--sc-border-2)", color: isInactive ? "var(--sc-success)" : "var(--sc-text-2)", cursor: "pointer", opacity: rowBusy ? 0.6 : 1 }}>{isInactive ? "Enable" : "Disable"}</button>

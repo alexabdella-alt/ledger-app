@@ -1,5 +1,5 @@
 import React from "react";
-import { toCSV } from "../../lib/insights";
+import { toCSV, journalLinesForExport } from "../../lib/insights";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
@@ -11,14 +11,15 @@ import { buildCompanyUpdate } from "../../lib/writeShapes";
 import { glCodeForAccountType, statementBalanceTotals, bankCategoryOptions, dedicatedGlFor } from "../../lib/bankAccounts";
 
 export default function SettingsView() {
-  const { BOOKABLE_ACCOUNTS, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, persistBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setLegalTab, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, removeBankAccount, loadFailures, navSeat, giveBankAccountOwnCategory } = useERP();
+  const { BOOKABLE_ACCOUNTS, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, persistBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setLegalTab, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, removeBankAccount, loadFailures, navSeat, giveBankAccountOwnCategory, companyDataLoaded, isViewer, userRole } = useERP();
             const draft = settingsDraft || companySettings; const setDraft = setSettingsDraft;
             const saved = settingsSaved; const setSaved = setSettingsSaved;
             const logoPreview = settingsLogoPreview ?? companySettings.logoBase64; const setLogoPreview = setSettingsLogoPreview;
             const save = async () => {
               if (loadFailures?.companies) { showNotification("We couldn't load your company details, so nothing can be saved here until the page reloads — nothing was changed.", "error"); return; }   // C456
-              setCompanySettings(draft);
-              persistBankAccounts && persistBankAccounts(); // save bank accounts incl. balances
+              // ★ C722 — the screen takes the new settings only once the database has them (it painted
+              // them first, so a failed save kept the unsaved year end and tax rate in use until reload),
+              // and the bank accounts' save is awaited and its outcome said with the rest.
               // Persist ALL company identity/accounting fields to the companies table —
               // not just sales_tax_rate (they were lost on refresh before). All columns
               // exist (no migration); the logo is intentionally excluded (see writeShapes).
@@ -38,7 +39,7 @@ export default function SettingsView() {
                   const { data, error } = await supabase.from("companies").update(companyPatch).eq("id", currentCompany.id).select("id");
                   if (error || !data || !data.length) {
                     console.error("[settings] save failed:", error?.message || "no rows updated");
-                    showNotification("Couldn't save settings — nothing was changed. Please try again.", "error");
+                    showNotification("Couldn't save your company details — they weren't changed. Please try again.", "error");
                     return;
                   }
                 } catch (e) { console.warn("[settings] save:", e?.message || e); showNotification("Couldn't save settings — please try again", "error"); return; }
@@ -61,6 +62,9 @@ export default function SettingsView() {
                 setCurrentCompany && setCurrentCompany(prev => prev && prev.id === currentCompany.id ? { ...prev, ...companyPatch } : prev);
                 setCompanies && setCompanies(prev => (prev || []).map(c => c.id === currentCompany.id ? { ...c, ...companyPatch } : c));
               }
+              setCompanySettings(draft);
+              const banks = persistBankAccounts ? await persistBankAccounts() : { ok: true };
+              if (banks && banks.ok === false) showNotification(`Your company details were saved, but ${banks.failed?.length ? `${banks.failed.length} bank account${banks.failed.length === 1 ? "" : "s"}` : "the bank accounts"} couldn't be — try saving again.`, "error");
               logAudit("settings_saved", `Company settings updated: ${draft.name}`);
               setSaved(true); setTimeout(()=>setSaved(false), 2000);
             };
@@ -85,19 +89,25 @@ export default function SettingsView() {
               URL.revokeObjectURL(url);
             };
             const exportAllData = () => {
+              // ★ C722 — not over a load that failed: an export of what DIDN'T load is an empty file
+              // that says "Exported ✓", which someone may keep as their backup.
+              const failedLoads = Object.keys(loadFailures || {});
+              if (!companyDataLoaded || failedLoads.length) { showNotification("Some of your data didn't load, so an export now would be incomplete — reload the page and export again.", "error"); return; }
               const stamp = todayLocal();
               const co = (currentCompany?.name || "company").replace(/[^a-z0-9]+/gi, "_");
-              const txnRows = [["Date","Vendor","Description","GL Code","GL Account","Type","Amount","Status","Payment Status","Project"]];
-              (invoices||[]).forEach(i => txnRows.push([i.date, i.vendor, i.description, i.gl_code, i.gl_name, i.type, i.amount, i.status, i.payment_status, i.project]));
-              downloadCSV(`${co}_transactions_${stamp}.csv`, txnRows);
+              const journal = journalLinesForExport(invoices || []);   // C722 — every line, both sides
+              downloadCSV(`${co}_journal_${stamp}.csv`, journal);
+              const coaRows = [["Code","Name","Type","Active"]];
+              (CHART_OF_ACCOUNTS||[]).forEach(a => coaRows.push([a.code, a.name, a.category, a.active === false ? "no" : "yes"]));
+              downloadCSV(`${co}_chart_of_accounts_${stamp}.csv`, coaRows);
               const contactRows = [["Name","Type","Email","Phone","Website","Payment Terms","Tax ID","Tags","Notes"]];
               (contacts||[]).forEach(c => contactRows.push([c.name, c.type, c.email, c.phone, c.website, c.payment_terms, c.tax_id||c.ein||c.ein_ssn, (c.tags||[]).join("; "), c.notes]));
               downloadCSV(`${co}_contacts_${stamp}.csv`, contactRows);
               const contractRows = [["Counterparty","Type","Description","Monthly Payment","Frequency","Term (months)","Start","End","Total Value","Treatment"]];
               (contracts||[]).forEach(c => contractRows.push([c.counterparty, c.contract_type, c.description, c.payment_amount, c.payment_frequency, c.lease_term_months, c.start_date, c.end_date, c.total_value, c.accounting_treatment]));
               downloadCSV(`${co}_contracts_${stamp}.csv`, contractRows);
-              logAudit("data_export", `Exported all data: ${(invoices||[]).length} transactions, ${(contacts||[]).length} contacts, ${(contracts||[]).length} contracts`);
-              showNotification("Exported transactions, contacts & contracts ✓");
+              logAudit("data_export", `Exported all data: ${journal.length - 1} journal lines, ${(CHART_OF_ACCOUNTS||[]).length} categories, ${(contacts||[]).length} contacts, ${(contracts||[]).length} contracts`);
+              showNotification(`Exported ${journal.length - 1} journal lines, your categories, contacts & contracts ✓`);
             };
             const inp = (k,l,p,type="text") => (
               <div>
@@ -210,7 +220,7 @@ export default function SettingsView() {
                             onBlur={()=>persistBankAccounts && persistBankAccounts()}
                             placeholder="Balance on your statement" style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px 8px 18px",color:"var(--sc-text)",fontSize:12,outline:"none",fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
                         </div>
-                        <button aria-label={`Remove ${ba.name || "this account"}`} title="Remove this account" onClick={async()=>{ const r = await removeBankAccount(ba); if (!r?.ok) showNotification(`Couldn't remove ${ba.name||"that account"} — nothing was changed.`, "error"); }} style={{background:"transparent",border:"1px solid var(--sc-border-2)",borderRadius:7,padding:"7px 10px",color:"var(--sc-error)",cursor:"pointer",fontSize:13}}>×</button>
+                        <button aria-label={`Remove ${ba.name || "this account"}`} title="Remove this account" onClick={async()=>{ const r = await removeBankAccount(ba); if (!r?.ok && r?.error !== "balance") showNotification(`Couldn't remove ${ba.name||"that account"} — nothing was changed.`, "error"); }} style={{background:"transparent",border:"1px solid var(--sc-border-2)",borderRadius:7,padding:"7px 10px",color:"var(--sc-error)",cursor:"pointer",fontSize:13}}>×</button>
                       </div>
                       {/* ★ C713 — an account sharing its category with another can't be checked against its own
                           statement, and its same-day charges can be mistaken for the other's */}
@@ -251,7 +261,10 @@ export default function SettingsView() {
                   </div>
                 </div>
 
-                <button onClick={save} disabled={!!loadFailures?.companies} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:saved?"var(--sc-success)":"var(--sc-text)",cursor:"pointer",transition:"all 0.3s"}}>
+                {/* ★ C722 — the company row is the owner's and an admin's to change (the database refuses anyone else); a
+                    view-only member or an accountant is told so here, instead of pressing Save to find out */}
+                {!["owner", "admin"].includes(userRole) && <div data-settings-readonly style={{ fontSize:12.5, color:"var(--sc-text-2)", marginBottom:8 }}>Only the owner or an admin can change the company details — you can see them here.</div>}
+                <button onClick={save} disabled={!!loadFailures?.companies || !["owner", "admin"].includes(userRole)} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:saved?"var(--sc-success)":"var(--sc-text)",cursor:"pointer",transition:"all 0.3s"}}>
                   {saved ? "✓ Saved" : "Save Settings"}
                 </button>
 

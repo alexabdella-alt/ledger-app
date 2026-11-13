@@ -25,6 +25,6 @@ describe("a new bank account is inserted once", () => {
   it("both triggers still call the same save", () => {
     const v = readFileSync("src/components/views/SettingsView.jsx", "utf8");
     expect(v).toMatch(/onBlur=\{\(\)=>persistBankAccounts && persistBankAccounts\(\)\}/);
-    expect(v).toMatch(/persistBankAccounts && persistBankAccounts\(\); \/\/ save bank accounts incl\. balances/);
+    expect(v).toMatch(/const banks = persistBankAccounts \? await persistBankAccounts\(\) : \{ ok: true \};/);   // C722 — awaited, after the company row, and its outcome said
   });
 });

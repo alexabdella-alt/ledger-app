@@ -612,3 +612,26 @@ export function runAnomalyDetection(invoices, recurring = [], now = new Date(), 
   out.sort((a, b) => rank[a.severity] - rank[b.severity]);
   return out.slice(0, 25);
 }
+
+
+// ★ C722 — THE LEDGER AS JOURNAL LINES, BOTH SIDES. "Export all data" wrote one account and an
+// unsigned amount per row — no offset, no debit or credit — so a bill on account and a cash purchase
+// read the same and the file could not rebuild the books. One row per LINE: a two-line entry gives
+// its debit line and its credit line; an expanded entry's rows are already one per line. Removed
+// (voided / deleted) entries are left out; a dated correction stays, as it is in the books.
+export function journalLinesForExport(invoices = []) {
+  const rows = [["Entry", "Date", "Account code", "Account", "Debit", "Credit", "Vendor / customer", "Description", "Source"]];
+  const amt = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  for (const i of invoices || []) {
+    if (!i || i.status === "voided" || i.status === "deleted" || i.deleted_at) continue;
+    const entry = String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
+    const a = amt(i.amount);
+    if (!a) continue;
+    const debit = i.debit_credit !== "credit";
+    rows.push([entry, i.date, i.gl_code, i.gl_name, debit ? a : "", debit ? "" : a, i.vendor, i.description, i.source || ""]);
+    if (!String(i.id ?? "").includes("_") && i.secondary_gl_code != null) {
+      rows.push([entry, i.date, i.secondary_gl_code, i.secondary_gl_name, debit ? "" : a, debit ? a : "", i.vendor, i.description, i.source || ""]);
+    }
+  }
+  return rows;
+}

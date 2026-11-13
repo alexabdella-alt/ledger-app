@@ -35,7 +35,11 @@ export default function OpeningBalancesView() {
     Equity:      { title: "WHAT'S LEFT OVER",       hint: showCodes ? "equity" : "the owner's share — usually you can leave this to balance itself" },
   };
             const fmt = fmtMoney;
-            const bsAccts = (BOOKABLE_ACCOUNTS||[]).filter(a=>["Assets","Liabilities","Equity"].includes(a.category));   // C472 — a disabled account is not offered a starting balance
+            // C472 — a disabled account is not offered a starting balance… ★ C722 — unless it already HAS one: dropped
+            // from the grid, a redo re-posted without it and its amount moved silently into the balancing equity line.
+            const savedCodes = new Set((openingBalances || []).filter(o => o && o.account_code != null && Math.abs(Number(o.balance) || 0) >= 0.005).map(o => String(o.account_code)));
+            const bsAccts = [...(BOOKABLE_ACCOUNTS||[]), ...(CHART_OF_ACCOUNTS||[]).filter(a => a && a.active === false && savedCodes.has(String(a.code)))]
+              .filter(a=>["Assets","Liabilities","Equity"].includes(a.category));
             // C590 — saved wins over inferred, typed wins over saved; see `openingGrid.js`.
             const { values: balances, fromBank } = openingGridValues({ accounts: bsAccts, saved: openingBalances, bankAccounts, typed: openingBalBalances });
             // Bank-linked cash is PRE-FILLED from the bank balance (when known) but stays

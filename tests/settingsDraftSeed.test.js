@@ -25,6 +25,6 @@ describe("C456", () => {
     const sv = fs.readFileSync("src/components/views/SettingsView.jsx", "utf8");
     expect(sv).toMatch(/const save = async \(\) => \{\s*if \(loadFailures\?\.companies\) \{[^\n]*return; \}/);
     expect(sv).toMatch(/<LoadFailedNotice what="company details" table="companies" \/>/);
-    expect(sv).toMatch(/<button onClick=\{save\} disabled=\{!!loadFailures\?\.companies\}/);
+    expect(sv).toMatch(/<button onClick=\{save\} disabled=\{!!loadFailures\?\.companies \|\| !\["owner", "admin"\]\.includes\(userRole\)\}/);   // C722 — and only a seat the database lets write it
   });
 });
