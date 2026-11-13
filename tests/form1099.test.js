@@ -66,14 +66,16 @@ describe("★★ goods are never reportable, at any amount", () => {
   it("a utility is not classified as a service — we decline rather than guess", () => {
     // `utilities` is deliberately absent from the role map. Guessing it is how the badge
     // ended up on a utility company in the first place.
-    expect(paymentKindForRole("utilities")).toBe(PAYMENT_KIND.UNKNOWN);
+    // ★ C679 — current guidance says plainly: utilities are never on a 1099-NEC/MISC. "Not
+    // reportable" is a rule, not a guess — and it is not "services".
+    expect(paymentKindForRole("utilities")).toBe(PAYMENT_KIND.NOT_REPORTABLE);
   });
 });
 
 describe("★★ an unclassifiable payment cannot be ruled in OR out", () => {
   it("★★★ 'below the floor' is never claimed while holding payments we couldn't classify THAT COULD REACH IT", () => {
     // That would be a claim about a query rather than about the books.
-    const r = v({ name: "Mystery Co" }, [paid(4000, 6200)]);   // utilities → unknown kind
+    const r = v({ name: "Mystery Co" }, [paid(4000, 7990)]);   // C679 — an account with no role and no name: still the one honest "unknown"
     expect(r.verdict).toBe(VERDICT.NEEDS_INFO);
     expect(r.why).toMatch(/can't classify as goods or services/);
   });

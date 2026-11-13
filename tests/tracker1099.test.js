@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+// C679 — fixtures moved one year back (2026→2025, 2025→2024): their amounts are about classification,
+// and 2026 payments are judged at the new $2,000 floor (thresholdFor), 2025 at $600.
 import { readFileSync } from "node:fs";
 import { reportablePayments, entityStatus, tracker1099Rows, plan1099ForYear, verdictFor, ENTITY, VERDICT } from "../src/lib/form1099";
 import { flattenJournalEntries } from "../src/lib/ledger";
@@ -18,7 +20,7 @@ const chart = [
   { code: "5000", system_role: "cogs" }, { code: "6250", system_role: "repairs_maintenance" }, { code: "6800", system_role: "professional_services" },
 ];
 const role = (c) => chart.find((a) => a.code === String(c))?.system_role || null;
-const row = (vendor, amount, gl_code, extra = {}) => ({ vendor, amount, gl_code, date: "2026-03-10", debit_credit: "debit", status: "posted", ...extra });
+const row = (vendor, amount, gl_code, extra = {}) => ({ vendor, amount, gl_code, date: "2025-03-10", debit_credit: "debit", status: "posted", ...extra });
 
 describe("R1 — paying a bill is not buying something twice", () => {
   const bill = row("Ace Plumbing", 1000, "6250", { id: "b1", offset_gl_code: "2000" });
@@ -31,7 +33,7 @@ describe("R1 — paying a bill is not buying something twice", () => {
   });
 
   it("★ and the verdict is about $1,000 of services, not $2,000 'we can't classify'", () => {
-    const v = verdictFor({ name: "Ace Plumbing", business_type: "individual" }, reportablePayments([bill, payment], role), { year: 2026 });
+    const v = verdictFor({ name: "Ace Plumbing", business_type: "individual" }, reportablePayments([bill, payment], role), { year: 2025 });
     expect(v.verdict).toBe(VERDICT.ELIGIBLE);
     expect(v.amount).toBe(1000);
   });
@@ -61,7 +63,7 @@ describe("R1 — paying a bill is not buying something twice", () => {
   it("the real flatten produces exactly these shapes for a bill and its payment", () => {
     // Not a fixture agreeing with itself: the rows come from the function the app loads with.
     const acct = { e: { id: "e", code: "6250", name: "Repairs" }, ap: { id: "ap", code: "2000", name: "A/P" }, cash: { id: "cash", code: "1000", name: "Cash" } };
-    const je = (id, lines, meta) => ({ id, entry_date: "2026-03-10", description: "Ace Plumbing", vendor: "Ace Plumbing", status: "posted", source: "manual", import_metadata: meta || null,
+    const je = (id, lines, meta) => ({ id, entry_date: "2025-03-10", description: "Ace Plumbing", vendor: "Ace Plumbing", status: "posted", source: "manual", import_metadata: meta || null,
       journal_entry_lines: lines.map(([a, debit, credit], i) => ({ id: `${id}-${i}`, account_id: acct[a].id, debit, credit, accounts: acct[a] })) });
     const flat = flattenJournalEntries([je("b1", [["e", 1000, 0], ["ap", 0, 1000]]), je("p1", [["ap", 1000, 0], ["cash", 0, 1000]], { payment_for: "b1" })]);
     expect(flat.map((r) => [r.id, r.gl_code, r.vendor_key])).toEqual([["b1", "6250", "ace plumbing"], ["p1", "2000", "ace plumbing"]]);
@@ -99,14 +101,14 @@ describe("R2 — the 1099 screen's rows", () => {
     row("Plumbing Supply House", 80, "6250"),                                           // under the floor
     row("Ace Plumbing", 5000, "6250", { status: "voided" }),                            // voided: not paid
     row("Ace Plumbing", 100, "6250", { debit_credit: "credit" }),                       // a correction reduces
-    row("Ace Plumbing", 700, "6250", { date: "2025-12-30" }),                           // another year
+    row("Ace Plumbing", 700, "6250", { date: "2024-12-30" }),                           // another year
   ];
-  const rows = tracker1099Rows({ invoices, contacts, chart, year: 2026 });
+  const rows = tracker1099Rows({ invoices, contacts, chart, year: 2025 });
   const by = (name) => rows.find((r) => r.name === name);
 
   it("★ two spellings of one contractor are ONE row, and together they cross the floor", () => {
     expect(rows.filter((r) => /ace plumbing/i.test(r.name))).toHaveLength(1);
-    expect(by("Ace Plumbing").paid).toBe(650);                 // 400 + 350 − 100; voided and 2025 excluded
+    expect(by("Ace Plumbing").paid).toBe(650);                 // 400 + 350 − 100; voided and 2024 excluded
     expect(by("Ace Plumbing").status.key).toBe("needs");
   });
 
@@ -126,7 +128,7 @@ describe("R2 — the 1099 screen's rows", () => {
 
   it("★ an unknown row says WHICH question it is asking, so the screen offers the step that answers it", () => {
     expect(by("Bright Signs").ask).toBe("type");
-    const r = tracker1099Rows({ invoices: [row("Ace Plumbing", 3000, "1500")], contacts: [contacts[0]], chart, year: 2026 });
+    const r = tracker1099Rows({ invoices: [row("Ace Plumbing", 3000, "1500")], contacts: [contacts[0]], chart, year: 2025 });
     expect(r[0].status.key).toBe("unknown");
     expect(r[0].ask).toBe("category");
     expect(by("Ace Plumbing").ask).toBeNull();
@@ -146,14 +148,14 @@ describe("R2 — the 1099 screen's rows", () => {
     // The old screen matched "name contains name" in either direction: "Ace Plumbing Supply"
     // took the corporation answer saved for "Ace Plumbing" and was waved through as exempt.
     const r = tracker1099Rows({ invoices: [row("Ace Plumbing Supply", 900, "6250")],
-      contacts: [{ id: 9, name: "Ace Plumbing", type: "vendor", business_type: "corp" }], chart, year: 2026 });
+      contacts: [{ id: 9, name: "Ace Plumbing", type: "vendor", business_type: "corp" }], chart, year: 2025 });
     expect(r).toHaveLength(1);
     expect(r[0].contact).toBeNull();
     expect(r[0].status.key).toBe("unknown");
   });
 
   it("★ it agrees with the plan the Taxes card and Home read, vendor for vendor", () => {
-    const plan = plan1099ForYear({ invoices, contacts, chart, year: 2026 });
+    const plan = plan1099ForYear({ invoices, contacts, chart, year: 2025 });
     const planNeeds = plan.eligible.map((r) => r.name).sort();
     expect(rows.filter((r) => r.status.key === "needs").map((r) => r.name).sort()).toEqual(planNeeds);
     expect(rows.filter((r) => r.status.key === "unknown").map((r) => r.name).sort()).toEqual(plan.needsInfo.map((r) => r.name).sort());
@@ -162,24 +164,24 @@ describe("R2 — the 1099 screen's rows", () => {
   it("★ a name the person has said is the same vendor joins that vendor — here AND in the plan", () => {
     const cs = [{ id: 1, name: "Ace Plumbing", type: "vendor", business_type: "individual", aliases: ["A.P. Services"] }];
     const inv = [row("Ace Plumbing", 400, "6250"), row("A.P. Services", 350, "6250")];
-    const r = tracker1099Rows({ invoices: inv, contacts: cs, chart, year: 2026 });
+    const r = tracker1099Rows({ invoices: inv, contacts: cs, chart, year: 2025 });
     expect(r).toHaveLength(1);
     expect(r[0].paid).toBe(750);
     expect(r[0].status.key).toBe("needs");
-    expect(plan1099ForYear({ invoices: inv, contacts: cs, chart, year: 2026 }).eligible.map((x) => x.name)).toEqual(["Ace Plumbing"]);
+    expect(plan1099ForYear({ invoices: inv, contacts: cs, chart, year: 2025 }).eligible.map((x) => x.name)).toEqual(["Ace Plumbing"]);
   });
 
   it("a vendor with no contact yet is still listed, judged on the name alone", () => {
-    const r = tracker1099Rows({ invoices: [row("New Handyman", 800, "6250")], contacts: [], chart, year: 2026 });
+    const r = tracker1099Rows({ invoices: [row("New Handyman", 800, "6250")], contacts: [], chart, year: 2025 });
     expect(r).toHaveLength(1);
     expect(r[0].contact).toBeNull();
     expect(r[0].status.key).toBe("unknown");
   });
 
   it("a sent mark for the year reads 'Sent'", () => {
-    const r = tracker1099Rows({ invoices: [row("Ace Plumbing", 800, "6250")], contacts: [{ ...contacts[0], sent_1099_years: [2026] }], chart, year: 2026 });
+    const r = tracker1099Rows({ invoices: [row("Ace Plumbing", 800, "6250")], contacts: [{ ...contacts[0], sent_1099_years: [2025] }], chart, year: 2025 });
     expect(r[0].status.key).toBe("sent");
-    const last = tracker1099Rows({ invoices: [row("Ace Plumbing", 800, "6250")], contacts: [{ ...contacts[0], sent_1099_years: [2025] }], chart, year: 2026 });
+    const last = tracker1099Rows({ invoices: [row("Ace Plumbing", 800, "6250")], contacts: [{ ...contacts[0], sent_1099_years: [2024] }], chart, year: 2025 });
     expect(last[0].status.key).toBe("needs");
   });
 });
@@ -209,7 +211,7 @@ describe("the screen itself", () => {
     const yr = new Date().getMonth() <= 2 ? y - 1 : y;   // the year the screen is about; see taxYearFor1099
     const mk = (vendor, amount) => ({ vendor, amount, gl_code: "6250", date: `${yr}-03-10`, debit_credit: "debit", status: "posted" });
     const html = renderViewHtml(Tax1099View, {
-      invoices: [mk("Ace Plumbing", 900), mk("Bright Signs", 900)],
+      invoices: [mk("Ace Plumbing", 2500), mk("Bright Signs", 2500)],   // C679 — over the floor in any year ($600 to 2025, $2,000 from 2026)
       contacts: [{ id: 1, name: "Ace Plumbing", type: "vendor", business_type: "individual" }],
       CHART_OF_ACCOUNTS: chart, aliasIndex: new Map(), companySettings: {},
     });

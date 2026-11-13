@@ -3,7 +3,7 @@ import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
 import { taxYearFor1099 } from "../../lib/tax";
-import { sent1099For, tracker1099Rows } from "../../lib/form1099";
+import { thresholdFor, sent1099For, tracker1099Rows } from "../../lib/form1099";
 import { toCSV } from "../../lib/insights";
 
 const TYPE_OPTIONS = [
@@ -111,7 +111,7 @@ export default function Tax1099View() {
       {/* STEP 1 — education */}
       <div style={{ ...card, padding:"16px 20px", marginBottom:16, background:"var(--sc-gold-soft)", borderColor:"var(--sc-gold-soft)" }}>
         <div style={{ fontSize:13, color:"var(--sc-text-2)", lineHeight:1.6 }}>
-          Every year, if you paid a freelancer, contractor, or unincorporated business more than <strong>$600</strong>, you're legally required to send them a <strong>Form 1099-NEC by January 31st</strong>. We track this automatically — here's where you stand for {taxYear}.
+          If you paid a freelancer, contractor, or unincorporated business <strong>${thresholdFor(taxYear).toLocaleString("en-US")} or more</strong> in {taxYear} for their services (by check, bank transfer or cash — card and payment-app payments are reported by the card company instead), you send them a <strong>Form 1099-NEC by January 31st</strong>. We work this out automatically — here's where you stand for {taxYear}.
         </div>
       </div>
 
@@ -197,7 +197,7 @@ export default function Tax1099View() {
                   <label key={o.v} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:9, border:`1px solid ${editing.business_type===o.v?"var(--sc-gold)":"var(--sc-border)"}`, background: editing.business_type===o.v?"var(--sc-gold-soft)":"var(--sc-surface)", cursor:"pointer", fontSize:13 }}>
                     <input type="radio" name="btype" checked={editing.business_type===o.v} onChange={()=>setEditing(s=>({...s,business_type:o.v}))} />
                     <span style={{ flex:1 }}>{o.label}</span>
-                    <span style={{ fontSize:11, color: o.exempt?"var(--sc-text-2)":"var(--sc-error)", fontWeight:600 }}>{o.exempt?"No 1099 needed":"Needs 1099 if $600+"}</span>
+                    <span style={{ fontSize:11, color: o.exempt?"var(--sc-text-2)":"var(--sc-error)", fontWeight:600 }}>{o.exempt?"No 1099 needed":`Needs 1099 if $${thresholdFor(taxYear).toLocaleString("en-US")}+`}</span>
                   </label>
                 ))}
               </div>

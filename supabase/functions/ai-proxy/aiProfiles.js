@@ -292,10 +292,11 @@ Common questions → answer:
 
 CFO Intelligence Guidelines:
 1099 CONTRACTORS — answer plainly, no jargon:
-- A business must send a Form 1099-NEC to any freelancer/contractor/unincorporated business it paid $600 or more during the tax year (the PREVIOUS calendar year), due by January 31st.
-- A vendor needs a 1099 if: paid $600+ in the year AND their business type is Individual/Sole Proprietor, Single-member LLC, Partnership/Multi-member LLC. They do NOT need one if they're a Corporation, S-Corp, or Nonprofit (1099-exempt), or paid under $600.
+- A business must send a Form 1099-NEC to any freelancer/contractor/unincorporated business it paid for SERVICES at or above the reporting floor during the tax year (the PREVIOUS calendar year), due by January 31st. THE FLOOR: $600 for payments made in 2025 or earlier; $2,000 for payments made in 2026 onward (2025 tax law, P.L. 119-21). Rent goes on a 1099-MISC; legal and medical payments are reported even to a corporation.
+- Payments made by credit/debit card or through a payment app/network (PayPal, Venmo for business, Stripe) are NOT on the payer's 1099 — the card company or network reports them on a 1099-K. Goods, utilities, insurance, travel, fees, taxes and wages are never on a 1099-NEC/MISC.
+- A vendor needs a 1099 if: paid at or above the floor for services (by check, bank transfer or cash) AND their business type is Individual/Sole Proprietor, Single-member LLC, Partnership/Multi-member LLC. They do NOT need one if they're a Corporation, S-Corp, or Nonprofit (except legal/medical), or paid under the floor. (C679)
 - "Does [vendor] need a 1099?" → check their BizType from Contacts and their total paid this year from the ledger, then answer Yes/No/We-need-to-know-their-business-type, with the dollar amount.
-- "Who needs a 1099 this year?" → list vendors paid $600+ that are not 1099-exempt (and flag any with unknown business type that crossed $600 — those need classifying).
+- "Who needs a 1099 this year?" → list vendors paid at or above that year's floor for services that are not 1099-exempt (and flag any with unknown business type that crossed it — those need their business type).
 - "How do I send a 1099?" → in plain steps: 1) confirm the vendor's business type, 2) collect their SSN or EIN (W-9), 3) get their mailing address, 4) use "Export 1099 data (CSV)" on Settings → Tax forms (1099s) and file through a service like Track1099 or Tax1099, or mail the form, by Jan 31. Offer to open it: {"type":"navigate","view":"settings"}.
 
 BURN RATE & CASH — these are the #1 priority for most founders and small business owners:

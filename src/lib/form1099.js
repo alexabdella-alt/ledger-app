@@ -1,4 +1,5 @@
 import { vendorGroupKey } from "./vendorIdentity.js";
+import { lineForAccount } from "./taxGuidance.js";
 import { applyAlias, buildAliasIndex } from "./vendorAlias.js";
 import { isSettlementEntry } from "./gl.js";
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,6 +28,13 @@ import { isSettlementEntry } from "./gl.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const IRS_1099_THRESHOLD = 600;
+// ★ C679 — THE FLOOR FOLLOWS THE PAYMENT YEAR. The 2025 tax law (P.L. 119-21 §70433) raised the
+// 1099-NEC / 1099-MISC reporting threshold from $600 to $2,000 for payments made after
+// 2025 (inflation-adjusted after 2026). A 2025 payment is still judged at $600.
+export function thresholdFor(year) {
+  const y = Number(year);
+  return Number.isFinite(y) && y >= 2026 ? 2000 : IRS_1099_THRESHOLD;
+}
 
 // What KIND of payment this was, decided by the account it landed in — never by the
 // supplier's name (§9: the account fixes the category).
@@ -36,6 +44,8 @@ export const PAYMENT_KIND = {
   LEGAL: "legal",         // 1099-NEC/MISC — reportable EVEN TO A CORPORATION
   MEDICAL: "medical",     // 1099-MISC box 6 — also reportable to a corporation
   GOODS: "goods",         // not reportable at all
+  NOT_REPORTABLE: "not_reportable",
+  CARD: "card",           // C679 — paid by card / payment network: reported on the 1099-K, not by the payer   // C679 — utilities, insurance, travel, fees, taxes, wages, interest: never on a 1099-NEC/MISC
   UNKNOWN: "unknown",
 };
 
@@ -54,10 +64,55 @@ const ROLE_KIND = {
   waste_removal: PAYMENT_KIND.SERVICES,
   marketing_advertising: PAYMENT_KIND.SERVICES,
   rent_occupancy: PAYMENT_KIND.RENT,
-  // Deliberately absent: utilities, insurance, software, interest, payroll. They are either
-  // exempt by rule or paid to entities that are, and guessing them is how the badge ended up
-  // on a utility company in the first place.
+  // ★ C679 — every other role the app creates, by current IRS practice, so nothing is left to
+  // "classify": services (NEC box 1), rent (MISC box 1), or not reportable at all.
+  subcontractor_costs: PAYMENT_KIND.SERVICES, customer_support: PAYMENT_KIND.SERVICES, sales_commissions: PAYMENT_KIND.SERVICES,
+  property_management: PAYMENT_KIND.SERVICES, education_training: PAYMENT_KIND.SERVICES, direct_labor: PAYMENT_KIND.SERVICES,
+  equipment_rental: PAYMENT_KIND.RENT, operating_lease_expense: PAYMENT_KIND.RENT, rou_amortization: PAYMENT_KIND.RENT,
+  merchandise_cost: PAYMENT_KIND.GOODS, job_materials: PAYMENT_KIND.GOODS, shipping_fulfillment: PAYMENT_KIND.GOODS,
+  medical_supplies: PAYMENT_KIND.GOODS, hosting_infrastructure: PAYMENT_KIND.GOODS, technology_software: PAYMENT_KIND.GOODS,
+  vehicle_expenses: PAYMENT_KIND.GOODS, inventory_shrinkage: PAYMENT_KIND.GOODS,
+  // Not reported on a 1099-NEC/MISC by rule: utilities and phone, insurance premiums, travel and
+  // meals, card/bank/processing fees (financial institutions), taxes and licences (government),
+  // wages and payroll (W-2), benefits, interest (a separate form), dues.
+  utilities: PAYMENT_KIND.NOT_REPORTABLE, insurance: PAYMENT_KIND.NOT_REPORTABLE, malpractice_insurance: PAYMENT_KIND.NOT_REPORTABLE,
+  travel_entertainment: PAYMENT_KIND.NOT_REPORTABLE, merchant_processing_fees: PAYMENT_KIND.NOT_REPORTABLE, bank_service_charges: PAYMENT_KIND.NOT_REPORTABLE,
+  taxes_licenses: PAYMENT_KIND.NOT_REPORTABLE, property_taxes: PAYMENT_KIND.NOT_REPORTABLE, payroll_tax: PAYMENT_KIND.NOT_REPORTABLE,
+  salaries_wages: PAYMENT_KIND.NOT_REPORTABLE, employee_benefits: PAYMENT_KIND.NOT_REPORTABLE, interest_expense: PAYMENT_KIND.NOT_REPORTABLE,
+  dues_memberships: PAYMENT_KIND.NOT_REPORTABLE, hoa_dues: PAYMENT_KIND.NOT_REPORTABLE, income_tax_expense: PAYMENT_KIND.NOT_REPORTABLE,
+  depreciation_amortization: PAYMENT_KIND.NOT_REPORTABLE, bad_debt: PAYMENT_KIND.NOT_REPORTABLE, client_reimbursables: PAYMENT_KIND.NOT_REPORTABLE,
 };
+
+// C679 — a category the owner made (no role): read its NAME by the same Schedule C mapping the
+// Taxes screen uses, so an owner-made category is never "can't classify" either.
+const LINE_KIND = {
+  "11": PAYMENT_KIND.SERVICES, "8": PAYMENT_KIND.SERVICES, "10": PAYMENT_KIND.SERVICES, "21": PAYMENT_KIND.SERVICES,
+  "17": PAYMENT_KIND.LEGAL, "20a": PAYMENT_KIND.RENT, "20b": PAYMENT_KIND.RENT,
+  "4": PAYMENT_KIND.GOODS, "18": PAYMENT_KIND.GOODS, "22": PAYMENT_KIND.GOODS, "9": PAYMENT_KIND.GOODS,
+  "13": PAYMENT_KIND.NOT_REPORTABLE, "14": PAYMENT_KIND.NOT_REPORTABLE, "15": PAYMENT_KIND.NOT_REPORTABLE, "16b": PAYMENT_KIND.NOT_REPORTABLE,
+  "19": PAYMENT_KIND.NOT_REPORTABLE, "23": PAYMENT_KIND.NOT_REPORTABLE, "24a": PAYMENT_KIND.NOT_REPORTABLE, "24b": PAYMENT_KIND.NOT_REPORTABLE,
+  "25": PAYMENT_KIND.NOT_REPORTABLE, "26": PAYMENT_KIND.NOT_REPORTABLE, none: PAYMENT_KIND.NOT_REPORTABLE,
+};
+const SERVICE_WORDS = /\b(service|services|cleaning|janitorial|laundry|consult\w*|design\w*|edit(ing|or|ors)?|freelanc\w*|contractor|labor|labour|coaching|photograph\w*|videograph\w*|management|install\w*|maintenance|landscap\w*|tutor\w*|writing|writer)\b/i;
+export function paymentKindForAccount({ role = null, name = "", code = "" } = {}) {
+  if (role && ROLE_KIND[String(role)]) return ROLE_KIND[String(role)];
+  const { line, by } = lineForAccount({ code, name, role: null });
+  if (by === "name" && LINE_KIND[line]) return LINE_KIND[line];
+  if (SERVICE_WORDS.test(String(name || ""))) return PAYMENT_KIND.SERVICES;
+  if (by === "number" && line === "4") return PAYMENT_KIND.GOODS;
+  return PAYMENT_KIND.UNKNOWN;   // a category with no name to read — the one case still worth asking
+}
+
+// ★ C679 — PAID BY CARD OR THROUGH A PAYMENT NETWORK: NOT YOUR 1099. Payments made with a credit
+// or debit card, or through a third-party network (PayPal, Venmo for business, Stripe…), are
+// reported by the card company or network on Form 1099-K — the payer files no 1099-NEC/MISC
+// for them. Read from the record: the bill was booked straight to a card account, or its
+// payment was recorded as a card / network payment.
+const CARD_METHODS = new Set(["card", "credit_card", "debit_card", "paypal", "venmo", "cash_app", "stripe"]);
+export function paidByCardOrNetwork(row = {}, { cardCodes = new Set() } = {}) {
+  if (cardCodes.has(String(row.secondary_gl_code ?? ""))) return true;
+  return CARD_METHODS.has(String(row.payment_method_used || "").toLowerCase());
+}
 
 export function paymentKindForRole(role) {
   if (!role) return PAYMENT_KIND.UNKNOWN;
@@ -112,7 +167,7 @@ const MONEY_ROLES = new Set(["cash", "savings", "accounts_receivable", "undeposi
 
 // Payments to one vendor in one tax year, split by kind. `invoices` are flattened ledger
 // rows; `roleOfCode` maps a gl_code to its system_role.
-export function reportablePayments(rows = [], roleOfCode = () => null) {
+export function reportablePayments(rows = [], roleOfCode = () => null, { accountOf = null, cardCodes = new Set() } = {}) {
   const byKind = {};
   let total = 0;
   for (const r of rows || []) {
@@ -133,7 +188,10 @@ export function reportablePayments(rows = [], roleOfCode = () => null) {
     if (amt <= 0) continue;
     // A credit to an expense account is a correction: it REDUCES what they were paid.
     const signed = r.debit_credit === "credit" ? -amt : amt;
-    const kind = paymentKindForRole(roleOfCode(r.gl_code));
+    // C679 — the account decides by role, then by name; a card / network payment is the 1099-K's.
+    const a = accountOf ? accountOf(r.gl_code) : null;
+    const kind = paidByCardOrNetwork(r, { cardCodes }) ? PAYMENT_KIND.CARD
+      : paymentKindForAccount({ role: roleOfCode(r.gl_code), name: (a && a.name) || r.gl_name || "", code: r.gl_code });
     byKind[kind] = (byKind[kind] || 0) + signed;
     total += signed;
   }
@@ -166,7 +224,8 @@ export function verdictFor(contact = {}, payments = { byKind: {}, total: 0 }, { 
 
   const k = payments.byKind || {};
   const reportableAmount = reportableAmountOf(payments);
-  const goods = k[PAYMENT_KIND.GOODS] || 0;
+  const goods = (k[PAYMENT_KIND.GOODS] || 0) + (k[PAYMENT_KIND.NOT_REPORTABLE] || 0);   // C679 — neither is ever on a 1099
+  const card = k[PAYMENT_KIND.CARD] || 0;
   const unknown = k[PAYMENT_KIND.UNKNOWN] || 0;
 
   // ★ C355 — UNDER THE FLOOR IS UNDER THE FLOOR, WHATEVER WE COULD NOT CLASSIFY. This read
@@ -181,8 +240,13 @@ export function verdictFor(contact = {}, payments = { byKind: {}, total: 0 }, { 
     // Goods are not reportable at ANY amount, so a supplier paid only for goods is a clean
     // "no" rather than a threshold question — and saying which matters, because one changes
     // next year and the other does not.
+    if (card > 0 && reportableAmount === 0 && goods === 0) {   // C679
+      return { verdict: VERDICT.GOODS_ONLY, why: `${name} was paid by card or a payment app — the card company or app reports those (Form 1099-K), so no 1099 from you.`, amount: card };
+    }
     if (goods > 0 && reportableAmount === 0) {
-      return { verdict: VERDICT.GOODS_ONLY, why: `${name} was paid for goods, which aren't reported on a 1099 at any amount.`, amount: goods };
+      return { verdict: VERDICT.GOODS_ONLY, why: (k[PAYMENT_KIND.NOT_REPORTABLE] || 0) > 0 && !(k[PAYMENT_KIND.GOODS] > 0)
+        ? `${name} was paid for things that don't go on a 1099 (utilities, insurance, travel, fees, taxes or wages).`
+        : `${name} was paid for goods, which aren't reported on a 1099 at any amount.`, amount: goods };
     }
     const evenCounting = unknown > 0 ? ` (even counting ${money(unknown)} we couldn't classify)` : "";
     return { verdict: VERDICT.BELOW_THRESHOLD, why: `${name} was paid ${money(reportableAmount)} for services this year${evenCounting} — under the $${threshold} reporting floor.`, amount: reportableAmount };
@@ -214,11 +278,20 @@ function money(n) {
 }
 
 // The whole proposal. `vendorRowsFor(contact)` returns that vendor's ledger rows for the year.
-export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode = () => null, threshold = IRS_1099_THRESHOLD, year = null } = {}) {
+// C679 — what the chart tells the 1099 logic: each code's account (for its name), and which
+// codes are credit-card accounts (a bill booked straight to one was paid by card).
+function chartLookups(chart = []) {
+  const byCode = new Map((chart || []).map((a) => [String(a.code), a]));
+  const cardCodes = new Set((chart || []).filter((a) => a.system_role === "credit_card_liability" || /\bcredit card\b/i.test(a.name || "")).map((a) => String(a.code)));
+  return { accountOf: (code) => byCode.get(String(code)) || null, cardCodes };
+}
+
+export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode = () => null, threshold = null, year = null, accountOf = null, cardCodes = new Set() } = {}) {
+  if (threshold == null) threshold = thresholdFor(year);   // C679
   const rows = [];
   for (const c of contacts || []) {
     if (!c || c.type !== "vendor") continue;
-    const payments = reportablePayments(vendorRowsFor(c), roleOfCode);
+    const payments = reportablePayments(vendorRowsFor(c), roleOfCode, { accountOf, cardCodes });
     rows.push({ contact: c, name: c.name, ...verdictFor(c, payments, { threshold, year }), payments });
   }
   const by = (v) => rows.filter((r) => r.verdict === v);
@@ -239,7 +312,7 @@ export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode =
 // C589 — `aliasIndex` (the names a person has said are the same vendor) is applied to both the
 // rows and the contacts, the way the Vendors page groups: without it a contractor invoiced
 // under two names was two vendors here and one everywhere else.
-export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = IRS_1099_THRESHOLD } = {}) {
+export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = null } = {}) {
   const base = keyOf || ((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase());
   const idx = aliasIndex || buildAliasIndex(contacts);   // built from the contacts, so every caller gets it
   const alias = (k) => applyAlias(k, idx);
@@ -252,7 +325,7 @@ export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year
     if (!k) continue;
     (byName.get(k) || byName.set(k, []).get(k)).push(r);
   }
-  return plan1099({ contacts, vendorRowsFor: (c) => byName.get(key(c.name)) || [], roleOfCode, threshold, year });
+  return plan1099({ contacts, vendorRowsFor: (c) => byName.get(key(c.name)) || [], roleOfCode, threshold, year, ...chartLookups(chart) });
 }
 
 // ★ C549 — THE SENTENCE NAMES THE YEAR, because "this year" is not what it means for three
@@ -293,7 +366,9 @@ const STATUS_FOR_VERDICT = {
   [VERDICT.BELOW_THRESHOLD]: "tracking", [VERDICT.GOODS_ONLY]: "none", [VERDICT.CORP_EXEMPT]: "none", [VERDICT.MARKED_EXEMPT]: "none",
 };
 
-export function tracker1099Rows({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = IRS_1099_THRESHOLD } = {}) {
+export function tracker1099Rows({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = null } = {}) {
+  if (threshold == null) threshold = thresholdFor(year);   // C679
+  const { accountOf, cardCodes } = chartLookups(chart);
   const base = keyOf || ((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase());
   const idx = aliasIndex || buildAliasIndex(contacts);   // built from the contacts, so every caller gets it
   const alias = (k) => applyAlias(k, idx);
@@ -310,7 +385,7 @@ export function tracker1099Rows({ invoices = [], contacts = [], chart = [], year
   for (const c of contacts || []) { if (c && c.name) { const k = key(c.name); if (k && !contactByKey.has(k)) contactByKey.set(k, c); } }
   const out = [];
   for (const [k, rows] of groups) {
-    const payments = reportablePayments(rows, roleOfCode);
+    const payments = reportablePayments(rows, roleOfCode, { accountOf, cardCodes });
     if (!(payments.total >= 1)) continue;                       // nothing bought from them this year
     const contact = contactByKey.get(k) || null;
     const latest = rows.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
