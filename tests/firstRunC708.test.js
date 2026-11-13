@@ -53,7 +53,7 @@ describe("C708 — smaller first-run fixes", () => {
     expect(app).toMatch(/if \(patch && patch\.status === "done"\) setOnboardingUploadDone\(true\);/);
   });
   it("an owner with no accountant is sent to Home's questions, not to an invite", () => {
-    expect(dropZoneOutcomeCopy({ total: 5, booked: 3, exceptions: 2, hasAccountant: false })).toMatch(/They're at the top of Home/);
+    expect(dropZoneOutcomeCopy({ total: 5, booked: 3, exceptions: 2, hasAccountant: false, answerable: 2 })).toMatch(/they're at the top of Home/);
   });
   it("the business profile is shown only after it saved", () => {
     const fn = app.slice(app.indexOf("const saveBusinessProfile = async"), app.indexOf("const saveBusinessProfile = async") + 1600);

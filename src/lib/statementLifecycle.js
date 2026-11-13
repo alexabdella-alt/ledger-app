@@ -346,7 +346,7 @@ export function intakeAdvanceFromLines(lineStatuses = []) {
 // the right one: without the second, a clean run onto an already-reconciled month drops
 // the tail entirely and undersells to "we filed your paperwork". NEITHER clause is ever
 // rendered on a guess — both are passed in only where the coverage fact is actually known.
-export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, reconciled = false, alreadyReconciled = false, hasAccountant = true } = {}) {
+export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, reconciled = false, alreadyReconciled = false, hasAccountant = true, answerable = null } = {}) {
   const t = Math.max(0, Number(total) || 0);
   const n = Math.max(0, Number(exceptions) || 0);
   const b = Math.max(0, Number(booked) || 0);
@@ -359,7 +359,15 @@ export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, rec
     return `All ${t} transaction${t === 1 ? "" : "s"} from your statement ${t === 1 ? "is" : "are"} in your books${tail}`;
   }
   // C708 — since C641 an owner with no accountant answers these on Home; send them there, not to an invite
-  if (!hasAccountant) return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} a quick answer from you. They're at the top of Home.`;
+  // ★ C713 — only the lines an owner CAN answer are "a quick answer from you": a line that couldn't
+  // be matched to a bill, or failed to save, has no card on Home, and promising one was a dead end
+  if (!hasAccountant) {
+    const a = answerable == null ? n : Math.max(0, Math.min(n, Number(answerable) || 0));
+    const rest = n - a;
+    const ask = a ? ` ${a} need${a === 1 ? "s" : ""} a quick answer from you — they're at the top of Home.` : "";
+    const held = rest ? ` ${rest} couldn't be matched to a bill or saved, and ${rest === 1 ? "is" : "are"} kept for a closer look — an accountant can finish ${rest === 1 ? "it" : "them"} (invite one from Settings → Team).` : "";
+    return `${b} added to your books.${ask}${held}`;
+  }
   return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} your accountant's eyes first.`;
 }
 

@@ -65,3 +65,24 @@ export function bankCategoryOptions(accounts = [], type = "checking", current = 
   }
   return out;
 }
+
+// ★ C713 — EACH BANK ACCOUNT AND CARD IN ITS OWN CATEGORY. Every card got 2200 and every checking
+// account 1000 (C663 split out savings only), so a second card shared the first's books: a $9.99
+// charge on card B the same day as one on card A read "already booked" and was never recorded, and
+// neither card's statement could ever reconcile against the two cards' combined balance. When
+// another account already uses `code`, this proposes a free code in the same range, named for the
+// account. Null when the account can keep the code. Pure.
+export function dedicatedGlFor(acct = {}, bankAccounts = [], chart = []) {
+  const code = String(acct.gl_code || "");
+  if (!code) return null;
+  const others = (bankAccounts || []).filter((b) => b && String(b.id) !== String(acct.id) && String(b.name || "").trim() && String(b.gl_code || "") === code);
+  if (!others.length) return null;
+  const taken = new Set([...(chart || []).map((a) => String(a.code)), ...(bankAccounts || []).map((b) => String(b.gl_code || ""))]);
+  const ranges = code.startsWith("1") ? [[1001, 1009], [1020, 1099]] : code.startsWith("25") ? [[2501, 2599]] : code.startsWith("26") ? [[2601, 2699]] : [[2201, 2299]];
+  for (const [lo, hi] of ranges) for (let n = lo; n <= hi; n++) if (!taken.has(String(n))) {
+    const base = String(acct.name || "").trim() || (code.startsWith("1") ? "Bank account" : "Credit card");
+    const nameTaken = (chart || []).some((a) => String(a.name || "").toLowerCase() === base.toLowerCase());
+    return { code: String(n), name: nameTaken ? `${base} (${acct.type === "credit_card" ? "card" : acct.type || "account"})` : base, category: code.startsWith("1") ? "Assets" : "Liabilities" };
+  }
+  return null;
+}
