@@ -296,7 +296,7 @@ export function standardDeduction(year, filingStatus = "single") {
 // business LOSS lowers the tax on other income (a Schedule C loss offsets it; §461(l) limits only
 // very large ones): the federal figure can be negative — what the loss saves — and the amount to
 // set aside never goes below zero. A C corporation's loss carries forward instead (no refund now).
-function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages }) {
+function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages, retirement = 0 }) {
   const status = statusOf(filingStatus);
   const wages = Math.max(0, Number(ownWages) || 0);
   const other = Math.max(0, Number(otherIncome) || 0) + wages;
@@ -307,8 +307,11 @@ function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ow
   const addlMedicare = owesSe ? r2(Math.max(0, base - Math.max(0, ADDL_MEDICARE_BY_STATUS[status] - wages)) * 0.009) : 0;
   const halfSe = r2(seTax / 2);
   const std = standardDeduction(year, status);
-  const qbiIncome = Math.max(0, profit - halfSe);
-  const beforeQbi = Math.max(0, other + profit - halfSe - std);
+  // C696 — a self-employed retirement contribution lowers taxable income and the business income
+  // the 20% deduction is figured on (Reg. §1.199A-3(b)(1)(vi)); it does not lower SE tax.
+  const ret = Math.max(0, Number(retirement) || 0);
+  const qbiIncome = Math.max(0, profit - halfSe - ret);
+  const beforeQbi = Math.max(0, other + profit - halfSe - ret - std);
   const qbi = r2(Math.min(qbiIncome * 0.2, beforeQbi * 0.2));
   const withBiz = incomeTax(beforeQbi - qbi, { year, filingStatus: status });
   const without = incomeTax(Math.max(0, other - std), { year, filingStatus: status });
@@ -317,14 +320,39 @@ function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ow
   const qbiMayBeLimited = beforeQbi > (status === "mfj" ? qt.mfj : qt.single);
   return { seTax, halfSe, addlMedicare, qbi, federal, total: r2(federal + seTax + addlMedicare), standardDeduction: std, qbiMayBeLimited };
 }
-export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0, ownWages = 0 } = {}) {
+export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0, ownWages = 0, retirement = 0 } = {}) {
   const profit = r2((Number(revenue) || 0) - (Number(deductible) || 0));
   if (legalForm === "c_corp") { const p = Math.max(0, profit); return { profit, seTax: 0, halfSe: 0, addlMedicare: 0, qbi: 0, federal: r2(p * 0.21), total: r2(p * 0.21), marginalRate: p > 0 ? 0.21 : 0, standardDeduction: 0, qbiMayBeLimited: false }; }
-  const f = passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages });
+  const f = passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages, retirement });
   // What $100 more of deductions saves, measured rather than assumed.
-  const less = passThroughTax({ profit: profit - 100, year, legalForm, filingStatus, otherIncome, ownWages });
+  const less = passThroughTax({ profit: profit - 100, year, legalForm, filingStatus, otherIncome, ownWages, retirement });
   const marginalRate = Math.max(0, Math.round(((f.total - less.total) / 100) * 10000) / 10000);
   return { profit, ...f, marginalRate };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★ C696 — RETIREMENT ROOM FOR A SELF-EMPLOYED OWNER (sole proprietor or partner).
+// SEP-IRA: 20% of net self-employment earnings (profit − half the SE tax; the "25% of
+// compensation" rule worked through for the self-employed, IRS Pub. 560), up to the §415(c)
+// limit. Solo 401(k): the same 20% as the employer part PLUS an employee deferral up to the
+// §402(g) limit — together up to §415(c); a catch-up on top at 50+ (and a larger one at 60–63).
+// Compensation counted is capped at §401(a)(17). Limits: Notice 2023-75 (2024), Notice 2024-80
+// (2025), Notice 2025-67 (2026). An S corporation owner's room comes from their salary, not the
+// profit — not modelled. Deadlines: a SEP can be opened and funded until the return's due date
+// (with extensions); a Solo 401(k) must exist by Dec 31 for the employee deferral.
+// ═════════════════════════════════════════════════════════════════════════════
+export const RETIREMENT_LIMITS = {
+  2024: { total: 69000, deferral: 23000, catchUp50: 7500, catchUp6063: 7500, comp: 345000 },
+  2025: { total: 70000, deferral: 23500, catchUp50: 7500, catchUp6063: 11250, comp: 350000 },
+  2026: { total: 72000, deferral: 24500, catchUp50: 8000, catchUp6063: 11250, comp: 360000 },
+};
+export function retirementRoom({ profit = 0, halfSe = 0, year = new Date().getFullYear() } = {}) {
+  const L = RETIREMENT_LIMITS[yearKey(RETIREMENT_LIMITS, year)];
+  const net = Math.max(0, Math.min(L.comp, (Number(profit) || 0) - (Number(halfSe) || 0)));
+  const employer = Math.min(L.total, net * 0.2);
+  const deferral = Math.min(L.deferral, Math.max(0, net - employer));
+  const solo = Math.min(L.total, employer + deferral);
+  return { sep: r2(employer), solo401k: r2(solo), catchUp50: L.catchUp50, catchUp6063: L.catchUp6063, limits: L, netEarnings: r2(net) };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

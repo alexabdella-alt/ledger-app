@@ -343,6 +343,12 @@ export default function TaxView() {
           <div key={d.key} style={{ padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
             <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label}</div>
             <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}</div>
+            {/* ★ C696 — the room, worked out from this year's profit so far, and what it would save */}
+            {d.key === "retirement" && est.retirement && est.retirement.sep > 0 && (
+              <div data-retirement-room style={{ fontSize: 12, color: "var(--sc-text)", marginTop: 6 }}>
+                From your profit so far, you could put up to <strong>{fmt(est.retirement.sep)}</strong> into a SEP-IRA (saving about {fmt(est.retirement.sepSaves)} in tax this year), or up to <strong>{fmt(est.retirement.solo401k)}</strong> into a Solo 401(k) (saving about {fmt(est.retirement.solo401kSaves)}) — plus {fmt(est.retirement.catchUp50)} more if you're 50 or older{est.retirement.catchUp6063 > est.retirement.catchUp50 ? ` (${fmt(est.retirement.catchUp6063)} at 60–63)` : ""}. A SEP can be opened and funded until your tax return is due; a Solo 401(k) has to be set up by December 31.
+              </div>
+            )}
           </div>
         ))}
       </div>

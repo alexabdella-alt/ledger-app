@@ -232,7 +232,8 @@ async function getTaxSummary(input, ctx) {
     se_tax: r2(est.seTax),
     filing_status_assumed: profile.assumed ? "single, no other income (the owner hasn't said — the Taxes screen asks)" : null,
     tax_saved_per_dollar_deducted: est.marginalRate,
-    business_miles: profile.businessMiles || 0,   // C692 — deducted by the IRS mileage rate (in deductions_by_category, line 9)
+    business_miles: profile.businessMiles || 0,
+    retirement_room: est.retirement ? { sep_ira: est.retirement.sep, sep_ira_saves: est.retirement.sepSaves, solo_401k: est.retirement.solo401k, solo_401k_saves: est.retirement.solo401kSaves, catch_up_50_plus: est.retirement.catchUp50, catch_up_60_63: est.retirement.catchUp6063, note: "from profit so far; a SEP can be funded until the return is due, a Solo 401(k) must exist by Dec 31" } : null,   // C696   // C692 — deducted by the IRS mileage rate (in deductions_by_category, line 9)
     total_owed: r2(est.total),
     deductions_by_category: deductions,
     total_deductions: r2(deductions.reduce((s, d) => s + d.amount, 0)),

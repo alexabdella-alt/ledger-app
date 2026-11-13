@@ -4,7 +4,7 @@
 import { FED_TAX_RATE, SE_TAX_RATE } from "./constants";
 import { computeRevenue, computeExpenses, computeNetIncome } from "./reports";
 const r2c = (n) => Math.round((Number(n) || 0) * 100) / 100;
-import { scheduleCBreakdown, federalEstimate, PERSONAL_RETURN_ITEMS, taxDepreciationFor } from "./taxGuidance.js";
+import { scheduleCBreakdown, federalEstimate, PERSONAL_RETURN_ITEMS, taxDepreciationFor, retirementRoom } from "./taxGuidance.js";
 export const FED_RATE = FED_TAX_RATE;   // simplified flat federal planning rate
 export const SE_RATE = SE_TAX_RATE;     // self-employment (Social Security + Medicare)
 
@@ -79,7 +79,15 @@ export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid =
     total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid),
     quarterlyFull: Math.max(0, f.total) / 4,   // C693 — a loss saves tax; it never makes a payment negative
     ...quarterPlan(),
-    marginalRate: f.marginalRate || 0, standardDeduction: f.standardDeduction || 0, qbiMayBeLimited: !!f.qbiMayBeLimited };
+    marginalRate: f.marginalRate || 0, standardDeduction: f.standardDeduction || 0, qbiMayBeLimited: !!f.qbiMayBeLimited,
+    retirement: retirementPlan() };
+  // C696 — how much a sole proprietor or partner could put away, and what it would save this year
+  function retirementPlan() {
+    if (!["", "sole_prop", "partnership"].includes(legalForm || "") || !(f.profit > 0)) return null;
+    const room = retirementRoom({ profit: f.profit, halfSe: f.halfSe, year });
+    const saves = (amt) => r2c(Math.max(0, f.total - federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, retirement: amt }).total));
+    return { ...room, sepSaves: saves(room.sep), solo401kSaves: saves(room.solo401k) };
+  }
   // C695 — the quarterly payment by the safe harbor, when last year's books and answers allow it
   function quarterPlan() {
     if (legalForm === "c_corp" || !priorProfile || !coversWholeYear(invoices, year - 1)) {
