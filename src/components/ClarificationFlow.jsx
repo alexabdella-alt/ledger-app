@@ -291,7 +291,7 @@ function ClarificationCard({ item }) {
     if (audit) logAudit("invoice_booked", audit.detail, null, audit.meta || null);
     if (finalInv._contact) createOrUpdateContact({ ...finalInv._contact, type: finalInv.type === "revenue" ? "customer" : "vendor", gl_code: finalInv.gl_code, gl_name: finalInv.gl_name });
     settleClarification?.(item, { kind: "booked", jeId });
-    if (item.statementLine) settleStatementLine?.(item.statementLine);   // C641 — a bank line answered by its owner
+    if (item.statementLine) settleStatementLine?.({ ...item.statementLine, jeId });   // C641; C654 — with the entry written
     finishWithSuccess(successText);
     return true;
   });

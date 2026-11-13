@@ -7423,10 +7423,27 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // ★ C641 — an owner's answer to a bank-line question has been booked: the same GL-truth sweep the
   // import uses links the statement line to the new entry (date | amount | direction), and the
   // exceptions reload so the question leaves Home.
-  const settleStatementLine = async ({ statementId, accountId = null, accountCode = null } = {}) => {
-    if (!statementId) return;
+  // ★★ C654 — STAMP THE LINE THE ANSWER WAS ABOUT, BY ITS ID, WITH THE ENTRY THAT WAS WRITTEN.
+  // C641 called the fingerprint sweep straight after booking, but the sweep reads `invoicesRef`,
+  // which only catches up on the next render: the new row was there WITHOUT its database id, so
+  // the sweep's fallback (`String(id).split("_")[0]`) produced "sxq" as the entry id, the stamp
+  // was refused, the line stayed open — and the question came back on the next load, inviting
+  // the owner to book the same charge twice (§9: an action whose effect is invisible will be
+  // repeated). The card knows both ids; nothing has to be searched for.
+  const settleStatementLine = async ({ statementId, lineId = null, accountId = null, accountCode = null, jeId = null } = {}) => {
+    if (!statementId || !currentCompany?.id) return;
     const acct = (bankAccounts || []).find((b) => String(b.id) === String(accountId)) || (accountCode ? { gl_code: accountCode } : null);
-    try { await linkStatementLinesAfterBooking(statementId, acct); await loadStatementExceptions(currentCompany?.id); }
+    try {
+      if (lineId && jeId) {
+        const r = await checkedRowUpdate({ supabase, table: "bank_statement_lines", id: String(lineId), companyId: currentCompany.id,
+          patch: { status: "booked", journal_entry_id: String(jeId), exception_reason: null }, label: "answer:link-line" });
+        if (!r.ok) logAudit("statement_line_link_failed", "Recorded your answer, but couldn't mark the bank line as done — it may be asked again", null, { line_id: String(lineId), entry_id: String(jeId) });
+        if (acct?.id) await checkedRowUpdate({ supabase, table: "journal_entries", id: String(jeId), companyId: currentCompany.id, patch: { bank_account_id: acct.id }, label: "answer:stamp-bank-account" });
+      } else {
+        await linkStatementLinesAfterBooking(statementId, acct);
+      }
+      await loadStatementExceptions(currentCompany?.id);
+    }
     catch (e) { console.warn("[statement line] settle after answer skipped:", e?.message || e); }
   };
   const linkStatementLinesAfterBooking = async (stmtId, account) => {
