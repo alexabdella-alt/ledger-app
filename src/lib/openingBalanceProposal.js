@@ -247,3 +247,21 @@ export function openingProposalCopy({ openingBalance, periodStart, accountName =
   const lead = when ? `Your statement shows you started ${when}` : `Your statement shows you started`;
   return `${lead} with ${money} in ${acct}. We'll record that as your starting balance — look right?`;
 }
+
+// ★ C708 — THE STARTING-BALANCE OFFER, FROM A SAVED STATEMENT. The checklist promised "we'll read
+// your starting cash from your first statement — you just confirm", but the offer lived only in
+// memory on Bank Import, a screen an owner's menu doesn't open; the owner landed on a blank grid
+// and an empty start date. Statements are saved with their stated opening balance and period
+// (bank_statements), so the starting-balances screen offers the EARLIEST one with a known account
+// and opening figure. Pure.
+export function statementOpeningOffer({ statements = [], bankAccounts = [] } = {}) {
+  const usable = (statements || [])
+    .filter((s) => s && s.status !== "superseded" && s.stated_opening_balance != null && s.period_start && s.bank_account_id != null)
+    .map((s) => ({ s, acct: (bankAccounts || []).find((b) => String(b.id) === String(s.bank_account_id)) }))
+    .filter((x) => x.acct && x.acct.gl_code)
+    .sort((a, b) => String(a.s.period_start).localeCompare(String(b.s.period_start)));
+  if (!usable.length) return null;
+  const { s, acct } = usable[0];
+  return { openingBalance: Number(s.stated_opening_balance), endingBalance: s.stated_ending_balance != null ? Number(s.stated_ending_balance) : null,
+    periodStart: String(s.period_start).slice(0, 10), accountCode: String(acct.gl_code), accountId: acct.id, accountName: acct.name || "your bank account" };
+}

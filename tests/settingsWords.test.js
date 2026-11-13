@@ -46,7 +46,8 @@ describe("C482 · the row name and the door agree", () => {
     expect(step).toMatch(/goToSection\("settings","bank-accounts-section"\)/);
     // C583 — the hint moved to lib/firstRun.js and gained a reason; it must still name the page.
     expect(step).toMatch(/\.\.\.CHECKLIST_COPY\.bank/);
-    expect(CHECKLIST_COPY.bank.hint).toMatch(/Settings → Company/);
+    // C708 — the name the OWNER's menu gives that page (OWNER_SETTINGS_ITEMS), not the accountant's
+    expect(CHECKLIST_COPY.bank.hint).toMatch(/Settings → Your business/);
     expect(read("src/components/views/SettingsView.jsx")).toContain('id="bank-accounts-section"');
   });
 });

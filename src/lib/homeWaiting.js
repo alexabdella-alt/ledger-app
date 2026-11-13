@@ -12,7 +12,7 @@
 // Urgency, in order: STOPS (a wrong answer books silently wrong) · NOW (not in the books
 // until you act) · SOON (a date is coming) · INFO (someone else will handle it; you may look).
 // ─────────────────────────────────────────────────────────────────────────────
-import { statementAccountQuestion, heldStatementAddCopy } from "./statementLifecycle.js";
+import { statementAccountQuestion, heldStatementAddCopy, cardStatementQuestion } from "./statementLifecycle.js";
 import { countByUrgency, queueBannerCopy } from "./cardUrgency";
 import { heldQuestionsCopy, heldUnreadableCopy, heldPartialCopy } from "./waitingOnYou";
 import { unknownSenderCopy } from "../../supabase/functions/_shared/mailChannel.js";
@@ -175,7 +175,7 @@ export function homeWaitingList({
   // ── C587 — which account is this statement from? One item per waiting statement. ──
   for (const s of (uploadQueue || [])) {
     if (!s || s.status !== "done" || s.result?.to !== "choose" || !(s.result.accounts || []).length) continue;
-    items.push({ id: `statement_account:${s.id}`, urgency: WAIT.NOW, text: statementAccountQuestion(s.name),
+    items.push({ id: `statement_account:${s.id}`, urgency: WAIT.NOW, text: s.result.cardHint ? cardStatementQuestion(s.name) : statementAccountQuestion(s.name),   // C708
       actions: s.result.accounts.map((a) => ({ kind: "statement_account", label: a.label, itemId: s.id, accountId: a.id, secondary: true })) });
   }
 

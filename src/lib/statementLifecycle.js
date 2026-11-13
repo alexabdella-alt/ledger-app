@@ -269,6 +269,14 @@ export function statementOfferCopy({ statement = null, lineCount = null, monthLa
 // dropped in that window auto-bound to an account that does not exist — the lines booked,
 // the statement row's insert died on a non-uuid, and no reconciliation could ever follow.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ★ C708 — A CARD STATEMENT IS NOT FILED INTO CHECKING WITHOUT ASKING. Every new company starts
+// with one "Primary Checking", and with exactly one account a dropped statement auto-bound to it —
+// so a credit-card statement booked card purchases as money paid from the bank (cash too low, the
+// card's debt never recorded). The file's name is the one signal available before reading it.
+const CARD_FILE = /\b(amex|american[ _-]?express|visa|mastercard|master[ _-]?card|discover|credit[ _-]?card|card[ _-]?statement|capital[ _-]?one|sapphire|venture|platinum|cc[ _-]?statement)\b/i;
+export function looksLikeCardStatementFile(fileName = "") {
+  return CARD_FILE.test(String(fileName || "").replace(/[_.-]/g, " "));
+}
 export function autoBindAccount(bankAccounts = []) {
   const usable = (bankAccounts || []).filter((b) => b && typeof b.id === "string" && UUID.test(b.id));
   return usable.length === 1 ? usable[0] : null;
@@ -296,6 +304,9 @@ export function statementAccountChoices(bankAccounts = []) {
     return { id: b.id, label: tail ? `${name} (${tail})` : name };
   });
 }
+// C708 — when the file looks like a card statement and the only account is a bank account
+export const cardStatementQuestion = (fileName) =>
+  `${fileName ? `“${fileName}”` : "This statement"} looks like a credit card statement, but your only account is a bank account. If it's a card, add the card in Settings → Bank accounts first, then drop it again. If it really is from the bank account, pick it below.`;
 export const statementAccountQuestion = (fileName) =>
   `Which account is ${fileName ? `“${fileName}”` : "this statement"} from? Pick one and we'll add it to your books.`;
 
@@ -339,7 +350,8 @@ export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, rec
       : ".";
     return `All ${t} transaction${t === 1 ? "" : "s"} from your statement ${t === 1 ? "is" : "are"} in your books${tail}`;
   }
-  if (!hasAccountant) return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} an accountant's eyes first. Invite yours from Settings → Team.`;   // C574
+  // C708 — since C641 an owner with no accountant answers these on Home; send them there, not to an invite
+  if (!hasAccountant) return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} a quick answer from you. They're at the top of Home.`;
   return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} your accountant's eyes first.`;
 }
 

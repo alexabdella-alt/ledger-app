@@ -210,7 +210,9 @@ export function getTaxDeadlines(now = new Date(), { legalForm = null } = {}) {
       let date = nextBusinessDay(new Date(year, def.m, def.d));
       if (date < today) { year += 1; date = nextBusinessDay(new Date(year, def.m, def.d)); }
       const days = Math.round((date - today) / 86400000);
-      return { ...def, ...words, key: `${def.m}-${def.d}`, date, year, days, color: days <= 14 ? "#D92D20" : days <= 30 ? "#DC6803" : "#039855" };
+      // C708 — "for last year" is wrong in November (Jan 15 2027 is 2026's payment): name the year
+      const yearWords = def.m === 0 && def.est && !words.plain ? { plain: `Pay your 4th-quarter estimated taxes for ${year - 1}` } : {};
+      return { ...def, ...words, ...yearWords, key: `${def.m}-${def.d}`, date, year, days, color: days <= 14 ? "#D92D20" : days <= 30 ? "#DC6803" : "#039855" };
     })
     .sort((a, b) => a.date - b.date);
 }

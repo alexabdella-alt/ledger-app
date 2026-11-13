@@ -23,6 +23,6 @@ describe("C579 — every small control does what it says", () => {
   it("1099s: after the download, the owner is told what to do with the file; a missing EIN links to where to add it", () => {
     const s = src("Tax1099View");
     expect(s).toMatch(/1099 file downloaded ✓ Next: send it to your accountant, or upload it to your filing service/);
-    expect(s).toMatch(/onClick=\{\(\)=>setView && setView\("settings"\)\}[^>]*>Add it in Settings → Company</);
+    expect(s).toMatch(/onClick=\{\(\)=>setView && setView\("settings"\)\}[^>]*>Add it in Settings → Your business</);   // C708
   });
 });

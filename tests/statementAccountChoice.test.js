@@ -59,7 +59,7 @@ describe("C587 — with more than one account, Home asks which one a statement i
 
   const app = readFileSync("src/App.jsx", "utf8");
   it("the app: owners are asked (the accountant keeps Bank Import), the file is kept for the answer, and the statement is stored first", () => {
-    expect(app).toMatch(/const accountChoices = navSeat\.isReviewerSeat \? \[\] : statementAccountChoices\(bankAccounts\);/);
+    expect(app).toMatch(/const accountChoices = navSeat\.isReviewerSeat \? \[\] : cardHint \? \[[^\n]*\] : statementAccountChoices\(bankAccounts\);/);   // C708 — or the card question
     const stash = app.indexOf("markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: buildStashDetail(");
     const ask = app.indexOf("statementChoiceFilesRef.current[item.id] = file;");
     expect(stash).toBeGreaterThan(0);

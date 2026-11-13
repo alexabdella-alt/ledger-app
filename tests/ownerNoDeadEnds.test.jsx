@@ -58,7 +58,7 @@ describe("C574 — an owner with no accountant is never told 'your accountant wi
   it("unusual activity, the statement outcome and the solo sign-off say what to do", () => {
     expect(ownerAnomalyLine([{ severity: "medium" }], { hasAccountant: false })).toMatch(/ask the assistant about it, or invite your accountant/);
     expect(ownerAnomalyLine([{ severity: "medium" }])).toMatch(/your accountant will look it over/);
-    expect(dropZoneOutcomeCopy({ total: 5, booked: 3, exceptions: 2, hasAccountant: false })).toMatch(/Invite yours from Settings → Team/);
+    expect(dropZoneOutcomeCopy({ total: 5, booked: 3, exceptions: 2, hasAccountant: false })).toMatch(/a quick answer from you. They're at the top of Home/);   // C708 — C641 answers them on Home
     expect(dropZoneOutcomeCopy({ total: 0, hasAccountant: false })).toMatch(/as a CSV/);
     const solo = ownerSignOffBlockers([{ net: "accuracy" }, { net: "mystery" }], { hasAccountant: false });
     for (const s of solo) expect(s).not.toMatch(/your accountant can see/);

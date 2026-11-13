@@ -72,7 +72,7 @@ import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markA
 import { ruleForVendor } from "./lib/vendorRules";   // C563 — one rule matcher
 import { splitCsvForParse, mergeParsedPieces, readInHalves } from "./lib/statementChunks";   // C562
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
-import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, pendingStatementStashes, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
+import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, looksLikeCardStatementFile, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, pendingStatementStashes, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
 import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy, bankImportToastCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
@@ -2063,12 +2063,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // `asOf` (the statement-derived flow) overrides the company cutoff so the write isn't
     // blocked by not-yet-persisted cutoff state; the manual grid passes none and uses cutoffDate.
     const cutoff = asOf || cutoffDate;
-    if (!cutoff) { showNotification("Set your cutoff (Day One) date first", "error"); return false; }
+    if (!cutoff) { showNotification("Choose the start date for your books first — the first day of your first bank statement works best.", "error"); return false; }   // C708
     // Footgun guard: live, non-opening transactions dated before the cutoff would
     // double-count retained earnings. Hard-block.
     const pre = preCutoffActivity(invoices, cutoff);
     if (pre.length) {
-      showNotification(`Can't post opening balances — ${pre.length} transaction(s) are dated before your cutoff (${cutoff}). Move the cutoff or remove those entries first.`, "error");
+      showNotification(`Can't save starting balances yet — ${pre.length} transaction${pre.length === 1 ? " is" : "s are"} dated before your start date (${fmtDate(cutoff)}). Choose an earlier start date (the first day of your first bank statement), or remove those entries.`, "error");   // C708
       logAudit("opening_balance_blocked_precutoff", `Blocked: ${pre.length} pre-cutoff transactions exist`, null, { cutoff, count: pre.length });
       return false;
     }
@@ -2199,7 +2199,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const obRow = (openingBalances || []).find(b => String(b.account_code) === String(p.accountCode) && b.posted);
     if (obRow || openingPosted) { showNotification("An opening balance is already recorded — not adding a second.", "error"); setPendingOpeningProposal(null); return false; }
     // Set the company cutoff (Day One) to the statement period start if not already set.
-    if (!cutoffDate) { const okc = await saveCutoffDate(p.periodStart); if (!okc) return false; }
+    // C708 — the statement's first day IS the start date: set it, or move one chosen earlier by
+    // hand (still editable — nothing posted yet), so the statement's own lines aren't refused as
+    // "before your start date"
+    if (!cutoffDate || String(cutoffDate) !== String(p.periodStart)) { const okc = await saveCutoffDate(p.periodStart); if (!okc) return false; }
     const ok = await postOpeningBalances({ [p.accountCode]: Number(p.openingBalance) }, { asOf: p.periodStart });
     if (ok) {
       logAudit("opening_balance_from_statement", `Confirmed opening balance ${fmtSignedMoney(p.openingBalance)} for ${p.accountName || p.accountCode} as of ${p.periodStart} (from bank statement)`, null, { accountCode: p.accountCode, periodStart: p.periodStart, amount: Number(p.openingBalance) });
@@ -2916,15 +2919,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const saveBusinessProfile = async ({ businessType, fiscalYearEnd, legalForm }) => {
     const cid = currentCompany?.id;
-    setCompanySettings(prev => ({ ...prev, businessType, fiscalYearEnd }));
-    setBusinessModalOpen(false);
+    // ★ C708 — the screen follows the database: on a failed save the step must NOT tick (a ✓
+    // made setup look done, then "onboarding complete" was saved with no business type and the
+    // checklist never came back). Save first, then show it; on failure keep the form open.
     if (!cid) return;
     // `fiscal_year_end` drives the retained-earnings split on the balance sheet, so a
     // silent failure here is a wrong figure later, not just a missing preference.
     if (!(await updateCompanyRow(cid, { business_type: businessType, fiscal_year_end: fiscalYearEnd }, "onboarding-profile"))) {
-      showNotification("Couldn't save your business details — please try again.", "error");
+      showNotification("Couldn't save your business details — nothing was changed. Please try again.", "error");
       return;
     }
+    setCompanySettings(prev => ({ ...prev, businessType, fiscalYearEnd }));
+    setBusinessModalOpen(false);
     if (legalForm !== undefined) await saveLegalForm(legalForm);
     await applyCoaTemplate(businessType);
   };
@@ -4878,6 +4884,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       .catch(e => console.error("upload_log insert error:", e));
   };
   const logUploadUpdate = (logId, patch) => {
+    // ★ C708 — the checklist's upload step ticks the moment an upload finishes, not on the next
+    // full reload: "All 21 transactions are in your books" beside an unticked step invites a
+    // second upload (§9 — an invisible effect is repeated)
+    if (patch && patch.status === "done") setOnboardingUploadDone(true);
     if (!currentCompany?.id || !logId) return;
     const done = patch.status === "done" || patch.status === "error";
     supabase.from("upload_log")
@@ -5755,7 +5765,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // "handled, not operated": the clean path has existed since C186; until now
           // nothing client-facing could reach it.
           const soleAccount = autoBindAccount(bankAccounts);
-          if (soleAccount) {
+          // C708 — a file named like a card statement is never auto-filed into a bank account:
+          // the owner is asked (add the card first, or confirm it's the bank's)
+          const cardHint = !!soleAccount && soleAccount.type !== "credit_card" && looksLikeCardStatementFile(file?.name) && !navSeat.isReviewerSeat;
+          if (soleAccount && !cardHint) {
             await fileDroppedStatement(item, file, soleAccount);
             return;
           }
@@ -5778,10 +5791,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // Everything above still ran (the statement is stored and held, so nothing is lost
           // if they never answer); this replaces only "saved for your accountant" with the
           // one question that was standing in the way.
-          const accountChoices = navSeat.isReviewerSeat ? [] : statementAccountChoices(bankAccounts);
+          const accountChoices = navSeat.isReviewerSeat ? [] : cardHint ? [{ id: soleAccount.id, label: `It's from ${soleAccount.name || "my bank account"}` }] : statementAccountChoices(bankAccounts);
           if (accountChoices.length) {
             statementChoiceFilesRef.current[item.id] = file;
-            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"choose", accounts: accountChoices }} : q));
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"choose", accounts: accountChoices, cardHint }} : q));
             showNotification("One question about your statement — which account is it from? It's at the top of Home.");
             return;
           }
@@ -5792,7 +5805,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             showNotification("Bank statement uploaded — review & book it in Bank Import (Books → Bank Import).");
             try { createNotification?.({ type:"bank_import", title:"Bank statement ready to import", description:"We saved it — which account it belongs to needs choosing before it's added.", link_view:"bank" }); } catch {}
           } else {
-            showNotification("Got it — we've saved your statement for your accountant to add to your books.");
+            // C708 — with no accountant (and no account), "for your accountant" is a promise nobody keeps
+            showNotification(hasAttester === false
+              ? "Got it — we've saved your statement. Add your bank account in Settings → Your business, then drop it again and it goes straight into your books."
+              : "Got it — we've saved your statement for your accountant to add to your books.");
             try { createNotification?.({ type:"bank_import", title:"Your statement is in", description:"Your accountant will add these transactions to your books.", link_view:"home" }); } catch {}
           }
           return;

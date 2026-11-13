@@ -131,7 +131,7 @@ export default function Tax1099View() {
         </div>
         <div style={{ ...card, padding:"12px 18px", flex:"1 1 200px" }}>
           <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:4 }}>YOUR EIN</div>
-          <div style={{ fontSize:14, fontWeight:600, color: yourEIN?"var(--sc-text)":"var(--sc-error)" }}>{yourEIN || <button onClick={()=>setView && setView("settings")} style={{ background:"none", border:"none", padding:0, color:"var(--sc-error)", fontSize:14, fontWeight:600, cursor:"pointer", textDecoration:"underline" }}>Add it in Settings → Company</button>}</div>
+          <div style={{ fontSize:14, fontWeight:600, color: yourEIN?"var(--sc-text)":"var(--sc-error)" }}>{yourEIN || <button onClick={()=>setView && setView("settings")} style={{ background:"none", border:"none", padding:0, color:"var(--sc-error)", fontSize:14, fontWeight:600, cursor:"pointer", textDecoration:"underline" }}>Add it in Settings → Your business</button>}</div>
         </div>
         <button onClick={()=>exportCSV()} disabled={needs.length===0} style={{ padding:"11px 18px", borderRadius:10, background: needs.length?"var(--sc-gold)":"var(--sc-border)", border:"none", color: needs.length?"var(--sc-surface)":"var(--sc-text-mut)", fontSize:13, fontWeight:600, cursor: needs.length?"pointer":"not-allowed" }}>Export 1099 data (CSV)</button>
       </div>

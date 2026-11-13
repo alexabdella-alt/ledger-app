@@ -732,7 +732,7 @@ function ClarificationCard({ item }) {
                     style={{ width: 200, height: 48, boxSizing: "border-box", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "0 14px 0 30px", fontSize: 20, fontWeight: 600, color: "var(--sc-text)", outline: "none" }} />
                 </div>
                 <button disabled={!(answers[q.field] !== "" && answers[q.field] != null)} onClick={() => setStep(s => s + 1)}
-                  style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: (answers[q.field] !== "" && answers[q.field] != null) ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: (answers[q.field] !== "" && answers[q.field] != null) ? "pointer" : "default" }}>Continue →</button>
+                  style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: (answers[q.field] !== "" && answers[q.field] != null) ? "var(--sc-gold)" : "var(--sc-border)", border: "none", cursor: (answers[q.field] !== "" && answers[q.field] != null) ? "pointer" : "default" }}>Continue →</button>
               </div>
             )}
 
@@ -750,7 +750,7 @@ function ClarificationCard({ item }) {
                   placeholder="Vendor name"
                   style={{ width: 260, height: 48, boxSizing: "border-box", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "0 14px", fontSize: 15, color: "var(--sc-text)", outline: "none" }} />
                 <button disabled={!String(answers[q.field] || "").trim()} onClick={() => setStep(s => s + 1)}
-                  style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: String(answers[q.field] || "").trim() ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: String(answers[q.field] || "").trim() ? "pointer" : "default" }}>Continue →</button>
+                  style={{ height: 48, padding: "0 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: String(answers[q.field] || "").trim() ? "var(--sc-gold)" : "var(--sc-border)", border: "none", cursor: String(answers[q.field] || "").trim() ? "pointer" : "default" }}>Continue →</button>
               </div>
             )}
 
