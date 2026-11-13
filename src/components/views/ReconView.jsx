@@ -305,7 +305,10 @@ export default function ReconView() {
   const booksBalance = reconBooksBalance(invoices, reconCashCodes, { asOf: periodEnd });
   const outstandingSigned = outstandingBooks.reduce((s,b)=>s+bookSigned(b),0);
   const unmatchedBankSigned = unmatchedBank.reduce((s,t)=>s+(Number(t.amount)||0),0);
-  const diff = reconcileDifference({ statementBalance: stmtNum, booksBalance, outstandingSigned, unmatchedBankSigned });
+  // C669 — a card's balances count what is owed: uncleared items net the other way
+  const reconAcct = (bankAccounts||[]).find(b => String(b.id)===String(accountId));
+  const diff = reconcileDifference({ statementBalance: stmtNum, booksBalance, outstandingSigned, unmatchedBankSigned,
+    liability: !!reconAcct && (reconAcct.type === "credit_card" || reconAcct.type === "loan" || /^2\d{3}$/.test(String(reconAcct.gl_code || ""))) });
   const matchedCount = bankTxns.filter(t=>t._matchBook).length;
   const matchedBooksCount = booksRows.filter(b=>matchedBookIds.has(b.id)).length;
   // BUG 2 (discrepancy): the statement's stated opening vs GL CASH AT PERIOD START — the balance

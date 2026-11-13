@@ -220,8 +220,13 @@ export function reconCompletionCopy(gate) {
 // Because books_balance already includes every booked cash movement (incl. the opening
 // position + any outstanding items), a clean period where every bank line matched and the
 // only difference is timing nets to 0 once the true bank ending balance is entered.
-export function reconcileDifference({ statementBalance = 0, booksBalance = 0, outstandingSigned = 0, unmatchedBankSigned = 0 } = {}) {
-  return r2c((Number(statementBalance) || 0) + (Number(outstandingSigned) || 0) - (Number(unmatchedBankSigned) || 0) - (Number(booksBalance) || 0));
+// ★ C669 — `liability`: on a credit card (or loan) both balances count what is OWED, so an item
+// in the books but not yet on the statement moves them the other way. An uncleared $X purchase
+// (cash-leg signed −X) means the books owe X MORE than the statement; the bank formula subtracted
+// it, so a card month with anything uncleared was off by 2X and could never reconcile.
+export function reconcileDifference({ statementBalance = 0, booksBalance = 0, outstandingSigned = 0, unmatchedBankSigned = 0, liability = false } = {}) {
+  const sign = liability ? -1 : 1;
+  return r2c((Number(statementBalance) || 0) + sign * ((Number(outstandingSigned) || 0) - (Number(unmatchedBankSigned) || 0)) - (Number(booksBalance) || 0));
 }
 
 // ── C198·3c (iii) — "TRANSACTIONS MATCHED: 0" ON A MONTH THAT WENT PERFECTLY ──

@@ -7695,7 +7695,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C187 — the STILL-outstanding chain (prior items not yet cleared) nets the difference the
       // same way ReconView does, instead of a hardcoded 0.
       const outstandingSigned = stillOutstandingSigned(plan.stillOutstanding);
-      const difference = reconcileDifference({ statementBalance: stmtEnding, booksBalance, outstandingSigned, unmatchedBankSigned: 0 });
+      const difference = reconcileDifference({ statementBalance: stmtEnding, booksBalance, outstandingSigned, unmatchedBankSigned: 0, liability: isCardAccount(account) });   // C669
       if (exceptions.length === 0 && canCompleteReconciliation({ statementBalance: String(stmtEnding == null ? "" : stmtEnding), difference })) {
         await completePipelineReconciliation({ account, periodStart: stmt.period_start, periodEnd: stmt.period_end, statementBalance: stmtEnding, booksBalance, difference, outstandingBooks: candidatesToOutstandingBooks(plan.stillOutstanding) });
         reconciled = true;
