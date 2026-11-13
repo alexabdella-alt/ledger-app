@@ -108,8 +108,8 @@ export default function TaxView() {
   // corporation 1120-S, a C corporation 1120 — different lines)
   const scheduleC = !legalForm || legalForm === "sole_prop";
   // C704 — January's Q4 deadline is about LAST year: its own estimate, its own payments
-  const lastYearEst = React.useMemo(() => taxEstimate(invoices, year - 1, estPaidPrevYear || 0, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...taxProfileFrom(filedDeadlinesPrev || {}, {}) }),
-    [invoices, year, estPaidPrevYear, CHART_OF_ACCOUNTS, legalForm, taxAssets, filedDeadlinesPrev]);
+  const lastYearEst = React.useMemo(() => taxEstimate(invoices, year - 1, estPaidPrevYear || 0, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...taxProfileFrom(filedDeadlinesPrev || {}, {}), priorProfile: taxProfileFrom({}, filedDeadlinesPrev || {}), cutoffDate: cutoffDate || null }),   // C712 — as Home and the assistant compute it
+    [invoices, year, estPaidPrevYear, CHART_OF_ACCOUNTS, legalForm, taxAssets, filedDeadlinesPrev, cutoffDate]);
   const [otherDraft, setOtherDraft] = React.useState("");
   React.useEffect(() => { setOtherDraft(profile.otherIncome ? String(profile.otherIncome) : ""); }, [profile.otherIncome]);
   const [shareDraft, setShareDraft] = React.useState("");   // C703 — a partner's / shareholder's share

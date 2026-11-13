@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffe
 import { holdNotProfitAndLoss, isCardAccount } from "./lib/bankNotPL";
 import { paidFromCopy, payFromOptions } from "./lib/payFrom";
 import { ownerAccountName } from "./lib/categoryLabel";   // C710
+import { entryTotalOf } from "./lib/txnPresent";   // C712
 import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
@@ -8727,6 +8728,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // false on an empty target list and the reply blamed the connection. The gate's own comment
       // says it exists "to keep the displayed set === the executed set"; recode never read it.
       const toRecode = resolveActionTargets(action, { invoices, contracts });
+      // ★ C712 — the name is the chart's for that code (what the card said); a code not on the chart
+      // is refused — persistRecode would otherwise create a nameless category nobody asked for
+      const chartAcct = (CHART_OF_ACCOUNTS || []).find(a => String(a.code) === String(action.gl_code));
+      if (!chartAcct) {
+        failures.push({ label: `recode → ${action.gl_name || action.gl_code}`, reason: `There's no category numbered ${action.gl_code} on your chart — nothing was changed. Add it in Settings → Categories, or tell me an existing one.` });
+        return { summary, failures };
+      }
+      action = { ...action, gl_name: chartAcct.name };
       const recodeIds = new Set(toRecode.map(i => String(i.id)));
       const beforeState = toRecode.map(i => ({ id:i.id, gl_code:i.gl_code, gl_name:i.gl_name }));
       setInvoices(prev => prev.map(inv =>
@@ -8754,8 +8763,9 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     }
     if (action.type === "retag_project" && action.invoiceIds?.length) {
       // C546 — same resolver, same reason (this one matched raw ids inside persistChatRetagProject).
-      const res = await persistChatRetagProject(resolveActionTargets(action, { invoices, contracts }).map(i => i.id), action.project);
-      if (res.ok) summary.push(`Tagged ${action.invoiceIds.length} invoice(s) → Project: ${action.project}`);
+      const retagIds = resolveActionTargets(action, { invoices, contracts }).map(i => i.id);
+      const res = await persistChatRetagProject(retagIds, action.project);
+      if (res.ok) summary.push(`Tagged ${retagIds.length} transaction${retagIds.length === 1 ? "" : "s"} → Project: ${action.project}`);   // C712 — what matched, not what was named
       else failures.push(`tag → Project: ${action.project}`);
     }
     if (action.type === "delete_invoice") {
@@ -8931,9 +8941,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // "delete the Sysco bill" as a bulk delete. Three copies of one matcher is how the
       // displayed set, the counted set and the executed set came to disagree.
       let pendingDeletes = 0;
+      const apCodeAI = getAccountByRole?.("accounts_payable")?.code;   // C712
       for (const a of (result.actions || [])) {
         if (a.type === "delete_invoice") pendingDeletes += a.invoice_id ? 1 : resolveActionTargets(a, { invoices, contracts }).length;
         else if (a.type === "delete_contract") pendingDeletes += a.contract_id ? 1 : resolveActionTargets(a, { invoices, contracts }).length;
+        // ★ C712 — the cap the sandbox promises covers voids, reversals and recorded payments too
+        else if (["void_invoice", "reverse_entry", "record_payment"].includes(a.type)) pendingDeletes += a.invoice_id ? 1 : resolveActionTargets(a, { invoices, contracts, apCode: apCodeAI }).length;
       }
       const bulkBlocked = pendingDeletes > 3;
       if (bulkBlocked) logAI("bulk_delete_blocked", `Refused a request to delete ${pendingDeletes} items at once`);
@@ -8963,7 +8976,10 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       if (!userConfirmedMultiple) {
         for (const a of (result.actions || [])) {
           if (!["recode", "delete_invoice", "void_invoice"].includes(a.type)) continue;
-          const matches = matchInvoicesFor(a);
+          // ★ C712 — a delete or void is of a whole ENTRY: the same matcher the card and the executor
+          // use (one per entry), so a two-line bill isn't "3 matching charges" with an accounting
+          // account named in each. A recode is per line, by design.
+          const matches = a.type === "recode" ? matchInvoicesFor(a) : resolveActionTargets(a, { invoices, contracts });
           if (matches.length > 1) { ambiguous = { type: a.type, vendor: a.vendor, matches }; break; }
         }
       }
@@ -9125,7 +9141,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       const clarifyText = () => {
         const verb = ambiguous.type === "recode" ? "recode" : ambiguous.type === "void_invoice" ? "void" : "delete";
         const shown = ambiguous.matches.slice(0, 6);
-        const list = shown.map(i => `${shortDate(i.date)} ${fmtMoney(i.amount)}${i.gl_name ? ` (${i.gl_name})` : ""}`).join(", ");
+        const list = shown.map(i => `${shortDate(i.date)} ${fmtMoney(entryTotalOf(i, invoices) || i.amount)}${i.gl_name ? ` (${ownerAccountName(i.gl_name)})` : ""}`).join(", ");   // C712 — the entry's amount, a plain category name
         const more = ambiguous.matches.length > shown.length ? `, and ${ambiguous.matches.length - shown.length} more` : "";
         return `I found ${ambiguous.matches.length} matching ${ambiguous.vendor ? ambiguous.vendor + " " : ""}charges — which one did you want me to ${verb}? ${list}${more}. Tell me which one (or say "all") and I'll take care of it.`;
       };
@@ -9138,7 +9154,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // Nothing has mutated for these — they run only when the user clicks Confirm
       // (confirmAIActions). Not staged when the batch was blocked (member/ambiguous/bulk).
       const staged = (!gateBlocked && destructiveActions.length)
-        ? buildPendingConfirmation(destructiveActions, { invoices, contracts, rules, contactsList: contacts, apCode: getAccountByRole?.("accounts_payable")?.code,
+        ? buildPendingConfirmation(destructiveActions, { invoices, contracts, rules, contactsList: contacts, apCode: getAccountByRole?.("accounts_payable")?.code, chart: CHART_OF_ACCOUNTS,
             payFromOptions: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }) })   // C687
         : null;
       if (staged) { setPendingAIActions({ ...staged, id: Date.now() + 2 }); logAI("ai_actions_staged", `Staged ${staged.actions.length} destructive action(s) for confirmation: ${staged.items.map(it => it.type).join(", ")}`); }

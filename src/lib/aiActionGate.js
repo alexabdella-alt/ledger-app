@@ -134,7 +134,12 @@ export function resolveActionTargets(action, { invoices = [], contracts = [], ap
     }
     case "void_invoice": {
       if (a.invoice_id != null) return byId(a.invoice_id);
-      if (a.vendor) return liveInv.filter((i) => norm(i.vendor).includes(norm(a.vendor)));
+      // C712 — the amount and date narrow a void as they narrow a delete (the ambiguity guard
+      // already filtered on them, so "void the $6,000 Sysco bill from Nov 1" saw one, then
+      // the card and the executor took every Sysco entry)
+      if (a.vendor) return liveInv.filter((i) => norm(i.vendor).includes(norm(a.vendor)) &&
+        (a.amount == null || Math.abs((Number(i.amount) || 0) - parseFloat(a.amount)) < 1) &&
+        (!a.date || i.date === a.date));
       return [];
     }
     case "reverse_entry":
@@ -213,7 +218,7 @@ export function recordPaymentDescription(a = {}, n = 0, payFrom = undefined) {
   return `Record ${n} bill${n === 1 ? "" : "s"} as paid${from}${when}. Nothing is sent — this only records a payment you made.`;
 }
 
-export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [], payFromOptions = null, apCode = null } = {}) {
+export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [], payFromOptions = null, apCode = null, chart = null } = {}) {
   const a = action || {};
   const verb = VERB[a.type] || "change";
 
@@ -245,7 +250,15 @@ export function describeDestructiveAction(action, { invoices = [], contracts = [
   }));
   const n = targets.length;
   let description;
-  if (a.type === "recode") description = `Recategorize ${n} transaction${n === 1 ? "" : "s"}${a.gl_name ? ` to ${a.gl_name}` : ""}.`;
+  // ★ C712 — the card names the category the CODE is (what gets written), not the model's label for
+  // it: code 6600 + "Software" said "to Software" and booked Office Supplies. A code not on the
+  // chart is said, and the executor refuses it (no category is created behind the owner's back).
+  if (a.type === "recode") {
+    const acct = chart ? (chart || []).find((x) => String(x.code) === String(a.gl_code)) : null;
+    description = chart && !acct
+      ? `There's no category numbered ${a.gl_code} on your chart — nothing will be changed. Add it in Settings → Categories first, or name an existing one.`
+      : `Recategorize ${n} transaction${n === 1 ? "" : "s"}${acct ? ` to ${acct.name}` : a.gl_name ? ` to ${a.gl_name}` : ""}.`;
+  }
   else if (a.type === "retag_project") description = `Re-tag ${n} transaction${n === 1 ? "" : "s"}${a.project ? ` to project “${a.project}”` : ""}.`;
   else if (a.type === "delete_invoice") description = `Delete ${n} transaction${n === 1 ? "" : "s"} (recoverable from the audit trail).`;
   else if (a.type === "void_invoice") description = `Undo ${n} transaction${n === 1 ? "" : "s"} (kept on the audit trail).`;

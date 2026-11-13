@@ -21,7 +21,10 @@ describe("★ get_bills_to_pay", () => {
   it("open bills only, overdue first, each with the id record_payment needs, and where a payment can come from", async () => {
     const out = await executeAITool("get_bills_to_pay", { within_days: 400000 }, ctx);
     expect(out.bills.map((b) => [b.invoice_id, b.vendor, b.status])).toEqual([["b1", "Adobe", "overdue"], ["b2", "Rent LLC", "due soon"]]);
-    expect(out.total_display).toBe("$2,059.99");
+    expect(out.due_soon_total_display).toBe("$2,059.99");   // C712 — the listed part, named for what it is
+    // and everything owed — the bills account's balance, as Home shows it: "Paid Co" is flagged paid but
+    // no payment was ever booked, so the books still owe its $10 (§9: the ledger, not the flag)
+    expect(out.owed_in_all_display).toBe("$2,069.99");
     expect(out.paid_from_choices).toEqual(ctx.payFromLabels);
   });
   it("by default, bills due more than 30 days out are left off (overdue are always in)", async () => {

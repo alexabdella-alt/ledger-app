@@ -118,7 +118,7 @@ function extractActionObjects(text) {
 
 // Parse the AI's final text into { reply, actions }. The reply is scrubbed of any
 // leaked action JSON; actions are recovered even from malformed wrapper JSON.
-function parseAIReply(text) {
+export function parseAIReply(text) {
   const cleaned = String(text || "").replace(/```json|```/g, "").trim();
   const result = (reply, actions) => ({ reply: scrubLeakedActionJson(reply), actions: Array.isArray(actions) ? actions : [] });
 
@@ -141,7 +141,12 @@ function parseAIReply(text) {
 
   // 3. Malformed JSON: recover the reply string + any action objects individually.
   const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
-  const replyText = replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : cleaned;
+  // ★ C712 — a reply cut off before its closing quote has no match above, and fell back to the
+  // WHOLE text — `{"reply":"Here's…` on the owner's screen. Take what follows "reply": instead,
+  // and unescape the JSON string escapes either way.
+  const unescape = (t) => t.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\t/g, " ").replace(/\\\\/g, "\\");
+  const cut = !replyMatch ? cleaned.match(/"reply"\s*:\s*"([\s\S]*)$/) : null;
+  const replyText = replyMatch ? unescape(replyMatch[1]) : cut ? unescape(cut[1]).replace(/"\s*,?\s*"actions"[\s\S]*$/, "").trim() + " …" : cleaned;
   return result(replyText, extractActionObjects(cleaned));
 }
 
@@ -323,7 +328,7 @@ ${ledgerSection}`;
     try {
       let _ledger = null;
       const ctx = {
-        supabase, companyId, chartOfAccounts, getAccountByRole, cashBalance, cardsOwed, payFromLabels, taxAssets, taxProfile, taxProfilePrev, cutoffDate, estPaidThisYear, estPaidPrevYear, anomalies, recurring, aliasIndex, legalForm,   // C559 legalForm · C488 — one supplier under two names is one vendor in the tools too
+        supabase, companyId, chartOfAccounts, getAccountByRole, cashBalance, cardsOwed, payFromLabels, taxAssets, taxProfile, taxProfilePrev, cutoffDate, estPaidThisYear, estPaidPrevYear, anomalies, recurring, aliasIndex, legalForm, contacts: contacts || [],   // C712 — the 1099 tool   // C559 legalForm · C488 — one supplier under two names is one vendor in the tools too
         getLedger: async () => { if (!_ledger) _ledger = await fetchLedger(supabase, companyId, chartOfAccounts); return _ledger; },
       };
       const ledgerContext = buildContext(true);
@@ -354,7 +359,9 @@ ${ledgerSection}`;
         if (!lastText) throw new Error("Empty tool-loop response");
         return parseAIReply(lastText);
       }
-      return parseAIReply(lastText || "");
+      // C712 — the tool loop ran out: never end on "Let me check…" with no answer
+      if (!lastText || /^\s*(let me|i'll|i will|checking|one moment)\b/i.test(lastText)) throw new Error("tool loop ended without an answer");
+      return parseAIReply(lastText);
     } catch (e) {
       // Backwards-compatible fallback: if anything in the tool path fails, fall back
       // to the legacy single call with the ledger snapshot baked into the prompt.

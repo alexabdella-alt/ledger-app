@@ -17,7 +17,9 @@ import { taxEstimate, deductionBreakdown, getTaxDeadlines, profileForYear, paidF
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
-import { isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals, computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables, openPayablesGL, openReceivablesGL, owedAmount, daysOverdue } from "./reports.js";
+import { isLiveEntry, computeRevenue, computeExpenses, computeNetIncome, computeCategoryTotals, computeVendorTotals, computeBurnRate, computeRunway, computeAR, computeAP, openPayables, openReceivables, openPayablesGL, openReceivablesGL, owedAmount, daysOverdue, glAccountBalance } from "./reports.js";
+import { tracker1099Rows, thresholdFor } from "./form1099.js";   // C712
+import { taxYearFor1099 } from "./tax.js";
 
 const isLive = isLiveEntry;                                  // the ONE shared liveness predicate
 const isExpenseCode = c => { const s = String(c || ""); return s[0] === "5" || s[0] === "6" || s[0] === "7" || s[0] === "8"; };
@@ -162,9 +164,12 @@ async function getFinancialSummary(input, ctx) {
     // so "how much do I owe?" was answered with the overdue part — $0 for a company whose bills
     // were all simply not due yet, while Home said $4,306. Both totals are named for what they
     // are, and each side gets both.
-    unpaid_ar_total: ar.total, unpaid_ar_total_display: money(ar.total),
+    // ★ C712 — the SAME figure Home and Money show: the account's balance (bills carried in the
+    // starting balances included). computeAP missed those, so "what do I owe?" said $6,050 here
+    // and $8,050 on Home.
+    unpaid_ar_total: arCode ? glAccountBalance(arCode, led) : ar.total, unpaid_ar_total_display: money(arCode ? glAccountBalance(arCode, led) : ar.total),
     overdue_ar_total: ar.overdue, overdue_ar_total_display: money(ar.overdue),
-    unpaid_ap_total: ap.total, unpaid_ap_total_display: money(ap.total),
+    unpaid_ap_total: apCode ? glAccountBalance(apCode, led) : ap.total, unpaid_ap_total_display: money(apCode ? glAccountBalance(apCode, led) : ap.total),
     overdue_ap_total: ap.overdue, overdue_ap_total_display: money(ap.overdue),
   };
 }
@@ -186,13 +191,16 @@ async function getOverdueInvoices(input, ctx) {
   // (C513/C528); without them, the flag list collapsed to entries.
   const apCode = ctx.getAccountByRole?.("accounts_payable")?.code ?? null;
   const arCode = ctx.getAccountByRole?.("accounts_receivable")?.code ?? null;
-  const openRows = (apCode || arCode)
-    ? [...(apCode ? openPayablesGL(all, apCode) : []), ...(arCode ? openReceivablesGL(all, arCode) : [])]
-    : [...openPayables(perEntry(all)), ...openReceivables(perEntry(all))];
+  // C712 — a row is a bill or an invoice by WHICH LIST it came from: an overdue bill for equipment
+  // (Dr Equipment / Cr A/P) has no expense code and was dropped, though Bills to pay lists it
+  const apList = apCode ? openPayablesGL(all, apCode) : openPayables(perEntry(all));
+  const arList = arCode ? openReceivablesGL(all, arCode) : openReceivables(perEntry(all));
+  const apSet = new Set(apList), arSet = new Set(arList);
+  const openRows = [...apList, ...arList];
   const rows = [];
   for (const i of openRows) {
     if (!i.due_date) continue;
-    const isAR = isRevenueCode(i.gl_code), isAP = isExpenseCode(i.gl_code);
+    const isAR = arSet.has(i) && !apSet.has(i), isAP = apSet.has(i);
     if (!isAR && !isAP) continue;
     if (type === "ar" && !isAR) continue;
     if (type === "ap" && !isAP) continue;
@@ -275,11 +283,30 @@ async function getBillsToPay(input, ctx) {
     .filter((i) => !i.due_date || i.due_date <= limit)
     .sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
   const bills = open.slice(0, 25).map((i) => ({
-    invoice_id: String(i.db_entry_id || i.id), vendor: i.vendor, amount: i.amount, amount_display: money(i.amount),
+    invoice_id: String(i.db_entry_id || i.id), vendor: i.source === "opening_balance" ? "Bills carried over from your starting balances" : i.vendor, amount: i.amount, amount_display: money(i.amount),
     due_date: i.due_date || null, status: !i.due_date ? "no due date" : i.due_date < today ? "overdue" : i.due_date === today ? "due today" : "due soon",
   }));
-  const total = open.reduce((t, i) => t + (Number(i.amount) || 0), 0);
-  return { count: open.length, total, total_display: money(total), bills, paid_from_choices: ctx.payFromLabels || [] };
+  const dueSoonTotal = open.reduce((t, i) => t + (Number(i.amount) || 0), 0);
+  // ★ C712 — "what do I owe?" is ALL of it, the figure Home shows (the bills account's balance);
+  // the list is the part due within `within_days`. One total called "total" for the due-soon
+  // part answered $2,000 where Home said $8,050.
+  const allOpen = openPayablesGL(led, apCode);
+  const owedInAll = apCode ? glAccountBalance(apCode, led) : allOpen.reduce((t, i) => t + (Number(i.amount) || 0), 0);
+  return { owed_in_all: owedInAll, owed_in_all_display: money(owedInAll), bills_open_count: allOpen.length,
+    due_within_days: within, due_soon_count: open.length, due_soon_total: dueSoonTotal, due_soon_total_display: money(dueSoonTotal),
+    bills, paid_from_choices: ctx.payFromLabels || [] };
+}
+// ★ C712 — 1099s FROM THE SAME RULES AS THE 1099 SCREEN (tracker1099Rows: the year PAID, services
+// only, card payments excluded, the year's floor). The assistant had only vendor spending totals,
+// which count goods, card charges and unpaid bills — "yes, they need a 1099" for a contractor paid
+// by card puts a wrong filing in front of the owner.
+async function get1099Summary(input, ctx) {
+  const year = Number(input.year) || taxYearFor1099();
+  const led = await ctx.getLedger();
+  const rows = tracker1099Rows({ invoices: led, contacts: ctx.contacts || [], chart: ctx.chartOfAccounts || [], year, aliasIndex: ctx.aliasIndex || null, bankAccounts: ctx.bankAccounts || [] });
+  const pick = (k) => rows.filter((r) => r.status && r.status.key === k).map((r) => ({ vendor: r.name, reportable: r.reportable, reportable_display: money(r.reportable), why: r.why || null }));
+  return { year, reporting_floor: thresholdFor(year), needs_1099: pick("needs"), needs_an_answer: pick("unknown"), already_sent: pick("sent"),
+    note: "counted by the year paid; card and payment-app payments are the card network's 1099-K; goods and payroll aren't 1099 payments — the 1099 screen shows the same list" };
 }
 const addDaysToYmd = (ymd, n) => { const [y, m, d] = String(ymd).split("-").map(Number); const t = new Date(y, m - 1, d + n); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
 
@@ -294,6 +321,7 @@ export async function executeAITool(name, input = {}, ctx) {
     case "get_tax_summary":          return getTaxSummary(input, ctx);
     case "get_recurring_transactions": return getRecurringTransactions(input, ctx);
     case "get_bills_to_pay":         return getBillsToPay(input, ctx);   // C676
+    case "get_1099_summary":         return get1099Summary(input, ctx);  // C712
     default:                         return { error: `Unknown tool: ${name}` };
   }
 }
