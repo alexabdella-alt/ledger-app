@@ -4,6 +4,7 @@ import { reminderMailto } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
 import { isCancelledOrCancelling, glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, todayLocal, ymdLocal } from "../../lib/format";
+import { ownerAccountName } from "../../lib/categoryLabel";
 import { getAuthHeaders } from "../../lib/supabase";
 import { signedPL, agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
@@ -22,6 +23,9 @@ import MonthlyReportsPanel from "./MonthlyReportsPanel";
 // C543 — "N transactions" on the report subtitles and drills counted flattened LINES (a two-line
 // bill was two, a payroll register two); a person counts entries.
 const entryCount = (rows) => new Set((rows || []).map((r) => String(r.db_entry_id != null ? r.db_entry_id : String(r.id ?? "").split("_")[0]))).size;
+// C644 — a report date is used only when it is a real YYYY-MM-DD.
+const validYmd = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + "T12:00:00"));
+
 export default function ReportsView() {
   const { aliasIndex, signoffs, ownerTrust, reviewedThrough, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, isOwner, isAdmin, cutoffDate, glCash, cashGlCodes, getAccountByRole, reconciliations, anomalies, setReturnTo, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setChatPrefill, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, signoffsLoadOk, companyDataLoaded, navSeat } = useERP();
   // plDrill / drill / drillSel are now LIFTED to ERP context (above) so they survive the
@@ -169,7 +173,7 @@ export default function ReportsView() {
                 .filter(i=>i.date && i.date.slice(0,7)===drill.value && !(cfIsCashLeg(i.gl_code) && cfIsCashLeg(i.secondary_gl_code) && !String(i.id).includes("_"))).sort(byDate);
               if (drill.scope==="project")  return filtered.filter(i=>glPLType(i.gl_code) && (i.project||"General")===drill.value).sort(byDate);
               if (drill.scope==="bsacct") {
-                const asOf = reportDateTo || todayLocal();
+                const asOf = validYmd(reportDateTo) ? reportDateTo : todayLocal();   // C644
                 return invoices.filter(i => i.status!=="voided" && (!i.date || i.date<=asOf) &&
                   (i.gl_code===drill.value || (!String(i.id).includes("_") && i.secondary_gl_code===drill.value))).sort(byDate);
               }
@@ -491,7 +495,9 @@ export default function ReportsView() {
                       const bsFmt = fmtSignedMoney;
 
                       // "As of" date — accumulate all transactions through reportDateTo
-                      const asOf = reportDateTo || todayLocal();
+                      // C644 — only a real YYYY-MM-DD is a date; anything else (a stale saved value) is today,
+                      // never "As of Invalid Date".
+                      const asOf = validYmd(reportDateTo) ? reportDateTo : todayLocal();
                       const bsInvoices = invoices.filter(i => i.status !== "voided" && (!i.date || i.date <= asOf));
 
                       // Every balance-sheet figure (incl. Accounts Payable) reads the ONE canonical
@@ -531,15 +537,20 @@ export default function ReportsView() {
                       const totalLiabEquity = totalLiabilities + totalEquityAccts + ytdNet;
                       const isBalanced = Math.abs(totalAssets - totalLiabEquity) < 1;
 
+                      // ★ C644 — THE OWNER'S BALANCE SHEET IN PLAIN WORDS. The sweep found the built-in account
+                      // names on every row ("Accounts Payable", "Sales Tax Payable") and the section names were
+                      // the textbook ones. The accountant's seat keeps every accounting name.
+                      const L = (owner, accountant) => ownerSeat ? owner : accountant;
+                      const bsName = (n) => ownerSeat ? ownerAccountName(n) : n;
                       const AcctRow = ({a}) => {
                         const bal = getBal(a.code);
                         if (bal === 0) return null;
                         return (
-                          <div onClick={()=>setDrill({scope:"bsacct",value:a.code,label:a.name})} title="View transactions"
+                          <div onClick={()=>setDrill({scope:"bsacct",value:a.code,label:bsName(a.name)})} title="View transactions"
                             onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                             style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid var(--sc-surface-2)",cursor:"pointer"}}>
                             <div style={{fontSize:13,color:"var(--sc-text-2)"}}>
-                              {!ownerSeat && <span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>}{a.name}
+                              {!ownerSeat && <span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>}{bsName(a.name)}
                             </div>
                             <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:bal<0?"var(--sc-error)":"var(--sc-text)"}}>{bsFmt(bal)}</div>
                           </div>
@@ -568,76 +579,78 @@ export default function ReportsView() {
                         <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,overflow:"hidden"}}>
                           <div style={{padding:"18px 24px",borderBottom:"1px solid var(--sc-border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                             <div>
-                              <div style={{fontSize:14,fontWeight:600}}>Balance Sheet</div>
+                              <div style={{fontSize:14,fontWeight:600}}>{ownerSeat ? "What you own and owe" : "Balance Sheet"}</div>
                               <div style={{fontSize:11,color:"var(--sc-text-2)",marginTop:3}}>As of {new Date(asOf+"T12:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}</div>
                             </div>
                             <div style={{display:"flex",alignItems:"center",gap:10}}>
                               {!isBalanced && <div style={{fontSize:11,color:"var(--sc-warning)",background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:8,padding:"4px 10px"}}>⚠ Out of balance by {bsFmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
-                              {isBalanced && <div style={{fontSize:11,color:"var(--sc-success)",background:"var(--sc-success-soft)",border:"1px solid var(--sc-success-soft)",borderRadius:8,padding:"4px 10px"}}>✓ Balanced</div>}
+                              {isBalanced && <div style={{fontSize:11,color:"var(--sc-success)",background:"var(--sc-success-soft)",border:"1px solid var(--sc-success-soft)",borderRadius:8,padding:"4px 10px"}}>{ownerSeat ? "✓ Adds up" : "✓ Balanced"}</div>}
                             </div>
                           </div>
                           <div style={{padding:"24px 28px"}}>
 
                             {/* ASSETS */}
-                            <SectionTitle label="ASSETS" />
-                            <SubLabel label="Current Assets" />
+                            <SectionTitle label={L("WHAT YOU OWN", "ASSETS")} />
+                            <SubLabel label={L("Cash, and what turns into cash within a year", "Current Assets")} />
                             {currentAssets.map(a=><AcctRow key={a.code} a={a}/>)}
-                            <SubtotalRow label="Total Current Assets" total={totalCurrentAssets} />
-                            <SubLabel label="Non-Current Assets" />
+                            <SubtotalRow label={L("Total within a year", "Total Current Assets")} total={totalCurrentAssets} />
+                            <SubLabel label={L("Longer term (equipment, deposits)", "Non-Current Assets")} />
                             {nonCurrentAssets.map(a=><AcctRow key={a.code} a={a}/>)}
-                            <SubtotalRow label="Total Non-Current Assets" total={totalNonCurrentAssets} />
-                            <TotalRow label="Total Assets" total={totalAssets} />
+                            <SubtotalRow label={L("Total longer term", "Total Non-Current Assets")} total={totalNonCurrentAssets} />
+                            <TotalRow label={L("Total you own", "Total Assets")} total={totalAssets} />
 
                             {/* LIABILITIES */}
-                            <SectionTitle label="LIABILITIES" />
-                            <SubLabel label="Current Liabilities" />
+                            <SectionTitle label={L("WHAT YOU OWE", "LIABILITIES")} />
+                            <SubLabel label={L("Due within a year", "Current Liabilities")} />
                             {currentLiab.map(a=><AcctRow key={a.code} a={a}/>)}
-                            <SubtotalRow label="Total Current Liabilities" total={totalCurrentLiab} />
-                            <SubLabel label="Non-Current Liabilities" />
+                            <SubtotalRow label={L("Total due within a year", "Total Current Liabilities")} total={totalCurrentLiab} />
+                            <SubLabel label={L("Due later (loans)", "Non-Current Liabilities")} />
                             {nonCurrentLiab.map(a=><AcctRow key={a.code} a={a}/>)}
-                            <SubtotalRow label="Total Non-Current Liabilities" total={totalNonCurrentLiab} />
-                            <TotalRow label="Total Liabilities" total={totalLiabilities} />
+                            <SubtotalRow label={L("Total due later", "Total Non-Current Liabilities")} total={totalNonCurrentLiab} />
+                            <TotalRow label={L("Total you owe", "Total Liabilities")} total={totalLiabilities} />
 
                             {/* EQUITY — GAAP interim presentation */}
-                            <SectionTitle label="STOCKHOLDERS' EQUITY" />
+                            <SectionTitle label={L("WHAT'S YOURS", "STOCKHOLDERS' EQUITY")} />
 
                             {/* Paid-in capital accounts (Common Stock, APIC) — show all except Retained Earnings (3100) */}
                             {bsEquity.filter(a => a.code !== reCode && getBal(a.code) !== 0).map(a=>(
-                              <div key={a.code} onClick={()=>setDrill({scope:"bsacct",value:a.code,label:a.name})} title="View transactions"
+                              <div key={a.code} onClick={()=>setDrill({scope:"bsacct",value:a.code,label:bsName(a.name)})} title="View transactions"
                                 onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                 style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 16px",borderBottom:"1px solid var(--sc-surface-2)",cursor:"pointer"}}>
-                                <div style={{fontSize:13,color:"var(--sc-text-2)"}}>{!ownerSeat && <span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>}{a.name}</div>
+                                <div style={{fontSize:13,color:"var(--sc-text-2)"}}>{!ownerSeat && <span style={{color:"var(--sc-text-mut)",marginRight:8,fontFamily:"monospace",fontSize:11}}>{a.code}</span>}{bsName(a.name)}</div>
                                 <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:getBal(a.code)<0?"var(--sc-error)":"var(--sc-text)"}}>{bsFmt(getBal(a.code))}</div>
                               </div>
                             ))}
 
                             {/* Retained Earnings detail (GAAP interim balance sheet): prior years' closed
                                 earnings as a distinct beginning-RE line, current FY's net separately. */}
-                            <SubLabel label="Retained Earnings" />
+                            <SubLabel label={L("Profit kept in the business", "Retained Earnings")} />
                             <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 28px",borderBottom:"1px solid var(--sc-surface-2)"}}>
-                              <div style={{fontSize:13,color:"var(--sc-text-2)"}}>Retained Earnings, beginning of year</div>
+                              <div style={{fontSize:13,color:"var(--sc-text-2)"}}>{L("Kept from earlier years", "Retained Earnings, beginning of year")}</div>
                               <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:beginningRE<0?"var(--sc-error)":"var(--sc-text)"}}>{beginningRE<0?"-":""}{bsFmt(Math.abs(beginningRE))}</div>
                             </div>
                             <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0 6px 28px",borderBottom:"1px solid var(--sc-surface-2)"}}>
-                              <div style={{fontSize:13,color:"var(--sc-text-2)"}}>Net {bsCurrentNet>=0?"Income":"Loss"} (current period)</div>
+                              <div style={{fontSize:13,color:"var(--sc-text-2)"}}>{ownerSeat ? (bsCurrentNet>=0 ? "Profit this year" : "Loss this year") : `Net ${bsCurrentNet>=0?"Income":"Loss"} (current period)`}</div>
                               <div style={{fontSize:13,fontFamily:"'DM Mono',monospace",color:bsCurrentNet>=0?"var(--sc-success)":"var(--sc-error)"}}>{bsCurrentNet<0?"-":""}{bsFmt(Math.abs(bsCurrentNet))}</div>
                             </div>
                             <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0 7px 28px",borderBottom:"1px solid var(--sc-border-2)",marginBottom:2}}>
-                              <div style={{fontSize:12,fontWeight:600,color:"var(--sc-text-2)",fontStyle:"italic"}}>Total Retained Earnings</div>
+                              <div style={{fontSize:12,fontWeight:600,color:"var(--sc-text-2)",fontStyle:"italic"}}>{L("Total profit kept", "Total Retained Earnings")}</div>
                               <div style={{fontSize:13,fontWeight:600,fontFamily:"'DM Mono',monospace",color:"var(--sc-gold)"}}>{bsFmt(beginningRE+bsCurrentNet)}</div>
                             </div>
 
-                            <TotalRow label="Total Stockholders' Equity" total={totalEquityAccts+ytdNet} />
+                            <TotalRow label={L("Total that's yours", "Total Stockholders' Equity")} total={totalEquityAccts+ytdNet} />
 
                             {/* TOTAL L+E */}
                             <div style={{borderTop:"2px solid var(--sc-gold-soft)",paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                              <div style={{fontSize:15,fontWeight:700}}>Total Liabilities + Equity</div>
+                              <div style={{fontSize:15,fontWeight:700}}>{L("What you owe + what's yours", "Total Liabilities + Equity")}</div>
                               <div style={{fontSize:17,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--sc-gold)"}}>{bsFmt(totalLiabEquity)}</div>
                             </div>
 
                             {openingBalances.length===0 && (
                               <div style={{marginTop:16,background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:8,padding:"12px 16px",fontSize:12,color:"var(--sc-warning)"}}>
-                                ⚠ No opening balances set. Go to Settings → Opening Balances to enter your starting balances for an accurate balance sheet.
+                                {ownerSeat
+                                  ? "⚠ Your starting balances aren't set yet, so this can't show everything. Add them in Settings → More settings → Starting balances."
+                                  : "⚠ No opening balances set. Go to Settings → Opening Balances to enter your starting balances for an accurate balance sheet."}
                               </div>
                             )}
                           </div>
