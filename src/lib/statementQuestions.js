@@ -76,6 +76,12 @@ export function bankLineQuestionCards(exceptions = [], { statements = [], bankAc
   });
 }
 
+// C657 — add question cards to the queue without repeating one already there.
+export function addQuestionCards(prev = [], cards = []) {
+  const have = new Set((prev || []).map((c) => String(c.id)));
+  return [...(prev || []), ...(cards || []).filter((c) => !have.has(String(c.id)))];
+}
+
 export function bankLinesWaitingCopy(n) {
   return n === 1
     ? "One thing from your bank statement needs your answer before it's added — what was it for?"

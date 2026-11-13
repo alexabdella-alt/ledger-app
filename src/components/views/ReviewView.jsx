@@ -6,6 +6,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { agoPhrase, initials, vendorColor, fmtDate , fmtSignedMoney, fmtMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { statementExceptionTarget, OPEN_RECONCILE_LABEL } from "../../lib/statementLifecycle";
+import { bankLineQuestionCards, addQuestionCards, OWNER_ANSWERABLE_REASONS } from "../../lib/statementQuestions";
 import { anomalyEvidence } from "../../lib/anomalies";
 import { commentsFor, evidencePrompt, validateComment, dismissalSummary } from "../../lib/anomalyNotes";
 import { buildReviewQueue } from "../../lib/reviewQueue";
@@ -270,6 +271,21 @@ export default function ReviewView() {
                       and Bank Import renders an EMPTY screen for it once the lines are
                       booked (the live dead end). Send it to Reconcile, carrying the account
                       and month so the session opens ready instead of asking for the file. */}
+                  {/* ★ C657 — a line the app couldn't categorise is answered here, with the same question
+                      card an owner gets (incl. C655's card / transfer / owner's money / loan treatments).
+                      Bank Import works from lines parsed in THIS session, so after a reload it had nothing
+                      to show for this line. */}
+                  {x.kind === "line" && OWNER_ANSWERABLE_REASONS.has(x.reason) && (
+                    <button data-answer-line={x.id} onClick={() => {
+                      const cards = bankLineQuestionCards([x], { bankAccounts: bankAccounts || [], cashCode: getAccountByRole?.("cash")?.code || null, cashName: getAccountByRole?.("cash")?.name || null });
+                      setClarificationQueue && setClarificationQueue((prev) => addQuestionCards(prev, cards));
+                      setView && setView("home");
+                      setTimeout(() => window.dispatchEvent(new CustomEvent("sc:open-stepper")), 0);
+                    }}
+                      style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer", flexShrink: 0 }}>
+                      Answer it →
+                    </button>
+                  )}
                   {(() => {
                     const target = statementExceptionTarget(x);
                     if (target.view === "bank") return (
