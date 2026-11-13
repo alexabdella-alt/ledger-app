@@ -802,7 +802,8 @@ function ClarificationCard({ item }) {
         {/* O75 — type/direction override, consistently available on EVERY clarification.
             Lets the user correct the fundamental classification (not just the sub-detail)
             and re-routes to type-correct questions instead of locking in a wrong premise. */}
-        <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px dashed var(--sc-border)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {/* C656 — not on a card payoff, transfer, owner's money or loan: it is neither income nor spending */}
+        {!(heldKind && item.statementLine) && <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px dashed var(--sc-border)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>Wrong type?</span>
           {/* C648 — the Money page's words */}
           {[["revenue", "This is income"], ["expense", "This is spending"]].map(([t, label]) => {
@@ -816,7 +817,7 @@ function ClarificationCard({ item }) {
               </button>
             );
           })}
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -45,8 +45,13 @@ describe("★ a held line offers to record it", () => {
   it("loan money received", () => {
     expect(render({ amount: 10000, vendor: "Bank", description: "LOAN PROCEEDS" })).toMatch(/Was this money the business borrowed\? Yes — it's a loan/);
   });
-  it("an ordinary line gets no panel", () => {
-    expect(render({ amount: -84.12, vendor: "Home Depot", description: "HOME DEPOT #123" })).not.toMatch(/Yes — /);
+  it("an ordinary line gets no panel — and keeps the income/spending switch", () => {
+    const t = render({ amount: -84.12, vendor: "Home Depot", description: "HOME DEPOT #123" });
+    expect(t).not.toMatch(/Yes — /);
+    expect(t).toMatch(/Wrong type\?/);
+  });
+  it("★ C656 — a held line has no 'This is income / This is spending' switch: it is neither", () => {
+    expect(render({ amount: -1240, vendor: "Chase", description: "CHASE CREDIT CRD AUTOPAY" })).not.toMatch(/Wrong type\?/);
   });
   it("plain words (ours, not the bank's)", () => {
     for (const d of ["CHASE CREDIT CRD AUTOPAY", "ONLINE TRANSFER FROM SAV 5521", "OWNER DRAW", "SBA LOAN PMT"]) {
