@@ -23,7 +23,7 @@ import { checkedRowUpdate, checkedIdsUpdate, getWriteFailures, resetWriteFailure
 import { planInvoiceArrival, withPaymentClaimed, ARRIVAL, ASK_REASON } from "./lib/invoicePayment";
 import { DIRECTORY_SEED } from "./lib/vendorDirectory";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
-import { reconBooksBalance, cashCarriedIntoPeriod, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
+import { owedAccount, reconBooksBalance, cashCarriedIntoPeriod, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
 import { routeAIActions, buildPendingConfirmation, resolveActionTargets } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection, perEntry } from "./lib/insights";
@@ -7695,7 +7695,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C187 — the STILL-outstanding chain (prior items not yet cleared) nets the difference the
       // same way ReconView does, instead of a hardcoded 0.
       const outstandingSigned = stillOutstandingSigned(plan.stillOutstanding);
-      const difference = reconcileDifference({ statementBalance: stmtEnding, booksBalance, outstandingSigned, unmatchedBankSigned: 0, liability: isCardAccount(account) });   // C669
+      const difference = reconcileDifference({ statementBalance: stmtEnding, booksBalance, outstandingSigned, unmatchedBankSigned: 0, liability: owedAccount(account) });   // C669; C670 — by the ledger code
       if (exceptions.length === 0 && canCompleteReconciliation({ statementBalance: String(stmtEnding == null ? "" : stmtEnding), difference })) {
         await completePipelineReconciliation({ account, periodStart: stmt.period_start, periodEnd: stmt.period_end, statementBalance: stmtEnding, booksBalance, difference, outstandingBooks: candidatesToOutstandingBooks(plan.stillOutstanding) });
         reconciled = true;

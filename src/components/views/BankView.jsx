@@ -1,4 +1,5 @@
 import React from "react";
+import { owedAccount, openingGapExplainedCount } from "../../lib/reconcile";
 import { pendingStatementStashes, STASH_WAITING_COPY, STASH_PICKUP_LABEL } from "../../lib/statementLifecycle";
 import { fetchStashRows } from "../../lib/documentIntake";
 import { useERP } from "../ERPContext";
@@ -259,12 +260,11 @@ export default function BankView() {
                   reconciliations, accountId: importAccount?.id, accountName: openingDiscrepancyFlag.accountName,
                   periodStart: openingDiscrepancyFlag.periodStart,
                 });
-                const total = cands.reduce((s2, c) => s2 + (Number(c.signed) || 0), 0);
-                const explained = Math.abs(total + Number(openingDiscrepancyFlag.diff || 0)) < 0.005 ? cands.length : 0;
+                const explained = openingGapExplainedCount(cands, openingDiscrepancyFlag.diff, { liability: owedAccount(importAccount) });   // C670
                 if (explained > 0) return (
                   <div style={{ border:"1px solid var(--sc-success-soft)", background:"var(--sc-success-soft)", borderRadius:16, padding:"14px 20px", marginBottom:24 }}>
                     <div style={{ fontSize:13, color:"var(--sc-success)", lineHeight:1.5 }}>
-                      {openingMismatchCopy({ diff: openingDiscrepancyFlag.diff, explainedCount: explained, accountName: openingDiscrepancyFlag.accountName })}
+                      {openingMismatchCopy({ diff: openingDiscrepancyFlag.diff, explainedCount: explained, accountName: openingDiscrepancyFlag.accountName, liability: owedAccount(importAccount) })}
                     </div>
                   </div>
                 );

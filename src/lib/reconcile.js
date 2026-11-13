@@ -252,3 +252,21 @@ export function reconciliationActivityLine(recon = {}, { booksCount = null } = {
   if (n === 0) return { label: "Transactions checked", value: "We didn't find any in your books for this period" };
   return { label: "Transactions checked", value: `${n} transaction${n === 1 ? "" : "s"} already in your books` };
 }
+
+// ★ C670 (review) — ONE RULE FOR "THIS ACCOUNT COUNTS WHAT IS OWED", by its LEDGER CODE: the
+// reconciliation's books figure comes from `glAccountBalance`, which signs by the account's
+// normal balance, so the formula must follow the code, not the type label. (C669 used three
+// different tests across two screens; a card-typed account still mapped to 1000 got the card
+// formula against a bank-signed books figure.)
+export function owedAccount(account) {
+  return !!account && /^2\d{3}$/.test(String(account.gl_code || ""));
+}
+// How many known uncleared items from the prior month explain the gap between the books and a
+// statement's opening. Bank: an uncashed $X check (signed −X) opens the statement X HIGHER, so
+// Σ + gap = 0. Card: an unposted $X purchase (signed −X) opens it X LOWER than the books owe, so
+// Σ − gap = 0 — the bank test left every such card month "can't yet explain why".
+export function openingGapExplainedCount(candidates = [], diff = 0, { liability = false } = {}) {
+  const total = (candidates || []).reduce((s, c) => s + (Number(c.signed) || 0), 0);
+  const d = Number(diff) || 0;
+  return Math.abs(liability ? total - d : total + d) < 0.005 ? (candidates || []).length : 0;
+}

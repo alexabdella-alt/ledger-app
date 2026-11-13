@@ -67,10 +67,13 @@ export function normalizeBankParse(parsed) {
 //      tell, the file's own date direction decides.
 //  (2) SIGN. One reading instruction lets amounts come back unsigned with a debit/credit
 //      type. "balance − amount" on an unsigned withdrawal ADDED it. Amounts are signed by type.
-export function signedStatementAmount(t = {}) {
+// C670 (review) — on a card's OWN statement a row typed "payment" is the payoff, money ONTO the
+// card; the PDF reader's prompt lists "payments" as money out, which is the bank's reading.
+export function signedStatementAmount(t = {}, { liability = false } = {}) {
   const n = Number(t.amount);
   if (!Number.isFinite(n)) return null;
   const ty = String(t.type || "").toLowerCase();
+  if (liability && /payment/.test(ty)) return Math.abs(n);
   if (/debit|withdraw|expense|payment|fee|charge/.test(ty)) return -Math.abs(n);
   if (/credit|deposit|revenue|income|refund/.test(ty)) return Math.abs(n);
   return n;
@@ -80,7 +83,7 @@ function chainScore(rows, sign = 1) {
   let ok = 0;
   for (let i = 1; i < rows.length; i++) {
     const prev = rows[i - 1], cur = rows[i];
-    const amt = signedStatementAmount(cur);
+    const amt = signedStatementAmount(cur, { liability: sign === -1 });
     if (isNum(prev.balance) && isNum(cur.balance) && amt != null && Math.abs(Number(cur.balance) - (Number(prev.balance) + sign * amt)) <= 0.02) ok++;
   }
   return ok;
@@ -108,7 +111,7 @@ export function deriveStatementOpening({ transactions = [], statedOpening = null
   const sign = liability ? -1 : 1;   // how one row's signed (in +, out −) amount moves the balance
 
   let derived = null;
-  const firstAmt = first ? signedStatementAmount(first) : null;
+  const firstAmt = first ? signedStatementAmount(first, { liability }) : null;
   if (first && isNum(first.balance) && firstAmt != null) {
     derived = r2(Number(first.balance) - sign * firstAmt);
   }
@@ -126,7 +129,7 @@ export function deriveStatementOpening({ transactions = [], statedOpening = null
   let endingBalance = null;
   if (last && isNum(last.balance)) endingBalance = r2(Number(last.balance));
   else if (openingBalance != null) {
-    const net = txns.reduce((s, t) => s + (signedStatementAmount(t) ?? 0), 0);
+    const net = txns.reduce((s, t) => s + (signedStatementAmount(t, { liability }) ?? 0), 0);
     endingBalance = r2(openingBalance + sign * net);
   }
   const source = stated != null && derived != null ? "both" : stated != null ? "stated" : derived != null ? "derived" : "none";

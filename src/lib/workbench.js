@@ -86,9 +86,12 @@ export function outstandingCheckCopy({ amount = 0, date = null } = {}) {
 
 // The opening-balance gap. When known uncashed items fully explain it, this is NOT an alarm —
 // say so and show the ✓. Only a genuinely unexplained gap gets the "worth a look" framing.
-export function openingMismatchCopy({ diff = 0, explainedCount = 0, accountName = "your account" } = {}) {
+export function openingMismatchCopy({ diff = 0, explainedCount = 0, accountName = "your account", liability = false } = {}) {
   const gap = fmtMoney(Math.abs(Number(diff) || 0));
   const n = Math.max(0, Number(explainedCount) || 0);
+  if (n > 0 && liability) {   // C670 — on a card it is purchases the card hasn't posted, not checks
+    return `${accountName}: the ${gap} difference is explained by ${n} purchase${n === 1 ? "" : "s"} that ${n === 1 ? "hasn't" : "haven't"} shown up on the card statement yet ✓`;
+  }
   if (n > 0) {
     return `${accountName}: the ${gap} difference is explained by ${n} check${n === 1 ? "" : "s"} you wrote that ${n === 1 ? "hasn't" : "haven't"} been cashed yet ✓`;
   }

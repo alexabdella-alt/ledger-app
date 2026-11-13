@@ -4,7 +4,7 @@ import { useERP } from "../ERPContext";
 import { isDbId } from "../../lib/contactIds";
 import { prefillEndingBalance, statementForPeriod, statementOfferCopy, statementToOffer, READY_TO_RECONCILE_COPY } from "../../lib/statementLifecycle";
 import { monthLabel } from "../../lib/ownerTrust";
-import { reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, reconcileReadinessCopy, isOpeningPositionRow, reconBooksBalance, cashCarriedIntoPeriod, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
+import { owedAccount, openingGapExplainedCount, reconBooksSet, cashLegSigned, statementBalanceVerified, canCompleteReconciliation, reconcileReadinessCopy, isOpeningPositionRow, reconBooksBalance, cashCarriedIntoPeriod, reconOutstandingBooks, reconMarkedOutstanding, reconcileDifference, supersedableOpenReconciliations, reconCompletionGate, resolveReconRowId, reconCompletionCopy, reconciliationActivityLine, RECON_COMPLETE_SUCCESS_COPY, RECON_COMPLETE_FAILURE_COPY } from "../../lib/reconcile";
 import { checkedRowUpdate, checkedIdsUpdate } from "../../lib/checkedWrite";
 import { statementsCoveredByReconciliation, outstandingCheckCopy, openingMismatchCopy, outstandingClearedCopy, MATCH_EXISTING_ACTION_LABEL } from "../../lib/workbench";
 import { openingDiscrepancy } from "../../lib/openingBalanceProposal";
@@ -307,8 +307,8 @@ export default function ReconView() {
   const unmatchedBankSigned = unmatchedBank.reduce((s,t)=>s+(Number(t.amount)||0),0);
   // C669 — a card's balances count what is owed: uncleared items net the other way
   const reconAcct = (bankAccounts||[]).find(b => String(b.id)===String(accountId));
-  const diff = reconcileDifference({ statementBalance: stmtNum, booksBalance, outstandingSigned, unmatchedBankSigned,
-    liability: !!reconAcct && (reconAcct.type === "credit_card" || reconAcct.type === "loan" || /^2\d{3}$/.test(String(reconAcct.gl_code || ""))) });
+  const owed = owedAccount(reconAcct);   // C670 — by the ledger code, as the books figure is signed
+  const diff = reconcileDifference({ statementBalance: stmtNum, booksBalance, outstandingSigned, unmatchedBankSigned, liability: owed });
   const matchedCount = bankTxns.filter(t=>t._matchBook).length;
   const matchedBooksCount = booksRows.filter(b=>matchedBookIds.has(b.id)).length;
   // BUG 2 (discrepancy): the statement's stated opening vs GL CASH AT PERIOD START — the balance
@@ -323,9 +323,8 @@ export default function ReconView() {
   const openingExplainedCount = React.useMemo(() => {
     if (!openingMismatch.mismatch) return 0;
     const cands = priorOutstandingCandidates({ reconciliations, accountId, accountName, periodStart });
-    const total = cands.reduce((s2, c) => s2 + (Number(c.signed) || 0), 0);
-    return Math.abs(total + Number(openingMismatch.diff || 0)) < 0.005 ? cands.length : 0;
-  }, [openingMismatch.mismatch, openingMismatch.diff, reconciliations, accountId, accountName, periodStart]);
+    return openingGapExplainedCount(cands, openingMismatch.diff, { liability: owed });   // C670
+  }, [openingMismatch.mismatch, openingMismatch.diff, reconciliations, accountId, accountName, periodStart, owed]);
 
   // ── C196(1) — THE HEADLINE FIX. "Things we need to sort out" offered **Accept & add** for a
   // bank line that was actually a PRIOR PERIOD'S OUTSTANDING CHECK clearing — one human click on
@@ -1028,6 +1027,9 @@ export default function ReconView() {
           {unmatchedBank.map(t=>{
             const _acct=getAccountByRole(suggestRole(t.description, t.amount));
             const gl={gl_code:_acct?.code, gl_name:_acct?.name};
+            // C670 — money ONTO a card is a payment from a bank account or a refund, never a sale:
+            // "Accept & add" suggested income for every money-in line (Dr card / Cr Revenue).
+            const noSuggestion = owed && Number(t.amount) > 0;
             // C196(1) — chain-explained line: this is a prior entry CLEARING, not new activity.
             // Explain it and offer MATCH. Accept-&-add is NOT rendered — offering it here is what
             // produced the duplicate entry.
@@ -1058,8 +1060,10 @@ export default function ReconView() {
                   </div>
                 ) : (
                   <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-                    <span style={{ fontSize:12, color:"var(--sc-gold)", background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", borderRadius:8, padding:"5px 10px" }}>✦ Looks like {gl.gl_name}</span>
-                    <button onClick={()=>addToBooks(t,gl)} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Accept &amp; add</button>
+                    {noSuggestion
+                      ? <span data-card-money-in style={{ fontSize:12, color:"var(--sc-text-2)" }}>Money onto this card is usually a payment from your bank account or a refund — choose what it was.</span>
+                      : <span style={{ fontSize:12, color:"var(--sc-gold)", background:"var(--sc-gold-soft)", border:"1px solid var(--sc-gold-soft)", borderRadius:8, padding:"5px 10px" }}>✦ Looks like {gl.gl_name}</span>}
+                    {!noSuggestion && <button onClick={()=>addToBooks(t,gl)} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Accept &amp; add</button>}
                     <button onClick={()=>setAddQuick(t.id)} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Choose account</button>
                     <button onClick={()=>ignoreBank(t)} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Ignore this time</button>
                   </div>
