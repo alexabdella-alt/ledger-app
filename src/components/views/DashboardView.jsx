@@ -92,7 +92,7 @@ export default function DashboardView() {
   const [bizFye, setBizFye] = React.useState("12-31");
   const [bizForm, setBizForm] = React.useState(null);
   const [teachOpen, setTeachOpen] = React.useState(false);   // C563 — vendor teach-in from the setup checklist
-  const { isViewer, isOwner, hasAttester } = useERP();
+  const { isViewer, isOwner, hasAttester, taxAssets } = useERP();
   const hasAccountant = hasAttester !== false;   // C574 — unknown counts as "has one", so we never claim they have none on a failed read   // C563 — a viewer cannot write rules, so is not offered teach-in · C564 — only the owner can invite   // C559 — null = untouched, "" = "I'm not sure"
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
@@ -940,7 +940,7 @@ export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
     uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo, fileHeldStatementTo, intakeRows, bankAccounts,
-    statementExceptions, setClarificationQueue } = useERP();
+    statementExceptions, setClarificationQueue, taxAssets } = useERP();
   const [busy, setBusy] = React.useState(null);
   // C641 — for an owner with no accountant: the bank lines they can answer, as question cards.
   const soloOwner = !(navSeat ? navSeat.isReviewerSeat : true) && hasAttester === false;
@@ -959,7 +959,7 @@ export function HomeWaitingList({ navTo }) {
   // it is about. C559 — this company's deadlines. C388 — a deadline marked filed is not waiting.
   const waiting = React.useMemo(() => nextWaitingDeadline(new Date(), 30, {
     filed: filedDeadlines, legalForm: companySettings?.legalForm || null,
-    estimateFor: (y) => taxEstimate(invoices || [], y, 0, { chart: CHART_OF_ACCOUNTS || [], legalForm: companySettings?.legalForm || "", homeOfficeSqft: Number(filedDeadlines?.home_office_sqft) || 0 }),   // C678
+    estimateFor: (y) => taxEstimate(invoices || [], y, 0, { chart: CHART_OF_ACCOUNTS || [], legalForm: companySettings?.legalForm || "", homeOfficeSqft: Number(filedDeadlines?.home_office_sqft) || 0, assets: taxAssets || null }),   // C678, C683
     has1099sFor: (d) => plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: d.year - 1 }).outstanding > 0,
   }), [filedDeadlines, companySettings?.legalForm, invoices, contacts, CHART_OF_ACCOUNTS]);
   const dl = waiting ? waiting.deadline : null;

@@ -136,7 +136,7 @@ export function homeOfficeDeduction(sqft) {
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // The year's spending, by Schedule C line. `chart` gives each code's name and role.
-export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(), { chart = [], homeOfficeSqft = 0, legalForm = "" } = {}) {
+export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(), { chart = [], homeOfficeSqft = 0, legalForm = "", depreciation = null } = {}) {
   const acct = new Map((chart || []).map((a) => [String(a.code), a]));
   const inScope = (i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && String(i.date || "").startsWith(String(year));
   const lines = new Map();
@@ -155,17 +155,25 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
     if (line === "travel_split") ({ line, share } = travelSplitFor(i));
     add(line, signed, signed * share, a.name || i.gl_name);
   }
+  // ★ C683 — equipment for tax: the books' depreciation of tracked assets is replaced by the tax
+  // figure (bonus depreciation), so line 13's deductible is what the return would claim.
+  if (depreciation && (depreciation.tax || depreciation.bookTracked)) {
+    const L = lines.get("13") || { line: "13", spent: 0, deductible: 0, accounts: new Set() };
+    L.deductible += (Number(depreciation.tax) || 0) - (Number(depreciation.bookTracked) || 0);
+    L.taxAdjusted = true;
+    lines.set("13", L);
+  }
   // Home office — a sole proprietor's (or single-member LLC's) Schedule C line 30.
   const home = legalForm && legalForm !== "sole_prop" ? 0 : homeOfficeDeduction(homeOfficeSqft);
   if (home > 0) add("30", home, home, null);
 
   const rows = [...lines.values()]
     .map((L) => ({ line: L.line, label: LINES[L.line]?.plain || L.line, form: LINES[L.line]?.form || L.line,
-      spent: r2(L.spent), deductible: r2(L.deductible), accounts: [...L.accounts] }))
-    .filter((r) => Math.abs(r.spent) >= 0.005)
+      spent: r2(L.spent), deductible: r2(L.deductible), accounts: [...L.accounts], taxAdjusted: !!L.taxAdjusted }))
+    .filter((r) => Math.abs(r.spent) >= 0.005 || Math.abs(r.deductible) >= 0.005)
     .sort((x, y) => (x.line === "none") - (y.line === "none") || LINE_ORDER.indexOf(x.line) - LINE_ORDER.indexOf(y.line));
   const deductibleTotal = r2(rows.reduce((s, r) => s + r.deductible, 0));
-  const notDeductible = r2(rows.reduce((s, r) => s + (r.spent - r.deductible), 0));
+  const notDeductible = r2(rows.reduce((s, r) => s + (r.taxAdjusted ? 0 : Math.max(0, r.spent - r.deductible)), 0));   // C683 — line 13's tax figure can exceed the books'
   return { rows, deductibleTotal, notDeductible, homeOffice: home };
 }
 
@@ -195,4 +203,48 @@ export function federalEstimate({ revenue = 0, deductible = 0, year = new Date()
   const qbi = r2(afterHalf * 0.2);
   const federal = r2((afterHalf - qbi) * flatRate);
   return { profit, seTax, halfSe, qbi, federal, total: r2(federal + seTax) };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★ C683 — EQUIPMENT FOR TAX: BONUS DEPRECIATION, NOT THE BOOKS' STRAIGHT LINE.
+// The books spread an asset over its life (GAAP). For tax, a small business deducts most or all of
+// it in the year it goes into service — bonus depreciation (IRC §168(k)): 100% for property
+// acquired after 2025-01-19 (made permanent by P.L. 119-21, 2025), otherwise the TCJA phase-down
+// (80% 2023, 60% 2024, 40% early-2025; 100% from 2017-09-28 through 2022). §179 reaches the same
+// result for most. What bonus doesn't take is spread straight-line over the asset's recorded life
+// — a planning stand-in for the MACRS tables. The in-service date stands in for acquisition.
+// ═════════════════════════════════════════════════════════════════════════════
+export function bonusRateFor(inServiceDate) {
+  const d = String(inServiceDate || "");
+  if (!/^\d{4}-\d{2}-\d{2}/.test(d)) return 0;
+  if (d >= "2025-01-20") return 1;
+  if (d >= "2025-01-01") return 0.4;
+  if (d >= "2024-01-01") return 0.6;
+  if (d >= "2023-01-01") return 0.8;
+  if (d >= "2017-09-28") return 1;
+  return 0.5;
+}
+const monthsIn = (fromYmd, months, year) => {
+  // how many of an asset's `months` (from its in-service month) fall in `year`
+  const [y, m] = String(fromYmd).split("-").map(Number);
+  const start = y * 12 + (m - 1), end = start + Math.max(0, months) - 1;
+  const ys = year * 12, ye = year * 12 + 11;
+  return Math.max(0, Math.min(end, ye) - Math.max(start, ys) + 1);
+};
+// assets: [{ id, cost, in_service_date, useful_life_months, status }]
+// posted: [{ asset_id, period_date, amount }] — the books' depreciation already posted for them
+export function taxDepreciationFor({ assets = [], posted = [], year = new Date().getFullYear() } = {}) {
+  let tax = 0;
+  for (const a of assets || []) {
+    if (!a || !(Number(a.cost) > 0) || !a.in_service_date) continue;
+    const cost = Number(a.cost), rate = bonusRateFor(a.in_service_date);
+    const inYear = Number(String(a.in_service_date).slice(0, 4));
+    const life = Math.max(1, Number(a.useful_life_months) || 60);
+    if (inYear === Number(year)) tax += cost * rate;
+    tax += (cost * (1 - rate)) * monthsIn(a.in_service_date, life, Number(year)) / life;
+  }
+  const ids = new Set((assets || []).map((a) => String(a.id)));
+  const bookTracked = (posted || []).filter((p) => ids.has(String(p.asset_id)) && String(p.period_date || "").startsWith(String(year)))
+    .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  return { tax: r2(tax), bookTracked: r2(bookTracked) };
 }

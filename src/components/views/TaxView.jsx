@@ -7,7 +7,7 @@ import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
@@ -92,9 +92,9 @@ export default function TaxView() {
   // line, meals at 50%, entertainment 0%, the simplified home office, the current federal rules.
   // The home-office size is kept in the year's tax settings (filed_deadlines.home_office_sqft).
   const homeOfficeSqft = Number(filed.home_office_sqft) || 0;
-  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, homeOfficeSqft });
+  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, homeOfficeSqft, assets: taxAssets || null });   // C683
   const deadlines = getTaxDeadlines(new Date(), { legalForm: legalForm || null });   // O140/C559
-  const deductions = deductionBreakdown(invoices, year, getAccountByRole, { chart: CHART_OF_ACCOUNTS || [], homeOfficeSqft, legalForm });
+  const deductions = deductionBreakdown(invoices, year, getAccountByRole, { chart: CHART_OF_ACCOUNTS || [], homeOfficeSqft, legalForm, assets: taxAssets || null });
   const [sqftDraft, setSqftDraft] = React.useState("");
   React.useEffect(() => { setSqftDraft(homeOfficeSqft ? String(homeOfficeSqft) : ""); }, [homeOfficeSqft]);
   const homeOfficeApplies = !legalForm || legalForm === "sole_prop";
@@ -226,7 +226,7 @@ export default function TaxView() {
           <div key={d.key} data-deduction-line={d.line} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label} <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 400 }}>· {d.line === "4" ? "line 4" : `line ${d.line}`}</span></div>
-              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}{d.notDeductible > 0.004 ? ` · ${fmt(d.notDeductible)} of this doesn't count (meals count at 50%)` : ""}</div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}{d.notDeductible > 0.004 ? ` · ${fmt(d.notDeductible)} of this doesn't count (meals count at 50%)` : ""}{d.taxAdjusted ? " · for tax, equipment is mostly deducted in full in the year you start using it, not spread out like in your books" : ""}</div>
             </div>
             <div style={{ textAlign: "right", minWidth: 110 }}>
               <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--sc-text)" }}>{fmt(d.amount)}</div>
