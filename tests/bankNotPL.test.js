@@ -47,3 +47,27 @@ describe("the hold", () => {
     for (const r of Object.values(NOT_PL_REASON)) expect(r).not.toMatch(OWNER_JARGON_RE);
   });
 });
+
+// C652 — the held line's question says what it looks like.
+import { bankLineQuestionCards, heldQuestion } from "../src/lib/statementQuestions";
+import { OWNER_JARGON_RE } from "../src/lib/clarify.js";
+describe("the held line's question", () => {
+  const cards = bankLineQuestionCards([
+    { kind: "line", id: "sxl_1", statement_id: "S", date: "2026-03-15", amount: -1240, vendor: "CHASE CREDIT CRD AUTOPAY", description: "CHASE CREDIT CRD AUTOPAY 031526", reason: "low_confidence" },
+    { kind: "line", id: "sxl_2", statement_id: "S", date: "2026-03-16", amount: 2000, vendor: "Savings", description: "ONLINE TRANSFER FROM SAV 5521", reason: "low_confidence" },
+    { kind: "line", id: "sxl_3", statement_id: "S", date: "2026-03-17", amount: -84.12, vendor: "Home Depot", description: "HOME DEPOT #123", reason: "low_confidence" },
+  ], { cashCode: "1000" });
+  it("★ a card payoff is asked as a card payoff, not 'what was this for?'", () => {
+    expect(cards[0].question).toBe("The $1,240.00 to CHASE CREDIT CRD AUTOPAY looks like paying off a credit card, which isn't new spending, so it hasn't been recorded. If it was something else, say what it was for.");
+  });
+  it("★ money moved in from savings is asked as a transfer, not as a sale", () => {
+    expect(cards[1].question).toMatch(/^The \$2,000\.00 from Savings looks like money moved between your own accounts/);
+  });
+  it("an ordinary line keeps its ordinary question", () => {
+    expect(heldQuestion(cards[2].invoice)).toBe(null);
+    expect(cards[2].question).toMatch(/what was the \$84\.12 payment to Home Depot/i);
+  });
+  it("plain words (our words — the bank's own text in the vendor name is the bank's)", () => {
+    for (const c of cards) expect(c.question.replace(c.invoice.vendor, "")).not.toMatch(OWNER_JARGON_RE);
+  });
+});
