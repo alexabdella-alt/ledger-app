@@ -5,7 +5,7 @@ import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
 import { supabase, getAuthHeaders } from "./lib/supabase";
-import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
+import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, shouldCapitalize, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling, settledBases, categoryForCode } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
@@ -4034,7 +4034,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
     // A) Capital vs expense (ASC 360 materiality threshold)
     if (amt >= CAPITALIZE_CHECK_THRESHOLD && GAAP_ASSET_RE.test(text)) {
-      const capitalize = amt >= CAPITALIZE_THRESHOLD;
+      const capitalize = shouldCapitalize(amt);   // C680 — the IRS de minimis safe harbor: $2,500 or less per item is expensed
       return { ...base, gaapType:"capital",
         question:`This looks like a larger purchase — how will you use it?`,
         explanation:`Bigger equipment you'll use for years gets spread across those years instead of counting all at once — that keeps your monthly profit accurate and matters for your taxes. So we just need to know how you'll use it and for how long.`,
@@ -4044,7 +4044,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             usefulLifeMonths: capitalize ? suggestUsefulLifeMonths(text) : undefined,
             reasoning: capitalize
               ? `Capitalized as fixed asset per ASC 360 — user confirmed business use >1 year, amount ${fmtMoney(amt)} exceeds $2,500 threshold. Flagged for depreciation.`
-              : `Expensed to de minimis equipment — business use but amount ${fmtMoney(amt)} is under the $2,500 capitalization threshold (de minimis safe harbor).` },
+              : `Expensed to de minimis equipment — business use but amount ${fmtMoney(amt)} is $2,500 or less (the IRS de minimis safe harbor).` },
           { label:"It's a subscription, or I'll use it under a year", gl_code:rc("technology_software"), gl_name:rn("technology_software"),
             reasoning:`Expensed to Technology — subscription or useful life under one year, so ASC 360 capitalization does not apply.` },
           { label:"Mostly personal use", gl_code:rc("office_supplies"), gl_name:rn("office_supplies"), nondeductible:true,

@@ -92,7 +92,7 @@ const SEND_MAIL_URL = "https://hhhuvoycumjzcjbawwff.supabase.co/functions/v1/sen
 const MAIL_DOMAIN = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_MAIL_DOMAIN) || null;
 
 // ── Business logic constants (single source of truth) ────────────────────────
-const CAPITALIZE_THRESHOLD = 2500;        // ASC 360 de-minimis: capitalize at/above this
+const CAPITALIZE_THRESHOLD = 2500;        // the IRS de minimis safe harbor (Reg. 1.263(a)-1(f)): an item costing $2,500 OR LESS is expensed; capitalize only ABOVE this (C680)
 const CAPITALIZE_CHECK_THRESHOLD = 2000;  // asset purchases at/above this trigger the GAAP question
 const MEALS_DEDUCTIBLE_RATE = 0.5;        // IRS: meals are 50% deductible
 const IRS_1099_THRESHOLD = 600;           // 1099-NEC reporting threshold
@@ -113,6 +113,9 @@ const SE_TAX_RATE = 0.153;                // self-employment tax rate
 
 // Platform administrators — only these accounts see the Settings → Security tab.
 const PLATFORM_ADMIN_EMAILS = ["alexabdella@gmail.com"];
+
+// C680 — above the safe harbor, not at it: a $2,500.00 item is expensed.
+export const shouldCapitalize = (amount) => (Number(amount) || 0) > CAPITALIZE_THRESHOLD;
 
 export {
   DEFAULT_CHART_OF_ACCOUNTS, PROJECTS,
