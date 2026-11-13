@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import { holdNotProfitAndLoss } from "./lib/bankNotPL";
 import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
@@ -6334,13 +6335,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // and the "skip matched rows" filter would miss the matched line and
           // double-book it. Index-based + run-stamped so it can't collide.
           const runStamp = Date.now();
-          const withRules = categorized.map((t,i) => {
+          // C651 — a transfer / card payoff / owner draw / loan line is held, not booked (after rules: a rule wins)
+          const withRules = holdNotProfitAndLoss(categorized.map((t,i) => {
             const rule = ruleForVendor(rules, t.vendor, { aliasIndex });
             const id = `bank_${runStamp}_${i}`;
             return rule
               ? {...t, id, gl_code:rule.gl_code, gl_name:rule.gl_name, confidence:99, needs_review:false, rule_applied:true}
               : {...t, id};
-          });
+          }));
           // ── RECONCILIATION: match the statement against open payables/receivables ──
           // Normalize each parsed line into a matching-engine transaction (signed
           // amount). Reuse the SAME stable id — never regenerate.
@@ -7242,11 +7244,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       if (rawTxns.length === 0) { markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: "no transactions found — held for review" }); showNotification("No transactions found in file.", "error"); setBankProcessing(false); return; }
 
       // Apply vendor rules to any matches
-      const withRules = categorized.map(t => {
+      // C651 — a transfer / card payoff / owner draw / loan line is held, not booked (after rules: a rule wins)
+      const withRules = holdNotProfitAndLoss(categorized.map(t => {
         const rule = ruleForVendor(rules, t.vendor, { aliasIndex });
         if (rule) return { ...t, gl_code: rule.gl_code, gl_name: rule.gl_name, confidence: 99, needs_review: false, rule_applied: true };
         return t;
-      });
+      }));
 
       // Stable, AI-round-trip-safe line ids. A 13-digit numeric id (Date.now()+i) comes
       // back from the matching LLM as a string (or reformatted), so the strict-=== bank_txn

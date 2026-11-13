@@ -543,6 +543,7 @@ CRITICAL RULES:
 - type "revenue" → gl_code must be 4xxx (never 1xxx/2xxx/3xxx)
 - Balance sheet accounts (1xxx assets, 2xxx liabilities, 3xxx equity) are NEVER the primary GL code for a transaction
 - Set needs_review:true when confidence < 75 or you cannot clearly identify the vendor/purpose
+- A transfer between the business's own accounts, a payment to a credit card, an owner's draw or contribution, and a loan payment or loan proceeds are NOT income or spending: for these set needs_review:true and confidence at most 50, and say which one it is in "reasoning" (C651)
 - The "reasoning" must explain WHY this GL account — never write 'imported from bank statement'
 - Keep the same array order and index as input
 
