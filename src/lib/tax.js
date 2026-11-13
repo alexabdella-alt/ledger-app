@@ -25,14 +25,23 @@ export function ytdNetIncome(invoices, year = new Date().getFullYear()) {
 // less a home office; self-employment tax on 92.35% of it with the Social Security wage cap,
 // half of it deductible, the 20% qualified business income deduction; a C corporation pays a
 // flat 21% and no self-employment tax. Was: a flat 25% + 15.3% on book profit.
-export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null } = {}) {
+// ★ C690 — income tax by the year's brackets, from the owner's filing status and other income
+// (saved with the year's tax settings: filed_deadlines.filing_status / other_income). Nothing
+// saved → single with no other income, and `assumed` says so on screen.
+export function taxProfileFrom(filed = {}) {
+  const f = filed || {};
+  const set = !!f.filing_status;
+  return { homeOfficeSqft: Number(f.home_office_sqft) || 0, filingStatus: set ? f.filing_status : "single", otherIncome: Math.max(0, Number(f.other_income) || 0), assumed: !set };
+}
+export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0 } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
   const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null });   // C683, C686
-  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, flatRate: FED_RATE });
+  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome });   // C690
   const paid = Number(estPaid) || 0;
   return { revenue, expenses, net, taxableNet: f.profit, deductible: sc.deductibleTotal, notDeductible: sc.notDeductible,
     federal: f.federal, seTax: r2c(f.seTax + (f.addlMedicare || 0)), addlMedicare: f.addlMedicare || 0, qbi: f.qbi,   // C685 — self-employment tax includes the 0.9% over $200k
-    total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid), quarterly: f.total / 4 };
+    total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid), quarterly: f.total / 4,
+    marginalRate: f.marginalRate || 0, standardDeduction: f.standardDeduction || 0, qbiMayBeLimited: !!f.qbiMayBeLimited };
 }
 
 // ── HOW THE BUSINESS FILES ITS TAXES (O140, C559) ─────────────────────────────

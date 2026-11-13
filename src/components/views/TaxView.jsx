@@ -2,7 +2,8 @@ import React from "react";
 import { fmtMoney } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
-import { taxEstimate, getTaxDeadlines, deductionBreakdown, FED_RATE, filedKey, taxYearFor1099, LEGAL_FORMS } from "../../lib/tax";
+import { taxEstimate, getTaxDeadlines, deductionBreakdown, filedKey, taxYearFor1099, LEGAL_FORMS, taxProfileFrom } from "../../lib/tax";
+import { FILING_STATUSES } from "../../lib/taxGuidance.js";
 import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
@@ -91,8 +92,13 @@ export default function TaxView() {
   // ★ C678 — current IRS guidance (lib/taxGuidance.js): every spending account on its Schedule C
   // line, meals at 50%, entertainment 0%, the simplified home office, the current federal rules.
   // The home-office size is kept in the year's tax settings (filed_deadlines.home_office_sqft).
-  const homeOfficeSqft = Number(filed.home_office_sqft) || 0;
-  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, homeOfficeSqft, assets: taxAssets || null });   // C683
+  // ★ C690 — the owner's filing status and other income, for the year's tax brackets.
+  const profile = taxProfileFrom(filed);
+  const homeOfficeSqft = profile.homeOfficeSqft;
+  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile });   // C683, C690
+  const passThrough = legalForm !== "c_corp";
+  const [otherDraft, setOtherDraft] = React.useState("");
+  React.useEffect(() => { setOtherDraft(profile.otherIncome ? String(profile.otherIncome) : ""); }, [profile.otherIncome]);
   const deadlines = getTaxDeadlines(new Date(), { legalForm: legalForm || null });   // O140/C559
   const deductions = deductionBreakdown(invoices, year, getAccountByRole, { chart: CHART_OF_ACCOUNTS || [], homeOfficeSqft, legalForm, assets: taxAssets || null });
   const [sqftDraft, setSqftDraft] = React.useState("");
@@ -147,7 +153,7 @@ export default function TaxView() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
           {[
             ["Profit so far this year", fmt(est.net), est.net >= 0 ? "var(--sc-text)" : "var(--sc-error)"],
-            [legalForm === "c_corp" ? "Corporate income tax (21%)" : "Estimated Federal Tax (25%)", fmt(est.federal), "var(--sc-text)"],
+            [legalForm === "c_corp" ? "Corporate income tax (21%)" : `Federal income tax (${year} brackets)`, fmt(est.federal), "var(--sc-text)"],   // C690
             // C685 — an S corporation's or C corporation's profit carries no self-employment tax; the owner's payroll covers it
             [legalForm === "s_corp" || legalForm === "c_corp" ? "Self-employment tax (none — your payroll covers it)" : "Self-Employment Tax (15.3%)", fmt(est.seTax), "var(--sc-text)"],
             ["Estimated tax for the year", fmt(est.total), "var(--sc-gold)"],
@@ -161,6 +167,29 @@ export default function TaxView() {
           ))}
         </div>
         {!loadOk && <div style={{ marginTop: 14 }}><LoadFailedNotice what="saved tax figures" table="tax_settings" /></div>}
+        {passThrough && (
+          <div data-tax-profile style={{ marginTop: 14, padding: "12px 14px", background: "var(--sc-bg)", border: "1px solid var(--sc-surface-2)", borderRadius: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>For a closer estimate</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>How you file:</label>
+              <select disabled={!loadOk} value={profile.assumed ? "" : profile.filingStatus}
+                onChange={e => save({ ...taxState, filed: { ...filed, filing_status: e.target.value || null } })}
+                style={{ background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)" }}>
+                <option value="">Choose…</option>
+                {FILING_STATUSES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+              <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Other income this year (a job, a spouse's pay, interest):</label>
+              <input type="number" min="0" disabled={!loadOk} value={otherDraft} placeholder="0" onChange={e => setOtherDraft(e.target.value)}
+                onBlur={() => { const v = Math.max(0, Math.round(Number(otherDraft) || 0)); if (v !== profile.otherIncome) save({ ...taxState, filed: { ...filed, other_income: v } }); }}
+                style={{ width: 140, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 8 }}>
+              {profile.assumed ? "Until you choose, we assume you file single with no other income. " : ""}
+              The federal figure is the extra tax this business adds, after the {fmt(est.standardDeduction)} standard deduction and the 20% small-business deduction — a paycheck's withholding already covers the tax on a job.
+              {est.qbiMayBeLimited ? " At this income the 20% small-business deduction can be limited — your tax preparer will check." : ""}
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
           <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Estimated payments already made this year:</label>
           <input type="number" disabled={!loadOk} defaultValue={estPaid || ""} placeholder="0" onBlur={e => save({ ...taxState, estPaid: parseFloat(e.target.value) || 0 })}
@@ -221,7 +250,7 @@ export default function TaxView() {
       <div style={{ ...card, marginBottom: 16, padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--sc-surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>Deductions tracker · {year}</div>
-          <div style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Est. tax savings ≈ <span style={{ color: "var(--sc-success)", fontWeight: 600 }}>{fmt(totalDeductible * FED_RATE)}</span></div>
+          <div style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Est. tax savings ≈ <span style={{ color: "var(--sc-success)", fontWeight: 600 }}>{fmt(totalDeductible * est.marginalRate)}</span></div>
         </div>
         {deductions.filter(d => !d.ask && d.line !== "none" && d.line !== "30").map(d => (
           <div key={d.key} data-deduction-line={d.line} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
@@ -231,7 +260,7 @@ export default function TaxView() {
             </div>
             <div style={{ textAlign: "right", minWidth: 110 }}>
               <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--sc-text)" }}>{fmt(d.amount)}</div>
-              <div style={{ fontSize: 11, color: "var(--sc-success)" }}>~{fmt(d.amount * FED_RATE)} saved</div>
+              <div style={{ fontSize: 11, color: "var(--sc-success)" }}>~{fmt(d.amount * est.marginalRate)} saved</div>
             </div>
           </div>
         ))}

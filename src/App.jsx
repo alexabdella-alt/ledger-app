@@ -30,7 +30,7 @@ import { routeAIActions, buildPendingConfirmation, resolveActionTargets, resolve
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection, perEntry } from "./lib/insights";
 import { multiLineMetaPatch } from "./lib/entryMetaStamp";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
-import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting } from "./lib/tax";
+import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting, taxProfileFrom } from "./lib/tax";
 import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, recurringRunPatch, normalizeContactType, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
 import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
@@ -2742,7 +2742,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C618 — the same helper as Home: the first deadline that needs something, each estimate for its own year.
       const waitingDue = nextWaitingDeadline(new Date(), 30, {
         filed: filedDeadlinesRef.current, legalForm: legalFormRef.current || null,
-        estimateFor: (y) => taxEstimate(invoicesRef.current, y, 0, { chart: CHART_OF_ACCOUNTS, legalForm: legalFormRef.current || "", homeOfficeSqft: Number(filedDeadlinesRef.current?.home_office_sqft) || 0, assets: taxAssetsRef.current }),   // C678, C683
+        estimateFor: (y) => taxEstimate(invoicesRef.current, y, 0, { chart: CHART_OF_ACCOUNTS, legalForm: legalFormRef.current || "", assets: taxAssetsRef.current, ...taxProfileFrom(filedDeadlinesRef.current) }),   // C678, C683, C690
         has1099sFor: (d) => plan1099ForYear({ invoices: invoicesRef.current, contacts: contactsRef.current || [], chart: CHART_OF_ACCOUNTS, year: d.year - 1 }).outstanding > 0,
       });
       const nextDue = waitingDue ? waitingDue.deadline : null;
@@ -8834,6 +8834,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts,
         chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance: glCash, anomalies,
         taxAssets,   // C683
+        taxProfile: filedDeadlines,   // C690
         cardsOwed: cardBalanceOwed(invoices, bankAccounts),   // C672 — what's owed on cards, now that it isn't hidden in cash
         payFromLabels: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }).map(o => o.label),   // C676
         businessType: companySettings.businessType,

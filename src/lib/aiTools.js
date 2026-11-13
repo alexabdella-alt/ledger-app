@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { perEntry, displayParty } from "./txnPresent.js";
-import { taxEstimate, deductionBreakdown, getTaxDeadlines } from "./tax.js";
+import { taxEstimate, deductionBreakdown, getTaxDeadlines, taxProfileFrom } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
@@ -216,7 +216,8 @@ async function getTaxSummary(input, ctx) {
   const year = input.year || new Date().getFullYear();
   const led = await ctx.getLedger();
   // C678 — the same current-guidance figures the Taxes screen shows
-  const est = taxEstimate(led, year, 0, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null });
+  const profile = taxProfileFrom(ctx.taxProfile || {});   // C690 — the owner's filing status and other income
+  const est = taxEstimate(led, year, 0, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile });
   const deductions = deductionBreakdown(led, year, ctx.getAccountByRole, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null })
     .filter(d => (d.amount || 0) > 0)
     .map(d => ({ category: d.label, schedule_c_line: d.line, amount: r2(d.amount), not_deductible: r2(d.notDeductible || 0) }));
@@ -226,6 +227,8 @@ async function getTaxSummary(input, ctx) {
     net_income: r2(est.net),
     estimated_tax: r2(est.federal),
     se_tax: r2(est.seTax),
+    filing_status_assumed: profile.assumed ? "single, no other income (the owner hasn't said — the Taxes screen asks)" : null,
+    tax_saved_per_dollar_deducted: est.marginalRate,
     total_owed: r2(est.total),
     deductions_by_category: deductions,
     total_deductions: r2(deductions.reduce((s, d) => s + d.amount, 0)),

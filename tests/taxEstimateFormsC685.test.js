@@ -7,12 +7,12 @@ const r2 = (n) => Math.round(n * 100) / 100;
 
 describe("C685 — an S corporation's profit is not self-employment income", () => {
   it("an S corp pays no self-employment tax but keeps the QBI deduction", () => {
-    const f = federalEstimate({ revenue: 100000, year: 2026, legalForm: "s_corp", flatRate: 0.25 });
+    const f = federalEstimate({ revenue: 100000, year: 2026, legalForm: "s_corp" });
     expect(f.seTax).toBe(0);
     expect(f.addlMedicare).toBe(0);
-    expect(f.qbi).toBe(20000);
-    expect(f.federal).toBe(20000);
-    expect(f.total).toBe(20000);
+    expect(f.qbi).toBe(16780);      // C690 — capped at 20% of (100,000 − 16,100)
+    expect(f.federal).toBe(9478.4); // 1,240 + 4,560 + 16,720 × 22% on 67,120
+    expect(f.total).toBe(9478.4);
   });
   it("a sole proprietor and a partnership still pay it", () => {
     for (const legalForm of ["", "sole_prop", "partnership"]) {

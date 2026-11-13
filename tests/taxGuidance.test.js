@@ -67,7 +67,7 @@ describe("★ the year's spending, by line", () => {
 
 describe("the screens use it", () => {
   it("Taxes, Home, the deadline reminder and the assistant pass the chart and the legal form", () => {
-    expect(readFileSync("src/components/views/TaxView.jsx", "utf8")).toMatch(/taxEstimate\(invoices, year, estPaid, \{ chart: CHART_OF_ACCOUNTS \|\| \[\], legalForm, homeOfficeSqft, assets: taxAssets \|\| null \}\)/);
+    expect(readFileSync("src/components/views/TaxView.jsx", "utf8")).toMatch(/taxEstimate\(invoices, year, estPaid, \{ chart: CHART_OF_ACCOUNTS \|\| \[\], legalForm, assets: taxAssets \|\| null, \.\.\.profile \}\)/);   // C690
     expect(readFileSync("src/components/views/DashboardView.jsx", "utf8")).toMatch(/taxEstimate\(invoices \|\| \[\], y, 0, \{ chart: CHART_OF_ACCOUNTS/);
     expect(readFileSync("src/App.jsx", "utf8")).toMatch(/taxEstimate\(invoicesRef\.current, y, 0, \{ chart: CHART_OF_ACCOUNTS/);
     expect(readFileSync("src/lib/aiTools.js", "utf8")).toMatch(/taxEstimate\(led, year, 0, \{ chart: ctx\.chartOfAccounts/);

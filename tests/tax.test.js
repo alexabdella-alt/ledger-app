@@ -26,11 +26,11 @@ describe("tax calculations", () => {
     const est = taxEstimate(invoices, 2026, 500);
     expect(est.net).toBe(6000);
     expect(est.seTax).toBe(847.77);    // 6000 × 92.35% × 15.3%
-    expect(est.qbi).toBe(1115.22);     // 20% of (6000 − half the SE tax)
-    expect(est.federal).toBe(1115.22); // 25% planning rate on what's left
-    expect(est.total).toBe(1962.99);
-    expect(est.owed).toBeCloseTo(1462.99, 2);    // total − estPaid(500)
-    expect(est.quarterly).toBeCloseTo(1962.99 / 4, 2);
+    expect(est.qbi).toBe(0);           // C690 — under the standard deduction: no taxable income, no QBI
+    expect(est.federal).toBe(0);       // and no income tax, by the 2026 brackets
+    expect(est.total).toBe(847.77);
+    expect(est.owed).toBeCloseTo(347.77, 2);    // total − estPaid(500)
+    expect(est.quarterly).toBeCloseTo(847.77 / 4, 2);
   });
   it("a C corporation pays a flat 21% and no self-employment tax", () => {
     const est = taxEstimate([{ gl_code: "4000", amount: 6000, date: "2026-02-01", status: "posted" }], 2026, 0, { legalForm: "c_corp" });

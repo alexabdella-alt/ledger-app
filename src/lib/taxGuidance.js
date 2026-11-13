@@ -80,12 +80,16 @@ const ROLE_LINE = {
 
 // A category the owner named themselves (no role): its words decide, first match wins.
 const NAME_LINE = [
+  // C691 — conferences and trade shows are ordinary business costs (100%), not entertainment
+  [/\btrade ?shows?\b|\bexpos?\b|\bconferences?\b|\bconventions?\b|\bseminars?\b|\bsummits?\b/i, "27a"],
   [/\b(federal|state)? ?income tax\b|\bfines?\b|\bpenalt(y|ies)\b|\bpolitical\b|\blobby/i, "none"],
   [/\bentertainment\b|\btickets?\b|\bconcerts?\b|\bgolf\b|\bcountry club\b/i, "none"],
   [/\bmeals?\b|\bfood & drink\b|\bdining\b|\brestaurants?\b/i, "24b"],
   [/\btravel\b|\bairfare\b|\bflights?\b|\bhotels?\b|\blodging\b/i, "24a"],
   [/\bcost of (goods|sales)\b|\bcogs\b|\binventory\b|\bmaterials\b|\bmerchandise\b/i, "4"],
   [/\badverti|\bmarketing\b|\bads\b|\bpromotion|\bsponsored\b/i, "8"],
+  // C691 — "Gas & Electric" is a utility, not the car: checked before the vehicle words
+  [/\bgas (&|and) electric\b|\bnatural gas\b|\belectric(ity)?\b|\butilit/i, "25"],
   [/\bvehicle\b|\bcar\b|\btruck\b|\bfuel\b|\bgas(oline)?\b|\bmileage\b|\bparking\b|\btolls?\b/i, "9"],
   [/\bcommissions?\b|\bmerchant\b|\bprocessing fees?\b|\bplatform fees?\b|\bpayment processing\b/i, "10"],
   [/\bcontract(or|ors| labor)\b|\bfreelanc|\bsubcontract/i, "11"],
@@ -105,13 +109,22 @@ const NAME_LINE = [
 ];
 
 // Inside a "Travel & Entertainment" account: what was this one charge?
-const TRAVEL_ROW = /\b(airline|airlines|airways|flight|airfare|hotel|marriott|hilton|hyatt|airbnb|lodging|motel|uber|lyft|taxi|cab|rental car|hertz|avis|enterprise|amtrak|train|parking|baggage|delta|united|american air|southwest|jetblue|alaska air|expedia|booking\.com)\b/i;
+// C691 — hotels by their generic words and the common chains, so a stay isn't read as a meal
+const TRAVEL_ROW = /\b(airline|airlines|airways|airport|flight|airfare|hotel|hotels|suites|resort|motel|lodging|hostel|hampton inn|comfort inn|marriott|courtyard|residence inn|hilton|hampton|doubletree|embassy suites|hyatt|westin|sheraton|ritz|four seasons|holiday inn|ihg|crowne plaza|kimpton|wyndham|la quinta|best western|radisson|choice hotels|comfort inn|airbnb|vrbo|uber|lyft|taxi|cab|rental car|car rental|hertz|avis|enterprise|national car|sixt|turo|amtrak|train|subway fare|parking|baggage|delta|united|american air|southwest|jetblue|alaska air|frontier|spirit air|hawaiian air|expedia|booking\.com|hotels\.com|priceline|kayak)\b/i;
+// C691 — conferences and trade shows: a business cost in full, never "entertainment"
+const BUSINESS_EVENT_ROW = /\b(trade ?shows?|expo|conference|convention|seminar|summit|registration|workshop)\b/i;
 const ENTERTAINMENT_ROW = /\b(tickets?|ticketmaster|stubhub|concert|theater|theatre|golf|country club|sporting event|stadium|arena|game day|season tickets|nightclub|show)\b/i;
 
 const SHARE = { "24b": 0.5, none: 0 };
 
 // Where one account goes: { line, share }. `line` may be "travel_split" (decided per row).
-export function lineForAccount({ code = "", name = "", role = null } = {}) {
+// ★ C691 — a business entity's STATE income tax is a deductible business tax: a C corporation
+// deducts state and local income taxes (only federal income tax is not deductible, §275), and an
+// S corporation or partnership deducts an elective pass-through entity tax (Notice 2020-75). A
+// sole proprietor's state income tax is personal — not on Schedule C — so it stays out.
+const STATE_ENTITY_TAX = /\b(state|local|city|franchise|pass[- ]?through entity|ptet)\b[\s\S]*\btax|\bptet\b/i;
+export function lineForAccount({ code = "", name = "", role = null, legalForm = "" } = {}) {
+  if (["c_corp", "s_corp", "partnership"].includes(legalForm) && STATE_ENTITY_TAX.test(String(name || "")) && !/\bfederal\b/i.test(String(name || ""))) return { line: "23", share: 1, by: "name" };
   if (role && ROLE_LINE[role]) return { line: ROLE_LINE[role], share: SHARE[ROLE_LINE[role]] ?? 1, by: "role" };
   const n = String(name || "");
   for (const [re, line] of NAME_LINE) if (re.test(n)) return { line, share: SHARE[line] ?? 1, by: "name" };
@@ -123,6 +136,7 @@ export function lineForAccount({ code = "", name = "", role = null } = {}) {
 export function travelSplitFor(row = {}) {
   const t = `${row.vendor || ""} ${row.description || ""}`;
   if (TRAVEL_ROW.test(t)) return { line: "24a", share: 1 };
+  if (BUSINESS_EVENT_ROW.test(t)) return { line: "27a", share: 1 };   // C691
   if (ENTERTAINMENT_ROW.test(t)) return { line: "none", share: 0 };
   return { line: "24b", share: 0.5 };
 }
@@ -152,7 +166,7 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
     if (!/^[5-8]\d{3}$/.test(code)) continue;   // spending accounts only
     const a = acct.get(code) || { code, name: i.gl_name };
     const signed = i.debit_credit === "credit" ? -(Number(i.amount) || 0) : (Number(i.amount) || 0);   // C489 — a correction subtracts
-    let { line, share } = lineForAccount({ code, name: a.name || i.gl_name, role: a.system_role });
+    let { line, share } = lineForAccount({ code, name: a.name || i.gl_name, role: a.system_role, legalForm });   // C691 — the entity decides state income tax
     if (line === "travel_split") ({ line, share } = travelSplitFor(i));
     add(line, signed, signed * share, a.name || i.gl_name);
   }
@@ -188,32 +202,92 @@ export const PERSONAL_RETURN_ITEMS = [
 //   · Taxable business profit = income − the DEDUCTIBLE share of spending (so half of meals and
 //     all of entertainment, fines and income tax stay in), less the home office.
 //   · C corporation: 21% flat (IRC §11), no self-employment tax.
-//   · Everyone else (pass-through): self-employment tax on 92.35% of profit — 12.4% Social
-//     Security up to that year's wage base, 2.9% Medicare on all of it; half of it deductible;
-//     then the 20% qualified business income deduction (§199A, made permanent in 2025); the rest
-//     at the app's flat planning rate. Personal deductions and credits are the preparer's.
-//   · ★ C685 — an S CORPORATION's profit is NOT self-employment income (IRC §1402(a), Rev. Rul.
-//     59-221): the owner's payroll tax is already in the books as wages and payroll tax. So an S
-//     corp gets the QBI deduction and the planning rate, and no self-employment tax.
-//   · ★ C685 — no self-employment tax when net earnings are under $400 (§1402(b)); and the 0.9%
-//     Additional Medicare Tax on self-employment earnings over $200,000 (§1401(b)(2), the
-//     single-filer threshold — a planning stand-in; it is NOT part of the half deducted).
+//   · Sole proprietor / partner: self-employment tax on 92.35% of profit — 12.4% Social Security
+//     up to that year's wage base, 2.9% Medicare on all of it — none under $400 (§1402(b)); the
+//     0.9% Additional Medicare Tax above $200,000 / $250,000 joint / $125,000 separate
+//     (§1401(b)(2)); half of the SE tax is deductible (§164(f)).
+//   · ★ C685 — an S corporation's profit is NOT self-employment income (IRC §1402(a), Rev. Rul.
+//     59-221): the owner's payroll tax is already in the books as wages and payroll tax.
+//   · ★ C690 — INCOME TAX BY THE YEAR'S BRACKETS, not a flat 25%. The owner's filing status and
+//     other household income (a job, a spouse's pay, interest) are asked once on the Taxes screen.
+//     Taxable income = other income + profit − half the SE tax − the standard deduction; the 20%
+//     qualified business income deduction (§199A) is capped at 20% of taxable income before it;
+//     the business's tax is the tax WITH its profit minus the tax WITHOUT it — the amount to set
+//     aside for the business, since a paycheck's withholding already covers the rest. Not
+//     modelled (the preparer's): itemized deductions, credits, the senior deduction, and the
+//     §199A wage / specified-service limits above the threshold (flagged when reached).
 export const SS_WAGE_BASE = { 2024: 168600, 2025: 176100, 2026: 184500 };
 export const SE_MINIMUM = 400;
 export const ADDL_MEDICARE_THRESHOLD = 200000;
-export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", flatRate = 0.25 } = {}) {
-  const profit = r2(Math.max(0, (Number(revenue) || 0) - (Number(deductible) || 0)));
-  if (legalForm === "c_corp") return { profit, seTax: 0, halfSe: 0, addlMedicare: 0, qbi: 0, federal: r2(profit * 0.21), total: r2(profit * 0.21) };
+const ADDL_MEDICARE_BY_STATUS = { single: 200000, hoh: 200000, mfj: 250000, mfs: 125000 };
+export const FILING_STATUSES = [
+  { value: "single", label: "Single" },
+  { value: "mfj", label: "Married, filing together" },
+  { value: "mfs", label: "Married, filing separately" },
+  { value: "hoh", label: "Head of household" },
+];
+// Standard deductions and bracket tops (10, 12, 22, 24, 32, 35%; 37% above): Rev. Proc. 2023-34
+// (2024), Rev. Proc. 2024-40 as amended by P.L. 119-21 (2025: $15,750 / $31,500 / $23,625),
+// Rev. Proc. 2025-32 (2026). Married-separate tops are single's, except 35% ends at half of joint.
+export const STANDARD_DEDUCTION = {
+  2024: { single: 14600, mfj: 29200, mfs: 14600, hoh: 21900 },
+  2025: { single: 15750, mfj: 31500, mfs: 15750, hoh: 23625 },
+  2026: { single: 16100, mfj: 32200, mfs: 16100, hoh: 24150 },
+};
+export const BRACKET_TOPS = {
+  2024: { single: [11600, 47150, 100525, 191950, 243725, 609350], mfj: [23200, 94300, 201050, 383900, 487450, 731200],
+          mfs: [11600, 47150, 100525, 191950, 243725, 365600], hoh: [16550, 63100, 100500, 191950, 243700, 609350] },
+  2025: { single: [11925, 48475, 103350, 197300, 250525, 626350], mfj: [23850, 96950, 206700, 394600, 501050, 751600],
+          mfs: [11925, 48475, 103350, 197300, 250525, 375800], hoh: [17000, 64850, 103350, 197300, 250500, 626350] },
+  2026: { single: [12400, 50400, 105700, 201775, 256225, 640600], mfj: [24800, 100800, 211400, 403550, 512450, 768700],
+          mfs: [12400, 50400, 105700, 201775, 256225, 384350], hoh: [17700, 67450, 105700, 201750, 256200, 640600] },
+};
+// §199A threshold (taxable income before the deduction) above which wage / service limits can apply.
+export const QBI_THRESHOLD = { 2024: { single: 191950, mfj: 383900 }, 2025: { single: 197300, mfj: 394600 }, 2026: { single: 201750, mfj: 403500 } };
+const RATES = [0.10, 0.12, 0.22, 0.24, 0.32, 0.35, 0.37];
+const yearKey = (table, year) => (table[year] ? year : (Number(year) < Math.min(...Object.keys(table).map(Number)) ? Math.min(...Object.keys(table).map(Number)) : Math.max(...Object.keys(table).map(Number))));
+const statusOf = (s) => (["single", "mfj", "mfs", "hoh"].includes(s) ? s : "single");
+export function incomeTax(taxable, { year = new Date().getFullYear(), filingStatus = "single" } = {}) {
+  const tops = BRACKET_TOPS[yearKey(BRACKET_TOPS, year)][statusOf(filingStatus)];
+  let t = 0, prev = 0, left = Math.max(0, Number(taxable) || 0);
+  for (let i = 0; i < RATES.length && left > 0; i++) {
+    const width = i < tops.length ? tops[i] - prev : Infinity;
+    const slice = Math.min(left, width);
+    t += slice * RATES[i]; left -= slice; prev = i < tops.length ? tops[i] : prev;
+  }
+  return r2(t);
+}
+export function standardDeduction(year, filingStatus = "single") {
+  return STANDARD_DEDUCTION[yearKey(STANDARD_DEDUCTION, year)][statusOf(filingStatus)];
+}
+function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome }) {
+  const status = statusOf(filingStatus);
+  const other = Math.max(0, Number(otherIncome) || 0);
   const base = legalForm === "s_corp" ? 0 : profit * 0.9235;
-  const wageBase = SS_WAGE_BASE[year] || SS_WAGE_BASE[Math.max(...Object.keys(SS_WAGE_BASE).map(Number))];
+  const wageBase = SS_WAGE_BASE[yearKey(SS_WAGE_BASE, year)];
   const owesSe = base >= SE_MINIMUM;
   const seTax = owesSe ? r2(Math.min(base, wageBase) * 0.124 + base * 0.029) : 0;
-  const addlMedicare = owesSe ? r2(Math.max(0, base - ADDL_MEDICARE_THRESHOLD) * 0.009) : 0;
+  const addlMedicare = owesSe ? r2(Math.max(0, base - ADDL_MEDICARE_BY_STATUS[status]) * 0.009) : 0;
   const halfSe = r2(seTax / 2);
-  const afterHalf = Math.max(0, profit - halfSe);
-  const qbi = r2(afterHalf * 0.2);
-  const federal = r2((afterHalf - qbi) * flatRate);
-  return { profit, seTax, halfSe, addlMedicare, qbi, federal, total: r2(federal + seTax + addlMedicare) };
+  const std = standardDeduction(year, status);
+  const qbiIncome = Math.max(0, profit - halfSe);
+  const beforeQbi = Math.max(0, other + profit - halfSe - std);
+  const qbi = r2(Math.min(qbiIncome * 0.2, beforeQbi * 0.2));
+  const withBiz = incomeTax(beforeQbi - qbi, { year, filingStatus: status });
+  const without = incomeTax(Math.max(0, other - std), { year, filingStatus: status });
+  const federal = r2(Math.max(0, withBiz - without));
+  const qt = QBI_THRESHOLD[yearKey(QBI_THRESHOLD, year)];
+  const qbiMayBeLimited = beforeQbi > (status === "mfj" ? qt.mfj : qt.single);
+  return { seTax, halfSe, addlMedicare, qbi, federal, total: r2(federal + seTax + addlMedicare), standardDeduction: std, qbiMayBeLimited };
+}
+export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0 } = {}) {
+  const profit = r2(Math.max(0, (Number(revenue) || 0) - (Number(deductible) || 0)));
+  if (legalForm === "c_corp") return { profit, seTax: 0, halfSe: 0, addlMedicare: 0, qbi: 0, federal: r2(profit * 0.21), total: r2(profit * 0.21), marginalRate: profit > 0 ? 0.21 : 0, standardDeduction: 0, qbiMayBeLimited: false };
+  const f = passThroughTax({ profit, year, legalForm, filingStatus, otherIncome });
+  // What one more dollar of deductions saves, measured rather than assumed (over $100).
+  const less = passThroughTax({ profit: Math.max(0, profit - 100), year, legalForm, filingStatus, otherIncome });
+  const marginalRate = profit > 0 ? Math.max(0, Math.round(((f.total - less.total) / Math.min(100, profit)) * 10000) / 10000) : 0;
+  return { profit, ...f, marginalRate };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
