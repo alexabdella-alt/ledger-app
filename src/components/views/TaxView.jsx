@@ -105,6 +105,8 @@ export default function TaxView() {
   const passThrough = legalForm !== "c_corp";
   const [otherDraft, setOtherDraft] = React.useState("");
   React.useEffect(() => { setOtherDraft(profile.otherIncome ? String(profile.otherIncome) : ""); }, [profile.otherIncome]);
+  const [shareDraft, setShareDraft] = React.useState("");   // C703 — a partner's / shareholder's share
+  React.useEffect(() => { setShareDraft(profile.ownerShareAssumed ? "" : String(Math.round(profile.ownerShare * 100))); }, [profile.ownerShare, profile.ownerShareAssumed]);
   const [healthDraft, setHealthDraft] = React.useState("");   // C700
   React.useEffect(() => { setHealthDraft(profile.healthPremiums ? String(profile.healthPremiums) : ""); }, [profile.healthPremiums]);
   const [wagesDraft, setWagesDraft] = React.useState("");
@@ -250,6 +252,12 @@ export default function TaxView() {
               </select>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+              {(legalForm === "partnership" || legalForm === "s_corp") && (<>
+                <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Your share of the profit (%):</label>
+                <input type="number" min="0" max="100" disabled={!loadOk} value={shareDraft} placeholder="100" onChange={e => setShareDraft(e.target.value)}
+                  onBlur={() => { const raw = String(shareDraft).trim(); const v = raw === "" ? null : Math.max(0, Math.min(100, Number(raw) || 0)); if (v !== (profile.ownerShareAssumed ? null : Math.round(profile.ownerShare * 100))) save({ ...taxState, filed: { ...filed, owner_share: v } }); }}
+                  style={{ width: 70, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
+              </>)}
               <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Your pay from a job this year:</label>
               <input type="number" min="0" disabled={!loadOk} value={wagesDraft} placeholder="0" onChange={e => setWagesDraft(e.target.value)}
                 onBlur={() => { const v = Math.max(0, Math.round(Number(wagesDraft) || 0)); if (v !== profile.ownWages || profile.carried) save({ ...taxState, filed: { ...filed, own_wages: v } }); }}
@@ -261,6 +269,7 @@ export default function TaxView() {
             </div>
             <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 8 }}>
               {profile.assumed ? "Until you choose, we assume you file single with no other income. " : profile.carried ? "Carried over from last year — change anything that's different this year. " : ""}
+              {(legalForm === "partnership" || legalForm === "s_corp") && profile.ownerShareAssumed ? "We've assumed you own all of the business — enter your share so the tax is on your part only. " : ""}
               {est.total < 0 ? "Your business lost money, which lowers the tax on your other income. " : ""}
               The federal figure is the extra tax this business adds, after the {fmt(est.standardDeduction)} standard deduction and the 20% small-business deduction — a paycheck's withholding already covers the tax on a job.
               {est.qbiMayBeLimited ? " At this income the 20% small-business deduction can be limited — your tax preparer will check." : ""}
@@ -341,7 +350,7 @@ export default function TaxView() {
           <div style={{ fontSize: 13, fontWeight: 600 }}>Deductions tracker · {year}</div>
           <div style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Est. tax savings ≈ <span style={{ color: "var(--sc-success)", fontWeight: 600 }}>{fmt(totalDeductible * est.marginalRate)}</span></div>
         </div>
-        {deductions.filter(d => !d.ask && d.line !== "none" && d.line !== "30").map(d => (
+        {deductions.filter(d => !d.ask && d.line !== "none" && d.line !== "30" && d.line !== "personal").map(d => (   // C703 — personal-return items have their own rows
           <div key={d.key} data-deduction-line={d.line} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label} <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 400 }}>· {d.line === "4" ? "line 4" : `line ${d.line}`}</span></div>
@@ -372,7 +381,10 @@ export default function TaxView() {
             <input type="number" inputMode="numeric" min="0" max="300" placeholder="sq ft" value={sqftDraft} onChange={e => setSqftDraft(e.target.value)}
               onBlur={() => { const v = Math.max(0, Math.min(300, Math.floor(Number(sqftDraft) || 0))); if (v !== homeOfficeSqft) save({ ...taxState, filed: { ...filed, home_office_sqft: v } }); }}
               style={{ width: 90, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", color: "var(--sc-text)", fontSize: 13 }} />
-            <div style={{ textAlign: "right", minWidth: 110, fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace" }}>{fmt(homeOfficeSqft ? Math.min(300, homeOfficeSqft) * 5 : 0)}</div>
+            <div style={{ textAlign: "right", minWidth: 110, fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace" }}>{fmt((deductions.find(d => d.line === "30") || {}).amount || 0)}</div>
+            {homeOfficeSqft > 0 && ((deductions.find(d => d.line === "30") || {}).amount || 0) < Math.min(300, homeOfficeSqft) * 5 && (
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", width: "100%" }}>Limited to what the business made after its other costs — the home office can't create a loss, and nothing carries over with this method.</div>
+            )}
           </div>
         )}
         {/* ★ C692 — the car by the IRS standard mileage rate (sole proprietor, Schedule C line 9). */}
@@ -413,8 +425,12 @@ export default function TaxView() {
                   onBlur={() => { const v = Math.max(0, Math.round(Number(healthDraft) || 0)); if (v !== profile.healthPremiums || profile.carried) save({ ...taxState, filed: { ...filed, health_premiums: v } }); }}
                   style={{ width: 120, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
                 {est.healthDeduction > 0 && <span style={{ fontSize: 12, color: "var(--sc-success)" }}>{fmt(est.healthDeduction)} counted in your estimate</span>}
+                {d.booked > 0 && !(profile.healthPremiums > 0) && <div style={{ fontSize: 11, color: "var(--sc-text-2)", width: "100%" }}>Your books show {fmt(d.booked)} paid from the business for health insurance — it counts here, on your personal return, not as a business cost.</div>}
                 <div style={{ fontSize: 11, color: "var(--sc-text-mut)", width: "100%" }}>It lowers your income tax (not self-employment tax), up to your business profit. It doesn't count for any month you could have joined a plan through a job — yours or a spouse's.</div>
               </div>
+            )}
+            {d.key === "retirement" && d.booked > 0 && (
+              <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginTop: 6 }}>Your books show {fmt(d.booked)} paid into your own retirement plan from the business — it counts on your personal return (it lowers income tax, not self-employment tax), and it's in your estimate.</div>
             )}
             {d.key === "retirement" && est.retirement && est.retirement.sep > 0 && (
               <div data-retirement-room style={{ fontSize: 12, color: "var(--sc-text)", marginTop: 6 }}>

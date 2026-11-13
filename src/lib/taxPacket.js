@@ -33,7 +33,7 @@ export function taxPacketRows({ year, companyName = "", legalForm = "", profile 
   add("Income", "Profit in the books", est.net, "income less every expense, before tax rules");
 
   for (const d of deductions || []) {
-    if (d.ask || d.line === "none" || d.line === "30") continue;
+    if (d.ask || d.line === "none" || d.line === "30" || d.line === "personal") continue;   // C703
     if (!(Math.abs(Number(d.amount) || 0) >= 0.005 || Math.abs(Number(d.raw) || 0) >= 0.005)) continue;
     const notes = [d.form, d.hint ? `from: ${d.hint}` : ""];
     if (d.notDeductible > 0.004) notes.push(`${money(d.notDeductible)} of ${money(d.raw)} spent doesn't count (meals at 50%)`);
@@ -46,7 +46,9 @@ export function taxPacketRows({ year, companyName = "", legalForm = "", profile 
 
   if (profile.homeOfficeSqft > 0 && legalForm !== "c_corp" && legalForm !== "s_corp" && legalForm !== "partnership") {
     add("Home office", "Square feet used only for work", profile.homeOfficeSqft, "IRS simplified method: $5 a square foot, up to 300");
-    add("Home office", "Deduction", Math.min(300, profile.homeOfficeSqft) * 5);
+    const ho = (deductions || []).find((d) => d.line === "30");   // C703 — capped at what the business made
+    const full = Math.min(300, profile.homeOfficeSqft) * 5;
+    add("Home office", "Deduction", ho ? ho.amount : 0, ho && ho.amount < full ? `limited to the business's profit after its other costs (${money(full)} before the limit; nothing carries over)` : "");
   }
   const car = (deductions || []).find((d) => d.line === "9" && d.mileage);
   if (car) {

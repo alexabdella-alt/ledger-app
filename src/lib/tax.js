@@ -33,14 +33,15 @@ export function ytdNetIncome(invoices, year = new Date().getFullYear()) {
 // for last year's 4th quarter uses last year's answers (profileForYear). `carried` says which.
 // `own_wages` (the owner's pay from a job) is separate from other household income because it
 // uses up the Social Security wage base.
+const revenueFor = (invoices, year) => ytdNetIncome(invoices, year).revenue;   // C703 — caps the home office
 export function taxProfileFrom(filed = {}, fallback = {}) {
   const f = filed || {}, b = fallback || {};
   const pick = (k) => (f[k] != null && f[k] !== "" ? { v: f[k], carried: false } : b[k] != null && b[k] !== "" ? { v: b[k], carried: true } : { v: null, carried: false });
-  const st = pick("filing_status"), oi = pick("other_income"), ow = pick("own_wages"), ho = pick("home_office_sqft"), hp = pick("health_premiums");   // C700
+  const st = pick("filing_status"), oi = pick("other_income"), ow = pick("own_wages"), ho = pick("home_office_sqft"), hp = pick("health_premiums"), sh = pick("owner_share");   // C700, C703
   // C692 — business miles are this year's only (never carried)
   const miles = Math.max(0, Math.floor(Number(f.business_miles) || 0));
   const after = f.business_miles_after_change;
-  return { homeOfficeSqft: Number(ho.v) || 0, filingStatus: st.v || "single", otherIncome: Math.max(0, Number(oi.v) || 0), ownWages: Math.max(0, Number(ow.v) || 0), healthPremiums: Math.max(0, Number(hp.v) || 0),
+  return { homeOfficeSqft: Number(ho.v) || 0, filingStatus: st.v || "single", otherIncome: Math.max(0, Number(oi.v) || 0), ownWages: Math.max(0, Number(ow.v) || 0), healthPremiums: Math.max(0, Number(hp.v) || 0), ownerShare: sh.v == null ? 1 : Math.min(1, Math.max(0, Number(sh.v) / 100)), ownerShareAssumed: sh.v == null,
     businessMiles: miles, businessMilesAfterChange: after == null || after === "" ? null : Math.max(0, Math.floor(Number(after) || 0)),
     assumed: !st.v, carried: st.carried || oi.carried || ow.carried || hp.carried };
 }
@@ -84,10 +85,15 @@ export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi =
 const booksCoverYear = (invoices, year, cutoffDate) => (!cutoffDate || String(cutoffDate) <= `${year}-01-01`)
   && (invoices || []).some((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at
     && String(i.date || "").startsWith(`${year}-`) && /^[4-8]\d{3}$/.test(String(i.gl_code || "")));
-export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, healthPremiums = 0, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null, cutoffDate = null } = {}) {
+export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, healthPremiums = 0, ownerShare = 1, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null, cutoffDate = null } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
-  const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692
-  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, healthPremiums });   // C690, C693, C700
+  const mileageRate = businessMiles > 0 && (!legalForm || legalForm === "sole_prop");   // C703
+  const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, grossIncome: revenueFor(invoices, year), depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices, mileageRate }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692, C703
+  // C703 — the owner's health insurance / retirement paid from the business count on the personal
+  // return; a figure typed on the Taxes screen wins over what the books show (never both)
+  const health = healthPremiums > 0 ? healthPremiums : (sc.ownerHealth || 0);
+  const ownerRet = sc.ownerRetirement || 0;
+  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, healthPremiums: health, retirement: ownerRet, ownerShare });   // C690, C693, C700, C703
   const paid = Number(estPaid) || 0;
   return { revenue, expenses, net, taxableNet: Math.max(0, f.profit), deductible: sc.deductibleTotal, notDeductible: sc.notDeductible,
     federal: f.federal, seTax: r2c(f.seTax + (f.addlMedicare || 0)), addlMedicare: f.addlMedicare || 0, qbi: f.qbi,   // C685 — self-employment tax includes the 0.9% over $200k
@@ -100,7 +106,7 @@ export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid =
   function retirementPlan() {
     if (!["", "sole_prop", "partnership"].includes(legalForm || "") || !(f.profit > 0)) return null;
     const room = retirementRoom({ profit: f.profit, halfSe: f.halfSe, year });
-    const saves = (amt) => r2c(Math.max(0, f.total - federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, healthPremiums, retirement: amt }).total));
+    const saves = (amt) => r2c(Math.max(0, f.total - federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, healthPremiums: health, ownerShare, retirement: ownerRet + amt }).total));
     // C698 — employees on the books: a Solo 401(k) is for an owner with no employees, and a SEP
     // must give eligible employees the same percentage; a job's 401(k) shares the deferral limit
     const hasEmployees = sc.rows.some((r) => r.line === "26" && r.spent > 0);
@@ -115,8 +121,10 @@ export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid =
     }
     const p = priorProfile;
     const prev = ytdNetIncome(invoices, year - 1);
-    const psc = scheduleCBreakdown(invoices, year - 1, { chart, legalForm, homeOfficeSqft: p.homeOfficeSqft || 0, depreciation: assets ? taxDepreciationFor({ ...assets, year: year - 1, ledger: invoices }) : null, mileage: { miles: p.businessMiles || 0, milesAfterChange: p.businessMilesAfterChange ?? null } });
-    const pf = federalEstimate({ revenue: prev.revenue, deductible: psc.deductibleTotal, year: year - 1, legalForm, filingStatus: p.filingStatus || "single", otherIncome: p.otherIncome || 0, ownWages: p.ownWages || 0, healthPremiums: p.healthPremiums || 0 });
+    const pMileage = (p.businessMiles || 0) > 0 && (!legalForm || legalForm === "sole_prop");
+    const psc = scheduleCBreakdown(invoices, year - 1, { chart, legalForm, homeOfficeSqft: p.homeOfficeSqft || 0, grossIncome: prev.revenue, depreciation: assets ? taxDepreciationFor({ ...assets, year: year - 1, ledger: invoices, mileageRate: pMileage }) : null, mileage: { miles: p.businessMiles || 0, milesAfterChange: p.businessMilesAfterChange ?? null } });
+    const pf = federalEstimate({ revenue: prev.revenue, deductible: psc.deductibleTotal, year: year - 1, legalForm, filingStatus: p.filingStatus || "single", otherIncome: p.otherIncome || 0, ownWages: p.ownWages || 0,
+      healthPremiums: (p.healthPremiums || 0) > 0 ? p.healthPremiums : (psc.ownerHealth || 0), retirement: psc.ownerRetirement || 0, ownerShare: p.ownerShare == null ? ownerShare : p.ownerShare });
     const lastYearAgi = (p.otherIncome || 0) + (p.ownWages || 0) + pf.profit - pf.halfSe - (pf.healthDeduction || 0);   // C700
     const sh = safeHarborQuarter({ thisYear: f.total, lastYear: pf.total, lastYearAgi, filingStatus });   // C698 — this year's filing status decides the MFS threshold
     return { quarterly: sh.perQuarter, safeHarbor: { ...sh, lastYearTax: Math.max(0, pf.total) } };
@@ -274,16 +282,19 @@ export function nextUrgentDeadline(now = new Date(), withinDays = 30, { filed = 
 // technology_software 6500, office_supplies 6600, insurance 6700,
 // professional_services 6800, depreciation_amortization 6900,
 // miscellaneous_expense 7100, interest_expense 8000.
-export function deductionBreakdown(invoices, year = new Date().getFullYear(), getAccountByRole = null, { chart = null, homeOfficeSqft = 0, legalForm = "", assets = null, businessMiles = 0, businessMilesAfterChange = null } = {}) {
+export function deductionBreakdown(invoices, year = new Date().getFullYear(), getAccountByRole = null, { chart = null, homeOfficeSqft = 0, legalForm = "", assets = null, businessMiles = 0, businessMilesAfterChange = null, healthPremiums = 0 } = {}) {
   // ★ C678 — EVERY spending account, by its Schedule C line and the deductible share of it
   // (lib/taxGuidance.js). The twelve fixed categories left Food Cost, Repairs, Payroll taxes,
   // Bank fees, Vehicle, Contractors and every category an owner added out of the total. The
   // chart comes from the caller; without one, the roles the caller can resolve are used.
   const known = chart || (getAccountByRole ? Object.keys(ROLE_HINTS).map((r) => { const x = getAccountByRole(r); return x ? { ...x, system_role: x.system_role || r } : null; }).filter(Boolean) : []);
-  const sc = scheduleCBreakdown(invoices, year, { chart: known, homeOfficeSqft, legalForm, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692
+  const mileageRate = businessMiles > 0 && (!legalForm || legalForm === "sole_prop");   // C703
+  const sc = scheduleCBreakdown(invoices, year, { chart: known, homeOfficeSqft, legalForm, grossIncome: revenueFor(invoices, year), depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices, mileageRate }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692, C703
   const rows = sc.rows.map((r) => ({ key: r.line, line: r.line, label: r.label, form: r.form, amount: r.deductible, raw: r.spent,
     categorized: r.spent > 0 || r.deductible > 0, hint: r.accounts.join(", "), notDeductible: r.taxAdjusted ? 0 : r2(r.spent - r.deductible), taxAdjusted: !!r.taxAdjusted, mileage: r.mileage || null }));
-  const personal = PERSONAL_RETURN_ITEMS.map((p) => ({ ...p, amount: 0, categorized: false, ask: true }));
+  // C703 — what the books show the business paid for the owner's own health insurance / retirement
+  const personal = PERSONAL_RETURN_ITEMS.map((p) => ({ ...p, amount: 0, categorized: false, ask: true,
+    booked: p.key === "health" ? (sc.ownerHealth || 0) : p.key === "retirement" ? (sc.ownerRetirement || 0) : 0 }));
   return [...rows, ...personal];
 }
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;

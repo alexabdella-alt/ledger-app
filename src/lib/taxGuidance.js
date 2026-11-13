@@ -47,9 +47,12 @@ export const LINES = {
   "26":  { form: "Wages (line 26)", plain: "Wages" },
   "27a": { form: "Other expenses (line 27a)", plain: "Other business costs" },
   "30":  { form: "Business use of home (line 30)", plain: "Home office" },
+  // C703 — an owner's own health insurance or retirement savings paid from the business: claimed on
+  // the PERSONAL return (Schedule 1), not Schedule C — so it doesn't lower self-employment tax
+  personal: { form: "Personal return (Schedule 1), not the business", plain: "On your personal return" },
   "none": { form: "Not deductible", plain: "Not deductible" },
 };
-const LINE_ORDER = ["4", "8", "9", "10", "11", "13", "14", "15", "16b", "17", "18", "19", "20a", "20b", "21", "22", "23", "24a", "24b", "25", "26", "27a", "30"];
+const LINE_ORDER = ["4", "8", "9", "10", "11", "13", "14", "15", "16b", "17", "18", "19", "20a", "20b", "21", "22", "23", "24a", "24b", "25", "26", "27a", "30", "personal"];
 
 // Role → line (and share, where it is not 100%). Every expense role the app creates.
 const ROLE_LINE = {
@@ -96,10 +99,14 @@ const NAME_LINE = [
   // C694 — but "Electric Repairs" / "Electric Contractor" are services (a 1099) and an "Electric
   // Vehicle" is the car: those words keep the name off the utility line
   [/^(?![\s\S]*\b(repairs?|contract(or|ors)?|install\w*|vehicles?|car|truck|maintenance|labor|labour)\b)[\s\S]*(\bgas (&|and) electric\b|\bnatural gas\b|\belectric(ity)?\b|\butilit)/i, "25"],
-  [/\bvehicle\b|\bcar\b|\btruck\b|\bfuel\b|\bgas(oline)?\b|\bmileage\b|\bparking\b|\btolls?\b/i, "9"],
+  // C703 — QuickBooks' own names: "Automobile", "Auto Expense", "Auto Insurance" (car insurance is line 9 too)
+  [/\bvehicle\b|\bcar\b|\btruck\b|\bauto(mobile)?s?\b|\bfuel\b|\bgas(oline)?\b|\bmileage\b|\bparking\b|\btolls?\b/i, "9"],
   [/\bcommissions?\b|\bmerchant\b|\bprocessing fees?\b|\bplatform fees?\b|\bpayment processing\b/i, "10"],
   [/\bcontract(or|ors| labor)\b|\bfreelanc|\bsubcontract/i, "11"],
   [/\bdepreciat|\bamortiz|\bsection 179\b/i, "13"],
+  // C703 — health insurance and retirement plans: whose? decided in scheduleCBreakdown (owner_*)
+  [/\bhealth\b[\s\S]*\b(insurance|premiums?|plan)\b|\bmedical (insurance|plan)\b/i, "owner_health"],
+  [/\b(sep|simple)[- ]?ira\b|\bsolo ?401|\b401\(?k\)?\b|\bretirement\b|\bpension\b/i, "owner_retirement"],
   [/\bbenefits?\b/i, "14"],
   [/\binsurance\b/i, "15"],
   [/\binterest\b/i, "16b"],
@@ -168,7 +175,12 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // the IRS standard mileage rate, which REPLACES the car costs booked to line 9 (gas, repairs,
 // insurance…) — except parking and tolls, which are deducted on top. The booked figure is kept
 // (`mileage.actual`) so the screen can show both methods.
-export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(), { chart = [], homeOfficeSqft = 0, legalForm = "", depreciation = null, mileage = null } = {}) {
+// C703 — `grossIncome` (the year's income) caps the simplified home office (Rev. Proc. 2013-13
+// §4.03: no more than gross income less the other business expenses; nothing carries over).
+// An owner's health insurance / retirement accounts: with employees on the books they are the
+// employees' benefits (lines 14 / 19); otherwise, for a sole proprietor or partner, the owner's
+// own — not Schedule C (`personal`), returned as `ownerHealth` / `ownerRetirement` for the estimate.
+export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(), { chart = [], homeOfficeSqft = 0, legalForm = "", depreciation = null, mileage = null, grossIncome = null } = {}) {
   const mileageOn = !!(mileage && Number(mileage.miles) > 0) && (!legalForm || legalForm === "sole_prop");
   let carCostsReplaced = 0;
   const acct = new Map((chart || []).map((a) => [String(a.code), a]));
@@ -179,6 +191,11 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
     L.spent += spent; L.deductible += deductible; if (accountName) L.accounts.add(accountName);
     lines.set(line, L);
   };
+  const passThroughOwner = !legalForm || legalForm === "sole_prop" || legalForm === "partnership";
+  const hasEmployees = (invoices || []).some((i) => inScope(i) && /^[5-8]\d{3}$/.test(String(i.gl_code || "")) && (() => {
+    const a = acct.get(String(i.gl_code)) || {}; return lineForAccount({ code: i.gl_code, name: a.name || i.gl_name, role: a.system_role }).line === "26";
+  })());
+  let ownerHealth = 0, ownerRetirement = 0;
   for (const i of invoices || []) {
     if (!inScope(i)) continue;
     const code = String(i.gl_code || "");
@@ -187,6 +204,11 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
     const signed = i.debit_credit === "credit" ? -(Number(i.amount) || 0) : (Number(i.amount) || 0);   // C489 — a correction subtracts
     let { line, share } = lineForAccount({ code, name: a.name || i.gl_name, role: a.system_role, legalForm });   // C691 — the entity decides state income tax
     if (line === "travel_split") ({ line, share } = travelSplitFor(i));
+    if (line === "owner_health" || line === "owner_retirement") {   // C703
+      const health = line === "owner_health";
+      if (hasEmployees || !passThroughOwner) { line = health ? "14" : "19"; share = 1; }
+      else { if (health) ownerHealth += signed; else ownerRetirement += signed; line = "personal"; share = 0; }
+    }
     if (mileageOn && line === "9" && !isParkingOrToll(i, a.name || i.gl_name)) {   // C692 — replaced by the mileage rate
       carCostsReplaced += signed; add(line, signed, 0, a.name || i.gl_name); continue;
     }
@@ -209,7 +231,11 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
     lines.set("9", L);
   }
   // Home office — a sole proprietor's (or single-member LLC's) Schedule C line 30.
-  const home = legalForm && legalForm !== "sole_prop" ? 0 : homeOfficeDeduction(homeOfficeSqft);
+  let home = legalForm && legalForm !== "sole_prop" ? 0 : homeOfficeDeduction(homeOfficeSqft);
+  if (home > 0 && grossIncome != null) {   // C703 — never more than the business made after its other costs
+    const others = [...lines.values()].filter((L) => L.line !== "personal").reduce((s, L) => s + L.deductible, 0);
+    home = r2(Math.max(0, Math.min(home, Number(grossIncome) - others)));
+  }
   if (home > 0) add("30", home, home, null);
 
   const rows = [...lines.values()]
@@ -218,8 +244,8 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
     .filter((r) => Math.abs(r.spent) >= 0.005 || Math.abs(r.deductible) >= 0.005)
     .sort((x, y) => (x.line === "none") - (y.line === "none") || LINE_ORDER.indexOf(x.line) - LINE_ORDER.indexOf(y.line));
   const deductibleTotal = r2(rows.reduce((s, r) => s + r.deductible, 0));
-  const notDeductible = r2(rows.reduce((s, r) => s + (r.taxAdjusted ? 0 : Math.max(0, r.spent - r.deductible)), 0));   // C683 — line 13's tax figure can exceed the books'
-  return { rows, deductibleTotal, notDeductible, homeOffice: home };
+  const notDeductible = r2(rows.reduce((s, r) => s + (r.taxAdjusted || r.line === "personal" ? 0 : Math.max(0, r.spent - r.deductible)), 0));   // C703 — personal-return items aren't "not deductible"   // C683 — line 13's tax figure can exceed the books'
+  return { rows, deductibleTotal, notDeductible, homeOffice: home, ownerHealth: r2(Math.max(0, ownerHealth)), ownerRetirement: r2(Math.max(0, ownerRetirement)), hasEmployees };
 }
 
 // Personal-return items for a self-employed owner — named, not "tag these".
@@ -326,8 +352,12 @@ function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ow
   const qbiMayBeLimited = beforeQbi > (status === "mfj" ? qt.mfj : qt.single);
   return { seTax, halfSe, addlMedicare, qbi, federal, total: r2(federal + seTax + addlMedicare), standardDeduction: std, qbiMayBeLimited, healthDeduction: r2(health) };
 }
-export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0, ownWages = 0, retirement = 0, healthPremiums = 0 } = {}) {
-  const profit = r2((Number(revenue) || 0) - (Number(deductible) || 0));
+// C703 — `ownerShare` (0–1): a partner's or S corporation shareholder's share of the profit. Each
+// owner pays tax on their share (Schedule K-1), not the whole — two equal partners were each
+// shown the tax on all of it. A sole proprietor's share is all of it.
+export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0, ownWages = 0, retirement = 0, healthPremiums = 0, ownerShare = 1 } = {}) {
+  const share = (legalForm === "partnership" || legalForm === "s_corp") ? Math.min(1, Math.max(0, Number(ownerShare) || 0)) : 1;
+  const profit = r2(((Number(revenue) || 0) - (Number(deductible) || 0)) * (legalForm === "c_corp" ? 1 : share));
   if (legalForm === "c_corp") { const p = Math.max(0, profit); return { profit, seTax: 0, halfSe: 0, addlMedicare: 0, qbi: 0, federal: r2(p * 0.21), total: r2(p * 0.21), marginalRate: p > 0 ? 0.21 : 0, standardDeduction: 0, qbiMayBeLimited: false }; }
   const f = passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages, retirement, healthPremiums });
   // What $100 more of deductions saves, measured rather than assumed.
@@ -398,12 +428,17 @@ const monthsIn = (fromYmd, months, year) => {
 // voided or reversed (C600's sourcePurchaseLive), gets no tax deduction; and a posted depreciation
 // row whose entry was later voided is not subtracted (the books no longer carry it). `ledger` is
 // the flattened ledger; without it, nothing can be checked and every asset counts (as before).
-export function taxDepreciationFor({ assets = [], posted = [], year = new Date().getFullYear(), ledger = null } = {}) {
+// C703 — `mileageRate`: the owner deducts the car by the standard mileage rate, which already
+// includes depreciation (Rev. Proc. 2019-46) — a vehicle gets no tax depreciation on top (its
+// book depreciation is still taken out of line 13). Vehicles are read from the asset's words.
+export const VEHICLE_ASSET = /\b(car|cars|truck|van|suv|vehicle|auto(mobile)?|pickup|sedan|minivan|tesla|toyota|honda|ford|chevrolet|chevy|nissan|subaru|jeep|bmw|mercedes|audi|kia|hyundai|rivian|lexus|volkswagen|vw|dodge|ram|gmc)\b/i;
+export function taxDepreciationFor({ assets = [], posted = [], year = new Date().getFullYear(), ledger = null, mileageRate = false } = {}) {
   let tax = 0;
   const live = (id) => !ledger || sourcePurchaseLive(ledger, id);
   const held = (assets || []).filter((a) => a && !a.deleted_at && live(a.source_journal_entry_id));
   for (const a of held) {
     if (!(Number(a.cost) > 0) || !a.in_service_date) continue;
+    if (mileageRate && VEHICLE_ASSET.test(`${a.description || ""} ${a.vendor || ""}`)) continue;   // C703
     const cost = Number(a.cost), rate = bonusRateFor(a.in_service_date);
     const inYear = Number(String(a.in_service_date).slice(0, 4));
     const life = Math.max(1, Number(a.useful_life_months) || 60);

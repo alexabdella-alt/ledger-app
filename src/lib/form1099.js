@@ -92,7 +92,8 @@ const LINE_KIND = {
   "13": PAYMENT_KIND.NOT_REPORTABLE, "14": PAYMENT_KIND.NOT_REPORTABLE, "15": PAYMENT_KIND.NOT_REPORTABLE, "16b": PAYMENT_KIND.NOT_REPORTABLE,
   "19": PAYMENT_KIND.NOT_REPORTABLE, "23": PAYMENT_KIND.NOT_REPORTABLE, "24a": PAYMENT_KIND.NOT_REPORTABLE, "24b": PAYMENT_KIND.NOT_REPORTABLE,
   "25": PAYMENT_KIND.NOT_REPORTABLE, "26": PAYMENT_KIND.NOT_REPORTABLE, none: PAYMENT_KIND.NOT_REPORTABLE,
-  travel_split: PAYMENT_KIND.NOT_REPORTABLE,   // C694 — "Meals & Entertainment": meals, shows and trips are not 1099 payments
+  travel_split: PAYMENT_KIND.NOT_REPORTABLE,
+  owner_health: PAYMENT_KIND.NOT_REPORTABLE, owner_retirement: PAYMENT_KIND.NOT_REPORTABLE, personal: PAYMENT_KIND.NOT_REPORTABLE,   // C703 — insurers and plan custodians   // C694 — "Meals & Entertainment": meals, shows and trips are not 1099 payments
 };
 const SERVICE_WORDS = /\b(service|services|cleaning|janitorial|laundry|consult\w*|design\w*|edit(ing|or|ors)?|freelanc\w*|contractor|labor|labour|coaching|photograph\w*|videograph\w*|management|install\w*|maintenance|landscap\w*|tutor\w*|writing|writer)\b/i;
 export function paymentKindForAccount({ role = null, name = "", code = "" } = {}) {
