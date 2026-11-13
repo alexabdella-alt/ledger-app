@@ -5,7 +5,7 @@ import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
 import { supabase, getAuthHeaders } from "./lib/supabase";
-import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, shouldCapitalize, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
+import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, shouldCapitalize, VIEW_ONLY_UPLOAD_COPY, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling, settledBases, categoryForCode } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
@@ -5464,6 +5464,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   const handleUniversalUpload = (files) => {
     if (!files?.length) return;
+    // ★ C681 — a view-only teammate cannot record entries (migration 098 refuses it), so every file
+    // they drop would end in "couldn't save". Said once, up front, and nothing is queued.
+    if (isViewer) { showNotification(VIEW_ONLY_UPLOAD_COPY, "error"); return; }
     // Size + type guard per file (CR-34); reject oversized/wrong-type before queueing.
     const checked = Array.from(files).map(f => ({ f, v: validateUpload(f, "universal") }));
     const validFiles = checked.filter(c => c.v.ok).map(c => c.f);

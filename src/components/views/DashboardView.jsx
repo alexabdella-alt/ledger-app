@@ -1,4 +1,5 @@
 import React from "react";
+import { VIEW_ONLY_UPLOAD_COPY } from "../../lib/constants";
 import { heldStatementQuestions } from "../../lib/statementLifecycle";
 import { keepUnanswered } from "../../lib/uploadQueueTile";
 import { CHECKLIST_COPY, BUSINESS_MODAL_INTRO, BUSINESS_SAVE_HINT, DROPZONE_COPY } from "../../lib/firstRun";
@@ -497,6 +498,10 @@ export default function DashboardView() {
                 @keyframes scDropPulse{0%,100%{box-shadow:0 0 0 4px rgba(79,70,229,0.10),0 10px 32px rgba(79,70,229,0.16)}50%{box-shadow:0 0 0 9px rgba(79,70,229,0.05),0 10px 36px rgba(79,70,229,0.24)}}
                 .sc-dropzone.dragging{ animation:scDropPulse 1.3s ease-in-out infinite; }
               `}</style>
+              {/* C681 — a view-only teammate sees why there's no drop box, not one that fails */}
+              {isViewer ? (
+                <div data-view-only-upload style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, padding:"20px 24px", marginBottom:24, fontSize:13, color:"var(--sc-text-2)" }}>{VIEW_ONLY_UPLOAD_COPY}</div>
+              ) : (
               <div
                 id="universal-upload-zone"
                 className={`sc-dropzone${universalDragOver?" dragging":""}`}
@@ -526,6 +531,7 @@ export default function DashboardView() {
                   ))}
                 </div>
               </div>
+              )}
 
 
               {/* ── UPLOAD QUEUE ── */}
