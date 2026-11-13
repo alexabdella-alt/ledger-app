@@ -27,7 +27,7 @@ describe("By Vendor", () => {
   it("the screen drills by that key and shows the row's own total", () => {
     const v = readFileSync("src/components/views/ReportsView.jsx", "utf8");
     expect(v).toMatch(/setDrill\(\{scope:"vendor",value:v\.key,label:v\.name,total:v\.total\}\)/);
-    expect(v).toMatch(/if \(drill\.scope==="vendor"\)\s+return filtered\.filter\(i=>\(glIsExpense\(i\.gl_code\) \|\| glIsExpense\(i\.secondary_gl_code\)\) && vendorKeyOf\(i\)===drill\.value\)/);
+    expect(v).toMatch(/if \(drill\.scope==="vendor"\)\s+return \(basisMode === "cash" \? cashPL : filtered\)\.filter\(i=>plLegs\(i, glIsExpense\)\.length && vendorKeyOf\(i\)===drill\.value\)/);   // C716 — the rows the total counted
     expect(v).toMatch(/: drill\.total != null \? drill\.total/);
   });
 });

@@ -25,7 +25,7 @@ describe("C488", () => {
     expect(computeVendorTotals(rows)).toHaveLength(2);   // without the alias they stay apart — no string surgery
   });
   it("the report and the AI ctx hand the alias index in", () => {
-    expect(fs.readFileSync("src/components/views/ReportsView.jsx", "utf8")).toMatch(/computeVendorTotals\(filtered, \{\}, \{ aliasIndex \}\)/);
+    expect(fs.readFileSync("src/components/views/ReportsView.jsx", "utf8")).toMatch(/computeVendorTotals\(basisMode === "cash" \? cashPL : filtered, \{\}, \{ aliasIndex \}\)/);
     expect(fs.readFileSync("src/lib/aiTools.js", "utf8")).toMatch(/computeVendorTotals\(await ctx\.getLedger\(\), \{ from, to \}, \{ aliasIndex: ctx\.aliasIndex \|\| null \}\)/);
     expect(fs.readFileSync("src/lib/ai.js", "utf8")).toMatch(/cashBalance, cardsOwed, payFromLabels, taxAssets, taxProfile, taxProfilePrev, cutoffDate, estPaidThisYear, estPaidPrevYear, anomalies, recurring, aliasIndex,/);   // C672 — cardsOwed rides along
     expect(fs.readFileSync("src/App.jsx", "utf8")).toMatch(/getAccountByRole, recurring, aliasIndex,\s*\n\s*onToolCall:/);

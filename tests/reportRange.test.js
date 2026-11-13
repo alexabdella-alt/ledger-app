@@ -49,7 +49,7 @@ describe("inReportRange", () => {
   });
   it("Reports reads it, and no getMonth() on a parsed entry date remains there", () => {
     const src = fs.readFileSync("src/components/views/ReportsView.jsx", "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
-    expect(src).toMatch(/const filterByRange = \(invList\) => invList\.filter\(inv => inReportRange\(inv\.date, reportRange, \{ from: reportDateFrom, to: reportDateTo \}\)\);/);
+    expect(src).toMatch(/const filterByRange = \(invList\) => invList\.filter\(inv => inReportRange\(inv\.date, reportRange, \{ from: reportDateFrom, to: reportDateTo, fiscalYearEnd: fyEnd \}\)\);/);
     expect(src).not.toMatch(/new Date\(inv\.date\)/);
   });
 });

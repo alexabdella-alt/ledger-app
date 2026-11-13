@@ -190,7 +190,7 @@ describe("★★ a KNOWN LIMIT, pinned so it cannot become a surprise", () => {
     const all = computeNetIncome(inv);
     const s = fiscalYearSplit(inv, { asOf: "2026-08-30", fiscalYearEnd: "12-31" });
     expect(all).toBe(0);                              // revenue 100 − expenses 100
-    expect(s.priorNet + s.currentNet).toBe(-100);     // the divergence, stated
+    expect(s.priorNet + s.currentNet).toBe(0);        // C716 — the limit is closed: both legs, both derivations
   });
 });
 

@@ -87,7 +87,7 @@ describe("an open bill is one with an A/P leg", () => {
     const app = strip(readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8"));
     expect(ct).toMatch(/computeAP\([^)]*apCode: codes\.ap/);
     expect(ai).toMatch(/computeAP\([^)]*apCode/);
-    expect(rep).toMatch(/computeAP\(live, \{ now: monthEnd, apCode \}\)/);
+    expect(rep).toMatch(/computeAP\(asAtEnd, \{ now: monthEnd, apCode \}\)/);
     expect(app).toMatch(/apCode: rc\("accounts_payable"\)/);
     // C496 — the SECOND buildMonthlyReport caller, the panel on Reports, never passed the code
     // and this pin never asked it to; and computeKPIs now takes both codes from both callers.

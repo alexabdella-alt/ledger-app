@@ -6,7 +6,7 @@
 // "unadjusted" toggle that includes voided). Uses the shared GL helpers.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { glIsRevenue, glIsExpense, isCancelledOrCancelling, settledBases, entryBaseOf } from "./gl";
+import { glIsRevenue, glIsExpense, isCancelledOrCancelling, settledBases, entryBaseOf, isLiveSettlement, isSettlementEntry } from "./gl";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format";
 import { applyAlias } from "./vendorAlias.js";
 
@@ -127,7 +127,7 @@ function plMovement(invoices, range, match) {
 // two-leg walk behind computeRevenue/Expenses, computeCategoryTotals, computeVendorTotals, and
 // computeBurnRate — so an intra-P&L RECLASS (Dr 6200 / Cr 6100) nets in ALL of them (no
 // primary-only double-count) and they stay divergent-twin-free (Σvendors === Σcategories === total).
-function plLegs(i, match) {
+export function plLegs(i, match) {
   const out = [];
   const amt = num(i && i.amount);
   if (!i || amt === 0) return out;
@@ -224,8 +224,12 @@ export function fiscalYearSplit(invoices, { asOf, fiscalYearEnd = "12-31", cutof
     // Net-income contribution of this row's P&L leg, signed by debit/credit so a reversal/void
     // nets to zero — keeps the RE split (Balance Sheet) tied to computeNetIncome (Income Statement).
     const amt = num(i.amount); if (amt === 0) continue;
-    const leg = legSigned(i.gl_code, legPrimaryIsDebit(i), amt);
-    const signed = isRev(i) ? leg : isExp(i) ? -leg : 0;
+    // ★ C716 — BOTH P&L legs (`plLegs`, as computeNetIncome counts them): a reclass between two
+    // P&L accounts (Dr 6200 / Cr 6100) counted only its first line here, so the balance sheet's
+    // net income moved by the reclass while the Income Statement's didn't — and it went out of balance.
+    let signed;
+    if (i.gl_code) signed = plLegs(i, glIsRevenue).reduce((s, l) => s + l.signed, 0) - plLegs(i, glIsExpense).reduce((s, l) => s + l.signed, 0);
+    else { const leg = legSigned(i.gl_code, legPrimaryIsDebit(i), amt); signed = isRev(i) ? leg : isExp(i) ? -leg : 0; }
     if (signed === 0) continue;
     if (fyStart && String(i.date || "") < fyStart) priorNet += signed; else currentNet += signed;
   }
@@ -276,6 +280,51 @@ export function computeVendorTotals(invoices, range = {}, { side = "expense", al
     if (String(i.date || "") > v.last_date) { v.last_date = String(i.date || ""); v.vendor = i.vendor || v.vendor; v.gl_code = i.gl_code; v.gl_name = i.gl_name; }
   }
   return Object.values(map).map(({ _entries, ...v }) => ({ ...v, total: r2(v.total) })).sort((a, b) => b.total - a.total);
+}
+
+// ★ C716 — THE CASH-BASIS P&L, DATED WHEN THE MONEY MOVED. Cash basis kept each bill or invoice
+// at its OWN date once its flag read paid, so a January bill paid in February showed as January
+// spending — and only after February's payment, rewriting a signed January. A line of an entry that
+// put money on account (an A/P, A/R or accrued-liability leg) now counts when each LIVE payment
+// linked to it (`import_metadata.payment_for`, §9) was made, in proportion to what was paid. A line
+// with no such leg (paid at once — bank, card, cash, the owner's money; depreciation) counts on its
+// own date. A correction pair is kept together, at its own dates, so it cancels (C481). Unpaid → nothing.
+export function cashBasisPLRows(invoices = [], { apCode = null, arCode = null, accruedCode = null } = {}) {
+  const codes = [apCode, arCode, accruedCode].filter((c) => c != null).map(String);
+  const live = (invoices || []).filter(isLiveEntry);
+  const byBase = new Map();
+  for (const i of live) { const b = entryBaseOf(i); if (!byBase.has(b)) byBase.set(b, []); byBase.get(b).push(i); }
+  const onAccount = (c) => c != null && codes.includes(String(c));
+  // what each entry put on account (the total its payments clear)
+  const owedOf = (rows) => {
+    if (rows.length === 1 && !String(rows[0].id).includes("_")) {
+      const r = rows[0];
+      return onAccount(r.secondary_gl_code) || onAccount(r.gl_code) ? num(r.amount) : 0;
+    }
+    return rows.filter((r) => onAccount(r.gl_code)).reduce((s, r) => s + num(r.amount), 0);
+  };
+  // the live payments, per entry they pay for
+  const paid = new Map();
+  for (const [base, rows] of byBase) {
+    const first = rows[0];
+    if (!isLiveSettlement(first)) continue;
+    const target = String(first.import_metadata.payment_for);
+    const amount = rows.length === 1 && !String(first.id).includes("_") ? num(first.amount) : rows.filter((r) => onAccount(r.gl_code)).reduce((s, r) => s + num(r.amount), 0);
+    if (!paid.has(target)) paid.set(target, []);
+    paid.get(target).push({ date: first.date, amount, base });
+  }
+  const out = [];
+  for (const i of live) {
+    if (!(glIsRevenue(i.gl_code) || glIsExpense(i.gl_code))) continue;
+    if (isCancelledOrCancelling(i) || isSettlementEntry(i)) { out.push(i); continue; }
+    const base = entryBaseOf(i);
+    const owed = codes.length ? owedOf(byBase.get(base) || [i]) : 0;
+    if (!(owed > 0)) { out.push(i); continue; }                      // paid at once
+    for (const p of paid.get(base) || []) {
+      out.push({ ...i, id: `${i.id}~cash~${p.base}`, date: p.date, amount: r2(num(i.amount) * Math.min(1, p.amount / owed)), ar_amount: undefined, _cashOf: i.id });
+    }
+  }
+  return out;
 }
 
 // Cash on hand = the GL balance of the cash / cash-equivalent accounts, summed.
@@ -520,8 +569,29 @@ export function agingReport(invoices, side = "ar", now = new Date(), { arCode = 
     bmap[def.key].rows.push(row); bmap[def.key].total += row.amount; bmap[def.key].count++;
     total += row.amount;
   }
+  // ★ C716 — MONEY OWED FROM BEFORE YOU STARTED. Opening receivables are one line of the opening
+  // entry, not an invoice, so no list carried them: "Total owed to you $2,000 · 0 open invoices",
+  // every bucket $0. They are listed as one line — never more than the opening amount, and never
+  // more than the books still show unexplained by the invoices listed (collections booked straight
+  // to receivables shrink it), dated from the opening.
+  let extra = 0;
+  if (side === "ar" && code) {
+    const opening = (invoices || []).filter((i) => isLiveEntry(i) && i.source === "opening_balance" && String(i.gl_code) === String(code) && i.debit_credit === "debit");
+    if (opening.length) {
+      const openingAmt = opening.reduce((s, i) => s + num(i.amount), 0);
+      const residual = glAccountBalance(code, invoices) - total;
+      const amt = r2(Math.min(openingAmt, residual));
+      if (amt > 0.004) {
+        const d = daysOverdue(opening[0].date, now);
+        const def = defs.find((x) => x.test(d)) || defs[0];
+        bmap[def.key].rows.push({ id: opening[0].id, party: "Owed before you started", date: opening[0].date, due_date: null, amount: amt, days_overdue: Math.max(0, d), gl_name: opening[0].gl_name, email: null, opening: true });
+        bmap[def.key].total += amt; bmap[def.key].count++;
+        total += amt; extra = 1;
+      }
+    }
+  }
   buckets.forEach(b => { b.total = r2(b.total); b.rows.sort((a, c) => c.days_overdue - a.days_overdue || String(c.date).localeCompare(String(a.date))); });
-  return { side, buckets, total: r2(total), count: open.length };
+  return { side, buckets, total: r2(total), count: open.length + extra };
 }
 
 // ── TRIAL BALANCE (Item 100) ────────────────────────────────────────────────
@@ -826,7 +896,12 @@ export function buildMonthlyReport(period, { invoices = [], cashBalance = 0, rec
   const burn = computeBurnRate(live, { asOf: curRange.to, excludePartialMonth: false });
   const runway = computeRunway(cash, burn);
 
-  const arT = computeAR(live, { now: monthEnd, arCode }), apT = computeAP(live, { now: monthEnd, apCode });
+  // ★ C716 — what was owed AT MONTH END, not today: only entries (and payments) dated on or before
+  // the month's last day. August's report listed October's invoices and missed one collected in
+  // September — and every past month was recomputed with today's open list.
+  const monthEndYmd = ymdLocal(monthEnd);
+  const asAtEnd = live.filter((i) => !i.date || String(i.date).slice(0, 10) <= monthEndYmd);
+  const arT = computeAR(asAtEnd, { now: monthEnd, arCode }), apT = computeAP(asAtEnd, { now: monthEnd, apCode });
 
   const kpis = computeKPIs(live, { cashBalance: cash, now: monthEnd, arCode, apCode })
     .map(k => ({ key: k.key, label: k.label, display: k.display, status: k.status, trend: k.trend, explanation: k.explanation }));

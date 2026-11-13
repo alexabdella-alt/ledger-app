@@ -6,7 +6,7 @@ import { isCancelledOrCancelling, glIsRevenue, glIsExpense, glIsBalSheet, glPLTy
 import { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, todayLocal, ymdLocal } from "../../lib/format";
 import { ownerAccountName } from "../../lib/categoryLabel";
 import { getAuthHeaders } from "../../lib/supabase";
-import { signedPL, agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange } from "../../lib/reports";
+import { signedPL, agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange, plLegs, cashBasisPLRows, glCashOnHand, isLiveEntry } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
 import { pill } from "../../lib/ui";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
@@ -61,27 +61,20 @@ export default function ReportsView() {
             // C440 — decided on the date STRING (see lib/reportRange.js): `new Date("2026-09-01")`
             // is August 31 from any US zone, so the first of every month used to fall into the
             // previous month on this screen.
-            const filterByRange = (invList) => invList.filter(inv => inReportRange(inv.date, reportRange, { from: reportDateFrom, to: reportDateTo }));
+            const fyEnd = companySettings?.fiscalYearEnd || "12-31";   // C716 — the presets follow the fiscal year
+            const filterByRange = (invList) => invList.filter(inv => inReportRange(inv.date, reportRange, { from: reportDateFrom, to: reportDateTo, fiscalYearEnd: fyEnd }));
             const filtered = filterByRange(invoices);
+            // ★ C716 — cash basis is dated when the money moved (see cashBasisPLRows), so it is built from
+            // the whole ledger and THEN put in the range: a January bill paid in February counts in February.
+            const cashPL = basisMode === "cash" ? filterByRange(cashBasisPLRows(invoices, { apCode: getAccountByRole?.("accounts_payable")?.code, arCode: getAccountByRole?.("accounts_receivable")?.code, accruedCode: getAccountByRole?.("accrued_liabilities")?.code })) : null;
+            // both P&L legs of a row (a reclass between two P&L accounts moves both — C716)
+            const legSum = (rows, match) => rows.reduce((s, i) => s + plLegs(i, match).reduce((t, l) => t + l.signed, 0), 0);
             // P&L filter: date range + voided + P&L accounts + optional basis mode
-            const plFiltered = filtered.filter(i => {
-              if (i.status === "voided" || !glPLType(i.gl_code)) return false;
-              if (basisMode === "cash") {
-                // Cash basis: bank lines are actual cash; otherwise require marked paid/collected.
-                // C481 — stored bank lines carry `bank_import` (the in-session name is normalised
-                // at the RPC), so the old `bank_feed` test was dead after a reload; and a
-                // correction and the entry it cancels are kept TOGETHER — the original carries the
-                // paid flag and the correction does not, so filtering by flag showed the canceled
-                // expense on the cash-basis P&L with nothing cancelling it.
-                if (isCancelledOrCancelling(i)) return true;
-                return i.source === "bank_import" || i.source === "bank_feed" || i.payment_status === "paid" || i.payment_status === "collected";
-              }
-              return true; // accrual: all posted entries
-            });
+            const plFiltered = (basisMode === "cash" ? cashPL : filtered).filter(i => i.status !== "voided" && !!glPLType(i.gl_code));
             // Accrual headline flows through the canonical layer (identical to the
             // dashboard, monthly report, and AI). Cash basis stays a P&L-only view.
-            const revenue  = basisMode==="cash" ? plFiltered.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+signedPL(i),0) : computeRevenue(filtered);   // C491 — cash basis keeps correction pairs (C481); unsigned they doubled
-            const expenses = basisMode==="cash" ? plFiltered.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+signedPL(i),0) : computeExpenses(filtered);
+            const revenue  = basisMode==="cash" ? legSum(plFiltered, glIsRevenue) : computeRevenue(filtered);   // C491 — cash basis keeps correction pairs (C481); unsigned they doubled
+            const expenses = basisMode==="cash" ? legSum(plFiltered, glIsExpense) : computeExpenses(filtered);
             const net = revenue - expenses;
 
             // C490 — the lines are signed like the headline (`signedPL`, C491 — one helper for
@@ -89,20 +82,20 @@ export default function ReportsView() {
             const signedAmt = signedPL;
             // Group revenue by GL
             const byRevGL = {};
-            plFiltered.filter(i=>glIsRevenue(i.gl_code)).forEach(inv => {
-              const k = inv.gl_code;
-              if (!byRevGL[k]) byRevGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
-              byRevGL[k].total += signedAmt(inv); byRevGL[k].count++;   // C490 — a credit to revenue (a correction) subtracts
-            });
+            plFiltered.forEach(inv => plLegs(inv, glIsRevenue).forEach(l => {   // C716 — each revenue leg, so the lines add to the headline
+              const k = l.code;
+              if (!byRevGL[k]) byRevGL[k] = { name: l.name, code: l.code, total:0, count:0 };
+              byRevGL[k].total += l.signed; byRevGL[k].count++;   // C490 — a credit to revenue (a correction) subtracts
+            }));
             const revRows = Object.values(byRevGL).sort((a,b)=>b.total-a.total);
 
             // GAAP P&L groupings: COGS (5000 only) vs Operating Expenses (all other 5xxx/6xxx)
             const allExpGL = {};
-            plFiltered.filter(i=>glIsExpense(i.gl_code)).forEach(inv => {
-              const k = inv.gl_code;
-              if (!allExpGL[k]) allExpGL[k] = { name: inv.gl_name, code: inv.gl_code, total:0, count:0 };
-              allExpGL[k].total += signedAmt(inv); allExpGL[k].count++;   // C490 — a credit to an expense (a correction) subtracts
-            });
+            plFiltered.forEach(inv => plLegs(inv, glIsExpense).forEach(l => {   // C716 — each expense leg (a reclass moves both)
+              const k = l.code;
+              if (!allExpGL[k]) allExpGL[k] = { name: l.name, code: l.code, total:0, count:0 };
+              allExpGL[k].total += l.signed; allExpGL[k].count++;   // C490 — a credit to an expense (a correction) subtracts
+            }));
             const cogsRows = Object.values(allExpGL).filter(r=>String(r.code).startsWith("5"));
             const opexRows = Object.values(allExpGL).filter(r=>!String(r.code).startsWith("5")).sort((a,b)=>a.code.localeCompare(b.code));
             const cogs = cogsRows.reduce((s,r)=>s+r.total, 0);
@@ -114,7 +107,7 @@ export default function ReportsView() {
             const glRows = Object.values(byGL).sort((a,b) => a.code?.localeCompare(b.code));
 
             // Group by vendor — canonical (P&L accounts only); equals the AI's get_vendor_summary.
-            const vendorRows = computeVendorTotals(filtered, {}, { aliasIndex }).map(v => ({ key: v.key, name: v.vendor, total: v.total, count: v.count }));
+            const vendorRows = computeVendorTotals(basisMode === "cash" ? cashPL : filtered, {}, { aliasIndex }).map(v => ({ key: v.key, name: v.vendor, total: v.total, count: v.count }));
             // C620 — the vendor key the By Vendor report grouped by (spellings + confirmed aliases), so the drill finds the same rows.
             const vendorKeyOf = (i) => { const raw = i.vendor_key || i.vendor || "Unknown"; return aliasIndex ? applyAlias(raw, aliasIndex) : raw; };
 
@@ -128,6 +121,7 @@ export default function ReportsView() {
             const byMonth = {};
             for (const inv of reconBooksSet(filtered, { cashCodes: cfCashCodes })) {
               if (!inv.date) continue;
+              if (inv.source === "opening_balance") continue;   // C716 — the starting balance is what you had, not money that came in
               // Inter-account transfer (both legs cash) nets to zero for TOTAL cash — skip it.
               if (cfIsCashLeg(inv.gl_code) && cfIsCashLeg(inv.secondary_gl_code) && !String(inv.id).includes("_")) continue;
               const m = inv.date.slice(0,7);
@@ -137,10 +131,16 @@ export default function ReportsView() {
             }
             Object.values(byMonth).forEach(r => { r.inflow = Math.round(r.inflow*100)/100; r.outflow = Math.round(r.outflow*100)/100; });
             const cashRows = Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month));
+            // ★ C716 — "Running" is the cash the books hold at the end of each month (the balance sheet
+            // cash line), and the row above the first month is what was there before it. It summed only
+            // the months in view from $0, so any later window disagreed with the balance sheet.
+            const monthEndYmd = (ym) => { const [yy, mm] = ym.split("-").map(Number); return ym + "-" + String(new Date(yy, mm, 0).getDate()).padStart(2, "0"); };
+            cashRows.forEach(r => { r.balance = glCashOnHand(invoices, cfCashCodes, { asOf: monthEndYmd(r.month) }); });
+            const cashStart = cashRows.length ? Math.round((cashRows[0].balance - (cashRows[0].inflow - cashRows[0].outflow)) * 100) / 100 : 0;
 
             // By project — only P&L accounts
             const byProject = {};
-            filtered.filter(i=>glPLType(i.gl_code)).forEach(inv => {
+            filtered.filter(i=>isLiveEntry(i) && glPLType(i.gl_code)).forEach(inv => {   // C716 — a void in this sitting is out
               const p = inv.project||"General";
               if (!byProject[p]) byProject[p] = { name:p, expenses:0, revenue:0, count:0 };
               if (glIsExpense(inv.gl_code)) byProject[p].expenses+=signedAmt(inv);
@@ -150,7 +150,7 @@ export default function ReportsView() {
             const projectRows = Object.values(byProject).sort((a,b)=>b.expenses-a.expenses);
 
             const fmt = fmtSignedMoney;   // C494 — the totals on this screen are leg-signed (C489–C491); a net credit must show its sign
-            const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${fmtDate(reportDateFrom)} → ${fmtDate(reportDateTo)}` : "Custom Range" };   // C707 — dates as dates
+            const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd: fyEnd === "12-31" ? "Year to Date" : "Fiscal year to date", custom: reportDateFrom && reportDateTo ? `${fmtDate(reportDateFrom)} → ${fmtDate(reportDateTo)}` : "Custom Range" };   // C707 — dates as dates
             // Friendly report name for the transaction detail back button.
             const reportName = { pl:"Income Statement", balance:"Balance Sheet", trial:"All account balances", araging:"Money owed to you", apaging:"Bills to pay", kpis:"KPIs", vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project" }[reportType] || "Reports";
             // Back from a drilled transaction returns to the line-item LIST it came from (the
@@ -165,13 +165,16 @@ export default function ReportsView() {
               // ★ C620 — the SAME rows the clicked line added up. By Vendor groups every spelling of a
               // vendor and its confirmed aliases (C488); the drill matched the latest spelling
               // exactly and showed a fraction of the total above it.
-              if (drill.scope==="vendor")   return filtered.filter(i=>(glIsExpense(i.gl_code) || glIsExpense(i.secondary_gl_code)) && vendorKeyOf(i)===drill.value).sort(byDate);
+              // C716 — the rows the vendor total counted (plLegs): an expense on the row, or on the
+              // OFFSET of a two-line entry. The payable line of a multi-line bill names an expense as its
+              // "other side" only as a label — listing it showed $1,040 under a $520 vendor.
+              if (drill.scope==="vendor")   return (basisMode === "cash" ? cashPL : filtered).filter(i=>plLegs(i, glIsExpense).length && vendorKeyOf(i)===drill.value).sort(byDate);
               if (drill.scope==="gl")       return plFiltered.filter(i=>glIsExpense(i.gl_code) && i.gl_code===drill.value).sort(byDate);
               // ★ C620 — the month's CASH movements, as the row was built (CR-3): it listed every entry
               // DATED that month — unpaid bills, accruals, depreciation — under a cash-flow line.
               if (drill.scope==="cashflow") return reconBooksSet(filtered, { cashCodes: cfCashCodes })
-                .filter(i=>i.date && i.date.slice(0,7)===drill.value && !(cfIsCashLeg(i.gl_code) && cfIsCashLeg(i.secondary_gl_code) && !String(i.id).includes("_"))).sort(byDate);
-              if (drill.scope==="project")  return filtered.filter(i=>glPLType(i.gl_code) && (i.project||"General")===drill.value).sort(byDate);
+                .filter(i=>i.date && i.date.slice(0,7)===drill.value && i.source !== "opening_balance" && !(cfIsCashLeg(i.gl_code) && cfIsCashLeg(i.secondary_gl_code) && !String(i.id).includes("_"))).sort(byDate);
+              if (drill.scope==="project")  return filtered.filter(i=>isLiveEntry(i) && glPLType(i.gl_code) && (i.project||"General")===drill.value).sort(byDate);
               if (drill.scope==="bsacct") {
                 const asOf = validYmd(reportDateTo) ? reportDateTo : todayLocal();   // C644
                 return invoices.filter(i => i.status!=="voided" && (!i.date || i.date<=asOf) &&
@@ -223,7 +226,7 @@ export default function ReportsView() {
                         {txns.map((inv,idx)=>{
                           const rev = isRev(inv);
                           return (
-                            <tr key={inv.id} onClick={()=>setDrillSel(inv.id)} style={{ cursor:"pointer", height:52, background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", opacity:inv.status==="voided"?0.55:1, transition:"background 0.1s" }}
+                            <tr key={inv.id} onClick={()=>setDrillSel(inv._cashOf ?? inv.id)} style={{ cursor:"pointer", height:52, background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", opacity:inv.status==="voided"?0.55:1, transition:"background 0.1s" }}
                               onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="var(--sc-surface)"}>
                               <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{fmtDate(inv.date)}</td>
                               {!hideVendor && <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(inv.vendor),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(inv.vendor)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{inv.vendor||"—"}</span></div></td>}
@@ -279,7 +282,7 @@ export default function ReportsView() {
                   <span style={{ color:"var(--sc-text-2)", fontSize:13 }}>to</span>
                   <input type="date" value={reportDateTo} onChange={e=>{ setReportDateTo(e.target.value); setReportRange("custom"); }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"7px 10px", color:"var(--sc-text)", fontSize:13, outline:"none" }} />
                   </>}
-                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const d = reportRangeDates(e.target.value); if (d) { setReportDateFrom(d.from); setReportDateTo(d.to); } }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", cursor:"pointer" }}>
+                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const d = reportRangeDates(e.target.value, new Date(), { fiscalYearEnd: fyEnd }); if (d) { setReportDateFrom(d.from); setReportDateTo(d.to); } }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", cursor:"pointer" }}>
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
@@ -363,7 +366,7 @@ export default function ReportsView() {
                               ) : (
                                 data.length===0 ? <div style={{ padding:24, fontSize:13, color:"var(--sc-text-2)" }}>No transactions in range.</div> :
                                 data.map(inv=>(
-                                  <div key={inv.id} onClick={()=>{ setReturnTo(reportReturn); setSelectedInvoice(inv); setView("detail"); }}
+                                  <div key={inv.id} onClick={()=>{ setReturnTo(reportReturn); setSelectedInvoice(inv._cashOf != null ? (invoices.find(x => x.id === inv._cashOf) || inv) : inv); setView("detail"); }}
                                     onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 24px", cursor:"pointer", borderTop:"1px solid var(--sc-surface-2)" }}>
                                     <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}>
@@ -523,8 +526,8 @@ export default function ReportsView() {
                       const totalEquityAccts       = bsEquity.reduce((s,a)=>s+getBal(a.code),0);
 
                       // Current year net income flows into retained earnings
-                      const bsRevenue  = bsInvoices.filter(i=>glIsRevenue(i.gl_code)).reduce((s,i)=>s+signedPL(i),0);   // C491 — leg-signed, like the P&L
-                      const bsExpenses = bsInvoices.filter(i=>glIsExpense(i.gl_code)).reduce((s,i)=>s+signedPL(i),0);
+                      const bsRevenue  = legSum(bsInvoices, glIsRevenue);   // C491/C716 — every P&L leg, as the Income Statement counts
+                      const bsExpenses = legSum(bsInvoices, glIsExpense);
                       const ytdNet     = bsRevenue - bsExpenses;
                       // Derived soft-close split (Option A): prior fiscal years' net rolls into
                       // beginning Retained Earnings; current-period net is this FY only. Keyed off
@@ -764,9 +767,13 @@ export default function ReportsView() {
                               {["Month","Inflow","Outflow","Net","Running"].map(h=><th key={h} style={{ padding:"11px 20px", textAlign:"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1.2, fontWeight:500 }}>{h.toUpperCase()}</th>)}
                             </tr></thead>
                             <tbody>
+                              <tr data-cash-start style={{ borderTop:"1px solid var(--sc-border)" }}>
+                                <td style={{ padding:"13px 20px", fontSize:13, color:"var(--sc-text-2)" }} colSpan={4}>{ownerSeat ? "Cash you had before" : "Cash at start of"} {fmtDate(`${cashRows[0].month}-01`,{month:"short",year:"numeric"})}</td>
+                                <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace" }}>{fmt(cashStart)}</td>
+                              </tr>
                               {cashRows.map((row,i)=>{
                                 const net = row.inflow - row.outflow;
-                                const running = cashRows.slice(0,i+1).reduce((s,r)=>s+(r.inflow-r.outflow),0);
+                                const running = row.balance;   // C716 — cash in the books at the end of this month
                                 return (
                                   <tr key={row.month} onClick={()=>setDrill({scope:"cashflow",value:row.month,label:fmtDate(`${row.month}-01`,{month:"short",year:"numeric"})})} title="View transactions"
                                     onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
@@ -774,8 +781,8 @@ export default function ReportsView() {
                                     <td style={{ padding:"13px 20px", fontSize:13, fontWeight:500 }}>{fmtDate(`${row.month}-01`,{month:"short",year:"numeric"})}</td>
                                     <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-success)" }}>{fmt(row.inflow)}</td>
                                     <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-error)" }}>({fmt(row.outflow)})</td>
-                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:net>=0?"var(--sc-success)":"var(--sc-error)" }}>{net<0?"-":""}{fmt(net)}</td>
-                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:running>=0?"var(--sc-text)":"var(--sc-error)" }}>{running<0?"-":""}{fmt(running)}</td>
+                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:net>=0?"var(--sc-success)":"var(--sc-error)" }}>{fmt(net)}</td>
+                                    <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:running>=0?"var(--sc-text)":"var(--sc-error)" }}>{fmt(running)}</td>
                                   </tr>
                                 );
                               })}
@@ -808,7 +815,7 @@ export default function ReportsView() {
                                   <td style={{ padding:"13px 20px", fontSize:13, color:"var(--sc-text-2)" }}>{p.count}</td>
                                   <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-success)" }}>{fmt(p.revenue)}</td>
                                   <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-error)" }}>({fmt(p.expenses)})</td>
-                                  <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:pnet>=0?"var(--sc-success)":"var(--sc-error)" }}>{pnet<0?"-":""}{fmt(pnet)}</td>
+                                  <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:pnet>=0?"var(--sc-success)":"var(--sc-error)" }}>{fmt(pnet)}</td>
                                 </tr>
                               );
                             })}

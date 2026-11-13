@@ -25,6 +25,6 @@ describe("the dates a range choice sets", () => {
   });
   it("the picker uses it for every choice", () => {
     const src = readFileSync("src/components/views/ReportsView.jsx", "utf8");
-    expect(src).toMatch(/setReportRange\(e\.target\.value\); const d = reportRangeDates\(e\.target\.value\); if \(d\) \{ setReportDateFrom\(d\.from\); setReportDateTo\(d\.to\); \}/);
+    expect(src).toMatch(/setReportRange\(e\.target\.value\); const d = reportRangeDates\(e\.target\.value, new Date\(\), \{ fiscalYearEnd: fyEnd \}\); if \(d\) \{ setReportDateFrom\(d\.from\); setReportDateTo\(d\.to\); \}/);
   });
 });
