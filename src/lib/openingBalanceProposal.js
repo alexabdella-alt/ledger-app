@@ -76,35 +76,41 @@ export function signedStatementAmount(t = {}) {
   return n;
 }
 
-function chainScore(rows) {
+function chainScore(rows, sign = 1) {
   let ok = 0;
   for (let i = 1; i < rows.length; i++) {
     const prev = rows[i - 1], cur = rows[i];
     const amt = signedStatementAmount(cur);
-    if (isNum(prev.balance) && isNum(cur.balance) && amt != null && Math.abs(Number(cur.balance) - (Number(prev.balance) + amt)) <= 0.02) ok++;
+    if (isNum(prev.balance) && isNum(cur.balance) && amt != null && Math.abs(Number(cur.balance) - (Number(prev.balance) + sign * amt)) <= 0.02) ok++;
   }
   return ok;
 }
 
-export function chronologicalStatementRows(transactions = []) {
+export function chronologicalStatementRows(transactions = [], { liability = false } = {}) {
+  const sign = liability ? -1 : 1;   // C668 — a card's balance moves the other way
   const dated = (transactions || []).filter((t) => t && t.date);
   const byDate = (rows) => rows.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const asGiven = byDate(dated);
   const reversed = byDate(dated.slice().reverse());
-  const a = chainScore(asGiven), b = chainScore(reversed);
+  const a = chainScore(asGiven, sign), b = chainScore(reversed, sign);
   if (a !== b) return a > b ? asGiven : reversed;
   const newestFirst = dated.length > 1 && String(dated[0].date) > String(dated[dated.length - 1].date);
   return newestFirst ? reversed : asGiven;
 }
 
-export function deriveStatementOpening({ transactions = [], statedOpening = null, statedPeriodStart = null, tolerance = 0.02 } = {}) {
-  const txns = chronologicalStatementRows(transactions);
+// ★ C668 — `liability`: a credit card's or loan's statement counts what is OWED, so a purchase
+// (money out) RAISES the balance and a payment lowers it — the opposite of a bank account. With
+// bank signs a $100 charge taking the owed balance to $1,100 derived an opening of $1,200 (not
+// $1,000), the ending was computed the wrong way, and a correct printed opening read as a mismatch.
+export function deriveStatementOpening({ transactions = [], statedOpening = null, statedPeriodStart = null, tolerance = 0.02, liability = false } = {}) {
+  const txns = chronologicalStatementRows(transactions, { liability });
   const first = txns[0] || null;
+  const sign = liability ? -1 : 1;   // how one row's signed (in +, out −) amount moves the balance
 
   let derived = null;
   const firstAmt = first ? signedStatementAmount(first) : null;
   if (first && isNum(first.balance) && firstAmt != null) {
-    derived = r2(Number(first.balance) - firstAmt);
+    derived = r2(Number(first.balance) - sign * firstAmt);
   }
   const stated = isNum(statedOpening) ? r2(statedOpening) : null;
   const periodStart = statedPeriodStart || (first ? String(first.date) : null);
@@ -121,7 +127,7 @@ export function deriveStatementOpening({ transactions = [], statedOpening = null
   if (last && isNum(last.balance)) endingBalance = r2(Number(last.balance));
   else if (openingBalance != null) {
     const net = txns.reduce((s, t) => s + (signedStatementAmount(t) ?? 0), 0);
-    endingBalance = r2(openingBalance + net);
+    endingBalance = r2(openingBalance + sign * net);
   }
   const source = stated != null && derived != null ? "both" : stated != null ? "stated" : derived != null ? "derived" : "none";
   return { ok: openingBalance != null && !!periodStart, openingBalance, endingBalance, periodStart, stated, derived, mismatch, source };

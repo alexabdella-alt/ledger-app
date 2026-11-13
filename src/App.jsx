@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
-import { holdNotProfitAndLoss } from "./lib/bankNotPL";
+import { holdNotProfitAndLoss, isCardAccount } from "./lib/bankNotPL";
 import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
@@ -6927,7 +6927,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         } catch { /* column may not exist pre-059 */ }
       }
 
-      const der = deriveStatementOpening({ transactions: rawTxns, statedOpening, statedPeriodStart });
+      const der = deriveStatementOpening({ transactions: rawTxns, statedOpening, statedPeriodStart, liability: isCardAccount(account) });
       // C198·3c (ii) — the STATED period wins on each side it exists; the transaction span is
       // the fallback, not the default. (der.periodStart already prefers the stated start; it has
       // no opinion about the end, which is precisely the side July got wrong.)
@@ -7277,7 +7277,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       try {
         const cashCode = (account && account.gl_code) || rc("cash");
         const acctName = (account && account.name) || "checking";
-        const der = deriveStatementOpening({ transactions: rawTxns, statedOpening, statedPeriodStart });
+        const der = deriveStatementOpening({ transactions: rawTxns, statedOpening, statedPeriodStart, liability: isCardAccount(account) });
         if (der.ok) {
           const obRow = (openingBalances || []).find(b => String(b.account_code) === String(cashCode) && b.posted);
           const recorded = obRow ? Number(obRow.balance) : null;
