@@ -406,3 +406,19 @@ export function planBankImport({ parsedTxns = [], autoCleared = [], queue = [], 
 
   return { clears, standalone, review, skipped, handledBankIds };
 }
+
+// ★ C710 — A CONFIRMED MATCH MUST BE FOR THE AMOUNT THAT MOVED. C630 sends a match whose bank
+// amount differs from the bill ($980 against $1,000) to a person; confirming it then either set
+// an in-memory "partial" flag and dropped the match from the queue (the $980 bank line was never
+// booked or cleared, and the flag vanished on reload), or — when the model said nothing remained —
+// posted the BILL's $1,000. Partial clearing isn't built, so a mismatch is refused with what to do;
+// the match stays in the queue. Returns null when the amounts agree (to the cent).
+export function matchAmountProblem(matchRecord = {}, ledger = []) {
+  const bank = Math.abs(Number(matchRecord?.bank_txn?.amount) || 0);
+  const ids = new Set((matchRecord?.invoice_ids || []).map(String));
+  const rows = (ledger || []).filter((r) => r && ids.has(String(r.id)));
+  if (!rows.length || !(bank > 0)) return null;
+  const owed = rows.reduce((s, r) => s + Math.abs(Number(r.ar_amount != null ? r.ar_amount : r._entryTotal != null ? r._entryTotal : r.amount) || 0), 0);
+  if (Math.abs(owed - bank) < 0.01) return null;
+  return { bank: Math.round(bank * 100) / 100, owed: Math.round(owed * 100) / 100 };
+}

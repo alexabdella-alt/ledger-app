@@ -448,7 +448,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               </>
             ) : (
               <>
-                {cls.settleAction === "pay" && (
+                {!isViewer && cls.settleAction === "pay" && (   // C710 — a view-only teammate isn't offered what the database refuses
                   <button onClick={() => setPayOpen(true)} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Mark as Paid</button>
                 )}
                 <button onClick={() => { setReturnTo && setReturnTo(returnContext || null); setSelectedInvoice(sel); setView("detail"); }} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Full entry →</button>

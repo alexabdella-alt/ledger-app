@@ -34,11 +34,11 @@ describe("★ record_payment", () => {
     expect(partitionAIActions([{ type: "record_payment", invoice_id: "b1" }]).destructive.map((a) => a.type)).toEqual(["record_payment"]);
   });
   it("matches only bills still open — never a second payment against a paid one", () => {
-    expect(resolveActionTargets({ type: "record_payment", invoice_id: "b3" }, { invoices: LEDGER })).toEqual([]);
-    expect(resolveActionTargets({ type: "record_payment", vendor: "adobe", amount: 59.99 }, { invoices: LEDGER }).map((i) => i.id)).toEqual(["b1"]);
+    expect(resolveActionTargets({ type: "record_payment", invoice_id: "b3" }, { invoices: LEDGER, apCode: "2000" })).toEqual([]);
+    expect(resolveActionTargets({ type: "record_payment", vendor: "adobe", amount: 59.99 }, { invoices: LEDGER, apCode: "2000" }).map((i) => i.id)).toEqual(["b1"]);
   });
   it("the confirm card says what will be recorded, from where, and that nothing is sent", () => {
-    const d = describeDestructiveAction({ type: "record_payment", invoice_id: "b1", paid_from: "my own money", paid_date: "2026-11-12" }, { invoices: LEDGER });
+    const d = describeDestructiveAction({ type: "record_payment", invoice_id: "b1", paid_from: "my own money", paid_date: "2026-11-12" }, { invoices: LEDGER, apCode: "2000" });
     expect(d.description).toBe("Record 1 bill as paid with your own money (counted as money you put in) on 2026-11-12. Nothing is sent — this only records a payment you made.");
     expect(d.targets[0].label).toMatch(/^Adobe · \$59\.99/);
   });

@@ -23,6 +23,8 @@ import { LEGAL_FORMS } from "../../lib/tax";
 import VendorTeachIn from "../VendorTeachIn";   // C563
 import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting, profileForYear, paidForYear } from "../../lib/tax";
 import { setAsideLine, lastYearBalanceLine } from "../../lib/taxSetAside.js";   // C697, C704
+import PayFromSelect, { usePayFromOptions } from "../PayFromSelect";   // C710
+import { payFromByKey, payFromForMethod } from "../../lib/payFrom";
 import { reminderMailto, customerEmail } from "../../lib/invoiceReminder";   // C702
 import { signedPL, businessHealth, cardBalanceOwed, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
@@ -121,6 +123,10 @@ export default function DashboardView() {
   const [showCommit, setShowCommit] = React.useState(false); // active commitments expander
   const [apPayId, setApPayId] = React.useState(null); // inline "mark paid" row in the AP drill
   const [apPayMethod, setApPayMethod] = React.useState("ach");
+  // ★ C710 — "Paid from" here too: Home's bills panel took every payment from Cash, so a bill paid
+  // by card lowered checking (and the toast named the card)
+  const apPayFromOpts = usePayFromOptions();
+  const [apPayFrom, setApPayFrom] = React.useState(null);
   const [apPayDate, setApPayDate] = React.useState(todayLocal());
   const goReports = () => { setReportType && setReportType("pl"); setView("reports"); };
   const cardHover = (on) => (e) => { e.currentTarget.style.borderColor = on ? "var(--sc-gold)" : "var(--sc-border)"; e.currentTarget.style.transform = on ? "translateY(-2px)" : "none"; };
@@ -327,10 +333,11 @@ export default function DashboardView() {
               {apPayId===inv.id && (
                 <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", padding:"0 18px 12px 110px" }}>
                   <input type="date" value={apPayDate} onChange={e=>setApPayDate(e.target.value)} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"6px 9px", fontSize:12, color:"var(--sc-text)", outline:"none" }} />
-                  <select value={apPayMethod} onChange={e=>setApPayMethod(e.target.value)} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"6px 9px", fontSize:12, color:"var(--sc-text)", outline:"none" }}>
+                  {apPayFromOpts.length > 1 && <PayFromSelect value={apPayFrom} onChange={setApPayFrom} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"6px 9px", fontSize:12, color:"var(--sc-text)" }} />}
+                  <select value={apPayMethod} onChange={e=>{ setApPayMethod(e.target.value); setApPayFrom(k => payFromForMethod(apPayFromOpts, e.target.value, k)); }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"6px 9px", fontSize:12, color:"var(--sc-text)", outline:"none" }}>
                     {methodOpts.map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
-                  <button onClick={()=>{ markPaid(inv.id, apPayMethod, { date: apPayDate }); setApPayId(null); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Confirm</button>
+                  <button onClick={()=>{ markPaid(inv.id, apPayMethod, { date: apPayDate, payFrom: payFromByKey(apPayFromOpts, apPayFrom) }); setApPayId(null); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Confirm</button>
                   <button onClick={()=>setApPayId(null)} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>Cancel</button>
                 </div>
               )}

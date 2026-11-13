@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { perEntry } from "./txnPresent.js";
+import { openPayablesGL } from "./reports.js";   // C710
 import { pickPayFrom, OWN_MONEY } from "./payFrom.js";   // C687
 // C687 — the account a record_payment action names: its staged key if it has one, else the words.
 export function resolvePayFrom(a = {}, options = []) {
@@ -90,7 +91,7 @@ export function routeAIActions(actions = [], { blocked = false, rules = [], cont
 // Resolve the concrete entries/contracts/rules a destructive action targets, purely
 // from the current data — used BOTH for the confirm list and (by the caller) to keep
 // the displayed set === the executed set. Mirrors the dispatch handlers' matching.
-export function resolveActionTargets(action, { invoices = [], contracts = [] } = {}) {
+export function resolveActionTargets(action, { invoices = [], contracts = [], apCode = null } = {}) {
   const a = action || {};
   // C519 — TARGETS ARE ENTRIES, NOT LINES. `flattenJournalEntries` expands a multi-line bill
   // into one row per line, and this matched rows: "delete the $6,000 Sysco bill" found nothing
@@ -141,10 +142,21 @@ export function resolveActionTargets(action, { invoices = [], contracts = [] } =
     // C676 — the bill being paid: by its id, or by vendor (and amount). Only bills still OPEN —
     // recording a second payment against a paid bill would take the money out twice.
     case "record_payment": {
-      const open = (rows) => rows.filter((i) => i.payment_status !== "paid" && i.payment_status !== "collected" && !i.reversed_by);
+      // ★ C710 — an OPEN BILL is what the Bills screen lists (openPayablesGL: owed through Accounts
+      // Payable, no live payment linking it) — not "any entry for that vendor whose flag isn't
+      // paid": the flag defaults to unpaid, so an old payment, a cash receipt, or a customer's
+      // invoice under the same name was "recorded as paid" too (the card said "3 bills"). With no
+      // Accounts Payable account known, nothing qualifies.
+      const openBills = apCode ? openPayablesGL(invoices, apCode) : [];
+      const openKeys = new Set(openBills.map((i) => entryBaseOf(i)));
+      const open = (rows) => {
+        const seen = new Set();
+        return rows.filter((i) => openKeys.has(entryBaseOf(i)) && !seen.has(entryBaseOf(i)) && seen.add(entryBaseOf(i)))
+          .map((i) => openBills.find((b) => entryBaseOf(b) === entryBaseOf(i)) || i);
+      };
       if (a.invoice_id != null) return open(byId(a.invoice_id));
       if (a.vendor) {
-        const hits = open(liveInv.filter((i) =>
+        const hits = open(openBills.filter((i) =>
           norm(i.vendor).includes(norm(a.vendor)) &&
           (a.amount == null || Math.abs((Number(i.amount) || 0) - parseFloat(a.amount)) < 1)));
         // ★ C687 — one vendor's bills only: "Sam" must not also pay "Samsara". The exact name wins;
@@ -201,7 +213,7 @@ export function recordPaymentDescription(a = {}, n = 0, payFrom = undefined) {
   return `Record ${n} bill${n === 1 ? "" : "s"} as paid${from}${when}. Nothing is sent — this only records a payment you made.`;
 }
 
-export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [], payFromOptions = null } = {}) {
+export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [], payFromOptions = null, apCode = null } = {}) {
   const a = action || {};
   const verb = VERB[a.type] || "change";
 
@@ -225,7 +237,7 @@ export function describeDestructiveAction(action, { invoices = [], contracts = [
   }
 
   // Invoice-targeting actions (recode / retag / delete / void / reverse).
-  const rows = resolveActionTargets(a, { invoices });
+  const rows = resolveActionTargets(a, { invoices, apCode });   // C710 — record_payment needs the bills account
   const targets = rows.map((i) => ({
     id: i.id,
     label: `${i.vendor || "a transaction"}${i.amount != null ? ` · ${money(i.amount)}` : ""}${i.date ? ` (${i.date})` : ""}`,

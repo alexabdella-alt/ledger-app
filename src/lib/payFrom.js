@@ -106,3 +106,15 @@ export function receivedIntoCopy(option) {
   if (!option) return "";
   return option.key === PERSONAL ? "received into your personal account — counted as money you took out" : `received into ${option.label}`;
 }
+
+// ★ C710 — THE METHOD AND THE ACCOUNT TELL ONE STORY. "Credit Card" as the method with "Paid from:
+// Checking" posted the payment to checking (the account decides, the method is only a label), and
+// Home's bills panel had no account at all — a card payment lowered checking, and the 1099 tracker
+// read it as a bank payment. Choosing "Credit Card" picks the card account when there is one.
+export function payFromForMethod(options = [], method = "", currentKey = null) {
+  if (method !== "card") return currentKey;
+  const cur = (options || []).find((o) => o.key === currentKey);
+  if (cur && /\(card\)$/.test(cur.label || "")) return currentKey;
+  const card = (options || []).find((o) => /\(card\)$/.test(o.label || ""));
+  return card ? card.key : currentKey;
+}

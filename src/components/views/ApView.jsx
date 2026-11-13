@@ -1,6 +1,6 @@
 import React from "react";
 import PayFromSelect, { usePayFromOptions } from "../PayFromSelect";
-import { payFromByKey } from "../../lib/payFrom";
+import { payFromByKey, payFromForMethod } from "../../lib/payFrom";
 import NextStep from "../NextStep";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
@@ -143,7 +143,7 @@ export default function ApView() {
                         <div style={{ display:"grid", gridTemplateColumns:"1fr 1.4fr 1fr", gap:12, marginBottom:12 }}>
                           <div><div style={fieldLabel}>PAYMENT DATE</div><input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} style={fieldInput} /></div>
                           <div><div style={fieldLabel}>PAYMENT METHOD</div>
-                            <select value={payMethod} onChange={e=>setPayMethod(e.target.value)} style={fieldInput}>
+                            <select value={payMethod} onChange={e=>{ setPayMethod(e.target.value); setPayFromKey(k => payFromForMethod(payFromOpts, e.target.value, k)); }} style={fieldInput}>   {/* C710 */}
                               {methodOpts.map(([v,l])=><option key={v} value={v}>{l}</option>)}
                             </select>
                           </div>

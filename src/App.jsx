@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { holdNotProfitAndLoss, isCardAccount } from "./lib/bankNotPL";
 import { paidFromCopy, payFromOptions } from "./lib/payFrom";
+import { ownerAccountName } from "./lib/categoryLabel";   // C710
 import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
@@ -76,7 +77,7 @@ import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcil
 import { fileSha256Hex } from "./lib/contentHash";
 import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy, bankImportToastCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
-import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, shouldRunApMatching, autoMatchBankLines, matchableOpenItems, resolveMatchedInvoices, isSettlementEntry } from "./lib/bankMatch";
+import { planBankImport, isArMatch, buildBankLineEntry, allClearingsPosted, matchAmountProblem, shouldRunApMatching, autoMatchBankLines, matchableOpenItems, resolveMatchedInvoices, isSettlementEntry } from "./lib/bankMatch";
 import { planPayrollBankLines, flagIncompletePayroll } from "./lib/payroll";
 import { glCodeForAccountType } from "./lib/bankAccounts";
 import { enterSupportState, exitSupportState } from "./lib/supportMode";
@@ -8229,7 +8230,16 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     // Precise side check — "ap_clear".includes("ar") is true (the "ar" in "cle-ar"),
     // which would mis-post an AP clear as an AR collection. See isArMatch.
     const isAR = isArMatch(match_type);
-    const isPaid = !amount_remaining || amount_remaining < 0.01;
+    // ★ C710 — a different amount is never cleared as if it were the whole bill, nor dropped as a
+    // "partial" that saves nothing: it stays here, and the owner is told the two ways forward
+    const amountProblem = matchAmountProblem(matchRecord, invoicesRef.current || []);
+    if (amountProblem || (amount_remaining && amount_remaining >= 0.01)) {
+      const p = amountProblem || { bank: Math.abs(Number(bank_txn?.amount) || 0), owed: null };
+      showNotification(`The bank shows ${fmtMoney(p.bank)}${p.owed != null ? ` but the ${isAR ? "invoice" : "bill"} is ${fmtMoney(p.owed)}` : ", which doesn't pay the whole amount"}. Part-payments can't be matched yet — choose "Dismiss" to add the bank line on its own (the ${isAR ? "invoice stays owed" : "bill stays open"}), or record the ${isAR ? "invoice as collected" : "bill as paid"} in full if the difference was a fee or discount.`, "error");
+      logAudit("match_amount_mismatch", `Kept in review: bank ${fmtMoney(p.bank)} vs ${p.owed != null ? fmtMoney(p.owed) : "partial"}`, null, { match_id: matchRecord?.id || null });
+      return;
+    }
+    const isPaid = true;
 
     if (isPaid) {
       // Full match → canonical collection/payment posting (AR: Dr Cash / Cr A/R ·
@@ -8257,13 +8267,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         const lineAcct = (bankAccounts || []).find(b => String(b.id) === String(bank_txn?._accountId)) || (matchRecord.importOffsetCode ? { gl_code: matchRecord.importOffsetCode } : null);
         try { await linkStatementLinesAfterBooking(stmtId, lineAcct); await loadStatementExceptions(currentCompany.id); } catch (e) { console.warn("[match] statement line link skipped:", e?.message || e); }
       }
-    } else {
-      // Partial match — flag only for now (partial GL clearing is a separate feature).
-      setInvoices(prev => prev.map(inv => !invoice_ids.includes(inv.id) ? inv : {
-        ...inv, payment_status: "partial", balance_remaining: amount_remaining || 0,
-        matched_at: new Date().toISOString(), matched_bank_txn: bank_txn?.description,
-      }));
-    }
+    }   // C710 — the old "partial" branch saved nothing and dropped the match; a partial is refused above
 
     // Move from queue to history
     const confirmed = { ...matchRecord, status: "confirmed", confirmed_at: new Date().toISOString() };
@@ -8451,6 +8455,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       payment_reference: ref || undefined, payment_notes: note || undefined });
 
     let postedPaymentId = null;                       // GL payment JE posted this call (for compensation)
+    let alreadyPaid = false;                          // C710 — a live payment already linked: nothing new posted
     const fail = async (reasonForLog) => {
       apply(snap);                                    // revert the optimistic change
       // Compensation: if the GL payment entry was already posted, reverse it so we
@@ -8546,6 +8551,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           }
           already = payIds.some(id => !reversed.has(id));
         } catch { /* probe failed — fall through and post; a true dup is rare and reversible */ }
+        alreadyPaid = !!already;
         if (!already) {
           postedPaymentId = await persistJournalEntry(payEntry);
           if (!postedPaymentId) return await fail("payment GL entry post failed");
@@ -8613,7 +8619,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     logAudit(side === "ar" ? "invoice_collected" : "invoice_paid",
       `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · ${fmtMoney(inv.amount || 0)} via ${methodPretty(method)}${refStr}${noteStr}`,
       { payment_status: snap.payment_status }, { payment_status: newStatus, method, reference: ref, notes: note, by: who, payment_entry_id: postedPaymentId ? String(postedPaymentId) : null, gl_posted: glPosted });
-    return true;
+    return alreadyPaid ? "already" : true;   // C710 — truthy for every caller; markPaid tells the owner it was already paid
   };
 
   // Public AP helper — keeps the existing (bulk) signature, but every id now flows
@@ -8627,16 +8633,18 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       const made = await addCustomAccount({ code: from.code, name: from.name, category: "Equity" });
       if (made === false) return 0;
     }
-    let okCount = 0;
+    let okCount = 0, alreadyCount = 0;
     for (const id of ids) {
       const ok = await markBillPaid(id, { paidDate: details.date, method, reference: details.reference, notes: details.notes, side: "ap",
         ...(from ? { cashCode: from.code, cashName: from.name } : {}) });
-      if (ok) okCount++;
+      if (ok === "already") alreadyCount++;
+      else if (ok) okCount++;
     }
+    if (alreadyCount && !okCount) { try { await loadAllData(); } catch {} showNotification(alreadyCount === 1 ? "That bill already had a payment recorded — nothing new was added." : `Those ${alreadyCount} bills already had payments recorded — nothing new was added.`); return 0; }   // C710
 
     // Reload so the posted GL payment entries (Dr AP / Cr Cash) appear and the AP
     // balance reflects them. One refresh covers the whole batch.
-    if (okCount > 0) { try { await loadAllData(); } catch {} showNotification(from ? `Payment recorded — ${paidFromCopy(from)} ✓` : `Payment recorded — ${methodPretty(method)} ✓`); } // failures already toasted by markBillPaid
+    if (okCount > 0) { try { await loadAllData(); } catch {} showNotification(`Payment recorded — ${from ? paidFromCopy(from) : `paid from ${ownerAccountName(rn("cash") || "Cash")}`} ✓`); }   // C710 — the account it came from, never the method's label // failures already toasted by markBillPaid
     return okCount;
   };
 
@@ -8791,7 +8799,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     // like every action that changes posted figures). The same path as the payment forms: one
     // payment entry per bill, from the account the owner named (lib/payFrom.js, C674).
     if (action.type === "record_payment") {
-      const bills = resolveActionTargets(action, { invoices, contracts });
+      const bills = resolveActionTargets(action, { invoices, contracts, apCode: getAccountByRole?.("accounts_payable")?.code });   // C710
       if (!bills.length) summary.push(`Couldn't find an open bill${action.vendor ? ` for ${action.vendor}` : ""} — nothing was recorded`);
       else {
         const opts = payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" });
@@ -9130,7 +9138,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // Nothing has mutated for these — they run only when the user clicks Confirm
       // (confirmAIActions). Not staged when the batch was blocked (member/ambiguous/bulk).
       const staged = (!gateBlocked && destructiveActions.length)
-        ? buildPendingConfirmation(destructiveActions, { invoices, contracts, rules, contactsList: contacts,
+        ? buildPendingConfirmation(destructiveActions, { invoices, contracts, rules, contactsList: contacts, apCode: getAccountByRole?.("accounts_payable")?.code,
             payFromOptions: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }) })   // C687
         : null;
       if (staged) { setPendingAIActions({ ...staged, id: Date.now() + 2 }); logAI("ai_actions_staged", `Staged ${staged.actions.length} destructive action(s) for confirmation: ${staged.items.map(it => it.type).join(", ")}`); }
