@@ -12,7 +12,7 @@ import { pill } from "../../lib/ui";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
 import { applyAlias } from "../../lib/vendorAlias";
 import { reportNavBack } from "../../lib/reportNav";
-import { inReportRange } from "../../lib/reportRange";
+import { inReportRange, reportRangeDates } from "../../lib/reportRange";
 import { reportAttestationLine, activeSignedPeriods } from "../../lib/signoff";
 import { plainPeriodSummary } from "../../lib/plainSummary";
 import { vendorCreep, vendorCreepCopy } from "../../lib/vendorCreep";
@@ -279,7 +279,7 @@ export default function ReportsView() {
                   <span style={{ color:"var(--sc-text-2)", fontSize:13 }}>to</span>
                   <input type="date" value={reportDateTo} onChange={e=>{ setReportDateTo(e.target.value); setReportRange("custom"); }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"7px 10px", color:"var(--sc-text)", fontSize:13, outline:"none" }} />
                   </>}
-                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const now=new Date(); if(e.target.value==="thismonth"){setReportDateFrom(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-01");setReportDateTo(ymdLocal(now));} else if(e.target.value==="ytd"){setReportDateFrom(now.getFullYear()+"-01-01");setReportDateTo(ymdLocal(now));} else if(e.target.value==="all"){setReportDateFrom("");setReportDateTo("");} }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", cursor:"pointer" }}>
+                  <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const d = reportRangeDates(e.target.value); if (d) { setReportDateFrom(d.from); setReportDateTo(d.to); } }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", cursor:"pointer" }}>
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>

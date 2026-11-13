@@ -22,6 +22,8 @@ import CoaView from "../src/components/views/CoaView.jsx";
 import OpeningBalancesView from "../src/components/views/OpeningBalancesView.jsx";
 import MoreSettingsView from "../src/components/views/MoreSettingsView.jsx";
 import DashboardView from "../src/components/views/DashboardView.jsx";
+import TeamView from "../src/components/views/TeamView.jsx";
+import AuditView from "../src/components/views/AuditView.jsx";
 import ReportsView from "../src/components/views/ReportsView.jsx";
 import { OWNER_REPORT_TABS, OWNER_MORE_REPORT_TABS } from "../src/lib/reportGuide.js";
 
@@ -33,7 +35,8 @@ import { OWNER_REPORT_TABS, OWNER_MORE_REPORT_TABS } from "../src/lib/reportGuid
 // ═════════════════════════════════════════════════════════════════════════════
 const PAGES = {
   MoneyView, BooksView, ApView, ArView, CustomersView, VendorsView, DocsView, SendInvoiceView, SettingsView,
-  TaxView, Tax1099View, RecurringView, RulesView, CoaView, OpeningBalancesView, MoreSettingsView, DashboardView,
+  TaxView, Tax1099View, RecurringView, RulesView, CoaView, OpeningBalancesView, MoreSettingsView, DashboardView, TeamView, AuditView,
+  // Not QBOImportView: it tells the owner where to click in QuickBooks, by QuickBooks' own menu names.
 };
 const owner = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
 const textOf = (html) => html.replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<(option|input|textarea)[^>]*value="[^"]*"/g, "<$1").replace(/<[^>]+>/g, " ")

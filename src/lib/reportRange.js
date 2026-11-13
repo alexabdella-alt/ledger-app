@@ -31,6 +31,19 @@ export function reportRangeBounds(range, now = new Date()) {
   }
 }
 
+// ★ C645 — THE DATES A RANGE CHOICE SETS, so the balance sheet's "as of" follows the picker.
+// Choosing "Last month" or a quarter set no dates at all, so the balance sheet — which reads the
+// END date — stayed "as of" today (or an old custom date) beside a picker reading "Last month".
+// The end is capped at today: a balance sheet "as of December 31" in November would be a date
+// that hasn't happened. "all" clears both; "custom" (and anything unknown) leaves them alone.
+export function reportRangeDates(range, now = new Date()) {
+  if (range === "all") return { from: "", to: "" };
+  const b = reportRangeBounds(range, now);
+  if (!b) return null;
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return { from: b.from, to: b.to < today ? b.to : today };
+}
+
 export function inReportRange(dateStr, range, { now = new Date(), from = null, to = null } = {}) {
   const p = ymd(dateStr);
   if (!p) return false;
