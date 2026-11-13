@@ -16,9 +16,9 @@ describe("glRoleForAccountType — source type → natural offset GL role", () =
   it("loan → long_term_debt", () => {
     expect(glRoleForAccountType("loan")).toBe("long_term_debt");
   });
-  it("checking / savings / other → cash", () => {
+  it("checking / other → cash; savings → savings (C663)", () => {
     expect(glRoleForAccountType("checking")).toBe("cash");
-    expect(glRoleForAccountType("savings")).toBe("cash");
+    expect(glRoleForAccountType("savings")).toBe("savings");
     expect(glRoleForAccountType("other")).toBe("cash");
     expect(glRoleForAccountType(undefined)).toBe("cash");
   });
@@ -30,6 +30,14 @@ describe("glCodeForAccountType — resolves the type's default GL code", () => {
   });
   it("checking resolves to Cash (1000)", () => {
     expect(glCodeForAccountType("checking", RESOLVE)).toBe("1000");
+  });
+  it("★ C663 — savings resolves to the chart's Savings Account, not Cash", () => {
+    expect(glCodeForAccountType("savings", (r) => ({ ...{ cash: "1000", savings: "1010" } })[r])).toBe("1010");
+  });
+  it("a chart with no Savings account keeps savings under Cash (never an invented code)", () => {
+    expect(glCodeForAccountType("savings", RESOLVE)).toBe("1000");
+    expect(glCodeForAccountType("savings", (r) => ({ cash: "1001" })[r])).toBe("1001");   // the company's own Cash, renumbered (§4)
+    expect(glCodeForAccountType("savings")).toBe("1000");
   });
   it("loan resolves to Long-Term Debt (2500)", () => {
     expect(glCodeForAccountType("loan", RESOLVE)).toBe("2500");

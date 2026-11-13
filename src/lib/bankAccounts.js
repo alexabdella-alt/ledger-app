@@ -12,7 +12,12 @@
 export function glRoleForAccountType(type) {
   if (type === "credit_card") return "credit_card_liability";
   if (type === "loan") return "long_term_debt";
-  return "cash"; // checking / savings / other
+  // ★ C663 — a savings account gets the chart's own Savings Account (1010, role `savings`, already
+  // counted in cash on hand). It was filed under Cash with checking, so neither account could ever
+  // reconcile on its own — each compared its bank balance with the two accounts' combined books —
+  // and a transfer between them was no entry at all (C662).
+  if (type === "savings") return "savings";
+  return "cash"; // checking / other
 }
 
 // Resolve a source TYPE to its default GL CODE. `resolveCode(role)` looks up the
@@ -21,5 +26,7 @@ export function glRoleForAccountType(type) {
 export function glCodeForAccountType(type, resolveCode) {
   const role = glRoleForAccountType(type);
   const fallback = role === "credit_card_liability" ? "2200" : role === "long_term_debt" ? "2500" : "1000";
+  // a chart without a Savings account keeps savings under Cash, as before — never an invented code
+  if (role === "savings") return (resolveCode && (resolveCode("savings") || resolveCode("cash"))) || "1000";
   return (resolveCode && resolveCode(role)) || fallback;
 }
