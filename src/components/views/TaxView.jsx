@@ -87,10 +87,17 @@ export default function TaxView() {
   const filed = taxState.filed || {};
   const workFromHome = !!taxState.workFromHome;
 
-  const est = taxEstimate(invoices, year, estPaid);
   const legalForm = companySettings?.legalForm || "";
+  // ★ C678 — current IRS guidance (lib/taxGuidance.js): every spending account on its Schedule C
+  // line, meals at 50%, entertainment 0%, the simplified home office, the current federal rules.
+  // The home-office size is kept in the year's tax settings (filed_deadlines.home_office_sqft).
+  const homeOfficeSqft = Number(filed.home_office_sqft) || 0;
+  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, homeOfficeSqft });
   const deadlines = getTaxDeadlines(new Date(), { legalForm: legalForm || null });   // O140/C559
-  const deductions = deductionBreakdown(invoices, year, getAccountByRole);
+  const deductions = deductionBreakdown(invoices, year, getAccountByRole, { chart: CHART_OF_ACCOUNTS || [], homeOfficeSqft, legalForm });
+  const [sqftDraft, setSqftDraft] = React.useState("");
+  React.useEffect(() => { setSqftDraft(homeOfficeSqft ? String(homeOfficeSqft) : ""); }, [homeOfficeSqft]);
+  const homeOfficeApplies = !legalForm || legalForm === "sole_prop";
   const totalDeductible = deductions.reduce((s, d) => s + (d.amount || 0), 0);
   // ── 1099s ARE WORKED OUT, NOT COUNTED OFF A FLAG ─────────────────────────────
   // This used to count `is1099` — a badge that was effectively defaulted on, so on one
@@ -215,28 +222,44 @@ export default function TaxView() {
           <div style={{ fontSize: 13, fontWeight: 600 }}>Deductions tracker · {year}</div>
           <div style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Est. tax savings ≈ <span style={{ color: "var(--sc-success)", fontWeight: 600 }}>{fmt(totalDeductible * FED_RATE)}</span></div>
         </div>
-        {deductions.map(d => (
-          <div key={d.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
+        {deductions.filter(d => !d.ask && d.line !== "none" && d.line !== "30").map(d => (
+          <div key={d.key} data-deduction-line={d.line} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label}</div>
-              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label} <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 400 }}>· {d.line === "4" ? "line 4" : `line ${d.line}`}</span></div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}{d.notDeductible > 0.004 ? ` · ${fmt(d.notDeductible)} of this doesn't count (meals count at 50%)` : ""}</div>
             </div>
-            {d.ask && d.key === "homeoffice" ? (
-              <button onClick={() => { save({ ...taxState, workFromHome: !workFromHome }); showNotification(!workFromHome ? "Noted — ask your advisor about the home-office deduction." : "Home-office flag removed."); }}
-                style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, cursor: "pointer", background: workFromHome ? "var(--sc-gold-soft)" : "var(--sc-surface-2)", border: `1px solid ${workFromHome ? "var(--sc-gold-soft)" : "var(--sc-border-2)"}`, color: workFromHome ? "var(--sc-gold)" : "var(--sc-text-2)" }}>
-                {workFromHome ? "✓ I work from home" : "Do you work from home?"}
-              </button>
-            ) : d.ask ? (
-              <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontStyle: "italic" }}>Not tracked here — mention it at tax time</span>
-            ) : (
-              <>
-                <div style={{ textAlign: "right", minWidth: 110 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--sc-text)" }}>{fmt(d.amount)}</div>
-                  <div style={{ fontSize: 11, color: "var(--sc-success)" }}>~{fmt(d.amount * FED_RATE)} saved</div>
-                </div>
-                <span style={{ fontSize: 11, color: d.categorized ? "var(--sc-success)" : "var(--sc-text-mut)", flexShrink: 0, width: 84, textAlign: "right" }}>{d.categorized ? "Categorized" : "None yet"}</span>
-              </>
-            )}
+            <div style={{ textAlign: "right", minWidth: 110 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--sc-text)" }}>{fmt(d.amount)}</div>
+              <div style={{ fontSize: 11, color: "var(--sc-success)" }}>~{fmt(d.amount * FED_RATE)} saved</div>
+            </div>
+          </div>
+        ))}
+        {deductions.filter(d => d.line === "none").map(d => (
+          <div key={d.key} data-deduction-line="none" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>Not deductible</div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint} — entertainment, fines and income tax don't reduce your tax</div>
+            </div>
+            <div style={{ textAlign: "right", minWidth: 110, fontSize: 13, fontFamily: "'DM Mono',monospace", color: "var(--sc-text-mut)" }}>{fmt(d.raw)}</div>
+          </div>
+        ))}
+        {/* ★ C678 — the home office by the IRS simplified method: $5 a square foot, up to 300. */}
+        {homeOfficeApplies && (
+          <div data-home-office style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>Home office <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 400 }}>· line 30</span></div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>If part of your home is used only and regularly for work, enter its size. We use the IRS simplified method: $5 a square foot, up to 300 sq ft ($1,500).</div>
+            </div>
+            <input type="number" inputMode="numeric" min="0" max="300" placeholder="sq ft" value={sqftDraft} onChange={e => setSqftDraft(e.target.value)}
+              onBlur={() => { const v = Math.max(0, Math.min(300, Math.floor(Number(sqftDraft) || 0))); if (v !== homeOfficeSqft) save({ ...taxState, filed: { ...filed, home_office_sqft: v } }); }}
+              style={{ width: 90, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", color: "var(--sc-text)", fontSize: 13 }} />
+            <div style={{ textAlign: "right", minWidth: 110, fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace" }}>{fmt(homeOfficeSqft ? Math.min(300, homeOfficeSqft) * 5 : 0)}</div>
+          </div>
+        )}
+        {deductions.filter(d => d.ask).map(d => (
+          <div key={d.key} style={{ padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label}</div>
+            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}</div>
           </div>
         ))}
       </div>

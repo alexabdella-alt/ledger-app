@@ -3,6 +3,7 @@
 
 import { FED_TAX_RATE, SE_TAX_RATE } from "./constants";
 import { computeRevenue, computeExpenses, computeNetIncome } from "./reports";
+import { scheduleCBreakdown, federalEstimate, PERSONAL_RETURN_ITEMS } from "./taxGuidance.js";
 export const FED_RATE = FED_TAX_RATE;   // simplified flat federal planning rate
 export const SE_RATE = SE_TAX_RATE;     // self-employment (Social Security + Medicare)
 
@@ -18,14 +19,18 @@ export function ytdNetIncome(invoices, year = new Date().getFullYear()) {
 }
 
 // Estimated federal + SE tax for the year. estPaid = estimated payments already made.
-export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0) {
+// ★ C678 — BY CURRENT RULES (lib/taxGuidance.js): the profit is what's left after the DEDUCTIBLE
+// share of spending (half of meals and all of entertainment, fines and income tax stay taxable),
+// less a home office; self-employment tax on 92.35% of it with the Social Security wage cap,
+// half of it deductible, the 20% qualified business income deduction; a C corporation pays a
+// flat 21% and no self-employment tax. Was: a flat 25% + 15.3% on book profit.
+export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0 } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
-  const taxableNet = Math.max(0, net);
-  const seTax = taxableNet * SE_RATE;
-  const federal = taxableNet * FED_RATE;
-  const total = federal + seTax;
+  const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft });
+  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, flatRate: FED_RATE });
   const paid = Number(estPaid) || 0;
-  return { revenue, expenses, net, taxableNet, federal, seTax, total, estPaid: paid, owed: Math.max(0, total - paid), quarterly: total / 4 };
+  return { revenue, expenses, net, taxableNet: f.profit, deductible: sc.deductibleTotal, notDeductible: sc.notDeductible,
+    federal: f.federal, seTax: f.seTax, qbi: f.qbi, total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid), quarterly: f.total / 4 };
 }
 
 // ── HOW THE BUSINESS FILES ITS TAXES (O140, C559) ─────────────────────────────
@@ -179,51 +184,21 @@ export function nextUrgentDeadline(now = new Date(), withinDays = 30, { filed = 
 // technology_software 6500, office_supplies 6600, insurance 6700,
 // professional_services 6800, depreciation_amortization 6900,
 // miscellaneous_expense 7100, interest_expense 8000.
-export function deductionBreakdown(invoices, year = new Date().getFullYear(), getAccountByRole = null) {
-  // Identical scope to the AI / reporting: this calendar year, not voided, not soft-deleted.
-  const inScope = i =>
-    i.status !== "voided" && i.status !== "deleted" && !i.deleted_at &&
-    String(i.date || "").startsWith(String(year));
-  // C489 — signed by the leg: a correction is a CREDIT to the same expense account and must
-  // subtract, or a corrected $2,400 rent bill counted as $4,800 of deductions (the C216 rule,
-  // on the Taxes screen and the chat's deductions tool).
-  const sumCode = code => !code ? 0 : (invoices || [])
-    .filter(i => inScope(i) && String(i.gl_code || "") === String(code))
-    .reduce((s, i) => s + (i.debit_credit === "credit" ? -(Number(i.amount) || 0) : (Number(i.amount) || 0)), 0);
-  const acct = role => getAccountByRole ? getAccountByRole(role) : null;
-  const sumRole = role => sumCode(acct(role)?.code);
-  // C386 — the hint names the account, never its number: the Taxes screen is the owner's,
-  // and "Rent & Occupancy (6100)" put a chart code under every deduction row.
-  const hintRole = role => { const a = acct(role); return a ? String(a.name) : ""; };
-
-  const CATEGORIES = [
-    { key: "salaries",     label: "Salaries & wages",                          role: "salaries_wages" },
-    { key: "rent",         label: "Rent & occupancy",                          role: "rent_occupancy" },
-    { key: "utilities",    label: "Utilities",                                 role: "utilities" },
-    { key: "marketing",    label: "Marketing & advertising",                   role: "marketing_advertising" },
-    { key: "travel",       label: "Travel & entertainment (meals at 50%)",     role: "travel_entertainment", rate: 0.5 },
-    { key: "software",     label: "Technology & software",                     role: "technology_software" },
-    { key: "supplies",     label: "Office supplies & de minimis equipment",    role: "office_supplies" },
-    { key: "insurance",    label: "Insurance",                                 role: "insurance" },
-    { key: "proservices",  label: "Professional services (legal, accounting)", role: "professional_services" },
-    { key: "depreciation", label: "Equipment cost, spread over time",           role: "depreciation_amortization" },
-    { key: "misc",         label: "Other / miscellaneous",                     role: "miscellaneous_expense" },
-    { key: "interest",     label: "Interest expense",                          role: "interest_expense" },
-  ];
-
-  const cats = CATEGORIES.map(c => {
-    const raw = sumRole(c.role);
-    const amount = c.rate ? raw * c.rate : raw;
-    return { key: c.key, label: c.label, amount, raw, categorized: raw > 0, hint: hintRole(c.role) };
-  });
-
-  // Not auto-categorized from the ledger — surfaced as prompts only (zero amount,
-  // so they never affect the deductible total).
-  const prompts = [
-    { key: "homeoffice", label: "Home office", amount: 0, categorized: false, ask: true, hint: "Tell us if you work from home" },
-    { key: "health", label: "Health insurance premiums", amount: 0, categorized: false, ask: true, hint: "Tag these so we can track them" },
-    { key: "retirement", label: "Retirement (SEP-IRA, Solo 401k)", amount: 0, categorized: false, ask: true, hint: "Tag contributions to track them" },
-  ];
-
-  return [...cats, ...prompts];
+export function deductionBreakdown(invoices, year = new Date().getFullYear(), getAccountByRole = null, { chart = null, homeOfficeSqft = 0, legalForm = "" } = {}) {
+  // ★ C678 — EVERY spending account, by its Schedule C line and the deductible share of it
+  // (lib/taxGuidance.js). The twelve fixed categories left Food Cost, Repairs, Payroll taxes,
+  // Bank fees, Vehicle, Contractors and every category an owner added out of the total. The
+  // chart comes from the caller; without one, the roles the caller can resolve are used.
+  const known = chart || (getAccountByRole ? Object.keys(ROLE_HINTS).map((r) => { const x = getAccountByRole(r); return x ? { ...x, system_role: x.system_role || r } : null; }).filter(Boolean) : []);
+  const sc = scheduleCBreakdown(invoices, year, { chart: known, homeOfficeSqft, legalForm });
+  const rows = sc.rows.map((r) => ({ key: r.line, line: r.line, label: r.label, form: r.form, amount: r.deductible, raw: r.spent,
+    categorized: r.spent > 0, hint: r.accounts.join(", "), notDeductible: r2(r.spent - r.deductible) }));
+  const personal = PERSONAL_RETURN_ITEMS.map((p) => ({ ...p, amount: 0, categorized: false, ask: true }));
+  return [...rows, ...personal];
 }
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+// The roles a caller without a chart can still resolve (getAccountByRole), so its accounts map by role.
+const ROLE_HINTS = { salaries_wages: 1, payroll_tax: 1, employee_benefits: 1, rent_occupancy: 1, utilities: 1, repairs_maintenance: 1, marketing_advertising: 1,
+  travel_entertainment: 1, technology_software: 1, merchant_processing_fees: 1, bank_service_charges: 1, office_supplies: 1, insurance: 1, professional_services: 1,
+  depreciation_amortization: 1, bad_debt: 1, miscellaneous_expense: 1, uncategorized_expense: 1, interest_expense: 1, income_tax_expense: 1, cogs: 1, direct_labor: 1,
+  shipping_fulfillment: 1, food_cost: 1, beverage_cost: 1, vehicle_expenses: 1, subcontractor_costs: 1, taxes_licenses: 1 };

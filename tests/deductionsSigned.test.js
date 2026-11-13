@@ -11,6 +11,6 @@ describe("C489", () => {
     const one = deductionBreakdown([row("a", 2400, "debit")], 2026, rc);
     expect(rent(one).amount ?? rent(one).total).toBe(2400);
     const corrected = deductionBreakdown([row("a", 2400, "debit"), row("r", 2400, "credit", { import_metadata: { kind: "reversal", reverses: "a" } })], 2026, rc);
-    expect(rent(corrected).amount ?? rent(corrected).total).toBe(0);
+    expect(rent(corrected)?.amount ?? 0).toBe(0);   // C678 — a line that nets to nothing is not listed
   });
 });

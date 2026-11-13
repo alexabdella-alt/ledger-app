@@ -953,7 +953,7 @@ export function HomeWaitingList({ navTo }) {
   // it is about. C559 — this company's deadlines. C388 — a deadline marked filed is not waiting.
   const waiting = React.useMemo(() => nextWaitingDeadline(new Date(), 30, {
     filed: filedDeadlines, legalForm: companySettings?.legalForm || null,
-    estimateFor: (y) => taxEstimate(invoices || [], y),
+    estimateFor: (y) => taxEstimate(invoices || [], y, 0, { chart: CHART_OF_ACCOUNTS || [], legalForm: companySettings?.legalForm || "", homeOfficeSqft: Number(filedDeadlines?.home_office_sqft) || 0 }),   // C678
     has1099sFor: (d) => plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: d.year - 1 }).outstanding > 0,
   }), [filedDeadlines, companySettings?.legalForm, invoices, contacts, CHART_OF_ACCOUNTS]);
   const dl = waiting ? waiting.deadline : null;

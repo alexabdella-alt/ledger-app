@@ -17,18 +17,30 @@ describe("tax calculations", () => {
     expect(SE_RATE).toBe(SE_TAX_RATE);
   });
 
-  it("estimates federal + SE tax from net income", () => {
+  // ★ C678 — current rules (lib/taxGuidance.js), not a flat 25% + 15.3% on book profit.
+  it("estimates federal + self-employment tax by current rules", () => {
     const invoices = [
-      { gl_code: "4000", amount: 10000, date: `${YEAR}-02-01`, status: "posted" }, // revenue
-      { gl_code: "6100", amount: 4000, date: `${YEAR}-03-01`, status: "posted" },  // expense
+      { gl_code: "4000", amount: 10000, date: `2026-02-01`, status: "posted" }, // revenue
+      { gl_code: "6100", gl_name: "Rent & Occupancy", amount: 4000, date: `2026-03-01`, status: "posted" },  // rent — fully deductible
     ];
-    const est = taxEstimate(invoices, YEAR, 500);
+    const est = taxEstimate(invoices, 2026, 500);
     expect(est.net).toBe(6000);
-    expect(est.federal).toBeCloseTo(1500, 2); // 6000 * 0.25
-    expect(est.seTax).toBeCloseTo(918, 2);    // 6000 * 0.153
-    expect(est.total).toBeCloseTo(2418, 2);
-    expect(est.owed).toBeCloseTo(1918, 2);    // total - estPaid(500)
-    expect(est.quarterly).toBeCloseTo(2418 / 4, 2);
+    expect(est.seTax).toBe(847.77);    // 6000 × 92.35% × 15.3%
+    expect(est.qbi).toBe(1115.22);     // 20% of (6000 − half the SE tax)
+    expect(est.federal).toBe(1115.22); // 25% planning rate on what's left
+    expect(est.total).toBe(1962.99);
+    expect(est.owed).toBeCloseTo(1462.99, 2);    // total − estPaid(500)
+    expect(est.quarterly).toBeCloseTo(1962.99 / 4, 2);
+  });
+  it("a C corporation pays a flat 21% and no self-employment tax", () => {
+    const est = taxEstimate([{ gl_code: "4000", amount: 6000, date: "2026-02-01", status: "posted" }], 2026, 0, { legalForm: "c_corp" });
+    expect([est.seTax, est.federal, est.total]).toEqual([0, 1260, 1260]);
+  });
+  it("half of a business meal stays taxable — profit is income less the DEDUCTIBLE share", () => {
+    const est = taxEstimate([{ gl_code: "4000", amount: 6000, date: "2026-02-01", status: "posted" },
+      { gl_code: "6400", gl_name: "Travel & Entertainment", vendor: "Corner Bistro", amount: 200, date: "2026-02-03", status: "posted" }], 2026, 0,
+      { chart: [{ code: "6400", name: "Travel & Entertainment", system_role: "travel_entertainment" }] });
+    expect(est.taxableNet).toBe(5900);   // 6000 − 100 (half the meal)
   });
 
   it("never produces negative tax when the business is unprofitable", () => {
@@ -78,20 +90,21 @@ describe("deductionBreakdown", () => {
   const rows = deductionBreakdown(invoices, YEAR, getAccountByRole);
   const byKey = Object.fromEntries(rows.map(r => [r.key, r]));
 
-  it("resolves category accounts by system_role — the hint is the account's NAME, never its code (C386)", () => {
-    expect(byKey.software.hint).toBe(getAccountByRole("technology_software").name);
-    expect(byKey.rent.hint).toBe(getAccountByRole("rent_occupancy").name);
-    expect(byKey.rent.hint).not.toMatch(/\d{4}/);
+  // C678 — keyed by the Schedule C line each account goes on.
+  it("resolves accounts by system_role to their Schedule C line — the hint is the account's NAME, never its code (C386)", () => {
+    expect(byKey["27a"].hint).toBe(getAccountByRole("technology_software").name);   // software → Other expenses
+    expect(byKey["20b"].hint).toBe(getAccountByRole("rent_occupancy").name);        // rent → line 20b
+    expect(byKey["20b"].hint).not.toMatch(/\d{4}/);
   });
 
-  it("sums each category for the current year, excluding voided/prior-year", () => {
-    expect(byKey.software.amount).toBe(1000);
-    expect(byKey.rent.amount).toBe(2000);
+  it("sums each line for the current year, excluding voided/prior-year", () => {
+    expect(byKey["27a"].amount).toBe(1000);
+    expect(byKey["20b"].amount).toBe(2000);
   });
 
-  it("counts Travel & Entertainment at 50%", () => {
-    expect(byKey.travel.raw).toBe(1000);
-    expect(byKey.travel.amount).toBe(500);
+  it("a Travel & Entertainment charge that isn't travel counts as a business meal: 50%", () => {
+    expect(byKey["24b"].raw).toBe(1000);
+    expect(byKey["24b"].amount).toBe(500);
   });
 
   it("total deductible = sum of categories with T&E halved", () => {
