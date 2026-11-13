@@ -34,6 +34,22 @@ export function suggestUsefulLifeMonths(text) {
 // and a cutoff, return the rows to post (due on/before the cutoff, date-ordered) and
 // the asset ids that become fully depreciated (every one of their pending rows is in
 // this run). The handler posts `due` and flips `assetsToFlip`. Deterministic/testable.
+// C723 — a leasehold improvement's life: the months left on the longest lease on file that is still
+// running, never more than 15 years; 15 years when no lease is on file.
+export function leaseholdLifeMonths(contracts = [], todayYmd = "") {
+  const CAP = 180;
+  const t = String(todayYmd || "").slice(0, 10);
+  let best = 0;
+  for (const c of contracts || []) {
+    if (!c || c.contract_type !== "lease" || c.deleted_at || !c.end_date || String(c.end_date).slice(0, 10) <= t) continue;
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t), e = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(c.end_date));
+    if (!m || !e) continue;
+    const months = (+e[1] - +m[1]) * 12 + (+e[2] - +m[2]) + (+e[3] >= +m[3] ? 1 : 0);
+    if (months > best) best = months;
+  }
+  return best > 0 ? Math.min(best, CAP) : CAP;
+}
+
 export function planDepreciationRun(scheduleRows, throughDate) {
   const rows = (scheduleRows || []).filter(r => r && r.status === "pending");
   const cutoff = String(throughDate || "");
@@ -96,6 +112,25 @@ export function sourcePurchaseLive(ledger = [], sourceEntryId = null) {
   return (ledger || []).some((i) => i
     && String(i.db_entry_id != null ? i.db_entry_id : String(i.id ?? "").split("_")[0]) === want
     && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && !i.reversed_by);
+}
+
+// ★ C723 — THE DEPRECIATION ALREADY RECORDED FOR ASSETS THAT ARE GOING. C600 stopped FUTURE rows
+// when the purchase was removed; the months already posted stayed — expense and accumulated
+// depreciation against equipment the books no longer hold. The live, stamped depreciation entries
+// for these assets, one per entry.
+export function postedDepreciationFor(ledger = [], assetIds = []) {
+  const ids = new Set((assetIds || []).map(String));
+  if (!ids.size) return [];
+  const seen = new Set(), out = [];
+  for (const i of ledger || []) {
+    const m = i && i.import_metadata;
+    if (!m || m.kind !== "depreciation" || !ids.has(String(m.asset_id))) continue;
+    if (i.status === "voided" || i.status === "deleted" || i.deleted_at || i.reversed_by) continue;
+    const b = String(i.db_entry_id != null ? i.db_entry_id : String(i.id ?? "").split("_")[0]);
+    if (seen.has(b)) continue;
+    seen.add(b); out.push(i);
+  }
+  return out;
 }
 
 export function planDepreciationAutoPost(scheduleRows, ledger, throughDate) {

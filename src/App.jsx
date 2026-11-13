@@ -92,7 +92,7 @@ import { buildReversalLines, buildJournalEntry } from "./lib/journalEntries";
 // Dashboard (depreciation is deterministic, so it auto-posts when due); the import and a
 // matching destructure in DashboardView outlived it. The planner itself stays — it is the
 // pure core `autoPostDepreciation` is built on and it is unit-tested.
-import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, depreciationDue, planDepreciationAutoPost } from "./lib/depreciation";
+import { buildDepreciationEntry, buildDepreciationSchedule, suggestUsefulLifeMonths, depreciationDue, planDepreciationAutoPost, postedDepreciationFor, leaseholdLifeMonths } from "./lib/depreciation";
 import { aiJson, aiTextOf, isCutOff } from "./lib/aiJson";
 import { buildDeferredRevenueReceiptEntry, buildArInvoiceEntry } from "./lib/revenueEntries";
 import { buildPrepaidCapitalizeEntry, buildPrepaidSchedule } from "./lib/prepaid";
@@ -3509,10 +3509,41 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       }
       try { await loadAllData(); } catch {}
       showNotification(plan.done, "success");
+      await removeAssetDepreciation(invoice);   // C723
       return { ok: true, mode: plan.mode, id: revId };
     }
     const ids = await softDeleteInvoices([invoice], byAI);   // owns its own Undo toast
-    return { ok: Array.isArray(ids) && ids.length > 0, mode: plan.mode, ids };
+    const done = Array.isArray(ids) && ids.length > 0;
+    if (done) await removeAssetDepreciation(invoice);   // C723
+    return { ok: done, mode: plan.mode, ids };
+  };
+  // ★ C723 — when the purchase of a piece of equipment is removed, the depreciation already recorded
+  // for it goes too: deleted in an open month, corrected (a dated reversal) in a signed one. Said.
+  const removeAssetDepreciation = async (invoice) => {
+    try {
+      const src = String(resolveEntryDbId(invoice) || invoice?.db_entry_id || "");
+      if (!src || !currentCompany?.id) return;
+      const { data: assets } = await supabase.from("fixed_assets").select("id").eq("company_id", currentCompany.id).eq("source_journal_entry_id", src);
+      const rows = postedDepreciationFor(invoicesRef.current || [], (assets || []).map(a => a.id));
+      if (!rows.length) return;
+      let removed = 0, failed = 0;
+      for (const d of rows) {
+        const id = resolveEntryDbId(d) || d.db_entry_id;
+        if (signedPeriodForDate(d.date, signoffs)) {
+          const r = await reverseJournalEntry(d, "Correction — the equipment it depreciated was removed");
+          if (r && !r.already) removed++; else if (!r) failed++;
+        } else {
+          const r = await checkedRowUpdate({ supabase, table: "journal_entries", id, companyId: currentCompany.id,
+            patch: { deleted_at: new Date().toISOString(), deleted_by: session?.user?.id || null }, label: "asset-removed:depreciation" });
+          if (r.ok) removed++; else failed++;
+        }
+      }
+      logAudit("asset_depreciation_removed", `Removed ${removed} month${removed === 1 ? "" : "s"} of wear and tear recorded for ${invoice?.vendor || "removed equipment"}${failed ? ` (${failed} couldn't be removed)` : ""}`, null, { source_entry_id: src, removed, failed });
+      try { await loadAllData(); } catch {}
+      showNotification(failed
+        ? `${removed} month${removed === 1 ? "" : "s"} of wear and tear for ${invoice?.vendor || "it"} ${removed === 1 ? "was" : "were"} removed too, but ${failed} couldn't be — your accountant should remove ${failed === 1 ? "it" : "them"}.`
+        : `The ${removed} month${removed === 1 ? "" : "s"} of wear and tear already recorded for ${invoice?.vendor || "it"} ${removed === 1 ? "was" : "were"} removed too.`, failed ? "error" : "info");
+    } catch (e) { console.warn("[asset removal] depreciation clean-up:", e?.message || e); }
   };
   // The confirmation text for a given entry — the SAME planner, so the modal can never
   // promise one outcome while the action performs the other.
@@ -4191,8 +4222,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         question:`Is this a permanent improvement, and to a space you lease or own?`,
         explanation:`Permanent upgrades to your space get spread over the years you'll benefit from them; routine repairs just count right away. Is this a lasting improvement, and is the space rented or owned?`,
         options:[
-          { label:"Permanent improvement to a space I LEASE", gl_code:rc("intangible_assets"), gl_name:rn("intangible_assets"), depreciate:false,
-            reasoning:`Capitalized as a leasehold improvement (1600) per GAAP — permanent improvement to leased space, amortize over the remaining lease term.` },
+          // ★ C723 — SPREAD, AS THE REASONING ALWAYS SAID. This booked to an asset with no schedule, so the
+          // improvement sat on the balance sheet forever and never reached the profit and loss. A leasehold
+          // improvement is equipment (ASC 360), spread over the SHORTER of its life and the lease: the lease
+          // on file when there is one, else 15 years (the recovery period for qualified improvements).
+          { label:"Permanent improvement to a space I LEASE", gl_code:rc("fixed_assets"), gl_name:rn("fixed_assets"), depreciate:true,
+            usefulLifeMonths: leaseholdLifeMonths(contracts, todayLocal()),
+            reasoning:`Capitalized as a leasehold improvement (fixed assets, ASC 360) — permanent improvement to leased space, spread over the shorter of its life and the remaining lease (${leaseholdLifeMonths(contracts, todayLocal())} months).` },
           { label:"Permanent improvement to a space I OWN", gl_code:rc("fixed_assets"), gl_name:rn("fixed_assets"), depreciate:true,
             reasoning:`Capitalized to Fixed Assets (1500) — permanent improvement to owned property, depreciate over its useful life.` },
           { label:"It's a repair / maintenance", gl_code:rc("repairs_maintenance"), gl_name:rn("repairs_maintenance"),
