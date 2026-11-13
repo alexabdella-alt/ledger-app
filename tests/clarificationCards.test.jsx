@@ -46,3 +46,31 @@ describe("★★ every clarification card kind renders clean", () => {
     expect(t).toContain("Office/Operations");
   });
 });
+
+// C641's bank-line question cards (an owner with no accountant answers them) — rendered on the
+// owner's seat, a purchase and a refund, through the same sweep.
+import { bankLineQuestionCards } from "../src/lib/statementQuestions.js";
+import { CLIENT_VIEW_IDS } from "../src/lib/nav.js";
+describe("★ bank-line question cards render clean on the owner's seat", () => {
+  const lines = [
+    { kind: "line", id: "sxl_L1", statement_id: "S1", bank_account_id: "B1", date: "2026-03-02", amount: -84.12, vendor: "Home Depot", description: "HOME DEPOT #123", reason: "low_confidence" },
+    { kind: "line", id: "sxl_L2", statement_id: "S1", bank_account_id: "B1", date: "2026-03-05", amount: 20, vendor: "Home Depot", description: "HOME DEPOT REFUND", reason: "low_confidence" },
+  ];
+  const owner = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+  for (const card of bankLineQuestionCards(lines, { bankAccounts: [{ id: "B1", name: "Checking", gl_code: "1000" }], cashCode: "1000" })) {
+    it(`${card.id} — no leaked token, no jargon, something to answer`, () => {
+      const t = text(renderViewHtml(ClarificationFlow, { ...POPULATED, navSeat: owner, clarificationQueue: [card] }));
+      expect(t).not.toMatch(/undefined|\bNaN\b|\[object Object\]|Invalid Date/);
+      expect(t.split(/(?<=[.?!])\s+/).filter((s) => containsOwnerJargon(s))).toEqual([]);
+      expect(t).toMatch(/Home Depot/);
+      expect(t.length).toBeGreaterThan(80);
+      // C648 — a bank line is not a document the owner uploaded
+      expect(t).not.toMatch(/I found (a receipt|an invoice)/);
+      expect(t).toMatch(card.invoice.money_in ? /Your bank statement shows \$20\.00 coming in from Home Depot on Mar 5, 2026\./ : /Your bank statement shows \$84\.12 paid to Home Depot on Mar 2, 2026\./);
+      expect(t).toMatch(/This is income .*This is spending|This is income This is spending/);
+    });
+  }
+  it("a card for an uploaded document still says what was found", () => {
+    expect(text(renderViewHtml(ClarificationFlow, { ...POPULATED, clarificationQueue: [cards.gl_with_options] }))).toMatch(/I found a receipt from Hill Country Milling Co\./);
+  });
+});

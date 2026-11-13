@@ -547,6 +547,14 @@ function ClarificationCard({ item }) {
   // ── Text helpers ──
   const knownText = () => {
     const asks = f => questions.some(q => q.field === f);
+    // ★ C648 — A BANK LINE IS NOT A DOCUMENT. C641's cards opened "I found a receipt from Home
+    // Depot" (and, for money in, "an invoice") about a line on a bank statement — a document the
+    // owner never uploaded. Say where it came from and which way the money went.
+    if (item.statementLine && typeof inv.money_in === "boolean") {
+      let b = `Your bank statement shows ${money(inv.amount)} ${inv.money_in ? "coming in from" : "paid to"} ${inv.vendor && inv.vendor !== "Unknown" ? inv.vendor : "someone we couldn't name"}`;
+      if (inv.date) b += ` on ${fmtDate(inv.date)}`;
+      return b + ".";
+    }
     const docNoun = inv.type === "revenue" ? "an invoice" : "a receipt";
     let s = `I found ${docNoun}`;
     if (!asks("vendor") && inv.vendor && inv.vendor !== "Unknown") s += ` from ${inv.vendor}`;
@@ -768,7 +776,8 @@ function ClarificationCard({ item }) {
             and re-routes to type-correct questions instead of locking in a wrong premise. */}
         <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px dashed var(--sc-border)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>Wrong type?</span>
-          {[["revenue", "This is revenue"], ["expense", "This is an expense"]].map(([t, label]) => {
+          {/* C648 — the Money page's words */}
+          {[["revenue", "This is income"], ["expense", "This is spending"]].map(([t, label]) => {
             const active = effType === t;
             return (
               <button key={t} onClick={() => { if (!active && !done) setCorrectedType(t); }} disabled={active || !!done}
