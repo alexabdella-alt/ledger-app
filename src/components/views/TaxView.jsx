@@ -11,7 +11,7 @@ import { downloadCSV } from "../../lib/insights";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts, filedDeadlinesPrev, cutoffDate } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts, filedDeadlinesPrev, cutoffDate, setEstPaidThisYear } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
@@ -84,6 +84,7 @@ export default function TaxView() {
       }
       rowExists.current = true;
       setFiledDeadlines && setFiledDeadlines(next.filed || {});   // C388 — Home and the bell read this map
+      setEstPaidThisYear && setEstPaidThisYear(Number(next.estPaid) || 0);   // C701 — and what's been paid
     } catch (e) {
       console.error("[tax_settings] save failed:", e?.message || e);
       showNotification && showNotification("Couldn't save your tax figures — they haven't been kept. Please try again.", "error");
@@ -165,19 +166,26 @@ export default function TaxView() {
       let rowFiled = packetYear === year ? filed : (filedDeadlinesPrev || {});
       let paidThatYear = packetYear === year ? estPaid : 0;
       if (packetYear !== year && currentCompany?.id) {
+        // C701 — a failed read stops the download rather than writing "$0 paid" (C417's rule)
+        let readErr = null;
         try {
-          const { data } = await supabase.from("tax_settings").select("filed_deadlines, estimated_payments_made")
+          const { data, error } = await supabase.from("tax_settings").select("filed_deadlines, estimated_payments_made")
             .eq("company_id", currentCompany.id).eq("tax_year", packetYear).maybeSingle();
-          if (data) { rowFiled = data.filed_deadlines || rowFiled; paidThatYear = Number(data.estimated_payments_made) || 0; }
-        } catch {}
+          if (error) readErr = error;
+          if (data) { rowFiled = data.filed_deadlines || {}; paidThatYear = Number(data.estimated_payments_made) || 0; }
+          else if (!error) rowFiled = {};
+        } catch (err) { readErr = err; }
+        if (readErr) { showNotification && showNotification(`We couldn't load your ${packetYear} tax answers, so the summary wasn't made — try again.`, "error"); return; }
       }
-      const p = taxProfileFrom(rowFiled, packetYear === year ? (filedDeadlinesPrev || {}) : filed);
+      // C701 — last year's summary uses LAST YEAR's answers only, never this year's (a preparer
+      // can't tell a borrowed figure from a real one); this year's may carry last year's, said in the file
+      const p = packetYear === year ? taxProfileFrom(rowFiled, filedDeadlinesPrev || {}) : taxProfileFrom(rowFiled, {});
       const opts = { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...p };
       const e = taxEstimate(invoices, packetYear, paidThatYear, opts);
       const d = deductionBreakdown(invoices, packetYear, getAccountByRole, opts);
       const f99 = tracker1099Rows({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: packetYear, bankAccounts: bankAccounts || [] });
       const rows = taxPacketRows({ year: packetYear, companyName: currentCompany?.name || "", legalForm, profile: p, est: e, deductions: d,
-        assets: (taxAssets && taxAssets.assets) || [], estPaid: paidThatYear, form1099: f99, preparedOn: fmtDate(todayLocal()) });
+        assets: (taxAssets && taxAssets.assets) || [], estPaid: paidThatYear, form1099: f99, preparedOn: fmtDate(todayLocal()), cutoffDate: cutoffDate || null, yearSoFar: packetYear === year });
       const ok = downloadCSV(taxPacketFilename(currentCompany?.name, packetYear), TAX_PACKET_HEADERS, rows);
       showNotification && showNotification(ok === false ? "The download didn't start — try again." : `Your ${packetYear} tax summary is downloading.`, ok === false ? "error" : "success");
     } finally { setPacketBusy(false); }
@@ -395,6 +403,9 @@ export default function TaxView() {
             <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}</div>
             {/* ★ C696 — the room, worked out from this year's profit so far, and what it would save */}
             {/* ★ C700 — premiums the owner pays, counted in the estimate (sole proprietor / partner) */}
+            {d.key === "health" && legalForm === "s_corp" && (
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 6 }}>As an S corporation owner, health insurance the company pays and adds to your W-2 is deducted on your personal return — your tax preparer handles it, so it isn't in this estimate.</div>
+            )}
             {d.key === "health" && legalForm !== "s_corp" && legalForm !== "c_corp" && (
               <div data-health-premiums style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
                 <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Health insurance you pay for yourself (and family) this year:</label>

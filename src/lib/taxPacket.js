@@ -13,7 +13,7 @@ import { FILING_STATUSES } from "./taxGuidance.js";
 export const TAX_PACKET_HEADERS = ["Section", "Item", "Amount", "Note"];
 const money = (n) => (Number.isFinite(Number(n)) ? Math.round(Number(n) * 100) / 100 : "");
 
-export function taxPacketRows({ year, companyName = "", legalForm = "", profile = {}, est = {}, deductions = [], assets = [], estPaid = 0, form1099 = [], preparedOn = "" } = {}) {
+export function taxPacketRows({ year, companyName = "", legalForm = "", profile = {}, est = {}, deductions = [], assets = [], estPaid = 0, form1099 = [], preparedOn = "", cutoffDate = null, yearSoFar = false } = {}) {
   const rows = [];
   const add = (section, item, amount = "", note = "") => rows.push([section, item, amount === "" ? "" : money(amount), note]);
   const form = LEGAL_FORMS.find((f) => f.value === legalForm);
@@ -24,6 +24,10 @@ export function taxPacketRows({ year, companyName = "", legalForm = "", profile 
   add("About", "How the business files", "", form ? form.label : "Not set — choose it on the Taxes screen");
   if (legalForm !== "c_corp") add("About", "Filing status", "", profile.assumed ? "Not given (the estimate assumed single)" : (status ? status.label : ""));
   add("About", "Prepared", "", `${preparedOn ? `On ${preparedOn}, ` : ""}from the books — a planning summary for your tax preparer, not a tax return`);
+  // ★ C701 (review) — say when the figures are not a whole year, and when an answer was carried
+  if (cutoffDate && String(cutoffDate).startsWith(`${year}-`) && String(cutoffDate) > `${year}-01-01`) add("About", "Books start", "", `${cutoffDate} — anything earlier this year is only in the starting balances, not in these figures`);
+  if (yearSoFar) add("About", "Covers", "", "the year so far — not a full year yet");
+  if (profile.carried) add("About", "Answers", "", "some answers were carried over from the other year — check them");
 
   add("Income", "Money that came in (sales and other income)", est.revenue);
   add("Income", "Profit in the books", est.net, "income less every expense, before tax rules");
@@ -59,7 +63,7 @@ export function taxPacketRows({ year, companyName = "", legalForm = "", profile 
   if (est.total != null) {
     add("Estimated tax", "Federal income tax (estimate)", est.federal);
     if (legalForm !== "c_corp") add("Estimated tax", "Self-employment tax (estimate)", est.seTax);
-    add("Estimated tax", "Total federal (estimate)", est.total, "from the books and your answers — your preparer's figure decides");
+    add("Estimated tax", "Total federal (estimate)", est.total, Number(est.total) < 0 ? "a negative figure is what the business's loss saves on your other income" : "from the books and your answers — your preparer's figure decides");
   }
 
   for (const r of form1099 || []) {
