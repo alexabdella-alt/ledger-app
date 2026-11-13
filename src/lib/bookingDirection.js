@@ -57,6 +57,43 @@ const INCOME_WORDS = [
   ["service_revenue", /\b(service|services|project|retainer|consult\w*|work|job|labou?r|install\w*|repair\w*|design\w*|hours|session|class|lesson|coaching|fee)\b/i],
 ];
 
+// ★★ C649 — MONEY IN IS NOT ALWAYS INCOME, AND THE ANSWER SAYS SO. An income card's answer was
+// read ONLY against income categories, and `incomeAccountForAnswer` always returns one (its last
+// fallback is the chart's first income account). So on a bank line that came IN, "a refund from
+// Home Depot", "money from my savings" or "a loan from my brother" were booked as SALES —
+// income on the P&L, income on the tax estimate. These words are read first:
+//   refund   → booked against the spending category it names (a credit to it) — bank lines only,
+//              where the statement fixes the direction; with no category, the card asks.
+//   owner / loan / transfer → NOT booked. Where each goes (owner's equity, which loan, which of
+//              your accounts) is a decision the app should not guess; the card says it won't be
+//              counted as income and the line stays on the list.
+// Order matters: "a transfer from my personal account" is the owner's own money.
+const NOT_INCOME = [
+  ["refund", /\brefund(s|ed)?\b|\breturn(s|ed)?\b|\bmoney back\b|\bcredit(ed)? back\b|\breimburs\w*/i],
+  ["owner", /\bmy own (money|cash|funds)\b|\b(i|we) put (in )?(some |my |our )?(own )?(money|cash|funds)\b|\bput (money|cash|funds) in\b|\bpersonal (money|funds|account|savings|card)\b|\bowner'?s? (investment|contribution|money|capital)\b|\bcapital (contribution|injection)\b|\binvest(ed|ment)? (in|into) the business\b|\bfrom my (savings|personal)\b/i],
+  ["loan", /\bloan(ed|s)?\b|\bborrow(ed|ing)?\b|\bline of credit\b|\bsba\b/i],
+  ["transfer", /\btransfer(red|s)?\b|\bmoved? (the )?(money|cash|it)\b|\bfrom (my|our) (other|savings|checking) account\b|\bbetween (my|our) accounts\b/i],
+];
+// "The customer paid by wire transfer" is a sale: a customer, a job or an invoice in the answer
+// means the transfer word is only how it was paid.
+const SALE_WORDS = /\b(customers?|clients?|sales?|sold|invoices?|jobs?|orders?|paid (me|us))\b/i;
+export function notIncomeAnswer(text) {
+  const t = String(text || "");
+  for (const [kind, re] of NOT_INCOME) {
+    if (!re.test(t)) continue;
+    if (kind === "transfer" && SALE_WORDS.test(t)) return null;
+    return kind;
+  }
+  return null;
+}
+export const NOT_INCOME_COPY = {
+  refund: "A refund for what? Say what it was for — like “a refund for supplies” — and I'll take it off that spending.",
+  refund_doc: "A refund isn't a sale, so I won't record it as income. Skip this one for now — it won't be counted as income.",
+  owner: "Money you put in yourself isn't income, so I won't record it as a sale. Skip this one for now — it stays on your list and won't be counted as income.",
+  loan: "A loan isn't income, so I won't record it as a sale. Skip this one for now — it stays on your list and won't be counted as income.",
+  transfer: "Money moved between your own accounts isn't income, so I won't record it as a sale. Skip this one for now — it stays on your list and won't be counted as income.",
+};
+
 export function incomeAccountForAnswer(text, { getAccountByRole = () => null, chart = [], fallback = null } = {}) {
   const onChart = (a) => a && a.code != null && (chart || []).some((c) => String(c.code) === String(a.code) && glIsRevenue(String(c.code)));
   for (const [role, re] of INCOME_WORDS) {

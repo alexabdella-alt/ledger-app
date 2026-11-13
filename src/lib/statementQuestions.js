@@ -11,11 +11,23 @@
 // Pure: built from the loaded exceptions, the statements and the bank accounts.
 // ═════════════════════════════════════════════════════════════════════════════
 import { draftClientQuestion } from "./clarify.js";
+import { fmtMoney } from "./format.js";
 
 export const OWNER_ANSWERABLE_REASONS = new Set(["low_confidence"]);
 
 export function ownerAnswerableLines(exceptions = []) {
   return (exceptions || []).filter((e) => e && e.kind === "line" && OWNER_ANSWERABLE_REASONS.has(e.reason));
+}
+
+// C649 — money that came INTO the bank isn't necessarily a sale: a store refund, the owner's
+// own money, a loan. The document question (C-era clarify.js) offers "a one-time project,
+// ongoing/retainer work" — a service business's sales — which reads oddly beside "Home Depot".
+export function moneyInQuestion(inv = {}) {
+  const amt = fmtMoney(Math.abs(Number(inv.amount) || 0));
+  const who = inv.vendor && inv.vendor !== "Bank transaction" ? ` from ${inv.vendor}` : "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(inv.date || ""));
+  const when = m ? ` on ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(m[2]) - 1]} ${Number(m[3])}` : "";
+  return `What was the ${amt} that came in${who}${when}? (A sale? A refund — and for what? Something else?)`;
 }
 
 export function bankLineQuestionCards(exceptions = [], { statements = [], bankAccounts = [], cashCode = null, cashName = null } = {}) {
@@ -36,7 +48,7 @@ export function bankLineQuestionCards(exceptions = [], { statements = [], bankAc
     };
     return {
       id: `sxq_${lineId}`, invoice, queueItemId: null,
-      question: draftClientQuestion(invoice).question,
+      question: moneyIn ? moneyInQuestion(invoice) : draftClientQuestion(invoice).question,
       statementLine: { lineId, statementId: e.statement_id, accountId: acct ? acct.id : null, accountCode: offset },
       suggestedCode: null, suggestedName: null,
     };

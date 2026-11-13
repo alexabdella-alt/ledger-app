@@ -3,7 +3,7 @@ import { useERP } from "./ERPContext";
 import { fmtDate , fmtSignedMoney, todayLocal } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
 import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
-import { alignDirectionToAccount, incomeAccountForAnswer } from "../lib/bookingDirection";
+import { alignDirectionToAccount, incomeAccountForAnswer, notIncomeAnswer, NOT_INCOME_COPY } from "../lib/bookingDirection";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { makeOneInFlight } from "../lib/oneInFlight";
 import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
@@ -467,6 +467,20 @@ function ClarificationCard({ item }) {
     // the expense vocabulary; "a consulting project" would have been booked as income on
     // Professional Services.
     if (inv.type === "revenue") {
+      // ★★ C649 — money in that the owner says ISN'T income is never booked as a sale.
+      const notIncome = notIncomeAnswer(text);
+      if (notIncome) {
+        const bankLine = !!item.statementLine && typeof inv.money_in === "boolean";
+        if (notIncome === "refund" && bankLine) {
+          const back = answerToAccount(text, { getAccountByRole, rules, vendor: answers.vendor || inv.vendor });
+          if (back && back.gl_code && glIsExpense(String(back.gl_code))) {
+            doBookGl({ code: back.gl_code, name: back.gl_name }, { reasoning: `A refund, from what you told us: "${text}".`, audit: "user described", answer: text });
+            return;
+          }
+        }
+        setFreeError(NOT_INCOME_COPY[notIncome === "refund" && !bankLine ? "refund_doc" : notIncome]);
+        return;
+      }
       const inc = incomeAccountForAnswer(text, { getAccountByRole, chart: CHART_OF_ACCOUNTS, fallback: inv });
       if (inc) { doBookGl({ code: inc.gl_code, name: inc.gl_name }, { reasoning: `From what you told us: "${text}".`, audit: "user described", answer: text }); return; }
     }
