@@ -92,7 +92,8 @@ export default function HeldLinePanel({ kind, item, inv, run, onDone }) {
       {ask(preview.needs === "add_card"
         ? "Add this credit card under Settings → Your business → Bank accounts first, so its purchases are recorded too. Then come back to this question."
         : "Add your other account under Settings → Your business → Bank accounts first, then come back to this question.")}
-      <button style={btn(false)} onClick={() => setView && setView("settings")}>Open Settings</button>
+      {/* C665 — straight to the Bank accounts section, as Home's setup checklist does */}
+      <button style={btn(false)} onClick={() => { setView && setView("settings"); setTimeout(() => document.getElementById("bank-accounts-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 250); }}>Add it in Settings</button>
     </>);
   }
   if (preview.needs === "pick_account") {

@@ -32,6 +32,9 @@ describe("★ a held line offers to record it", () => {
   it("a card payoff with no card set up asks the owner to add it", () => {
     expect(render({ amount: -1240, vendor: "Chase", description: "CHASE CREDIT CRD AUTOPAY" }, [checking, savings]))
       .toMatch(/Add this credit card under Settings → Your business → Bank accounts first/);
+    // C665 — the button goes straight to that section, which the owner's Settings shows
+    expect(readFileSync("src/components/HeldLinePanel.jsx", "utf8")).toMatch(/setView\("settings"\); setTimeout\(\(\) => document\.getElementById\("bank-accounts-section"\)/);
+    expect(readFileSync("src/components/views/SettingsView.jsx", "utf8")).toMatch(/id="bank-accounts-section"/);
   });
   it("a transfer in from savings", () => {
     expect(render({ amount: 2000, vendor: "Savings", description: "ONLINE TRANSFER FROM SAV 5521" })).toMatch(/Was this money moved from Savings\? Yes — a move between my accounts/);

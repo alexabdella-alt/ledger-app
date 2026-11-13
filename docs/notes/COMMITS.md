@@ -516,6 +516,9 @@ Every `C###` note lives here, **newest first**, verbatim as it was written into 
 
 - **★ C394 — THE BROWSER TAB HAD NO ICON (2026-09-15).** The tab showed a blank globe beside *"Shadow — Autonomous Finance"*: `index.html` linked no favicon. The eclipse logomark the header draws is now `public/favicon.svg` (SVG, so it is crisp at every size) with a 180px `apple-touch-icon.png` rasterised from it for Safari and home screens; Vite copies `public/` into the build, verified in `dist/`.
 
+- **C665 — "ADD IT IN SETTINGS" GOES STRAIGHT TO BANK ACCOUNTS (2026-11-12). ONE MUTATION, ONE RED.** Followed C655's card-payoff dead-end door all the way: with no card on file the question sends the owner to add one; the owner's Settings does show Bank accounts with "+ Add Bank Account" (rendered), but the button only switched to Settings and left them to find it on a long page. It now scrolls to `#bank-accounts-section`, as Home's setup checklist already does.
+  - **Process note:** a live-bundle check downloaded the right file name but got Vercel's *"The page could not be found"* body (the CDN a moment behind the index) and reported "differ". The check now retries until the bytes match rather than trusting the name.
+
 - **C664 — "CASH & CASH EQUIVALENTS" READS "CASH" ON THE OWNER'S SEAT (2026-11-12). ONE MUTATION, ONE RED.** The default bank account's name is a balance-sheet phrase; it shows wherever an owner sees the account (Money, the balance sheet, Starting balances). Added to `ownerAccountName`; the accountant keeps the name.
   - **Noted, not changed:** a SECOND checking account still defaults to Cash with the first (only savings gets its own since C663), so two checking accounts cannot reconcile separately. Rare; giving each its own ledger account means creating accounts on the fly, which is a bigger decision.
 
