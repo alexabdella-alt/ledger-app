@@ -1,4 +1,6 @@
 import React from "react";
+import ReceivedIntoSelect, { useReceivedIntoOptions } from "../ReceivedIntoSelect";
+import { payFromByKey, receivedIntoCopy } from "../../lib/payFrom";
 import NextStep from "../NextStep";
 import { reminderMailto, customerEmail } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
@@ -14,6 +16,8 @@ import { aiTextOf } from "../../lib/aiJson";
 
 export default function ArView() {
   const { CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, getAccountByRole, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, markBillPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat, companyDataLoaded } = useERP();
+  const [recvFor, setRecvFor] = React.useState({});   // C677 — where each customer payment went
+  const recvOpts = useReceivedIntoOptions();
             // ★★ C315 — CLIENT-FACING SINCE 2026-09-10 (C314), as "Money owed to you". §11's
   // standing directive: every owner-facing surface assumes ZERO accounting knowledge, and
   // "receivables" is one of the two words OWNER_JARGON_RE names by hand. The CPA keeps the
@@ -68,9 +72,11 @@ export default function ArView() {
             // Route through the canonical verified writer (was local-only → never
             // persisted → reverted on every refresh). side:"ar" sets payment_status="collected".
             const markCollected = async (id) => {
-              const ok = await markBillPaid(id, { side: "ar" });
+              // C677 — into the account chosen; "my personal account" is Dr Owner's Draw / Cr Money owed to you
+              const into = payFromByKey(recvOpts, recvFor[id]);
+              const ok = await markBillPaid(id, { side: "ar", ...(into ? { cashCode: into.code, cashName: into.name } : {}) });
               // Reload so the posted GL collection entry (Dr Cash / Cr AR) appears.
-              if (ok) { try { await loadAllData(); } catch {} showNotification("Marked as collected ✓"); }
+              if (ok) { try { await loadAllData(); } catch {} showNotification(into ? `Marked as collected — ${receivedIntoCopy(into)} ✓` : "Marked as collected ✓"); }
             };
 
             const handleArAging = async () => {
@@ -191,6 +197,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                               </div>
                               {!isCollected && (
                                 <div style={{ padding:"10px 20px", borderTop:"1px solid var(--sc-border)", background:"var(--sc-surface-2)", display:"flex", gap:8 }}>
+                                  <ReceivedIntoSelect value={recvFor[inv.id]} onChange={k=>setRecvFor(m=>({...m,[inv.id]:k}))} style={{ fontSize:11, padding:"5px 8px", borderRadius:7, border:"1px solid var(--sc-border-2)", background:"var(--sc-surface)", color:"var(--sc-text)" }} />
                                   <button onClick={()=>markCollected(inv.id)} style={{ padding:"6px 16px", borderRadius:8, fontSize:12, fontWeight:600, background:"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))", border:"none", color:"var(--sc-success)", cursor:"pointer" }}>✓ Mark Collected</button>
                                   {/* C574 — "Follow Up →" only switched tabs to a table with no follow-up in it. It writes the reminder now. */}
                                   <a href={reminderMailto({ email: customerEmail(contacts, inv.vendor), customer: inv.vendor, amount: arAmt(inv), daysOverdue: daysUntilDue != null && daysUntilDue < 0 ? -daysUntilDue : 0, companyName: companySettings?.name })}
@@ -245,7 +252,8 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                                   <td style={{ padding:"13px 16px", whiteSpace:"nowrap" }}>
                                     <a href={reminderMailto({ email: customerEmail(contacts, inv.vendor), customer: inv.vendor, amount: arAmt(inv), daysOverdue, companyName: companySettings?.name })}
                                       style={{ fontSize:12, color:"var(--sc-gold)", textDecoration:"none", fontWeight:600, marginRight:12 }}>Send reminder →</a>
-                                    <button onClick={()=>markCollected(inv.id)} style={{ padding:"5px 14px", borderRadius:8, fontSize:11, fontWeight:600, background:"#D1FAE522", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>✓ Collected</button>
+                                    <ReceivedIntoSelect value={recvFor[inv.id]} onChange={k=>setRecvFor(m=>({...m,[inv.id]:k}))} style={{ fontSize:11, padding:"5px 8px", borderRadius:7, border:"1px solid var(--sc-border-2)", background:"var(--sc-surface)", color:"var(--sc-text)" }} />
+                                  <button onClick={()=>markCollected(inv.id)} style={{ padding:"5px 14px", borderRadius:8, fontSize:11, fontWeight:600, background:"#D1FAE522", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>✓ Collected</button>
                                   </td>
                                 </tr>
                               );

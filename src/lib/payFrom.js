@@ -49,3 +49,33 @@ export function paidFromCopy(option) {
   if (!option) return "";
   return option.key === OWN_MONEY ? "paid with your own money — counted as money you put into the business" : `paid from ${option.label}`;
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★ C677 — "RECEIVED INTO": WHERE A CUSTOMER'S PAYMENT WENT.
+// A creator's brand deal often lands in a PERSONAL PayPal or bank account. Recording it as
+// received into the business bank would show cash the business never had; the sale was already
+// counted when the invoice was sent, so the right entry is Dr Owner's Draw / Cr Money owed to
+// you — income the business earned, which went straight to the owner. Bank accounts only (a
+// card is not where a customer's money lands), then the owner's personal account.
+// ═════════════════════════════════════════════════════════════════════════════
+export const PERSONAL = "personal";
+export function receivedIntoOptions({ bankAccounts = [], getAccountByRole = () => null } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const b of bankAccounts || []) {
+    if (!b || !b.gl_code || b.type === "credit_card" || /^2\d{3}$/.test(String(b.gl_code)) || seen.has(String(b.gl_code))) continue;
+    seen.add(String(b.gl_code));
+    out.push({ key: `acct:${b.id}`, label: b.name || "Bank account", code: String(b.gl_code), name: b.name || null });
+  }
+  if (!out.length) {
+    const cash = getAccountByRole("cash");
+    if (cash) out.push({ key: "cash", label: "Your bank account", code: String(cash.code), name: cash.name });
+  }
+  const draw = getAccountByRole("owners_draw");
+  if (draw) out.push({ key: PERSONAL, label: "My personal account (counted as money you took out)", code: String(draw.code), name: draw.name });
+  return out;
+}
+export function receivedIntoCopy(option) {
+  if (!option) return "";
+  return option.key === PERSONAL ? "received into your personal account — counted as money you took out" : `received into ${option.label}`;
+}

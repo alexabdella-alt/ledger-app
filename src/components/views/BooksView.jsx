@@ -1,4 +1,6 @@
 import React from "react";
+import ReceivedIntoSelect, { useReceivedIntoOptions } from "../ReceivedIntoSelect";
+import { receivedIntoCopy } from "../../lib/payFrom";
 import PayFromSelect, { usePayFromOptions } from "../PayFromSelect";
 import { payFromByKey } from "../../lib/payFrom";
 import { createPortal } from "react-dom";
@@ -52,6 +54,8 @@ export default function BooksView({ embedded = false } = {}) {
   const [payRowId, setPayRowId] = React.useState(null);
   const [payMethod, setPayMethod] = React.useState("ach");
   const [payFromKey, setPayFromKey] = React.useState(null);   // C674
+  const [recvFor, setRecvFor] = React.useState({});           // C677
+  const recvOpts = useReceivedIntoOptions();
   const payFromOpts = usePayFromOptions();
   const [payDate, setPayDate] = React.useState(todayLocal());
   const [sort, setSort] = React.useState({ col: null, dir: null }); // col=null → default (Date desc)
@@ -353,7 +357,10 @@ export default function BooksView({ embedded = false } = {}) {
                           style={{ padding:"5px 11px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>Mark Paid</button>
                       )}
                       {cls.settleAction==="collect" && (
-                        <button onClick={async e=>{ e.stopPropagation(); const ok = await markBillPaid?.(inv.id, { side:"ar" }); if (ok) { try { await loadAllData?.(); } catch {} showNotification?.("Marked as received ✓"); } }}
+                        <ReceivedIntoSelect value={recvFor[inv.id]} onChange={k=>setRecvFor(m=>({...m,[inv.id]:k}))} style={{ fontSize:11, padding:"5px 8px", borderRadius:7, border:"1px solid var(--sc-border-2)", background:"var(--sc-surface)", color:"var(--sc-text)" }} />
+                      )}
+                      {cls.settleAction==="collect" && (
+                        <button onClick={async e=>{ e.stopPropagation(); const into = payFromByKey(recvOpts, recvFor[inv.id]); const ok = await markBillPaid?.(inv.id, { side:"ar", ...(into ? { cashCode: into.code, cashName: into.name } : {}) }); if (ok) { try { await loadAllData?.(); } catch {} showNotification?.(into ? `Marked as received — ${receivedIntoCopy(into)} ✓` : "Marked as received ✓"); } }}
                           style={{ padding:"5px 11px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>Mark Received</button>
                       )}
                     </td>

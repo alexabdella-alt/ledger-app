@@ -1,4 +1,6 @@
 import { findContactForName } from "../../lib/contactMatch";
+import ReceivedIntoSelect, { useReceivedIntoOptions } from "../ReceivedIntoSelect";
+import { payFromByKey } from "../../lib/payFrom";
 import { canMarkInvoicePaid } from "../../lib/invoiceMarkPaid";
 import React from "react";
 import { plainWriteError } from "../../lib/plainWriteError";
@@ -18,6 +20,8 @@ import { makeOneInFlight } from "../../lib/oneInFlight";
 
 export default function SendInvoiceView() {
   const { aliasIndex, mailChannel, sendChannelMail, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, assertBookable, markBillPaid, persistMultiLineEntry, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, loadFailures, companyDataLoaded } = useERP();
+  const [recvFor, setRecvFor] = React.useState({});   // C677 — where each customer payment went
+  const recvOpts = useReceivedIntoOptions();
   // C432 — ONE SEND AT A TIME. A second click on "Send Invoice →" while the first was in
   // flight minted a second invoice with its own id, booked a second A/R entry and sent a
   // second email — the O123 shape on the owner's invoice. The gate (C401's helper) runs the
@@ -308,7 +312,8 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                 // Collect the existing A/R through the canonical poster: posts Dr Cash / Cr A/R
                 // and persists payment_status='collected'. (Was a local flag flip that never
                 // hit the GL — so A/R was never cleared and the figure couldn't reconcile.)
-                const ok = await markBillPaid(inv.ledger_id, { side: "ar" });
+                const into = payFromByKey(recvOpts, recvFor[inv.id]);   // C677
+                const ok = await markBillPaid(inv.ledger_id, { side: "ar", ...(into ? { cashCode: into.code, cashName: into.name } : {}) });
                 if (!ok) return;                      // the poster said why; the list is unchanged
                 paintPaid();
                 await saveInvoicePaid();
@@ -533,9 +538,10 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                                 <span style={{fontSize:10,background:inv.status==="paid"?"var(--sc-success-soft)":inv.status==="draft"?"var(--sc-border)":"var(--sc-gold-soft)",color:inv.status==="paid"?"var(--sc-success)":inv.status==="draft"?"var(--sc-text-2)":"var(--sc-gold)",borderRadius:20,padding:"1px 7px"}}>{inv.status}</span>
                               </div>
                             </div>
-                            {canMarkInvoicePaid(inv).ok && (
+                            {canMarkInvoicePaid(inv).ok && (<>
+                              {inv.ledger_id && <div style={{ marginTop:8 }}><ReceivedIntoSelect value={recvFor[inv.id]} onChange={k=>setRecvFor(m=>({...m,[inv.id]:k}))} style={{ fontSize:11, padding:"5px 8px", borderRadius:7, border:"1px solid var(--sc-border-2)", background:"var(--sc-surface)", color:"var(--sc-text)" }} /></div>}
                               <button data-mark-paid onClick={e=>{e.stopPropagation();markInvoicePaid(inv);}} style={{marginTop:8,fontSize:11,padding:"4px 12px",borderRadius:7,background:"transparent",border:"1px solid var(--sc-success-soft)",color:"var(--sc-success)",cursor:"pointer"}}>Mark paid</button>
-                            )}
+                            </>)}
                           </div>
                         );
                       })}
