@@ -32,6 +32,7 @@ const OWNER_NAMES = {
   "owner contributions": "Money you've put in",
   "credit card liability": "Owed on credit cards",
   "loans": "Loans you owe",
+  "cash & cash equivalents": "Cash",   // C664
 };
 export function ownerAccountName(name) {
   const n = name == null ? "" : String(name).trim();

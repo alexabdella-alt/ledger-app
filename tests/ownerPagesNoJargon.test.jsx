@@ -96,6 +96,7 @@ describe("the plain names", () => {
     expect(ownerAccountName("Owner's Draw / Distributions")).toBe("Money you've taken out");
     expect(ownerAccountName("Notes Payable")).toBe("Loans you owe");
     expect(ownerAccountName("Credit Card Liability")).toBe("Owed on credit cards");
+    expect(ownerAccountName("Cash & Cash Equivalents")).toBe("Cash");   // C664
     expect(categoryLabel("2000", "Accounts Payable")).toBe("Bills you owe");
     expect(categoryLabel("2000", "Accounts Payable", { withCode: true })).toBe("2000 · Accounts Payable");
   });
