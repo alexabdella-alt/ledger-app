@@ -38,7 +38,7 @@ describe("the screen", () => {
 
   it("★ offers the button only where it can work — the same rule as the click", () => {
     // C677 — the "Received into" choice now sits beside the button, inside the same rule
-    expect(src).toMatch(/\{canMarkInvoicePaid\(inv\)\.ok && \(<>\s*\n\s*\{inv\.ledger_id && <div[^\n]*<ReceivedIntoSelect[^\n]*\n\s*<button data-mark-paid onClick=\{e=>\{e\.stopPropagation\(\);markInvoicePaid\(inv\);\}\}/);
+    expect(src).toMatch(/\{!isViewer && canMarkInvoicePaid\(inv\)\.ok && \(<>\s*\n\s*\{inv\.ledger_id && <div[^\n]*<ReceivedIntoSelect[^\n]*\n\s*<button data-mark-paid onClick=\{e=>\{e\.stopPropagation\(\);markInvoicePaid\(inv\);\}\}/);
     expect(src).not.toMatch(/inv\.status!=="paid" && \(\s*\n\s*<button/);
   });
 });

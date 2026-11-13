@@ -734,7 +734,7 @@ export default function DashboardView() {
                 // ★ C704 — until April 15, last year's balance too (January's profit is tiny, so the
                 // line above would vanish exactly when last year's bill is due)
                 const lastYearLine = new Date() <= new Date(yNow, 3, 15, 23, 59) ? lastYearBalanceLine(taxEstimate(invoices, yNow - 1, estPaidPrevYear || 0, { chart: CHART_OF_ACCOUNTS || [], legalForm: companySettings?.legalForm || "", assets: taxAssets || null,
-                  ...profileForYear(yNow - 1, { current: filedDeadlines, prev: filedDeadlinesPrev }) }), yNow - 1) : null;
+                  ...profileForYear(yNow - 1, { current: filedDeadlines, prev: filedDeadlinesPrev }), cutoffDate: cutoffDate || null }), yNow - 1, { cutoffDate: cutoffDate || null }) : null;   // C706
                 const toneColor = bh.tone === "good" ? "var(--sc-success)" : bh.tone === "watch" ? "var(--sc-warning)" : "var(--sc-error)";
                 const toneSoft  = bh.tone === "good" ? "var(--sc-success-soft)" : bh.tone === "watch" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)";
                 const toneLabel = bh.tone === "good" ? "Healthy" : bh.tone === "watch" ? "Worth a look" : "Needs attention";
@@ -1003,6 +1003,7 @@ export function HomeWaitingList({ navTo }) {
     heldStatements: cockpit ? [] : heldStatementQuestions({ intakeRows: Array.isArray(intakeRows) ? intakeRows : [], bankAccounts: Array.isArray(bankAccounts) ? bankAccounts : [], uploadQueue: uploadQueue || [] }),   // C588
     uploadQueue: uploadQueue || [], cockpit, hasAccountant: hasAttester !== false,   // C574 — defaults to "has one" while unknown
     ownerBankLines: bankQuestionCards.length,   // C641
+    canInvite: !!(isOwner || isAdmin),   // C706 — a view-only teammate isn't offered an invite they can't send
   });
   if (!items.length) return null;
   // Every door goes through `navTo` — the seat-aware one — never a bare setView (C313).

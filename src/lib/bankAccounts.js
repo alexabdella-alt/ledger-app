@@ -43,3 +43,25 @@ export function statementBalanceTotals(bankAccounts = []) {
   const r = (n) => Math.round(n * 100) / 100;
   return { inBank: r(inBank), owed: r(owed) };
 }
+
+// ★ C706 — WHICH CATEGORIES A BANK ACCOUNT MAY BE FILED UNDER. Settings offered every asset and
+// liability — "Bills you owe", "Money owed to you", sales tax, payroll taxes — so one wrong pick
+// sent a bank's money into the wrong place, with nothing on screen saying what the choice does.
+// A checking / savings account is cash (10xx); a card is a card liability; a loan is a loan or
+// note. The account's current category is always kept in the list, so nothing is silently lost.
+const NOT_A_BANK_LIABILITY = new Set(["accounts_payable", "payroll_taxes_payable", "sales_tax_payable", "deferred_revenue", "accrued_liabilities", "lease_liability_current", "lease_liability_noncurrent"]);
+export function bankCategoryOptions(accounts = [], type = "checking", current = null) {
+  const code = (a) => String(a && a.code);
+  const fits = (a) => {
+    if (!a) return false;
+    if (type === "credit_card") return a.system_role === "credit_card_liability" || (/^2\d{3}$/.test(code(a)) && /\b(card|visa|mastercard|amex|american express|discover)\b/i.test(a.name || "") && !/\bgift\b/i.test(a.name || ""));
+    if (type === "loan") return /^2\d{3}$/.test(code(a)) && !NOT_A_BANK_LIABILITY.has(a.system_role) && (["long_term_debt", "notes_payable"].includes(a.system_role) || /\b(loan|note|debt|line of credit|loc|sba|mortgage)\b/i.test(a.name || ""));
+    return /^10\d{2}$/.test(code(a)) || ["cash", "savings", "undeposited_funds"].includes(a.system_role);
+  };
+  const out = (accounts || []).filter(fits);
+  if (current != null && !out.some((a) => code(a) === String(current))) {
+    const cur = (accounts || []).find((a) => code(a) === String(current));
+    if (cur) out.unshift(cur);
+  }
+  return out;
+}

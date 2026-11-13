@@ -10,7 +10,7 @@ import fs from "node:fs";
 describe("C479", () => {
   it("the predicate reads the printed amount and the invoice number", () => {
     const src = fs.readFileSync("src/components/views/BooksView.jsx", "utf8");
-    const start = src.indexOf("const filtered = collapseExpandedRows(byFilter).filter(");   // C503 — one row per entry, same predicate
+    const start = src.indexOf("const filtered = listed.filter(");   // C503 — one row per entry, same predicate; C706 — over the listed rows
     expect(start).toBeGreaterThan(-1);
     const pred = src.slice(start, src.indexOf(");", start));
     expect(pred).toMatch(/fmt\(i\.amount\)\.toLowerCase\(\)\.includes\(q\)/);

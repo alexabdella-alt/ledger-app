@@ -387,7 +387,7 @@ export default function ReportsView() {
                         <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"hidden", marginBottom:16 }}>
                           <div style={{ padding:"18px 24px", borderBottom:"1px solid var(--sc-border)", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
                             <div>
-                              <div style={{ fontSize:14, fontWeight:600 }}>Profit & Loss Statement</div>
+                              <div style={{ fontSize:14, fontWeight:600 }}>{ownerSeat ? "Profit and loss" : "Profit & Loss Statement"}</div>
                               <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{BASIS_LABELS[basisMode==="cash"?"cash":"accrual"].subtitle} · {rangeLabels[reportRange]} · {entryCount(plFiltered)} transactions</div>
                               <div data-basis-explainer style={{ fontSize:11.5, color:"var(--sc-text-2)", marginTop:4, maxWidth:420, lineHeight:1.45 }}>{BASIS_EXPLAINER}</div>
                             </div>
@@ -408,7 +408,7 @@ export default function ReportsView() {
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       {!ownerSeat && <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>}
-                                      {row.name}
+                                      {ownerSeat ? ownerAccountName(row.name) : row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
                                       <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-success)" }}>{fmt(row.total)}</span>
@@ -425,14 +425,14 @@ export default function ReportsView() {
                             {/* COGS — only shown when code 5000 has activity */}
                             {cogsRows.length > 0 && (
                               <div style={{ padding:"16px 0", borderBottom:"1px solid var(--sc-border)" }}>
-                                <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:2, marginBottom:12 }}>COST OF REVENUE</div>
+                                <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:2, marginBottom:12 }}>{ownerSeat ? "COST OF WHAT YOU SELL" : "COST OF REVENUE"}</div>
                                 {cogsRows.map(row=>(
                                   <div key={row.code} onClick={()=>setPlDrill({type:"exp-acct",code:row.code,name:row.name})} title="Drill into vendors"
                                     onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       {!ownerSeat && <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>}
-                                      {row.name}
+                                      {ownerSeat ? ownerAccountName(row.name) : row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
                                       <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-error)" }}>({fmt(row.total)})</span>
@@ -441,14 +441,14 @@ export default function ReportsView() {
                                   </div>
                                 ))}
                                 <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid var(--sc-border)" }}>
-                                  <span style={{ fontSize:13, fontWeight:600 }}>Gross Profit</span>
+                                  <span style={{ fontSize:13, fontWeight:600 }}>{ownerSeat ? "Left after the cost of what you sell" : "Gross Profit"}</span>
                                   <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:grossProfit>=0?"var(--sc-success)":"var(--sc-error)" }}>{grossProfit<0?"-":""}{fmt(Math.abs(grossProfit))}</span>
                                 </div>
                               </div>
                             )}
                             {/* Operating Expenses */}
                             <div style={{ padding:"16px 0", borderBottom:"1px solid var(--sc-border)" }}>
-                              <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:2, marginBottom:12 }}>OPERATING EXPENSES</div>
+                              <div style={{ fontSize:11, color:"var(--sc-text-2)", letterSpacing:2, marginBottom:12 }}>{ownerSeat ? "RUNNING COSTS" : "OPERATING EXPENSES"}</div>
                               {opexRows.length===0 ? <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>No expenses recorded</div> :
                                 opexRows.map(row=>(
                                   <div key={row.code} onClick={()=>setPlDrill({type:"exp-acct",code:row.code,name:row.name})} title="Drill into vendors"
@@ -456,7 +456,7 @@ export default function ReportsView() {
                                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", borderRadius:8, padding:"4px 8px", margin:"0 -8px 4px" }}>
                                     <span style={{ fontSize:13, color:"var(--sc-text-2)", paddingLeft:4, display:"flex", alignItems:"center", gap:10 }}>
                                       {!ownerSeat && <span style={{ fontSize:10, color:"var(--sc-text-mut)", fontFamily:"monospace", background:"var(--sc-border)", padding:"1px 6px", borderRadius:4 }}>{row.code}</span>}
-                                      {row.name}
+                                      {ownerSeat ? ownerAccountName(row.name) : row.name}
                                     </span>
                                     <span style={{ display:"flex", alignItems:"center", gap:8 }}>
                                       <span style={{ fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-error)" }}>({fmt(row.total)})</span>
@@ -472,7 +472,7 @@ export default function ReportsView() {
                             </div>
                             {/* Operating Income subtotal */}
                             <div style={{ padding:"12px 0", borderBottom:"1px solid var(--sc-border)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                              <span style={{ fontSize:14, fontWeight:600, color:"var(--sc-text-2)" }}>Operating Income</span>
+                              <span style={{ fontSize:14, fontWeight:600, color:"var(--sc-text-2)" }}>{ownerSeat ? "Profit from running the business" : "Operating Income"}</span>
                               <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:operatingIncome>=0?"var(--sc-success)":"var(--sc-error)" }}>{operatingIncome<0?"-":""}{fmt(Math.abs(operatingIncome))}</span>
                             </div>
                             {/* Net Income */}
@@ -753,8 +753,8 @@ export default function ReportsView() {
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
                         <div style={{ padding:"18px 24px", borderBottom:"1px solid var(--sc-border)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                           <div>
-                            <div style={{ fontSize:14, fontWeight:600 }}>Cash Flow Statement</div>
-                            <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>Cash basis — collected receipts and paid expenses only</div>
+                            <div style={{ fontSize:14, fontWeight:600 }}>{ownerSeat ? "Cash in and out" : "Cash Flow Statement"}</div>
+                            <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>{ownerSeat ? "Only money that actually came in or went out" : "Cash basis — collected receipts and paid expenses only"}</div>
                           </div>
                           <div style={{ fontSize:12, color:"var(--sc-text-2)" }}>{rangeLabels[reportRange]}</div>
                         </div>

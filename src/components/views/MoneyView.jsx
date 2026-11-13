@@ -14,7 +14,7 @@ import BooksView from "./BooksView";
 // list as its own screen.
 // ═════════════════════════════════════════════════════════════════════════════
 export default function MoneyView() {
-  const { invoices, contacts, docLibrary, getAccountByRole, setView, booksFilter, setBooksFilter, setVendorFilter, setChatOpen, setSendInvoiceDraftState } = useERP();
+  const { invoices, contacts, docLibrary, getAccountByRole, setView, booksFilter, setBooksFilter, setVendorFilter, setChatOpen, setSendInvoiceDraftState, isViewer } = useERP();
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
   const summary = moneySummary({
@@ -33,10 +33,10 @@ export default function MoneyView() {
           <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Money</h1>
           <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>{MONEY_PAGE_COPY.intro}</div>
         </div>
-        <button data-money-send-invoice onClick={() => setView("send-invoice")}
+        {isViewer ? <div data-view-only style={{ fontSize: 12, color: "var(--sc-text-2)", maxWidth: 260 }}>You have view-only access — you can see everything here; the owner or an admin records payments and sends invoices.</div> : <button data-money-send-invoice onClick={() => setView("send-invoice")}
           style={{ flexShrink: 0, padding: "10px 18px", borderRadius: 9, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
           Send an invoice
-        </button>
+        </button>}
       </div>
 
       <div data-money-summary style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, marginBottom: 18 }}>

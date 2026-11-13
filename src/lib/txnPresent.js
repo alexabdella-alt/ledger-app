@@ -53,7 +53,11 @@ export function classifyTxn(inv = {}, { apCode, arCode, settled = null } = {}) {
   const opening = inv.source === "opening_balance";
   const balanceSheetOnly = !isRev && !isExp && !settle;
   const primaryIsAssetDebit = balanceSheetOnly && String(inv.gl_code || "").startsWith("1") && inv.debit_credit !== "credit";
-  const inflow = settle ? settle === "ar_collection" : correction ? !isRev : balanceSheetOnly ? primaryIsAssetDebit : isRev;
+  // ★ C706 — only money landing in a BANK (10xx) is money in. Equipment or a prepaid bought on
+  // terms, on a card or from the bank (Dr 15xx / Cr A/P, card or cash) is a purchase — "+$4,625 ·
+  // Received" for an unpaid oven bill. The opening position keeps C541's reading (its cash debit).
+  const bankDebit = primaryIsAssetDebit && /^10\d{2}$/.test(String(inv.gl_code || ""));
+  const inflow = settle ? settle === "ar_collection" : correction ? !isRev : balanceSheetOnly ? (opening ? primaryIsAssetDebit : bankDebit) : isRev;
 
   // Account to display. A collection's primary leg is Cash — show the A/R it CLEARED (the
   // offset) instead, which is what the entry is about. A payment's primary already IS the A/P.
@@ -78,7 +82,9 @@ export function classifyTxn(inv = {}, { apCode, arCode, settled = null } = {}) {
   if (!settle && !linked && inv.status !== "voided" && !isCancelledOrCancelling(inv)) {   // C468 — nothing to pay on a corrected bill, or on the correction
     const onAP = eq(inv.secondary_gl_code, apCode) || eq(inv.gl_code, apCode);
     const onAR = eq(inv.secondary_gl_code, arCode) || eq(inv.gl_code, arCode);
-    if (onAP && isExp && inv.payment_status !== "paid") settleAction = "pay";
+    // C706 — a purchase of equipment (a non-bank asset) on terms is a bill to pay too
+    const assetOnTerms = primaryIsAssetDebit && !bankDebit && !opening && eq(inv.secondary_gl_code, apCode);
+    if (onAP && (isExp || assetOnTerms) && inv.payment_status !== "paid") settleAction = "pay";
     else if (onAR && isRev && inv.payment_status !== "collected") settleAction = "collect";
   }
 

@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, settledBases, entryBaseOf } from "../../lib/gl";
+import { openPayablesGL, openReceivablesGL } from "../../lib/reports";   // C706
 import { flaggedForReview } from "../../lib/confidenceFlag";
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
@@ -23,7 +24,7 @@ export default function BooksView({ embedded = false } = {}) {
   const {
     invoices, setInvoices, markPaid, markBillPaid, loadAllData, getAccountByRole, persistRecode, logAudit,
     setSelectedInvoice, setView, CHART_OF_ACCOUNTS,
-    booksFilter, setBooksFilter, softDeleteInvoices, signoffs, setDeleteConfirm,
+    booksFilter, setBooksFilter, softDeleteInvoices, signoffs, setDeleteConfirm, isViewer,
     navSeat,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
     reconciliations, docLibrary, storeDocument, fileToBase64,
@@ -107,8 +108,24 @@ export default function BooksView({ embedded = false } = {}) {
     return true;
   });
   const q = search.trim().toLowerCase();
+  // ★ C706 — (a) "Bills to pay" / "Owed to you" list EXACTLY what the figure above them counts
+  // (MoneyView: openPayablesGL / openReceivablesGL) — the classifier dropped a bill for equipment
+  // and bills carried in the starting balances, so "4 bills to pay" opened a list of 2. (b) Every
+  // other filter keeps a passing entry WHOLE before collapsing: filtering line by line left a taxed
+  // invoice with only its income line, whose debits are $0 — "INV-0002 · +$0.00" — and gave one
+  // bill a different line count under each filter.
+  const groupOf = (r) => String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]);
+  const wholeEntries = (rows) => {
+    const ids = new Set(rows.map(r => String(r.id)));
+    const bases = new Set(rows.filter(r => String(r.id ?? "").includes("_")).map(groupOf));
+    return base.filter(r => ids.has(String(r.id)) || (String(r.id ?? "").includes("_") && bases.has(groupOf(r))));
+  };
+  const lineCount = (r) => base.filter(x => groupOf(x) === groupOf(r)).length;
+  const listed = filter === "unpaid" ? openPayablesGL(scopedInvoices, apCode)
+    : filter === "owed" ? openReceivablesGL(scopedInvoices, arCode).map(r => String(r.id ?? "").includes("_") ? { ...r, _entryTotal: r.ar_amount != null ? Number(r.ar_amount) : (r._entryTotal ?? r.amount), _lineCount: lineCount(r) } : r)
+    : collapseExpandedRows(wholeEntries(byFilter));
   // C503 — one row per entry: a taxed invoice or a multi-line bill is one thing to a person.
-  const filtered = collapseExpandedRows(byFilter).filter(i => !q ||
+  const filtered = listed.filter(i => !q ||
     (i.vendor||"").toLowerCase().includes(q) ||
     (i.description||"").toLowerCase().includes(q) ||
     (i.gl_name||"").toLowerCase().includes(q) ||
@@ -352,14 +369,14 @@ export default function BooksView({ embedded = false } = {}) {
                     <td style={{ padding:"0 16px" }}>{statusBadge(inv)}</td>
                     <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
                       {/* Settle action ONLY on a genuinely open item — never on a settlement/clearing entry. */}
-                      {cls.settleAction==="pay" && (
+                      {!isViewer && cls.settleAction==="pay" && (
                         <button onClick={e=>{ e.stopPropagation(); setPayRowId(payRowId===inv.id?null:inv.id); setPayMethod("ach"); setPayDate(todayLocal()); }}
                           style={{ padding:"5px 11px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>Mark Paid</button>
                       )}
-                      {cls.settleAction==="collect" && (
+                      {!isViewer && cls.settleAction==="collect" && (
                         <ReceivedIntoSelect value={recvFor[inv.id]} onChange={k=>setRecvFor(m=>({...m,[inv.id]:k}))} style={{ fontSize:11, padding:"5px 8px", borderRadius:7, border:"1px solid var(--sc-border-2)", background:"var(--sc-surface)", color:"var(--sc-text)" }} />
                       )}
-                      {cls.settleAction==="collect" && (
+                      {!isViewer && cls.settleAction==="collect" && (
                         <button onClick={async e=>{ e.stopPropagation(); const into = payFromByKey(recvOpts, recvFor[inv.id]); const ok = await markBillPaid?.(inv.id, { side:"ar", ...(into ? { cashCode: into.code, cashName: into.name } : {}) }); if (ok) { try { await loadAllData?.(); } catch {} showNotification?.(into ? `Marked as received — ${receivedIntoCopy(into)} ✓` : "Marked as received ✓"); } }}
                           style={{ padding:"5px 11px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer" }}>Mark Received</button>
                       )}

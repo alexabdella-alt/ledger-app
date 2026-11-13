@@ -40,7 +40,9 @@ describe("C704 — January's Q4 is about last year, everywhere", () => {
     expect(tax).toMatch(/const isFiled = !!filed\[filedKey\(d\)\] \|\| !!\(filedDeadlinesPrev \|\| \{\}\)\[filedKey\(d\)\];/);
   });
   it("Home shows last year's balance until April 15", () => {
-    expect(lastYearBalanceLine({ owed: 4200, total: 9000 }, 2026).text).toBe("For 2026: about $4,200 of tax is still to pay by April 15, after the estimated payments you recorded.");
+    expect(lastYearBalanceLine({ owed: 4200, total: 9000, estPaid: 1000 }, 2026).text).toBe("For 2026: about $4,200 of tax is still to pay by April 15, after the estimated payments you recorded.");
+    expect(lastYearBalanceLine({ owed: 4200, total: 9000, estPaid: 0 }, 2026).text).toBe("For 2026: about $4,200 of tax is still to pay by April 15.");   // C706 — no payments, no mention
+    expect(lastYearBalanceLine({ owed: 4200, total: 9000 }, 2026, { cutoffDate: "2026-09-01" }).text).toMatch(/Your books start on 2026-09-01, so this covers only part of 2026/);
     expect(lastYearBalanceLine({ owed: 0, total: 9000 }, 2026)).toBe(null);
     expect(readFileSync("src/components/views/DashboardView.jsx", "utf8")).toMatch(/data-last-year-tax/);
   });

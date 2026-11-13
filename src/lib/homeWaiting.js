@@ -73,6 +73,7 @@ export function homeWaitingList({
   heldStatements = [],       // C588 — heldStatementQuestions(...): statements stored and waiting, from the record
   ownerBankLines = 0,        // C641 — bank lines the app couldn't categorise that an owner with no accountant can answer
   cockpit = false,           // reviewer seat: the accountant-side actions are theirs
+  canInvite = true,          // C706 — a view-only teammate can't invite anyone (Team says "only the owner")
   hasAccountant = true,      // C574 — false: nobody else is on this company, so "your accountant will…" is a promise nobody keeps
 } = {}) {
   const items = [];
@@ -191,6 +192,7 @@ export function homeWaitingList({
   // as reassurance. Without an accountant the line says so and offers the way to get one.
   const invite = { kind: "nav", label: "Invite your accountant", view: "team" };
   const solo = !cockpit && !hasAccountant;
+  const inviteIf = () => (canInvite ? [invite] : []);   // C706
   // C641 — an owner with no accountant answers their own uncategorised bank lines.
   if (solo && ownerBankLines > 0) {
     items.push({ id: "bank_answer", urgency: WAIT.NOW, text: bankLinesWaitingCopy(ownerBankLines),
@@ -200,17 +202,17 @@ export function homeWaitingList({
   if (q.some((x) => x && x.status === "done" && x.type === "contract")) {
     items.push({ id: "contract_ready", urgency: WAIT.INFO,
       text: cockpit ? "A contract is ready to record." : solo ? "We've read your agreement and saved it in Documents. Recording a contract in your books is an accountant's job — invite yours and they'll take it from there." : "We've read your agreement — your accountant will record it.",
-      actions: cockpit ? [{ kind: "nav", label: "Open Contracts", view: "contracts" }] : solo ? [invite] : [] });
+      actions: cockpit ? [{ kind: "nav", label: "Open Contracts", view: "contracts" }] : solo ? inviteIf() : [] });
   }
   if (q.some((x) => x && x.status === "done" && x.type === "unknown")) {
     items.push({ id: "unknown_doc", urgency: WAIT.INFO,
       text: cockpit ? "Some documents need accountant review." : solo ? "We couldn't tell what one of your files was. It's saved in Documents — an accountant can file it for you." : "We couldn't tell what one of your files was — your accountant will take a look.",
-      actions: cockpit ? [{ kind: "nav", label: "Open Review", view: "review" }] : solo ? [{ kind: "nav", label: "Open Documents", view: "docs", secondary: true }, invite] : [] });
+      actions: cockpit ? [{ kind: "nav", label: "Open Review", view: "review" }] : solo ? [{ kind: "nav", label: "Open Documents", view: "docs", secondary: true }, ...inviteIf()] : [] });
   }
   if (!(solo && ownerBankLines > 0) && q.some((x) => x && x.status === "done" && x.type === "bank_statement" && x.result?.needsReview > 0)) {   // C641 — not twice
     items.push({ id: "bank_review", urgency: cockpit ? WAIT.NOW : WAIT.INFO,
       text: cockpit ? "Some bank transactions need your review before they're added." : solo ? "A few things from your statement need a second look before they're added. An accountant reviews these — invite yours to finish them." : "A few things from your statement need a second look — your accountant is on it.",
-      actions: cockpit ? [{ kind: "nav", label: "Review matches", view: "matching" }] : solo ? [invite] : [] });
+      actions: cockpit ? [{ kind: "nav", label: "Review matches", view: "matching" }] : solo ? inviteIf() : [] });
   }
 
   // Stable: urgency first, then the order the inputs arrived in.

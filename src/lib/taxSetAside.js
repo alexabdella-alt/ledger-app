@@ -29,7 +29,12 @@ export function setAsideLine(est = null) {
 // ★ C704 — LAST YEAR'S BALANCE, until April 15. In January this year's profit is near nothing, so
 // the line above disappears exactly when last year's tax is due. What's still owed for last year
 // (its tax from the books, less the estimated payments recorded for it). Nothing when nothing is owed.
-export function lastYearBalanceLine(est = null, year) {
+// C706 (audit) — say when the books cover only part of that year, and mention payments only
+// when some were recorded.
+export function lastYearBalanceLine(est = null, year, { cutoffDate = null } = {}) {
   if (!est || !(Number(est.owed) > 0) || !(Number(est.total) > 0)) return null;
-  return { amount: Number(est.owed), text: `For ${year}: about ${fmtApprox(est.owed)} of tax is still to pay by April 15, after the estimated payments you recorded.` };
+  const paid = Number(est.estPaid) > 0 ? ", after the estimated payments you recorded" : "";
+  const partial = cutoffDate && String(cutoffDate).startsWith(`${year}-`) && String(cutoffDate) > `${year}-01-01`
+    ? ` Your books start on ${cutoffDate}, so this covers only part of ${year} — your tax return will have the full figure.` : "";
+  return { amount: Number(est.owed), text: `For ${year}: about ${fmtApprox(est.owed)} of tax is still to pay by April 15${paid}.${partial}` };
 }

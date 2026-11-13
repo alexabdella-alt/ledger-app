@@ -98,11 +98,11 @@ export default function MonthlyReportsPanel() {
                     <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>{r.transaction_count ?? 0} transactions</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: "#888" }}>Revenue</div>
+                    <div style={{ fontSize: 11, color: "#888" }}>Sales</div>
                     <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "'DM Mono',monospace" }}>{money(r.pl?.revenue?.current)}</div>
                   </div>
                   <div style={{ textAlign: "right", width: 120 }}>
-                    <div style={{ fontSize: 11, color: "#888" }}>Net income</div>
+                    <div style={{ fontSize: 11, color: "#888" }}>Profit</div>
                     <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "'DM Mono',monospace", color: net >= 0 ? "var(--sc-success)" : "var(--sc-error)" }}>{money(net, true)}</div>
                   </div>
                   <span style={{ color: "#888", fontSize: 18 }}>›</span>

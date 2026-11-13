@@ -33,6 +33,7 @@ const OWNER_NAMES = {
   "credit card liability": "Owed on credit cards",
   "loans": "Loans you owe",
   "cash & cash equivalents": "Cash",   // C664
+  "payroll tax expense": "Payroll taxes",   // C706 — a built-in account the owner's P&L printed as "Payroll Tax Expense"
 };
 export function ownerAccountName(name) {
   const n = name == null ? "" : String(name).trim();
