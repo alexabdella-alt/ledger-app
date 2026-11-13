@@ -48,15 +48,51 @@ export function taxProfileFrom(filed = {}, fallback = {}) {
 export function profileForYear(year, { current = {}, prev = {}, currentYear = new Date().getFullYear() } = {}) {
   return Number(year) === currentYear - 1 ? taxProfileFrom(prev, current) : taxProfileFrom(current, prev);
 }
-export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, businessMiles = 0, businessMilesAfterChange = null } = {}) {
+// ═════════════════════════════════════════════════════════════════════════════
+// ★ C695 — WHAT TO PAY EACH QUARTER: THE SAFE HARBOR (IRC §6654(d)(1)(B)).
+// An owner avoids the underpayment penalty by paying, across the four installments, the SMALLER
+// of 90% of this year's tax or 100% of last year's — 110% when last year's adjusted gross income
+// was over $150,000 ($75,000 married filing separately). The rest, if any, is due in April with
+// the return. Last year's figure comes from last year's books with last year's answers; it is
+// used only when the books cover the whole of last year (an entry in its first quarter), since
+// the rule needs a 12-month return. Planning: the figures are the business's share of the tax,
+// on the assumption that a job's withholding covers the rest. Pass-throughs only — a
+// corporation's installments follow different rules and stay at a quarter of this year's.
+// ═════════════════════════════════════════════════════════════════════════════
+export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi = 0, filingStatus = "single" } = {}) {
+  const now = Math.max(0, Number(thisYear) || 0);
+  if (lastYear == null) return { perQuarter: r2c(now / 4), basis: "this_year", factor: null, required: r2c(now) };
+  const factor = (Number(lastYearAgi) || 0) > (filingStatus === "mfs" ? 75000 : 150000) ? 1.1 : 1;
+  const prior = r2c(Math.max(0, Number(lastYear) || 0) * factor);
+  const ninety = r2c(now * 0.9);
+  return prior <= ninety ? { perQuarter: r2c(prior / 4), basis: "last_year", factor, required: prior } : { perQuarter: r2c(ninety / 4), basis: "ninety", factor, required: ninety };
+}
+const coversWholeYear = (invoices, year) => (invoices || []).some((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at
+  && /^\d{4}-0[1-3]-/.test(String(i.date || "")) && String(i.date).startsWith(`${year}-`) && /^[4-8]\d{3}$/.test(String(i.gl_code || "")));
+export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
   const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692
   const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages });   // C690, C693
   const paid = Number(estPaid) || 0;
   return { revenue, expenses, net, taxableNet: Math.max(0, f.profit), deductible: sc.deductibleTotal, notDeductible: sc.notDeductible,
     federal: f.federal, seTax: r2c(f.seTax + (f.addlMedicare || 0)), addlMedicare: f.addlMedicare || 0, qbi: f.qbi,   // C685 — self-employment tax includes the 0.9% over $200k
-    total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid), quarterly: Math.max(0, f.total) / 4,   // C693 — a loss saves tax; it never makes a payment negative
+    total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid),
+    quarterlyFull: Math.max(0, f.total) / 4,   // C693 — a loss saves tax; it never makes a payment negative
+    ...quarterPlan(),
     marginalRate: f.marginalRate || 0, standardDeduction: f.standardDeduction || 0, qbiMayBeLimited: !!f.qbiMayBeLimited };
+  // C695 — the quarterly payment by the safe harbor, when last year's books and answers allow it
+  function quarterPlan() {
+    if (legalForm === "c_corp" || !priorProfile || !coversWholeYear(invoices, year - 1)) {
+      return { quarterly: Math.max(0, f.total) / 4, safeHarbor: safeHarborQuarter({ thisYear: f.total }) };
+    }
+    const p = priorProfile;
+    const prev = ytdNetIncome(invoices, year - 1);
+    const psc = scheduleCBreakdown(invoices, year - 1, { chart, legalForm, homeOfficeSqft: p.homeOfficeSqft || 0, depreciation: assets ? taxDepreciationFor({ ...assets, year: year - 1, ledger: invoices }) : null, mileage: { miles: p.businessMiles || 0, milesAfterChange: p.businessMilesAfterChange ?? null } });
+    const pf = federalEstimate({ revenue: prev.revenue, deductible: psc.deductibleTotal, year: year - 1, legalForm, filingStatus: p.filingStatus || "single", otherIncome: p.otherIncome || 0, ownWages: p.ownWages || 0 });
+    const lastYearAgi = (p.otherIncome || 0) + (p.ownWages || 0) + pf.profit - pf.halfSe;
+    const sh = safeHarborQuarter({ thisYear: f.total, lastYear: pf.total, lastYearAgi, filingStatus: p.filingStatus || filingStatus });
+    return { quarterly: sh.perQuarter, safeHarbor: { ...sh, lastYearTax: Math.max(0, pf.total) } };
+  }
 }
 
 // ── HOW THE BUSINESS FILES ITS TAXES (O140, C559) ─────────────────────────────

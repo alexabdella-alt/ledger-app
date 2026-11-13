@@ -2749,7 +2749,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C618 — the same helper as Home: the first deadline that needs something, each estimate for its own year.
       const waitingDue = nextWaitingDeadline(new Date(), 30, {
         filed: filedDeadlinesRef.current, legalForm: legalFormRef.current || null,
-        estimateFor: (y) => taxEstimate(invoicesRef.current, y, 0, { chart: CHART_OF_ACCOUNTS, legalForm: legalFormRef.current || "", assets: taxAssetsRef.current, ...profileForYear(y, { current: filedDeadlinesRef.current, prev: filedDeadlinesPrevRef.current }) }),   // C678, C683, C690, C693
+        estimateFor: (y) => taxEstimate(invoicesRef.current, y, 0, { chart: CHART_OF_ACCOUNTS, legalForm: legalFormRef.current || "", assets: taxAssetsRef.current, ...profileForYear(y, { current: filedDeadlinesRef.current, prev: filedDeadlinesPrevRef.current }), priorProfile: profileForYear(y - 1, { current: filedDeadlinesRef.current, prev: filedDeadlinesPrevRef.current }) }),   // C678, C683, C690, C693, C695
         has1099sFor: (d) => plan1099ForYear({ invoices: invoicesRef.current, contacts: contactsRef.current || [], chart: CHART_OF_ACCOUNTS, year: d.year - 1 }).outstanding > 0,
       });
       const nextDue = waitingDue ? waitingDue.deadline : null;

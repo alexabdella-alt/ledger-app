@@ -219,7 +219,8 @@ async function getTaxSummary(input, ctx) {
   // C690, C693 — the owner's answers for THAT year (carried forward when unanswered); the same
   // home office in the deductions as in the estimate, so the two figures agree
   const profile = profileForYear(year, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} });
-  const est = taxEstimate(led, year, 0, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile });
+  const est = taxEstimate(led, year, 0, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile,
+    priorProfile: profileForYear(year - 1, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} }) });   // C695 — the safe harbor
   const deductions = deductionBreakdown(led, year, ctx.getAccountByRole, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile })   // C692 — miles too
     .filter(d => (d.amount || 0) > 0)
     .map(d => ({ category: d.label, schedule_c_line: d.line, amount: r2(d.amount), not_deductible: r2(d.notDeductible || 0) }));
@@ -238,6 +239,7 @@ async function getTaxSummary(input, ctx) {
     next_deadline: next ? next.label : null,
     next_deadline_days: next ? next.days : null,
     estimated_amount_due: next && next.est ? r2(est.quarterly) : null,
+    estimated_amount_basis: est.safeHarbor ? ({ last_year: `the safe harbor: ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax, so no underpayment penalty — the rest is due in April`, ninety: "90% of this year's estimated tax — enough to avoid an underpayment penalty", this_year: "a quarter of this year's estimate" })[est.safeHarbor.basis] : null,   // C695
   };
 }
 

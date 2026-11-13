@@ -98,7 +98,7 @@ export default function TaxView() {
   // ★ C690 — the owner's filing status and other income, for the year's tax brackets.
   const profile = taxProfileFrom(filed, filedDeadlinesPrev || {});   // C693 — last year's answers carry forward
   const homeOfficeSqft = profile.homeOfficeSqft;
-  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile });   // C683, C690
+  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile, priorProfile: taxProfileFrom(filedDeadlinesPrev || {}, filed) });   // C683, C690, C695
   const passThrough = legalForm !== "c_corp";
   const [otherDraft, setOtherDraft] = React.useState("");
   React.useEffect(() => { setOtherDraft(profile.otherIncome ? String(profile.otherIncome) : ""); }, [profile.otherIncome]);
@@ -216,6 +216,17 @@ export default function TaxView() {
             style={{ width: 140, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
           <span style={{ fontSize: 11, color: "var(--sc-text-mut)" }}>Updates "Still Owed" above.</span>
         </div>
+        {/* ★ C695 — what to pay each quarter, by the IRS safe harbor */}
+        {est.total > 0 && (
+          <div data-safe-harbor style={{ fontSize: 12, color: "var(--sc-text)", marginTop: 12 }}>
+            <strong>Pay about {fmt(est.quarterly)} each quarter</strong>{" "}
+            {est.safeHarbor?.basis === "last_year"
+              ? `— that's ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax from the business (${fmt(est.safeHarbor.lastYearTax)}), which the IRS accepts as enough to avoid an underpayment penalty. Anything more you owe is due in April.`
+              : est.safeHarbor?.basis === "ninety"
+                ? "— 90% of this year's estimate, which the IRS accepts as enough to avoid an underpayment penalty. The rest is due in April."
+                : "— a quarter of this year's estimate."}
+          </div>
+        )}
         <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 10 }}>This is an estimate. Consult your tax advisor for exact amounts.</div>
       </div>
 
