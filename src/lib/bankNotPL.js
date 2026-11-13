@@ -29,8 +29,20 @@ const KINDS = [
   ["transfer", /\b(online|mobile|internal|funds|bank|book) (transfer|xfer|trnsfr)\b|\b(transfer|xfer|trnsfr) (to|from) (savings|checking|sav|chk|acct|account|x+\d+|\d{4})\b|\b(to|from) (savings|checking) (acct|account)?\b/i],
 ];
 
-export function notProfitAndLossKind(line = {}) {
+// ★ C653 — ON A CREDIT CARD'S OWN STATEMENT, the monthly payment arrives as money IN with no
+// card brand in it ("PAYMENT - THANK YOU", "AUTOPAY PAYMENT"), so the pattern above never saw it
+// and it was filed as a SALE. On a card account, money in that says payment / autopay / thank you
+// is the payoff. (A refund on a card — "AMAZON RETURN" — is not held: it is money back on a
+// purchase, and books as one.)
+const CARD_PAYMENT_IN = /\b(payment|pymt|pmt|autopay|auto pay|e-?payment|thank you)\b/i;
+export function isCardAccount(account) {
+  if (!account) return false;
+  return account.type === "credit_card" || /^2\d{3}$/.test(String(account.gl_code || ""));
+}
+
+export function notProfitAndLossKind(line = {}, { cardAccount = false } = {}) {
   const text = `${line.description || ""} ${line.vendor || ""}`;
+  if (cardAccount && line.money_in === true && CARD_PAYMENT_IN.test(text)) return "card";
   for (const [kind, re] of KINDS) {
     if (!re.test(text)) continue;
     if (kind === "transfer" && PAYMENT_APPS.test(text)) return null;
@@ -48,10 +60,11 @@ export const NOT_PL_REASON = {
 };
 
 // Applied to the categoriser's output, after vendor rules. A rule the owner made wins.
-export function holdNotProfitAndLoss(lines = []) {
+export function holdNotProfitAndLoss(lines = [], { account = null } = {}) {
+  const cardAccount = isCardAccount(account);
   return (lines || []).map((t) => {
     if (!t || t.rule_applied) return t;
-    const kind = notProfitAndLossKind(t);
+    const kind = notProfitAndLossKind(t, { cardAccount });
     if (!kind) return t;
     return { ...t, needs_review: true, confidence: Math.min(Number(t.confidence) || 0, 50), not_pl: kind, reasoning: NOT_PL_REASON[kind] };
   });

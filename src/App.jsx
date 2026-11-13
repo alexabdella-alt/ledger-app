@@ -7249,7 +7249,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         const rule = ruleForVendor(rules, t.vendor, { aliasIndex });
         if (rule) return { ...t, gl_code: rule.gl_code, gl_name: rule.gl_name, confidence: 99, needs_review: false, rule_applied: true };
         return t;
-      }));
+      }), { account });   // C653 — on a card's own statement, its payment arrives as money in
 
       // Stable, AI-round-trip-safe line ids. A 13-digit numeric id (Date.now()+i) comes
       // back from the matching LLM as a string (or reformatted), so the strict-=== bank_txn

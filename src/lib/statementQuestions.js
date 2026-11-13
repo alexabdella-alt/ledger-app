@@ -12,7 +12,7 @@
 // ═════════════════════════════════════════════════════════════════════════════
 import { draftClientQuestion } from "./clarify.js";
 import { fmtMoney } from "./format.js";
-import { notProfitAndLossKind } from "./bankNotPL.js";
+import { notProfitAndLossKind, isCardAccount } from "./bankNotPL.js";
 
 export const OWNER_ANSWERABLE_REASONS = new Set(["low_confidence"]);
 
@@ -40,11 +40,13 @@ const HELD_LOOKS_LIKE = {
   loan: "looks like a loan payment or loan money, which isn't income or spending (only a loan's interest is)",
   transfer: "looks like money moved between your own accounts, which isn't income or spending",
 };
-export function heldQuestion(inv = {}) {
-  const kind = notProfitAndLossKind(inv);
+export function heldQuestion(inv = {}, { cardAccount = false } = {}) {
+  const kind = notProfitAndLossKind(inv, { cardAccount });
   if (!kind) return null;
   const amt = fmtMoney(Math.abs(Number(inv.amount) || 0));
-  const who = inv.vendor && inv.vendor !== "Bank transaction" ? ` ${inv.money_in ? "from" : "to"} ${inv.vendor}` : "";
+  // C653 — a card's own statement names its payment "PAYMENT - THANK YOU"; "from PAYMENT - THANK YOU" says nothing
+  const onCard = cardAccount && inv.money_in === true;
+  const who = !onCard && inv.vendor && inv.vendor !== "Bank transaction" ? ` ${inv.money_in ? "from" : "to"} ${inv.vendor}` : onCard ? " paid to this card" : "";
   return `The ${amt}${who} ${HELD_LOOKS_LIKE[kind]}, so it hasn't been recorded. If it was something else, say what it was for.`;
 }
 
@@ -66,7 +68,7 @@ export function bankLineQuestionCards(exceptions = [], { statements = [], bankAc
     };
     return {
       id: `sxq_${lineId}`, invoice, queueItemId: null,
-      question: heldQuestion(invoice) || (moneyIn ? moneyInQuestion(invoice) : draftClientQuestion(invoice).question),
+      question: heldQuestion(invoice, { cardAccount: isCardAccount(acct) }) || (moneyIn ? moneyInQuestion(invoice) : draftClientQuestion(invoice).question),
       statementLine: { lineId, statementId: e.statement_id, accountId: acct ? acct.id : null, accountCode: offset },
       suggestedCode: null, suggestedName: null,
     };

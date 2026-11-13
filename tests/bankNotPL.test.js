@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { notProfitAndLossKind, holdNotProfitAndLoss, NOT_PL_REASON } from "../src/lib/bankNotPL";
+import { notProfitAndLossKind, holdNotProfitAndLoss, NOT_PL_REASON, isCardAccount } from "../src/lib/bankNotPL";
 import { planStatementPipeline } from "../src/lib/pipeline";
 
 // C651 — a bank line whose own words say it isn't income or spending is held, not auto-booked.
@@ -69,5 +69,35 @@ describe("the held line's question", () => {
   });
   it("plain words (our words — the bank's own text in the vendor name is the bank's)", () => {
     for (const c of cards) expect(c.question.replace(c.invoice.vendor, "")).not.toMatch(OWNER_JARGON_RE);
+  });
+});
+
+// C653 — on a credit card's own statement, its payment arrives as money IN with no card brand.
+describe("a card's own statement", () => {
+  const card = { id: "C", type: "credit_card", gl_code: "2200", name: "Business card" };
+  const checking = { id: "K", type: "checking", gl_code: "1000" };
+  const pay = { description: "AUTOPAY PAYMENT - THANK YOU", vendor: "Payment", amount: 1240, money_in: true, confidence: 90, needs_review: false, gl_code: "4000", type: "revenue" };
+  it("★ the payment is held on the card account — before C653 it was filed as a sale", () => {
+    expect(holdNotProfitAndLoss([pay], { account: card })[0].not_pl).toBe("card");
+  });
+  it("on a checking account, money in that says 'payment' is a customer paying — left alone", () => {
+    expect(holdNotProfitAndLoss([{ ...pay, description: "PAYMENT RECEIVED - ACME" }], { account: checking })[0].needs_review).toBe(false);
+  });
+  it("a refund on the card is money back on a purchase, not held", () => {
+    expect(holdNotProfitAndLoss([{ ...pay, vendor: "Amazon", description: "AMAZON MKTPLACE RETURN" }], { account: card })[0].needs_review).toBe(false);
+  });
+  it("a purchase on the card is untouched", () => {
+    expect(holdNotProfitAndLoss([{ ...pay, vendor: "Staples", money_in: false, description: "STAPLES 0042 PAYMENT" }], { account: card })[0].needs_review).toBe(false);
+  });
+  it("a card account is known by its type or by a liability account", () => {
+    expect([isCardAccount(card), isCardAccount({ gl_code: "2210" }), isCardAccount(checking), isCardAccount(null)]).toEqual([true, true, false, false]);
+  });
+  it("★ its question says so, without 'from PAYMENT - THANK YOU'", () => {
+    const [c] = bankLineQuestionCards([{ kind: "line", id: "sxl_9", statement_id: "S", bank_account_id: "C", date: "2026-03-20", amount: 1240, vendor: "Payment", description: "AUTOPAY PAYMENT - THANK YOU", reason: "low_confidence" }],
+      { bankAccounts: [card], cashCode: "1000" });
+    expect(c.question).toBe("The $1,240.00 paid to this card looks like paying off a credit card, which isn't new spending, so it hasn't been recorded. If it was something else, say what it was for.");
+  });
+  it("★ wired with the import's account", () => {
+    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/return t;\n\s*\}\), \{ account \}\);/);
   });
 });
