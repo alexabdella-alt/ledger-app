@@ -192,7 +192,8 @@ export function depreciationAmounts({ method = DEPRECIATION_METHOD.STRAIGHT_LINE
       const left = n - k;
       const declining = r2(remaining * r);
       const straight = r2(remaining / left);
-      const amt = k === n - 1 ? r2(remaining) : Math.max(declining, straight);
+      // C720 — never more than is left (a rate above the number of periods took more than the asset)
+      const amt = k === n - 1 ? r2(remaining) : Math.min(r2(remaining), Math.max(declining, straight));
       remaining = r2(remaining - amt);
       out.push(amt);
     }
@@ -201,11 +202,13 @@ export function depreciationAmounts({ method = DEPRECIATION_METHOD.STRAIGHT_LINE
 
   // Straight line — unchanged, and the default for anything unrecognised. A method name we
   // do not know must not silently produce a different curve.
+  // ★ C720 — never more than is LEFT: when the monthly figure rounds UP ($3.00 over 468 months is
+  // $0.01 a month), the months ran past the base and the last one went negative.
   const per = r2(b / n);
   const out = [];
   let posted = 0;
   for (let k = 0; k < n; k++) {
-    const amt = k === n - 1 ? r2(b - posted) : per;
+    const amt = k === n - 1 ? r2(b - posted) : Math.min(per, r2(b - posted));
     posted = r2(posted + amt);
     out.push(amt);
   }
@@ -225,7 +228,7 @@ export function buildDepreciationSchedule({ cost, salvage = 0, lifeMonths, inSer
     // Month k from the in-service date, day clamped to the month + LOCAL-formatted
     // (CR-4: Jan 31 +1mo → Feb 28, never overflow to Mar 3; no toISOString day-shift).
     const isLast = k === n - 1;
-    const amt = isLast ? r2(base - posted) : perMonth;   // last month absorbs rounding
+    const amt = isLast ? r2(base - posted) : Math.min(perMonth, r2(base - posted));   // last month absorbs rounding; C720 — never past what's left
     posted = r2(posted + amt);
     const je = buildDepreciationEntry({
       amount: amt, depExpCode, accumDepCode,

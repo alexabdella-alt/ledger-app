@@ -19,7 +19,7 @@ describe("a contract becomes a schedule of entries", () => {
   it("a 12-month operating lease produces a Day 1 entry and monthly entries", () => {
     const r = plan(lease());
     expect(r.leaseTermMonths).toBe(12);
-    expect(r.contract.journal_entries[0].lines.length).toBe(3);
+    expect(r.contract.journal_entries[0].lines.length).toBe(2);   // C720 — a one-year lease is all current: no long-term line
     expect(r.monthlyEntries.length).toBeGreaterThanOrEqual(12);
   });
 
@@ -90,9 +90,10 @@ describe("non-lease contracts", () => {
     expect(plan({ contract_type:"lease", payment_amount:0, start_date:"2026-01-01", end_date:"2026-12-31" }).monthlyEntries).toEqual([]);
   });
 
-  it("★ a long contract is capped at 60 months rather than generating thousands of rows", () => {
-    const r = plan({ contract_type:"subscription_paid", payment_amount:99, start_date:"2026-01-01", end_date:"2046-01-01" });
-    expect(r.monthlyEntries.length).toBe(60);
+  it("★ a long contract gets its whole term (C720 — was cut at 60 months), up to 30 years", () => {
+    const r = plan({ contract_type:"subscription_paid", payment_amount:99, start_date:"2026-01-01", end_date:"2045-12-31" });
+    expect(r.monthlyEntries.length).toBe(240);
+    expect(plan({ contract_type:"subscription_paid", payment_amount:99, start_date:"2026-01-01", end_date:"2099-12-31" }).monthlyEntries.length).toBe(360);
   });
 });
 

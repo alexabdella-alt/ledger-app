@@ -62,8 +62,9 @@ export function buildPrepaidSchedule({ total, months, startDate, expenseCode, pr
   for (let k = 0; k < n; k++) {
     // Month k from the start date, day clamped + LOCAL-formatted (CR-4).
     const isLast = k === n - 1;
-    const amt = isLast ? r2(base - posted) : per;   // last month absorbs rounding
+    const amt = isLast ? r2(base - posted) : Math.min(per, r2(base - posted));   // last month absorbs rounding; C720 — never past what's left
     posted = r2(posted + amt);
+    if (!(amt > 0)) continue;   // C720 — a month with nothing left is not an entry (it built a null)
     entries.push(buildPrepaidAmortizeEntry({
       amount: amt, expenseCode, prepaidCode,
       date: addMonthsClampedYMD(startDate, k),
