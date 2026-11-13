@@ -36,13 +36,13 @@ export function ytdNetIncome(invoices, year = new Date().getFullYear()) {
 export function taxProfileFrom(filed = {}, fallback = {}) {
   const f = filed || {}, b = fallback || {};
   const pick = (k) => (f[k] != null && f[k] !== "" ? { v: f[k], carried: false } : b[k] != null && b[k] !== "" ? { v: b[k], carried: true } : { v: null, carried: false });
-  const st = pick("filing_status"), oi = pick("other_income"), ow = pick("own_wages"), ho = pick("home_office_sqft");
+  const st = pick("filing_status"), oi = pick("other_income"), ow = pick("own_wages"), ho = pick("home_office_sqft"), hp = pick("health_premiums");   // C700
   // C692 — business miles are this year's only (never carried)
   const miles = Math.max(0, Math.floor(Number(f.business_miles) || 0));
   const after = f.business_miles_after_change;
-  return { homeOfficeSqft: Number(ho.v) || 0, filingStatus: st.v || "single", otherIncome: Math.max(0, Number(oi.v) || 0), ownWages: Math.max(0, Number(ow.v) || 0),
+  return { homeOfficeSqft: Number(ho.v) || 0, filingStatus: st.v || "single", otherIncome: Math.max(0, Number(oi.v) || 0), ownWages: Math.max(0, Number(ow.v) || 0), healthPremiums: Math.max(0, Number(hp.v) || 0),
     businessMiles: miles, businessMilesAfterChange: after == null || after === "" ? null : Math.max(0, Math.floor(Number(after) || 0)),
-    assumed: !st.v, carried: st.carried || oi.carried || ow.carried };
+    assumed: !st.v, carried: st.carried || oi.carried || ow.carried || hp.carried };
 }
 // The profile for an estimate of `year`: that year's answers, else the neighbouring year's.
 export function profileForYear(year, { current = {}, prev = {}, currentYear = new Date().getFullYear() } = {}) {
@@ -84,23 +84,23 @@ export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi =
 const booksCoverYear = (invoices, year, cutoffDate) => (!cutoffDate || String(cutoffDate) <= `${year}-01-01`)
   && (invoices || []).some((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at
     && String(i.date || "").startsWith(`${year}-`) && /^[4-8]\d{3}$/.test(String(i.gl_code || "")));
-export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null, cutoffDate = null } = {}) {
+export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, healthPremiums = 0, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null, cutoffDate = null } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
   const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692
-  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages });   // C690, C693
+  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, healthPremiums });   // C690, C693, C700
   const paid = Number(estPaid) || 0;
   return { revenue, expenses, net, taxableNet: Math.max(0, f.profit), deductible: sc.deductibleTotal, notDeductible: sc.notDeductible,
     federal: f.federal, seTax: r2c(f.seTax + (f.addlMedicare || 0)), addlMedicare: f.addlMedicare || 0, qbi: f.qbi,   // C685 — self-employment tax includes the 0.9% over $200k
     total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid),
     quarterlyFull: Math.max(0, f.total) / 4,   // C693 — a loss saves tax; it never makes a payment negative
     ...quarterPlan(),
-    marginalRate: f.marginalRate || 0, standardDeduction: f.standardDeduction || 0, qbiMayBeLimited: !!f.qbiMayBeLimited,
+    marginalRate: f.marginalRate || 0, standardDeduction: f.standardDeduction || 0, qbiMayBeLimited: !!f.qbiMayBeLimited, healthDeduction: f.healthDeduction || 0,   // C700
     retirement: retirementPlan() };
   // C696 — how much a sole proprietor or partner could put away, and what it would save this year
   function retirementPlan() {
     if (!["", "sole_prop", "partnership"].includes(legalForm || "") || !(f.profit > 0)) return null;
     const room = retirementRoom({ profit: f.profit, halfSe: f.halfSe, year });
-    const saves = (amt) => r2c(Math.max(0, f.total - federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, retirement: amt }).total));
+    const saves = (amt) => r2c(Math.max(0, f.total - federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, healthPremiums, retirement: amt }).total));
     // C698 — employees on the books: a Solo 401(k) is for an owner with no employees, and a SEP
     // must give eligible employees the same percentage; a job's 401(k) shares the deferral limit
     const hasEmployees = sc.rows.some((r) => r.line === "26" && r.spent > 0);
@@ -116,8 +116,8 @@ export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid =
     const p = priorProfile;
     const prev = ytdNetIncome(invoices, year - 1);
     const psc = scheduleCBreakdown(invoices, year - 1, { chart, legalForm, homeOfficeSqft: p.homeOfficeSqft || 0, depreciation: assets ? taxDepreciationFor({ ...assets, year: year - 1, ledger: invoices }) : null, mileage: { miles: p.businessMiles || 0, milesAfterChange: p.businessMilesAfterChange ?? null } });
-    const pf = federalEstimate({ revenue: prev.revenue, deductible: psc.deductibleTotal, year: year - 1, legalForm, filingStatus: p.filingStatus || "single", otherIncome: p.otherIncome || 0, ownWages: p.ownWages || 0 });
-    const lastYearAgi = (p.otherIncome || 0) + (p.ownWages || 0) + pf.profit - pf.halfSe;
+    const pf = federalEstimate({ revenue: prev.revenue, deductible: psc.deductibleTotal, year: year - 1, legalForm, filingStatus: p.filingStatus || "single", otherIncome: p.otherIncome || 0, ownWages: p.ownWages || 0, healthPremiums: p.healthPremiums || 0 });
+    const lastYearAgi = (p.otherIncome || 0) + (p.ownWages || 0) + pf.profit - pf.halfSe - (pf.healthDeduction || 0);   // C700
     const sh = safeHarborQuarter({ thisYear: f.total, lastYear: pf.total, lastYearAgi, filingStatus });   // C698 — this year's filing status decides the MFS threshold
     return { quarterly: sh.perQuarter, safeHarbor: { ...sh, lastYearTax: Math.max(0, pf.total) } };
   }

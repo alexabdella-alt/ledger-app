@@ -54,6 +54,7 @@ export function taxPacketRows({ year, companyName = "", legalForm = "", profile 
   const bought = (assets || []).filter((a) => a && String(a.in_service_date || "").startsWith(`${year}-`) && Number(a.cost) > 0);
   for (const a of bought) add("Equipment bought", a.description || a.vendor || "Equipment", a.cost, `in use from ${a.in_service_date}`);
 
+  if (Number(profile.healthPremiums) > 0 && legalForm !== "c_corp" && legalForm !== "s_corp") add("Personal return", "Health insurance you paid for yourself", profile.healthPremiums, `self-employed health insurance deduction (Schedule 1)${est.healthDeduction != null ? `; ${money(est.healthDeduction)} counted, up to the business profit` : ""}`);   // C700
   add("Estimated tax", "Estimated payments you told us you made", estPaid);
   if (est.total != null) {
     add("Estimated tax", "Federal income tax (estimate)", est.federal);

@@ -104,6 +104,8 @@ export default function TaxView() {
   const passThrough = legalForm !== "c_corp";
   const [otherDraft, setOtherDraft] = React.useState("");
   React.useEffect(() => { setOtherDraft(profile.otherIncome ? String(profile.otherIncome) : ""); }, [profile.otherIncome]);
+  const [healthDraft, setHealthDraft] = React.useState("");   // C700
+  React.useEffect(() => { setHealthDraft(profile.healthPremiums ? String(profile.healthPremiums) : ""); }, [profile.healthPremiums]);
   const [wagesDraft, setWagesDraft] = React.useState("");
   React.useEffect(() => { setWagesDraft(profile.ownWages ? String(profile.ownWages) : ""); }, [profile.ownWages]);
   const deadlines = getTaxDeadlines(new Date(), { legalForm: legalForm || null });   // O140/C559
@@ -392,6 +394,17 @@ export default function TaxView() {
             <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label}</div>
             <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}</div>
             {/* ★ C696 — the room, worked out from this year's profit so far, and what it would save */}
+            {/* ★ C700 — premiums the owner pays, counted in the estimate (sole proprietor / partner) */}
+            {d.key === "health" && legalForm !== "s_corp" && legalForm !== "c_corp" && (
+              <div data-health-premiums style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+                <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Health insurance you pay for yourself (and family) this year:</label>
+                <input type="number" min="0" disabled={!loadOk} value={healthDraft} placeholder="0" onChange={e => setHealthDraft(e.target.value)}
+                  onBlur={() => { const v = Math.max(0, Math.round(Number(healthDraft) || 0)); if (v !== profile.healthPremiums || profile.carried) save({ ...taxState, filed: { ...filed, health_premiums: v } }); }}
+                  style={{ width: 120, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
+                {est.healthDeduction > 0 && <span style={{ fontSize: 12, color: "var(--sc-success)" }}>{fmt(est.healthDeduction)} counted in your estimate</span>}
+                <div style={{ fontSize: 11, color: "var(--sc-text-mut)", width: "100%" }}>It lowers your income tax (not self-employment tax), up to your business profit. It doesn't count for any month you could have joined a plan through a job — yours or a spouse's.</div>
+              </div>
+            )}
             {d.key === "retirement" && est.retirement && est.retirement.sep > 0 && (
               <div data-retirement-room style={{ fontSize: 12, color: "var(--sc-text)", marginTop: 6 }}>
                 From your profit so far, you could put up to <strong>{fmt(est.retirement.sep)}</strong> into a SEP-IRA (saving about {fmt(est.retirement.sepSaves)} in tax this year){est.retirement.hasEmployees ? "" : <>, or up to <strong>{fmt(est.retirement.solo401k)}</strong> into a Solo 401(k) (saving about {fmt(est.retirement.solo401kSaves)}){est.retirement.catchUp50 > 0 ? ` — the Solo 401(k) allows ${fmt(est.retirement.catchUp50)} more if you're 50 or older${est.retirement.catchUp6063 > est.retirement.catchUp50 ? ` (${fmt(est.retirement.catchUp6063)} at 60–63)` : ""}` : ""}</>}.

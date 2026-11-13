@@ -224,7 +224,7 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
 
 // Personal-return items for a self-employed owner — named, not "tag these".
 export const PERSONAL_RETURN_ITEMS = [
-  { key: "health", label: "Health insurance premiums", hint: "If you're self-employed and pay your own health insurance, it's claimed on your personal return (Schedule 1), not the business's — bring the year's total at tax time." },
+  { key: "health", label: "Health insurance premiums", hint: "If you're self-employed and pay your own health insurance, it's claimed on your personal return (Schedule 1), not the business's." },
   { key: "retirement", label: "Retirement contributions (SEP-IRA, Solo 401k)", hint: "Claimed on your personal return (Schedule 1). A SEP-IRA can take up to 20% of your profit after self-employment tax — bring the year's total at tax time." },
 ];
 
@@ -296,7 +296,7 @@ export function standardDeduction(year, filingStatus = "single") {
 // business LOSS lowers the tax on other income (a Schedule C loss offsets it; §461(l) limits only
 // very large ones): the federal figure can be negative — what the loss saves — and the amount to
 // set aside never goes below zero. A C corporation's loss carries forward instead (no refund now).
-function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages, retirement = 0 }) {
+function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages, retirement = 0, healthPremiums = 0 }) {
   const status = statusOf(filingStatus);
   const wages = Math.max(0, Number(ownWages) || 0);
   const other = Math.max(0, Number(otherIncome) || 0) + wages;
@@ -310,22 +310,28 @@ function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ow
   // C696 — a self-employed retirement contribution lowers taxable income and the business income
   // the 20% deduction is figured on (Reg. §1.199A-3(b)(1)(vi)); it does not lower SE tax.
   const ret = Math.max(0, Number(retirement) || 0);
-  const qbiIncome = Math.max(0, profit - halfSe - ret);
-  const beforeQbi = Math.max(0, other + profit - halfSe - ret - std);
+  // ★ C700 — the self-employed health insurance deduction (§162(l)): premiums the owner pays for
+  // themselves and family, up to the business's net earnings after half the SE tax and the
+  // retirement contribution; lowers income tax and the 20% deduction's base, never SE tax. Not
+  // for an S corporation here (a >2% shareholder's premiums go through payroll), and not for any
+  // month a plan through a job — the owner's or a spouse's — was available (said on screen).
+  const health = legalForm === "s_corp" ? 0 : Math.min(Math.max(0, Number(healthPremiums) || 0), Math.max(0, profit - halfSe - ret));
+  const qbiIncome = Math.max(0, profit - halfSe - ret - health);
+  const beforeQbi = Math.max(0, other + profit - halfSe - ret - health - std);
   const qbi = r2(Math.min(qbiIncome * 0.2, beforeQbi * 0.2));
   const withBiz = incomeTax(beforeQbi - qbi, { year, filingStatus: status });
   const without = incomeTax(Math.max(0, other - std), { year, filingStatus: status });
   const federal = r2(withBiz - without);   // negative when a loss lowers the tax on other income
   const qt = QBI_THRESHOLD[yearKey(QBI_THRESHOLD, year)];
   const qbiMayBeLimited = beforeQbi > (status === "mfj" ? qt.mfj : qt.single);
-  return { seTax, halfSe, addlMedicare, qbi, federal, total: r2(federal + seTax + addlMedicare), standardDeduction: std, qbiMayBeLimited };
+  return { seTax, halfSe, addlMedicare, qbi, federal, total: r2(federal + seTax + addlMedicare), standardDeduction: std, qbiMayBeLimited, healthDeduction: r2(health) };
 }
-export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0, ownWages = 0, retirement = 0 } = {}) {
+export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0, ownWages = 0, retirement = 0, healthPremiums = 0 } = {}) {
   const profit = r2((Number(revenue) || 0) - (Number(deductible) || 0));
   if (legalForm === "c_corp") { const p = Math.max(0, profit); return { profit, seTax: 0, halfSe: 0, addlMedicare: 0, qbi: 0, federal: r2(p * 0.21), total: r2(p * 0.21), marginalRate: p > 0 ? 0.21 : 0, standardDeduction: 0, qbiMayBeLimited: false }; }
-  const f = passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages, retirement });
+  const f = passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages, retirement, healthPremiums });
   // What $100 more of deductions saves, measured rather than assumed.
-  const less = passThroughTax({ profit: profit - 100, year, legalForm, filingStatus, otherIncome, ownWages, retirement });
+  const less = passThroughTax({ profit: profit - 100, year, legalForm, filingStatus, otherIncome, ownWages, retirement, healthPremiums });
   const marginalRate = Math.max(0, Math.round(((f.total - less.total) / 100) * 10000) / 10000);
   return { profit, ...f, marginalRate };
 }
