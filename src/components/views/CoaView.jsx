@@ -1,5 +1,5 @@
 import React from "react";
-import { showCodesFor, codeForNewCategory, CATEGORY_KIND_LABEL, CATEGORY_KIND_OPTION } from "../../lib/categoryLabel";
+import { showCodesFor, ownerAccountName, codeForNewCategory, CATEGORY_KIND_LABEL, CATEGORY_KIND_OPTION } from "../../lib/categoryLabel";
 import { plural } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
@@ -138,7 +138,7 @@ export default function CoaView() {
                           ? <input value={editDraft.name} onChange={e => setEditDraft(d => ({ ...d, name: e.target.value }))}
                               style={{ width: "100%", background: "var(--sc-surface-2)", border: "1px solid var(--sc-gold)", borderRadius: 6, padding: "4px 8px", color: "var(--sc-text)", fontSize: 13, outline: "none" }} />
                           : <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 500, color: isInactive ? "var(--sc-text-2)" : "var(--sc-text)" }}>
-                              {acct.name}
+                              {showCodes ? acct.name : ownerAccountName(acct.name)}
                               {isSystem && <span title="Built-in category — rename it freely; it can't be deleted" style={{ color: "var(--sc-text-mut)", display: "inline-flex" }}>{lockIcon}</span>}
                             </span>}
                       </td>

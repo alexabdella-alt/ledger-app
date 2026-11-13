@@ -8,11 +8,33 @@
 // a blank is worse than a number.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ★ C643 — THE STANDARD BOOKKEEPING ACCOUNTS, IN AN OWNER'S WORDS. The built-in balance-sheet
+// accounts kept their textbook names on the owner's seat — "Accounts Payable" as a payment's
+// category in Money, "Sales Tax Payable" on Starting balances, "Accounts Receivable" in the bank
+// account picker. Only the DEFAULT names are translated (a name the owner typed is theirs and
+// shows as typed), and only on the owner's seat; the accountant sees the account's own name.
+const OWNER_NAMES = {
+  "accounts payable": "Bills you owe",
+  "accounts receivable": "Money owed to you",
+  "sales tax payable": "Sales tax you've collected",
+  "payroll taxes payable": "Payroll taxes to pay",
+  "opening balance equity": "Starting equity",
+  "accrued liabilities": "Costs not billed yet",
+  "deferred revenue": "Paid in advance by customers",
+  "retained earnings": "Profit kept in the business",
+  "accumulated depreciation": "Wear and tear so far",
+  "prepaid expenses": "Paid in advance",
+};
+export function ownerAccountName(name) {
+  const n = name == null ? "" : String(name).trim();
+  return OWNER_NAMES[n.toLowerCase()] || n;
+}
+
 export function categoryLabel(code, name, { withCode = false, sep = " · " } = {}) {
   const c = code == null ? "" : String(code).trim();
   const n = name == null ? "" : String(name).trim();
   if (!n) return c || "—";
-  return withCode && c ? `${c}${sep}${n}` : n;
+  return withCode && c ? `${c}${sep}${n}` : ownerAccountName(n);   // C643 — the owner's seat reads plain words
 }
 
 // The seat rule every view already uses for the cockpit: unknown seat = reviewer (the safe

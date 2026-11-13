@@ -1,7 +1,7 @@
 import { OBE_CODE, OBE_ROLE } from "../../lib/openingBalances";
 import { openingGridValues, openingGridToPost } from "../../lib/openingGrid";
 import React from "react";
-import { showCodesFor } from "../../lib/categoryLabel";
+import { showCodesFor, ownerAccountName } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
@@ -102,7 +102,7 @@ export default function OpeningBalancesView() {
                       <div key={acct.code} style={{display:"flex",alignItems:"center",padding:"10px 20px",borderTop:i>0?"1px solid var(--sc-border)":"none"}}>
                         <div style={{flex:1}}>
                           {showCodes && <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--sc-text-2)",marginRight:10}}>{acct.code}</span>}
-                          <span style={{fontSize:13}}>{acct.name}</span>
+                          <span style={{fontSize:13}}>{showCodes ? acct.name : ownerAccountName(acct.name)}</span>
                         </div>
                         {fromBank.has(acct.code) && <span style={{fontSize:10,color:"var(--sc-gold)",marginRight:8}} title="Pre-filled from the linked bank account — editable">from bank</span>}
                         <input type="number" value={balances[acct.code]||""}

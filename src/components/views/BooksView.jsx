@@ -11,6 +11,7 @@ import { monthLabel as signedMonthLabel } from "../../lib/ownerTrust";
 import { classifyTxn, txnStatus, collapseExpandedRows, listAmount, displayParty } from "../../lib/txnPresent";
 import { pill } from "../../lib/ui";
 import { OWNER_MONEY_FILTERS } from "../../lib/moneyPage";
+import { ownerAccountName } from "../../lib/categoryLabel";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 
 // C637 — `embedded`: drawn inside the owner's Money page, which carries its own title.
@@ -338,7 +339,7 @@ export default function BooksView({ embedded = false } = {}) {
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
                     <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span></div></td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
-                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cockpit && <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>}{cls.account.name}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
+                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cockpit && <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>}{cockpit ? cls.account.name : ownerAccountName(cls.account.name)}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
                     <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>
                     <td style={{ padding:"0 16px" }}>{statusBadge(inv)}</td>
                     <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
