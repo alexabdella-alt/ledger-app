@@ -28,19 +28,34 @@ export function ytdNetIncome(invoices, year = new Date().getFullYear()) {
 // ★ C690 — income tax by the year's brackets, from the owner's filing status and other income
 // (saved with the year's tax settings: filed_deadlines.filing_status / other_income). Nothing
 // saved → single with no other income, and `assumed` says so on screen.
-export function taxProfileFrom(filed = {}) {
-  const f = filed || {};
-  const set = !!f.filing_status;
-  return { homeOfficeSqft: Number(f.home_office_sqft) || 0, filingStatus: set ? f.filing_status : "single", otherIncome: Math.max(0, Number(f.other_income) || 0), assumed: !set };
+// ★ C693 — the answers CARRY FORWARD: a year with no answer yet uses the other year's (`fallback`),
+// field by field, so the question isn't asked again every January and the January 15 reminder
+// for last year's 4th quarter uses last year's answers (profileForYear). `carried` says which.
+// `own_wages` (the owner's pay from a job) is separate from other household income because it
+// uses up the Social Security wage base.
+export function taxProfileFrom(filed = {}, fallback = {}) {
+  const f = filed || {}, b = fallback || {};
+  const pick = (k) => (f[k] != null && f[k] !== "" ? { v: f[k], carried: false } : b[k] != null && b[k] !== "" ? { v: b[k], carried: true } : { v: null, carried: false });
+  const st = pick("filing_status"), oi = pick("other_income"), ow = pick("own_wages"), ho = pick("home_office_sqft");
+  // C692 — business miles are this year's only (never carried)
+  const miles = Math.max(0, Math.floor(Number(f.business_miles) || 0));
+  const after = f.business_miles_after_change;
+  return { homeOfficeSqft: Number(ho.v) || 0, filingStatus: st.v || "single", otherIncome: Math.max(0, Number(oi.v) || 0), ownWages: Math.max(0, Number(ow.v) || 0),
+    businessMiles: miles, businessMilesAfterChange: after == null || after === "" ? null : Math.max(0, Math.floor(Number(after) || 0)),
+    assumed: !st.v, carried: st.carried || oi.carried || ow.carried };
 }
-export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0 } = {}) {
+// The profile for an estimate of `year`: that year's answers, else the neighbouring year's.
+export function profileForYear(year, { current = {}, prev = {}, currentYear = new Date().getFullYear() } = {}) {
+  return Number(year) === currentYear - 1 ? taxProfileFrom(prev, current) : taxProfileFrom(current, prev);
+}
+export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, businessMiles = 0, businessMilesAfterChange = null } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
-  const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null });   // C683, C686
-  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome });   // C690
+  const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692
+  const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages });   // C690, C693
   const paid = Number(estPaid) || 0;
-  return { revenue, expenses, net, taxableNet: f.profit, deductible: sc.deductibleTotal, notDeductible: sc.notDeductible,
+  return { revenue, expenses, net, taxableNet: Math.max(0, f.profit), deductible: sc.deductibleTotal, notDeductible: sc.notDeductible,
     federal: f.federal, seTax: r2c(f.seTax + (f.addlMedicare || 0)), addlMedicare: f.addlMedicare || 0, qbi: f.qbi,   // C685 — self-employment tax includes the 0.9% over $200k
-    total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid), quarterly: f.total / 4,
+    total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid), quarterly: Math.max(0, f.total) / 4,   // C693 — a loss saves tax; it never makes a payment negative
     marginalRate: f.marginalRate || 0, standardDeduction: f.standardDeduction || 0, qbiMayBeLimited: !!f.qbiMayBeLimited };
 }
 
@@ -195,15 +210,15 @@ export function nextUrgentDeadline(now = new Date(), withinDays = 30, { filed = 
 // technology_software 6500, office_supplies 6600, insurance 6700,
 // professional_services 6800, depreciation_amortization 6900,
 // miscellaneous_expense 7100, interest_expense 8000.
-export function deductionBreakdown(invoices, year = new Date().getFullYear(), getAccountByRole = null, { chart = null, homeOfficeSqft = 0, legalForm = "", assets = null } = {}) {
+export function deductionBreakdown(invoices, year = new Date().getFullYear(), getAccountByRole = null, { chart = null, homeOfficeSqft = 0, legalForm = "", assets = null, businessMiles = 0, businessMilesAfterChange = null } = {}) {
   // ★ C678 — EVERY spending account, by its Schedule C line and the deductible share of it
   // (lib/taxGuidance.js). The twelve fixed categories left Food Cost, Repairs, Payroll taxes,
   // Bank fees, Vehicle, Contractors and every category an owner added out of the total. The
   // chart comes from the caller; without one, the roles the caller can resolve are used.
   const known = chart || (getAccountByRole ? Object.keys(ROLE_HINTS).map((r) => { const x = getAccountByRole(r); return x ? { ...x, system_role: x.system_role || r } : null; }).filter(Boolean) : []);
-  const sc = scheduleCBreakdown(invoices, year, { chart: known, homeOfficeSqft, legalForm, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null });   // C683, C686
+  const sc = scheduleCBreakdown(invoices, year, { chart: known, homeOfficeSqft, legalForm, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692
   const rows = sc.rows.map((r) => ({ key: r.line, line: r.line, label: r.label, form: r.form, amount: r.deductible, raw: r.spent,
-    categorized: r.spent > 0 || r.deductible > 0, hint: r.accounts.join(", "), notDeductible: r.taxAdjusted ? 0 : r2(r.spent - r.deductible), taxAdjusted: !!r.taxAdjusted }));
+    categorized: r.spent > 0 || r.deductible > 0, hint: r.accounts.join(", "), notDeductible: r.taxAdjusted ? 0 : r2(r.spent - r.deductible), taxAdjusted: !!r.taxAdjusted, mileage: r.mileage || null }));
   const personal = PERSONAL_RETURN_ITEMS.map((p) => ({ ...p, amount: 0, categorized: false, ask: true }));
   return [...rows, ...personal];
 }

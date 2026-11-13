@@ -21,6 +21,7 @@
 // A planning tool, not a filing: the accountant can still reclassify. Pure.
 // ═════════════════════════════════════════════════════════════════════════════
 import { sourcePurchaseLive } from "./depreciation.js";   // C686
+import { mileageDeduction, isParkingOrToll } from "./mileage.js";   // C692
 
 export const LINES = {
   "4":   { form: "Cost of goods sold (Schedule C line 4, Part III)", plain: "Cost of what you sell" },
@@ -80,16 +81,21 @@ const ROLE_LINE = {
 
 // A category the owner named themselves (no role): its words decide, first match wins.
 const NAME_LINE = [
-  // C691 — conferences and trade shows are ordinary business costs (100%), not entertainment
-  [/\btrade ?shows?\b|\bexpos?\b|\bconferences?\b|\bconventions?\b|\bseminars?\b|\bsummits?\b/i, "27a"],
   [/\b(federal|state)? ?income tax\b|\bfines?\b|\bpenalt(y|ies)\b|\bpolitical\b|\blobby/i, "none"],
-  [/\bentertainment\b|\btickets?\b|\bconcerts?\b|\bgolf\b|\bcountry club\b/i, "none"],
+  // C694 — "Meals & Entertainment" holds both: each charge is read (meal 50%, show 0%, trip 100%)
+  [/\b(meals?|dining)\b[\s\S]*\bentertainment\b|\bentertainment\b[\s\S]*\b(meals?|dining)\b/i, "travel_split"],
+  // C694 — meals stay 50% even at a conference (§274(n)), so meals are read BEFORE conferences
   [/\bmeals?\b|\bfood & drink\b|\bdining\b|\brestaurants?\b/i, "24b"],
+  // C691 — conferences and trade shows are ordinary business costs (100%), not entertainment
+  [/\btrade ?shows?\b|\bexpos?\b|\bconferences?\b|\bconventions?\b|\bseminars?\b/i, "27a"],
+  [/\bentertainment\b|\btickets?\b|\bconcerts?\b|\bgolf\b|\bcountry club\b/i, "none"],
   [/\btravel\b|\bairfare\b|\bflights?\b|\bhotels?\b|\blodging\b/i, "24a"],
   [/\bcost of (goods|sales)\b|\bcogs\b|\binventory\b|\bmaterials\b|\bmerchandise\b/i, "4"],
   [/\badverti|\bmarketing\b|\bads\b|\bpromotion|\bsponsored\b/i, "8"],
   // C691 — "Gas & Electric" is a utility, not the car: checked before the vehicle words
-  [/\bgas (&|and) electric\b|\bnatural gas\b|\belectric(ity)?\b|\butilit/i, "25"],
+  // C694 — but "Electric Repairs" / "Electric Contractor" are services (a 1099) and an "Electric
+  // Vehicle" is the car: those words keep the name off the utility line
+  [/^(?![\s\S]*\b(repairs?|contract(or|ors)?|install\w*|vehicles?|car|truck|maintenance|labor|labour)\b)[\s\S]*(\bgas (&|and) electric\b|\bnatural gas\b|\belectric(ity)?\b|\butilit)/i, "25"],
   [/\bvehicle\b|\bcar\b|\btruck\b|\bfuel\b|\bgas(oline)?\b|\bmileage\b|\bparking\b|\btolls?\b/i, "9"],
   [/\bcommissions?\b|\bmerchant\b|\bprocessing fees?\b|\bplatform fees?\b|\bpayment processing\b/i, "10"],
   [/\bcontract(or|ors| labor)\b|\bfreelanc|\bsubcontract/i, "11"],
@@ -110,9 +116,13 @@ const NAME_LINE = [
 
 // Inside a "Travel & Entertainment" account: what was this one charge?
 // C691 — hotels by their generic words and the common chains, so a stay isn't read as a meal
-const TRAVEL_ROW = /\b(airline|airlines|airways|airport|flight|airfare|hotel|hotels|suites|resort|motel|lodging|hostel|hampton inn|comfort inn|marriott|courtyard|residence inn|hilton|hampton|doubletree|embassy suites|hyatt|westin|sheraton|ritz|four seasons|holiday inn|ihg|crowne plaza|kimpton|wyndham|la quinta|best western|radisson|choice hotels|comfort inn|airbnb|vrbo|uber|lyft|taxi|cab|rental car|car rental|hertz|avis|enterprise|national car|sixt|turo|amtrak|train|subway fare|parking|baggage|delta|united|american air|southwest|jetblue|alaska air|frontier|spirit air|hawaiian air|expedia|booking\.com|hotels\.com|priceline|kayak)\b/i;
+const TRAVEL_ROW = /\b(airline|airlines|airways|airport|flight|airfare|hotel|hotels|suites|resort|motel|lodging|hostel|hampton inn|comfort inn|marriott|courtyard by marriott|residence inn|hilton|doubletree|embassy suites|hyatt|westin|sheraton|ritz|four seasons|holiday inn|ihg|crowne plaza|kimpton|wyndham|la quinta|best western|radisson|choice hotels|comfort inn|airbnb|vrbo|uber|lyft|taxi|cab|rental car|car rental|hertz|avis|enterprise|national car|sixt|turo|amtrak|train|subway fare|parking|baggage|delta air|united airlines|united air|american air|southwest air|jetblue|alaska air|frontier airlines|spirit air|hawaiian air|expedia|booking\.com|hotels\.com|priceline|kayak\.com)\b/i;
 // C691 — conferences and trade shows: a business cost in full, never "entertainment"
-const BUSINESS_EVENT_ROW = /\b(trade ?shows?|expo|conference|convention|seminar|summit|registration|workshop)\b/i;
+const BUSINESS_EVENT_ROW = /\b(trade ?shows?|expo|conference|convention|seminar|registration|workshop)\b/i;
+// ★ C694 — food at a hotel, an airport or a conference is still a meal (50%, §274(n)): a charge
+// that reads as food is a meal before it is travel or an event. And a ticket is entertainment (0%)
+// before it is a trip — "United Center tickets" is a game, not a flight.
+const FOOD_ROW = /\b(grill|bar|cafe|café|coffee|diner|pizza|pizzeria|steakhouse|steak house|restaurant|kitchen|bistro|tavern|pub|brewery|eatery|taqueria|bbq|sushi|burger|bakery|deli|dinner|lunch|breakfast|brunch|social)\b/i;
 const ENTERTAINMENT_ROW = /\b(tickets?|ticketmaster|stubhub|concert|theater|theatre|golf|country club|sporting event|stadium|arena|game day|season tickets|nightclub|show)\b/i;
 
 const SHARE = { "24b": 0.5, none: 0 };
@@ -122,9 +132,10 @@ const SHARE = { "24b": 0.5, none: 0 };
 // deducts state and local income taxes (only federal income tax is not deductible, §275), and an
 // S corporation or partnership deducts an elective pass-through entity tax (Notice 2020-75). A
 // sole proprietor's state income tax is personal — not on Schedule C — so it stays out.
-const STATE_ENTITY_TAX = /\b(state|local|city|franchise|pass[- ]?through entity|ptet)\b[\s\S]*\btax|\bptet\b/i;
+const STATE_ENTITY_TAX = /\b(state|local|city|franchise|pass[- ]?through entity|ptet)\b[\s\S]*\btax(es)?\b|\bptet\b/i;
+const NOT_A_TAX = /\bpenalt(y|ies)\b|\bfines?\b|\binterest\b/i;   // C694 — §162(f): a penalty is never deductible
 export function lineForAccount({ code = "", name = "", role = null, legalForm = "" } = {}) {
-  if (["c_corp", "s_corp", "partnership"].includes(legalForm) && STATE_ENTITY_TAX.test(String(name || "")) && !/\bfederal\b/i.test(String(name || ""))) return { line: "23", share: 1, by: "name" };
+  if (["c_corp", "s_corp", "partnership"].includes(legalForm) && STATE_ENTITY_TAX.test(String(name || "")) && !/\bfederal\b/i.test(String(name || "")) && !NOT_A_TAX.test(String(name || ""))) return { line: "23", share: 1, by: "name" };
   if (role && ROLE_LINE[role]) return { line: ROLE_LINE[role], share: SHARE[ROLE_LINE[role]] ?? 1, by: "role" };
   const n = String(name || "");
   for (const [re, line] of NAME_LINE) if (re.test(n)) return { line, share: SHARE[line] ?? 1, by: "name" };
@@ -135,6 +146,8 @@ export function lineForAccount({ code = "", name = "", role = null, legalForm = 
 // A travel-and-entertainment charge: travel 100%, entertainment 0%, otherwise a business meal 50%.
 export function travelSplitFor(row = {}) {
   const t = `${row.vendor || ""} ${row.description || ""}`;
+  if (FOOD_ROW.test(t)) return { line: "24b", share: 0.5 };   // C694 — a meal wherever it was eaten
+  if (/\btickets?\b/i.test(t) && !/\b(flight|airline|air|train|amtrak|bus|rail)\b/i.test(t)) return { line: "none", share: 0 };   // C694
   if (TRAVEL_ROW.test(t)) return { line: "24a", share: 1 };
   if (BUSINESS_EVENT_ROW.test(t)) return { line: "27a", share: 1 };   // C691
   if (ENTERTAINMENT_ROW.test(t)) return { line: "none", share: 0 };
@@ -151,7 +164,13 @@ export function homeOfficeDeduction(sqft) {
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // The year's spending, by Schedule C line. `chart` gives each code's name and role.
-export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(), { chart = [], homeOfficeSqft = 0, legalForm = "", depreciation = null } = {}) {
+// ★ C692 — `mileage` ({ miles, milesAfterChange }) for a sole proprietor: the car is deducted by
+// the IRS standard mileage rate, which REPLACES the car costs booked to line 9 (gas, repairs,
+// insurance…) — except parking and tolls, which are deducted on top. The booked figure is kept
+// (`mileage.actual`) so the screen can show both methods.
+export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(), { chart = [], homeOfficeSqft = 0, legalForm = "", depreciation = null, mileage = null } = {}) {
+  const mileageOn = !!(mileage && Number(mileage.miles) > 0) && (!legalForm || legalForm === "sole_prop");
+  let carCostsReplaced = 0;
   const acct = new Map((chart || []).map((a) => [String(a.code), a]));
   const inScope = (i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && String(i.date || "").startsWith(String(year));
   const lines = new Map();
@@ -168,6 +187,9 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
     const signed = i.debit_credit === "credit" ? -(Number(i.amount) || 0) : (Number(i.amount) || 0);   // C489 — a correction subtracts
     let { line, share } = lineForAccount({ code, name: a.name || i.gl_name, role: a.system_role, legalForm });   // C691 — the entity decides state income tax
     if (line === "travel_split") ({ line, share } = travelSplitFor(i));
+    if (mileageOn && line === "9" && !isParkingOrToll(i, a.name || i.gl_name)) {   // C692 — replaced by the mileage rate
+      carCostsReplaced += signed; add(line, signed, 0, a.name || i.gl_name); continue;
+    }
     add(line, signed, signed * share, a.name || i.gl_name);
   }
   // ★ C683 — equipment for tax: the books' depreciation of tracked assets is replaced by the tax
@@ -178,13 +200,21 @@ export function scheduleCBreakdown(invoices = [], year = new Date().getFullYear(
     L.taxAdjusted = true;
     lines.set("13", L);
   }
+  if (mileageOn) {   // C692
+    const m = mileageDeduction({ year, miles: mileage.miles, milesAfterChange: mileage.milesAfterChange });
+    const L = lines.get("9") || { line: "9", spent: 0, deductible: 0, accounts: new Set() };
+    L.deductible += m.amount;
+    L.taxAdjusted = true;
+    L.mileage = { ...m, actual: r2(L.spent), replaced: r2(carCostsReplaced) };
+    lines.set("9", L);
+  }
   // Home office — a sole proprietor's (or single-member LLC's) Schedule C line 30.
   const home = legalForm && legalForm !== "sole_prop" ? 0 : homeOfficeDeduction(homeOfficeSqft);
   if (home > 0) add("30", home, home, null);
 
   const rows = [...lines.values()]
     .map((L) => ({ line: L.line, label: LINES[L.line]?.plain || L.line, form: LINES[L.line]?.form || L.line,
-      spent: r2(L.spent), deductible: r2(L.deductible), accounts: [...L.accounts], taxAdjusted: !!L.taxAdjusted }))
+      spent: r2(L.spent), deductible: r2(L.deductible), accounts: [...L.accounts], taxAdjusted: !!L.taxAdjusted, mileage: L.mileage || null }))
     .filter((r) => Math.abs(r.spent) >= 0.005 || Math.abs(r.deductible) >= 0.005)
     .sort((x, y) => (x.line === "none") - (y.line === "none") || LINE_ORDER.indexOf(x.line) - LINE_ORDER.indexOf(y.line));
   const deductibleTotal = r2(rows.reduce((s, r) => s + r.deductible, 0));
@@ -260,14 +290,21 @@ export function incomeTax(taxable, { year = new Date().getFullYear(), filingStat
 export function standardDeduction(year, filingStatus = "single") {
   return STANDARD_DEDUCTION[yearKey(STANDARD_DEDUCTION, year)][statusOf(filingStatus)];
 }
-function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome }) {
+// ★ C693 — (1) the owner's OWN wages from a job use up the year's Social Security wage base
+// (Schedule SE line 8a) and lower the 0.9% Additional Medicare threshold (Form 8959 Part II), so
+// they are asked separately from other household income; both count for income tax. (2) A
+// business LOSS lowers the tax on other income (a Schedule C loss offsets it; §461(l) limits only
+// very large ones): the federal figure can be negative — what the loss saves — and the amount to
+// set aside never goes below zero. A C corporation's loss carries forward instead (no refund now).
+function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages }) {
   const status = statusOf(filingStatus);
-  const other = Math.max(0, Number(otherIncome) || 0);
-  const base = legalForm === "s_corp" ? 0 : profit * 0.9235;
-  const wageBase = SS_WAGE_BASE[yearKey(SS_WAGE_BASE, year)];
+  const wages = Math.max(0, Number(ownWages) || 0);
+  const other = Math.max(0, Number(otherIncome) || 0) + wages;
+  const base = legalForm === "s_corp" ? 0 : Math.max(0, profit) * 0.9235;
+  const wageBase = Math.max(0, SS_WAGE_BASE[yearKey(SS_WAGE_BASE, year)] - wages);
   const owesSe = base >= SE_MINIMUM;
   const seTax = owesSe ? r2(Math.min(base, wageBase) * 0.124 + base * 0.029) : 0;
-  const addlMedicare = owesSe ? r2(Math.max(0, base - ADDL_MEDICARE_BY_STATUS[status]) * 0.009) : 0;
+  const addlMedicare = owesSe ? r2(Math.max(0, base - Math.max(0, ADDL_MEDICARE_BY_STATUS[status] - wages)) * 0.009) : 0;
   const halfSe = r2(seTax / 2);
   const std = standardDeduction(year, status);
   const qbiIncome = Math.max(0, profit - halfSe);
@@ -275,18 +312,18 @@ function passThroughTax({ profit, year, legalForm, filingStatus, otherIncome }) 
   const qbi = r2(Math.min(qbiIncome * 0.2, beforeQbi * 0.2));
   const withBiz = incomeTax(beforeQbi - qbi, { year, filingStatus: status });
   const without = incomeTax(Math.max(0, other - std), { year, filingStatus: status });
-  const federal = r2(Math.max(0, withBiz - without));
+  const federal = r2(withBiz - without);   // negative when a loss lowers the tax on other income
   const qt = QBI_THRESHOLD[yearKey(QBI_THRESHOLD, year)];
   const qbiMayBeLimited = beforeQbi > (status === "mfj" ? qt.mfj : qt.single);
   return { seTax, halfSe, addlMedicare, qbi, federal, total: r2(federal + seTax + addlMedicare), standardDeduction: std, qbiMayBeLimited };
 }
-export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0 } = {}) {
-  const profit = r2(Math.max(0, (Number(revenue) || 0) - (Number(deductible) || 0)));
-  if (legalForm === "c_corp") return { profit, seTax: 0, halfSe: 0, addlMedicare: 0, qbi: 0, federal: r2(profit * 0.21), total: r2(profit * 0.21), marginalRate: profit > 0 ? 0.21 : 0, standardDeduction: 0, qbiMayBeLimited: false };
-  const f = passThroughTax({ profit, year, legalForm, filingStatus, otherIncome });
-  // What one more dollar of deductions saves, measured rather than assumed (over $100).
-  const less = passThroughTax({ profit: Math.max(0, profit - 100), year, legalForm, filingStatus, otherIncome });
-  const marginalRate = profit > 0 ? Math.max(0, Math.round(((f.total - less.total) / Math.min(100, profit)) * 10000) / 10000) : 0;
+export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", filingStatus = "single", otherIncome = 0, ownWages = 0 } = {}) {
+  const profit = r2((Number(revenue) || 0) - (Number(deductible) || 0));
+  if (legalForm === "c_corp") { const p = Math.max(0, profit); return { profit, seTax: 0, halfSe: 0, addlMedicare: 0, qbi: 0, federal: r2(p * 0.21), total: r2(p * 0.21), marginalRate: p > 0 ? 0.21 : 0, standardDeduction: 0, qbiMayBeLimited: false }; }
+  const f = passThroughTax({ profit, year, legalForm, filingStatus, otherIncome, ownWages });
+  // What $100 more of deductions saves, measured rather than assumed.
+  const less = passThroughTax({ profit: profit - 100, year, legalForm, filingStatus, otherIncome, ownWages });
+  const marginalRate = Math.max(0, Math.round(((f.total - less.total) / 100) * 10000) / 10000);
   return { profit, ...f, marginalRate };
 }
 

@@ -1,18 +1,21 @@
 import React from "react";
-import { fmtMoney } from "../../lib/format";
+import { fmtMoney, fmtDate } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, filedKey, taxYearFor1099, LEGAL_FORMS, taxProfileFrom } from "../../lib/tax";
 import { FILING_STATUSES } from "../../lib/taxGuidance.js";
+import { mileageRatesFor } from "../../lib/mileage.js";
 import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts, filedDeadlinesPrev } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
-  const lsKey = `cfai_tax_${currentCompany?.id || "x"}`;
+  // C693 — the device mirror is per YEAR: without the year, a new January showed last year's
+  // estimated payments (and "Still owed" understated by them) until a row was saved.
+  const lsKey = `cfai_tax_${currentCompany?.id || "x"}_${year}`;
 
   // Tax compliance state lives in Supabase (tax_settings). Falls back to the
   // legacy localStorage blob (and migrates it) or defaults until a row exists.
@@ -93,14 +96,24 @@ export default function TaxView() {
   // line, meals at 50%, entertainment 0%, the simplified home office, the current federal rules.
   // The home-office size is kept in the year's tax settings (filed_deadlines.home_office_sqft).
   // ★ C690 — the owner's filing status and other income, for the year's tax brackets.
-  const profile = taxProfileFrom(filed);
+  const profile = taxProfileFrom(filed, filedDeadlinesPrev || {});   // C693 — last year's answers carry forward
   const homeOfficeSqft = profile.homeOfficeSqft;
   const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile });   // C683, C690
   const passThrough = legalForm !== "c_corp";
   const [otherDraft, setOtherDraft] = React.useState("");
   React.useEffect(() => { setOtherDraft(profile.otherIncome ? String(profile.otherIncome) : ""); }, [profile.otherIncome]);
+  const [wagesDraft, setWagesDraft] = React.useState("");
+  React.useEffect(() => { setWagesDraft(profile.ownWages ? String(profile.ownWages) : ""); }, [profile.ownWages]);
   const deadlines = getTaxDeadlines(new Date(), { legalForm: legalForm || null });   // O140/C559
-  const deductions = deductionBreakdown(invoices, year, getAccountByRole, { chart: CHART_OF_ACCOUNTS || [], homeOfficeSqft, legalForm, assets: taxAssets || null });
+  const deductions = deductionBreakdown(invoices, year, getAccountByRole, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile });   // C692 — miles and home office from the profile
+  // ★ C692 — business miles, by the IRS standard mileage rate (lib/mileage.js)
+  const [milesDraft, setMilesDraft] = React.useState("");
+  const [milesAfterDraft, setMilesAfterDraft] = React.useState("");
+  React.useEffect(() => { setMilesDraft(profile.businessMiles ? String(profile.businessMiles) : ""); }, [profile.businessMiles]);
+  React.useEffect(() => { setMilesAfterDraft(profile.businessMilesAfterChange != null ? String(profile.businessMilesAfterChange) : ""); }, [profile.businessMilesAfterChange]);
+  const mileageRates = mileageRatesFor(year);
+  const carRow = deductions.find(d => d.line === "9");
+  const mileageInfo = carRow && carRow.mileage;
   const [sqftDraft, setSqftDraft] = React.useState("");
   React.useEffect(() => { setSqftDraft(homeOfficeSqft ? String(homeOfficeSqft) : ""); }, [homeOfficeSqft]);
   const homeOfficeApplies = !legalForm || legalForm === "sole_prop";
@@ -178,13 +191,20 @@ export default function TaxView() {
                 <option value="">Choose…</option>
                 {FILING_STATUSES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
               </select>
-              <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Other income this year (a job, a spouse's pay, interest):</label>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+              <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Your pay from a job this year:</label>
+              <input type="number" min="0" disabled={!loadOk} value={wagesDraft} placeholder="0" onChange={e => setWagesDraft(e.target.value)}
+                onBlur={() => { const v = Math.max(0, Math.round(Number(wagesDraft) || 0)); if (v !== profile.ownWages || profile.carried) save({ ...taxState, filed: { ...filed, own_wages: v } }); }}
+                style={{ width: 130, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
+              <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Other household income (a spouse's pay, interest):</label>
               <input type="number" min="0" disabled={!loadOk} value={otherDraft} placeholder="0" onChange={e => setOtherDraft(e.target.value)}
-                onBlur={() => { const v = Math.max(0, Math.round(Number(otherDraft) || 0)); if (v !== profile.otherIncome) save({ ...taxState, filed: { ...filed, other_income: v } }); }}
-                style={{ width: 140, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
+                onBlur={() => { const v = Math.max(0, Math.round(Number(otherDraft) || 0)); if (v !== profile.otherIncome || profile.carried) save({ ...taxState, filed: { ...filed, other_income: v } }); }}
+                style={{ width: 130, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
             </div>
             <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 8 }}>
-              {profile.assumed ? "Until you choose, we assume you file single with no other income. " : ""}
+              {profile.assumed ? "Until you choose, we assume you file single with no other income. " : profile.carried ? "Carried over from last year — change anything that's different this year. " : ""}
+              {est.total < 0 ? "Your business lost money, which lowers the tax on your other income. " : ""}
               The federal figure is the extra tax this business adds, after the {fmt(est.standardDeduction)} standard deduction and the 20% small-business deduction — a paycheck's withholding already covers the tax on a job.
               {est.qbiMayBeLimited ? " At this income the 20% small-business deduction can be limited — your tax preparer will check." : ""}
             </div>
@@ -256,7 +276,7 @@ export default function TaxView() {
           <div key={d.key} data-deduction-line={d.line} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{d.label} <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 400 }}>· {d.line === "4" ? "line 4" : `line ${d.line}`}</span></div>
-              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}{d.notDeductible > 0.004 ? ` · ${fmt(d.notDeductible)} of this doesn't count (meals count at 50%)` : ""}{d.taxAdjusted ? " · for tax, equipment is mostly deducted in full in the year you start using it, not spread out like in your books" : ""}</div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>{d.hint}{d.notDeductible > 0.004 ? ` · ${fmt(d.notDeductible)} of this doesn't count (meals count at 50%)` : ""}{d.mileage ? " · your car by the IRS mileage rate, plus parking and tolls" : d.taxAdjusted ? " · for tax, equipment is mostly deducted in full in the year you start using it, not spread out like in your books" : ""}</div>
             </div>
             <div style={{ textAlign: "right", minWidth: 110 }}>
               <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--sc-text)" }}>{fmt(d.amount)}</div>
@@ -284,6 +304,28 @@ export default function TaxView() {
               onBlur={() => { const v = Math.max(0, Math.min(300, Math.floor(Number(sqftDraft) || 0))); if (v !== homeOfficeSqft) save({ ...taxState, filed: { ...filed, home_office_sqft: v } }); }}
               style={{ width: 90, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", color: "var(--sc-text)", fontSize: 13 }} />
             <div style={{ textAlign: "right", minWidth: 110, fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace" }}>{fmt(homeOfficeSqft ? Math.min(300, homeOfficeSqft) * 5 : 0)}</div>
+          </div>
+        )}
+        {/* ★ C692 — the car by the IRS standard mileage rate (sole proprietor, Schedule C line 9). */}
+        {homeOfficeApplies && (
+          <div data-mileage style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>Business miles <span style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 400 }}>· line 9</span></div>
+              <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 2 }}>
+                Miles you drove for work this year (not your commute). We use the IRS rate — {mileageRates.map((r, i) => `${(r.rate * 100).toFixed(1).replace(/\.0$/, "")}¢ a mile${mileageRates.length > 1 ? (i === 0 ? " until " + fmtDate(mileageRates[1].from) : " from then") : ""}`).join(", ")} — which covers gas, repairs and insurance. Parking and tolls still count on top. Keep a simple log of your trips.
+                {mileageInfo && mileageInfo.assumedSplit ? ` We've assumed your miles were spread evenly through the year; enter the miles from ${fmtDate(mileageRates[1].from)} for an exact figure.` : ""}
+                {mileageInfo && mileageInfo.replaced > mileageInfo.amount ? ` The car costs you recorded (${fmt(mileageInfo.replaced)}) are more than the mileage rate gives — if you've never used the mileage rate for this car, deducting actual costs may save more; ask your tax preparer.` : ""}
+              </div>
+            </div>
+            <input type="number" inputMode="numeric" min="0" placeholder="miles" value={milesDraft} onChange={e => setMilesDraft(e.target.value)}
+              onBlur={() => { const v = Math.max(0, Math.floor(Number(milesDraft) || 0)); if (v !== profile.businessMiles) save({ ...taxState, filed: { ...filed, business_miles: v } }); }}
+              style={{ width: 90, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", color: "var(--sc-text)", fontSize: 13 }} />
+            {mileageRates.length > 1 && (
+              <input type="number" inputMode="numeric" min="0" placeholder={`since ${fmtDate(mileageRates[1].from)}`} value={milesAfterDraft} onChange={e => setMilesAfterDraft(e.target.value)}
+                onBlur={() => { const raw = String(milesAfterDraft).trim(); const v = raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)); if (v !== profile.businessMilesAfterChange) save({ ...taxState, filed: { ...filed, business_miles_after_change: v } }); }}
+                style={{ width: 120, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", color: "var(--sc-text)", fontSize: 13 }} />
+            )}
+            <div style={{ textAlign: "right", minWidth: 110, fontSize: 15, fontWeight: 700, fontFamily: "'DM Mono',monospace" }}>{fmt(mileageInfo ? mileageInfo.amount : 0)}</div>
           </div>
         )}
         {deductions.filter(d => d.ask).map(d => (

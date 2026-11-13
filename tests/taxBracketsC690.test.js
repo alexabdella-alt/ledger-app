@@ -69,8 +69,8 @@ describe("C690 — the estimate", () => {
 
 describe("C690 — asked once, used everywhere", () => {
   it("the profile comes from the year's saved tax settings; nothing saved is assumed single", () => {
-    expect(taxProfileFrom({})).toEqual({ homeOfficeSqft: 0, filingStatus: "single", otherIncome: 0, assumed: true });
-    expect(taxProfileFrom({ filing_status: "mfj", other_income: "62000", home_office_sqft: 120 })).toEqual({ homeOfficeSqft: 120, filingStatus: "mfj", otherIncome: 62000, assumed: false });
+    expect(taxProfileFrom({})).toMatchObject({ homeOfficeSqft: 0, filingStatus: "single", otherIncome: 0, ownWages: 0, assumed: true, carried: false });
+    expect(taxProfileFrom({ filing_status: "mfj", other_income: "62000", home_office_sqft: 120 })).toMatchObject({ homeOfficeSqft: 120, filingStatus: "mfj", otherIncome: 62000, assumed: false });
   });
   it("taxEstimate passes them through", () => {
     const led = [{ id: "r", date: "2026-03-01", gl_code: "4000", amount: 50000, debit_credit: "credit", status: "booked" }];
@@ -80,14 +80,14 @@ describe("C690 — asked once, used everywhere", () => {
   });
   it("the Taxes screen, Home, the reminders and the assistant read the same profile", () => {
     const tax = readFileSync("src/components/views/TaxView.jsx", "utf8");
-    expect(tax).toMatch(/const profile = taxProfileFrom\(filed\);/);
+    expect(tax).toMatch(/const profile = taxProfileFrom\(filed, filedDeadlinesPrev \|\| \{\}\);/);
     expect(tax).toMatch(/filing_status: e\.target\.value \|\| null/);
     expect(tax).toMatch(/other_income: v/);
     expect(tax).not.toMatch(/FED_RATE/);
-    expect(readFileSync("src/components/views/DashboardView.jsx", "utf8")).toMatch(/\.\.\.taxProfileFrom\(filedDeadlines\)/);
-    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/\.\.\.taxProfileFrom\(filedDeadlinesRef\.current\)/);
-    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/taxProfile: filedDeadlines,/);
-    expect(readFileSync("src/lib/aiTools.js", "utf8")).toMatch(/const profile = taxProfileFrom\(ctx\.taxProfile \|\| \{\}\);/);
+    expect(readFileSync("src/components/views/DashboardView.jsx", "utf8")).toMatch(/\.\.\.profileForYear\(y, \{ current: filedDeadlines, prev: filedDeadlinesPrev \}\)/);   // C693
+    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/\.\.\.profileForYear\(y, \{ current: filedDeadlinesRef\.current, prev: filedDeadlinesPrevRef\.current \}\)/);
+    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/taxProfile: filedDeadlines, taxProfilePrev: filedDeadlinesPrev,/);
+    expect(readFileSync("src/lib/aiTools.js", "utf8")).toMatch(/const profile = profileForYear\(year, \{ current: ctx\.taxProfile \|\| \{\}, prev: ctx\.taxProfilePrev \|\| \{\} \}\);/);
   });
 });
 

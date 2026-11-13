@@ -27,7 +27,7 @@ describe("C488", () => {
   it("the report and the AI ctx hand the alias index in", () => {
     expect(fs.readFileSync("src/components/views/ReportsView.jsx", "utf8")).toMatch(/computeVendorTotals\(filtered, \{\}, \{ aliasIndex \}\)/);
     expect(fs.readFileSync("src/lib/aiTools.js", "utf8")).toMatch(/computeVendorTotals\(await ctx\.getLedger\(\), \{ from, to \}, \{ aliasIndex: ctx\.aliasIndex \|\| null \}\)/);
-    expect(fs.readFileSync("src/lib/ai.js", "utf8")).toMatch(/cashBalance, cardsOwed, payFromLabels, taxAssets, taxProfile, anomalies, recurring, aliasIndex,/);   // C672 — cardsOwed rides along
+    expect(fs.readFileSync("src/lib/ai.js", "utf8")).toMatch(/cashBalance, cardsOwed, payFromLabels, taxAssets, taxProfile, taxProfilePrev, anomalies, recurring, aliasIndex,/);   // C672 — cardsOwed rides along
     expect(fs.readFileSync("src/App.jsx", "utf8")).toMatch(/getAccountByRole, recurring, aliasIndex,\s*\n\s*onToolCall:/);
   });
 });

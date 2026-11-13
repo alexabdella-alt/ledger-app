@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { perEntry, displayParty } from "./txnPresent.js";
-import { taxEstimate, deductionBreakdown, getTaxDeadlines, taxProfileFrom } from "./tax.js";
+import { taxEstimate, deductionBreakdown, getTaxDeadlines, profileForYear } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
@@ -216,9 +216,11 @@ async function getTaxSummary(input, ctx) {
   const year = input.year || new Date().getFullYear();
   const led = await ctx.getLedger();
   // C678 — the same current-guidance figures the Taxes screen shows
-  const profile = taxProfileFrom(ctx.taxProfile || {});   // C690 — the owner's filing status and other income
+  // C690, C693 — the owner's answers for THAT year (carried forward when unanswered); the same
+  // home office in the deductions as in the estimate, so the two figures agree
+  const profile = profileForYear(year, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} });
   const est = taxEstimate(led, year, 0, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile });
-  const deductions = deductionBreakdown(led, year, ctx.getAccountByRole, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null })
+  const deductions = deductionBreakdown(led, year, ctx.getAccountByRole, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile })   // C692 — miles too
     .filter(d => (d.amount || 0) > 0)
     .map(d => ({ category: d.label, schedule_c_line: d.line, amount: r2(d.amount), not_deductible: r2(d.notDeductible || 0) }));
   const next = getTaxDeadlines(new Date(), { legalForm: ctx.legalForm }).find(d => d.days >= 0);   // C559 — this company's deadlines, not every company's
@@ -229,6 +231,7 @@ async function getTaxSummary(input, ctx) {
     se_tax: r2(est.seTax),
     filing_status_assumed: profile.assumed ? "single, no other income (the owner hasn't said — the Taxes screen asks)" : null,
     tax_saved_per_dollar_deducted: est.marginalRate,
+    business_miles: profile.businessMiles || 0,   // C692 — deducted by the IRS mileage rate (in deductions_by_category, line 9)
     total_owed: r2(est.total),
     deductions_by_category: deductions,
     total_deductions: r2(deductions.reduce((s, d) => s + d.amount, 0)),
