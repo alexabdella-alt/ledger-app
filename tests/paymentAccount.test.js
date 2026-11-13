@@ -9,7 +9,7 @@ const mbp = app.slice(app.indexOf("const markBillPaidOnce = async"), app.indexOf
 
 describe("a payment moves the account it actually went through", () => {
   it("★ 'mark paid' takes the account, and defaults to Cash only when none is given", () => {
-    expect(mbp).toMatch(/side = "ap", cashCode = null, cashName = null \} = \{\}\) => \{/);
+    expect(mbp).toMatch(/side = "ap", cashCode = null, cashName = null, amount = null \} = \{\}\) => \{/);   // C718 — and how much
     expect(mbp).toMatch(/cashCode: cashCode \|\| rc\("cash"\), cashName: cashCode \? \(cashName \|\| cashCode\) : rn\("cash"\),/);
   });
 
@@ -22,8 +22,8 @@ describe("a payment moves the account it actually went through", () => {
   });
 
   it("★ every statement caller passes the statement's account", () => {
-    expect(app.match(/markBillPaid\(c\.invoiceId, \{ side: c\.side, method: "bank_transfer", paidDate: c\.date \|\| null, cashCode: offsetCode, cashName: offsetName \}\)/g)).toHaveLength(2);
-    expect(app).toMatch(/paidDate: bank_txn\?\.date \|\| null, cashCode: matchRecord\.importOffsetCode \|\| null, cashName: matchRecord\.importOffsetName \|\| null \}\)/);
+    expect(app.match(/markBillPaid\(c\.invoiceId, \{ side: c\.side, method: "bank_transfer", paidDate: c\.date \|\| null, amount: c\.entry\?\.amount \?\? null, cashCode: offsetCode, cashName: offsetName \}\)/g)).toHaveLength(2);   // C718 — the amount the clearing was built for
+    expect(app).toMatch(/paidDate: bank_txn\?\.date \|\| null, cashCode: matchRecord\.importOffsetCode \|\| null, cashName: matchRecord\.importOffsetName \|\| null,\s*\.\.\.\(partialPay \? \{ amount: amountProblem\.bank \} : \{\}\) \}\)/);
   });
 
   it("★ Reconcile's 'Accept & add' books against the account being reconciled", () => {

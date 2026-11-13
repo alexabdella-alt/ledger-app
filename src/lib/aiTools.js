@@ -283,15 +283,15 @@ async function getBillsToPay(input, ctx) {
     .filter((i) => !i.due_date || i.due_date <= limit)
     .sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
   const bills = open.slice(0, 25).map((i) => ({
-    invoice_id: String(i.db_entry_id || i.id), vendor: i.source === "opening_balance" ? "Bills carried over from your starting balances" : i.vendor, amount: i.amount, amount_display: money(i.amount),
+    invoice_id: String(i.db_entry_id || i.id), vendor: i.source === "opening_balance" ? "Bills carried over from your starting balances" : i.vendor, amount: owedAmount(i), amount_display: money(owedAmount(i)), ...(i._paid ? { already_paid: i._paid, already_paid_display: money(i._paid) } : {}),
     due_date: i.due_date || null, status: !i.due_date ? "no due date" : i.due_date < today ? "overdue" : i.due_date === today ? "due today" : "due soon",
   }));
-  const dueSoonTotal = open.reduce((t, i) => t + (Number(i.amount) || 0), 0);
+  const dueSoonTotal = open.reduce((t, i) => t + owedAmount(i), 0);   // C718 — what's left on each
   // ★ C712 — "what do I owe?" is ALL of it, the figure Home shows (the bills account's balance);
   // the list is the part due within `within_days`. One total called "total" for the due-soon
   // part answered $2,000 where Home said $8,050.
   const allOpen = openPayablesGL(led, apCode);
-  const owedInAll = apCode ? glAccountBalance(apCode, led) : allOpen.reduce((t, i) => t + (Number(i.amount) || 0), 0);
+  const owedInAll = apCode ? glAccountBalance(apCode, led) : allOpen.reduce((t, i) => t + owedAmount(i), 0);
   return { owed_in_all: owedInAll, owed_in_all_display: money(owedInAll), bills_open_count: allOpen.length,
     due_within_days: within, due_soon_count: open.length, due_soon_total: dueSoonTotal, due_soon_total_display: money(dueSoonTotal),
     bills, paid_from_choices: ctx.payFromLabels || [] };

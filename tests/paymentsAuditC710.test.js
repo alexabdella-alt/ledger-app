@@ -61,11 +61,11 @@ describe("C710 — an invoice's status follows the books", () => {
 describe("C710 — a bank match for a different amount isn't cleared or dropped", () => {
   const bill = [{ id: "b1", amount: 1000 }];
   it("$980 against $1,000 is a problem; equal amounts aren't", () => {
-    expect(matchAmountProblem({ invoice_ids: ["b1"], bank_txn: { amount: -980 } }, bill)).toEqual({ bank: 980, owed: 1000 });
+    expect(matchAmountProblem({ invoice_ids: ["b1"], bank_txn: { amount: -980 } }, bill)).toEqual({ bank: 980, owed: 1000, partial: true });   // C718 — a part-payment, recorded as such
     expect(matchAmountProblem({ invoice_ids: ["b1"], bank_txn: { amount: -1000 } }, bill)).toBe(null);
   });
   it("applyMatch refuses and keeps it in the queue; the partial flag-only branch is gone", () => {
-    const fn = app.slice(app.indexOf("const applyMatchOnce = async"), app.indexOf("const applyMatchOnce = async") + 4000);
+    const fn = app.slice(app.indexOf("const applyMatchOnce = async"), app.indexOf("const applyMatchOnce = async") + 6000);   // C718 — the part-payment branch made it longer
     expect(fn).toMatch(/const amountProblem = matchAmountProblem\(matchRecord, invoicesRef\.current \|\| \[\]\);/);
     expect(fn.indexOf("return;")).toBeLessThan(fn.indexOf("setMatchQueue(prev => prev.filter("));
     expect(fn).not.toMatch(/payment_status: "partial"/);

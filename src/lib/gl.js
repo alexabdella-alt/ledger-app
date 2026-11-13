@@ -119,12 +119,61 @@ export const isSettlementEntry = (i) => !!(i && i.import_metadata && i.import_me
 // refused it). `reversed_by` (stamped by the flatten from the live reversal) and the reversal
 // itself are excluded, the same rule the open-bill readers use (`isCancelledOrCancelling`).
 export const isLiveSettlement = (i) => isSettlementEntry(i) && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at && !isCancelledOrCancelling(i);
-export function settledBases(invoices = []) {
-  const out = new Set();
+export const entryBaseOf = (i) => String(i && i.db_entry_id != null ? i.db_entry_id : String((i && i.id) ?? "").split("_")[0]);
+// ★ C718 — PART-PAYMENTS. An entry's AMOUNT is what it put on account: a two-line entry's amount,
+// or an expanded entry's debits (a taxed invoice's receivable; a multi-line bill's lines). A
+// payment's amount is measured the same way. What has been paid toward an entry is the sum of its
+// LIVE payments; it is SETTLED only when that covers its amount. "Any payment linked" used to mean
+// settled, so a customer who paid $400 of $1,000 closed the whole invoice — or, refused, pushed the
+// owner to book the $400 as new income while the invoice stayed owed.
+export function entryAmountsByBase(invoices = []) {
+  const out = new Map();
   for (const i of invoices || []) {
-    if (!isLiveSettlement(i)) continue;
-    out.add(String(i.import_metadata.payment_for));
+    if (!i) continue;
+    const b = entryBaseOf(i);
+    const expanded = String(i.id ?? "").includes("_");
+    const add = !expanded ? (Number(i.amount) || 0) : (i.debit_credit === "debit" ? Number(i.amount) || 0 : 0);
+    out.set(b, (out.get(b) || 0) + add);
   }
   return out;
 }
-export const entryBaseOf = (i) => String(i && i.db_entry_id != null ? i.db_entry_id : String((i && i.id) ?? "").split("_")[0]);
+export function paidByBase(invoices = []) {
+  const amounts = entryAmountsByBase(invoices);
+  const seen = new Set(), out = new Map();
+  for (const i of invoices || []) {
+    if (!isLiveSettlement(i)) continue;
+    const b = entryBaseOf(i);
+    if (seen.has(b)) continue;                       // one payment entry counts once, however many rows it flattened to
+    seen.add(b);
+    const target = String(i.import_metadata.payment_for);
+    out.set(target, Math.round(((out.get(target) || 0) + (amounts.get(b) || 0)) * 100) / 100);
+  }
+  return out;
+}
+export function settledBases(invoices = []) {
+  const amounts = entryAmountsByBase(invoices);
+  const out = new Set();
+  for (const [target, paid] of paidByBase(invoices)) {
+    const owed = amounts.get(target);
+    // an entry not in this list (not loaded) is taken as settled by its payment, as before
+    if (owed == null || paid >= owed - 0.005) out.add(target);
+  }
+  return out;
+}
+// What is still owed on a part-paid entry: base → paid so far, for entries paid in part only.
+export function partlyPaidBases(invoices = []) {
+  const amounts = entryAmountsByBase(invoices);
+  const out = new Map();
+  for (const [target, paid] of paidByBase(invoices)) {
+    const owed = amounts.get(target);
+    if (owed != null && paid > 0.004 && paid < owed - 0.005) out.set(target, paid);
+  }
+  return out;
+}
+// A row from an open list, carrying what has been paid toward it (`_paid`) so `owedAmount` reads
+// what is still owed. Rows not part-paid are returned as they are.
+export function withPaidSoFar(rows = [], invoices = []) {
+  const part = partlyPaidBases(invoices);
+  if (!part.size) return rows;
+  return (rows || []).map((r) => { const p = part.get(entryBaseOf(r)); return p ? { ...r, _paid: p } : r; });
+}

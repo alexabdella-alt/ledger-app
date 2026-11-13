@@ -326,7 +326,7 @@ export default function DashboardView() {
                   </div>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-                  <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)", width:96, textAlign:"right" }}>{fmt(inv.amount)}</span>
+                  <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)", width:96, textAlign:"right" }} title={inv._paid ? `${fmt(inv._paid)} already paid` : undefined}>{fmt(owedAmount(inv))}</span>
                   {apPayId!==inv.id && <button onClick={()=>{ setApPayId(inv.id); setApPayMethod("ach"); setApPayDate(todayLocal()); }} style={{ padding:"6px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", color:"var(--sc-success)", cursor:"pointer", whiteSpace:"nowrap" }}>Mark Paid</button>}
                 </div>
               </div>

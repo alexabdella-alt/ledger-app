@@ -98,7 +98,7 @@ describe("C528 — markBillPaid's idempotency reads the settled set first", () =
     expect(at).toBeGreaterThan(-1);
     const body = src.slice(at, src.indexOf("const markBillPaid =", at));
     const a = body.indexOf('let already = settledBases(invoicesRef.current || []).has(String(dbId));');
-    const b = body.indexOf('if (!already) try {');
+    const b = body.indexOf('if (!already && !(paidBefore > 0)) try {');   // C718 — part-paid: the in-session sum, not the any-payment probe
     const c = body.indexOf("if (!already) {");
     expect(a).toBeGreaterThan(-1); expect(b).toBeGreaterThan(a); expect(c).toBeGreaterThan(b);
   });

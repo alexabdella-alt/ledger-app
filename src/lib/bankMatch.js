@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildPaymentEntry } from "./payments.js";
-import { isCancelledOrCancelling, isSettlementEntry, isLiveSettlement } from "./gl.js";
+import { isCancelledOrCancelling, isSettlementEntry, isLiveSettlement, settledBases, withPaidSoFar, paidByBase, entryBaseOf } from "./gl.js";
 import { normalizeName } from "./docDirection.js";
 import { NAME_MATCH, nameMatchKind } from "./nameMatch.js";
 
@@ -76,7 +76,8 @@ export function autoMatchBankLines(parsedTxns = [], openItems = [], { amountTole
       if (respectHint && wantsAP && !ap) return false;
       // A TAXED A/R invoice's revenue row carries ex-tax `amount` but the bank deposit equals
       // the FULL receivable, exposed as `ar_amount`. Match against ANY known amount.
-      const iAmts = [i.ar_amount, i.balance_remaining, i.amount].map(num).filter(v => v > 0);
+      // C718 — a part-paid item matches only what is LEFT on it
+      const iAmts = (i._paid ? [i.balance_remaining] : [i.ar_amount, i.balance_remaining, i.amount]).map(num).filter(v => v > 0);
       if (!iAmts.some(v => Math.abs(v - amt) <= amountTolerance)) return false;
       const iNorm = normalizeName(i.vendor);
       if (!iNorm || iNorm.length < 2) return false;
@@ -157,11 +158,8 @@ export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode 
   const codeOnLeg = (i, code) => code != null && (eq(i.secondary_gl_code, code) || eq(i.gl_code, code));
   const isClearable = (i) => codeOnLeg(i, arCode) || codeOnLeg(i, apCode) || codeOnLeg(i, accruedCode);
   // Bills/invoices that a LIVE (non-voided, non-deleted) settlement JE already settled.
-  const cleared = new Set(
-    (invoices || [])
-      .filter(i => isLiveSettlement(i))   // C599 — a reversed payment settles nothing
-      .map(i => String(i.import_metadata.payment_for))
-  );
+  // C599 — a reversed payment settles nothing; C718 — and a part-payment settles only part
+  const cleared = settledBases(invoices);
   // "Open" is defined POSITIVELY: a bill/invoice that ESTABLISHES a payable/receivable and has
   // NO settlement linked — NOT "anything carrying an A/P or A/R leg". The O83 Feb bug: January's
   // Dr A/P / Cr Cash payment entries have an A/P leg, so the old filter offered them as "open
@@ -191,7 +189,8 @@ export function matchableOpenItems(invoices = [], { arCode, apCode, accruedCode 
     const rep = open.find(r => String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base && legRow(r)) || i;
     seen.add(base); out.push(rep);
   }
-  return out;
+  // ★ C718 — a part-paid item is open for what's LEFT (`balance_remaining`), which is all it matches
+  return withPaidSoFar(out, invoices).map((i) => (i._paid ? { ...i, balance_remaining: Math.round((Number(i.ar_amount != null ? i.ar_amount : i._entryTotal != null ? i._entryTotal : i.amount) - i._paid) * 100) / 100 } : i));
 }
 
 // Resolve an LLM/engine proposal's invoice_ids → the actual open-item objects to DISPLAY as the
@@ -386,7 +385,8 @@ export function planBankImport({ parsedTxns = [], autoCleared = [], queue = [], 
     for (const id of m.invoice_ids || []) {
       const inv = findInv(id);
       // #3: a line clears only if a balanced clearing entry would actually post.
-      const entry = inv ? buildPaymentEntry(inv, side, { ...codes, date }) : null;
+      // C718 — a part-paid item clears what's left (the bank line), not its original amount
+      const entry = inv ? buildPaymentEntry(inv, side, { ...codes, date, ...(inv._paid && inv.balance_remaining != null ? { amount: inv.balance_remaining } : {}) }) : null;
       if (!entry) { skipped.push({ match: m, invoiceId: String(id), side }); continue; }
       clears.push({ bankId, invoiceId: String(id), side, date, entry });
       posted++;
@@ -418,7 +418,13 @@ export function matchAmountProblem(matchRecord = {}, ledger = []) {
   const ids = new Set((matchRecord?.invoice_ids || []).map(String));
   const rows = (ledger || []).filter((r) => r && ids.has(String(r.id)));
   if (!rows.length || !(bank > 0)) return null;
-  const owed = rows.reduce((s, r) => s + Math.abs(Number(r.ar_amount != null ? r.ar_amount : r._entryTotal != null ? r._entryTotal : r.amount) || 0), 0);
+  // ★ C718 — what is still OWED: less anything already paid toward it. A bank amount below it is a
+  // PART-payment (recorded, the rest stays owed — on one item only); above it, nothing is matched.
+  const paid = paidByBase(ledger);
+  const bases = new Set();
+  const owed = rows.reduce((s, r) => s + Math.abs(Number(r.ar_amount != null ? r.ar_amount : r._entryTotal != null ? r._entryTotal : r.amount) || 0), 0)
+    - rows.reduce((s, r) => { const b = entryBaseOf(r); if (bases.has(b)) return s; bases.add(b); return s + (paid.get(b) || 0); }, 0);
   if (Math.abs(owed - bank) < 0.01) return null;
-  return { bank: Math.round(bank * 100) / 100, owed: Math.round(owed * 100) / 100 };
+  const r2 = (v) => Math.round(v * 100) / 100;
+  return { bank: r2(bank), owed: r2(owed), partial: bank < owed && ids.size === 1 };
 }

@@ -1,3 +1,4 @@
+import { partlyPaidBases } from "./gl.js";
 // ═════════════════════════════════════════════════════════════════════════════
 // C593 — WHICH INVOICES CAN BE MARKED PAID. Review finding F5.
 //
@@ -38,5 +39,6 @@ export function invoiceStatusFromBooks(inv = {}, ledger = [], settled = null) {
   if (rows.some((r) => r.reversed_by)) return "void";
   const collected = (settled && settled.has(base)) || rows.some((r) => r.payment_status === "collected");
   if (collected) return "paid";
+  if (partlyPaidBases(ledger).has(base)) return "partial";   // C718 — part of it received; Mark paid records the rest
   return st === "paid" ? "sent" : inv.status;
 }

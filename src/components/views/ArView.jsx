@@ -10,7 +10,7 @@ import { initials, vendorColor, fmtDate , fmtMoney, fmtSignedMoney, todayLocal }
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
-import { computeAR, isLiveEntry, glAccountBalance } from "../../lib/reports";
+import { computeAR, isLiveEntry, glAccountBalance, owedAmount } from "../../lib/reports";
 import { receivableEntries, openReceivables } from "../../lib/receivables";
 import { aiTextOf } from "../../lib/aiJson";
 
@@ -26,7 +26,7 @@ export default function ArView() {
   const fmt = fmtMoney;
             // Amount OWED on a receivable: incl-tax A/R (ar_amount) for taxed invoices,
             // else the ex-tax amount. Ties the lists to GL A/R.
-            const arAmt = i => (i && i.ar_amount != null) ? i.ar_amount : (i ? i.amount : 0);
+            const arAmt = i => i ? owedAmount(i) : 0;   // C718 — what's left on a part-paid invoice (owedAmount reads _paid)
             const today = todayLocal();
             // arAgingNarration moved to top-level state
             // arAgingLoading moved to top-level state

@@ -6,7 +6,7 @@
 // "unadjusted" toggle that includes voided). Uses the shared GL helpers.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { glIsRevenue, glIsExpense, isCancelledOrCancelling, settledBases, entryBaseOf, isLiveSettlement, isSettlementEntry } from "./gl";
+import { glIsRevenue, glIsExpense, isCancelledOrCancelling, settledBases, entryBaseOf, isLiveSettlement, isSettlementEntry, partlyPaidBases, withPaidSoFar } from "./gl";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format";
 import { applyAlias } from "./vendorAlias.js";
 
@@ -90,7 +90,8 @@ export const signedPL = (inv) => {
 // The amount OWED on a row: for a taxed AR invoice the receivable is the full incl-tax
 // A/R balance (carried as `ar_amount`), not the ex-tax revenue (`amount`). AP/untaxed
 // rows have no ar_amount → fall back to amount. Keeps AR aging/total tied to GL A/R.
-export const owedAmount = i => num(i && i.ar_amount != null ? i.ar_amount : i && i.amount);
+// C718 — less anything already paid toward it (`_paid`, set by the open lists on a part-paid entry).
+export const owedAmount = i => Math.round((num(i && i.ar_amount != null ? i.ar_amount : i && i._entryTotal != null ? i._entryTotal : i && i.amount) - num(i && i._paid)) * 100) / 100;
 // Exported (C501): anchored at LOCAL noon so a `YYYY-MM-DD` due date never reads a day early from a US zone.
 export const daysOverdue = (dueDate, now) => dueDate ? Math.floor((now - new Date(String(dueDate) + "T12:00:00")) / 86400000) : 0;
 
@@ -424,9 +425,11 @@ export function computeRunway(cash, burn) { const b = num(burn); return b > 0 ? 
 function arApTotals(invoices, predicate, now) {
   let total = 0, overdue = 0, count = 0, overdueCount = 0;
   const settled = settledBases(invoices);   // C528
+  const part = partlyPaidBases(invoices);   // C718
   for (const i of (invoices || [])) {
     if (!isLiveEntry(i) || !predicate(i) || settled.has(entryBaseOf(i))) continue;
-    const amt = owedAmount(i); total += amt; count++;   // incl-tax for AR; amount for AP/untaxed
+    const p = part.get(entryBaseOf(i));
+    const amt = owedAmount(p ? { ...i, _paid: p } : i); total += amt; count++;   // incl-tax for AR; amount for AP/untaxed; less any part-payment
     if (i.due_date && daysOverdue(i.due_date, now) > 0) { overdue += amt; overdueCount++; }
   }
   return { total: r2(total), overdue: r2(overdue), count, overdueCount };
@@ -500,7 +503,7 @@ const touchesAccount = (i, code) => code != null &&
 export function openReceivablesGL(invoices, arCode) {
   if (arCode == null) return [];   // no code → nothing, never the flag list (degrade safely)
   const settled = settledBases(invoices);   // C528
-  return (invoices || []).filter(i => isLiveEntry(i) && arUnpaidWith(arCode)(i) && !settled.has(entryBaseOf(i)));   // C497 — one row per invoice, taxed invoices included
+  return withPaidSoFar((invoices || []).filter(i => isLiveEntry(i) && arUnpaidWith(arCode)(i) && !settled.has(entryBaseOf(i))), invoices);   // C497 — one row per invoice, taxed invoices included; C718 — part-paid ones carry what's left
 }
 // C498 — an expanded (multi-line) bill's expense rows carry A/P only as their offset, which
 // `touchesAccount` ignores for expanded rows, so Home's "Bills to pay" card MISSED every
@@ -526,8 +529,8 @@ export function openPayablesGL(invoices, apCode) {
   const open = apUnpaidWith(apCode || null);
   const all = invoices || [];
   const settled = settledBases(all);   // C528
-  return all.filter(i => isLiveEntry(i) && !settled.has(entryBaseOf(i)) && ((open(i) && touchesAccount(i, apCode)) || isApLegRow(i, apCode)))
-    .map(i => (isApLegRow(i, apCode) ? presentLegRow(i, all) : i));
+  return withPaidSoFar(all.filter(i => isLiveEntry(i) && !settled.has(entryBaseOf(i)) && ((open(i) && touchesAccount(i, apCode)) || isApLegRow(i, apCode)))
+    .map(i => (isApLegRow(i, apCode) ? presentLegRow(i, all) : i)), all);   // C718 — part-paid bills carry what's left
 }
 export function paidPayablesGL(invoices, apCode) {
   const all = invoices || [];

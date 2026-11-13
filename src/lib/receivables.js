@@ -13,7 +13,7 @@
 // card and the KPI strip so the three cannot disagree.
 import { isLiveEntry, isReceivableRow } from "./reports.js";
 import { isSettlementEntry } from "./bankMatch.js";
-import { isCancelledOrCancelling, settledBases, entryBaseOf } from "./gl.js";
+import { isCancelledOrCancelling, settledBases, entryBaseOf, withPaidSoFar } from "./gl.js";
 
 // Every issued receivable, settled or not (the aging report's universe).
 // ★ C619 — BUT NOT A VOIDED ONE, NOR THE CORRECTION THAT VOIDED IT. Neither is open, so the
@@ -27,5 +27,5 @@ export function receivableEntries(invoices = [], arCode) {
 // The ones still open.
 export function openReceivables(invoices = [], arCode) {
   const settled = settledBases(invoices);   // C528 — a live collection linking it closes it, whatever the flag says
-  return receivableEntries(invoices, arCode).filter((i) => !isCancelledOrCancelling(i) && i.payment_status !== "collected" && i.payment_status !== "paid" && !settled.has(entryBaseOf(i)));   // C468
+  return withPaidSoFar(receivableEntries(invoices, arCode).filter((i) => !isCancelledOrCancelling(i) && i.payment_status !== "collected" && i.payment_status !== "paid" && !settled.has(entryBaseOf(i))), invoices);   // C468; C718
 }

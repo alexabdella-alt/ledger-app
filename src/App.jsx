@@ -10,7 +10,7 @@ import { plainWriteError } from "./lib/plainWriteError";
 import { supabase, getAuthHeaders } from "./lib/supabase";
 import { DEFAULT_CHART_OF_ACCOUNTS, PROJECTS, AI_PROXY_URL, CAPITALIZE_THRESHOLD, shouldCapitalize, VIEW_ONLY_UPLOAD_COPY, CAPITALIZE_CHECK_THRESHOLD, MEALS_DEDUCTIBLE_RATE, DEFAULT_IBR, AI_CONFIDENCE_AUTO_BOOK, AI_CONFIDENCE_REVIEW, PLATFORM_ADMIN_EMAILS } from "./lib/constants";
 import { useAccounts } from "./hooks/useAccounts";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling, settledBases, categoryForCode } from "./lib/gl";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling, settledBases, categoryForCode, entryAmountsByBase, paidByBase } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
@@ -6508,7 +6508,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           // matched line's booking — there is no separate standalone entry for it.
           const clearedInvIds = new Set();
           for (const c of plan.clears) {
-            const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null });
+            const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null, amount: c.entry?.amount ?? null });
             if (ok) clearedInvIds.add(c.invoiceId);
           }
 
@@ -7826,7 +7826,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const { autoCleared, queue } = await runMatchingEngine(parsedTxns, openItems);
       const plan2 = planBankImport({ parsedTxns, autoCleared, queue, openItems, codes: { apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"), arCode: rc("accounts_receivable"), cashCode: offsetCode, cashName: offsetName } });
       for (const c of plan2.clears) {
-        const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null, cashCode: offsetCode, cashName: offsetName });
+        const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null, amount: c.entry?.amount ?? null, cashCode: offsetCode, cashName: offsetName });
         if (ok && c.bankId != null) await setLine(c.bankId, { status: "matched" });   // clearing → statement line 'matched'
         // ★ C713 — a clearing that failed leaves its line visibly needing a look, never "pending" and
         // counted as added
@@ -7987,7 +7987,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // Post clearings — record success only when the JE actually committed (O69-B).
     let clearedOk = 0, clearFailed = 0;
     for (const c of plan.clears) {
-      const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null, cashCode: offsetCode, cashName: offsetName });
+      const ok = await markBillPaid(c.invoiceId, { side: c.side, method: "bank_transfer", paidDate: c.date || null, amount: c.entry?.amount ?? null, cashCode: offsetCode, cashName: offsetName });
       if (ok) clearedOk++; else clearFailed++;
     }
     // O72: before direct-booking the "new" lines, pull out payroll NET-pay lines. Ones that
@@ -8317,9 +8317,15 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     // ★ C710 — a different amount is never cleared as if it were the whole bill, nor dropped as a
     // "partial" that saves nothing: it stays here, and the owner is told the two ways forward
     const amountProblem = matchAmountProblem(matchRecord, invoicesRef.current || []);
-    if (amountProblem || (amount_remaining && amount_remaining >= 0.01)) {
+    // ★ C718 — LESS THAN IS OWED, ON ONE ITEM: A PART-PAYMENT, RECORDED. The advice used to be
+    // "Dismiss" — which booked the deposit as new income while the invoice stayed owed (revenue
+    // counted twice). More than is owed is still not matched: the line stays for a decision.
+    const partialPay = amountProblem && amountProblem.partial && (invoice_ids || []).length === 1;
+    if ((amountProblem && !partialPay) || (!amountProblem && amount_remaining && amount_remaining >= 0.01)) {
       const p = amountProblem || { bank: Math.abs(Number(bank_txn?.amount) || 0), owed: null };
-      showNotification(`The bank shows ${fmtMoney(p.bank)}${p.owed != null ? ` but the ${isAR ? "invoice" : "bill"} is ${fmtMoney(p.owed)}` : ", which doesn't pay the whole amount"}. Part-payments can't be matched yet — choose "Dismiss" to add the bank line on its own (the ${isAR ? "invoice stays owed" : "bill stays open"}), or record the ${isAR ? "invoice as collected" : "bill as paid"} in full if the difference was a fee or discount.`, "error");
+      showNotification(p.owed != null && p.bank > p.owed
+        ? `The bank shows ${fmtMoney(p.bank)} but only ${fmtMoney(p.owed)} is owed on this ${isAR ? "invoice" : "bill"}, so it wasn't matched — it stays here for a decision.`
+        : `The bank shows ${fmtMoney(p.bank)}, which pays part of more than one ${isAR ? "invoice" : "bill"} — match it to one at a time.`, "error");
       logAudit("match_amount_mismatch", `Kept in review: bank ${fmtMoney(p.bank)} vs ${p.owed != null ? fmtMoney(p.owed) : "partial"}`, null, { match_id: matchRecord?.id || null });
       return;
     }
@@ -8335,7 +8341,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // the match IN the queue (in-review), surface the error, and bail before history.
       const results = [];
       for (const id of (invoice_ids || [])) {
-        results.push(await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: bank_txn?.date || null, cashCode: matchRecord.importOffsetCode || null, cashName: matchRecord.importOffsetName || null }));
+        results.push(await markBillPaid(id, { side: isAR ? "ar" : "ap", method: "bank_transfer", paidDate: bank_txn?.date || null, cashCode: matchRecord.importOffsetCode || null, cashName: matchRecord.importOffsetName || null,
+          ...(partialPay ? { amount: amountProblem.bank } : {}) }));   // C718
       }
       try { await loadAllData(); } catch {}
       if (!allClearingsPosted(results)) {
@@ -8357,7 +8364,9 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     const confirmed = { ...matchRecord, status: "confirmed", confirmed_at: new Date().toISOString() };
     setMatchQueue(prev => prev.filter(m => m.id !== matchRecord.id));
     setMatchHistory(prev => [confirmed, ...prev]);
-    showNotification(isPaid ? `Match confirmed — payment posted ✓` : `Partial match recorded`);
+    showNotification(partialPay   // C718 — said from what was recorded: the part, and what is still owed
+      ? `Recorded ${fmtMoney(amountProblem.bank)} toward ${bank_txn?.vendor || "it"} — ${fmtMoney(Math.round((amountProblem.owed - amountProblem.bank) * 100) / 100)} still owed ✓`
+      : `Match confirmed — payment posted ✓`);
   };
 
   // "Dismiss" a proposed match means "not THAT match" — NOT "discard the line". The
@@ -8501,7 +8510,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // whatever the statement was — the card's balance never fell, Cash fell instead, and neither
   // account's reconciliation could ever tie. Statement callers pass the statement's account;
   // a person marking a bill paid by hand still defaults to Cash.
-  const markBillPaidOnce = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap", cashCode = null, cashName = null } = {}) => {
+  const markBillPaidOnce = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap", cashCode = null, cashName = null, amount = null } = {}) => {
     const inv = (invoicesRef.current || []).find(i => String(i.id) === String(entryId) || String(i.db_entry_id) === String(entryId));
     // ★ C717 — said, not just logged: an invoice whose entry was deleted had a Mark paid that did
     // nothing at all, and an action with no visible effect is pressed again.
@@ -8526,6 +8535,18 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       showNotification(`${inv.vendor || "That entry"} was already corrected — nothing is left to ${side === "ar" ? "collect" : "pay"} on it.`, "error");
       return false;
     }
+    // ★ C718 — HOW MUCH IS STILL OWED, AND HOW MUCH THIS RECORDS. A payment of part of it is
+    // posted and linked like any other, and the bill or invoice stays open for the rest (no paid
+    // flag). Without an amount, "mark paid" records what's LEFT — never the original again.
+    const owedTotal = dbId ? entryAmountsByBase(invoicesRef.current || []).get(String(dbId)) : null;
+    const paidBefore = dbId ? (paidByBase(invoicesRef.current || []).get(String(dbId)) || 0) : 0;
+    const remaining = owedTotal != null ? Math.round((owedTotal - paidBefore) * 100) / 100 : null;
+    const payAmount = amount != null ? Math.round(Math.abs(Number(amount) || 0) * 100) / 100 : remaining;
+    if (amount != null && remaining != null && payAmount > remaining + 0.005) {
+      showNotification(`That's more than the ${fmtMoney(remaining)} still owed on ${inv.vendor || "it"} — nothing was recorded.`, "error");
+      return false;
+    }
+    const isPartial = remaining != null && payAmount != null && payAmount > 0 && payAmount < remaining - 0.005;
     const who = session?.user?.email || "owner";
     const at = paidDate ? new Date(paidDate + "T12:00:00").toISOString() : new Date().toISOString();
     const newStatus = side === "ar" ? "collected" : "paid";
@@ -8536,7 +8557,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       payment_reference: inv.payment_reference, payment_notes: inv.payment_notes };
     const apply = (patch) => setInvoices(prev => prev.map(i => String(i.id) !== String(inv.id) ? i : { ...i, ...patch }));
 
-    apply({ payment_status: newStatus, payment_method_used: method, paid_at: at, matched: true,
+    if (!isPartial) apply({ payment_status: newStatus, payment_method_used: method, paid_at: at, matched: true,   // C718 — a part-payment leaves it open
       ...(side === "ar" ? { collected_at: at } : {}),
       payment_reference: ref || undefined, payment_notes: note || undefined });
 
@@ -8614,6 +8635,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         apCode: rc("accounts_payable"), accruedCode: rc("accrued_liabilities"),
         arCode: rc("accounts_receivable"), cashCode: cashCode || rc("cash"), cashName: cashCode ? (cashName || cashCode) : rn("cash"),
         date: paidDate || at.slice(0, 10), billDbId: dbId,
+        ...(payAmount != null && payAmount > 0 ? { amount: payAmount } : {}),   // C718 — part, or what's left
       });
       if (payEntry) {
         // Idempotency: don't double-post if a LIVE payment JE already links to this bill.
@@ -8621,7 +8643,9 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         // reads), so a failed DB probe cannot fall through to a second payment on a bill the
         // books on screen already show as settled.
         let already = settledBases(invoicesRef.current || []).has(String(dbId));
-        if (!already) try {
+        // C718 — payments the books on screen already show toward it mean it's part-paid, not paid:
+        // the database probe (any payment = paid) is only for a bill whose payments aren't loaded
+        if (!already && !(paidBefore > 0)) try {
           const { data } = await supabase.from("journal_entries").select("id")
             .eq("company_id", currentCompany.id)
             .eq("import_metadata->>payment_for", String(dbId))
@@ -8664,6 +8688,16 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           }
         }
       }
+    }
+
+    // ★ C718 — a PART-payment ends here: posted and linked, the rest still owed, no paid flag.
+    if (isPartial) {
+      if (!postedPaymentId) return await fail(alreadyPaid ? "already settled" : "part-payment entry was not posted");
+      const left = Math.round((remaining - payAmount) * 100) / 100;
+      logAudit(side === "ar" ? "partial_collection" : "partial_payment",
+        `${side === "ar" ? "Received" : "Paid"} ${fmtMoney(payAmount)} toward ${inv.vendor || "an entry"} — ${fmtMoney(left)} still owed`,
+        null, { entry_id: String(dbId), payment_entry_id: String(postedPaymentId), amount: payAmount, still_owed: left, side });
+      return { partial: true, amount: payAmount, left };
     }
 
     // Write canonical fields. Reference/notes go separately so a missing migration-004

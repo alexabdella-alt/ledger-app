@@ -558,7 +558,7 @@ ${draft.notes?`<div class="footer">Notes: ${esc(draft.notes)}</div>`:""}
                               </div>
                               <div style={{textAlign:"right"}}>
                                 <div style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:inv.status==="paid"?"var(--sc-success)":"var(--sc-text)"}}>{fmt(invTotal)}</div>
-                                <span style={{fontSize:10,background:inv.status==="paid"?"var(--sc-success-soft)":inv.status==="draft"?"var(--sc-border)":"var(--sc-gold-soft)",color:inv.status==="paid"?"var(--sc-success)":inv.status==="draft"?"var(--sc-text-2)":"var(--sc-gold)",borderRadius:20,padding:"1px 7px"}}>{inv.status}</span>
+                                <span style={{fontSize:10,background:inv.status==="paid"?"var(--sc-success-soft)":inv.status==="draft"?"var(--sc-border)":"var(--sc-gold-soft)",color:inv.status==="paid"?"var(--sc-success)":inv.status==="draft"?"var(--sc-text-2)":"var(--sc-gold)",borderRadius:20,padding:"1px 7px"}}>{inv.status === "partial" ? "part paid" : inv.status}</span>
                               </div>
                             </div>
                             {!isViewer && canMarkInvoicePaid(inv).ok && (<>

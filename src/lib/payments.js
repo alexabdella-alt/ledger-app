@@ -68,7 +68,8 @@ export function buildPaymentEntry(bill, side, opts = {}) {
   // (ar_amount on the revenue row, or the A/R leg row's own amount), not the ex-tax
   // revenue — so collecting clears A/R to zero and never strands the tax. The sales-tax
   // liability (2350) was recorded at invoice time and is untouched here.
-  const amount = leg.amount;
+  // ★ C718 — or PART of it (`opts.amount`: a part-payment, or what's left after one), never more.
+  const amount = opts.amount != null ? Math.min(leg.amount, Math.round(Math.abs(Number(opts.amount) || 0) * 100) / 100) : leg.amount;
   if (amount <= 0) return null;
   if (!cashCode) return null;        // can't post a cash movement without a cash account
 
