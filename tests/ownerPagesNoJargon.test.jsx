@@ -119,6 +119,11 @@ describe("a single transaction, on the owner's seat", () => {
     const t = page(INVOICES.find((i) => i.id === "i7_0"), owner);
     expect(t).toMatch(/THE WHOLE ENTRY · 3 LINES Food Cost \$500\.00 Freight \$20\.00 Bills you owe \$520\.00/);
   });
+  it("the panel's Type row uses the Money page's words: Income and Spending", () => {
+    expect(panel(INVOICES.find((i) => i.id === "i5"), owner)).toMatch(/Type Income/);
+    expect(panel(INVOICES.find((i) => i.id === "i2"), owner)).toMatch(/Type Spending/);
+    expect(panel(INVOICES.find((i) => i.id === "i2"), reviewer)).toMatch(/Type Expense/);
+  });
   it("the accountant's seat keeps codes, account names and signs", () => {
     const t = page(INVOICES.find((i) => i.id === "i7_0"), reviewer);
     expect(t).toMatch(/2000 — Accounts Payable −\s?\$520\.00/);

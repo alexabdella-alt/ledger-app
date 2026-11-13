@@ -282,7 +282,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   ["Description", sel.description || "—"],
                   ["Category", `${(showCodes ? sel.gl_name : ownerAccountName(sel.gl_name)) || sel.gl_code || "—"}${entryLineCount(sel, invoices) > 1 ? ` · ${entryLineCount(sel, invoices)} lines (see Full entry)` : ""}`],
                   [showCodes ? "Against" : "Paid from / into", sel.secondary_gl_code ? ((showCodes ? sel.secondary_gl_name : ownerAccountName(sel.secondary_gl_name)) || sel.secondary_gl_code) : "—"],   // C580; C646 plain names
-                  ["Type", settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? "Revenue" : "Expense"],
+                  ["Type", settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? (showCodes ? "Revenue" : "Income") : (showCodes ? "Expense" : "Spending")],   // C647 — the Money page's own words
                   ["How sure we were", sel.confidence != null ? `${sel.confidence}%` : "—"],
                   // C646 — no "— · Feb 2": only the parts that were recorded.
                   sel.payment_status === "paid" ? ["Payment", [sel.payment_method_used ? methodLabel(sel.payment_method_used) : null, sel.paid_at ? fmtDate(sel.paid_at) : null, sel.payment_reference || null].filter(Boolean).join(" · ") || "Paid"] : null,
