@@ -3,7 +3,7 @@ import { useERP } from "./ERPContext";
 import { fmtDate , fmtSignedMoney, todayLocal } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
 import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
-import { alignDirectionToAccount, incomeAccountForAnswer, notIncomeAnswer, NOT_INCOME_COPY } from "../lib/bookingDirection";
+import { alignDirectionToAccount, incomeAccountForAnswer, notIncomeAnswer, NOT_INCOME_COPY, notExpenseAnswer, NOT_EXPENSE_COPY } from "../lib/bookingDirection";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { makeOneInFlight } from "../lib/oneInFlight";
 import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
@@ -491,6 +491,10 @@ function ClarificationCard({ item }) {
       });
       return;
     }
+    // ★★ C650 — before the AI (which can only pick or create a spending/income category): an
+    // answer that says this isn't spending at all is not recorded as spending.
+    const notExpense = notExpenseAnswer(text);
+    if (notExpense) { setFreeError(NOT_EXPENSE_COPY[notExpense]); return; }
     interpretFreeText(text);   // keyword map couldn't place it → let the AI read it
   };
 

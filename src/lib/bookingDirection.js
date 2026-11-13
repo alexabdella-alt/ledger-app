@@ -94,6 +94,30 @@ export const NOT_INCOME_COPY = {
   transfer: "Money moved between your own accounts isn't income, so I won't record it as a sale. Skip this one for now — it stays on your list and won't be counted as income.",
 };
 
+// ★★ C650 — AND MONEY OUT IS NOT ALWAYS SPENDING. The mirror of C649: on a card for money going
+// OUT, an answer the keyword map couldn't place went to the AI, which may only choose from the
+// spending and income categories — and may CREATE a spending category. So "I paid myself",
+// "loan payment", "paid off the credit card" or "moved it to savings" were booked as business
+// EXPENSES: profit and tax understated. Read only after the category map has had its turn, so an
+// answer that names a real category ("wire transfer to the supplier for flour") still books.
+const NOT_EXPENSE = [
+  ["owner", /\b(paid|pay|paying) myself\b|\bowner'?s? (draw|distribution)s?\b|\bdistributions? to (me|myself|the owner)\b|\bpersonal (purchase|expense|use|stuff|item|items|spending)\b|\bfor me personally\b|\bnot (for )?(the |a )?business\b|\bmy own (use|stuff)\b/i],
+  ["card", /\b(paid|pay|paying) (off )?(the |my |our )?(credit )?card\b|\bcredit card (bill|payment)\b|\bcard payment\b/i],
+  ["loan", /\bloan (payment|repayment)s?\b|\b(paid|pay|paying) (back )?(the |a |my |our )?loan\b|\bsba\b|\bmortgage\b/i],
+  ["transfer", /\btransfer(red|s)?\b|\bmoved? (the )?(money|cash|it)\b|\bto (my|our) (other|savings|checking) account\b|\bbetween (my|our) accounts\b/i],
+];
+export function notExpenseAnswer(text) {
+  const t = String(text || "");
+  for (const [kind, re] of NOT_EXPENSE) if (re.test(t)) return kind;
+  return null;
+}
+export const NOT_EXPENSE_COPY = {
+  owner: "Paying yourself isn't a business expense, so I won't record it as one. Skip this one for now — it stays on your list and won't be counted as spending.",
+  card: "Paying off a credit card isn't new spending — the purchases on the card are. I won't record it as an expense. Skip this one for now — it stays on your list.",
+  loan: "Paying back a loan isn't a business expense (only the interest is), so I won't record it as one. Skip this one for now — it stays on your list.",
+  transfer: "Money moved between your own accounts isn't spending, so I won't record it as an expense. Skip this one for now — it stays on your list.",
+};
+
 export function incomeAccountForAnswer(text, { getAccountByRole = () => null, chart = [], fallback = null } = {}) {
   const onChart = (a) => a && a.code != null && (chart || []).some((c) => String(c.code) === String(a.code) && glIsRevenue(String(c.code)));
   for (const [role, re] of INCOME_WORDS) {
