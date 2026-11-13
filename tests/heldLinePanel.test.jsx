@@ -76,3 +76,11 @@ describe("the wiring", () => {
     expect(panel).toMatch(/heldLineOutcome\(plan\.entry, kindOf, fmtMoney, plan\)/);
   });
 });
+
+describe("the assistant can explain it (C661 — ships with the next ai-proxy deploy)", () => {
+  it("the guide says these are never recorded as spending or a sale, and what one tap does", () => {
+    const guide = readFileSync("supabase/functions/ai-proxy/aiProfiles.js", "utf8");
+    expect(guide).toMatch(/so the app never records them as either on its own/);
+    expect(guide).toMatch(/Never tell the owner to record these as an expense or a sale/);
+  });
+});
