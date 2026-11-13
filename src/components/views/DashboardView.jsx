@@ -21,7 +21,7 @@ import { BUSINESS_TYPES } from "../../lib/coaTemplates";
 import { LEGAL_FORMS } from "../../lib/tax";
 import VendorTeachIn from "../VendorTeachIn";   // C563
 import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting } from "../../lib/tax";
-import { signedPL, businessHealth, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
+import { signedPL, businessHealth, cardBalanceOwed, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
@@ -717,7 +717,8 @@ export default function DashboardView() {
                 // U5 (C377) — the owner's four numbers; the two balances are GL-derived (§12)
                 const bh = businessHealth(invoices, { cash: glCash,
                   owedToYou: getAccountByRole?.("accounts_receivable")?.code ? glAccountBalance(getAccountByRole("accounts_receivable").code, invoices) : null,
-                  youOwe: getAccountByRole?.("accounts_payable")?.code ? glAccountBalance(getAccountByRole("accounts_payable").code, invoices) : null });
+                  youOwe: getAccountByRole?.("accounts_payable")?.code ? glAccountBalance(getAccountByRole("accounts_payable").code, invoices) : null,
+                  onCards: cardBalanceOwed(invoices, bankAccounts) });   // C671
                 const toneColor = bh.tone === "good" ? "var(--sc-success)" : bh.tone === "watch" ? "var(--sc-warning)" : "var(--sc-error)";
                 const toneSoft  = bh.tone === "good" ? "var(--sc-success-soft)" : bh.tone === "watch" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)";
                 const toneLabel = bh.tone === "good" ? "Healthy" : bh.tone === "watch" ? "Worth a look" : "Needs attention";

@@ -645,7 +645,15 @@ export function computeKPIs(invoices, { cashBalance = 0, now = new Date(), arCod
 // (and Home counted future-dated entries); and the burn left out the report's own month while
 // the report beside it counted it. Net is now year-to-`now`; a caller that has already worked out
 // the burn for the period (the monthly report) passes it, so the line cannot disagree with it.
-export function businessHealth(invoices = [], { cash = 0, now = new Date(), owedToYou = null, youOwe = null, burn: burnGiven = null } = {}) {
+// ★ C671 — WHAT IS OWED ON CREDIT CARDS, for Home. C666 took the card balance OUT of cash (where
+// it was wrongly ADDED); it then appeared nowhere on Home — "You owe" is bills. The cards' own
+// ledger accounts, each counted once (two cards on one Credit Card account are one balance).
+export function cardBalanceOwed(invoices = [], bankAccounts = []) {
+  const codes = [...new Set((bankAccounts || []).filter((b) => b && b.type === "credit_card" && /^2\d{3}$/.test(String(b.gl_code || ""))).map((b) => String(b.gl_code)))];
+  return r2(codes.reduce((s, c) => s + glAccountBalance(c, invoices), 0));
+}
+
+export function businessHealth(invoices = [], { cash = 0, now = new Date(), owedToYou = null, youOwe = null, onCards = null, burn: burnGiven = null } = {}) {
   const year = now.getFullYear();
   const today = ymdLocal(now);   // was toISOString (UTC) while `year` used local — now consistent, local
   // CANONICAL money display: the SAME exact-cents formatter the chatbot's tools
@@ -725,6 +733,7 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
     { key: "profit", label: profitable ? `Profit this year` : `Loss this year`, value: money(net), tone: profitable ? "good" : "concern", drill: "net" },
     ...(owedToYou == null ? [] : [{ key: "ar", label: "Owed to you", value: money(owedToYou), tone: "neutral", drill: "ar" }]),
     ...(youOwe == null ? [] : [{ key: "ap", label: "You owe", value: money(youOwe), tone: "neutral", drill: "ap" }]),
+    ...(onCards > 0 ? [{ key: "cards", label: "On credit cards", value: money(onCards), tone: "neutral" }] : []),   // C671
   ];
 
   const concerns = [];

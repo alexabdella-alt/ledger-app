@@ -40,3 +40,17 @@ describe("★ C667 — money in the bank and money owed are added up apart", () 
     expect(t).not.toMatch(/\$ ?8,240\.00/);
   });
 });
+
+// C671 — what is owed on cards shows on Home.
+import { cardBalanceOwed, businessHealth } from "../src/lib/reports.js";
+describe("★ C671 — Home shows what is owed on credit cards", () => {
+  const banks = [{ id: "K", type: "checking", gl_code: "1000" }, { id: "C", type: "credit_card", gl_code: "2200" }, { id: "C2", type: "credit_card", gl_code: "2200" }];
+  it("the cards' ledger account, counted once", () => expect(cardBalanceOwed(rows, banks)).toBe(1240));
+  it("Home's numbers include 'On credit cards' when something is owed, and not otherwise", () => {
+    expect(businessHealth(rows, { cash: 5000, onCards: 1240 }).ownerFacts.find((f) => f.key === "cards")).toMatchObject({ label: "On credit cards", value: "$1,240.00" });
+    expect(businessHealth(rows, { cash: 5000, onCards: 0 }).ownerFacts.some((f) => f.key === "cards")).toBe(false);
+  });
+  it("Home passes it", () => {
+    expect(readFileSync("src/components/views/DashboardView.jsx", "utf8")).toMatch(/onCards: cardBalanceOwed\(invoices, bankAccounts\) \}\);/);
+  });
+});
