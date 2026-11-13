@@ -726,7 +726,7 @@ export function cardBalanceOwed(invoices = [], bankAccounts = []) {
   return r2(codes.reduce((s, c) => s + glAccountBalance(c, invoices), 0));
 }
 
-export function businessHealth(invoices = [], { cash = 0, now = new Date(), owedToYou = null, youOwe = null, onCards = null, burn: burnGiven = null } = {}) {
+export function businessHealth(invoices = [], { cash = 0, now = new Date(), owedToYou = null, youOwe = null, onCards = null, burn: burnGiven = null, fiscalYearEnd = "12-31", cutoffDate = null } = {}) {
   const year = now.getFullYear();
   const today = ymdLocal(now);   // was toISOString (UTC) while `year` used local — now consistent, local
   // CANONICAL money display: the SAME exact-cents formatter the chatbot's tools
@@ -737,7 +737,11 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
   // cents) + one formatter here = dashboard === chatbot to the penny, by construction.
   const money = (n) => fmtSignedMoney(n);
 
-  const net = computeNetIncome(invoices, { from: `${year}-01-01`, to: today });
+  // ★ C726 — "this year" is the company's FISCAL year (from its start, or the books' start date if later),
+  // as Reports and the balance sheet count it; Home counted from January 1 for every company.
+  const yearFrom = currentPeriodRange("fy", { today, fiscalYearEnd, cutoffDate }).from || `${year}-01-01`;
+  const calendarYear = String(fiscalYearEnd || "12-31") === "12-31";
+  const net = computeNetIncome(invoices, { from: yearFrom, to: today });
   const burn = burnGiven != null ? burnGiven : computeBurnRate(invoices, { asOf: today });
   const runwayRaw = computeRunway(cash, burn);                       // months, or null when there's no burn
   const runwayInfinite = runwayRaw === null;
@@ -796,7 +800,7 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
     // Coverage on a profitable month is a fact, not a warning — no amber beside "You're profitable".
     { key: "runway", label: profitable ? "Cash covers" : "Runway", value: runwayInfinite ? "No burn" : cash < 0 ? "—" : runway < 1 ? "Under 1 mo" : `~${runway} mo`,   // C725 — never "~-3 mo"
       tone: (runwayInfinite || runway >= 6) ? "good" : profitable ? "neutral" : runway >= 3 ? "watch" : "concern", drill: "runway" },
-    { key: "profit", label: `Net income · ${year}`, value: money(net),                                     tone: profitable ? "good" : "concern",                                               drill: "net" },
+    { key: "profit", label: calendarYear ? `Net income · ${year}` : "Net income · this fiscal year", value: money(net),                                     tone: profitable ? "good" : "concern",                                               drill: "net" },
   ];
 
   // ★ U5 (C377) — THE FOUR NUMBERS AN OWNER ASKS, IN THE OWNER'S WORDS. "Monthly burn" and

@@ -26,7 +26,7 @@ import { setAsideLine, lastYearBalanceLine } from "../../lib/taxSetAside.js";   
 import PayFromSelect, { usePayFromOptions } from "../PayFromSelect";   // C710
 import { payFromByKey, payFromForMethod } from "../../lib/payFrom";
 import { reminderMailto, customerEmail } from "../../lib/invoiceReminder";   // C702
-import { signedPL, businessHealth, cardBalanceOwed, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
+import { currentPeriodRange, signedPL, businessHealth, cardBalanceOwed, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
@@ -149,7 +149,7 @@ export default function DashboardView() {
     // the revenue/expenses/net DRILLS use these fiscal-year-scoped views so they tie to
     // the tile by construction (was all-time → pulled prior-period expenses).
     const fyYear = today.getFullYear();
-    const fyFrom = `${fyYear}-01-01`, fyTo = ymdLocal(today);   // C725 — the tile's own window (Jan 1 to today): a future-dated entry was in the drill and not the tile
+    const fyFrom = currentPeriodRange("fy", { today: ymdLocal(today), fiscalYearEnd: companySettings?.fiscalYearEnd || "12-31", cutoffDate: cutoffDate || null }).from || `${fyYear}-01-01`, fyTo = ymdLocal(today);   // C726 — the tile's fiscal year   // C725 — the tile's own window (Jan 1 to today): a future-dated entry was in the drill and not the tile
     const inFY = i => i.date && i.date >= fyFrom && i.date <= fyTo;
     const expFY = exp.filter(inFY);
     const revFY = rev.filter(inFY);
@@ -223,7 +223,7 @@ export default function DashboardView() {
       // range) → the breakdown ties to the tile by construction, not a parallel sum.
       const r = computeRevenue(invoices, { from: fyFrom, to: fyTo });
       const e = computeExpenses(invoices, { from: fyFrom, to: fyTo });
-      title = "Net income"; subtitle = `Profit & loss summary · ${fyYear}`;
+      title = "Net income"; subtitle = `Profit & loss summary · ${fmtDate(fyFrom)} to today`;   // C726
       body = (<div style={{ padding:"8px 0" }}>
         {clickableRow("rev", <span style={{ fontSize:14, color:"var(--sc-text-2)" }}>Total Revenue</span>, <span style={{ fontSize:14, fontFamily:"'DM Mono',monospace", color:"var(--sc-success)" }}>{fmt(r)}</span>, ()=>setDashDrill({type:"revenue"}))}
         {clickableRow("exp", <span style={{ fontSize:14, color:"var(--sc-text-2)" }}>Total Expenses</span>, <span style={{ fontSize:14, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>({fmt(e)})</span>, ()=>setDashDrill({type:"expenses"}))}
@@ -738,7 +738,8 @@ export default function DashboardView() {
                 const bh = businessHealth(invoices, { cash: glCash,
                   owedToYou: getAccountByRole?.("accounts_receivable")?.code ? glAccountBalance(getAccountByRole("accounts_receivable").code, invoices) : null,
                   youOwe: getAccountByRole?.("accounts_payable")?.code ? glAccountBalance(getAccountByRole("accounts_payable").code, invoices) : null,
-                  onCards: cardBalanceOwed(invoices, bankAccounts) });   // C671
+                  onCards: cardBalanceOwed(invoices, bankAccounts),   // C671
+                  fiscalYearEnd: companySettings?.fiscalYearEnd || "12-31", cutoffDate: cutoffDate || null });   // C726 — the fiscal year, as Reports counts it
                 // ★ C697 — what to keep back for taxes, from the same estimate the Taxes screen shows
                 const yNow = new Date().getFullYear();
                 const setAside = setAsideLine(taxEstimate(invoices, yNow, estPaidThisYear || 0, { chart: CHART_OF_ACCOUNTS || [], legalForm: companySettings?.legalForm || "", assets: taxAssets || null,

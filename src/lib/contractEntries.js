@@ -112,6 +112,27 @@ export function planContractEntries({ contract = {}, rc, rn, today, defaultIbr =
       };
       const finance = !(contract.lease_type === "operating" || !contract.lease_type);
       const amortEach = r2(rou / term);
+      // ★ C726 — A QUARTERLY OR YEARLY LEASE PAYS ON ITS OWN DATES. Each month still carries its share of the
+      // cost; the money leaves when it is actually paid — the last month of each payment period (paid in
+      // arrears, as the present-value maths assumes), and the final month for any part period. In between,
+      // each month's share is owed (current lease liability), so cash on hand isn't drawn down monthly.
+      const every = factor != null && factor < 1 ? Math.round(1 / factor) : 1;
+      const payTo = every > 1 ? "lease_liability_current" : "cash";
+      let sinceLastPaid = 0;
+      const paymentDue = (i) => {
+        sinceLastPaid = r2(sinceLastPaid + monthlyPayment);
+        if (every === 1 || !((i + 1) % every === 0 || i === principals.length - 1)) return [];
+        const amt = sinceLastPaid; sinceLastPaid = 0;
+        return [{
+          date: monthEnd(contract.start_date || todayLocal(), i),
+          description: `Lease payment — Month ${i + 1}`,
+          memo: `ASC 842-20: ${every === 3 ? "quarterly" : every === 6 ? "half-yearly" : every === 12 ? "yearly" : `every-${every}-months`} payment of the lease liability`,
+          lines: [
+            { account_code:rc("lease_liability_current"), account_name:rn("lease_liability_current"), debit: amt, credit: 0 },
+            { account_code:rc("cash"), account_name:rn("cash"), debit: 0, credit: amt },
+          ],
+        }];
+      };
       principals.forEach((principal, i) => {
         const dateStr = monthEnd(contract.start_date || todayLocal(), i);
         const interest = r2(monthlyPayment - principal);   // so the payment entry balances exactly
@@ -124,9 +145,10 @@ export function planContractEntries({ contract = {}, rc, rn, today, defaultIbr =
             memo: `ASC 842-20: SL expense $${monthlyPayment.toFixed(2)}. Interest component $${interest.toFixed(2)}, principal $${principal.toFixed(2)}. Liability balance after: $${balanceAfter}`,
             lines: [
               { account_code:rc("operating_lease_expense"), account_name:rn("operating_lease_expense"), debit: monthlyPayment, credit: 0 },
-              { account_code:rc("cash"), account_name:rn("cash"), debit: 0, credit: monthlyPayment },
+              { account_code:rc(payTo), account_name:rn(payTo), debit: 0, credit: monthlyPayment },
             ]
           });
+          monthlyEntries.push(...paymentDue(i));
           // Entry B: Balance sheet — non-cash liability reduction and ROU amortization
           if (principal > 0.004) {
             monthlyEntries.push({
@@ -150,10 +172,11 @@ export function planContractEntries({ contract = {}, rc, rn, today, defaultIbr =
             lines: [
               { account_code:rc("interest_expense"), account_name:rn("interest_expense"), debit: interest, credit: 0 },
               { account_code:rc("lease_liability_current"), account_name:rn("lease_liability_current"), debit: principal, credit: 0 },
-              { account_code:rc("cash"), account_name:rn("cash"), debit: 0, credit: monthlyPayment },
+              { account_code:rc(payTo), account_name:rn(payTo), debit: 0, credit: monthlyPayment },
               ...reclass(i),
             ]
           });
+          monthlyEntries.push(...paymentDue(i));
           monthlyEntries.push({
             date: dateStr,
             description: `ROU asset amortization — Month ${i + 1}`,

@@ -51,6 +51,6 @@ describe("★ C671 — Home shows what is owed on credit cards", () => {
     expect(businessHealth(rows, { cash: 5000, onCards: 0 }).ownerFacts.some((f) => f.key === "cards")).toBe(false);
   });
   it("Home passes it", () => {
-    expect(readFileSync("src/components/views/DashboardView.jsx", "utf8")).toMatch(/onCards: cardBalanceOwed\(invoices, bankAccounts\) \}\);/);
+    expect(readFileSync("src/components/views/DashboardView.jsx", "utf8")).toMatch(/onCards: cardBalanceOwed\(invoices, bankAccounts\),/);   // C726 — then the fiscal year
   });
 });
