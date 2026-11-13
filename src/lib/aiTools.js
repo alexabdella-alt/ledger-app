@@ -220,7 +220,7 @@ async function getTaxSummary(input, ctx) {
   // home office in the deductions as in the estimate, so the two figures agree
   const profile = profileForYear(year, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} });
   const est = taxEstimate(led, year, 0, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile,
-    priorProfile: profileForYear(year - 1, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} }) });   // C695 — the safe harbor
+    priorProfile: profileForYear(year - 1, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} }), cutoffDate: ctx.cutoffDate || null });   // C695, C698 — the safe harbor
   const deductions = deductionBreakdown(led, year, ctx.getAccountByRole, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile })   // C692 — miles too
     .filter(d => (d.amount || 0) > 0)
     .map(d => ({ category: d.label, schedule_c_line: d.line, amount: r2(d.amount), not_deductible: r2(d.notDeductible || 0) }));
@@ -233,14 +233,14 @@ async function getTaxSummary(input, ctx) {
     filing_status_assumed: profile.assumed ? "single, no other income (the owner hasn't said — the Taxes screen asks)" : null,
     tax_saved_per_dollar_deducted: est.marginalRate,
     business_miles: profile.businessMiles || 0,
-    retirement_room: est.retirement ? { sep_ira: est.retirement.sep, sep_ira_saves: est.retirement.sepSaves, solo_401k: est.retirement.solo401k, solo_401k_saves: est.retirement.solo401kSaves, catch_up_50_plus: est.retirement.catchUp50, catch_up_60_63: est.retirement.catchUp6063, note: "from profit so far; a SEP can be funded until the return is due, a Solo 401(k) must exist by Dec 31" } : null,   // C696   // C692 — deducted by the IRS mileage rate (in deductions_by_category, line 9)
+    retirement_room: est.retirement ? { sep_ira: est.retirement.sep, sep_ira_saves: est.retirement.sepSaves, solo_401k: est.retirement.solo401k, solo_401k_saves: est.retirement.solo401kSaves, catch_up_50_plus_solo_401k_only: est.retirement.catchUp50, catch_up_60_63_solo_401k_only: est.retirement.catchUp6063, has_employees: est.retirement.hasEmployees, note: "from profit so far; a SEP until the return is due (with extensions), a new Solo 401(k) until the return's original due date; with employees a SEP must cover them and a Solo 401(k) isn't available; a job's 401(k) savings count against the Solo 401(k) employee limit" } : null,   // C696, C698   // C692 — deducted by the IRS mileage rate (in deductions_by_category, line 9)
     total_owed: r2(est.total),
     deductions_by_category: deductions,
     total_deductions: r2(deductions.reduce((s, d) => s + d.amount, 0)),
     next_deadline: next ? next.label : null,
     next_deadline_days: next ? next.days : null,
     estimated_amount_due: next && next.est ? r2(est.quarterly) : null,
-    estimated_amount_basis: est.safeHarbor ? ({ last_year: `the safe harbor: ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax, so no underpayment penalty — the rest is due in April`, ninety: "90% of this year's estimated tax — enough to avoid an underpayment penalty", this_year: "a quarter of this year's estimate" })[est.safeHarbor.basis] : null,   // C695
+    estimated_amount_basis: est.safeHarbor ? ({ last_year: `the safe harbor: ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax from the business (from the books — the filed return's figure wins if different); paid by each deadline it avoids an underpayment penalty, the rest is due in April`, so_far: "pay-as-you-go: the tax on this year's profit so far less what's been paid — NOT a penalty-safe figure; the preparer can give that" })[est.safeHarbor.basis] : null,   // C695, C698
   };
 }
 

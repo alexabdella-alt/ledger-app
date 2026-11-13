@@ -46,30 +46,45 @@ export function taxProfileFrom(filed = {}, fallback = {}) {
 }
 // The profile for an estimate of `year`: that year's answers, else the neighbouring year's.
 export function profileForYear(year, { current = {}, prev = {}, currentYear = new Date().getFullYear() } = {}) {
-  return Number(year) === currentYear - 1 ? taxProfileFrom(prev, current) : taxProfileFrom(current, prev);
+  if (Number(year) === currentYear - 1) return taxProfileFrom(prev, current);
+  // C698 — an older year: its own settings aren't loaded; carry the nearest answers (no miles —
+  // those are that year's only), rather than this year's miles and home office
+  if (Number(year) < currentYear - 1) return taxProfileFrom({}, prev && Object.keys(prev).length ? prev : current);
+  return taxProfileFrom(current, prev);
 }
 // ═════════════════════════════════════════════════════════════════════════════
-// ★ C695 — WHAT TO PAY EACH QUARTER: THE SAFE HARBOR (IRC §6654(d)(1)(B)).
-// An owner avoids the underpayment penalty by paying, across the four installments, the SMALLER
-// of 90% of this year's tax or 100% of last year's — 110% when last year's adjusted gross income
-// was over $150,000 ($75,000 married filing separately). The rest, if any, is due in April with
-// the return. Last year's figure comes from last year's books with last year's answers; it is
-// used only when the books cover the whole of last year (an entry in its first quarter), since
-// the rule needs a 12-month return. Planning: the figures are the business's share of the tax,
-// on the assumption that a job's withholding covers the rest. Pass-throughs only — a
-// corporation's installments follow different rules and stay at a quarter of this year's.
+// ★ C695 / C698 — WHAT TO PAY EACH QUARTER (IRC §6654).
+// The safe harbor: no underpayment penalty if each of the four installments, by its own due date,
+// is 25% of the smaller of 90% of THIS YEAR'S FULL tax or 100% of LAST YEAR'S tax (110% when last
+// year's AGI was over $150,000; $75,000 married filing separately). This year's full tax isn't
+// known until December — the books only hold the year so far — so (C698, review) a preparer works
+// from the one certain number: last year's. When last year's books are complete, the payment is
+// 100% / 110% of last year's business tax ÷ 4, every quarter, and paying it on time avoids the
+// penalty whatever this year turns out to be (planning: the books' figure stands in for last
+// year's return — the screen says to use the return's figure if it differs).
+// Without last year's books, there is no penalty-safe figure to give, so the advice is honest
+// pay-as-you-go: the tax on this year's profit so far, less what has been paid — never called
+// "enough to avoid a penalty". (C695 compared last year's FULL tax with this year's year-to-date
+// tax, and early in the year recommended a sixth of the required payment as "penalty-safe".)
+// Pass-throughs only — a corporation's installments stay at a quarter of this year's.
 // ═════════════════════════════════════════════════════════════════════════════
-export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi = 0, filingStatus = "single" } = {}) {
+export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi = 0, filingStatus = "single", paid = 0 } = {}) {
   const now = Math.max(0, Number(thisYear) || 0);
-  if (lastYear == null) return { perQuarter: r2c(now / 4), basis: "this_year", factor: null, required: r2c(now) };
+  if (lastYear == null) {
+    const dueNow = r2c(Math.max(0, now - (Number(paid) || 0)));
+    return { perQuarter: dueNow, basis: "so_far", factor: null, required: r2c(now) };
+  }
   const factor = (Number(lastYearAgi) || 0) > (filingStatus === "mfs" ? 75000 : 150000) ? 1.1 : 1;
-  const prior = r2c(Math.max(0, Number(lastYear) || 0) * factor);
-  const ninety = r2c(now * 0.9);
-  return prior <= ninety ? { perQuarter: r2c(prior / 4), basis: "last_year", factor, required: prior } : { perQuarter: r2c(ninety / 4), basis: "ninety", factor, required: ninety };
+  const required = r2c(Math.max(0, Number(lastYear) || 0) * factor);
+  return { perQuarter: r2c(required / 4), basis: "last_year", factor, required };
 }
-const coversWholeYear = (invoices, year) => (invoices || []).some((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at
-  && /^\d{4}-0[1-3]-/.test(String(i.date || "")) && String(i.date).startsWith(`${year}-`) && /^[4-8]\d{3}$/.test(String(i.gl_code || "")));
-export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null } = {}) {
+// C698 — last year's books are complete only when they start on or before last January 1 (the
+// cutoff) and hold some income or spending for it; a cutoff inside last year means the months
+// before it are only in the opening balance, and last year's tax can't be recomputed.
+const booksCoverYear = (invoices, year, cutoffDate) => (!cutoffDate || String(cutoffDate) <= `${year}-01-01`)
+  && (invoices || []).some((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at
+    && String(i.date || "").startsWith(`${year}-`) && /^[4-8]\d{3}$/.test(String(i.gl_code || "")));
+export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null, cutoffDate = null } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
   const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692
   const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages });   // C690, C693
@@ -86,19 +101,24 @@ export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid =
     if (!["", "sole_prop", "partnership"].includes(legalForm || "") || !(f.profit > 0)) return null;
     const room = retirementRoom({ profit: f.profit, halfSe: f.halfSe, year });
     const saves = (amt) => r2c(Math.max(0, f.total - federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, filingStatus, otherIncome, ownWages, retirement: amt }).total));
-    return { ...room, sepSaves: saves(room.sep), solo401kSaves: saves(room.solo401k) };
+    // C698 — employees on the books: a Solo 401(k) is for an owner with no employees, and a SEP
+    // must give eligible employees the same percentage; a job's 401(k) shares the deferral limit
+    const hasEmployees = sc.rows.some((r) => r.line === "26" && r.spent > 0);
+    return { ...room, sepSaves: saves(room.sep), solo401kSaves: saves(room.solo401k), hasEmployees, hasJob: ownWages > 0 };
   }
   // C695 — the quarterly payment by the safe harbor, when last year's books and answers allow it
   function quarterPlan() {
-    if (legalForm === "c_corp" || !priorProfile || !coversWholeYear(invoices, year - 1)) {
-      return { quarterly: Math.max(0, f.total) / 4, safeHarbor: safeHarborQuarter({ thisYear: f.total }) };
+    if (legalForm === "c_corp") return { quarterly: Math.max(0, f.total) / 4, safeHarbor: null };
+    if (!priorProfile || !booksCoverYear(invoices, year - 1, cutoffDate)) {
+      const sh = safeHarborQuarter({ thisYear: f.total, paid });
+      return { quarterly: sh.perQuarter, safeHarbor: sh };
     }
     const p = priorProfile;
     const prev = ytdNetIncome(invoices, year - 1);
     const psc = scheduleCBreakdown(invoices, year - 1, { chart, legalForm, homeOfficeSqft: p.homeOfficeSqft || 0, depreciation: assets ? taxDepreciationFor({ ...assets, year: year - 1, ledger: invoices }) : null, mileage: { miles: p.businessMiles || 0, milesAfterChange: p.businessMilesAfterChange ?? null } });
     const pf = federalEstimate({ revenue: prev.revenue, deductible: psc.deductibleTotal, year: year - 1, legalForm, filingStatus: p.filingStatus || "single", otherIncome: p.otherIncome || 0, ownWages: p.ownWages || 0 });
     const lastYearAgi = (p.otherIncome || 0) + (p.ownWages || 0) + pf.profit - pf.halfSe;
-    const sh = safeHarborQuarter({ thisYear: f.total, lastYear: pf.total, lastYearAgi, filingStatus: p.filingStatus || filingStatus });
+    const sh = safeHarborQuarter({ thisYear: f.total, lastYear: pf.total, lastYearAgi, filingStatus });   // C698 — this year's filing status decides the MFS threshold
     return { quarterly: sh.perQuarter, safeHarbor: { ...sh, lastYearTax: Math.max(0, pf.total) } };
   }
 }

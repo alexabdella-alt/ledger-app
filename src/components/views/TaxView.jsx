@@ -9,7 +9,7 @@ import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts, filedDeadlinesPrev } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts, filedDeadlinesPrev, cutoffDate } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
@@ -98,7 +98,7 @@ export default function TaxView() {
   // ★ C690 — the owner's filing status and other income, for the year's tax brackets.
   const profile = taxProfileFrom(filed, filedDeadlinesPrev || {});   // C693 — last year's answers carry forward
   const homeOfficeSqft = profile.homeOfficeSqft;
-  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile, priorProfile: taxProfileFrom(filedDeadlinesPrev || {}, filed) });   // C683, C690, C695
+  const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile, priorProfile: taxProfileFrom(filedDeadlinesPrev || {}, filed), cutoffDate: cutoffDate || null });   // C683, C690, C695, C698
   const passThrough = legalForm !== "c_corp";
   const [otherDraft, setOtherDraft] = React.useState("");
   React.useEffect(() => { setOtherDraft(profile.otherIncome ? String(profile.otherIncome) : ""); }, [profile.otherIncome]);
@@ -219,12 +219,13 @@ export default function TaxView() {
         {/* ★ C695 — what to pay each quarter, by the IRS safe harbor */}
         {est.total > 0 && (
           <div data-safe-harbor style={{ fontSize: 12, color: "var(--sc-text)", marginTop: 12 }}>
-            <strong>Pay about {fmt(est.quarterly)} each quarter</strong>{" "}
-            {est.safeHarbor?.basis === "last_year"
-              ? `— that's ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax from the business (${fmt(est.safeHarbor.lastYearTax)}), which the IRS accepts as enough to avoid an underpayment penalty. Anything more you owe is due in April.`
-              : est.safeHarbor?.basis === "ninety"
-                ? "— 90% of this year's estimate, which the IRS accepts as enough to avoid an underpayment penalty. The rest is due in April."
-                : "— a quarter of this year's estimate."}
+            {est.safeHarbor?.basis === "last_year" ? (<>
+              <strong>Pay about {fmt(est.quarterly)} each quarter</strong>{" "}
+              {`— ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax from the business (${fmt(est.safeHarbor.lastYearTax)}, from your books — if last year's tax return shows a different figure, use that). Paying this by each deadline avoids an underpayment penalty whatever this year turns out to be; anything more you owe is due in April.`}
+            </>) : est.safeHarbor?.basis === "so_far" ? (<>
+              <strong>Pay about {fmt(est.quarterly)} by the next deadline</strong>{" "}
+              — the tax on this year's profit so far, less what you've already paid. Paying as you go like this keeps you close to what you'll owe; your tax preparer can tell you the exact amount that avoids a penalty.
+            </>) : (<><strong>Pay about {fmt(est.quarterly)} each quarter</strong> — a quarter of this year's estimate.</>)}
           </div>
         )}
         <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 10 }}>This is an estimate. Consult your tax advisor for exact amounts.</div>
@@ -346,7 +347,10 @@ export default function TaxView() {
             {/* ★ C696 — the room, worked out from this year's profit so far, and what it would save */}
             {d.key === "retirement" && est.retirement && est.retirement.sep > 0 && (
               <div data-retirement-room style={{ fontSize: 12, color: "var(--sc-text)", marginTop: 6 }}>
-                From your profit so far, you could put up to <strong>{fmt(est.retirement.sep)}</strong> into a SEP-IRA (saving about {fmt(est.retirement.sepSaves)} in tax this year), or up to <strong>{fmt(est.retirement.solo401k)}</strong> into a Solo 401(k) (saving about {fmt(est.retirement.solo401kSaves)}) — plus {fmt(est.retirement.catchUp50)} more if you're 50 or older{est.retirement.catchUp6063 > est.retirement.catchUp50 ? ` (${fmt(est.retirement.catchUp6063)} at 60–63)` : ""}. A SEP can be opened and funded until your tax return is due; a Solo 401(k) has to be set up by December 31.
+                From your profit so far, you could put up to <strong>{fmt(est.retirement.sep)}</strong> into a SEP-IRA (saving about {fmt(est.retirement.sepSaves)} in tax this year){est.retirement.hasEmployees ? "" : <>, or up to <strong>{fmt(est.retirement.solo401k)}</strong> into a Solo 401(k) (saving about {fmt(est.retirement.solo401kSaves)}){est.retirement.catchUp50 > 0 ? ` — the Solo 401(k) allows ${fmt(est.retirement.catchUp50)} more if you're 50 or older${est.retirement.catchUp6063 > est.retirement.catchUp50 ? ` (${fmt(est.retirement.catchUp6063)} at 60–63)` : ""}` : ""}</>}.
+                {est.retirement.hasEmployees ? " Because you have employees, a SEP must give them the same percentage, and a Solo 401(k) isn't available — ask your tax preparer which plan fits." : ""}
+                {!est.retirement.hasEmployees && est.retirement.hasJob ? " If you also save in a 401(k) at your job, that counts against the Solo 401(k)'s employee limit." : ""}
+                {" "}Both can be opened for this year until your tax return is due (a new Solo 401(k) by the return's original due date).
               </div>
             )}
           </div>

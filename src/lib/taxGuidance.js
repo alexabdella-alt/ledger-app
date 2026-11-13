@@ -338,8 +338,11 @@ export function federalEstimate({ revenue = 0, deductible = 0, year = new Date()
 // §402(g) limit — together up to §415(c); a catch-up on top at 50+ (and a larger one at 60–63).
 // Compensation counted is capped at §401(a)(17). Limits: Notice 2023-75 (2024), Notice 2024-80
 // (2025), Notice 2025-67 (2026). An S corporation owner's room comes from their salary, not the
-// profit — not modelled. Deadlines: a SEP can be opened and funded until the return's due date
-// (with extensions); a Solo 401(k) must exist by Dec 31 for the employee deferral.
+// profit — not modelled. Deadlines (C698): a SEP can be opened and funded until the return's due
+// date with extensions; a NEW Solo 401(k) can be opened after year-end and take its first year's
+// contributions — employee deferrals included for a sole proprietor — until the return's original
+// due date (SECURE Act §201; SECURE 2.0 §317). The §402(g) deferral limit is per PERSON across all
+// plans, so 401(k) savings at a job reduce it — not known here, and said on screen.
 // ═════════════════════════════════════════════════════════════════════════════
 export const RETIREMENT_LIMITS = {
   2024: { total: 69000, deferral: 23000, catchUp50: 7500, catchUp6063: 7500, comp: 345000 },
@@ -352,7 +355,9 @@ export function retirementRoom({ profit = 0, halfSe = 0, year = new Date().getFu
   const employer = Math.min(L.total, net * 0.2);
   const deferral = Math.min(L.deferral, Math.max(0, net - employer));
   const solo = Math.min(L.total, employer + deferral);
-  return { sep: r2(employer), solo401k: r2(solo), catchUp50: L.catchUp50, catchUp6063: L.catchUp6063, limits: L, netEarnings: r2(net) };
+  // C698 — a catch-up (Solo 401(k) only — a SEP has none) needs earnings left after the rest
+  const left = Math.max(0, net - solo);
+  return { sep: r2(employer), solo401k: r2(solo), catchUp50: r2(Math.min(L.catchUp50, left)), catchUp6063: r2(Math.min(L.catchUp6063, left)), limits: L, netEarnings: r2(net) };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

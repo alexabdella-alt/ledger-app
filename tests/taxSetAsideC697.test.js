@@ -27,6 +27,6 @@ describe("C697 — on Home, and the reminder refreshes with every input", () => 
     expect(src).toMatch(/data-set-aside/);
   });
   it("the deadline reminder's memo lists last year's answers, the equipment and the bank accounts", () => {
-    expect(src).toMatch(/\}\), \[filedDeadlines, filedDeadlinesPrev, taxAssets, bankAccounts, companySettings\?\.legalForm, invoices, contacts, CHART_OF_ACCOUNTS\]\);/);
+    expect(src).toMatch(/\}\), \[filedDeadlines, filedDeadlinesPrev, taxAssets, bankAccounts, cutoffDate, companySettings\?\.legalForm, invoices, contacts, CHART_OF_ACCOUNTS\]\);/);
   });
 });

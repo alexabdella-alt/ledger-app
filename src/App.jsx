@@ -972,6 +972,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [taxAssets, setTaxAssets] = useState(null);
   const taxAssetsRef = useRef(null); taxAssetsRef.current = taxAssets;
   const [cutoffDate, setCutoffDate] = useState(null);   // company conversion "Day One" (companies.cutoff_date)
+  const cutoffDateRef = useRef(null); cutoffDateRef.current = cutoffDate;   // C698 — the bell's estimate reads it
 
   // ── BANK ACCOUNTS ────────────────────────────────────────────────────────────
   // { id, name, type:"checking"|"savings"|"credit_card"|"loan", gl_code, last4, institution }
@@ -2749,7 +2750,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // C618 — the same helper as Home: the first deadline that needs something, each estimate for its own year.
       const waitingDue = nextWaitingDeadline(new Date(), 30, {
         filed: filedDeadlinesRef.current, legalForm: legalFormRef.current || null,
-        estimateFor: (y) => taxEstimate(invoicesRef.current, y, 0, { chart: CHART_OF_ACCOUNTS, legalForm: legalFormRef.current || "", assets: taxAssetsRef.current, ...profileForYear(y, { current: filedDeadlinesRef.current, prev: filedDeadlinesPrevRef.current }), priorProfile: profileForYear(y - 1, { current: filedDeadlinesRef.current, prev: filedDeadlinesPrevRef.current }) }),   // C678, C683, C690, C693, C695
+        estimateFor: (y) => taxEstimate(invoicesRef.current, y, 0, { chart: CHART_OF_ACCOUNTS, legalForm: legalFormRef.current || "", assets: taxAssetsRef.current, ...profileForYear(y, { current: filedDeadlinesRef.current, prev: filedDeadlinesPrevRef.current }), priorProfile: profileForYear(y - 1, { current: filedDeadlinesRef.current, prev: filedDeadlinesPrevRef.current }), cutoffDate: cutoffDateRef.current || null }),   // C678, C683, C690, C693, C695, C698
         has1099sFor: (d) => plan1099ForYear({ invoices: invoicesRef.current, contacts: contactsRef.current || [], chart: CHART_OF_ACCOUNTS, year: d.year - 1 }).outstanding > 0,
       });
       const nextDue = waitingDue ? waitingDue.deadline : null;
@@ -8841,7 +8842,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts,
         chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance: glCash, anomalies,
         taxAssets,   // C683
-        taxProfile: filedDeadlines, taxProfilePrev: filedDeadlinesPrev,   // C690, C693
+        taxProfile: filedDeadlines, taxProfilePrev: filedDeadlinesPrev, cutoffDate,   // C690, C693, C698
         cardsOwed: cardBalanceOwed(invoices, bankAccounts),   // C672 — what's owed on cards, now that it isn't hidden in cash
         payFromLabels: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }).map(o => o.label),   // C676
         businessType: companySettings.businessType,
