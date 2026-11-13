@@ -28,7 +28,7 @@ describe("C701 — the screens", () => {
   it("Home and the bell subtract this year's estimated payments; the Taxes screen pushes them", () => {
     const app = readFileSync("src/App.jsx", "utf8");
     expect(app).toMatch(/\.select\("filed_deadlines, estimated_payments_made"\)\.eq\("company_id", cid\)\.eq\("tax_year", new Date\(\)\.getFullYear\(\)\)/);
-    expect(app).toMatch(/estimateFor: \(y\) => taxEstimate\(invoicesRef\.current, y, y === new Date\(\)\.getFullYear\(\) \? \(estPaidRef\.current \|\| 0\) : 0,/);
+    expect(app).toMatch(/estimateFor: \(y\) => taxEstimate\(invoicesRef\.current, y, paidForYear\(y, \{ thisYear: estPaidRef\.current, lastYear: estPaidPrevRef\.current \}\),/);   // C704
     expect(tax).toMatch(/setEstPaidThisYear && setEstPaidThisYear\(Number\(next\.estPaid\) \|\| 0\);/);
   });
   it("an S corporation owner is told where their health insurance goes", () => {

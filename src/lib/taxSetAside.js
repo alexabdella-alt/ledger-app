@@ -25,3 +25,11 @@ export function setAsideLine(est = null) {
     text: `Keep about ${fmtApprox(owed)} aside for taxes on this year's profit so far${paid} — roughly ${pct}% of the taxable profit.${next}`,
   };
 }
+
+// ★ C704 — LAST YEAR'S BALANCE, until April 15. In January this year's profit is near nothing, so
+// the line above disappears exactly when last year's tax is due. What's still owed for last year
+// (its tax from the books, less the estimated payments recorded for it). Nothing when nothing is owed.
+export function lastYearBalanceLine(est = null, year) {
+  if (!est || !(Number(est.owed) > 0) || !(Number(est.total) > 0)) return null;
+  return { amount: Number(est.owed), text: `For ${year}: about ${fmtApprox(est.owed)} of tax is still to pay by April 15, after the estimated payments you recorded.` };
+}

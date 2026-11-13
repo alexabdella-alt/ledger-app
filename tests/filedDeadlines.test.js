@@ -43,8 +43,9 @@ describe("★ the readers actually consult the map (source)", () => {
     // company's legal form; and that second argument is pinned too, so neither reverts to the
     // every-company calendar.
     // C618 — through `nextWaitingDeadline`, with the same two arguments
-    expect(home).toMatch(/nextWaitingDeadline\(new Date\(\), 30, \{\s*\n\s*filed: filedDeadlines, legalForm: companySettings\?\.legalForm \|\| null,/);
-    expect(app).toMatch(/nextWaitingDeadline\(new Date\(\), 30, \{\s*\n\s*filed: filedDeadlinesRef\.current, legalForm: legalFormRef\.current \|\| null,/);
+    // C704 — last year's map merged in (a Q4 payment marked in December is in last year's row)
+    expect(home).toMatch(/nextWaitingDeadline\(new Date\(\), 30, \{\s*\n\s*filed: \{ \.\.\.\(filedDeadlinesPrev \|\| \{\}\), \.\.\.\(filedDeadlines \|\| \{\}\) \}, legalForm: companySettings\?\.legalForm \|\| null,/);
+    expect(app).toMatch(/nextWaitingDeadline\(new Date\(\), 30, \{\s*\n\s*filed: \{ \.\.\.\(filedDeadlinesPrevRef\.current \|\| \{\}\), \.\.\.\(filedDeadlinesRef\.current \|\| \{\}\) \}, legalForm: legalFormRef\.current \|\| null,/);
     expect(app).not.toMatch(/getTaxDeadlines\(new Date\(\)\)\.find/);
     const save = tax.slice(tax.indexOf("const save = async (next) => {"), tax.indexOf("const toggleFiled"));
     expect(save.indexOf("rowExists.current = true;")).toBeLessThan(save.indexOf("setFiledDeadlines(next.filed || {})"));
@@ -53,7 +54,7 @@ describe("★ the readers actually consult the map (source)", () => {
   it("the map is loaded with the company and cleared on switch", () => {
     expect(app).toMatch(/loadFiledDeadlines\(cid\)/);
     expect(app).toMatch(/const resetCompanyState = \(\) => \{[\s\S]*?setFiledDeadlines\(\{\}\);/);
-    expect(app).toMatch(/\.from\("tax_settings"\)\s*\.select\("filed_deadlines"\)/);
+    expect(app).toMatch(/\.from\("tax_settings"\)\s*\.select\("filed_deadlines, estimated_payments_made"\)/);   // C701
   });
   it("Home's waiting list carries no tax item when the caller passes none (the filed case)", () => {
     expect(homeWaitingList({ taxDeadline: null }).find((i) => i.id === "tax_deadline")).toBeUndefined();

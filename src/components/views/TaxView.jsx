@@ -2,7 +2,7 @@ import React from "react";
 import { fmtMoney, fmtDate, todayLocal } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
-import { taxEstimate, getTaxDeadlines, deductionBreakdown, filedKey, taxYearFor1099, LEGAL_FORMS, taxProfileFrom } from "../../lib/tax";
+import { taxEstimate, getTaxDeadlines, deductionBreakdown, filedKey, taxYearFor1099, LEGAL_FORMS, taxProfileFrom, estimateTaxYearFor } from "../../lib/tax";
 import { FILING_STATUSES } from "../../lib/taxGuidance.js";
 import { mileageRatesFor } from "../../lib/mileage.js";
 import { plan1099, plan1099Copy, plan1099ForYear, tracker1099Rows } from "../../lib/form1099";
@@ -11,7 +11,7 @@ import { downloadCSV } from "../../lib/insights";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts, filedDeadlinesPrev, cutoffDate, setEstPaidThisYear } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts, filedDeadlinesPrev, cutoffDate, setEstPaidThisYear, estPaidPrevYear } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
@@ -103,6 +103,9 @@ export default function TaxView() {
   const homeOfficeSqft = profile.homeOfficeSqft;
   const est = taxEstimate(invoices, year, estPaid, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...profile, priorProfile: taxProfileFrom(filedDeadlinesPrev || {}, filed), cutoffDate: cutoffDate || null });   // C683, C690, C695, C698
   const passThrough = legalForm !== "c_corp";
+  // C704 — January's Q4 deadline is about LAST year: its own estimate, its own payments
+  const lastYearEst = React.useMemo(() => taxEstimate(invoices, year - 1, estPaidPrevYear || 0, { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...taxProfileFrom(filedDeadlinesPrev || {}, {}) }),
+    [invoices, year, estPaidPrevYear, CHART_OF_ACCOUNTS, legalForm, taxAssets, filedDeadlinesPrev]);
   const [otherDraft, setOtherDraft] = React.useState("");
   React.useEffect(() => { setOtherDraft(profile.otherIncome ? String(profile.otherIncome) : ""); }, [profile.otherIncome]);
   const [shareDraft, setShareDraft] = React.useState("");   // C703 — a partner's / shareholder's share
@@ -287,7 +290,8 @@ export default function TaxView() {
           <div data-safe-harbor style={{ fontSize: 12, color: "var(--sc-text)", marginTop: 12 }}>
             {est.safeHarbor?.basis === "last_year" ? (<>
               <strong>Pay about {fmt(est.quarterly)} each quarter</strong>{" "}
-              {`— ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax from the business (${fmt(est.safeHarbor.lastYearTax)}, from your books — if last year's tax return shows a different figure, use that). Paying this by each deadline avoids an underpayment penalty whatever this year turns out to be; anything more you owe is due in April.`}
+              {`— ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax from the business (${fmt(est.safeHarbor.lastYearTax)}, from your books — if last year's tax return shows a different figure, use that). Paid by each deadline, this avoids an underpayment penalty whatever this year turns out to be (assuming any job's withholding covers the rest); anything more you owe is due in April.`}
+              {est.safeHarbor.behind > 0 && <div data-behind style={{ marginTop: 6, color: "var(--sc-warning)" }}>{`You're about ${fmt(est.safeHarbor.behind)} behind on this year's earlier payments — pay that now to catch up. Paying on time from here doesn't undo a late quarter, so ask your tax preparer whether a small penalty applies.`}</div>}
             </>) : est.safeHarbor?.basis === "so_far" ? (<>
               <strong>Pay about {fmt(est.quarterly)} by the next deadline</strong>{" "}
               — the tax on this year's profit so far, less what you've already paid. Paying as you go like this keeps you close to what you'll owe; your tax preparer can tell you the exact amount that avoids a penalty.
@@ -318,7 +322,7 @@ export default function TaxView() {
           )}
         </div>
         {deadlines.map(d => {
-          const isFiled = !!filed[filedKey(d)];
+          const isFiled = !!filed[filedKey(d)] || !!(filedDeadlinesPrev || {})[filedKey(d)];   // C704 — a Q4 payment marked in December
           return (
             <div key={`${d.key}-${d.year}`} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--sc-surface-2)", opacity: isFiled ? 0.55 : 1 }}>
               <div style={{ width: 6, height: 38, borderRadius: 3, background: isFiled ? "var(--sc-text-mut)" : d.color, flexShrink: 0 }} />
@@ -326,7 +330,7 @@ export default function TaxView() {
                 <div style={{ fontSize: 14, fontWeight: 600, textDecoration: isFiled ? "line-through" : "none" }}>{d.plain}</div>
                 <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
                   {d.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                  {d.est && est.total > 0 && <span> · est. {fmt(est.quarterly)}</span>}
+                  {d.est && (() => { const e = estimateTaxYearFor(d) === year ? est : lastYearEst; return e && e.quarterly > 0 ? <span> · est. {fmt(e.quarterly)}{e === lastYearEst ? ` (for ${year - 1})` : ""}</span> : null; })()}
                   {" · "}<a href={d.url} target="_blank" rel="noreferrer" style={{ color: "var(--sc-gold)" }}>{d.form} ↗</a>
                 </div>
               </div>

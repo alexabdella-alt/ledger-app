@@ -69,7 +69,18 @@ export function profileForYear(year, { current = {}, prev = {}, currentYear = ne
 // tax, and early in the year recommended a sixth of the required payment as "penalty-safe".)
 // Pass-throughs only — a corporation's installments stay at a quarter of this year's.
 // ═════════════════════════════════════════════════════════════════════════════
-export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi = 0, filingStatus = "single", paid = 0 } = {}) {
+// ★ C704 — how many of the year's four installments are already due (Apr 15, Jun 15, Sep 15,
+// Jan 15 of the next year), so "on time" can be checked: each installment is tested on its own
+// date (§6654), and paying the quarter's amount from now on does not cure earlier ones.
+export function installmentsDue(year, asOf = new Date()) {
+  const d = typeof asOf === "string" ? asOf : `${asOf.getFullYear()}-${String(asOf.getMonth() + 1).padStart(2, "0")}-${String(asOf.getDate()).padStart(2, "0")}`;
+  return [`${year}-04-15`, `${year}-06-15`, `${year}-09-15`, `${Number(year) + 1}-01-15`].filter((x) => x < d).length;
+}
+// The estimated payments for a year, from the two years the app loads (this year and last).
+export function paidForYear(y, { thisYear = 0, lastYear = 0, currentYear = new Date().getFullYear() } = {}) {
+  return Number(y) === currentYear ? (Number(thisYear) || 0) : Number(y) === currentYear - 1 ? (Number(lastYear) || 0) : 0;
+}
+export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi = 0, filingStatus = "single", paid = 0, due = 0 } = {}) {
   const now = Math.max(0, Number(thisYear) || 0);
   if (lastYear == null) {
     const dueNow = r2c(Math.max(0, now - (Number(paid) || 0)));
@@ -77,7 +88,8 @@ export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi =
   }
   const factor = (Number(lastYearAgi) || 0) > (filingStatus === "mfs" ? 75000 : 150000) ? 1.1 : 1;
   const required = r2c(Math.max(0, Number(lastYear) || 0) * factor);
-  return { perQuarter: r2c(required / 4), basis: "last_year", factor, required };
+  const behind = r2c(Math.max(0, required * Math.min(4, Number(due) || 0) / 4 - (Number(paid) || 0)));   // C704
+  return { perQuarter: r2c(required / 4), basis: "last_year", factor, required, behind };
 }
 // C698 — last year's books are complete only when they start on or before last January 1 (the
 // cutoff) and hold some income or spending for it; a cutoff inside last year means the months
@@ -85,7 +97,7 @@ export function safeHarborQuarter({ thisYear = 0, lastYear = null, lastYearAgi =
 const booksCoverYear = (invoices, year, cutoffDate) => (!cutoffDate || String(cutoffDate) <= `${year}-01-01`)
   && (invoices || []).some((i) => i && i.status !== "voided" && i.status !== "deleted" && !i.deleted_at
     && String(i.date || "").startsWith(`${year}-`) && /^[4-8]\d{3}$/.test(String(i.gl_code || "")));
-export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, healthPremiums = 0, ownerShare = 1, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null, cutoffDate = null } = {}) {
+export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null, filingStatus = "single", otherIncome = 0, ownWages = 0, healthPremiums = 0, ownerShare = 1, businessMiles = 0, businessMilesAfterChange = null, priorProfile = null, cutoffDate = null, asOf = new Date() } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
   const mileageRate = businessMiles > 0 && (!legalForm || legalForm === "sole_prop");   // C703
   const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, grossIncome: revenueFor(invoices, year), depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices, mileageRate }) : null, mileage: { miles: businessMiles, milesAfterChange: businessMilesAfterChange } });   // C683, C686, C692, C703
@@ -126,7 +138,7 @@ export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid =
     const pf = federalEstimate({ revenue: prev.revenue, deductible: psc.deductibleTotal, year: year - 1, legalForm, filingStatus: p.filingStatus || "single", otherIncome: p.otherIncome || 0, ownWages: p.ownWages || 0,
       healthPremiums: (p.healthPremiums || 0) > 0 ? p.healthPremiums : (psc.ownerHealth || 0), retirement: psc.ownerRetirement || 0, ownerShare: p.ownerShare == null ? ownerShare : p.ownerShare });
     const lastYearAgi = (p.otherIncome || 0) + (p.ownWages || 0) + pf.profit - pf.halfSe - (pf.healthDeduction || 0);   // C700
-    const sh = safeHarborQuarter({ thisYear: f.total, lastYear: pf.total, lastYearAgi, filingStatus });   // C698 — this year's filing status decides the MFS threshold
+    const sh = safeHarborQuarter({ thisYear: f.total, lastYear: pf.total, lastYearAgi, filingStatus, paid, due: installmentsDue(year, asOf) });   // C704 — behind?   // C698 — this year's filing status decides the MFS threshold
     return { quarterly: sh.perQuarter, safeHarbor: { ...sh, lastYearTax: Math.max(0, pf.total) } };
   }
 }

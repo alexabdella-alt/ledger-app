@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { perEntry, displayParty } from "./txnPresent.js";
-import { taxEstimate, deductionBreakdown, getTaxDeadlines, profileForYear } from "./tax.js";
+import { taxEstimate, deductionBreakdown, getTaxDeadlines, profileForYear, paidForYear, estimateTaxYearFor } from "./tax.js";
 import { runAnomalyDetection } from "./insights.js";
 import { isSettlementEntry } from "./bankMatch.js";
 import { fmtSignedMoney, ymdLocal, todayLocal } from "./format.js";
@@ -219,12 +219,17 @@ async function getTaxSummary(input, ctx) {
   // C690, C693 — the owner's answers for THAT year (carried forward when unanswered); the same
   // home office in the deductions as in the estimate, so the two figures agree
   const profile = profileForYear(year, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} });
-  const est = taxEstimate(led, year, 0, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile,
+  const paidFor = (y) => paidForYear(y, { thisYear: ctx.estPaidThisYear, lastYear: ctx.estPaidPrevYear });   // C704 — what's been paid
+  const est = taxEstimate(led, year, paidFor(year), { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile,
     priorProfile: profileForYear(year - 1, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} }), cutoffDate: ctx.cutoffDate || null });   // C695, C698 — the safe harbor
   const deductions = deductionBreakdown(led, year, ctx.getAccountByRole, { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null, ...profile })   // C692 — miles too
     .filter(d => (d.amount || 0) > 0)
     .map(d => ({ category: d.label, schedule_c_line: d.line, amount: r2(d.amount), not_deductible: r2(d.notDeductible || 0) }));
   const next = getTaxDeadlines(new Date(), { legalForm: ctx.legalForm }).find(d => d.days >= 0);   // C559 — this company's deadlines, not every company's
+  // C704 — the next payment is about ITS year (January's Q4 is last year's), as on Home and the bell
+  const ny = next && next.est ? estimateTaxYearFor(next) : year;
+  const nextEst = ny === year ? est : taxEstimate(led, ny, paidFor(ny), { chart: ctx.chartOfAccounts || [], legalForm: ctx.legalForm || "", assets: ctx.taxAssets || null,
+    ...profileForYear(ny, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} }), priorProfile: profileForYear(ny - 1, { current: ctx.taxProfile || {}, prev: ctx.taxProfilePrev || {} }), cutoffDate: ctx.cutoffDate || null });
   return {
     year,
     net_income: r2(est.net),
@@ -235,13 +240,18 @@ async function getTaxSummary(input, ctx) {
     business_miles: profile.businessMiles || 0,
     health_insurance_deduction: est.healthDeduction || 0,   // C700 — premiums the owner said they pay, as counted
     retirement_room: est.retirement ? { sep_ira: est.retirement.sep, sep_ira_saves: est.retirement.sepSaves, solo_401k: est.retirement.solo401k, solo_401k_saves: est.retirement.solo401kSaves, catch_up_50_plus_solo_401k_only: est.retirement.catchUp50, catch_up_60_63_solo_401k_only: est.retirement.catchUp6063, has_employees: est.retirement.hasEmployees, note: "from profit so far; a SEP until the return is due (with extensions), a new Solo 401(k) until the return's original due date; with employees a SEP must cover them and a Solo 401(k) isn't available; a job's 401(k) savings count against the Solo 401(k) employee limit" } : null,   // C696, C698   // C692 — deducted by the IRS mileage rate (in deductions_by_category, line 9)
-    total_owed: r2(est.total),
+    total_owed: r2(est.owed),   // C704 — what's still owed after payments (was the year's total)
+    total_tax_for_year: r2(est.total),
+    estimated_payments_made: r2(est.estPaid || 0),   // C704
+    still_owed: r2(est.owed),
     deductions_by_category: deductions,
     total_deductions: r2(deductions.reduce((s, d) => s + d.amount, 0)),
     next_deadline: next ? next.label : null,
     next_deadline_days: next ? next.days : null,
-    estimated_amount_due: next && next.est ? r2(est.quarterly) : null,
-    estimated_amount_basis: est.safeHarbor ? ({ last_year: `the safe harbor: ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax from the business (from the books — the filed return's figure wins if different); paid by each deadline it avoids an underpayment penalty, the rest is due in April`, so_far: "pay-as-you-go: the tax on this year's profit so far less what's been paid — NOT a penalty-safe figure; the preparer can give that" })[est.safeHarbor.basis] : null,   // C695, C698
+    estimated_amount_due: next && next.est ? r2(nextEst.quarterly) : null,
+    estimated_amount_for_year: next && next.est ? ny : null,
+    behind_on_installments: nextEst.safeHarbor && nextEst.safeHarbor.behind > 0 ? r2(nextEst.safeHarbor.behind) : 0,   // C704 — earlier quarters short; paying on time from now on doesn't cure them
+    estimated_amount_basis: nextEst.safeHarbor ? ({ last_year: `the safe harbor: ${est.safeHarbor.factor > 1 ? "110%" : "100%"} of last year's tax from the business (from the books — the filed return's figure wins if different), assuming a job's withholding covers the rest; paid by EACH deadline it avoids an underpayment penalty — if behind_on_installments is above zero, earlier quarters were short and the owner should catch up now and ask a preparer about a small penalty; the rest is due in April`, so_far: "pay-as-you-go: the tax on this year's profit so far less what's been paid — NOT a penalty-safe figure; the preparer can give that" })[nextEst.safeHarbor.basis] : null,   // C695, C698, C704
   };
 }
 

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 
 describe("C695 / C698 — last year's tax is the certain number", () => {
   it("100% of last year's, a quarter each installment", () => {
-    expect(safeHarborQuarter({ thisYear: 20000, lastYear: 8000, lastYearAgi: 90000 })).toEqual({ perQuarter: 2000, basis: "last_year", factor: 1, required: 8000 });
+    expect(safeHarborQuarter({ thisYear: 20000, lastYear: 8000, lastYearAgi: 90000 })).toEqual({ perQuarter: 2000, basis: "last_year", factor: 1, required: 8000, behind: 0 });
   });
   it("C698 — even early in the year, when this year's tax so far is small (the review's case)", () => {
     // 2025 tax $28,725; Q1 2026 tax so far ~$1,300: the payment is still a quarter of last year's
@@ -69,6 +69,6 @@ describe("C695 — the assistant explains the quarterly figure", () => {
     const srv = readFileSync("supabase/functions/ai-proxy/aiProfiles.js", "utf8");
     expect(srv).not.toMatch(/each payment ≈ annual estimate ÷ 4/);
     expect(srv).toMatch(/estimated_amount_basis says why\. Only call the amount penalty-safe/);   // C698
-    expect(readFileSync("src/lib/aiTools.js", "utf8")).toMatch(/estimated_amount_basis: est\.safeHarbor \?/);
+    expect(readFileSync("src/lib/aiTools.js", "utf8")).toMatch(/estimated_amount_basis: nextEst\.safeHarbor \?/);   // C704 — the next deadline's own year
   });
 });
