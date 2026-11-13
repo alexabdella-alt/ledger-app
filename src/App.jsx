@@ -8756,8 +8756,10 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     let okCount = 0, alreadyCount = 0;
     for (const id of ids) {
       const ok = await markBillPaid(id, { paidDate: details.date, method, reference: details.reference, notes: details.notes, side: "ap",
-        ...(from ? { cashCode: from.code, cashName: from.name } : {}) });
+        ...(from ? { cashCode: from.code, cashName: from.name } : {}),
+        ...(ids.length === 1 && details.amount != null ? { amount: details.amount } : {}) });   // C719 — part of one bill
       if (ok === "already") alreadyCount++;
+      else if (ok && ok.partial) { try { await loadAllData(); } catch {} showNotification(`Recorded ${fmtMoney(ok.amount)} paid — ${fmtMoney(ok.left)} still owed on this bill ✓`); return 1; }
       else if (ok) okCount++;
     }
     if (alreadyCount && !okCount) { try { await loadAllData(); } catch {} showNotification(alreadyCount === 1 ? "That bill already had a payment recorded — nothing new was added." : `Those ${alreadyCount} bills already had payments recorded — nothing new was added.`); return 0; }   // C710

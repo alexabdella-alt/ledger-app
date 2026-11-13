@@ -26,15 +26,16 @@ describe("openReceivables", () => {
   });
   it("★ the owed figure is the taxed receivable (ar_amount), not the ex-tax revenue row (C454)", () => {
     const src = fs.readFileSync("src/components/views/CustomersView.jsx", "utf8");
-    expect(src).toMatch(/openReceivables\(txns, arRoleCode\)\.reduce\(\(s,i\)=>s\+owedAmount\(i\),0\)/);
-    expect(src).toMatch(/openReceivables\(custInvoices, arRoleCode\)\.filter\(.*?\)\.reduce\(\(s,i\)=>s\+owedAmount\(i\),0\)/);
+    expect(src).toMatch(/openFor\(txns\)\.reduce\(\(s,i\)=>s\+owedAmount\(i\),0\)/);   // C719 — via the whole-ledger open list
+    expect(src).toMatch(/openFor\(custInvoices\)\.filter\(.*?\)\.reduce\(\(s,i\)=>s\+owedAmount\(i\),0\)/);
   });
   it("both screens read it", () => {
     const cust = fs.readFileSync("src/components/views/CustomersView.jsx", "utf8");
     const ar = fs.readFileSync("src/components/views/ArView.jsx", "utf8");
-    expect(cust).toMatch(/const openARfor = txns => openReceivables\(txns, arRoleCode\)/);
+    expect(cust).toMatch(/const openAllAR = openReceivables\(invoices, arRoleCode\);/);   // C719 — over the whole ledger, then this customer
+    expect(cust).toMatch(/const openARfor = txns => openFor\(txns\)\.reduce/);
     expect(cust).not.toMatch(/payment_status!=="collected"&&i\.payment_status!=="paid"\)\.reduce/);
     expect(ar).toMatch(/const arOpen\s+= openReceivables\(invoices, arRoleCode\);/);
-    expect(ar).toMatch(/const arAll\s+= receivableEntries\(invoices, arRoleCode\);/);
+    expect(ar).toMatch(/const arAll\s+= withPaidSoFar\(receivableEntries\(invoices, arRoleCode\), invoices\);/);
   });
 });

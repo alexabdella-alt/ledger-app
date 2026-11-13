@@ -51,7 +51,12 @@ export default function CustomersView() {
             // on the Customers screen. Open = an entry carrying the A/R leg, not a settlement,
             // not yet collected — the rule "Money owed to you" (ArView) already applies.
             const arRoleCode = getAccountByRole?.("accounts_receivable")?.code;
-            const openARfor = txns => openReceivables(txns, arRoleCode).reduce((s,i)=>s+owedAmount(i),0);   // C454 — the receivable includes its sales tax (ar_amount), the revenue row does not
+            // ★ C719 — open is decided over the WHOLE ledger, then narrowed to this customer: a customer's
+            // own rows hold their invoices but not the payments against them, so a collection (or a
+            // part of one) was invisible here and the invoice read fully owed.
+            const openAllAR = openReceivables(invoices, arRoleCode);
+            const openFor = txns => { const b = new Set(txns.map(i => String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]))); return openAllAR.filter(i => b.has(String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]))); };
+            const openARfor = txns => openFor(txns).reduce((s,i)=>s+owedAmount(i),0);   // C454 — the receivable includes its sales tax (ar_amount), the revenue row does not
 
             // ── CUSTOMER DETAIL DRILL ──
             if (selCustomer) {
@@ -63,7 +68,7 @@ export default function CustomersView() {
               // including its tax, C454); Open/Collected from the same open list "Still owed" reads,
               // not the row's flag (a direct deposit carries none and read "Open").
               const baseOf = i => String(i.db_entry_id != null ? i.db_entry_id : String(i.id).split("_")[0]);
-              const openBases = new Set(openReceivables(cTxns, arRoleCode).map(baseOf));
+              const openBases = new Set(openFor(cTxns).map(baseOf));   // C719
               const cList = collapseExpandedRows(cTxns);
               const lastDate = cTxns[0]?.date || "—";
               const infoRows = [
@@ -200,7 +205,7 @@ export default function CustomersView() {
                       const billedYTD = billedYTDfor(custInvoices);
                       const openAR = openARfor(custInvoices);
                       const lastDate = custInvoices[0]?.date || null;
-                      const overdueAR = openReceivables(custInvoices, arRoleCode).filter(i=>i.due_date&&i.due_date<todayLocal()).reduce((s,i)=>s+owedAmount(i),0);   // C452/C454 — same rule, taxed amount
+                      const overdueAR = openFor(custInvoices).filter(i=>i.due_date&&i.due_date<todayLocal()).reduce((s,i)=>s+owedAmount(i),0);   // C452/C454 — same rule, taxed amount
                       return (
                         <div key={c.id||c.name} style={{ background:"var(--sc-surface)", border:`1px solid ${overdueAR>0?"var(--sc-error-soft)":"var(--sc-border)"}`, borderRadius:14, overflow:"hidden" }}>
                           <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>

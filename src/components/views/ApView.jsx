@@ -20,6 +20,7 @@ export default function ApView() {
   const payFromOpts = usePayFromOptions();
   const [payRef, setPayRef] = React.useState("");
   const [payNotes, setPayNotes] = React.useState("");
+  const [payAmt, setPayAmt] = React.useState("");   // C719 — blank = all of what's left
 
   const fmt = fmtSignedMoney;   // C494 — the totals on this screen are leg-signed (C489–C491); a net credit must show its sign
   const today = todayLocal();
@@ -62,8 +63,14 @@ export default function ApView() {
   };
   const vendorSite = (inv) => { const c = contactByName[(inv.vendor||"").toLowerCase()]; return c?.website ? normalizeUrl(c.website) : null; };
 
-  const openForm = (inv) => { setPayFormId(inv.id); setPayDate(today); setPayMethod("ach"); setPayRef(""); setPayNotes(""); };
-  const confirmPay = (inv) => { markPaid(inv.id, payMethod, { date: payDate, reference: payRef, notes: payNotes, payFrom: payFromByKey(payFromOpts, payFromKey) }); setPayFormId(null); };
+  const openForm = (inv) => { setPayFormId(inv.id); setPayDate(today); setPayMethod("ach"); setPayRef(""); setPayNotes(""); setPayAmt(""); };
+  const confirmPay = (inv) => {
+    // ★ C719 — part of a bill, by hand: the amount box records what was actually paid; the rest stays owed
+    const typed = String(payAmt).replace(/[$,\s]/g, "");
+    const amount = typed === "" ? null : Number(typed);
+    if (amount != null && !(amount > 0)) { showNotification("Enter the amount you paid, or leave it blank for the whole bill.", "error"); return; }
+    markPaid(inv.id, payMethod, { date: payDate, reference: payRef, notes: payNotes, payFrom: payFromByKey(payFromOpts, payFromKey), ...(amount != null ? { amount } : {}) }); setPayFormId(null);
+  };
 
   const Avatar = ({name,size=38}) => <div style={{ width:size,height:size,borderRadius:10,background:vendorColor(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.34,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(name)}</div>;
   const fieldLabel = { fontSize:10, color:"var(--sc-text-2)", letterSpacing:1, marginBottom:5, fontWeight:500 };
@@ -149,6 +156,7 @@ export default function ApView() {
                             </select>
                           </div>
                           <div><div style={fieldLabel}>REFERENCE / CHECK #</div><input value={payRef} onChange={e=>setPayRef(e.target.value)} placeholder="optional" style={fieldInput} /></div>
+                          <div><div style={fieldLabel}>AMOUNT PAID</div><input data-amount-paid inputMode="decimal" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder={`All ${fmt(owedAmount(inv))}`} style={fieldInput} /></div>
                           {payFromOpts.length > 1 && <div style={{ gridColumn:"1 / -1" }}><div style={fieldLabel}>PAID FROM</div><PayFromSelect value={payFromKey} onChange={setPayFromKey} style={fieldInput} /></div>}
                         </div>
                         <div style={{ marginBottom:12 }}><div style={fieldLabel}>NOTES</div><input value={payNotes} onChange={e=>setPayNotes(e.target.value)} placeholder="optional note for the audit trail" style={fieldInput} /></div>
