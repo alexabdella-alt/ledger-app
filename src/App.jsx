@@ -10,7 +10,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancell
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
-import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, cashOnHandCodes, openPayablesGL } from "./lib/reports";
+import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, cashOnHandCodes, cardBalanceOwed, openPayablesGL } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount, mealsOverrideAllowed } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
@@ -8787,6 +8787,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       const result = await runAIBrain({
         userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts,
         chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance: glCash, anomalies,
+        cardsOwed: cardBalanceOwed(invoices, bankAccounts),   // C672 — what's owed on cards, now that it isn't hidden in cash
         businessType: companySettings.businessType,
         legalForm: companySettings.legalForm || null,   // C559 — the tax tool names this company's deadlines
         // Function-calling: give the AI direct, RLS-scoped database access via tools.

@@ -155,6 +155,8 @@ async function getFinancialSummary(input, ctx) {
     burn_rate: burn, burn_rate_display: money(burn),
     runway_months: computeRunway(cash, burn),   // estimate — stays numeric/approximate
     cash_balance: cash, cash_balance_display: money(cash),
+    // C672 — what's owed on credit cards: kept out of cash (C666) and out of bills you owe
+    owed_on_cards: Number(ctx.cardsOwed) || 0, owed_on_cards_display: money(Number(ctx.cardsOwed) || 0),
     top_expense_categories: computeCategoryTotals(led, { from, to }).slice(0, 5).map(c => ({ category: c.category, total: c.total, total_display: money(c.total) })),
     // ★ C615 — "UNPAID" IS EVERYTHING UNPAID. `unpaid_ap_total` carried only the OVERDUE bills,
     // so "how much do I owe?" was answered with the overdue part — $0 for a company whose bills
@@ -302,7 +304,7 @@ export const AI_TOOLS = [
   },
   {
     name: "get_financial_summary",
-    description: "Overall financial health: revenue, expenses, net income, burn rate, runway, cash, top expense categories, money owed to you (all unpaid, and the overdue part), bills you owe (all unpaid, and the overdue part). Use for burn rate, runway, 'how are we doing', monthly/quarterly summaries.",
+    description: "Overall financial health: revenue, expenses, net income, burn rate, runway, cash, top expense categories, money owed to you (all unpaid, and the overdue part), bills you owe (all unpaid, and the overdue part), and what's owed on credit cards (owed_on_cards — not part of cash or bills). Use for burn rate, runway, 'how are we doing', monthly/quarterly summaries.",
     input_schema: {
       type: "object",
       properties: {

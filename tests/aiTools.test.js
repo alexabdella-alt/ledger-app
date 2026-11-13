@@ -113,6 +113,7 @@ describe("executeAITool", () => {
     expect(out.overdue_ar_total).toBe(5000);
     expect(out.unpaid_ap_total).toBe(800);
     expect(out.cash_balance).toBe(20000);
+    expect(out.owed_on_cards).toBe(0);   // C672 — none given
     expect(out.burn_rate).toBeGreaterThan(0);
   });
 
@@ -153,5 +154,23 @@ describe("executeAITool", () => {
   it("unknown tool returns an error object (sandbox-safe)", async () => {
     const out = await executeAITool("drop_tables", {}, ctx);
     expect(out.error).toMatch(/unknown tool/i);
+  });
+});
+
+// C672 — the assistant hears what is owed on credit cards.
+import { buildFinancials } from "../src/lib/ai.js";
+import { readFileSync } from "node:fs";
+describe("★ C672 — card debt reaches the assistant", () => {
+  it("the financial-health tool returns it, and says it is not cash or bills", async () => {
+    const out = await executeAITool("get_financial_summary", { period: "all_time" }, { ...ctx, cardsOwed: 1240 });
+    expect([out.owed_on_cards, out.owed_on_cards_display]).toEqual([1240, "$1,240.00"]);
+    expect(AI_TOOLS.find((t) => t.name === "get_financial_summary").description).toMatch(/owed_on_cards — not part of cash or bills/);
+  });
+  it("the fallback snapshot names it when there is some, and stays quiet when there is none", () => {
+    expect(buildFinancials(LEDGER, 20000, { cardsOwed: 1240 }).text).toMatch(/Owed on credit cards: \$1,240\.00 \(not included in cash on hand or in bills you owe\)/);
+    expect(buildFinancials(LEDGER, 20000, {}).text).not.toMatch(/credit cards/);
+  });
+  it("the app passes it", () => {
+    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/cardsOwed: cardBalanceOwed\(invoices, bankAccounts\),/);
   });
 });

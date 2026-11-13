@@ -20,7 +20,7 @@ import {
 // answers with REAL numbers (burn, runway, top categories MoM, overdue AR, net).
 // Every figure flows through the canonical layer (reports.js) so the snapshot the
 // AI sees is identical to the dashboard and the reports. cashBalance from the app.
-export function buildFinancials(invoices, cashBalance, { arCode = null } = {}) {   // C532 — the company's A/R code, so the legacy snapshot's receivables are the code-aware figure Home shows
+export function buildFinancials(invoices, cashBalance, { arCode = null, cardsOwed = 0 } = {}) {   // C532 — the company's A/R code, so the legacy snapshot's receivables are the code-aware figure Home shows
   const now = new Date();
   const today = todayLocal();            // local period boundaries (were toISOString UTC)
   const thisMonth = today.slice(0, 7);
@@ -51,6 +51,8 @@ export function buildFinancials(invoices, cashBalance, { arCode = null } = {}) {
     `Runway: ${runway != null ? `${runway.toFixed(1)} months at current burn` : (cash > 0 ? "effectively unlimited (no recent burn)" : "none — there is no cash on hand to spend down")}`,
     `Top expense categories THIS month vs last: ${topThis.length ? topThis.join("; ") : "no expenses booked this month yet"}`,
     `Overdue receivables: ${ar.overdueCount > 0 ? `${money(ar.overdue)} across ${ar.overdueCount} invoice(s) past due` : "none past due"}`,
+    // C672 — card debt is not in cash (C666); say it, so "how much do I owe?" includes it
+    ...(Number(cardsOwed) > 0 ? [`Owed on credit cards: ${money(Number(cardsOwed))} (not included in cash on hand or in bills you owe)`] : []),
   ];
   return { runway, burn, cash, text: lines.join("\n") };
 }
@@ -219,7 +221,7 @@ async function classifyIntent(userMessage, recentHistory) {
   }
 }
 
-async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, anomalies, businessType, supabase, companyId, getAccountByRole, recurring, onToolCall, aliasIndex = null, legalForm = null }) {
+async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, cardsOwed = 0, anomalies, businessType, supabase, companyId, getAccountByRole, recurring, onToolCall, aliasIndex = null, legalForm = null }) {
   // ── 1. Truncate history to last 10 turns (5 user + 5 assistant) ───────────────
   const truncatedHistory = chatHistory.slice(-10);
 
@@ -289,7 +291,7 @@ ${contacts.map(c =>
   // fallback keeps the snapshots so it can still answer. The instruction prompt is
   // server-owned; this string becomes the {{LEDGER_CONTEXT}} untrusted data slot.
   const buildContext = (useTools) => {
-    const financialsText = useTools ? "" : buildFinancials(invoices, cashBalance, { arCode: getAccountByRole?.("accounts_receivable")?.code ?? null }).text;
+    const financialsText = useTools ? "" : buildFinancials(invoices, cashBalance, { arCode: getAccountByRole?.("accounts_receivable")?.code ?? null, cardsOwed }).text;
     const ledgerSection = useTools ? "" : legacyLedgerSection;
     const coaList = (chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name} (${a.category})`).join("\n");
     const projectsList = [...PROJECTS, ...projects].filter((v, i, a) => a.indexOf(v) === i).join(", ");
@@ -321,7 +323,7 @@ ${ledgerSection}`;
     try {
       let _ledger = null;
       const ctx = {
-        supabase, companyId, chartOfAccounts, getAccountByRole, cashBalance, anomalies, recurring, aliasIndex, legalForm,   // C559 legalForm · C488 — one supplier under two names is one vendor in the tools too
+        supabase, companyId, chartOfAccounts, getAccountByRole, cashBalance, cardsOwed, anomalies, recurring, aliasIndex, legalForm,   // C559 legalForm · C488 — one supplier under two names is one vendor in the tools too
         getLedger: async () => { if (!_ledger) _ledger = await fetchLedger(supabase, companyId, chartOfAccounts); return _ledger; },
       };
       const ledgerContext = buildContext(true);
