@@ -11,6 +11,7 @@ import { rightHalf } from "../lib/vendorIdentity";
 import { aiJson } from "../lib/aiJson";
 import { sortByUrgency } from "../lib/cardUrgency";
 import HeldLinePanel from "./HeldLinePanel";
+import { bookedTwinFor } from "../lib/statementQuestions";   // C714
 
 const money = fmtSignedMoney;
 
@@ -172,8 +173,11 @@ function ClarificationCard({ item }) {
   const {
     setClarificationQueue, setInvoices, bookToDb, createOrUpdateContact,
     logAudit, showNotification, applyGaapAnswer, settleClarification, settleStatementLine,
-    CHART_OF_ACCOUNTS, addCustomAccount, getAccountByRole, rules,
+    CHART_OF_ACCOUNTS, addCustomAccount, getAccountByRole, rules, invoices,
   } = useERP();
+  // ★ C714 — already in the books from another copy of this statement? Ask before booking it again.
+  const twin = React.useMemo(() => bookedTwinFor(item, invoices || []), [item, invoices]);
+  const [twinAnswered, setTwinAnswered] = React.useState(false);
   // O75 correction UX — let the user override the fundamental type/direction on ANY
   // clarification (not just the sub-detail), and re-route to type-appropriate questions
   // so we never ask a follow-up (e.g. prepaid period) on top of a wrong premise.
@@ -660,7 +664,23 @@ function ClarificationCard({ item }) {
           <span style={{ fontSize: 13, color: "var(--sc-text-2)" }}>{knownText()}</span>
         </div>
 
-        {!atSummary && q ? (
+        {twin && !twinAnswered && !done && (
+          <div data-booked-twin style={{ margin: "12px 0", padding: "12px 14px", borderRadius: 10, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", fontSize: 13 }}>
+            <div style={{ color: "var(--sc-text)", marginBottom: 8 }}>This looks already recorded — {twin.vendor || "an entry"} on the same day for the same amount, probably from another copy of this statement. Is it the same one?</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button disabled={busy} onClick={() => withOneBooking(async () => {
+                const jeId = twin.db_entry_id != null ? twin.db_entry_id : String(twin.id).split("_")[0];
+                settleClarification?.(item, { kind: "booked", jeId });
+                if (item.statementLine) settleStatementLine?.({ ...item.statementLine, jeId });
+                logAudit?.("statement_line_linked_existing", `Linked a statement line to the entry already recorded (${twin.vendor || ""} ${inv.date})`, null, { jeId: String(jeId) });
+                finishWithSuccess("Already in your books — linked to it, not added twice.");
+                return true;
+              })} style={pill(false)}>Yes, it's the same one</button>
+              <button disabled={busy} onClick={() => setTwinAnswered(true)} style={pill(false)}>No, it's a separate charge</button>
+            </div>
+          </div>
+        )}
+        {twin && !twinAnswered && !done ? null : !atSummary && q ? (
           <>
             {total > 1 && (
               <div style={{ fontSize: 11, color: "var(--sc-text-mut)", fontWeight: 600, letterSpacing: 0.4, margin: "12px 0 6px" }}>QUESTION {step + 1} OF {total}</div>

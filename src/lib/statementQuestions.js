@@ -87,3 +87,20 @@ export function bankLinesWaitingCopy(n) {
     ? "One thing from your bank statement needs your answer before it's added — what was it for?"
     : `${n} things from your bank statement need your answer before they're added — what were they for?`;
 }
+
+// ★ C714 — THE SAME LINE FROM ANOTHER COPY OF THE STATEMENT. The PDF and the CSV of one month are
+// different files, so each keeps its own unanswered lines, and answering both booked the line
+// twice. Before an answer is booked, an entry already in the books on the SAME account, date,
+// amount and direction is offered: "the same one, or a separate charge?" — never merged silently,
+// because two genuine $9.99 charges on one day are real. Returns the entry, or null. Pure.
+export function bookedTwinFor(item = {}, ledger = []) {
+  const inv = (item && item.invoice) || {};
+  const acct = item && item.statementLine ? String(item.statementLine.accountCode || "") : "";
+  if (!acct || typeof inv.money_in !== "boolean") return null;
+  const amt = Math.round(Math.abs(Number(inv.amount) || 0) * 100);
+  return (ledger || []).find((r) => r && r.status !== "voided" && r.status !== "deleted" && !r.deleted_at
+    && String(r.date || "") === String(inv.date || "") && Math.round(Math.abs(Number(r.amount) || 0) * 100) === amt
+    && (String(r.secondary_gl_code || "") === acct || String(r.gl_code || "") === acct)
+    && (inv.money_in ? (String(r.gl_code) === acct ? r.debit_credit !== "credit" : r.debit_credit === "credit" || r.type === "revenue")
+                     : (String(r.gl_code) === acct ? r.debit_credit === "credit" : r.debit_credit !== "credit" && r.type !== "revenue"))) || null;
+}
