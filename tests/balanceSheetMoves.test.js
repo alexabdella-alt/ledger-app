@@ -127,3 +127,39 @@ describe("★ a move recorded from the other statement is not recorded twice", (
     expect(findExistingMove([{ ...row, reversed_by: "x" }], e)).toBe(null);
   });
 });
+
+// C659 — the review's findings, each pinned.
+import { findExistingMoves, pickUnclaimed } from "../src/lib/balanceSheetMoves";
+describe("★ C659 — the duplicate check matches the same move, once per account", () => {
+  const monday = { id: "A", db_entry_id: "A", gl_code: "1010", secondary_gl_code: "1000", amount: 500, date: "2026-03-16", debit_credit: "debit" };   // Dr savings / Cr checking
+  it("money going BACK the other way is not the same move", () => {
+    expect(findExistingMoves([monday], buildTransferEntry({ amount: 500, date: "2026-03-18", fromCode: "1010", toCode: "1000" }))).toEqual([]);
+  });
+  it("the same direction is a candidate", () => {
+    expect(findExistingMoves([monday], buildTransferEntry({ amount: 500, date: "2026-03-17", fromCode: "1000", toCode: "1010" }))).toEqual(["A"]);
+  });
+  it("★ a second $500 transfer: the first entry is already claimed by THIS account's line, so a new one is recorded", () => {
+    expect(pickUnclaimed(["A"], [{ jeId: "A", accountId: "K" }], { lineAccountId: "K", twoSided: true })).toBe(null);
+  });
+  it("★ the same move from the OTHER account's statement is linked to it", () => {
+    expect(pickUnclaimed(["A"], [{ jeId: "A", accountId: "K" }], { lineAccountId: "S", twoSided: true })).toBe("A");
+  });
+  it("a one-sided entry (a draw, a contribution, a loan) is linked at most once", () => {
+    expect(pickUnclaimed(["D"], [{ jeId: "D", accountId: "K" }], { lineAccountId: "S", twoSided: false })).toBe(null);
+    expect(pickUnclaimed(["D"], [], { lineAccountId: "K" })).toBe("D");
+  });
+  it("a multi-line entry's rows are never mistaken for a two-account move", () => {
+    expect(findExistingMoves([{ ...monday, id: "A_0" }], buildTransferEntry({ amount: 500, date: "2026-03-16", fromCode: "1000", toCode: "1010" }))).toEqual([]);
+  });
+});
+describe("★ C659 — owner contributions reuse the account the app made", () => {
+  it("the second contribution finds 'Owner Contributions' instead of making 3501", () => {
+    expect(ownerEquityAccount({ legalForm: "sole_prop", chart: [{ code: "3500", name: "Owner Contributions" }], getAccountByRole: () => null })).toEqual({ code: "3500", name: "Owner Contributions", create: false });
+  });
+  it("a corporation without the role finds the Paid-In Capital the app made", () => {
+    expect(ownerEquityAccount({ legalForm: "c_corp", chart: [{ code: "3500", name: "Additional Paid-In Capital" }], getAccountByRole: () => null }).create).toBe(false);
+  });
+  it("a sole proprietor is not filed under a corporation's Paid-In Capital", () => {
+    expect(ownerEquityAccount({ legalForm: "sole_prop", chart: [{ code: "3200", name: "Additional Paid-In Capital" }], getAccountByRole: () => null }).code).toBe("3500");
+  });
+});

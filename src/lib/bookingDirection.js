@@ -70,9 +70,9 @@ const INCOME_WORDS = [
 // Order matters: "a transfer from my personal account" is the owner's own money.
 const NOT_INCOME = [
   ["refund", /\brefund(s|ed)?\b|\breturn(s|ed)?\b|\bmoney back\b|\bcredit(ed)? back\b|\breimburs\w*/i],
-  ["owner", /\bmy own (money|cash|funds)\b|\b(i|we) put (in )?(some |my |our )?(own )?(money|cash|funds)\b|\bput (money|cash|funds) in\b|\bpersonal (money|funds|account|savings|card)\b|\bowner'?s? (investment|contribution|money|capital)\b|\bcapital (contribution|injection)\b|\binvest(ed|ment)? (in|into) the business\b|\bfrom my (savings|personal)\b/i],
+  ["owner", /\bmy own (money|cash|funds)\b|\b(i|we) put (in )?(some |my |our )?(own )?(money|cash|funds)\b|\bput (money|cash|funds) in\b|\bpersonal (money|funds|account|savings|card)\b|\bowner'?s? (investment|contribution|money|capital)\b|\bcapital (contribution|injection)\b|\binvest(ed|ment)? (in|into) the business\b|\bfrom my personal\b/i],   // C659 — "from my savings" is a transfer, below
   ["loan", /\bloan(ed|s)?\b|\bborrow(ed|ing)?\b|\bline of credit\b|\bsba\b/i],
-  ["transfer", /\btransfer(red|s)?\b|\bmoved? (the )?(money|cash|it)\b|\bfrom (my|our) (other|savings|checking) account\b|\bbetween (my|our) accounts\b/i],
+  ["transfer", /\btransfer(red|s)?\b|\bmoved? (the )?(money|cash|it)\b|\bfrom (my|our) (other|savings|checking) account\b|\bfrom (my|our) (savings|checking)\b|\bbetween (my|our) accounts\b/i],
 ];
 // "The customer paid by wire transfer" is a sale: a customer, a job or an invoice in the answer
 // means the transfer word is only how it was paid.

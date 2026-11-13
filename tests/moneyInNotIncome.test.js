@@ -10,7 +10,7 @@ describe("what an answer about money IN says", () => {
   it.each([
     ["a refund from Home Depot", "refund"], ["they refunded the deposit", "refund"], ["returned a chair", "refund"],
     ["got reimbursed for supplies", "refund"],
-    ["my own money", "owner"], ["I put in some cash", "owner"], ["from my savings", "owner"], ["owner investment", "owner"],
+    ["my own money", "owner"], ["I put in some cash", "owner"], ["from my savings", "transfer"], ["from my personal account", "owner"], ["owner investment", "owner"],
     ["transfer from my personal account", "owner"],
     ["a loan from my brother", "loan"], ["borrowed from the bank", "loan"], ["SBA", "loan"],
     ["transfer from our savings account", "transfer"], ["moved money between my accounts", "transfer"],

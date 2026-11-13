@@ -22,12 +22,20 @@
 
 const PAYMENT_APPS = /\b(zelle|venmo|paypal|cash ?app|square|sq \*|stripe|wire)\b/i;
 
+// ★ C659 (review) — narrowed. A card brand beside the bare word "payment" is a restaurant, an
+// arena, a café ("Payment to Discover Grill catering", "Capital One Arena payment tickets",
+// "Payment received - Discover Cafe invoice 22"); "SBA filing fee", "line of credit interest",
+// "Mortgage Solutions LLC", "Bank transfer fee" and "ONLINE TRANSFER FROM ACME INC" (a customer)
+// were all held. Each kind now needs words that only the thing itself uses.
+const BRANDS = String.raw`(amex|american express|discover|capital one|citi ?cards?|chase (card|credit)|credit cr?d|card services|barclaycard|synchrony)`;
+const CARD_PAY = String.raw`(e-?pay(ment)?|autopay|auto pay|(online|ach|mobile|web) (pmt|pymt|payment)|pmt|pymt)`;
 const KINDS = [
-  ["card", /\b(amex|american express|discover|capital one|citi ?cards?|chase (card|credit)|credit cr?d|credit card|card services|barclaycard|synchrony)\b[\s\S]*\b(pmt|pymt|payment|e-?pay(ment)?|autopay|auto pay)\b|\b(pmt|pymt|payment|e-?pay(ment)?|autopay|auto pay)\b[\s\S]*\b(amex|american express|discover|capital one|citi ?cards?|credit cr?d|credit card|card services|barclaycard|synchrony)\b/i],
+  ["card", new RegExp(String.raw`\b${BRANDS}\b[\s\S]*\b${CARD_PAY}\b|\b${CARD_PAY}\b[\s\S]*\b${BRANDS}\b|\bcredit card (pmt|pymt|payment|bill)\b|\b(pmt|pymt|payment) (to|for) (a |the |my |our )?credit card\b`, "i")],
   ["owner", /\bowners? draw\b|\bowner'?s draw\b|\bmember (draw|distribution)\b|\bshareholder distribution\b|\bowner (contribution|investment)\b/i],
-  ["loan", /\bloan (pmt|pymt|payment|proceeds|advance|disbursement)\b|\bsba\b|\bmortgage\b|\bline of credit\b|\bloc (pmt|payment|advance)\b/i],
-  ["transfer", /\b(online|mobile|internal|funds|bank|book) (transfer|xfer|trnsfr)\b|\b(transfer|xfer|trnsfr) (to|from) (savings|checking|sav|chk|acct|account|x+\d+|\d{4})\b|\b(to|from) (savings|checking) (acct|account)?\b/i],
+  ["loan", /\bloan (pmt|pymt|payment|proceeds|advance|disbursement)\b|\bsba (loan|pmt|pymt|payment|eidl)\b|\beidl\b|\b(mortgage|mtg) (pmt|pymt|payment)\b|\bhome mtg\b|\bline of credit (pmt|pymt|payment|advance|draw)\b|\bloc (pmt|payment|advance)\b/i],
+  ["transfer", /\binternal (transfer|xfer|trnsfr)\b|\bbook transfer\b|\b(transfer|xfer|trnsfr) (to|from) (savings|checking|sav|chk|acct|account|x+\d+|\d{4})\b|\b(to|from) (savings|checking) (acct|account)\b/i],
 ];
+const FEE = /\bfees?\b/i;
 
 // ★ C653 — ON A CREDIT CARD'S OWN STATEMENT, the monthly payment arrives as money IN with no
 // card brand in it ("PAYMENT - THANK YOU", "AUTOPAY PAYMENT"), so the pattern above never saw it
@@ -45,7 +53,10 @@ export function notProfitAndLossKind(line = {}, { cardAccount = false } = {}) {
   if (cardAccount && line.money_in === true && CARD_PAYMENT_IN.test(text)) return "card";
   for (const [kind, re] of KINDS) {
     if (!re.test(text)) continue;
-    if (kind === "transfer" && PAYMENT_APPS.test(text)) return null;
+    if (kind === "transfer" && (PAYMENT_APPS.test(text) || FEE.test(text))) return null;
+    // C659 — a card is paid FROM a bank account: money coming INTO one is never a card payoff
+    // (it would have built Dr checking / Cr card — a customer's payment turned into card debt).
+    if (kind === "card" && line.money_in === true && !cardAccount) return null;
     return kind;
   }
   return null;

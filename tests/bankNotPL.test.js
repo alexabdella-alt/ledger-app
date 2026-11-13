@@ -11,7 +11,7 @@ describe("which statement lines are not profit or loss", () => {
     ["CHASE CREDIT CRD AUTOPAY 031526", "card"], ["AMEX EPAYMENT ACH PMT", "card"], ["CAPITAL ONE ONLINE PMT", "card"],
     ["DISCOVER E-PAYMENT 4421", "card"], ["PAYMENT TO CREDIT CARD 1234", "card"], ["CITI CARD ONLINE PAYMENT", "card"],
     ["OWNER DRAW", "owner"], ["Owners draw - March", "owner"], ["MEMBER DISTRIBUTION", "owner"],
-    ["SBA LOAN PMT", "loan"], ["LOAN PAYMENT 0042", "loan"], ["WELLS FARGO MORTGAGE", "loan"], ["LOAN PROCEEDS", "loan"],
+    ["SBA LOAN PMT", "loan"], ["LOAN PAYMENT 0042", "loan"], ["WELLS FARGO MORTGAGE PMT", "loan"], ["SBA LOAN PMT 0042", "loan"], ["LOAN PROCEEDS", "loan"],
     ["ONLINE TRANSFER TO SAVINGS XXXXXX1234", "transfer"], ["ONLINE TRANSFER FROM CHK 5521", "transfer"],
     ["INTERNAL TRANSFER", "transfer"], ["TRANSFER TO CHECKING 8812", "transfer"], ["MOBILE XFER FROM SAV", "transfer"],
   ])("★ %s → %s", (d, kind) => expect(notProfitAndLossKind(L(d))).toBe(kind));
@@ -99,5 +99,16 @@ describe("a card's own statement", () => {
   });
   it("★ wired with the import's account", () => {
     expect(readFileSync("src/App.jsx", "utf8")).toMatch(/return t;\n\s*\}\), \{ account \}\);/);
+  });
+});
+
+// C659 — the review's false positives, each left alone now.
+describe("★ C659 — ordinary lines the first patterns held", () => {
+  it.each([["Payment to Discover Grill catering"], ["Capital One Arena payment tickets"], ["Payment received - Discover Cafe invoice 22"],
+    ["Mortgage Solutions LLC consulting"], ["SBA filing fee"], ["line of credit interest"], ["Bank transfer fee"], ["INTERNAL TRANSFER FEE"], ["ONLINE TRANSFER FROM ACME INC"]])(
+    "%s", (d) => expect(notProfitAndLossKind({ description: d, vendor: "" })).toBe(null));
+  it("★ money coming INTO checking is never a card payoff (it would have become card debt)", () => {
+    expect(notProfitAndLossKind({ description: "AMEX EPAYMENT ACH PMT", vendor: "", money_in: true })).toBe(null);
+    expect(notProfitAndLossKind({ description: "AMEX EPAYMENT ACH PMT", vendor: "", money_in: false })).toBe("card");
   });
 });

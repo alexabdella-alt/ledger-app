@@ -19,3 +19,12 @@ describe("★ each entry lists as what it was, with the right direction", () => 
     expect(shown(je("o", [["1000",10000,0],["3400",0,10000]], { source: "opening_balance" }))).toEqual(["Cash", true]);
   });
 });
+
+describe("★ C659 — only a bank deposit lists under its other side", () => {
+  it("equipment bought on a card keeps its own account", () => {
+    const ACC2 = [{ code: "1500", name: "Equipment" }, { code: "2200", name: "Credit Card Liability" }];
+    const [r] = flattenJournalEntries([{ id: "eq", entry_date: "2026-03-15", description: "eq", status: "posted", deleted_at: null, source: "universal_upload", created_at: "2026-03-15T10:00:00Z",
+      journal_entry_lines: [{ id: "e0", debit: 900, credit: 0, accounts: { code: "1500", name: "Equipment" } }, { id: "e1", debit: 0, credit: 900, accounts: { code: "2200", name: "Credit Card Liability" } }] }], ACC2);
+    expect(classifyTxn(r, { apCode: "2000", arCode: "1100" }).account.name).toBe("Equipment");
+  });
+});

@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "./ERPContext";
 import { fmtMoney } from "../lib/format";
-import { planHeldLine, findExistingMove, heldLineOutcome } from "../lib/balanceSheetMoves";
+import { planHeldLine, findExistingMoves, pickUnclaimed, heldLineOutcome } from "../lib/balanceSheetMoves";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ★★ C655 — THE BANK LINE THAT ISN'T INCOME OR SPENDING, RECORDED THE WAY THE OPERATOR CHOSE.
@@ -16,7 +16,7 @@ const btn = (primary) => ({ fontSize: 13, fontWeight: 600, padding: "8px 14px", 
 
 export default function HeldLinePanel({ kind, item, inv, run, onDone }) {
   const { bankAccounts, CHART_OF_ACCOUNTS, getAccountByRole, companySettings, persistMultiLineEntry, addCustomAccount,
-    loadAllData, invoices, settleStatementLine, settleClarification, logAudit, setView } = useERP();
+    loadAllData, invoices, settleStatementLine, settleClarification, logAudit, setView, supabase, currentCompany } = useERP();
   const [interest, setInterest] = React.useState("");
   const [error, setError] = React.useState(null);
   const moneyIn = inv.money_in === true;
@@ -37,14 +37,36 @@ export default function HeldLinePanel({ kind, item, inv, run, onDone }) {
       if (ok === false) return false;
     }
     const kindOf = plan.entry.meta.kind;
-    // the other account's statement may already have recorded this move — link to it, never record it twice
-    const existing = (kindOf === "transfer" || kindOf === "card_payment") ? findExistingMove(invoices, plan.entry) : null;
+    const twoSided = kindOf === "transfer" || kindOf === "card_payment";
+    // C659 — an entry for this exact move may already exist: from the other account's statement
+    // (a transfer or card payoff), or from an earlier answer whose line never got marked (a held
+    // signed-month booking approved later). Link to one nobody on THIS account has claimed;
+    // otherwise record it. If the claims can't be read, record it rather than guess a link.
+    const candidates = findExistingMoves(invoices, plan.entry);
+    let existing = null;
+    if (candidates.length && supabase && currentCompany?.id) {
+      try {
+        const { data: lines, error: le } = await supabase.from("bank_statement_lines").select("statement_id, journal_entry_id").eq("company_id", currentCompany.id).in("journal_entry_id", candidates);
+        if (le) throw le;
+        const stmtIds = [...new Set((lines || []).map((l) => String(l.statement_id)))];
+        let acctOf = new Map();
+        if (stmtIds.length) {
+          const { data: stmts, error: se } = await supabase.from("bank_statements").select("id, bank_account_id").eq("company_id", currentCompany.id).in("id", stmtIds);
+          if (se) throw se;
+          acctOf = new Map((stmts || []).map((x) => [String(x.id), x.bank_account_id]));
+        }
+        const claims = (lines || []).map((l) => ({ jeId: String(l.journal_entry_id), accountId: acctOf.get(String(l.statement_id)) ?? null }));
+        existing = pickUnclaimed(candidates, claims, { lineAccountId: lineAccount?.id ?? null, twoSided });
+      } catch (e) { console.warn("[held line] couldn't read which entries are linked — recording it:", e?.message || e); existing = null; }
+    }
     const jeId = existing || await persistMultiLineEntry(plan.entry);
-    if (!jeId) return false;   // the writer said why
-    const text = existing ? "This was already recorded from your other account's statement — matched to it, nothing new added." : heldLineOutcome(plan.entry, kindOf, fmtMoney, plan);
+    if (!jeId) return false;   // the writer said why (or a signed month is holding it for a decision)
+    const text = existing
+      ? (twoSided ? "This was already recorded from your other account's statement — matched to it, nothing new added." : "This was already recorded — matched to it, nothing new added.")
+      : heldLineOutcome(plan.entry, kindOf, fmtMoney, plan);
     logAudit(existing ? "held_line_matched" : "held_line_recorded", text, null, { kind: kindOf, entry_id: String(jeId), line_id: sl.lineId || null });
     if (!existing) await loadAllData();
-    settleStatementLine?.({ ...sl, jeId });
+    await settleStatementLine?.({ ...sl, jeId });
     settleClarification?.(item, { kind: "booked", jeId });
     onDone(text);
     return true;

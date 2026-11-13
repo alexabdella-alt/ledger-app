@@ -66,13 +66,16 @@ export function otherAccountsFor(kind, { lineAccount = null, moneyIn = false, ba
 }
 
 const CORPORATION = new Set(["s_corp", "c_corp"]);
-const OWNER_EQUITY_NAME = /\bowner'?s?\b.*\b(contribution|investment|capital|equity)\b|\bmember'?s?\b.*\b(contribution|capital)\b|\bcapital contribution/i;
+// C659 (review) — plurals: the name this code CREATES is "Owner Contributions", which the singular
+// pattern did not match, so every contribution after the first made another account (3500, 3501…).
+const OWNER_EQUITY_NAME = /\bowner'?s?\b.*\b(contributions?|investments?|capital|equity)\b|\bmember'?s?\b.*\b(contributions?|capital)\b|\bcapital contributions?\b/i;
+const APIC_NAME = /\badditional paid-?in capital\b/i;
 export function ownerEquityAccount({ legalForm = "", chart = [], getAccountByRole = () => null } = {}) {
   if (CORPORATION.has(legalForm)) {
     const apic = getAccountByRole("additional_paid_in_capital");
     if (apic) return { code: String(apic.code), name: apic.name, create: false };
   }
-  const named = (chart || []).find((a) => /^3\d{3}$/.test(String(a.code)) && OWNER_EQUITY_NAME.test(a.name || ""));
+  const named = (chart || []).find((a) => /^3\d{3}$/.test(String(a.code)) && (OWNER_EQUITY_NAME.test(a.name || "") || (CORPORATION.has(legalForm) && APIC_NAME.test(a.name || ""))));
   if (named) return { code: String(named.code), name: named.name, create: false };
   const used = new Set((chart || []).map((a) => String(a.code)));
   for (let n = 3500; n <= 3599; n++) if (!used.has(String(n))) return { code: String(n), name: CORPORATION.has(legalForm) ? "Additional Paid-In Capital" : "Owner Contributions", create: true };
@@ -149,19 +152,40 @@ export function heldLineOutcome(entry, kind, fmt, { loanCode = null, interestCod
 // ★ A move between two of the owner's accounts appears on BOTH statements. When the other side has
 // already been recorded (same two accounts, same amount, within a few days), the line is linked
 // to that entry — never booked a second time.
-export function findExistingMove(invoices = [], entry, { days = 5 } = {}) {
-  if (!entry || !entry.balanced || entry.lines.length !== 2) return null;
-  const codes = new Set(entry.lines.map((l) => String(l.code)));
+// ★ C659 (review) — SAME DIRECTION, and the caller rules out entries already claimed. Matching
+// the two accounts as a SET linked "$500 back to checking on Wednesday" to Monday's "$500 to
+// savings", and a second $500 transfer three days after the first to the first — the real move
+// was never recorded. Candidates come back nearest-date first; `pickUnclaimed` chooses.
+export function findExistingMoves(invoices = [], entry, { days = 5 } = {}) {
+  if (!entry || !entry.balanced || entry.lines.length !== 2) return [];
+  const dr = String(entry.lines.find((l) => l.debit > 0)?.code), cr = String(entry.lines.find((l) => l.credit > 0)?.code);
   const amt = entry.totalDebit;
   const t0 = Date.parse(`${entry.date}T12:00:00`);
+  const out = [];
   for (const inv of invoices || []) {
     if (!inv || inv.status === "voided" || inv.status === "deleted" || inv.deleted_at || inv.reversed_by) continue;
-    const pair = new Set([String(inv.gl_code), String(inv.secondary_gl_code)]);
-    if (pair.size !== 2 || ![...codes].every((c) => pair.has(c))) continue;
+    if (String(inv.id).includes("_")) continue;   // a multi-line entry's rows — never a two-account move
+    const credit = inv.debit_credit === "credit";
+    const invDr = String(credit ? inv.secondary_gl_code : inv.gl_code), invCr = String(credit ? inv.gl_code : inv.secondary_gl_code);
+    if (invDr !== dr || invCr !== cr) continue;
     if (Math.abs((Number(inv.amount) || 0) - amt) > 0.005) continue;
     const t = Date.parse(`${inv.date}T12:00:00`);
     if (!Number.isFinite(t0) || !Number.isFinite(t) || Math.abs(t - t0) > days * 86400000) continue;
-    return inv.db_entry_id || String(inv.id).split("_")[0];
+    out.push({ jeId: String(inv.db_entry_id || inv.id), gap: Math.abs(t - t0) });
+  }
+  return out.sort((a, b) => a.gap - b.gap).map((c) => c.jeId);
+}
+export function findExistingMove(invoices = [], entry, opts = {}) {
+  return findExistingMoves(invoices, entry, opts)[0] || null;
+}
+// `claims` = [{ jeId, accountId }] — the statement lines already linked to each candidate, with the
+// bank account each line's statement belongs to. A move between two accounts is linked once from
+// EACH account's statement; anything else is linked once at all.
+export function pickUnclaimed(candidates = [], claims = [], { lineAccountId = null, twoSided = false } = {}) {
+  for (const jeId of candidates || []) {
+    const mine = (claims || []).filter((c) => String(c.jeId) === String(jeId));
+    if (!mine.length) return jeId;
+    if (twoSided && !mine.some((c) => String(c.accountId) === String(lineAccountId))) return jeId;
   }
   return null;
 }

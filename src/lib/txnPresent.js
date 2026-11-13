@@ -62,7 +62,9 @@ export function classifyTxn(inv = {}, { apCode, arCode, settled = null } = {}) {
   // as "Cash +$2,000.00" — the account it went INTO, not what it was. Show the other side when it
   // is a liability or equity. The opening position keeps "Cash" (C541): there the cash IS the point.
   const sec = String(inv.secondary_gl_code || "");
-  const moneyInFromBalanceSheet = primaryIsAssetDebit && !opening && /^[23]\d{3}$/.test(sec);
+  // C659 (review) — only when the asset is a bank (10xx): equipment bought on a card (Dr 1500 /
+  // Cr 2200) is not money in, and keeps its own account.
+  const moneyInFromBalanceSheet = primaryIsAssetDebit && !opening && /^10\d{2}$/.test(String(inv.gl_code || "")) && /^[23]\d{3}$/.test(sec);
   const account = settle === "ar_collection" || moneyInFromBalanceSheet
     ? { code: inv.secondary_gl_code, name: inv.secondary_gl_name }
     : { code: inv.gl_code, name: inv.gl_name };
