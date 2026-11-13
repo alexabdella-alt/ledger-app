@@ -22,6 +22,7 @@ import { BUSINESS_TYPES } from "../../lib/coaTemplates";
 import { LEGAL_FORMS } from "../../lib/tax";
 import VendorTeachIn from "../VendorTeachIn";   // C563
 import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting, profileForYear } from "../../lib/tax";
+import { setAsideLine } from "../../lib/taxSetAside.js";   // C697
 import { signedPL, businessHealth, cardBalanceOwed, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
@@ -725,6 +726,10 @@ export default function DashboardView() {
                   owedToYou: getAccountByRole?.("accounts_receivable")?.code ? glAccountBalance(getAccountByRole("accounts_receivable").code, invoices) : null,
                   youOwe: getAccountByRole?.("accounts_payable")?.code ? glAccountBalance(getAccountByRole("accounts_payable").code, invoices) : null,
                   onCards: cardBalanceOwed(invoices, bankAccounts) });   // C671
+                // ★ C697 — what to keep back for taxes, from the same estimate the Taxes screen shows
+                const yNow = new Date().getFullYear();
+                const setAside = setAsideLine(taxEstimate(invoices, yNow, 0, { chart: CHART_OF_ACCOUNTS || [], legalForm: companySettings?.legalForm || "", assets: taxAssets || null,
+                  ...profileForYear(yNow, { current: filedDeadlines, prev: filedDeadlinesPrev }), priorProfile: profileForYear(yNow - 1, { current: filedDeadlines, prev: filedDeadlinesPrev }) }));
                 const toneColor = bh.tone === "good" ? "var(--sc-success)" : bh.tone === "watch" ? "var(--sc-warning)" : "var(--sc-error)";
                 const toneSoft  = bh.tone === "good" ? "var(--sc-success-soft)" : bh.tone === "watch" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)";
                 const toneLabel = bh.tone === "good" ? "Healthy" : bh.tone === "watch" ? "Worth a look" : "Needs attention";
@@ -748,6 +753,12 @@ export default function DashboardView() {
                         </div>
                       ))}
                     </div>
+                    {setAside && (
+                      <div data-set-aside style={{ marginTop:14, borderTop:"1px solid var(--sc-surface-2)", paddingTop:12, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                        <span style={{ fontSize: 13, color:"var(--sc-text)", flex:1, minWidth:160 }}>{setAside.text}</span>
+                        <button onClick={() => navTo("tax")} style={{ padding:"5px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text)", cursor:"pointer", flexShrink:0 }}>See taxes →</button>
+                      </div>
+                    )}
                     {bh.concerns.length > 0 && (
                       <div style={{ marginTop:14, borderTop:"1px solid var(--sc-surface-2)", paddingTop:12, display:"flex", flexDirection:"column", gap:9 }}>
                         {bh.concerns.map(c => (
@@ -961,7 +972,7 @@ export function HomeWaitingList({ navTo }) {
     filed: filedDeadlines, legalForm: companySettings?.legalForm || null,
     estimateFor: (y) => taxEstimate(invoices || [], y, 0, { chart: CHART_OF_ACCOUNTS || [], legalForm: companySettings?.legalForm || "", assets: taxAssets || null, ...profileForYear(y, { current: filedDeadlines, prev: filedDeadlinesPrev }), priorProfile: profileForYear(y - 1, { current: filedDeadlines, prev: filedDeadlinesPrev }) }),   // C678, C683, C690, C693, C695
     has1099sFor: (d) => plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: d.year - 1, bankAccounts: Array.isArray(bankAccounts) ? bankAccounts : [] }).outstanding > 0,
-  }), [filedDeadlines, companySettings?.legalForm, invoices, contacts, CHART_OF_ACCOUNTS]);
+  }), [filedDeadlines, filedDeadlinesPrev, taxAssets, bankAccounts, companySettings?.legalForm, invoices, contacts, CHART_OF_ACCOUNTS]);   // C697 — every input of the estimate
   const dl = waiting ? waiting.deadline : null;
   const est = waiting ? waiting.estimate : null;
   const taxEstimateText = dl && dl.est && est && est.total > 0 ? ` — estimated amount ${fmtApprox(est.quarterly)}` : "";
