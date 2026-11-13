@@ -175,7 +175,8 @@ export default function ReviewView() {
     setBusyId(txn.id);
     const r = await reviewOverride(txn, overrideCode, acct?.name);
     setBusyId(null);
-    if (r.ok) { showNotification(`Recoded → ${acct?.name || overrideCode} ✓`, "success"); setOverrideFor(null); setOverrideCode(""); }
+    if (r.ok && r.stillFlagged) { showNotification(`Recoded → ${acct?.name || overrideCode}, but ${plainWriteError(r.error, "")}.`, "error"); setOverrideFor(null); setOverrideCode(""); }   // C715
+    else if (r.ok) { showNotification(`Recoded → ${acct?.name || overrideCode} ✓`, "success"); setOverrideFor(null); setOverrideCode(""); }
     else showNotification(`Couldn't recode — ${plainWriteError(r.error, "")}`, "error");
   };
   const onResolveDoc = async (item, resolution) => {
@@ -206,7 +207,8 @@ export default function ReviewView() {
     setBusyId(txn.id);
     const r = await reviewOverride(txn, mapped.gl_code, mapped.gl_name);   // same verified persistence path
     setBusyId(null);
-    if (r.ok) { showNotification(`Resolved from the client's answer → ${mapped.gl_name} ✓`, "success"); setAskFor(null); setAskAnswer(""); }
+    if (r.ok && r.stillFlagged) { showNotification(`Recoded → ${mapped.gl_name}, but ${plainWriteError(r.error, "")}.`, "error"); setAskFor(null); setAskAnswer(""); }   // C715
+    else if (r.ok) { showNotification(`Resolved from the client's answer → ${mapped.gl_name} ✓`, "success"); setAskFor(null); setAskAnswer(""); }
     else showNotification(`Couldn't resolve — ${plainWriteError(r.error, "")}`, "error");
   };
 
@@ -752,7 +754,7 @@ export default function ReviewView() {
                   <div style={{ fontSize:13, color:"var(--sc-text-2)", maxWidth:420, margin:"0 auto" }}>This isn't a problem with your books — one of our checks didn't finish, so we're not going to tell you everything's clear when we can't confirm it. Try again in a moment.</div>
                   <button onClick={refreshDropped} style={{ marginTop:16, padding:"8px 16px", borderRadius:8, fontSize:13, fontWeight:600, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text)", cursor:"pointer" }}>Try again</button>
                 </div>
-              ) : summary.allClear ? (
+              ) : summary.allClear && !waiting.length ? (   // C715 — held items keep "All clear" off
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-success-soft)", borderRadius:14, padding:48, textAlign:"center" }}>
                   <div style={{ fontSize:32, marginBottom:12 }}>✓</div>
                   <div style={{ fontSize:16, fontWeight:600, marginBottom:8, color:"var(--sc-success)" }}>All clear — nothing needs review</div>

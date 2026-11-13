@@ -110,7 +110,7 @@ describe("signOffReadiness preconditions — a period with nothing to check is N
   it("no booked entries in the period → blocked (the vacuous-pass this fixes)", () => {
     const r = signOffReadiness({ ...clear, entriesInPeriodCount: 0 });
     expect(r.ok).toBe(false);
-    expect(r.blockers.some(b => b.net === "readiness" && /nothing to review/i.test(b.reason))).toBe(true);
+    expect(r.blockers.some(b => b.net === "readiness" && /no transactions are booked in this period yet/i.test(b.reason))).toBe(true);   // C715 wording
   });
   it("no reconciliation for the period → blocked (net=readiness)", () => {
     const r = signOffReadiness({ ...clear, hasReconForPeriod: false });

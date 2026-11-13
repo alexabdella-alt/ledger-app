@@ -16,6 +16,7 @@ import {
   glAccountBalance, computeAR, computeAP, trialBalance, isLiveEntry,
 } from "./reports.js";
 import { fmtMoney } from "./format.js";
+import { owedAccount } from "./reconcile.js";
 import { isCancelledOrCancelling } from "./gl.js";
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -120,7 +121,7 @@ function describeMismatch(c) {
 // (from getAccountByRole): { ar, ap, salesTax }.
 export function computeControlTotals({
   invoices = [], reconciliations = [], intakeRows = [],
-  codes = {}, now = new Date(),
+  codes = {}, now = new Date(), bankAccounts = [],
 } = {}) {
   const live = (invoices || []).filter(isLiveEntry);
   const checks = [];
@@ -179,8 +180,15 @@ export function computeControlTotals({
     // a NEGATIVE `signed`, so a rec with a $275 uncashed check reconciles (20,614.40 − 275 =
     // 20,339.40) instead of false-failing "off by $275" and blocking the sign-off.
     const outSigned = (rec.outstanding_books || []).reduce((s, o) => s + (Number(o && o.signed) || 0), 0);
-    const unmatchedBankSigned = (rec.unmatched_bank || []).reduce((s, t) => s + (Number(t && t.amount) || 0), 0);
-    const expectedBooks = r2(stmt + outSigned - unmatchedBankSigned);
+    // ★ C715 — the SAME identity as the completion bar, all of it: a line the reviewer chose to
+    // IGNORE is out of the difference there (ReconView), so it is out here; and on a credit card or
+    // loan both balances count what's OWED, so the items move the other way (C669). Without both, a
+    // card reconciled to $0 with a $200 uncleared charge "failed by $400", forever — the figures are
+    // frozen on the record — blocking every month's sign-off.
+    const unmatchedBankSigned = (rec.unmatched_bank || []).filter((t) => t && !t._ignored).reduce((s, t) => s + (Number(t && t.amount) || 0), 0);
+    const acct = (bankAccounts || []).find((b) => b && String(b.id) === String(rec.account_id));
+    const liability = owedAccount(acct);   // the reconcile screen's own rule (C670): by the ledger code
+    const expectedBooks = r2(stmt + (liability ? -1 : 1) * (outSigned - unmatchedBankSigned));
     const label = `Bank match — ${rec.account_name || "account"}${rec.period_end ? ` (through ${rec.period_end})` : ""}`;
     const bankLabel = outSigned !== 0 ? "your bank balance after checks that haven't cleared" : "the bank statement";
     checks.push(check("cash_recon", label, books, "your books", expectedBooks, bankLabel, { recId: rec.id }));
@@ -276,12 +284,18 @@ export function bankMatchStatus({ reconciliations = [], invoices = [], now = new
 //   • openingEntered          — opening balances have been posted (a real starting position).
 //   • entriesInPeriodCount     — ≥1 booked transaction dated within the sign-off period.
 //   • hasReconForPeriod        — a bank reconciliation record covers the period.
-function readinessBlockers({ setupComplete, openingEntered, entriesInPeriodCount, hasReconForPeriod }) {
+function readinessBlockers({ setupComplete, openingEntered, entriesInPeriodCount, hasReconForPeriod, activityAfterPeriod = false }) {
   const out = [];
   if (setupComplete === false) out.push({ net: "readiness", reason: "company setup isn't finished yet — complete the setup checklist first" });
   if (openingEntered === false) out.push({ net: "readiness", reason: "opening balances haven't been entered — there's no starting position to review" });
-  if (entriesInPeriodCount != null && Number(entriesInPeriodCount) <= 0) out.push({ net: "readiness", reason: "no transactions are booked in this period — nothing to review" });
-  if (hasReconForPeriod === false) out.push({ net: "readiness", reason: "this period hasn't been reconciled to the bank yet" });
+  // ★ C715 — A QUIET MONTH. Nothing booked used to block forever — and since months are signed in
+  // order, a month with no activity stopped every later one (a solo owner had no way past it).
+  // Nothing booked while the books carry on AFTER it is a quiet month: signable, nothing to reconcile.
+  // Nothing booked and nothing after it is still "not started" — signing would lock a month whose
+  // statements simply haven't been uploaded yet.
+  const empty = entriesInPeriodCount != null && Number(entriesInPeriodCount) <= 0;
+  if (empty && !activityAfterPeriod) out.push({ net: "readiness", reason: "no transactions are booked in this period yet — upload its statements first" });
+  if (hasReconForPeriod === false && !(empty && activityAfterPeriod)) out.push({ net: "readiness", reason: "this period hasn't been reconciled to the bank yet — every account with activity this month needs its statement matched" });
   return out;
 }
 
@@ -303,6 +317,28 @@ export function bookedEntriesInPeriod(invoices = [], period = "") {
 // ★ C629 — `accountId`: a month reconciled for ONE account is not reconciled for another. Month-only,
 // reconciling checking for March made a savings statement for March read "already reconciled", so
 // the pipeline never checked the savings balance at all.
+// ★ C715 — EVERY ACCOUNT, THE WHOLE MONTH. Overlap was enough: an Oct 15–Nov 14 statement
+// "reconciled" all of October and all of November, and reconciling checking satisfied a month whose
+// credit card (its own account since C713) was never matched. Each account with activity in the
+// month must have verified reconciliations whose periods together cover the month's first to last
+// day. A record with no stated start or end is read as open on that side (older records).
+export function periodReconciledForAccounts(reconciliations = [], period = "", accountIds = []) {
+  const p = String(period || "");
+  if (!/^\d{4}-\d{2}$/.test(p)) return false;
+  const [y, m] = p.split("-").map(Number);
+  const first = `${p}-01`, last = `${p}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+  const ids = (accountIds || []).map(String);
+  if (!ids.length) return reconciliationCoversPeriod(reconciliations, period);
+  const nextDay = (d) => { const t = new Date(`${d}T12:00:00`); t.setDate(t.getDate() + 1); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
+  return ids.every((id) => {
+    const spans = (reconciliations || []).filter((r) => isVerifiedReconciliation(r) && String(r.account_id) === id)
+      .map((r) => [String(r.period_start || "0000-01-01").slice(0, 10), String(r.period_end || "9999-12-31").slice(0, 10)])
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    let reach = first;   // covered up to (not including) `reach`
+    for (const [s, e] of spans) { if (s > reach) break; if (e >= reach) reach = nextDay(e); if (reach > last) return true; }
+    return reach > last;
+  });
+}
 export function reconciliationCoversPeriod(reconciliations = [], period = "", { accountId = null } = {}) {
   const p = String(period || "");
   if (!/^\d{4}-\d{2}$/.test(p)) return false;
@@ -321,9 +357,15 @@ export function reconciliationCoversPeriod(reconciliations = [], period = "", { 
 // preconditions above so a period with nothing to check reads as "not ready", not "clean".
 // One pure function so the write path (signOffPeriod) and the CPA UI can't gate differently.
 // Returns { ok, blockers:[{net, reason}] }. CPA-side, so blocker reasons may use accounting terms.
-export function signOffReadiness({ controlTotals = { failed: [], allTie: true }, openConfidenceFlags = [], droppedDocs = [], unknownDocs = [], bankMatch = { overdue: false, days: null }, setupComplete = null, openingEntered = null, entriesInPeriodCount = null, hasReconForPeriod = null, openHighAnomaliesInPeriod = 0 } = {}) {
+export function signOffReadiness({ controlTotals = { failed: [], allTie: true }, openConfidenceFlags = [], droppedDocs = [], unknownDocs = [], bankMatch = { overdue: false, days: null }, setupComplete = null, openingEntered = null, entriesInPeriodCount = null, hasReconForPeriod = null, openHighAnomaliesInPeriod = 0,
+  heldCount = 0, exceptionsInPeriod = 0, activityAfterPeriod = false, previousUnsigned = null, periodNotOver = false } = {}) {
   // Preconditions FIRST — the non-vacuous gate.
-  const blockers = readinessBlockers({ setupComplete, openingEntered, entriesInPeriodCount, hasReconForPeriod });
+  const blockers = readinessBlockers({ setupComplete, openingEntered, entriesInPeriodCount, hasReconForPeriod, activityAfterPeriod });
+  // ★ C715 — what the audit found the gate ignored:
+  if (periodNotOver) blockers.push({ net: "readiness", reason: "this month isn't over yet — sign it off once it has ended and its statements are in" });
+  if (previousUnsigned) blockers.push({ net: "readiness", reason: `${previousUnsigned} isn't signed off yet — months are signed in order, so the review covers everything before it` });
+  if (Number(heldCount) > 0) blockers.push({ net: "completeness", reason: `${heldCount} document${heldCount === 1 ? " is" : "s are"} held out of the books (waiting on a decision) — decide ${heldCount === 1 ? "it" : "them"} first` });
+  if (Number(exceptionsInPeriod) > 0) blockers.push({ net: "bank_lines", reason: `${exceptionsInPeriod} bank line${exceptionsInPeriod === 1 ? "" : "s"} in this month couldn't be added or matched — sort ${exceptionsInPeriod === 1 ? "it" : "them"} out first` });
   const evalr = evaluateSignOff({ controlTotals, openConfidenceFlags, droppedDocs, unknownDocs });
   blockers.push(...evalr.blockers);
   if (bankMatch && bankMatch.overdue) {

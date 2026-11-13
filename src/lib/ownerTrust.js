@@ -350,10 +350,13 @@ export function ownerSignOffBlockers(blockers = [], { periodLabel = "this month"
       case "accuracy":     out.push(`Some figures don't add up yet — ${someoneCanSee}.`); break;
       case "bank":         out.push(`Your books haven't been matched to your bank yet — drop your latest statement.`); break;
       case "anomaly":      out.push(`Something unusual in ${periodLabel} hasn't been looked at yet.`); break;
+      case "bank_lines":   out.push(`${n || "Some"} bank line${n === "1" ? "" : "s"} in ${periodLabel} couldn't be added or matched yet.`); break;   // C715
       case "readiness":
         if (/setup/i.test(r)) out.push("Your setup isn't finished yet.");
         else if (/opening balance/i.test(r)) out.push("Your starting balances haven't been set yet.");
         else if (/no transactions/i.test(r)) out.push(`Nothing is recorded in ${periodLabel} yet.`);
+        else if (/isn't over yet/i.test(r)) out.push(`${periodLabel.charAt(0).toUpperCase()}${periodLabel.slice(1)} isn't over yet — sign it off once it has ended.`);   // C715
+        else if (/signed in order/i.test(r)) out.push(`Sign off ${r.split(" isn't signed off yet")[0]} first — months are signed in order.`);
         else if (/reconciled/i.test(r)) out.push(`${periodLabel} hasn't been matched to your bank statement yet — drop that month's statement.`);
         else out.push(stillOpen);
         break;

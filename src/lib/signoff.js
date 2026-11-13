@@ -169,14 +169,17 @@ export function activeSignedPeriods(signoffs = []) {
 // The latest "reviewed through" period, given the set of ACTIVE sign-offs. Pure.
 // (Just the max period string — YYYY-MM sorts lexicographically = chronologically.
 // Revoked rows are already excluded by fetchSignoffs; belt-and-suspenders here too.)
+// ★ C715 — THROUGH means every month up to it: the last month of the unbroken run that starts at
+// the first signed month. The newest signed month said "reviewed through February" over a January
+// that was never signed — or was reopened and changed.
 export function latestReviewedThrough(signoffs = []) {
-  let max = null;
-  for (const s of signoffs || []) {
-    if (s && s.revoked_at) continue;
-    const p = s && s.period;
-    if (typeof p === "string" && /^\d{4}-\d{2}$/.test(p) && (max === null || p > max)) max = p;
-  }
-  return max;
+  const months = [...new Set((signoffs || []).filter((s) => s && !s.revoked_at && typeof s.period === "string" && /^\d{4}-\d{2}$/.test(s.period)).map((s) => s.period))].sort();
+  if (!months.length) return null;
+  const next = (p) => { const [y, m] = p.split("-").map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`; };
+  let through = months[0];
+  const have = new Set(months);
+  while (have.has(next(through))) through = next(through);
+  return through;
 }
 
 // ── WHAT A REPORT MAY CLAIM ABOUT ITSELF (O104's core promise, C343) ─────────

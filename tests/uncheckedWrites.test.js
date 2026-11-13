@@ -37,9 +37,7 @@ const EXCUSED = {
   // Flipping an asset to fully_depreciated once its last row posts. Derived from the
   // schedule, so the next run recomputes it.
   fixed_assets: "derived from the schedule and recomputed on the next run",
-  // The review approve path's confidence bump. If it fails the flag simply reappears in the
-  // queue — visibly, and the reviewer can act again.
-  journal_entries: "ONLY the review confidence bump; every ledger-changing write is checked",
+  // (journal_entries' review confidence bump left this list in C715 — it is checked now.)
   // Contract edit/soft-delete: both check `error` and surface it; the zero-row case leaves
   // the contract visibly unchanged in a list the user is looking at.
   // Learned vendor→GL profile. Best-effort learning: a lost write means the next correction

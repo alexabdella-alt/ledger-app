@@ -14,7 +14,7 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancell
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
-import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, cashOnHandCodes, cardBalanceOwed, openPayablesGL } from "./lib/reports";
+import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, cashOnHandCodes, cardBalanceOwed, openPayablesGL, isLiveEntry } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
 import { draftClientQuestion, plainCategoryPhrase, describeBooking, containsOwnerJargon, gaapQuestionFitsAccount, mealsOverrideAllowed } from "./lib/clarify";
 import { planStatementPipeline, pipelineStatementStatus } from "./lib/pipeline";
@@ -51,7 +51,7 @@ import { isDegradedMode, degradedBannerCopy, chatFailureCopy } from "./lib/aiFai
 import { runIntakeDrain, fetchStoredFile } from "./lib/intakeDrainIo";
 import { loadMailChannel, loadHeldInbound, createMailChannel, addAllowedSender, releaseInboundMessage, ignoreInboundMessage, sendMailViaFunction } from "./lib/mailClient";
 import { flaggedForReview, reviewSummary, autoBookDecision, MISSING_FACT_REASONS, missingFact } from "./lib/confidenceFlag";
-import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod } from "./lib/controlTotals";
+import { computeControlTotals, bankMatchStatus, signOffReadiness, bookedEntriesInPeriod, reconciliationCoversPeriod, periodReconciledForAccounts } from "./lib/controlTotals";
 import { persistSignoff, revokeSignoff, fetchSignoffs, latestReviewedThrough, canAttestPeriod, canSelfAttest, companyHasAttester, selfAttestAcknowledgement, isPeriodSignedOff } from "./lib/signoff";
 import { signedPeriodForDate, rebookedIntoOpenMonth, signedPeriodOwnerCopy, planEntryRemoval, REMOVAL, isOpeningEntry, OPENING_KEEP_SENTENCE } from "./lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "./lib/ownerTrust";
@@ -5238,8 +5238,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     salesTax: getAccountByRole("sales_tax_payable")?.code,
   }), [getAccountByRole, CHART_OF_ACCOUNTS]);
   const controlTotals = useMemo(
-    () => computeControlTotals({ invoices, reconciliations, intakeRows, codes: controlCodes }),
-    [invoices, reconciliations, intakeRows, controlCodes]
+    () => computeControlTotals({ invoices, reconciliations, intakeRows, codes: controlCodes, bankAccounts }),   // C715 — a card reconciles with the card's sign
+    [invoices, reconciliations, intakeRows, controlCodes, bankAccounts]
   );
   // The latest period a CPA has attested (drives the owner-facing "reviewed through").
   const reviewedThrough = useMemo(() => latestReviewedThrough(signoffs), [signoffs]);
@@ -5311,6 +5311,25 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // lets the UI pass the set it already loaded; the write path passes the freshest set.
   // (setupComplete reuses onboardingSteps — the SAME signal the home checklist / TrustPanel
   // neutral guard use — so the surfaces stay consistent rather than re-deriving "readiness".)
+  // ★ C715 — what the sign-off gate used to ignore (sign-off audit): held documents, the month's
+  // bank-line exceptions, a quiet month between busy ones, months signed out of order, and a month
+  // that hasn't ended yet. Pure inputs computed here from the loaded state.
+  const accountsActiveIn = (period) => (bankAccounts || []).filter(b => b && typeof b.id === "string" && b.id.includes("-") && b.gl_code
+    && (invoices || []).some(i => isLiveEntry(i) && String(i.date || "").slice(0, 7) === period && (String(i.gl_code) === String(b.gl_code) || String(i.secondary_gl_code) === String(b.gl_code)))).map(b => b.id);
+  const signOffContext = (period) => {
+    const [py, pm] = String(period).split("-").map(Number);
+    const prev = pm === 1 ? `${py - 1}-12` : `${py}-${String(pm - 1).padStart(2, "0")}`;
+    const signed = new Set((signoffs || []).filter(s => s && !s.revoked_at).map(s => s.period));
+    const startMonth = cutoffDate ? String(cutoffDate).slice(0, 7) : (invoices || []).filter(isLiveEntry).map(i => String(i.date || "").slice(0, 7)).filter(Boolean).sort()[0];
+    const nowMonth = todayLocal().slice(0, 7);
+    return {
+      heldCount: (intakeRows || []).filter(r => r && r.status === INTAKE_STATUS.HELD).length,
+      exceptionsInPeriod: (statementExceptions || []).filter(e => e && e.kind === "line" && String(e.date || "").slice(0, 7) === period).length,
+      activityAfterPeriod: (invoices || []).some(i => isLiveEntry(i) && String(i.date || "").slice(0, 7) > period),
+      previousUnsigned: startMonth && prev >= startMonth && !signed.has(prev) && signed.size > 0 ? new Date(py, pm - 2, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : null,
+      periodNotOver: String(period) >= nowMonth,
+    };
+  };
   const signOffReadinessFor = (period, droppedDocs = []) => {
     const setupComplete = onboardingSteps({ companySettings, bankAccounts, openingBalances, invoices, onboardingUploadDone }).obAllDone || !!companySettings.onboardingComplete;
     const openingEntered = openingPosted || (invoices || []).some(i => i.source === "opening_balance");
@@ -5323,7 +5342,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       setupComplete,
       openingEntered,
       entriesInPeriodCount: bookedEntriesInPeriod(invoices, period),
-      hasReconForPeriod: reconciliationCoversPeriod(reconciliations, period),
+      // ★ C715 — every account with activity this month, the whole month (C713 split the accounts)
+      hasReconForPeriod: periodReconciledForAccounts(reconciliations, period, accountsActiveIn(period)),
+      ...signOffContext(period),
       // O83 — open HIGH anomalies whose entries fall in THIS period block attestation
       // (overridable). Resolve entity_refs → dates against the live ledger here (App has
       // invoices); the pure gate just receives the count. Medium/low never block.
@@ -5514,9 +5535,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!glCode) return { ok: false, error: "no account chosen" };
     const ok = await persistRecode([txn], glCode, glName);   // re-books the line; returns true only on a committed write
     if (!ok) return { ok: false, error: "recode did not commit" };
-    try { await supabase.from("journal_entries").update({ ai_confidence: 100 }).eq("id", txn.db_entry_id).eq("company_id", currentCompany.id); } catch (e) { console.warn("[review] confidence bump failed:", e?.message || e); }
-    setInvoices(prev => prev.map(i => String(i.db_entry_id) === String(txn.db_entry_id) ? { ...i, gl_code: glCode, gl_name: glName, confidence: 100 } : i));
+    // ★ C715 — the "a person decided this" mark is a checked write (§9): unchecked, a refused bump
+    // left the screen saying reviewed while the stored row stayed low-confidence and came back
+    // into the queue on the next reload. The screen now only says what the database kept.
+    const bump = await checkedRowUpdate({ supabase, table: "journal_entries", id: txn.db_entry_id, companyId: currentCompany.id, patch: { ai_confidence: 100 }, label: "reviewOverride" });
+    setInvoices(prev => prev.map(i => String(i.db_entry_id) === String(txn.db_entry_id) ? { ...i, gl_code: glCode, gl_name: glName, ...(bump.ok ? { confidence: 100 } : {}) } : i));
     logAudit("review_override", `Recoded ${txn.vendor || "entry"}: ${txn.gl_name || "?"} → ${glName} ($${Math.abs(txn.amount || 0).toFixed(2)})`, { gl_code: txn.gl_code }, { gl_code: glCode });
+    if (!bump.ok) return { ok: true, stillFlagged: true, error: "the account was changed, but we couldn't mark it reviewed — it will stay in the list" };
     return { ok: true };
   };
   // RESOLVE a dropped/incomplete document → move its intake row to a terminal state (verified)
