@@ -7430,11 +7430,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // was refused, the line stayed open — and the question came back on the next load, inviting
   // the owner to book the same charge twice (§9: an action whose effect is invisible will be
   // repeated). The card knows both ids; nothing has to be searched for.
-  const settleStatementLine = async ({ statementId, lineId = null, accountId = null, accountCode = null, jeId = null } = {}) => {
+  const settleStatementLine = async ({ statementId, lineId = null, accountId = null, accountCode = null, jeId = null, noEntry = false } = {}) => {
     if (!statementId || !currentCompany?.id) return;
     const acct = (bankAccounts || []).find((b) => String(b.id) === String(accountId)) || (accountCode ? { gl_code: accountCode } : null);
     try {
-      if (lineId && jeId) {
+      if (lineId && noEntry) {   // C662 — a move between two accounts kept as one in the books: nothing to link, the line is done
+        const r = await checkedRowUpdate({ supabase, table: "bank_statement_lines", id: String(lineId), companyId: currentCompany.id,
+          patch: { status: "already_booked", exception_reason: null }, label: "answer:no-entry-line" });
+        if (!r.ok) logAudit("statement_line_link_failed", "Recorded your answer, but couldn't mark the bank line as done — it may be asked again", null, { line_id: String(lineId) });
+      } else if (lineId && jeId) {
         const r = await checkedRowUpdate({ supabase, table: "bank_statement_lines", id: String(lineId), companyId: currentCompany.id,
           patch: { status: "booked", journal_entry_id: String(jeId), exception_reason: null }, label: "answer:link-line" });
         if (!r.ok) logAudit("statement_line_link_failed", "Recorded your answer, but couldn't mark the bank line as done — it may be asked again", null, { line_id: String(lineId), entry_id: String(jeId) });

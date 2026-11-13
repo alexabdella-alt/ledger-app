@@ -31,6 +31,13 @@ export default function HeldLinePanel({ kind, item, inv, run, onDone }) {
   const record = (extra = {}) => run(async () => {
     setError(null);
     const plan = planHeldLine({ ...base, ...extra });
+    if (plan.noEntry) {   // C662 — both accounts are one account in the books: nothing to record
+      const text = `${plan.other?.name || "That account"} and ${lineAccount?.name || "this account"} are kept together in your books, so moving money between them doesn't change anything — marked as done.`;
+      logAudit("held_line_no_entry", text, null, { kind, line_id: sl.lineId || null });
+      await settleStatementLine?.({ ...sl, noEntry: true });
+      onDone(text);
+      return true;
+    }
     if (!plan.entry) { setError(plan.invalid ? `The interest has to be between $0 and ${amt}.` : "This one needs a detail we don't have — skip it for now."); return false; }
     if (plan.account?.create) {
       const ok = await addCustomAccount({ code: plan.account.code, name: plan.account.name, category: /^3/.test(plan.account.code) ? "Equity" : "Liabilities" });
@@ -106,7 +113,7 @@ export default function HeldLinePanel({ kind, item, inv, run, onDone }) {
       </div>
     </>);
   }
-  if (preview.entry) {
+  if (preview.entry || preview.noEntry) {
     const q = kind === "owner" ? (moneyIn ? "Was this your own money going into the business?" : "Was this money you took out for yourself?")
       : kind === "loan" ? "Was this money the business borrowed?"
       : kind === "card" ? `Was this paying off ${preview.to?.name || "your card"}${moneyIn ? ` from ${preview.from?.name}` : ""}?`

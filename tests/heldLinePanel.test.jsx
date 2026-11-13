@@ -84,3 +84,14 @@ describe("the assistant can explain it (C661 — ships with the next ai-proxy de
     expect(guide).toMatch(/Never tell the owner to record these as an expense or a sale/);
   });
 });
+
+describe("★ C662 — the no-entry transfer", () => {
+  it("still offers the question, and on yes marks the line done without an entry", () => {
+    const sav1000 = { id: "S", name: "Savings", type: "savings", gl_code: "1000" };
+    expect(render({ amount: -500, vendor: "Savings", description: "ONLINE TRANSFER TO SAVINGS 5521" }, [checking, sav1000])).toMatch(/Was this money moved to Savings\? Yes — a move between my accounts/);
+    const panel = readFileSync("src/components/HeldLinePanel.jsx", "utf8");
+    expect(panel).toMatch(/if \(plan\.noEntry\) \{[\s\S]{0,400}await settleStatementLine\?\.\(\{ \.\.\.sl, noEntry: true \}\);/);
+    const app = readFileSync("src/App.jsx", "utf8");
+    expect(app).toMatch(/if \(lineId && noEntry\) \{[\s\S]{0,500}patch: \{ status: "already_booked", exception_reason: null \}/);
+  });
+});

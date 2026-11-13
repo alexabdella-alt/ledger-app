@@ -114,6 +114,11 @@ export function planHeldLine({ kind, moneyIn, amount, date, description, lineAcc
     if (!other) return { needs: "pick_account", options };
     const o = { code: String(other.gl_code), name: other.name };
     const [from, to] = moneyIn ? [o, bank] : [bank, o];
+    // ★ C662 — a new savings account is kept in the SAME ledger account as checking (Cash: only a
+    // card or a loan gets its own — lib/bankAccounts.js), so a move between them changes nothing
+    // in the books. That built "Dr 1000 / Cr 1000", the builder refused it, and the card said
+    // "needs a detail we don't have" — a dead end on the most ordinary transfer there is.
+    if (from.code === to.code) return { noEntry: true, from, to, other };
     return { entry: buildTransferEntry({ ...base, kind: kind === "card" ? "card_payment" : "transfer", fromCode: from.code, fromName: from.name, toCode: to.code, toName: to.name,
       description: kind === "card" ? "Credit card payment" : "Money moved between your accounts" }), from, to, other };
   }

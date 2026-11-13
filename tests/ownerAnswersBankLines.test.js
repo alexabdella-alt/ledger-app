@@ -68,9 +68,9 @@ describe("Home", () => {
     const flow = readFileSync("src/components/ClarificationFlow.jsx", "utf8");
     expect(flow).toMatch(/settleClarification\?\.\(item, \{ kind: "booked", jeId \}\);\s*\n\s*if \(item\.statementLine\) settleStatementLine\?\.\(\{ \.\.\.item\.statementLine, jeId \}\);/);
     const app = readFileSync("src/App.jsx", "utf8");
-    expect(app).toMatch(/const settleStatementLine = async \(\{ statementId, lineId = null, accountId = null, accountCode = null, jeId = null \} = \{\}\) => \{/);
+    expect(app).toMatch(/const settleStatementLine = async \(\{ statementId, lineId = null, accountId = null, accountCode = null, jeId = null, noEntry = false \} = \{\}\) => \{/);
     // ★ C654 — the exact line, by id, with the entry written — never a search of state that hasn't caught up
-    expect(app).toMatch(/if \(lineId && jeId\) \{\s*\n\s*const r = await checkedRowUpdate\(\{ supabase, table: "bank_statement_lines", id: String\(lineId\),[\s\S]{0,200}patch: \{ status: "booked", journal_entry_id: String\(jeId\), exception_reason: null \}/);
+    expect(app).toMatch(/\} else if \(lineId && jeId\) \{\s*\n\s*const r = await checkedRowUpdate\(\{ supabase, table: "bank_statement_lines", id: String\(lineId\),[\s\S]{0,200}patch: \{ status: "booked", journal_entry_id: String\(jeId\), exception_reason: null \}/);
     expect(app).toMatch(/if \(!r\.ok\) logAudit\("statement_line_link_failed"/);
   });
   it("changing the card's type keeps a bank line on its bank account", () => {

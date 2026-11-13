@@ -184,3 +184,15 @@ describe("★ C660 — an existing loan payment is found through the real flatte
     expect(findExistingLoanPayments(util, mk(850, "2026-03-15"))).toEqual([]);
   });
 });
+
+// C662 — checking and savings kept in one ledger account: a move between them changes nothing.
+describe("★ C662 — a transfer between two accounts kept together in the books", () => {
+  const sav1000 = { id: "S", name: "Savings", type: "savings", gl_code: "1000" };
+  it("needs no entry (it used to dead-end on a refused Dr 1000 / Cr 1000)", () => {
+    const p = planHeldLine({ kind: "transfer", moneyIn: false, amount: 500, lineAccount: checking, bankAccounts: [checking, sav1000], chart: CHART, getAccountByRole: byRole });
+    expect([p.noEntry, p.entry, p.other.id]).toEqual([true, undefined, "S"]);
+  });
+  it("separate ledger accounts still get the entry", () => {
+    expect(planHeldLine({ kind: "transfer", moneyIn: false, amount: 500, lineAccount: checking, bankAccounts: BANKS, chart: CHART, getAccountByRole: byRole }).entry.balanced).toBe(true);
+  });
+});
