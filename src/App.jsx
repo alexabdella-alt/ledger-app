@@ -1443,7 +1443,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // null, and the estimate falls back to the books' depreciation (smaller, never invented).
       try {
         const [faRes, dsRes] = await Promise.allSettled([   // allSettled: one failing table never starves the rest
-          supabase.from("fixed_assets").select("id, cost, in_service_date, useful_life_months, status, source_journal_entry_id").eq("company_id", cid).is("deleted_at", null),   // C686
+          supabase.from("fixed_assets").select("id, cost, in_service_date, useful_life_months, status, source_journal_entry_id, vendor, description").eq("company_id", cid).is("deleted_at", null),   // C686; C699 — named in the tax summary
           supabase.from("depreciation_schedule").select("asset_id, period_date, amount, journal_entry_id").eq("company_id", cid).eq("status", "posted"),
         ]);
         const fa = faRes.status === "fulfilled" && !faRes.value.error ? faRes.value.data : null;

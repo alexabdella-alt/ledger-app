@@ -35,7 +35,7 @@ describe("C686 — a deleted or corrected purchase gets no tax deduction", () =>
   });
   it("the app loads only undeleted assets with their purchase and the depreciation entry", () => {
     const src = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
-    expect(src).toMatch(/from\("fixed_assets"\)\.select\("id, cost, in_service_date, useful_life_months, status, source_journal_entry_id"\)\.eq\("company_id", cid\)\.is\("deleted_at", null\)/);
+    expect(src).toMatch(/from\("fixed_assets"\)\.select\("id, cost, in_service_date, useful_life_months, status, source_journal_entry_id, vendor, description"\)\.eq\("company_id", cid\)\.is\("deleted_at", null\)/);
     expect(src).toMatch(/from\("depreciation_schedule"\)\.select\("asset_id, period_date, amount, journal_entry_id"\)/);
   });
 });

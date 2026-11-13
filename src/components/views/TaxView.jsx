@@ -1,11 +1,13 @@
 import React from "react";
-import { fmtMoney, fmtDate } from "../../lib/format";
+import { fmtMoney, fmtDate, todayLocal } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, filedKey, taxYearFor1099, LEGAL_FORMS, taxProfileFrom } from "../../lib/tax";
 import { FILING_STATUSES } from "../../lib/taxGuidance.js";
 import { mileageRatesFor } from "../../lib/mileage.js";
-import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
+import { plan1099, plan1099Copy, plan1099ForYear, tracker1099Rows } from "../../lib/form1099";
+import { taxPacketRows, taxPacketFilename, TAX_PACKET_HEADERS } from "../../lib/taxPacket.js";
+import { downloadCSV } from "../../lib/insights";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
@@ -150,6 +152,35 @@ export default function TaxView() {
 
   const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "18px 20px" };
 
+  // ★ C699 — the preparer's summary. Defaults to the year a preparer is working on: the one the
+  // next 1099 deadline is about (last year from January to the filing season), else this year.
+  // That year's own saved answers are read on click (this screen only loads this year's).
+  const [packetYear, setPacketYear] = React.useState(year1099 < year ? year1099 : year);
+  const [packetBusy, setPacketBusy] = React.useState(false);
+  const downloadPacket = async () => {
+    setPacketBusy(true);
+    try {
+      let rowFiled = packetYear === year ? filed : (filedDeadlinesPrev || {});
+      let paidThatYear = packetYear === year ? estPaid : 0;
+      if (packetYear !== year && currentCompany?.id) {
+        try {
+          const { data } = await supabase.from("tax_settings").select("filed_deadlines, estimated_payments_made")
+            .eq("company_id", currentCompany.id).eq("tax_year", packetYear).maybeSingle();
+          if (data) { rowFiled = data.filed_deadlines || rowFiled; paidThatYear = Number(data.estimated_payments_made) || 0; }
+        } catch {}
+      }
+      const p = taxProfileFrom(rowFiled, packetYear === year ? (filedDeadlinesPrev || {}) : filed);
+      const opts = { chart: CHART_OF_ACCOUNTS || [], legalForm, assets: taxAssets || null, ...p };
+      const e = taxEstimate(invoices, packetYear, paidThatYear, opts);
+      const d = deductionBreakdown(invoices, packetYear, getAccountByRole, opts);
+      const f99 = tracker1099Rows({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: packetYear, bankAccounts: bankAccounts || [] });
+      const rows = taxPacketRows({ year: packetYear, companyName: currentCompany?.name || "", legalForm, profile: p, est: e, deductions: d,
+        assets: (taxAssets && taxAssets.assets) || [], estPaid: paidThatYear, form1099: f99, preparedOn: fmtDate(todayLocal()) });
+      const ok = downloadCSV(taxPacketFilename(currentCompany?.name, packetYear), TAX_PACKET_HEADERS, rows);
+      showNotification && showNotification(ok === false ? "The download didn't start — try again." : `Your ${packetYear} tax summary is downloading.`, ok === false ? "error" : "success");
+    } finally { setPacketBusy(false); }
+  };
+
   const toggleFiled = key => save({ ...taxState, filed: { ...filed, [key]: !filed[key] } });
 
   return (
@@ -158,6 +189,22 @@ export default function TaxView() {
         <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>TAX COMPLIANCE</div>
         <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Taxes</h1>
         <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Your estimated tax picture, deadlines, and deductions — all from your books.</div>
+      </div>
+
+      {/* ── ★ C699 — ONE FILE FOR THE TAX PREPARER ── */}
+      <div data-tax-packet style={{ ...card, marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>For your tax preparer</div>
+          <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 3 }}>One spreadsheet with your income, spending by tax-form line, miles, home office, equipment, estimated payments and 1099s — the things a preparer asks for.</div>
+        </div>
+        <select value={packetYear} onChange={e => setPacketYear(Number(e.target.value))}
+          style={{ background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)" }}>
+          {[year - 1, year].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <button onClick={downloadPacket} disabled={packetBusy}
+          style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: packetBusy ? "wait" : "pointer" }}>
+          {packetBusy ? "Preparing…" : "Download"}
+        </button>
       </div>
 
       {/* ── TAX PICTURE ── */}
