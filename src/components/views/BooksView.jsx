@@ -9,7 +9,7 @@ import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, settledBases, entryBaseOf } from "../../lib/gl";
 import { openPayablesGL, openReceivablesGL } from "../../lib/reports";   // C706
 import { flaggedForReview } from "../../lib/confidenceFlag";
-import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, todayLocal, readableDates } from "../../lib/format";
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { planBulkRemoval } from "../../lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "../../lib/ownerTrust";
@@ -350,7 +350,7 @@ export default function BooksView({ embedded = false } = {}) {
             ) : rows.map((inv,idx)=>{
               // What this row actually IS — drives sign/color, account shown, and the action.
               const cls = classifyTxn(inv, { apCode, arCode, settled });
-              const party = displayParty(inv, invoices);   // C539 — a settlement's own `vendor` is the word "Payment"
+              const party = readableDates(displayParty(inv, invoices));   // C539 — a settlement's own `vendor` is the word "Payment"; C707 — dates as dates
               const reversedInfo = reversalFor(revIdx, inv);   // O8 — original was reversed
               return (
                 <React.Fragment key={inv.id}>
@@ -363,7 +363,7 @@ export default function BooksView({ embedded = false } = {}) {
                     </td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
                     <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span></div></td>
-                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{inv.description||"—"}</td>
+                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{readableDates(inv.description)||"—"}</td>
                     <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cockpit && <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>}{cockpit ? cls.account.name : ownerAccountName(cls.account.name)}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
                     <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>
                     <td style={{ padding:"0 16px" }}>{statusBadge(inv)}</td>

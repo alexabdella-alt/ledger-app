@@ -145,7 +145,14 @@ function plural(n, word, pluralWord = null) {
   const k = Number(n) || 0;
   return `${k} ${k === 1 ? word : (pluralWord || `${word}s`)}`;
 }
-export { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, monthsLeftYMD, plural };
+// ★ C707 — ISO dates INSIDE free text ("Opening balances as of 2026-01-01", "Gusto Payroll —
+// 2026-03-14 – 2026-03-27"), as a person reads them. Descriptions the app wrote keep their stored
+// form; only what's shown changes.
+function readableDates(text) {
+  if (text == null) return text;
+  return String(text).replace(/\b(20\d\d-\d\d-\d\d)\b/g, (d) => fmtDate(d));
+}
+export { readableDates, initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, fmtApprox, termsToDays, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, monthsLeftYMD, plural };
 
 // ── HOW LONG AGO, IN WORDS A PERSON USES ─────────────────────────────────────
 // The Review screen rendered raw minutes, so a four-day-old document read

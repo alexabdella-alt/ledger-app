@@ -150,7 +150,7 @@ export default function ReportsView() {
             const projectRows = Object.values(byProject).sort((a,b)=>b.expenses-a.expenses);
 
             const fmt = fmtSignedMoney;   // C494 — the totals on this screen are leg-signed (C489–C491); a net credit must show its sign
-            const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${reportDateFrom} → ${reportDateTo}` : "Custom Range" };
+            const rangeLabels = { all:"All Time", thismonth:"This Month", lastmonth:"Last Month", q1:"Q1", q2:"Q2", q3:"Q3", q4:"Q4", ytd:"Year to Date", custom: reportDateFrom && reportDateTo ? `${fmtDate(reportDateFrom)} → ${fmtDate(reportDateTo)}` : "Custom Range" };   // C707 — dates as dates
             // Friendly report name for the transaction detail back button.
             const reportName = { pl:"Income Statement", balance:"Balance Sheet", trial:"All account balances", araging:"Money owed to you", apaging:"Bills to pay", kpis:"KPIs", vendor:"By Vendor", gl:"By Category", cashflow:"Cash Flow", project:"By Project" }[reportType] || "Reports";
             // Back from a drilled transaction returns to the line-item LIST it came from (the
@@ -466,7 +466,7 @@ export default function ReportsView() {
                                 ))
                               }
                               <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:8, borderTop:"1px solid var(--sc-border)" }}>
-                                <span style={{ fontSize:13, fontWeight:600 }}>Total Operating Expenses</span>
+                                <span style={{ fontSize:13, fontWeight:600 }}>{ownerSeat ? "Total running costs" : "Total Operating Expenses"}</span>
                                 <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, color:"var(--sc-error)" }}>({fmt(opex)})</span>
                               </div>
                             </div>
@@ -728,7 +728,7 @@ export default function ReportsView() {
                                 onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":"var(--sc-bg)"}
                                 style={{ borderTop:"1px solid var(--sc-border)", background:i%2===0?"transparent":"var(--sc-bg)", cursor:"pointer" }}>
                                 <td style={{ padding:"13px 20px" }}>
-                                  <span style={{ background:"var(--sc-border)", padding:"3px 10px", borderRadius:20, fontSize:12, color:"var(--sc-gold)" }}>{ownerSeat ? row.name : `${row.code} · ${row.name}`}</span>
+                                  <span style={{ background:"var(--sc-border)", padding:"3px 10px", borderRadius:20, fontSize:12, color:"var(--sc-gold)" }}>{ownerSeat ? ownerAccountName(row.name) : `${row.code} · ${row.name}`}</span>
                                 </td>
                                 <td style={{ padding:"13px 20px", fontSize:13, color:"var(--sc-text-2)" }}>{row.count}</td>
                                 <td style={{ padding:"13px 20px", fontSize:13, fontFamily:"'DM Mono', monospace", color:"var(--sc-error)" }}>({fmt(row.total)})</td>
