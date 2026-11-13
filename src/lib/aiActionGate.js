@@ -132,6 +132,16 @@ export function resolveActionTargets(action, { invoices = [], contracts = [] } =
     }
     case "reverse_entry":
       return byId(a.invoice_id);
+    // C676 — the bill being paid: by its id, or by vendor (and amount). Only bills still OPEN —
+    // recording a second payment against a paid bill would take the money out twice.
+    case "record_payment": {
+      const open = (rows) => rows.filter((i) => i.payment_status !== "paid" && i.payment_status !== "collected" && !i.reversed_by);
+      if (a.invoice_id != null) return open(byId(a.invoice_id));
+      if (a.vendor) return open(liveInv.filter((i) =>
+        norm(i.vendor).includes(norm(a.vendor)) &&
+        (a.amount == null || Math.abs((Number(i.amount) || 0) - parseFloat(a.amount)) < 1)));
+      return [];
+    }
     case "delete_contract": {
       if (a.contract_id != null) return contracts.filter((c) => String(c.id) === String(a.contract_id));
       if (a.counterparty) return contracts.filter((c) => norm(c.counterparty).includes(norm(a.counterparty)));
@@ -156,11 +166,22 @@ const VERB = {
   set_contact_rule: "change the rule for",
   update_contact: "change the details for",
   pause_recurring: "pause",
+  record_payment: "record a payment for",   // C676
 };
 
 // Build the confirmation proposal for a destructive action: a plain-English title,
 // the affected line items (with vendor/amount/date), and a count. This is what the
 // human approves — resolved from the CURRENT data so it shows exactly what will run.
+// C676 — what the confirm card says for "mark these bills paid". Read from the action the model
+// proposed; the card lists the bills it resolved to, so the owner sees exactly what will be recorded.
+export function recordPaymentDescription(a = {}, n = 0) {
+  if (!n) return "No open bill matched — nothing would be recorded.";
+  const from = /^(own|my own|personal|myself)/i.test(String(a.paid_from || "")) ? " with your own money (counted as money you put in)"
+    : a.paid_from ? ` from ${a.paid_from}` : "";
+  const when = a.paid_date ? ` on ${a.paid_date}` : "";
+  return `Record ${n} bill${n === 1 ? "" : "s"} as paid${from}${when}. Nothing is sent — this only records a payment you made.`;
+}
+
 export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [] } = {}) {
   const a = action || {};
   const verb = VERB[a.type] || "change";
@@ -198,6 +219,7 @@ export function describeDestructiveAction(action, { invoices = [], contracts = [
   else if (a.type === "delete_invoice") description = `Delete ${n} transaction${n === 1 ? "" : "s"} (recoverable from the audit trail).`;
   else if (a.type === "void_invoice") description = `Undo ${n} transaction${n === 1 ? "" : "s"} (kept on the audit trail).`;
   else if (a.type === "reverse_entry") description = `Undo ${n} transaction${n === 1 ? "" : "s"} by posting an offsetting entry.`;
+  else if (a.type === "record_payment") description = recordPaymentDescription(a, n);   // C676
   else description = `${verb} ${n} transaction${n === 1 ? "" : "s"}.`;
 
   return { type: a.type, verb, count: n, targets, description };

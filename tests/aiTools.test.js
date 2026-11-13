@@ -26,10 +26,10 @@ const ctx = {
 };
 
 describe("AI tool definitions", () => {
-  it("exposes all 8 tools with valid Anthropic schemas", () => {
+  it("exposes all 9 tools with valid Anthropic schemas (C676 — get_bills_to_pay)", () => {
     const names = AI_TOOLS.map(t => t.name).sort();
     expect(names).toEqual([
-      "get_anomalies", "get_category_totals", "get_financial_summary", "get_overdue_invoices",
+      "get_anomalies", "get_bills_to_pay", "get_category_totals", "get_financial_summary", "get_overdue_invoices",
       "get_recurring_transactions", "get_tax_summary", "get_vendor_summary", "search_transactions",
     ]);
     for (const t of AI_TOOLS) {

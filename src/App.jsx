@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { holdNotProfitAndLoss, isCardAccount } from "./lib/bankNotPL";
-import { paidFromCopy } from "./lib/payFrom";
+import { paidFromCopy, payFromOptions, pickPayFrom } from "./lib/payFrom";
 import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
@@ -8709,6 +8709,20 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         if (voided < toVoid.length) failures.push(`void ${toVoid.length - voided} entr${(toVoid.length-voided)===1?"y":"ies"} for ${action.vendor}`);
       }
     }
+    // ★ C676 — the assistant records a bill payment the owner says they made (confirmed first,
+    // like every action that changes posted figures). The same path as the payment forms: one
+    // payment entry per bill, from the account the owner named (lib/payFrom.js, C674).
+    if (action.type === "record_payment") {
+      const bills = resolveActionTargets(action, { invoices, contracts });
+      if (!bills.length) summary.push(`Couldn't find an open bill${action.vendor ? ` for ${action.vendor}` : ""} — nothing was recorded`);
+      else {
+        const opts = payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" });
+        const from = pickPayFrom(opts, action.paid_from);
+        const n = await markPaid(bills.map(b => b.id), action.method || "ach", { date: action.paid_date || undefined, payFrom: from });
+        if (n) summary.push(`Recorded ${n} bill${n === 1 ? "" : "s"} as paid — ${paidFromCopy(from)}`);
+        if ((n || 0) < bills.length) failures.push(`record ${bills.length - (n || 0)} payment${bills.length - (n || 0) === 1 ? "" : "s"}`);
+      }
+    }
     if (action.type === "reverse_entry") {
       const toReverse = resolveActionTargets(action, { invoices, contracts })[0];   // C519
       if (toReverse) {
@@ -8798,6 +8812,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         userMessage: msg, invoices, rules, projects: customProjects, chatHistory: historyForAI, memory, contacts,
         chartOfAccounts: CHART_OF_ACCOUNTS, clientProfile: clientProfileRef.current, cashBalance: glCash, anomalies,
         cardsOwed: cardBalanceOwed(invoices, bankAccounts),   // C672 — what's owed on cards, now that it isn't hidden in cash
+        payFromLabels: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }).map(o => o.label),   // C676
         businessType: companySettings.businessType,
         legalForm: companySettings.legalForm || null,   // C559 — the tax tool names this company's deadlines
         // Function-calling: give the AI direct, RLS-scoped database access via tools.

@@ -73,13 +73,18 @@ const DATA_DIRECTIVE =
 
 // ── Server-owned sandbox statement (mirror of aiCapabilities.AI_SANDBOX_STATEMENT)
 const AI_SANDBOX_STATEMENT =
-`YOU ARE SANDBOXED. You can ONLY execute actions from this exact list: recode, retag_project, add_account, add_rule, delete_rule, delete_invoice (soft-delete, recoverable), void_invoice, reverse_entry, delete_contract, add_recurring, pause_recurring, add_contact, update_contact, set_contact_rule, render_chart, export_csv, render_summary, navigate, none. Any other action you suggest will be REFUSED and logged. You cannot modify the app's code or settings, you cannot access any other company's data, you cannot send emails or any external communication, you cannot process payments or move money, you cannot change database structure or security rules, you cannot delete or void more than ${AI_BULK_LIMIT} items in one request, and you cannot modify a reconciled/locked period without the user explicitly unlocking it first. If a user asks for something outside these limits, say plainly that you can't do it and explain what you can do instead.`;
+`YOU ARE SANDBOXED. You can ONLY execute actions from this exact list: recode, retag_project, add_account, add_rule, delete_rule, delete_invoice (soft-delete, recoverable), void_invoice, reverse_entry, delete_contract, add_recurring, pause_recurring, add_contact, update_contact, set_contact_rule, record_payment (record a bill as paid — only after the owner says they paid it; it never sends money), render_chart, export_csv, render_summary, navigate, none. Any other action you suggest will be REFUSED and logged. You cannot modify the app's code or settings, you cannot access any other company's data, you cannot send emails or any external communication, you cannot process payments or move money, you cannot change database structure or security rules, you cannot delete or void more than ${AI_BULK_LIMIT} items in one request, and you cannot modify a reconciled/locked period without the user explicitly unlocking it first. If a user asks for something outside these limits, say plainly that you can't do it and explain what you can do instead.`;
 
 // ── Server-owned tool definitions (mirror of aiTools.AI_TOOLS). The client
 //    EXECUTES these against its RLS-scoped Supabase connection; the server owns
 //    WHAT tools exist so a client can't inject its own tool schema.
 const PERIOD_ENUM = ["this_month", "last_month", "this_year", "last_year", "all_time"];
 const AI_TOOLS = [
+  {
+    name: "get_bills_to_pay",
+    description: "Bills still to pay, soonest due first (overdue ones first), with each bill's invoice_id for record_payment, and the accounts a payment can come from (paid_from_choices). Use for 'what do I owe', 'what's due', 'pay my bills'.",
+    input_schema: { type: "object", properties: { within_days: { type: "number", description: "Include bills due within this many days (default 30); bills already overdue are always included." } } },
+  },
   {
     name: "search_transactions",
     description: "Search journal entries / transactions by vendor, GL code, date range, amount range, or payment status. Use when the user asks about specific transactions, a vendor, or a date range. Returns matching entries (most recent first). The listed `transactions` are capped (default 50, max 200) but `total_count` and `total_amount` always reflect ALL matches. If `truncated` is true, you MUST tell the user the list is partial (e.g. 'showing the 200 most recent of N') and that the total covers everything — never present a truncated list as the complete set.",
@@ -177,7 +182,7 @@ function chatBrainSystem(useTools) {
     ? `Get these by calling the database tools before you answer — never guess.`
     : `The live figures are in the DATA section below — use them.`;
   const toolsInstruction = useTools
-    ? `DATABASE TOOLS — you can query this company's live database directly. Tools available: search_transactions, get_category_totals, get_vendor_summary, get_financial_summary, get_overdue_invoices, get_anomalies, get_tax_summary, get_recurring_transactions. ALWAYS call the relevant tool(s) to get exact, complete, current data BEFORE answering any financial question — never guess or estimate from memory or a sample. The tools return COMPLETE data regardless of how many transactions exist. Call as many as you need, then give your final answer in the JSON format described below.\n\n`
+    ? `DATABASE TOOLS — you can query this company's live database directly. Tools available: get_bills_to_pay, search_transactions, get_category_totals, get_vendor_summary, get_financial_summary, get_overdue_invoices, get_anomalies, get_tax_summary, get_recurring_transactions. ALWAYS call the relevant tool(s) to get exact, complete, current data BEFORE answering any financial question — never guess or estimate from memory or a sample. The tools return COMPLETE data regardless of how many transactions exist. Call as many as you need, then give your final answer in the JSON format described below.\n\n`
     : ``;
   return `You are Shadow — a world-class CFO and bookkeeper rolled into one, working for a busy business owner. You don't just answer questions; you watch their money like the CFO of a company you personally care about. You know this business deeply and you tell the owner the truth, in plain English, with real numbers.
 
@@ -226,6 +231,7 @@ Respond ONLY with a JSON object (no markdown). The "reply" field is the ONLY thi
     // Void: { "type": "void_invoice", "vendor": "Name", "reason": "Why voided" } — keeps for audit trail, marks voided
     // Reverse: { "type": "reverse_entry", "invoice_id": "id", "date": "YYYY-MM-DD" } — creates offsetting reversing entry (GAAP preferred)
     // Contract: { "type": "delete_contract", "counterparty": "Name" } — removes a contract
+    // Bill payment (C676): { "type": "record_payment", "invoice_id": "<from get_bills_to_pay>", "paid_date": "YYYY-MM-DD", "paid_from": "<one of paid_from_choices, or 'my own money'>", "method": "ach|check|card|cash|zelle|other" } — or "vendor" + "amount" instead of invoice_id. ONLY after the owner says they PAID it. You cannot send money; this records a payment they made. The owner confirms on a card before anything is recorded.
     // Contact: { "type": "add_contact", "contact_type": "vendor|customer", "name": "Name", "gl_code": "XXXX", "gl_name": "Name", "payment_terms": "Net 30", "email": "...", "phone": "...", "notes": "...", "tags": [], "min_expected": 0, "max_expected": 0 }
     // Contact: { "type": "update_contact", "name": "Name", "updates": { "email": "...", "phone": "...", "payment_terms": "...", "notes": "...", "min_expected": 0, "max_expected": 0, "tags": [] } }
     // Contact: { "type": "set_contact_rule", "name": "Name", "gl_code": "XXXX", "gl_name": "Name", "project": "optional" }
@@ -280,6 +286,7 @@ Common questions → answer:
   • "How do I add my accountant?" → Settings → Team.
   • "Where are my taxes / deadlines?" → Settings → Taxes.
   • "Match my bank statement" / "reconcile" → just upload the statement on Home; matching happens automatically and anything that needs a person shows up as a question.
+  • When the owner asks to pay their bills, what they owe, or what's due → call get_bills_to_pay and list them soonest first (overdue first) with amount and due date, then the total. You cannot send money — the owner pays through their bank, card or the vendor's site as usual. When they say a bill IS paid, offer to record it (record_payment) and ask where it came from if it isn't obvious (one of paid_from_choices, or their own money for a personal card or cash). A bill paid from the business bank account is also matched automatically once that bank statement is uploaded — say so, so they know recording it is optional then. (C676)
   • "Why is it asking about my card payment / transfer / loan / money I put in?" → paying off a credit card, moving money between your own accounts, money you take out or put in, and loans are not income or spending, so the app never records them as either on its own. It asks once, and one tap records it the right way: a card payoff pays down what's owed on the card; a transfer moves money between your accounts; money you take out or put in goes to your owner accounts; a loan payment asks how much was interest (only the interest is spending). Never tell the owner to record these as an expense or a sale. (C655)
 - Only navigate when the owner is trying to find or go somewhere; you can pair it with an answer. A few screens belong to the accountant's review seat (Review, Bank Import, Reconcile, Matching, Payroll); if an owner asks for one, the app sends them Home and says so — tell them their accountant handles that, and what they can do instead.
 

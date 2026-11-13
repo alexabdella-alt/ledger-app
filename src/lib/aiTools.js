@@ -242,6 +242,26 @@ async function getRecurringTransactions(_input, ctx) {
   return { count: list.length, recurring: list };
 }
 
+// ★ C676 — THE BILLS STILL TO PAY, soonest first, with the id the assistant needs to record a
+// payment (record_payment). Open by the same GL-truth list Home and Bills to pay use.
+async function getBillsToPay(input, ctx) {
+  const led = await ctx.getLedger();
+  const apCode = ctx.getAccountByRole?.("accounts_payable")?.code || null;
+  const today = todayLocal();
+  const within = Number(input.within_days) > 0 ? Number(input.within_days) : 30;
+  const limit = addDaysToYmd(today, within);
+  const open = openPayablesGL(led, apCode)
+    .filter((i) => !i.due_date || i.due_date <= limit)
+    .sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
+  const bills = open.slice(0, 25).map((i) => ({
+    invoice_id: String(i.db_entry_id || i.id), vendor: i.vendor, amount: i.amount, amount_display: money(i.amount),
+    due_date: i.due_date || null, status: !i.due_date ? "no due date" : i.due_date < today ? "overdue" : i.due_date === today ? "due today" : "due soon",
+  }));
+  const total = open.reduce((t, i) => t + (Number(i.amount) || 0), 0);
+  return { count: open.length, total, total_display: money(total), bills, paid_from_choices: ctx.payFromLabels || [] };
+}
+const addDaysToYmd = (ymd, n) => { const [y, m, d] = String(ymd).split("-").map(Number); const t = new Date(y, m - 1, d + n); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
+
 export async function executeAITool(name, input = {}, ctx) {
   switch (name) {
     case "search_transactions":      return searchTransactions(input, ctx);
@@ -252,6 +272,7 @@ export async function executeAITool(name, input = {}, ctx) {
     case "get_anomalies":            return getAnomalies(input, ctx);
     case "get_tax_summary":          return getTaxSummary(input, ctx);
     case "get_recurring_transactions": return getRecurringTransactions(input, ctx);
+    case "get_bills_to_pay":         return getBillsToPay(input, ctx);   // C676
     default:                         return { error: `Unknown tool: ${name}` };
   }
 }
@@ -260,6 +281,11 @@ export async function executeAITool(name, input = {}, ctx) {
 const PERIOD_ENUM = ["this_month", "last_month", "this_year", "last_year", "all_time"];
 
 export const AI_TOOLS = [
+  {
+    name: "get_bills_to_pay",
+    description: "Bills still to pay, soonest due first (overdue ones first), with each bill's invoice_id for record_payment, and the accounts a payment can come from (paid_from_choices). Use for 'what do I owe', 'what's due', 'pay my bills'.",
+    input_schema: { type: "object", properties: { within_days: { type: "number", description: "Include bills due within this many days (default 30); bills already overdue are always included." } } },
+  },
   {
     name: "search_transactions",
     description: "Search journal entries / transactions by vendor, GL code, date range, amount range, or payment status. Use when the user asks about specific transactions, a vendor, or a date range. Returns matching entries (most recent first). The listed `transactions` are capped (default 50, max 200) but `total_count` and `total_amount` always reflect ALL matches. If `truncated` is true, you MUST tell the user the list is partial (e.g. 'showing the 200 most recent of N') and that the total covers everything — never present a truncated list as the complete set.",

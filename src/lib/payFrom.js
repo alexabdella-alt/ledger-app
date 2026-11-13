@@ -34,6 +34,16 @@ export function payFromByKey(options = [], key = null) {
   return (options || []).find((o) => o.key === key) || (options || [])[0] || null;
 }
 
+// C676 — the account the owner NAMED in words ("my own money", "the Amex", "savings"), for the
+// assistant. Own money by its words; otherwise the option whose label contains what was said;
+// otherwise the main bank (the first) — never a guess at a different account.
+export function pickPayFrom(options = [], said = "") {
+  const t = String(said || "").trim().toLowerCase();
+  if (!t) return (options || [])[0] || null;
+  if (/^(own|my own|personal|myself|out of pocket|cash)/.test(t)) return (options || []).find((o) => o.key === OWN_MONEY) || (options || [])[0] || null;
+  return (options || []).find((o) => o.label.toLowerCase().includes(t) || (o.name || "").toLowerCase().includes(t)) || (options || [])[0] || null;
+}
+
 // What the owner is told — from the option chosen.
 export function paidFromCopy(option) {
   if (!option) return "";

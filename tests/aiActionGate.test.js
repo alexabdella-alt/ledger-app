@@ -17,10 +17,11 @@ import {
 //   • the confirm proposal shows the FULL affected list (no confirm-one-do-many)
 // ════════════════════════════════════════════════════════════════════════════
 
-const DESTRUCTIVE = ["recode", "retag_project", "delete_invoice", "void_invoice", "reverse_entry", "delete_contract", "delete_rule"];
+// C676 — record_payment joins: it posts a payment entry, so the owner confirms it first.
+const DESTRUCTIVE = ["recode", "retag_project", "delete_invoice", "void_invoice", "reverse_entry", "delete_contract", "delete_rule", "record_payment"];
 
 describe("classification is complete and correct", () => {
-  it("the destructive set is exactly the 7 mandated actions", () => {
+  it("the destructive set is exactly the 8 mandated actions", () => {
     expect([...AI_DESTRUCTIVE_ACTIONS].sort()).toEqual([...DESTRUCTIVE].sort());
   });
   it("every allowed action is classified; no destructive action is ever 'safe'", () => {

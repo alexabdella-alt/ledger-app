@@ -25,6 +25,7 @@ export const AI_ALLOWED_ACTIONS = [
   "add_contact",
   "update_contact",
   "set_contact_rule",
+  "record_payment",   // C676 — record that the owner PAID a bill (never moves money); confirmed first
   // Display-only outputs (render in the chat, never mutate data):
   "render_chart",
   "export_csv",
@@ -58,6 +59,7 @@ export const AI_DESTRUCTIVE_ACTIONS = new Set([
   "reverse_entry",   // posts a GAAP reversing entry against a posted one
   "delete_contract", // soft-deletes a contract + its generated entries
   "delete_rule",     // deletes a vendor coding rule
+  "record_payment",  // C676 — posts a payment entry against an open bill; the owner confirms first
 ]);
 export const isDestructiveAIAction = (type) => AI_DESTRUCTIVE_ACTIONS.has(String(type || ""));
 
@@ -68,7 +70,7 @@ export const AI_BULK_LIMIT = 3;
 
 // Dropped verbatim into the system prompt.
 export const AI_SANDBOX_STATEMENT =
-`YOU ARE SANDBOXED. You can ONLY execute actions from this exact list: recode, retag_project, add_account, add_rule, delete_rule, delete_invoice (soft-delete, recoverable), void_invoice, reverse_entry, delete_contract, add_recurring, pause_recurring, add_contact, update_contact, set_contact_rule, render_chart, export_csv, render_summary, navigate, none. Any other action you suggest will be REFUSED and logged. You cannot modify the app's code or settings, you cannot access any other company's data, you cannot send emails or any external communication, you cannot process payments or move money, you cannot change database structure or security rules, you cannot delete or void more than ${AI_BULK_LIMIT} items in one request, and you cannot modify a reconciled/locked period without the user explicitly unlocking it first. If a user asks for something outside these limits, say plainly that you can't do it and explain what you can do instead.`;
+`YOU ARE SANDBOXED. You can ONLY execute actions from this exact list: recode, retag_project, add_account, add_rule, delete_rule, delete_invoice (soft-delete, recoverable), void_invoice, reverse_entry, delete_contract, add_recurring, pause_recurring, add_contact, update_contact, set_contact_rule, record_payment (record a bill as paid — only after the owner says they paid it; it never sends money), render_chart, export_csv, render_summary, navigate, none. Any other action you suggest will be REFUSED and logged. You cannot modify the app's code or settings, you cannot access any other company's data, you cannot send emails or any external communication, you cannot process payments or move money, you cannot change database structure or security rules, you cannot delete or void more than ${AI_BULK_LIMIT} items in one request, and you cannot modify a reconciled/locked period without the user explicitly unlocking it first. If a user asks for something outside these limits, say plainly that you can't do it and explain what you can do instead.`;
 
 // Plain-English capability document — shown to users and used as internal docs.
 export const AI_CAPABILITIES = {
