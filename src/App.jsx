@@ -72,7 +72,7 @@ import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markA
 import { ruleForVendor } from "./lib/vendorRules";   // C563 — one rule matcher
 import { splitCsvForParse, mergeParsedPieces, readInHalves } from "./lib/statementChunks";   // C562
 import { buildStatementRow, buildStatementLineRows, statementPeriod, filterLiveExceptions } from "./lib/bankStatements";
-import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, looksLikeCardStatementFile, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, pendingStatementStashes, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
+import { statementAdvanceStatus, planStatementReupload, statementReadyToReconcile, statementCardState, statementExceptionTarget, reconciliationCoversStatement, allLinesSettled, READY_TO_RECONCILE_COPY, OPEN_RECONCILE_LABEL, STATEMENT_COMPLETED_AUDIT, autoBindAccount, looksLikeCardStatementFile, looksLikeCardStatementContent, shouldAutoCompleteReconciliation, intakeAdvanceFromLines, dropZoneOutcomeCopy, buildStashDetail, pendingStatementStashes, AUTO_RECONCILED_AUDIT, autoReconciledAuditDetail } from "./lib/statementLifecycle";
 import { fileSha256Hex } from "./lib/contentHash";
 import { bookingToastCopy, statementExceptionCopy, autoResolvableIntake, statementSummaryCopy, bankImportToastCopy } from "./lib/workbench";
 import { buildPaymentEntry } from "./lib/payments";
@@ -5558,7 +5558,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Parse, record, match and reconcile a statement against the account it belongs to, and
   // write what actually happened back onto its upload tile. Called with the only account when
   // there is one, and with the account the owner picked when there are several.
-  const fileDroppedStatement = async (item, file, account) => {
+  const fileDroppedStatement = async (item, file, account, { accountConfirmed = false } = {}) => {
     // C198·2b — the tile said "Done" beside the stash sentence while the pipeline
     // was still booking, because this branch stamped 'done' BEFORE awaiting and
     // nothing wrote the result back. Order it honestly: PROCESSING first…
@@ -5567,7 +5567,25 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // Same intake row, carried through — one arrival, one row. handleBankFile
     // advances it to RECORDED (a4) once every line lands in the books.
     try {
-      const outcome = await handleBankFile(file, account, { intakeId: item.intake_id });
+      const outcome = await handleBankFile(file, account, { intakeId: item.intake_id, accountConfirmed });
+      // C709 — it read like a card statement: ask on Home instead of booking it to the bank
+      if (outcome && outcome.cardSuspect) {
+        // stored and held FIRST, like every other waiting statement (C588), so a reload or an
+        // unanswered question loses nothing — the held row brings the question back
+        let stashDocId = null;
+        try {
+          const base64 = await fileToBase64(file);
+          const mediaType = file?.type || (/\.pdf$/i.test(file?.name || "") ? "application/pdf" : "text/csv");
+          const stored = await storeDocument(file.name, base64, mediaType, "bank_statement", null, ["bank_statement"], null, file);
+          stashDocId = (typeof stored === "string" && /^[0-9a-f-]{16,}$/i.test(stored)) ? stored : null;
+        } catch (e) { console.warn("[stash] document store skipped:", e?.message || e); }
+        markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: buildStashDetail({ fileName: file?.name }), documentId: stashDocId });
+        statementChoiceFilesRef.current[item.id] = file;
+        setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"choose", cardHint:true, accounts:[{ id: account.id, label: `It's from ${account.name || "my bank account"}` }] }} : q));
+        logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"bank_statement", result:{ held:"card_suspect" } });
+        showNotification("That statement looks like it's from a credit card — one question about it is at the top of Home.");
+        return;
+      }
       // …and only NOW is it done — stamped with what actually happened, so the queue
       // line renders the pipeline's own truth instead of the stash copy it replaced.
       setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"bank_statement", result:{ routed:true, to:"pipeline", ...(outcome || { ran:false }) }} : q));
@@ -5593,7 +5611,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     delete statementChoiceFilesRef.current[itemId];        // one answer, one run
     setPendingImportFile(prev => (prev && prev.file === file ? null : prev));
     logAudit("statement_account_chosen", `Chose ${account.name || "an account"} for ${file.name}`, null, { bank_account_id: String(account.id), file: file.name });
-    await fileDroppedStatement(item, file, account);
+    await fileDroppedStatement(item, file, account, { accountConfirmed: true });   // C709 — the owner said which account
     return { ok: true };
   };
 
@@ -5611,7 +5629,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const got = await fetchStoredFile({ supabase, documentId: row.document_id });
       if (!got.ok || !got.file) { showNotification("We couldn't open the stored copy of that statement — drop it on Home again. Nothing was changed.", "error"); return { ok: false }; }
       logAudit("statement_account_chosen", `Chose ${account.name || "an account"} for ${row.filename || got.file.name || "a statement"}`, null, { bank_account_id: String(account.id), intake_id: String(row.id), from: "held" });
-      await handleBankFile(got.file, account, { intakeId: row.id });
+      await handleBankFile(got.file, account, { intakeId: row.id, accountConfirmed: true });   // C709 — the owner chose the account
       return { ok: true };
     } catch (e) {
       console.error("[held statement] filing failed:", e?.message || e);
@@ -7252,7 +7270,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     return { ...parsed, rawTxns, categorized: mergeCategorized(rawTxns, categorized) };
   };
 
-  const handleBankFile = async (file, account = null, { intakeId: callerIntakeId = null } = {}) => {
+  const handleBankFile = async (file, account = null, { intakeId: callerIntakeId = null, accountConfirmed = false } = {}) => {
     if (!file) return;
     // C459 — the account must be a STORED one. Bank Import's picker defaults to
     // `bankAccounts[0]`, which is the reset placeholder ({ id: "default" }) until the
@@ -7295,6 +7313,14 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
       // Now batch-categorize all transactions with GL coding + vendor extraction
       if (rawTxns.length === 0) { markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: "no transactions found — held for review" }); showNotification("No transactions found in file.", "error"); setBankProcessing(false); return; }
+      // ★ C709 — a statement dropped on Home and auto-filed to a BANK account that reads like a
+      // card statement stops here, before anything is saved or booked, and Home asks. Not when the
+      // owner already answered (accountConfirmed), and not on Bank Import, where they chose.
+      if (callerIntakeId && !accountConfirmed && account && account.type !== "credit_card" && looksLikeCardStatementContent(rawTxns)) {
+        markIntake(bankIntakeId, INTAKE_STATUS.HELD, { detail: "looks like a credit card statement — asked which account" });
+        setBankProcessing(false); setBankStep("upload");
+        return { cardSuspect: true };
+      }
 
       // Apply vendor rules to any matches
       // C651 — a transfer / card payoff / owner draw / loan line is held, not booked (after rules: a rule wins)

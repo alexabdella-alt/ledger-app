@@ -67,7 +67,7 @@ describe("C587 — with more than one account, Home asks which one a statement i
   });
   it("the answer runs the SAME routine a single-account statement does, once", () => {
     expect(app).toMatch(/await fileDroppedStatement\(item, file, soleAccount\);/);
-    expect(app).toMatch(/delete statementChoiceFilesRef\.current\[itemId\];\s*\/\/ one answer, one run[\s\S]{0,400}await fileDroppedStatement\(item, file, account\);/);
+    expect(app).toMatch(/delete statementChoiceFilesRef\.current\[itemId\];\s*\/\/ one answer, one run[\s\S]{0,400}await fileDroppedStatement\(item, file, account, \{ accountConfirmed: true \}\);/);   // C709
     expect(app).toMatch(/if \(!file \|\| !account \|\| !item\) \{ showNotification\("We couldn't find that statement any more/);
     const home = readFileSync("src/components/views/DashboardView.jsx", "utf8");
     expect(home).toMatch(/a\.kind === "statement_account"\) await fileStatementTo\(a\.itemId, a\.accountId\)/);
@@ -117,7 +117,7 @@ describe("C588 — a held statement is asked about again, from the record", () =
     const i = app.indexOf("const fileHeldStatementTo = async (intakeId, accountId) => {");
     const fn = app.slice(i, app.indexOf("const processUploadItem", i));
     expect(fn).toMatch(/fetchStoredFile\(\{ supabase, documentId: row\.document_id \}\)/);
-    expect(fn).toMatch(/await handleBankFile\(got\.file, account, \{ intakeId: row\.id \}\);/);
+    expect(fn).toMatch(/await handleBankFile\(got\.file, account, \{ intakeId: row\.id, accountConfirmed: true \}\);/);   // C709
     expect(fn).toMatch(/if \(heldStatementRuns\.current\.has\(String\(intakeId\)\)\) return/);
     expect(fn).toMatch(/finally \{ heldStatementRuns\.current\.delete\(String\(intakeId\)\); \}/);
     const home = readFileSync("src/components/views/DashboardView.jsx", "utf8");

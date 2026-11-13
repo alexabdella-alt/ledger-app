@@ -277,6 +277,14 @@ const CARD_FILE = /\b(amex|american[ _-]?express|visa|mastercard|master[ _-]?car
 export function looksLikeCardStatementFile(fileName = "") {
   return CARD_FILE.test(String(fileName || "").replace(/[_.-]/g, " "));
 }
+// ★ C709 — AND BY WHAT'S IN IT. The file name is the only signal before reading; after reading,
+// a card statement gives itself away: the payment to the card arrives as "PAYMENT – THANK YOU",
+// and cards charge purchase interest and annual fees. A checking statement shows the same payment
+// as money OUT to the card company, never "thank you".
+const CARD_LINE = /payment\s*[-–—]?\s*thank\s*you|auto\s*-?pay(ment)?\s*[-–—]?\s*thank|interest charge (on|for) purchases|purchase interest charge|annual (membership )?fee|cash advance (fee|interest)|new balance|minimum payment due/i;
+export function looksLikeCardStatementContent(transactions = []) {
+  return (transactions || []).some((t) => t && CARD_LINE.test(`${t.description || ""} ${t.vendor || ""} ${t.memo || ""}`));
+}
 export function autoBindAccount(bankAccounts = []) {
   const usable = (bankAccounts || []).filter((b) => b && typeof b.id === "string" && UUID.test(b.id));
   return usable.length === 1 ? usable[0] : null;
