@@ -24,3 +24,19 @@ describe("★ cash on hand counts what is in the bank", () => {
     expect(app).toMatch(/planInvoiceArrival\(invoice, arrivalLedger, \{\s*\n\s*cashCodes: paymentSourceGlCodes,/);
   });
 });
+
+// C667 — Settings' total of entered balances.
+import { statementBalanceTotals } from "../src/lib/bankAccounts.js";
+import { renderViewHtml, VIEW_CONTEXT } from "./helpers/renderView.jsx";
+import { POPULATED, ACCOUNTS } from "./helpers/populatedFixture.js";
+import SettingsView from "../src/components/views/SettingsView.jsx";
+describe("★ C667 — money in the bank and money owed are added up apart", () => {
+  const banks = [{ id: "K", type: "checking", gl_code: "1000", current_balance: 5000 }, { id: "S", type: "savings", gl_code: "1010", current_balance: 2000 }, { id: "C", type: "credit_card", gl_code: "2200", current_balance: 1240 }];
+  it("the card's balance is owed, not money", () => expect(statementBalanceTotals(banks)).toEqual({ inBank: 7000, owed: 1240 }));
+  it("Settings shows $7,000.00 in the bank and the $1,240.00 owed beside it", () => {
+    const t = renderViewHtml(SettingsView, { ...POPULATED, ...(VIEW_CONTEXT["SettingsView.jsx"] || {}), CHART_OF_ACCOUNTS: ACCOUNTS, bankAccounts: banks, companyDataLoaded: true }).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(t).toMatch(/owed on cards and loans: \$ ?1,240\.00/);
+    expect(t).toMatch(/\$ ?7,000\.00/);
+    expect(t).not.toMatch(/\$ ?8,240\.00/);
+  });
+});

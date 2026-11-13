@@ -30,3 +30,16 @@ export function glCodeForAccountType(type, resolveCode) {
   if (role === "savings") return (resolveCode && (resolveCode("savings") || resolveCode("cash"))) || "1000";
   return (resolveCode && resolveCode(role)) || fallback;
 }
+
+// ★ C667 — Settings added every account's entered balance into one green total, so what was OWED
+// on a credit card or loan counted as money. Money in the bank and money owed are added up apart.
+export function statementBalanceTotals(bankAccounts = []) {
+  let inBank = 0, owed = 0;
+  for (const b of bankAccounts || []) {
+    const v = parseFloat(b && b.current_balance) || 0;
+    const liability = b && (b.type === "credit_card" || b.type === "loan" || /^2\d{3}$/.test(String(b.gl_code || "")));
+    if (liability) owed += v; else inBank += v;
+  }
+  const r = (n) => Math.round(n * 100) / 100;
+  return { inBank: r(inBank), owed: r(owed) };
+}

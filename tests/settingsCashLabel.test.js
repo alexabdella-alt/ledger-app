@@ -7,7 +7,7 @@ describe("C462", () => {
   it("no screen labels the sum of stated bank balances as cash", () => {
     const sv = fs.readFileSync("src/components/views/SettingsView.jsx", "utf8");
     expect(sv).not.toMatch(/Total cash across accounts/);
-    expect(sv).toMatch(/Statement balances you entered, added up/);
+    expect(sv).toMatch(/In your bank accounts, from the balances you entered/);   // C667 — and money owed on cards is no longer in it
     expect(sv).toMatch(/The cash figure on Home comes from your books/);   // C577 — reworded, same claim
   });
 });
