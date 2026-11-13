@@ -16,6 +16,8 @@ import { classifyBankReason } from "../lib/bankMatch";
 import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import { reversalIndex, reversalFor } from "../lib/ledger";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
+import PayFromSelect, { usePayFromOptions } from "./PayFromSelect";
+import { payFromByKey } from "../lib/payFrom";
 import { isDepreciableEntry, repairOfferCopy, validateRepair, DEFAULT_LIFE_YEARS } from "../lib/depreciationRepair";
 
 // Older bank/QBO entries stored the PROVENANCE ("Imported from bank statement") in the
@@ -150,6 +152,8 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   const [payOpen, setPayOpen] = React.useState(false);
   const [payMethod, setPayMethod] = React.useState("ach");
   const [payDate, setPayDate] = React.useState(todayLocal());
+  const [payFromKey, setPayFromKey] = React.useState(null);   // C674
+  const payFromOpts = usePayFromOptions();
   const srcFileRef = React.useRef(null);
 
   React.useEffect(() => { setRecodeOpen(false); setPayOpen(false); setSweepOffer(null); }, [invoiceId]);
@@ -438,7 +442,8 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                 <select value={payMethod} onChange={e => setPayMethod(e.target.value)} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "var(--sc-text)", outline: "none" }}>
                   {METHOD_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
-                <button onClick={() => { markPaid(sel.id, payMethod, { date: payDate }); setPayOpen(false); }} style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Confirm</button>
+                <PayFromSelect value={payFromKey} onChange={setPayFromKey} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", color: "var(--sc-text)", fontSize: 13 }} />
+                <button onClick={() => { markPaid(sel.id, payMethod, { date: payDate, payFrom: payFromByKey(payFromOpts, payFromKey) }); setPayOpen(false); }} style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Confirm</button>
                 <button onClick={() => setPayOpen(false)} style={{ padding: "9px 12px", borderRadius: 8, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
               </>
             ) : (

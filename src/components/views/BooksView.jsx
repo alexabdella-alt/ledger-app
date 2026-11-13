@@ -1,4 +1,6 @@
 import React from "react";
+import PayFromSelect, { usePayFromOptions } from "../PayFromSelect";
+import { payFromByKey } from "../../lib/payFrom";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
@@ -49,6 +51,8 @@ export default function BooksView({ embedded = false } = {}) {
   const [selContract, setSelContract] = React.useState(null);
   const [payRowId, setPayRowId] = React.useState(null);
   const [payMethod, setPayMethod] = React.useState("ach");
+  const [payFromKey, setPayFromKey] = React.useState(null);   // C674
+  const payFromOpts = usePayFromOptions();
   const [payDate, setPayDate] = React.useState(todayLocal());
   const [sort, setSort] = React.useState({ col: null, dir: null }); // col=null → default (Date desc)
 
@@ -363,7 +367,8 @@ export default function BooksView({ embedded = false } = {}) {
                           <select value={payMethod} onChange={e=>setPayMethod(e.target.value)} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"6px 9px", fontSize:12, color:"var(--sc-text)", outline:"none" }}>
                             {methodOpts.map(([v,l])=><option key={v} value={v}>{l}</option>)}
                           </select>
-                          <button onClick={()=>{ markPaid(inv.id, payMethod, { date: payDate }); setPayRowId(null); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Confirm</button>
+                          <PayFromSelect value={payFromKey} onChange={setPayFromKey} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:7, padding:"6px 9px", fontSize:12, color:"var(--sc-text)" }} />
+                          <button onClick={()=>{ markPaid(inv.id, payMethod, { date: payDate, payFrom: payFromByKey(payFromOpts, payFromKey) }); setPayRowId(null); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--sc-success)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Confirm</button>
                           <button onClick={()=>setPayRowId(null)} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer" }}>Cancel</button>
                         </div>
                       </td>

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { holdNotProfitAndLoss, isCardAccount } from "./lib/bankNotPL";
+import { paidFromCopy } from "./lib/payFrom";
 import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
@@ -8541,15 +8542,24 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // through the verified canonical writer above.
   const markPaid = async (invIds, method = "ach", details = {}) => {
     const ids = Array.isArray(invIds) ? invIds : [invIds];
+    // ★ C674 — where the money came from (lib/payFrom.js): a bank account, a card, or the owner's
+    // own money. The owner-contributions account is made the first time it is used.
+    const from = details.payFrom || null;
+    if (from && from.create) {
+      const made = await addCustomAccount({ code: from.code, name: from.name, category: "Equity" });
+      if (made === false) return 0;
+    }
     let okCount = 0;
     for (const id of ids) {
-      const ok = await markBillPaid(id, { paidDate: details.date, method, reference: details.reference, notes: details.notes, side: "ap" });
+      const ok = await markBillPaid(id, { paidDate: details.date, method, reference: details.reference, notes: details.notes, side: "ap",
+        ...(from ? { cashCode: from.code, cashName: from.name } : {}) });
       if (ok) okCount++;
     }
-    
+
     // Reload so the posted GL payment entries (Dr AP / Cr Cash) appear and the AP
     // balance reflects them. One refresh covers the whole batch.
-    if (okCount > 0) { try { await loadAllData(); } catch {} showNotification(`Payment recorded — ${methodPretty(method)} ✓`); } // failures already toasted by markBillPaid
+    if (okCount > 0) { try { await loadAllData(); } catch {} showNotification(from ? `Payment recorded — ${paidFromCopy(from)} ✓` : `Payment recorded — ${methodPretty(method)} ✓`); } // failures already toasted by markBillPaid
+    return okCount;
   };
 
   // ── CHAT HANDLER ────────────────────────────────────────────────────────────

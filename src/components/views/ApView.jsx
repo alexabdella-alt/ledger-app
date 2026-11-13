@@ -1,4 +1,6 @@
 import React from "react";
+import PayFromSelect, { usePayFromOptions } from "../PayFromSelect";
+import { payFromByKey } from "../../lib/payFrom";
 import NextStep from "../NextStep";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
@@ -14,6 +16,8 @@ export default function ApView() {
   const [payFormId, setPayFormId] = React.useState(null);
   const [payDate, setPayDate] = React.useState(todayLocal());
   const [payMethod, setPayMethod] = React.useState("ach");
+  const [payFromKey, setPayFromKey] = React.useState(null);   // C674
+  const payFromOpts = usePayFromOptions();
   const [payRef, setPayRef] = React.useState("");
   const [payNotes, setPayNotes] = React.useState("");
 
@@ -59,7 +63,7 @@ export default function ApView() {
   const vendorSite = (inv) => { const c = contactByName[(inv.vendor||"").toLowerCase()]; return c?.website ? normalizeUrl(c.website) : null; };
 
   const openForm = (inv) => { setPayFormId(inv.id); setPayDate(today); setPayMethod("ach"); setPayRef(""); setPayNotes(""); };
-  const confirmPay = (inv) => { markPaid(inv.id, payMethod, { date: payDate, reference: payRef, notes: payNotes }); setPayFormId(null); };
+  const confirmPay = (inv) => { markPaid(inv.id, payMethod, { date: payDate, reference: payRef, notes: payNotes, payFrom: payFromByKey(payFromOpts, payFromKey) }); setPayFormId(null); };
 
   const Avatar = ({name,size=38}) => <div style={{ width:size,height:size,borderRadius:10,background:vendorColor(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.34,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(name)}</div>;
   const fieldLabel = { fontSize:10, color:"var(--sc-text-2)", letterSpacing:1, marginBottom:5, fontWeight:500 };
@@ -144,6 +148,7 @@ export default function ApView() {
                             </select>
                           </div>
                           <div><div style={fieldLabel}>REFERENCE / CHECK #</div><input value={payRef} onChange={e=>setPayRef(e.target.value)} placeholder="optional" style={fieldInput} /></div>
+                          {payFromOpts.length > 1 && <div style={{ gridColumn:"1 / -1" }}><div style={fieldLabel}>PAID FROM</div><PayFromSelect value={payFromKey} onChange={setPayFromKey} style={fieldInput} /></div>}
                         </div>
                         <div style={{ marginBottom:12 }}><div style={fieldLabel}>NOTES</div><input value={payNotes} onChange={e=>setPayNotes(e.target.value)} placeholder="optional note for the audit trail" style={fieldInput} /></div>
                         <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
