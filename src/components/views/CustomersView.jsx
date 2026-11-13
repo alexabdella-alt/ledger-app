@@ -11,7 +11,7 @@ import LoadFailedNotice from "../LoadFailedNotice";
 import LoadingList from "../LoadingList";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 import { applyAlias } from "../../lib/vendorAlias";
-import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
+import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, isCancelledOrCancelling } from "../../lib/gl";
 import { fmtSignedMoney, fmtDate, todayLocal } from "../../lib/format";
 import VendorAvatar from "../VendorAvatar";
 import { getAuthHeaders } from "../../lib/supabase";
@@ -121,7 +121,9 @@ export default function CustomersView() {
                                 <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)", whiteSpace:"nowrap" }}>{fmtDate(i.date)}</td>
                                 <td style={{ padding:"9px 16px", fontSize:13 }}>{i.description||"—"}</td>
                                 <td style={{ padding:"9px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{categoryLabel(i.gl_code, i.gl_name, { withCode: cockpit })}{i._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {i._lineCount} lines</span>}</td>
-                                <td style={{ padding:"9px 16px", fontSize:11 }}><span style={{ color:collected?"var(--sc-success)":"var(--sc-warning)" }}>{collected?"Collected":"Open"}</span></td>
+                                <td style={{ padding:"9px 16px", fontSize:11 }}>{isCancelledOrCancelling(i)
+                                  ? <span style={{ color:"var(--sc-text-mut)" }}>Removed</span>   /* C717 — a deleted invoice and its correction are not money collected */
+                                  : <span style={{ color:collected?"var(--sc-success)":"var(--sc-warning)" }}>{collected?"Collected":"Open"}</span>}</td>
                                 <td style={{ padding:"9px 16px", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", textAlign:"right" }}>{fmt(owedAmount(i))}</td>
                               </tr>
                             );

@@ -65,7 +65,15 @@ function rateFromStored(ar) {
   const sub = (ar.ar_invoice_lines || []).reduce((s, l) => s + (Number(l.amount) || 0), 0);
   const tax = Number(ar.tax_amount) || 0;
   if (!(sub > 0) || !(tax > 0)) return "";
-  return String(Math.round((tax / sub) * 100 * 10000) / 10000);
+  // ★ C717 — the stored tax is ROUNDED, so tax ÷ lines is only near the rate: 8.25% on $68.26 came
+  // back 8.2479%. The shortest rate (to 0–3 places) that reproduces the stored tax exactly is the
+  // one the person typed; four places only when nothing shorter fits.
+  const raw = (tax / sub) * 100;
+  for (const dp of [0, 1, 2, 3]) {
+    const r = Math.round(raw * 10 ** dp) / 10 ** dp;
+    if (Math.round(sub * r) / 100 === Math.round(tax * 100) / 100) return String(r);
+  }
+  return String(Math.round(raw * 10000) / 10000);
 }
 
 export function sentInvoiceFromRow(ar) {

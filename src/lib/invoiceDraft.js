@@ -8,7 +8,7 @@
 // sales-tax prefill on one complete shape.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { todayLocal } from "./format";
+import { todayLocal, fmtMoney, fmtDate } from "./format";
 
 export function emptyInvoiceLine() {
   return { id: Date.now() + Math.random(), description: "", qty: 1, rate: "", amount: 0 };
@@ -46,8 +46,17 @@ export function draftBase(rawState, fallback) {
 // screen shows beside a DISABLED button (C407's pattern on the sign-off card). The handler
 // keeps them as its own guard, through this one function, so the two cannot disagree.
 // ─────────────────────────────────────────────────────────────────────────────
-export function invoiceSendBlockers(draft = {}, subtotal = 0, sentInvoices = []) {
+export function invoiceSendBlockers(draft = {}, subtotal = 0, sentInvoices = [], { listLoadFailed = false, signedMonth = null, bookedProblem = null } = {}) {
   const out = [];
+  // ★ C717 — what the audit found the send didn't check:
+  // · the earlier invoices didn't load, so the number below was checked against nothing (and the
+  //   next number was computed from nothing: INV-0001 again);
+  // · an issue date in a signed-off month is held by the books, and the invoice was then neither
+  //   saved nor emailed — while the held entry, once rebooked, left a second send to book it again;
+  // · a SENT invoice whose amount or date no longer matches what the books hold.
+  if (listLoadFailed) out.push("Your earlier invoices didn't load, so we can't check this invoice number is unused — reload the page before sending.");
+  if (signedMonth) out.push(`${signedMonth} is signed off — pick an issue date in a month that's still open.`);
+  if (bookedProblem) out.push(bookedProblem);
   if (!String(draft.customer || "").trim()) out.push("Add the customer's name.");
   if (!String(draft.customer_email || "").trim()) out.push("Add the customer's email address.");
   if (!(Number(subtotal) > 0)) out.push("Add at least one line with an amount.");
@@ -64,6 +73,34 @@ export function invoiceSendBlockers(draft = {}, subtotal = 0, sentInvoices = [])
 // C438 — THE AMOUNT OF A SENT INVOICE INCLUDES ITS SALES TAX. The list and the legacy
 // mark-paid path summed line items only, so a $1,299.00 invoice (with $99.00 tax) read as
 // $1,200.00 in the list and, on the path with no ledger entry, was collected for $1,200.00.
+// ★ C717 — WHAT THE BOOKS HOLD FOR A SENT INVOICE: its receivable (tax included), its date and
+// its due date, read from the entry `ledger_id` names. The send compared a new amount with the
+// screen's own copy of the invoice — which "Save draft" had already rewritten — so a changed
+// amount passed, the customer was emailed it, and the books kept the old one. null = the entry
+// isn't in the loaded ledger.
+export function bookedInvoiceFacts(ledger = [], ledgerId, arCode) {
+  if (ledgerId == null || arCode == null) return null;
+  const base = String(ledgerId);
+  const rows = (ledger || []).filter((r) => r && String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base);
+  if (!rows.length) return null;
+  const legs = rows.filter((r) => String(r.id).includes("_") && String(r.gl_code) === String(arCode) && r.debit_credit === "debit");
+  const simple = rows.find((r) => !String(r.id).includes("_") && (String(r.secondary_gl_code) === String(arCode) || String(r.gl_code) === String(arCode)));
+  const total = legs.length ? legs.reduce((s, r) => s + (Number(r.amount) || 0), 0) : simple ? Number(simple.amount) || 0 : null;
+  if (total == null) return null;
+  return { total: Math.round(total * 100) / 100, date: rows[0].date || null, due_date: rows[0].due_date || null };
+}
+// The sentence that refuses a change the books can't follow — or null.
+export function sentInvoiceChangeProblem(draft = {}, total = 0, booked = null) {
+  if (!draft.ledger_id || !booked) return null;
+  const n = draft.invoice_number || "This invoice";
+  const redo = "To change it, open the invoice's entry in Transactions, press Delete, and send a new invoice.";
+  if (Math.abs((Number(total) || 0) - booked.total) >= 0.005) return `${n} was already sent for ${fmtMoney(booked.total)}, and that's what your books hold. ${redo}`;
+  if (draft.issue_date && booked.date && String(draft.issue_date).slice(0, 10) !== String(booked.date).slice(0, 10)) return `${n} was already sent dated ${fmtDate(booked.date)}, and that's the date your books hold. ${redo}`;
+  return null;
+}
+// C717 — a line's amount is money: to the cent, so the lines add to the subtotal the customer sees.
+export const lineAmount = (qty, rate) => Math.round((parseFloat(qty) || 0) * (parseFloat(rate) || 0) * 100) / 100;
+
 export function invoiceTotalOf(inv = {}) {
   const sub = (inv.line_items || []).reduce((s, l) => s + (Number(l?.amount) || 0), 0);
   return Math.round((sub + (Number(inv.tax_amount) || 0)) * 100) / 100;

@@ -54,7 +54,7 @@ describe("★ the writer is wired and the reader is shared", () => {
     const hdr = view.indexOf('from("ar_invoices").insert(header)'), ln = view.indexOf('from("ar_invoice_lines").insert(');
     expect(hdr).toBeGreaterThan(0);
     expect(ln).toBeGreaterThan(hdr);
-    expect(view).toMatch(/const saved = await persistSent\(inv, customerId\)/);
+    expect(view).toMatch(/const \{ _linesKept, \.\.\.saved \} = await persistSent\(inv, customerId\)/);   // C717
   });
   it("★ a failed persist is SAID, and does not claim the invoice will be there after a reload", () => {
     expect(view).toMatch(/invoice_persist_failed/);

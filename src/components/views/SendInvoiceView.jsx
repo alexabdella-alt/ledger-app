@@ -11,7 +11,9 @@ import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, settledBases } from "
 import { initials, vendorColor, fmtDate , fmtMoney, todayLocal, deriveDueDate } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { buildArInvoiceEntry } from "../../lib/revenueEntries";
-import { newInvoiceDraft, emptyInvoiceLine, draftBase, invoiceSendBlockers, invoiceTotalOf, invoiceDueLabel, customerDefaultsFor, INVOICE_TERM_OPTIONS, nextInvoiceNumber } from "../../lib/invoiceDraft";
+import { newInvoiceDraft, emptyInvoiceLine, draftBase, invoiceSendBlockers, invoiceTotalOf, invoiceDueLabel, customerDefaultsFor, INVOICE_TERM_OPTIONS, nextInvoiceNumber, bookedInvoiceFacts, sentInvoiceChangeProblem, lineAmount } from "../../lib/invoiceDraft";
+import { signedPeriodForDate } from "../../lib/signedPeriod";
+import { monthLabel as signedMonthLabel } from "../../lib/ownerTrust";
 import { arInvoiceRows, isDbInvoiceId } from "../../lib/arInvoiceRows";
 import { contactDbId } from "../../lib/contactIds";
 import { checkedRowUpdate } from "../../lib/checkedWrite";
@@ -19,7 +21,7 @@ import { MAIL_DOMAIN } from "../../lib/constants";
 import { makeOneInFlight } from "../../lib/oneInFlight";
 
 export default function SendInvoiceView() {
-  const { aliasIndex, mailChannel, sendChannelMail, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, assertBookable, markBillPaid, persistMultiLineEntry, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, loadFailures, companyDataLoaded, isViewer } = useERP();
+  const { signoffs, aliasIndex, mailChannel, sendChannelMail, CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, assertBookable, markBillPaid, persistMultiLineEntry, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, recurring, recurringNewRec, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, loadFailures, companyDataLoaded, isViewer } = useERP();
   const settledSet = React.useMemo(() => settledBases(invoices || []), [invoices]);   // C710
   const [recvFor, setRecvFor] = React.useState({});   // C677 — where each customer payment went
   const recvOpts = useReceivedIntoOptions();
@@ -48,11 +50,11 @@ export default function SendInvoiceView() {
               setDraft(d => ({...d, line_items: d.line_items.map(l => {
                 if (l.id!==id) return l;
                 const updated = {...l, [field]:val};
-                if (field==="qty"||field==="rate") updated.amount = (parseFloat(updated.qty)||0)*(parseFloat(updated.rate)||0);
+                if (field==="qty"||field==="rate") updated.amount = lineAmount(updated.qty, updated.rate);   // C717 — to the cent
                 return updated;
               })}));
             };
-            const subtotal = draft.line_items.reduce((s,l)=>s+(l.amount||0),0);
+            const subtotal = Math.round(draft.line_items.reduce((s,l)=>s+Math.round((Number(l.amount)||0)*100)/100,0)*100)/100;   // C717 — the cents the lines show
             // Per-invoice editable blended sales-tax rate (Step 1: starts at 0/blank;
             // Step 2 will pre-fill from a saved company default). Sales tax is a
             // liability (Cr 2350), never revenue.
@@ -66,7 +68,13 @@ export default function SendInvoiceView() {
             // Persist (insert or update) into the sent-invoices list.
             // The app can send only with a domain AND a channel set up; a member who cannot see
             // the token still sees `status.configured`, which is all this needs.
-            const sendBlockers = [...(isViewer ? ["You have view-only access — the owner or an admin sends invoices."] : []), ...invoiceSendBlockers(draft, subtotal, sentInvoices)];   // C412; C706 — a viewer is told, not refused on click
+            // ★ C717 — what the books hold for this invoice once sent, and the month its date falls in
+            const arCodeNow = getAccountByRole("accounts_receivable")?.code;
+            const booked = draft.ledger_id ? bookedInvoiceFacts(invoices || [], draft.ledger_id, arCodeNow) : null;
+            const bookedProblem = sentInvoiceChangeProblem(draft, total, booked);
+            const signedP = !draft.ledger_id ? signedPeriodForDate(draft.issue_date || today, signoffs || []) : null;
+            const sendBlockers = [...(isViewer ? ["You have view-only access — the owner or an admin sends invoices."] : []),
+              ...invoiceSendBlockers(draft, subtotal, sentInvoices, { listLoadFailed: !!loadFailures?.ar_invoices, signedMonth: signedP ? (signedMonthLabel(signedP) || signedP) : null, bookedProblem })];   // C412; C706 — a viewer is told, not refused on click
             const canSendFromApp = !!MAIL_DOMAIN && !!(mailChannel?.channel || mailChannel?.status?.configured);
             const persistSentLocal = (inv) => setSentInvoices(prev => {
               const i = prev.findIndex(x => x.id === inv.id);
@@ -121,7 +129,7 @@ export default function SendInvoiceView() {
                 }
                 const saved = { ...inv, id: dbId };
                 setSentInvoices(prev => prev.map(x => x.id === inv.id ? saved : x));
-                return saved;
+                return replaceLines ? saved : { ...saved, _linesKept: true };
               } catch (e) {
                 console.error("[ar_invoices] persist failed:", e);
                 logAudit("invoice_persist_failed", `Invoice ${inv.invoice_number} could not be saved — ${e?.message || "unknown error"}`);
@@ -141,7 +149,12 @@ export default function SendInvoiceView() {
               const name = (draft.customer || "").trim(); if (!name) return null;
               const email = (draft.customer_email || "").trim();
               const norm = (x) => String(x || "").trim().toLowerCase();
-              const existing = contacts.find(c => c.type === "customer" && norm(c.name) === norm(name));
+              // ★ C717 — the same person by ANY spelling the app already groups (findContactForName), or a
+              // contact of any type with this exact name (a supplier who is also a customer: names are
+              // unique per company, so creating a second one was refused and the invoice saved with no
+              // customer — blank after a reload, and nothing said).
+              const existing = findContactForName(contacts.filter(c => c.type === "customer"), name, aliasIndex)
+                || contacts.find(c => norm(c.name) === norm(name));
               const dbId = existing ? contactDbId(existing) : null;
               if (dbId) return dbId;
               const r = await persistContact({ ...(existing || {}), name, type: "customer", email: email || existing?.email || "" });
@@ -151,7 +164,16 @@ export default function SendInvoiceView() {
                   : [{ ...r.row, fromContact: true }, ...prev]);
                 return r.row.id;
               }
+              showNotification(`We couldn't save ${name} as a customer, so this invoice won't show their name after a reload. Add them under Customers, then save the invoice again.`, "error");   // C717
               return null;
+            };
+            // ★ C717 — a sent invoice's new due date goes on its entry too, so "overdue" on Money owed to
+            // you counts from the date the customer was given. A refusal (e.g. a signed month) is said.
+            const syncBookedDueDate = async (inv) => {
+              if (!inv?.ledger_id || !booked || !inv.due_date || String(inv.due_date) === String(booked.due_date || "")) return;
+              const r = await checkedRowUpdate({ supabase, table: "journal_entries", id: inv.ledger_id, companyId: currentCompany.id, patch: { due_date: inv.due_date }, label: "invoice_due_date" });
+              if (!r.ok) showNotification(`The invoice now says due ${fmtDate(inv.due_date)}, but your books still have ${booked.due_date ? fmtDate(booked.due_date) : "no due date"} — so "overdue" will count from that.`, "error");
+              else { try { await loadAllData(); } catch {} }
             };
 
             // Book the issued invoice through the canonical multi-line path:
@@ -178,13 +200,15 @@ export default function SendInvoiceView() {
             };
 
             const saveDraft = async () => {
+              if (bookedProblem) { showNotification(bookedProblem, "error"); return; }   // C717 — Save draft no longer rewrites a sent invoice's amount
               const inv = {...draft, id: draft.id||Date.now()+Math.random(), status: draft.status || "draft", updated_at:new Date().toISOString()};
               if (!inv.created_at) inv.created_at = new Date().toISOString();
               const customerId = await resolveCustomerId();
-              const saved = await persistSent(inv, customerId);
+              const { _linesKept, ...saved } = await persistSent(inv, customerId);
               setSentInvoiceDraft(saved); setDraft(saved);
+              await syncBookedDueDate(saved);
               logAudit("invoice_created",`Invoice ${inv.invoice_number} draft saved for ${inv.customer} ${fmt(total)}`);
-              showNotification(`Invoice ${inv.invoice_number} saved ✓`);
+              if (!_linesKept) showNotification(`Invoice ${inv.invoice_number} saved ✓`);   // C717 — the "lines stay as sent" notice is not covered over
             };
 
             // Issue the invoice: save it, create the customer, book A/R, and open the
@@ -198,22 +222,20 @@ export default function SendInvoiceView() {
               if (!inv.created_at) inv.created_at = new Date().toISOString();
               // Book the A/R entry exactly once per invoice.
               if (inv.ledger_id) {
-                // ★ C626 — A SENT INVOICE'S AMOUNT IS WHAT THE BOOKS SAY IT IS. Re-sending repainted
-                // the screen's copy of the entry with the new amount and changed nothing in the
-                // database: the customer was emailed one figure, the books held another, and a
-                // reload put the old one back. Re-sending the SAME invoice (to email it again) is
-                // fine; a changed amount is refused, with the way to do it.
+                // ★ C626 — A SENT INVOICE'S AMOUNT IS WHAT THE BOOKS SAY IT IS. Re-sending the SAME
+                // invoice (to email it again) is fine; a changed amount is refused, with the way to do it.
+                // ★ C717 — compared with the BOOKS (`bookedInvoiceFacts`), not the screen's copy of the
+                // invoice, which Save draft had already rewritten — so the check always passed.
                 const before = (sentInvoices || []).find(x => String(x.id) === String(inv.id));
-                if (before && Math.abs(invoiceTotalOf(before) - total) >= 0.005) {
-                  showNotification(`Invoice ${inv.invoice_number} was already sent for ${fmt(invoiceTotalOf(before))}, and that's what your books hold. To change the amount, remove that invoice (Money owed to you → the invoice → Remove) and send a new one.`, "error");
-                  return;
-                }
+                const problem = bookedProblem || (!booked && before ? sentInvoiceChangeProblem(draft, total, { total: invoiceTotalOf(before), date: before.issue_date }) : null);
+                if (problem) { showNotification(problem, "error"); return; }
               } else {
                 const jeId = await bookAR(inv);
                 if (!jeId) return;   // pre-cutoff issue date → blocked + toasted; don't send/persist
                 inv.ledger_id = jeId;
               }
-              const saved = await persistSent(inv, customerId); setSentInvoiceDraft(saved); setDraft(saved);
+              const { _linesKept, ...saved } = await persistSent(inv, customerId); setSentInvoiceDraft(saved); setDraft(saved);
+              await syncBookedDueDate(saved);
               logAudit("invoice_sent", `Invoice ${inv.invoice_number} sent to ${inv.customer} — ${fmt(total)} · recorded as money owed to you`);
               const lineSummary = (inv.line_items||[]).map(l => `• ${l.description||"Item"} — ${fmt(l.amount)}`).join("\n");
               const subject = `Invoice ${inv.invoice_number} from ${companySettings.name||"Your Company"}`;

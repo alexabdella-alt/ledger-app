@@ -33,7 +33,7 @@ describe("C512 · a repeated invoice number blocks the send", () => {
   });
   it("Send Invoice passes the stored invoices to every call", () => {
     const src = fs.readFileSync("src/components/views/SendInvoiceView.jsx", "utf8");
-    expect(src).toMatch(/invoiceSendBlockers\(draft, subtotal, sentInvoices\)/);
+    expect(src).toMatch(/invoiceSendBlockers\(draft, subtotal, sentInvoices, \{ listLoadFailed: !!loadFailures\?\.ar_invoices/);   // C717
     expect(src).not.toMatch(/invoiceSendBlockers\(draft, subtotal\)/);
   });
 });

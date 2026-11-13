@@ -26,7 +26,8 @@ describe("a sent invoice's amount", () => {
   it("★ cannot be changed by re-sending; the same invoice can be re-sent", () => {
     const v = readFileSync("src/components/views/SendInvoiceView.jsx", "utf8");
     const fn = v.slice(v.indexOf("const sendInvoiceOnce = async"), v.indexOf("const downloadPDF = "));
-    expect(fn).toMatch(/if \(before && Math\.abs\(invoiceTotalOf\(before\) - total\) >= 0\.005\) \{[\s\S]*?remove that invoice[\s\S]*?return;/);
+    // C717 — against the books (bookedInvoiceFacts → sentInvoiceChangeProblem), the screen's copy only if the entry isn't loaded
+    expect(fn).toMatch(/const problem = bookedProblem \|\| \(!booked && before \? sentInvoiceChangeProblem\(draft, total, \{ total: invoiceTotalOf\(before\), date: before\.issue_date \}\) : null\);\s*if \(problem\) \{ showNotification\(problem, "error"\); return; \}/);
     expect(fn).not.toMatch(/setInvoices\(prev => prev\.map\(e => String\(e\.id\)===String\(inv\.ledger_id\)/);
   });
 });

@@ -3448,8 +3448,22 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // Both mechanisms are unchanged and still tested; what changes is that the OWNER no
   // longer picks between them. "Void" and "reversal" are bookkeeper words, and being wrong
   // about which one to press is how one invoice ended up reversed three times (O123).
+  // ★ C717 — A BILL THAT WAS PAID, OR AN INVOICE THAT WAS COLLECTED, IS NOT REMOVED WHILE ITS PAYMENT
+  // STAYS. Removing only the invoice took the receivable back out while the collection kept clearing
+  // it: "Owed to you" read -$1,000 (shown as $1,000, the minus dropped) with no invoice listed. The
+  // payment goes first — named, with its date — then the bill or invoice.
+  const paidRemovalBlock = (invoice) => {
+    const base = String(resolveEntryDbId(invoice) || invoice?.db_entry_id || "");
+    if (!base || !settledBases(invoicesRef.current || []).has(base)) return null;
+    const pay = (invoicesRef.current || []).find(r => r && r.import_metadata && String(r.import_metadata.payment_for) === base && !r.reversed_by);
+    const ar = String(invoice.secondary_gl_code) === String(rc("accounts_receivable")) || String(invoice.gl_code) === String(rc("accounts_receivable")) || !!invoice.ar_amount;
+    const what = ar ? "collected" : "paid";
+    return `${invoice.vendor || "This"} was already ${what}${pay?.date ? ` (${fmtDate(pay.date)})` : ""}. Delete that ${ar ? "collection" : "payment"} first — it's in Transactions${pay?.description ? ` as "${pay.description}"` : ""} — then delete this.`;
+  };
   const removeEntry = async (invoice, byAI = false) => {
     if (!invoice) return { ok: false };
+    const paidBlock = paidRemovalBlock(invoice);
+    if (paidBlock) { showNotification(paidBlock, "error"); return { ok: false, blocked: "paid" }; }
     const plan = planEntryRemoval(invoice, signoffs, { monthLabel: signedMonthLabel });
     if (plan.mode === REMOVAL.KEEP) {   // C467 — the opening entry is changed on its own screen
       showNotification(plan.blocked, "error");
@@ -3482,6 +3496,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const reverseJournalEntry = async (invoice, reason, byAI = false) => {
     if (!invoice || !currentCompany?.id || !session?.user?.id) return null;
     if (isOpeningEntry(invoice)) { showNotification(OPENING_KEEP_SENTENCE, "error"); return null; }   // C467
+    { const paidBlock = paidRemovalBlock(invoice); if (paidBlock) { showNotification(paidBlock, "error"); return null; } }   // C717
     const origId = resolveEntryDbId(invoice) || invoice.db_entry_id || null;
     if (!origId) { showNotification("Can't reverse — entry isn't saved yet", "error"); return null; }
     // Idempotency (CR-17). GL-TRUTH first: a live reversing entry already in the loaded
@@ -8488,7 +8503,9 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // a person marking a bill paid by hand still defaults to Cash.
   const markBillPaidOnce = async (entryId, { paidDate = null, method = "ach", reference = "", notes = "", side = "ap", cashCode = null, cashName = null } = {}) => {
     const inv = (invoicesRef.current || []).find(i => String(i.id) === String(entryId) || String(i.db_entry_id) === String(entryId));
-    if (!inv) { console.warn("[markBillPaid] no invoice for entryId", String(entryId)); return false; }
+    // ★ C717 — said, not just logged: an invoice whose entry was deleted had a Mark paid that did
+    // nothing at all, and an action with no visible effect is pressed again.
+    if (!inv) { console.warn("[markBillPaid] no invoice for entryId", String(entryId)); showNotification("We couldn't find that entry in your books — it may have been deleted. Nothing was recorded.", "error"); return false; }
     // SIGNED-PERIOD guard (O83 Trap 2): a payment/collection dated into a signed month posts a
     // clearing JE that changes that month — block a BACKDATED mark-paid (reopen first). A normal
     // payment in the open month (incl. bank-import auto-clears dated at the statement line) proceeds.

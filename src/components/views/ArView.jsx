@@ -6,7 +6,7 @@ import { reminderMailto, customerEmail } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
 import LoadingList from "../LoadingList";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
-import { initials, vendorColor, fmtDate , fmtMoney, todayLocal } from "../../lib/format";
+import { initials, vendorColor, fmtDate , fmtMoney, fmtSignedMoney, todayLocal } from "../../lib/format";
 import { getAuthHeaders } from "../../lib/supabase";
 import { AI_PROXY_URL } from "../../lib/constants";
 import { okAIResponse } from "../../lib/ai";
@@ -59,10 +59,12 @@ export default function ArView() {
             // Aging buckets — age from the invoice's DUE date when it has one (O11), so the
             // buckets reflect days PAST DUE (true AR aging), falling back to the invoice date
             // for older rows that never captured terms.
-            const aging = { current:{count:0,total:0,items:[]}, d60:{count:0,total:0,items:[]}, d90:{count:0,total:0,items:[]}, d90plus:{count:0,total:0,items:[]} };
+            // ★ C717 — "Not late yet" is NOT LATE: it held anything up to 30 days PAST due, so an invoice
+            // 24 days late was in both "Overdue" and "Not late yet". Same buckets as the Reports aging.
+            const aging = { current:{count:0,total:0,items:[]}, d30:{count:0,total:0,items:[]}, d60:{count:0,total:0,items:[]}, d90:{count:0,total:0,items:[]}, d90plus:{count:0,total:0,items:[]} };
             arOpen.forEach(inv => {
               const days = Math.floor((new Date(today)-new Date(inv.due_date||inv.date||today))/86400000);
-              const b = days<=30?"current":days<=60?"d60":days<=90?"d90":"d90plus";
+              const b = days<=0?"current":days<=30?"d30":days<=60?"d60":days<=90?"d90":"d90plus";
               aging[b].count++; aging[b].total+=arAmt(inv); aging[b].items.push(inv);
             });
 
@@ -87,7 +89,8 @@ export default function ArView() {
                   body: JSON.stringify({
                     profile: "narrate-ar-aging",   // model/max_tokens/system server-owned; aging summary via untrusted slot
                     slots: { AGING:
-`Current (0-30 days): ${aging.current.count} invoices · ${fmtMoney(aging.current.total)}
+`Not yet due: ${aging.current.count} invoices · ${fmtMoney(aging.current.total)}
+1-30 days late: ${aging.d30.count} invoices · ${fmtMoney(aging.d30.total)}
 31-60 days: ${aging.d60.count} invoices · ${fmtMoney(aging.d60.total)}
 61-90 days: ${aging.d90.count} invoices · ${fmtMoney(aging.d90.total)}
 90+ days: ${aging.d90plus.count} invoices · ${fmtMoney(aging.d90plus.total)}
@@ -124,9 +127,9 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                 {/* Summary cards */}
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
                   {[
-                    { label:"Owed to you", value:fmt(totalAR),         sub:`${arOpen.length} open invoices`,          color:"var(--sc-success)" },
+                    { label:"Owed to you", value:fmtSignedMoney(totalAR),         sub:`${arOpen.length} open invoices`,          color:"var(--sc-success)" },
                     { label:"Overdue",            value:arOverdue.length,     sub:fmt(arOverdue.reduce((s,i)=>s+arAmt(i),0))+" past due", color:"var(--sc-error)" },
-                    { label:"Not late yet (0–30 days)", value:fmt(aging.current.total), sub:`${aging.current.count} invoices`,     color:"var(--sc-gold)" },
+                    { label:"Not late yet", value:fmt(aging.current.total), sub:`${aging.current.count} invoices`,     color:"var(--sc-gold)" },
                     { label:"Collected (Total)",  value:fmt(arCollected.reduce((s,i)=>s+arAmt(i),0)), sub:`${arCollected.length} invoices`, color:"var(--sc-text-2)" },
                   ].map(c=>(
                     <div key={c.label} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, padding:"16px 18px" }}>
@@ -275,9 +278,10 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                 {/* ── AR AGING ── */}
                 {arView==="aging" && (
                   <div>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12, marginBottom:20 }}>
                       {[
-                        { label:"Not late yet (0–30 days)", bucket:aging.current, color:"var(--sc-success)" },
+                        { label:"Not late yet", bucket:aging.current, color:"var(--sc-success)" },
+                        { label:"1–30 days late", bucket:aging.d30, color:"var(--sc-warning)" },
                         { label:"31–60 Days",      bucket:aging.d60,     color:"var(--sc-warning)" },
                         { label:"61–90 Days",      bucket:aging.d90,     color:"var(--sc-error)" },
                         { label:"90+ Days",        bucket:aging.d90plus, color:"var(--sc-error-soft)" },

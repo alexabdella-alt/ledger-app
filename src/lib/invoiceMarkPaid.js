@@ -33,6 +33,9 @@ export function invoiceStatusFromBooks(inv = {}, ledger = [], settled = null) {
   const base = String(inv.ledger_id);
   const rows = (ledger || []).filter((r) => r && String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base);
   if (!rows.length) return inv.status;   // not loaded — trust the saved status
+  // ★ C717 — its entry was deleted (reversed): the invoice is void, whatever its row says, and has
+  // no Mark paid (which would find nothing to collect).
+  if (rows.some((r) => r.reversed_by)) return "void";
   const collected = (settled && settled.has(base)) || rows.some((r) => r.payment_status === "collected");
   if (collected) return "paid";
   return st === "paid" ? "sent" : inv.status;
