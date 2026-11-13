@@ -1,7 +1,7 @@
 import { vendorGroupKey } from "./vendorIdentity.js";
 import { lineForAccount } from "./taxGuidance.js";
 import { applyAlias, buildAliasIndex } from "./vendorAlias.js";
-import { isSettlementEntry } from "./gl.js";
+import { isSettlementEntry, isLiveSettlement, entryBaseOf } from "./gl.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // FULL 1099 ELIGIBILITY — worked out from what the supplier is and what they were paid,
 // not from a flag someone ticked.
@@ -110,6 +110,7 @@ export function paymentKindForAccount({ role = null, name = "", code = "" } = {}
 // payment was recorded as a card / network payment.
 const CARD_METHODS = new Set(["card", "credit_card", "debit_card", "paypal", "venmo", "cash_app", "stripe"]);
 export function paidByCardOrNetwork(row = {}, { cardCodes = new Set() } = {}) {
+  if (row._paidByCard) return true;   // C688 — its payment came from a card (paidRowsForYear)
   if (cardCodes.has(String(row.secondary_gl_code ?? ""))) return true;
   return CARD_METHODS.has(String(row.payment_method_used || "").toLowerCase());
 }
@@ -183,6 +184,8 @@ export function reportablePayments(rows = [], roleOfCode = () => null, { account
     // balance sheet (equipment a contractor installed, a prepaid service) — that still asks.
     const code = String(r.gl_code ?? "");
     if (isSettlementEntry(r) || NOT_A_PURCHASE_DIGIT.has(code[0])) continue;
+    // C688 — a payroll run is wages (Form W-2), never a 1099, whatever account it was coded to
+    if (r.source === "payroll" || (r.import_metadata && r.import_metadata.kind === "payroll")) continue;
     if (code[0] === "1" && MONEY_ROLES.has(roleOfCode(r.gl_code))) continue;
     const amt = Number(r.amount) || 0;
     if (amt <= 0) continue;
@@ -280,10 +283,54 @@ function money(n) {
 // The whole proposal. `vendorRowsFor(contact)` returns that vendor's ledger rows for the year.
 // C679 — what the chart tells the 1099 logic: each code's account (for its name), and which
 // codes are credit-card accounts (a bill booked straight to one was paid by card).
-function chartLookups(chart = []) {
+// ★ C688 — a card account by its role, its name ("Amex Business", "Chase Visa"), or a bank
+// account the owner set up as a card (Settings) — not only one literally named "credit card".
+const CARD_NAME = /^(?!.*\bgift\b).*\b(credit card|card|amex|american express|visa|mastercard|discover)\b/i;
+function chartLookups(chart = [], bankAccounts = []) {
   const byCode = new Map((chart || []).map((a) => [String(a.code), a]));
-  const cardCodes = new Set((chart || []).filter((a) => a.system_role === "credit_card_liability" || /\bcredit card\b/i.test(a.name || "")).map((a) => String(a.code)));
-  return { accountOf: (code) => byCode.get(String(code)) || null, cardCodes };
+  const cardCodes = new Set((chart || []).filter((a) => a.system_role === "credit_card_liability"
+    || (/^2\d{3}$/.test(String(a.code)) && CARD_NAME.test(a.name || "")) || /\bcredit card\b/i.test(a.name || "")).map((a) => String(a.code)));
+  for (const b of bankAccounts || []) if (b && b.type === "credit_card" && b.gl_code) cardCodes.add(String(b.gl_code));
+  const apCodes = new Set((chart || []).filter((a) => a.system_role === "accounts_payable" || /^accounts payable$/i.test(a.name || "")).map((a) => String(a.code)));
+  return { accountOf: (code) => byCode.get(String(code)) || null, cardCodes, apCodes };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★ C688 — A 1099 IS ABOUT PAYMENTS MADE IN THE YEAR, NOT BILLS DATED IN IT. Form 1099-NEC/MISC
+// reports what was PAID to the vendor during the calendar year (and the $2,000 floor applies to
+// payments made after 2025 — P.L. 119-21 §70433). A purchase paid on the spot (cash, bank, card)
+// was paid on its date. A bill on terms (booked to Accounts Payable) was paid when its payment
+// was recorded — the live settlement that links it — and an unpaid bill was not paid at all, so
+// it counts in no year yet. A bill marked paid with no linked payment entry uses its paid date
+// if it has one, else its own date. The payment's source decides "card": a bill paid from a card
+// is the card network's 1099-K, whatever the method field says.
+// ═════════════════════════════════════════════════════════════════════════════
+export function paidRowsForYear(invoices = [], year, { apCodes = new Set(), cardCodes = new Set() } = {}) {
+  const y = String(year);
+  const pays = new Map();
+  for (const i of invoices || []) {
+    if (!isLiveSettlement(i)) continue;
+    const k = String(i.import_metadata.payment_for);
+    const src = [i.gl_code, i.secondary_gl_code].map((c) => String(c ?? "")).find((c) => c && !apCodes.has(c)) || "";
+    (pays.get(k) || pays.set(k, []).get(k)).push({ date: String(i.date || i.entry_date || ""), card: cardCodes.has(src) || CARD_METHODS.has(String(i.payment_method_used || "").toLowerCase()) });
+  }
+  const out = [];
+  for (const r of invoices || []) {
+    if (!r) continue;
+    if (!apCodes.has(String(r.secondary_gl_code ?? "")) || isSettlementEntry(r)) {
+      if (String(r.date || "").startsWith(y)) out.push(r);
+      continue;
+    }
+    const p = pays.get(entryBaseOf(r));
+    if (p && p.length) {
+      const last = p.slice().sort((a, b) => b.date.localeCompare(a.date))[0];
+      if (last.date.startsWith(y)) out.push(p.every((x) => x.card) ? { ...r, _paidByCard: true } : r);
+    } else if (r.payment_status === "paid") {
+      if (String(r.paid_at || r.date || "").slice(0, 10).startsWith(y)) out.push(r);
+    }
+    // unpaid bill on terms: not paid in any year yet
+  }
+  return out;
 }
 
 export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode = () => null, threshold = null, year = null, accountOf = null, cardCodes = new Set() } = {}) {
@@ -312,20 +359,21 @@ export function plan1099({ contacts = [], vendorRowsFor = () => [], roleOfCode =
 // C589 — `aliasIndex` (the names a person has said are the same vendor) is applied to both the
 // rows and the contacts, the way the Vendors page groups: without it a contractor invoiced
 // under two names was two vendors here and one everywhere else.
-export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = null } = {}) {
+export function plan1099ForYear({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = null, bankAccounts = [] } = {}) {
+  const look = chartLookups(chart, bankAccounts);   // C688
   const base = keyOf || ((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase());
   const idx = aliasIndex || buildAliasIndex(contacts);   // built from the contacts, so every caller gets it
   const alias = (k) => applyAlias(k, idx);
   const key = (s) => alias(base(s));
   const roleOfCode = (code) => (chart || []).find((a) => String(a.code) === String(code))?.system_role || null;
-  const yearRows = (invoices || []).filter((i) => String(i?.date || "").startsWith(String(year)));
+  const yearRows = paidRowsForYear(invoices, year, look);   // C688 — by the year it was PAID
   const byName = new Map();
   for (const r of yearRows) {
     const k = r.vendor_key ? alias(r.vendor_key) : key(r.vendor);
     if (!k) continue;
     (byName.get(k) || byName.set(k, []).get(k)).push(r);
   }
-  return plan1099({ contacts, vendorRowsFor: (c) => byName.get(key(c.name)) || [], roleOfCode, threshold, year, ...chartLookups(chart) });
+  return plan1099({ contacts, vendorRowsFor: (c) => byName.get(key(c.name)) || [], roleOfCode, threshold, year, accountOf: look.accountOf, cardCodes: look.cardCodes });
 }
 
 // ★ C549 — THE SENTENCE NAMES THE YEAR, because "this year" is not what it means for three
@@ -366,17 +414,16 @@ const STATUS_FOR_VERDICT = {
   [VERDICT.BELOW_THRESHOLD]: "tracking", [VERDICT.GOODS_ONLY]: "none", [VERDICT.CORP_EXEMPT]: "none", [VERDICT.MARKED_EXEMPT]: "none",
 };
 
-export function tracker1099Rows({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = null } = {}) {
+export function tracker1099Rows({ invoices = [], contacts = [], chart = [], year = new Date().getFullYear(), keyOf = null, aliasIndex = null, threshold = null, bankAccounts = [] } = {}) {
   if (threshold == null) threshold = thresholdFor(year);   // C679
-  const { accountOf, cardCodes } = chartLookups(chart);
+  const { accountOf, cardCodes, apCodes } = chartLookups(chart, bankAccounts);   // C688
   const base = keyOf || ((s) => vendorGroupKey(s) || String(s || "").trim().toLowerCase());
   const idx = aliasIndex || buildAliasIndex(contacts);   // built from the contacts, so every caller gets it
   const alias = (k) => applyAlias(k, idx);
   const key = (s) => alias(base(s));
   const roleOfCode = (code) => (chart || []).find((a) => String(a.code) === String(code))?.system_role || null;
   const groups = new Map();
-  for (const r of invoices || []) {
-    if (!r || !String(r.date || "").startsWith(String(year))) continue;
+  for (const r of paidRowsForYear(invoices, year, { apCodes, cardCodes })) {   // C688 — by the year it was PAID
     const k = r.vendor_key ? alias(r.vendor_key) : key(r.vendor);
     if (!k) continue;
     (groups.get(k) || groups.set(k, []).get(k)).push(r);

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { holdNotProfitAndLoss, isCardAccount } from "./lib/bankNotPL";
-import { paidFromCopy, payFromOptions, pickPayFrom } from "./lib/payFrom";
+import { paidFromCopy, payFromOptions } from "./lib/payFrom";
 import { plan1099ForYear } from "./lib/form1099";
 import { settledFailures } from "./lib/loadFailures";
 import { plainWriteError } from "./lib/plainWriteError";
@@ -26,7 +26,7 @@ import { DIRECTORY_SEED } from "./lib/vendorDirectory";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
 import { owedAccount, reconBooksBalance, cashCarriedIntoPeriod, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
-import { routeAIActions, buildPendingConfirmation, resolveActionTargets } from "./lib/aiActionGate";
+import { routeAIActions, buildPendingConfirmation, resolveActionTargets, resolvePayFrom } from "./lib/aiActionGate";
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection, perEntry } from "./lib/insights";
 import { multiLineMetaPatch } from "./lib/entryMetaStamp";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
@@ -1360,7 +1360,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         q(supabase.from("vendor_rules").select("*, contacts(name), accounts(code,name)").eq("company_id", cid).eq("active", true)),
         q(supabase.from("companies").select("*").eq("id", cid).single()),
         q(supabase.from("opening_balances").select("*, accounts(code, name)").eq("company_id", cid)),
-        q(supabase.from("bank_accounts").select("*, accounts(code)").eq("company_id", cid).eq("active", true)),
+        q(supabase.from("bank_accounts").select("*, accounts(code)").eq("company_id", cid).eq("active", true).order("created_at").order("id")),   // C689 — a stable order, so the default "Paid from" doesn't move
         q(supabase.from("recurring_transactions").select("*, debit_account:debit_account_id(code,name), credit_account:credit_account_id(code,name), contacts(name)").eq("company_id", cid).order("next_date")),
         readAllRows(() => supabase.from("ar_invoices").select("*, ar_invoice_lines(*), contacts(name, email)").eq("company_id", cid).order("created_at", { ascending: false }).order("id")),
         // C568 — the screen shows the newest 1,000; the exact count says how many there are in all.
@@ -1442,8 +1442,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // null, and the estimate falls back to the books' depreciation (smaller, never invented).
       try {
         const [faRes, dsRes] = await Promise.allSettled([   // allSettled: one failing table never starves the rest
-          supabase.from("fixed_assets").select("id, cost, in_service_date, useful_life_months, status").eq("company_id", cid),
-          supabase.from("depreciation_schedule").select("asset_id, period_date, amount").eq("company_id", cid).eq("status", "posted"),
+          supabase.from("fixed_assets").select("id, cost, in_service_date, useful_life_months, status, source_journal_entry_id").eq("company_id", cid).is("deleted_at", null),   // C686
+          supabase.from("depreciation_schedule").select("asset_id, period_date, amount, journal_entry_id").eq("company_id", cid).eq("status", "posted"),
         ]);
         const fa = faRes.status === "fulfilled" && !faRes.value.error ? faRes.value.data : null;
         const ds = dsRes.status === "fulfilled" && !dsRes.value.error ? dsRes.value.data : null;
@@ -8736,10 +8736,13 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       if (!bills.length) summary.push(`Couldn't find an open bill${action.vendor ? ` for ${action.vendor}` : ""} — nothing was recorded`);
       else {
         const opts = payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" });
-        const from = pickPayFrom(opts, action.paid_from);
+        const from = resolvePayFrom(action, opts);   // C687 — the account the confirm card named
+        if (!from) summary.push(`Couldn't tell which account "${action.paid_from}" is — nothing was recorded`);
+        else {
         const n = await markPaid(bills.map(b => b.id), action.method || "ach", { date: action.paid_date || undefined, payFrom: from });
         if (n) summary.push(`Recorded ${n} bill${n === 1 ? "" : "s"} as paid — ${paidFromCopy(from)}`);
         if ((n || 0) < bills.length) failures.push(`record ${bills.length - (n || 0)} payment${bills.length - (n || 0) === 1 ? "" : "s"}`);
+        }
       }
     }
     if (action.type === "reverse_entry") {
@@ -9067,7 +9070,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // Nothing has mutated for these — they run only when the user clicks Confirm
       // (confirmAIActions). Not staged when the batch was blocked (member/ambiguous/bulk).
       const staged = (!gateBlocked && destructiveActions.length)
-        ? buildPendingConfirmation(destructiveActions, { invoices, contracts, rules, contactsList: contacts })
+        ? buildPendingConfirmation(destructiveActions, { invoices, contracts, rules, contactsList: contacts,
+            payFromOptions: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }) })   // C687
         : null;
       if (staged) { setPendingAIActions({ ...staged, id: Date.now() + 2 }); logAI("ai_actions_staged", `Staged ${staged.actions.length} destructive action(s) for confirmation: ${staged.items.map(it => it.type).join(", ")}`); }
 

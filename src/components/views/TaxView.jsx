@@ -7,7 +7,7 @@ import { plan1099, plan1099Copy, plan1099ForYear } from "../../lib/form1099";
 import { vendorGroupKey } from "../../lib/vendorIdentity";
 
 export default function TaxView() {
-  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets } = useERP();
+  const { invoices, contacts, currentCompany, setView, showNotification, getAccountByRole, CHART_OF_ACCOUNTS, supabase, setFiledDeadlines, hasAttester, companySettings, saveLegalForm, taxAssets, bankAccounts } = useERP();
   const fmt = fmtMoney;
   const year = new Date().getFullYear();
   const year1099 = taxYearFor1099();   // C549 — the year the next 1099 deadline is about
@@ -125,8 +125,8 @@ export default function TaxView() {
   // the payments of the year before its deadline. The two coincide for nine months and diverge
   // every January, when this card would count three weeks of the new year while the tracker it
   // links to correctly lists the year just ended. One question, one year — `taxYearFor1099`.
-  const plan = React.useMemo(() => plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: year1099, keyOf }),   // C435 — one builder with Home and the bell
-    [invoices, contacts, CHART_OF_ACCOUNTS, year1099, keyOf]);
+  const plan = React.useMemo(() => plan1099ForYear({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: year1099, keyOf, bankAccounts: bankAccounts || [] }),   // C435 — one builder with Home and the bell
+    [invoices, contacts, CHART_OF_ACCOUNTS, year1099, keyOf, bankAccounts]);
   const need1099 = plan.outstanding;
 
   const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "18px 20px" };
@@ -147,8 +147,9 @@ export default function TaxView() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
           {[
             ["Profit so far this year", fmt(est.net), est.net >= 0 ? "var(--sc-text)" : "var(--sc-error)"],
-            ["Estimated Federal Tax (25%)", fmt(est.federal), "var(--sc-text)"],
-            ["Self-Employment Tax (15.3%)", fmt(est.seTax), "var(--sc-text)"],
+            [legalForm === "c_corp" ? "Corporate income tax (21%)" : "Estimated Federal Tax (25%)", fmt(est.federal), "var(--sc-text)"],
+            // C685 — an S corporation's or C corporation's profit carries no self-employment tax; the owner's payroll covers it
+            [legalForm === "s_corp" || legalForm === "c_corp" ? "Self-employment tax (none — your payroll covers it)" : "Self-Employment Tax (15.3%)", fmt(est.seTax), "var(--sc-text)"],
             ["Estimated tax for the year", fmt(est.total), "var(--sc-gold)"],
             ["Estimated Payments Made", fmt(estPaid), "var(--sc-success)"],
             ["Still Owed", fmt(est.owed), est.owed > 0 ? "var(--sc-warning)" : "var(--sc-success)"],

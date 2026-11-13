@@ -17,7 +17,7 @@ const TYPE_OPTIONS = [
 const isExemptType = t => ["corp","scorp","nonprofit"].includes(t);
 
 export default function Tax1099View() {
-  const { contacts, setContacts, invoices, companySettings, persistContact, logAudit, showNotification, setView, setVendorFilter, setBooksFilter, CHART_OF_ACCOUNTS, aliasIndex } = useERP();
+  const { contacts, setContacts, invoices, companySettings, persistContact, logAudit, showNotification, setView, setVendorFilter, setBooksFilter, CHART_OF_ACCOUNTS, aliasIndex, bankAccounts } = useERP();
 
   // C549 — the year the next 1099 deadline is about (`deadline.year - 1`, the C435 rule), not
   // `getFullYear() - 1`. That read "always the previous calendar year" and left this screen a
@@ -33,7 +33,7 @@ export default function Tax1099View() {
   // read (`tracker1099Rows` → `verdictFor`): grouped by vendor, not by spelling; only what was
   // bought, signed; goods are not services. This screen writes the file that gets filed.
   const STATUS_COLOR = { needs:"var(--sc-error)", sent:"var(--sc-success)", unknown:"var(--sc-warning)", tracking:"var(--sc-warning)", none:"var(--sc-text-2)" };
-  const rows = tracker1099Rows({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: taxYear, aliasIndex })
+  const rows = tracker1099Rows({ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: taxYear, aliasIndex, bankAccounts: bankAccounts || [] })
     .map(r => ({ ...r, status: { ...r.status, color: STATUS_COLOR[r.status.key] } }));
   const needs = rows.filter(r => r.status.key==="needs");
 

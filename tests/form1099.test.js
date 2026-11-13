@@ -167,7 +167,7 @@ describe("★★ the derivation reaches the screen", () => {
   const tax = fs.readFileSync(path.join(process.cwd(), "src/components/views/TaxView.jsx"), "utf8");
 
   it("★★★ the tax page counts from the plan, not from the flag", () => {
-    expect(tax).toMatch(/plan1099ForYear\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: year1099, keyOf \}\)/);   // C435 — one builder with Home and the bell; C549 — on the 1099 year, not the calendar year
+    expect(tax).toMatch(/plan1099ForYear\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: year1099, keyOf, bankAccounts: bankAccounts \|\| \[\] \}\)/);   // C435 — one builder with Home and the bell; C549 — on the 1099 year, not the calendar year
     expect(tax).toMatch(/const need1099 = plan\.outstanding/);
     // the old flag count must be gone, not merely unused
     expect(tax).not.toMatch(/c\.is1099 && !c\.is_1099_exempt/);
@@ -242,6 +242,6 @@ describe("★★ the derivation reaches the screen", () => {
   });
 
   it("★ and only this year's rows are considered", () => {
-    expect(fs.readFileSync(new URL("../src/lib/form1099.js", import.meta.url), "utf8")).toMatch(/startsWith\(String\(year\)\)/);   // C435 — in the builder
+    expect(fs.readFileSync(new URL("../src/lib/form1099.js", import.meta.url), "utf8")).toMatch(/const yearRows = paidRowsForYear\(invoices, year, look\);/);   // C435 — in the builder; C688 — by the year it was paid
   });
 });

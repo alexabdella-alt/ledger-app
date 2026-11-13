@@ -20,6 +20,7 @@
 //
 // A planning tool, not a filing: the accountant can still reclassify. Pure.
 // ═════════════════════════════════════════════════════════════════════════════
+import { sourcePurchaseLive } from "./depreciation.js";   // C686
 
 export const LINES = {
   "4":   { form: "Cost of goods sold (Schedule C line 4, Part III)", plain: "Cost of what you sell" },
@@ -191,18 +192,28 @@ export const PERSONAL_RETURN_ITEMS = [
 //     Security up to that year's wage base, 2.9% Medicare on all of it; half of it deductible;
 //     then the 20% qualified business income deduction (§199A, made permanent in 2025); the rest
 //     at the app's flat planning rate. Personal deductions and credits are the preparer's.
+//   · ★ C685 — an S CORPORATION's profit is NOT self-employment income (IRC §1402(a), Rev. Rul.
+//     59-221): the owner's payroll tax is already in the books as wages and payroll tax. So an S
+//     corp gets the QBI deduction and the planning rate, and no self-employment tax.
+//   · ★ C685 — no self-employment tax when net earnings are under $400 (§1402(b)); and the 0.9%
+//     Additional Medicare Tax on self-employment earnings over $200,000 (§1401(b)(2), the
+//     single-filer threshold — a planning stand-in; it is NOT part of the half deducted).
 export const SS_WAGE_BASE = { 2024: 168600, 2025: 176100, 2026: 184500 };
+export const SE_MINIMUM = 400;
+export const ADDL_MEDICARE_THRESHOLD = 200000;
 export function federalEstimate({ revenue = 0, deductible = 0, year = new Date().getFullYear(), legalForm = "", flatRate = 0.25 } = {}) {
   const profit = r2(Math.max(0, (Number(revenue) || 0) - (Number(deductible) || 0)));
-  if (legalForm === "c_corp") return { profit, seTax: 0, halfSe: 0, qbi: 0, federal: r2(profit * 0.21), total: r2(profit * 0.21) };
-  const base = profit * 0.9235;
+  if (legalForm === "c_corp") return { profit, seTax: 0, halfSe: 0, addlMedicare: 0, qbi: 0, federal: r2(profit * 0.21), total: r2(profit * 0.21) };
+  const base = legalForm === "s_corp" ? 0 : profit * 0.9235;
   const wageBase = SS_WAGE_BASE[year] || SS_WAGE_BASE[Math.max(...Object.keys(SS_WAGE_BASE).map(Number))];
-  const seTax = r2(Math.min(base, wageBase) * 0.124 + base * 0.029);
+  const owesSe = base >= SE_MINIMUM;
+  const seTax = owesSe ? r2(Math.min(base, wageBase) * 0.124 + base * 0.029) : 0;
+  const addlMedicare = owesSe ? r2(Math.max(0, base - ADDL_MEDICARE_THRESHOLD) * 0.009) : 0;
   const halfSe = r2(seTax / 2);
   const afterHalf = Math.max(0, profit - halfSe);
   const qbi = r2(afterHalf * 0.2);
   const federal = r2((afterHalf - qbi) * flatRate);
-  return { profit, seTax, halfSe, qbi, federal, total: r2(federal + seTax) };
+  return { profit, seTax, halfSe, addlMedicare, qbi, federal, total: r2(federal + seTax + addlMedicare) };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -231,20 +242,26 @@ const monthsIn = (fromYmd, months, year) => {
   const ys = year * 12, ye = year * 12 + 11;
   return Math.max(0, Math.min(end, ye) - Math.max(start, ys) + 1);
 };
-// assets: [{ id, cost, in_service_date, useful_life_months, status }]
-// posted: [{ asset_id, period_date, amount }] — the books' depreciation already posted for them
-export function taxDepreciationFor({ assets = [], posted = [], year = new Date().getFullYear() } = {}) {
+// assets: [{ id, cost, in_service_date, useful_life_months, status, source_journal_entry_id, deleted_at }]
+// posted: [{ asset_id, period_date, amount, journal_entry_id }] — the books' depreciation already posted
+// ★ C686 — only equipment the books still hold: a deleted asset, or one whose purchase was deleted,
+// voided or reversed (C600's sourcePurchaseLive), gets no tax deduction; and a posted depreciation
+// row whose entry was later voided is not subtracted (the books no longer carry it). `ledger` is
+// the flattened ledger; without it, nothing can be checked and every asset counts (as before).
+export function taxDepreciationFor({ assets = [], posted = [], year = new Date().getFullYear(), ledger = null } = {}) {
   let tax = 0;
-  for (const a of assets || []) {
-    if (!a || !(Number(a.cost) > 0) || !a.in_service_date) continue;
+  const live = (id) => !ledger || sourcePurchaseLive(ledger, id);
+  const held = (assets || []).filter((a) => a && !a.deleted_at && live(a.source_journal_entry_id));
+  for (const a of held) {
+    if (!(Number(a.cost) > 0) || !a.in_service_date) continue;
     const cost = Number(a.cost), rate = bonusRateFor(a.in_service_date);
     const inYear = Number(String(a.in_service_date).slice(0, 4));
     const life = Math.max(1, Number(a.useful_life_months) || 60);
     if (inYear === Number(year)) tax += cost * rate;
     tax += (cost * (1 - rate)) * monthsIn(a.in_service_date, life, Number(year)) / life;
   }
-  const ids = new Set((assets || []).map((a) => String(a.id)));
-  const bookTracked = (posted || []).filter((p) => ids.has(String(p.asset_id)) && String(p.period_date || "").startsWith(String(year)))
+  const ids = new Set(held.map((a) => String(a.id)));
+  const bookTracked = (posted || []).filter((p) => ids.has(String(p.asset_id)) && String(p.period_date || "").startsWith(String(year)) && live(p.journal_entry_id))
     .reduce((s, p) => s + (Number(p.amount) || 0), 0);
   return { tax: r2(tax), bookTracked: r2(bookTracked) };
 }

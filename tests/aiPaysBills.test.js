@@ -48,11 +48,11 @@ describe("★ record_payment", () => {
     expect(pickPayFrom(opts, "personal card").key).toBe(OWN_MONEY);
     expect(pickPayFrom(opts, "amex").key).toBe("acct:C");
     expect(pickPayFrom(opts, "").key).toBe("acct:K");
-    expect(pickPayFrom(opts, "some bank we don't have").key).toBe("acct:K");   // never a guess at a different account
+    expect(pickPayFrom(opts, "some bank we don't have")).toBe(null);   // C687 — never a guess: the assistant asks
   });
   it("the app records it through the same path as the payment forms", () => {
     const app = readFileSync("src/App.jsx", "utf8");
-    expect(app).toMatch(/if \(action\.type === "record_payment"\) \{[\s\S]{0,700}const n = await markPaid\(bills\.map\(b => b\.id\), action\.method \|\| "ach", \{ date: action\.paid_date \|\| undefined, payFrom: from \}\);/);
+    expect(app).toMatch(/if \(action\.type === "record_payment"\) \{[\s\S]{0,900}const n = await markPaid\(bills\.map\(b => b\.id\), action\.method \|\| "ach", \{ date: action\.paid_date \|\| undefined, payFrom: from \}\);/);
   });
   it("the server knows the tool and the action, and says it never sends money", () => {
     const srv = readFileSync("supabase/functions/ai-proxy/aiProfiles.js", "utf8");

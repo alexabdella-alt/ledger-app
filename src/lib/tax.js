@@ -3,6 +3,7 @@
 
 import { FED_TAX_RATE, SE_TAX_RATE } from "./constants";
 import { computeRevenue, computeExpenses, computeNetIncome } from "./reports";
+const r2c = (n) => Math.round((Number(n) || 0) * 100) / 100;
 import { scheduleCBreakdown, federalEstimate, PERSONAL_RETURN_ITEMS, taxDepreciationFor } from "./taxGuidance.js";
 export const FED_RATE = FED_TAX_RATE;   // simplified flat federal planning rate
 export const SE_RATE = SE_TAX_RATE;     // self-employment (Social Security + Medicare)
@@ -26,11 +27,12 @@ export function ytdNetIncome(invoices, year = new Date().getFullYear()) {
 // flat 21% and no self-employment tax. Was: a flat 25% + 15.3% on book profit.
 export function taxEstimate(invoices, year = new Date().getFullYear(), estPaid = 0, { chart = [], legalForm = "", homeOfficeSqft = 0, assets = null } = {}) {
   const { revenue, expenses, net } = ytdNetIncome(invoices, year);
-  const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year }) : null });   // C683
+  const sc = scheduleCBreakdown(invoices, year, { chart, legalForm, homeOfficeSqft, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null });   // C683, C686
   const f = federalEstimate({ revenue, deductible: sc.deductibleTotal, year, legalForm, flatRate: FED_RATE });
   const paid = Number(estPaid) || 0;
   return { revenue, expenses, net, taxableNet: f.profit, deductible: sc.deductibleTotal, notDeductible: sc.notDeductible,
-    federal: f.federal, seTax: f.seTax, qbi: f.qbi, total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid), quarterly: f.total / 4 };
+    federal: f.federal, seTax: r2c(f.seTax + (f.addlMedicare || 0)), addlMedicare: f.addlMedicare || 0, qbi: f.qbi,   // C685 — self-employment tax includes the 0.9% over $200k
+    total: f.total, estPaid: paid, owed: Math.max(0, f.total - paid), quarterly: f.total / 4 };
 }
 
 // ── HOW THE BUSINESS FILES ITS TAXES (O140, C559) ─────────────────────────────
@@ -190,7 +192,7 @@ export function deductionBreakdown(invoices, year = new Date().getFullYear(), ge
   // Bank fees, Vehicle, Contractors and every category an owner added out of the total. The
   // chart comes from the caller; without one, the roles the caller can resolve are used.
   const known = chart || (getAccountByRole ? Object.keys(ROLE_HINTS).map((r) => { const x = getAccountByRole(r); return x ? { ...x, system_role: x.system_role || r } : null; }).filter(Boolean) : []);
-  const sc = scheduleCBreakdown(invoices, year, { chart: known, homeOfficeSqft, legalForm, depreciation: assets ? taxDepreciationFor({ ...assets, year }) : null });   // C683
+  const sc = scheduleCBreakdown(invoices, year, { chart: known, homeOfficeSqft, legalForm, depreciation: assets ? taxDepreciationFor({ ...assets, year, ledger: invoices }) : null });   // C683, C686
   const rows = sc.rows.map((r) => ({ key: r.line, line: r.line, label: r.label, form: r.form, amount: r.deductible, raw: r.spent,
     categorized: r.spent > 0 || r.deductible > 0, hint: r.accounts.join(", "), notDeductible: r.taxAdjusted ? 0 : r2(r.spent - r.deductible), taxAdjusted: !!r.taxAdjusted }));
   const personal = PERSONAL_RETURN_ITEMS.map((p) => ({ ...p, amount: 0, categorized: false, ask: true }));

@@ -193,7 +193,7 @@ describe("the screen itself", () => {
     expect(src).not.toMatch(/paidByVendor/);
     expect(src).not.toMatch(/Math\.abs\(/);
     expect(src).not.toMatch(/\.includes\(norm|norm\([^)]*\)\.includes/);
-    expect(src).toMatch(/tracker1099Rows\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: taxYear, aliasIndex \}\)/);
+    expect(src).toMatch(/tracker1099Rows\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: taxYear, aliasIndex, bankAccounts: bankAccounts \|\| \[\] \}\)/);   // C688
   });
 
   it("★ the download is quoted by the shared helper and carries the REPORTABLE amount", () => {

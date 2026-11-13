@@ -93,7 +93,7 @@ describe("C549 — the screens read the one year, so the card and the screen it 
   it("★★ and the Taxes card counts the SAME year — not the calendar year the rest of that screen uses", () => {
     const v = src("src/components/views/TaxView.jsx");
     expect(v).toMatch(/const year1099 = taxYearFor1099\(\)/);
-    expect(v).toMatch(/plan1099ForYear\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: year1099, keyOf \}\)/);
+    expect(v).toMatch(/plan1099ForYear\(\{ invoices, contacts, chart: CHART_OF_ACCOUNTS, year: year1099, keyOf, bankAccounts: bankAccounts \|\| \[\] \}\)/);
     expect(v).toMatch(/plan1099Copy\(plan, \{ year: year1099 \}\)/);
     // the estimate and the deduction tracker stay on the calendar year — they are not 1099s
     expect(v).toMatch(/const year = new Date\(\)\.getFullYear\(\)/);

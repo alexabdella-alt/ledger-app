@@ -15,7 +15,10 @@ export const OWN_MONEY = "own";
 export function payFromOptions({ bankAccounts = [], getAccountByRole = () => null, chart = [], legalForm = "" } = {}) {
   const out = [];
   const seen = new Set();
-  for (const b of bankAccounts || []) {
+  // ★ C689 — bank accounts before cards, so the default (the first) is a bank account: Postgres
+  // returns rows in no fixed order, and a bill once defaulted to "Paid from: Amex (card)".
+  const banksFirst = [...(bankAccounts || [])].sort((x, y) => ((x && x.type === "credit_card") ? 1 : 0) - ((y && y.type === "credit_card") ? 1 : 0));
+  for (const b of banksFirst) {
     if (!b || !b.gl_code || seen.has(String(b.gl_code))) continue;
     seen.add(String(b.gl_code));
     const card = b.type === "credit_card";
@@ -35,13 +38,37 @@ export function payFromByKey(options = [], key = null) {
 }
 
 // C676 — the account the owner NAMED in words ("my own money", "the Amex", "savings"), for the
-// assistant. Own money by its words; otherwise the option whose label contains what was said;
-// otherwise the main bank (the first) — never a guess at a different account.
+// assistant. Nothing said → the main bank (the first).
+// ★ C687 — BY THE WORDS THAT NAME AN ACCOUNT, AND NEVER A SILENT FALLBACK. Matching the whole
+// phrase missed "the Amex", "Amex card" and "my savings", and an unmatched phrase fell back to
+// the main bank while the confirm card repeated the owner's words — so "from the Amex" was
+// approved and posted to checking. Now each meaningful word ("amex", "savings") is matched
+// against the account names; a card/bank word narrows by type; exactly one account must be left,
+// otherwise null — the assistant asks rather than picks. "Cash" names an account called cash if
+// there is one, otherwise the owner's own money.
+const FILLER = new Set(["the", "my", "our", "a", "an", "from", "with", "using", "via", "on", "account", "acct", "business", "company", "paid", "pay", "it", "i", "we", "used"]);
+const CARD_WORDS = new Set(["card", "credit", "cc"]);
+const BANK_WORDS = new Set(["bank", "checking", "chequing"]);
 export function pickPayFrom(options = [], said = "") {
+  const opts = options || [];
   const t = String(said || "").trim().toLowerCase();
-  if (!t) return (options || [])[0] || null;
-  if (/^(own|my own|personal|myself|out of pocket|cash)/.test(t)) return (options || []).find((o) => o.key === OWN_MONEY) || (options || [])[0] || null;
-  return (options || []).find((o) => o.label.toLowerCase().includes(t) || (o.name || "").toLowerCase().includes(t)) || (options || [])[0] || null;
+  if (!t) return opts[0] || null;
+  const own = opts.find((o) => o.key === OWN_MONEY) || null;
+  if (/^(own|my own|my personal|personal|myself|out of pocket|out-of-pocket)\b/.test(t)) return own;
+  const words = t.split(/[^a-z0-9]+/).filter((w) => w && !FILLER.has(w));
+  const accts = opts.filter((o) => o.key !== OWN_MONEY);
+  const text = (o) => `${o.label || ""} ${o.name || ""}`.toLowerCase();
+  const isCard = (o) => /\(card\)$/.test(o.label || "");
+  const named = (ws) => (ws.length ? accts.filter((o) => ws.every((w) => new RegExp(`\\b${w}`).test(text(o)))) : accts);
+  // the owner's words as names first ("Chase Checking"); then without the bank words ("my bank")
+  let naming = words.filter((w) => !CARD_WORDS.has(w));
+  let hits = named(naming);
+  if (!hits.length) { naming = naming.filter((w) => !BANK_WORDS.has(w)); hits = named(naming); }
+  if (words.some((w) => CARD_WORDS.has(w))) hits = hits.filter(isCard);
+  else if (words.some((w) => BANK_WORDS.has(w)) && !naming.length) hits = hits.filter((o) => !isCard(o));
+  if (hits.length === 1) return hits[0];
+  if (!hits.length && naming.length === 1 && naming[0] === "cash") return own;
+  return null;
 }
 
 // What the owner is told — from the option chosen.

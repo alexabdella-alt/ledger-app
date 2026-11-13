@@ -17,6 +17,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { perEntry } from "./txnPresent.js";
+import { pickPayFrom, OWN_MONEY } from "./payFrom.js";   // C687
+// C687 — the account a record_payment action names: its staged key if it has one, else the words.
+export function resolvePayFrom(a = {}, options = []) {
+  if (a.pay_from_key !== undefined) return a.pay_from_key == null ? null : ((options || []).find((o) => o.key === a.pay_from_key) || null);
+  return pickPayFrom(options, a.paid_from);
+}
 import { glIsRevenue, glIsExpense, entryBaseOf } from "./gl.js";
 import { isDestructiveAIAction } from "./aiCapabilities";
 import { fmtMoney } from "./format";
@@ -137,9 +143,17 @@ export function resolveActionTargets(action, { invoices = [], contracts = [] } =
     case "record_payment": {
       const open = (rows) => rows.filter((i) => i.payment_status !== "paid" && i.payment_status !== "collected" && !i.reversed_by);
       if (a.invoice_id != null) return open(byId(a.invoice_id));
-      if (a.vendor) return open(liveInv.filter((i) =>
-        norm(i.vendor).includes(norm(a.vendor)) &&
-        (a.amount == null || Math.abs((Number(i.amount) || 0) - parseFloat(a.amount)) < 1)));
+      if (a.vendor) {
+        const hits = open(liveInv.filter((i) =>
+          norm(i.vendor).includes(norm(a.vendor)) &&
+          (a.amount == null || Math.abs((Number(i.amount) || 0) - parseFloat(a.amount)) < 1)));
+        // ★ C687 — one vendor's bills only: "Sam" must not also pay "Samsara". The exact name wins;
+        // two different vendors still left → nothing (the card says no bill matched).
+        const vendors = new Set(hits.map((i) => norm(i.vendor).trim()));
+        if (vendors.size <= 1) return hits;
+        const exact = hits.filter((i) => norm(i.vendor).trim() === norm(a.vendor).trim());
+        return exact.length ? exact : [];
+      }
       return [];
     }
     case "delete_contract": {
@@ -174,15 +188,20 @@ const VERB = {
 // human approves — resolved from the CURRENT data so it shows exactly what will run.
 // C676 — what the confirm card says for "mark these bills paid". Read from the action the model
 // proposed; the card lists the bills it resolved to, so the owner sees exactly what will be recorded.
-export function recordPaymentDescription(a = {}, n = 0) {
+// ★ C687 — the account named on the card is the account the payment will be posted to: resolved
+// once here (lib/payFrom.js pickPayFrom) and carried on the action as `pay_from_key`, which the
+// executor uses. An account the words don't pin down is said, and nothing is recorded.
+export function recordPaymentDescription(a = {}, n = 0, payFrom = undefined) {
   if (!n) return "No open bill matched — nothing would be recorded.";
-  const from = /^(own|my own|personal|myself)/i.test(String(a.paid_from || "")) ? " with your own money (counted as money you put in)"
+  if (payFrom === null) return `I couldn't tell which account "${a.paid_from}" is — nothing would be recorded. Tell me the account's name as it appears in Settings.`;
+  const from = payFrom ? (payFrom.key === OWN_MONEY ? " with your own money (counted as money you put in)" : ` from ${payFrom.label}`)
+    : /^(own|my own|personal|myself)/i.test(String(a.paid_from || "")) ? " with your own money (counted as money you put in)"
     : a.paid_from ? ` from ${a.paid_from}` : "";
   const when = a.paid_date ? ` on ${a.paid_date}` : "";
   return `Record ${n} bill${n === 1 ? "" : "s"} as paid${from}${when}. Nothing is sent — this only records a payment you made.`;
 }
 
-export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [] } = {}) {
+export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [], payFromOptions = null } = {}) {
   const a = action || {};
   const verb = VERB[a.type] || "change";
 
@@ -219,7 +238,7 @@ export function describeDestructiveAction(action, { invoices = [], contracts = [
   else if (a.type === "delete_invoice") description = `Delete ${n} transaction${n === 1 ? "" : "s"} (recoverable from the audit trail).`;
   else if (a.type === "void_invoice") description = `Undo ${n} transaction${n === 1 ? "" : "s"} (kept on the audit trail).`;
   else if (a.type === "reverse_entry") description = `Undo ${n} transaction${n === 1 ? "" : "s"} by posting an offsetting entry.`;
-  else if (a.type === "record_payment") description = recordPaymentDescription(a, n);   // C676
+  else if (a.type === "record_payment") description = recordPaymentDescription(a, n, payFromOptions ? resolvePayFrom(a, payFromOptions) : undefined);   // C676, C687
   else description = `${verb} ${n} transaction${n === 1 ? "" : "s"}.`;
 
   return { type: a.type, verb, count: n, targets, description };
@@ -227,6 +246,9 @@ export function describeDestructiveAction(action, { invoices = [], contracts = [
 
 // Build the full pending-confirmation payload from the destructive actions to stage.
 export function buildPendingConfirmation(stageActions = [], ctx = {}) {
-  const items = stageActions.map((a) => ({ action: a, ...describeDestructiveAction(a, ctx) }));
-  return { actions: stageActions, items };
+  // C687 — a payment carries the account its card names, so Confirm posts exactly there
+  const actions = stageActions.map((a) => (a && a.type === "record_payment" && ctx.payFromOptions
+    ? { ...a, pay_from_key: resolvePayFrom(a, ctx.payFromOptions)?.key ?? null } : a));
+  const items = actions.map((a) => ({ action: a, ...describeDestructiveAction(a, ctx) }));
+  return { actions, items };
 }
