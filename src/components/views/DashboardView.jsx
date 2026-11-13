@@ -23,6 +23,7 @@ import { LEGAL_FORMS } from "../../lib/tax";
 import VendorTeachIn from "../VendorTeachIn";   // C563
 import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting, profileForYear } from "../../lib/tax";
 import { setAsideLine } from "../../lib/taxSetAside.js";   // C697
+import { reminderMailto, customerEmail } from "../../lib/invoiceReminder";   // C702
 import { signedPL, businessHealth, cardBalanceOwed, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
@@ -951,7 +952,7 @@ export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
     uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo, fileHeldStatementTo, intakeRows, bankAccounts,
-    statementExceptions, setClarificationQueue, taxAssets, filedDeadlinesPrev, cutoffDate, estPaidThisYear } = useERP();
+    statementExceptions, setClarificationQueue, taxAssets, filedDeadlinesPrev, cutoffDate, estPaidThisYear, setArView } = useERP();
   const [busy, setBusy] = React.useState(null);
   // C641 — for an owner with no accountant: the bank lines they can answer, as question cards.
   const soloOwner = !(navSeat ? navSeat.isReviewerSeat : true) && hasAttester === false;
@@ -963,6 +964,16 @@ export function HomeWaitingList({ navTo }) {
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const unpaid = openPayablesGL(invoices || [], apCode);
   const overdueBills = unpaid.filter(i => i.due_date && i.due_date < today);
+  // ★ C702 — customers late paying you, each with the reminder email already written (C574)
+  const lateInvoices = openReceivablesGL(invoices || [], getAccountByRole?.("accounts_receivable")?.code)
+    .filter(i => i.due_date && i.due_date < today)
+    .map(i => {
+      const amount = i.ar_amount != null ? Number(i.ar_amount) : Number(i.amount) || 0;
+      const daysLate = Math.max(1, Math.round((new Date(`${today}T00:00:00`) - new Date(`${i.due_date}T00:00:00`)) / 86400000));
+      return { customer: i.vendor || "", amount, daysLate,
+        mailto: reminderMailto({ email: customerEmail(contacts || [], i.vendor), customer: i.vendor, amount, daysOverdue: daysLate, companyName: companySettings?.name }) };
+    })
+    .sort((a, b) => b.amount - a.amount);
   const overdueTotal = overdueBills.reduce((t, i) => t + (Number(i.amount) || 0), 0);
   const weekOut = addDaysYMD(today, 7);   // C675
   const dueSoonBills = unpaid.filter(i => i.due_date && i.due_date >= today && i.due_date <= weekOut);
@@ -980,7 +991,7 @@ export function HomeWaitingList({ navTo }) {
     openCards: (clarificationQueue || []).filter(c => !c.resolved),
     heldQuestions: heldQuestions || [], heldUnreadable: heldUnreadable || [], heldPartial: heldPartial || [],
     heldInbound: Array.isArray(heldInbound) ? heldInbound : [], canDecideMail: !!(isAdmin || isOwner),
-    bankMatch, taxDeadline: dl, taxEstimateText, overdueBills, overdueTotal, dueSoonBills,
+    bankMatch, taxDeadline: dl, taxEstimateText, overdueBills, overdueTotal, dueSoonBills, lateInvoices,
     recurringSuggestions: Array.isArray(recurringSuggestions) ? recurringSuggestions : [],
     heldStatements: cockpit ? [] : heldStatementQuestions({ intakeRows: Array.isArray(intakeRows) ? intakeRows : [], bankAccounts: Array.isArray(bankAccounts) ? bankAccounts : [], uploadQueue: uploadQueue || [] }),   // C588
     uploadQueue: uploadQueue || [], cockpit, hasAccountant: hasAttester !== false,   // C574 — defaults to "has one" while unknown
@@ -989,7 +1000,7 @@ export function HomeWaitingList({ navTo }) {
   if (!items.length) return null;
   // Every door goes through `navTo` — the seat-aware one — never a bare setView (C313).
   const go = navTo || (() => {});
-  const doors = { tax: () => go("tax"), ap: () => go("ap"), contracts: () => go("contracts"), review: () => go("review"), matching: () => go("matching") };
+  const doors = { tax: () => go("tax"), ap: () => go("ap"), ar: () => go("ar", () => setArView && setArView("collections")), contracts: () => go("contracts"), review: () => go("review"), matching: () => go("matching") };   // C702 — straight to the late ones
   const run = async (item, a) => {
     if (a.kind === "stepper") { window.dispatchEvent(new CustomEvent("sc:open-stepper")); return; }
     if (a.kind === "bank_answer") {   // C641 — the bank lines become question cards, then the stepper opens

@@ -32,6 +32,28 @@ export function dueSoonCopy({ n = 0, total = 0, next = null } = {}) {
   return next ? `${head} ${n === 1 ? "It's" : "Next:"} ${next.vendor || "a bill"}, ${fmtMoney(Number(next.amount) || 0)}, due ${when}.` : head;
 }
 
+// ★ C702 — CUSTOMERS WHO ARE LATE PAYING YOU. Home spoke up about bills YOU owe (C675) and said
+// nothing about money owed to YOU — the reminder email existed (C574) but only on the "owed to you"
+// screen. One customer: their name, how late, and the reminder one tap away. Several: the count,
+// the total, and the list. `late` rows: { customer, amount, daysLate, mailto }.
+export function lateCustomersItem(late = []) {
+  const rows = (late || []).filter((r) => r && Number(r.amount) > 0 && Number(r.daysLate) > 0);
+  if (!rows.length) return null;
+  const total = rows.reduce((t, r) => t + Number(r.amount), 0);
+  const people = new Set(rows.map((r) => String(r.customer || "").trim().toLowerCase()));
+  if (rows.length === 1) {
+    const r = rows[0];
+    return { id: "late_customers", urgency: WAIT.SOON,
+      text: `${r.customer || "A customer"} is ${r.daysLate} day${r.daysLate === 1 ? "" : "s"} late paying you ${money(r.amount)}.`,
+      link: r.mailto ? { label: "Send a reminder", url: r.mailto } : null,
+      actions: [{ kind: "nav", label: "See who owes you", view: "ar", secondary: !!r.mailto }] };
+  }
+  const n = people.size;
+  return { id: "late_customers", urgency: WAIT.SOON,
+    text: `${n > 1 ? `${n} customers are` : `${rows[0].customer || "A customer"} is`} late paying you — ${money(total)} in total.`,
+    actions: [{ kind: "nav", label: "Send reminders", view: "ar" }] };
+}
+
 export function homeWaitingList({
   openCards = [],            // unresolved clarification cards (this session)
   heldQuestions = [],        // C365 rows
@@ -45,6 +67,7 @@ export function homeWaitingList({
   overdueBills = [],         // open A/P rows past due
   overdueTotal = 0,
   dueSoonBills = [],         // C675 — open A/P rows due in the next 7 days (not yet past due)
+  lateInvoices = [],         // C702 — invoices customers are late paying: { customer, amount, daysLate, mailto }
   recurringSuggestions = [],
   uploadQueue = [],          // for the contract / unknown-doc prompts
   heldStatements = [],       // C588 — heldStatementQuestions(...): statements stored and waiting, from the record
@@ -126,6 +149,7 @@ export function homeWaitingList({
       actions: [{ kind: "nav", label: "See bills to pay", view: "ap" }],
     });
   }
+  { const late = lateCustomersItem(lateInvoices); if (late) items.push(late); }   // C702
   // ★ C675 — BILLS COMING DUE, BEFORE THEY ARE LATE. Home only spoke up once a bill was already
   // overdue. The next seven days, with the soonest named, so paying on time needs no searching.
   if ((dueSoonBills || []).length) {
