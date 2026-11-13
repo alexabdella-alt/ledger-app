@@ -163,3 +163,24 @@ describe("★ C659 — owner contributions reuse the account the app made", () =
     expect(ownerEquityAccount({ legalForm: "sole_prop", chart: [{ code: "3200", name: "Additional Paid-In Capital" }], getAccountByRole: () => null }).code).toBe("3500");
   });
 });
+
+// C660 — a loan payment that comes back is linked, not booked twice.
+import { findExistingLoanPayments } from "../src/lib/balanceSheetMoves";
+import { flattenJournalEntries } from "../src/lib/ledger.js";
+describe("★ C660 — an existing loan payment is found through the real flatten", () => {
+  const ACC = [["1000","Cash"],["2600","Notes Payable"],["8000","Interest Expense"]].map(([code,name])=>({code,name}));
+  const rows = flattenJournalEntries([{ id: "LP", entry_date: "2026-03-15", description: "Loan payment", status: "posted", deleted_at: null, source: "bank_import", created_at: "2026-03-15T10:00:00Z",
+    journal_entry_lines: [["2600",787.6,0],["8000",62.4,0],["1000",0,850]].map((l,n)=>({ id:`l${n}`, debit:l[1], credit:l[2], accounts:{ code:l[0], name: ACC.find(a=>a.code===l[0]).name } })) }], ACC);
+  const mk = (amount, date) => buildLoanPaymentEntry({ amount, interest: 62.4, date, bankCode: "1000", loanCode: "2600", interestCode: "8000" });
+  it("the same payment a day later → that entry", () => expect(findExistingLoanPayments(rows, mk(850, "2026-03-16"))).toEqual(["LP"]));
+  it("a different amount or a month later → none", () => {
+    expect(findExistingLoanPayments(rows, mk(851, "2026-03-16"))).toEqual([]);
+    expect(findExistingLoanPayments(rows, mk(850, "2026-04-15"))).toEqual([]);
+  });
+  it("an $850 split bill paid the same day (two spending lines + the bank) is not the loan payment", () => {
+    const ACC2 = [{ code: "1000", name: "Cash" }, { code: "6200", name: "Utilities" }, { code: "6500", name: "Technology & Software" }];
+    const util = flattenJournalEntries([{ id: "U", entry_date: "2026-03-15", description: "Utility", status: "posted", deleted_at: null, source: "bank_import", created_at: "2026-03-15T10:00:00Z",
+      journal_entry_lines: [{ id: "u0", debit: 500, credit: 0, accounts: { code: "6200", name: "Utilities" } }, { id: "u2", debit: 350, credit: 0, accounts: { code: "6500", name: "Technology & Software" } }, { id: "u1", debit: 0, credit: 850, accounts: { code: "1000", name: "Cash" } }] }], ACC2);
+    expect(findExistingLoanPayments(util, mk(850, "2026-03-15"))).toEqual([]);
+  });
+});

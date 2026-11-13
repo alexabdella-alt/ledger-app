@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "./ERPContext";
 import { fmtMoney } from "../lib/format";
-import { planHeldLine, findExistingMoves, pickUnclaimed, heldLineOutcome } from "../lib/balanceSheetMoves";
+import { planHeldLine, findExistingMoves, findExistingLoanPayments, pickUnclaimed, heldLineOutcome } from "../lib/balanceSheetMoves";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ★★ C655 — THE BANK LINE THAT ISN'T INCOME OR SPENDING, RECORDED THE WAY THE OPERATOR CHOSE.
@@ -42,7 +42,7 @@ export default function HeldLinePanel({ kind, item, inv, run, onDone }) {
     // (a transfer or card payoff), or from an earlier answer whose line never got marked (a held
     // signed-month booking approved later). Link to one nobody on THIS account has claimed;
     // otherwise record it. If the claims can't be read, record it rather than guess a link.
-    const candidates = findExistingMoves(invoices, plan.entry);
+    const candidates = kindOf === "loan_payment" ? findExistingLoanPayments(invoices, plan.entry) : findExistingMoves(invoices, plan.entry);   // C660
     let existing = null;
     if (candidates.length && supabase && currentCompany?.id) {
       try {

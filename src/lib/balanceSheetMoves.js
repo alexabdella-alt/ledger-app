@@ -175,6 +175,33 @@ export function findExistingMoves(invoices = [], entry, { days = 5 } = {}) {
   }
   return out.sort((a, b) => a.gap - b.gap).map((c) => c.jeId);
 }
+// C660 — a loan payment is three lines (loan, interest, bank), so its rows are the multi-line
+// `<entry>_<n>` rows: it is the same payment when one entry credits the same bank by the same
+// amount and debits the same loan, within the window.
+export function findExistingLoanPayments(invoices = [], entry, { days = 5 } = {}) {
+  if (!entry || !entry.balanced || entry.lines.length < 2) return [];
+  const bank = entry.lines.find((l) => l.credit > 0), loan = entry.lines.find((l) => l.debit > 0 && !/^[4-8]/.test(String(l.code)));
+  if (!bank || !loan) return [];
+  const t0 = Date.parse(`${entry.date}T12:00:00`);
+  const byEntry = new Map();
+  for (const inv of invoices || []) {
+    if (!inv || inv.status === "voided" || inv.status === "deleted" || inv.deleted_at || inv.reversed_by) continue;
+    const base = String(inv.db_entry_id || String(inv.id).split("_")[0]);
+    if (!byEntry.has(base)) byEntry.set(base, []);
+    byEntry.get(base).push(inv);
+  }
+  const out = [];
+  for (const [base, rows] of byEntry) {
+    const bankHit = rows.some((r) => String(r.gl_code) === String(bank.code) && r.debit_credit === "credit" && Math.abs((Number(r.amount) || 0) - bank.credit) <= 0.005);
+    const loanHit = rows.some((r) => String(r.gl_code) === String(loan.code) && r.debit_credit !== "credit");
+    if (!bankHit || !loanHit) continue;
+    const t = Date.parse(`${rows[0].date}T12:00:00`);
+    if (!Number.isFinite(t0) || !Number.isFinite(t) || Math.abs(t - t0) > days * 86400000) continue;
+    out.push({ jeId: base, gap: Math.abs(t - t0) });
+  }
+  return out.sort((a, b) => a.gap - b.gap).map((c) => c.jeId);
+}
+
 export function findExistingMove(invoices = [], entry, opts = {}) {
   return findExistingMoves(invoices, entry, opts)[0] || null;
 }
