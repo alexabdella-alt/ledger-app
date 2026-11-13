@@ -169,6 +169,27 @@ export function buildDepreciationEntry({ amount, depExpCode, accumDepCode, date 
   });
 }
 
+// ★ C724 — SELLING OR GETTING RID OF EQUIPMENT. The asset leaves at its COST, the wear and tear
+// recorded against it leaves with it, anything received comes in, and the difference is the gain
+// (sold for more than its value in the books) or the loss (less, or scrapped). Pure; `null` when there
+// is nothing to dispose. Every line is exact, so the entry balances by construction.
+export function buildAssetDisposalEntry({ cost, accumulated = 0, proceeds = 0, date = null, assetCode, accumDepCode, cashCode, gainLossCode, description = "Equipment sold or disposed of", meta = null } = {}) {
+  const c = r2(cost), a = r2(accumulated), p = r2(proceeds);
+  if (!(c > 0) || !assetCode || !gainLossCode || a < 0 || p < 0 || a > c) return null;
+  if (p > 0 && !cashCode) return null;
+  if (a > 0 && !accumDepCode) return null;
+  const diff = r2(p + a - c);   // > 0 gain, < 0 loss
+  return buildJournalEntry({
+    lines: [
+      { code: cashCode, debit: p, credit: 0 },
+      { code: accumDepCode, debit: a, credit: 0 },
+      { code: assetCode, debit: 0, credit: c },
+      diff > 0 ? { code: gainLossCode, debit: 0, credit: diff } : { code: gainLossCode, debit: -diff, credit: 0 },
+    ],
+    date, description, source: "manual", meta,
+  });
+}
+
 // The full straight-line schedule: one entry per month over the useful life, starting
 // at inServiceDate. Returns { entries, total, monthly, months }. `total` === the
 // depreciable base exactly (last month absorbs the rounding remainder).

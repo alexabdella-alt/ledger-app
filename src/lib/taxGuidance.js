@@ -435,7 +435,10 @@ export const VEHICLE_ASSET = /\b(car|cars|truck|van|suv|vehicle|auto(mobile)?|pi
 export function taxDepreciationFor({ assets = [], posted = [], year = new Date().getFullYear(), ledger = null, mileageRate = false } = {}) {
   let tax = 0;
   const live = (id) => !ledger || sourcePurchaseLive(ledger, id);
-  const held = (assets || []).filter((a) => a && !a.deleted_at && live(a.source_journal_entry_id));
+  // C724 — a SOLD or scrapped asset leaves the adjustment entirely: its book wear and tear (already in
+  // profit) stands as the tax figure, and the sale's gain or loss is in profit too. Recapture on a sale
+  // at a gain is the accountant's to work out — the estimate does not guess at it.
+  const held = (assets || []).filter((a) => a && !a.deleted_at && a.status !== "disposed" && live(a.source_journal_entry_id));
   for (const a of held) {
     if (!(Number(a.cost) > 0) || !a.in_service_date) continue;
     if (mileageRate && VEHICLE_ASSET.test(`${a.description || ""} ${a.vendor || ""}`)) continue;   // C703

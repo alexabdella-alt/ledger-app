@@ -42,7 +42,7 @@ describe("the auto-post", () => {
   const app = readFileSync("src/App.jsx", "utf8");
   const fn = app.slice(app.indexOf("const autoPostDepreciation = async"), app.indexOf("let posted = 0;", app.indexOf("const autoPostDepreciation = async")));
   it("★ reads the asset's source purchase and says what it held back", () => {
-    expect(fn).toMatch(/fixed_assets!inner\([^)]*source_journal_entry_id\)/);
+    expect(fn).toMatch(/fixed_assets!inner\([^)]*source_journal_entry_id, status\)/);   // C724 — and its status, so a disposed asset stops
     expect(fn).toMatch(/const \{ post, incomplete, assetsToFlip, orphaned \} = planDepreciationAutoPost\(rows, ledger, today\);/);
     expect(fn).toMatch(/logAudit\("depreciation_held_source_removed"/);
     expect(fn).toMatch(/if \(!depreciationHoldToldRef\.current\) \{\s*\n\s*depreciationHoldToldRef\.current = true;\s*\n\s*showNotification\(`We've stopped spreading the cost of/);

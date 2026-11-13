@@ -17,6 +17,7 @@ import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import { reversalIndex, reversalFor } from "../lib/ledger";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
 import PayFromSelect, { usePayFromOptions } from "./PayFromSelect";
+import ReceivedIntoSelect, { useReceivedIntoOptions } from "./ReceivedIntoSelect";
 import { payFromByKey } from "../lib/payFrom";
 import { isDepreciableEntry, repairOfferCopy, validateRepair, DEFAULT_LIFE_YEARS } from "../lib/depreciationRepair";
 
@@ -116,7 +117,14 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   const {
     invoices, signoffs, CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
     navSeat, setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer, attachDepreciationToExistingAsset, isOwner, isAdmin,
+    disposeAsset,
   } = useERP();
+  // ★ C724 — "I sold it / got rid of it" on an equipment purchase
+  const [dispOpen, setDispOpen] = React.useState(false);
+  const [dispDate, setDispDate] = React.useState(todayLocal());
+  const [dispAmt, setDispAmt] = React.useState("");
+  const [dispInto, setDispInto] = React.useState(null);
+  const recvOpts = useReceivedIntoOptions();
   const showCodes = showCodesFor(navSeat);   // C575 — the owner's "Change category" list reads as names
 
   const [recodeOpen, setRecodeOpen] = React.useState(false);
@@ -435,7 +443,22 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
 
           {/* Actions footer */}
           <div style={{ padding: "16px 24px", borderTop: "1px solid var(--sc-surface-2)", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            {payOpen ? (
+            {dispOpen ? (
+              <>
+                <span style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Sold or got rid of {sel.vendor || "this"} on</span>
+                <input data-dispose-date type="date" value={dispDate} onChange={e => setDispDate(e.target.value)} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "var(--sc-text)" }} />
+                <input data-dispose-amount inputMode="decimal" aria-label="Amount received" placeholder="Received $0 if scrapped" value={dispAmt} onChange={e => setDispAmt(e.target.value)} style={{ width: 150, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "var(--sc-text)" }} />
+                {Number(String(dispAmt).replace(/[$,\s]/g, "")) > 0 && <ReceivedIntoSelect value={dispInto} onChange={setDispInto} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "var(--sc-text)" }} />}
+                <button onClick={async () => {
+                  const amt = Number(String(dispAmt).replace(/[$,\s]/g, "") || 0);
+                  if (!(amt >= 0) || Number.isNaN(amt)) { showNotification("Enter what you received for it, or leave it blank if it was scrapped.", "error"); return; }
+                  const into = payFromByKey(recvOpts, dispInto);
+                  const r = await disposeAsset(sel, { date: dispDate, proceeds: amt, ...(into ? { intoCode: into.code, intoName: into.name } : {}) });
+                  if (r?.ok) { setDispOpen(false); setDispAmt(""); }
+                }} style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Record it</button>
+                <button onClick={() => setDispOpen(false)} style={{ padding: "9px 12px", borderRadius: 8, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
+              </>
+            ) : payOpen ? (
               <>
                 <span style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Pay {sel.vendor} · {fmtM(sel.amount)}:</span>
                 <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "var(--sc-text)", outline: "none" }} />
@@ -448,6 +471,9 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               </>
             ) : (
               <>
+                {!isViewer && disposeAsset && !reversedInfo && sel.source !== "opening_balance" && String(sel.gl_code) === String(getAccountByRole?.("fixed_assets")?.code) && (
+                  <button data-dispose-open onClick={() => setDispOpen(true)} style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", color: "var(--sc-text)", cursor: "pointer" }}>Sold or got rid of it</button>
+                )}
                 {!isViewer && cls.settleAction === "pay" && (   // C710 — a view-only teammate isn't offered what the database refuses
                   <button onClick={() => setPayOpen(true)} style={{ flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-success)", border: "none", color: "var(--sc-on-accent)", cursor: "pointer" }}>Mark as Paid</button>
                 )}
