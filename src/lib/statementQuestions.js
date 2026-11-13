@@ -47,7 +47,7 @@ export function heldQuestion(inv = {}, { cardAccount = false } = {}) {
   // C653 — a card's own statement names its payment "PAYMENT - THANK YOU"; "from PAYMENT - THANK YOU" says nothing
   const onCard = cardAccount && inv.money_in === true;
   const who = !onCard && inv.vendor && inv.vendor !== "Bank transaction" ? ` ${inv.money_in ? "from" : "to"} ${inv.vendor}` : onCard ? " paid to this card" : "";
-  return `The ${amt}${who} ${HELD_LOOKS_LIKE[kind]}, so it hasn't been recorded. If it was something else, say what it was for.`;
+  return `The ${amt}${who} ${HELD_LOOKS_LIKE[kind]}. If it was something else, say what it was for.`;   // C655 — the card now offers to record it
 }
 
 export function bankLineQuestionCards(exceptions = [], { statements = [], bankAccounts = [], cashCode = null, cashName = null } = {}) {
@@ -70,6 +70,7 @@ export function bankLineQuestionCards(exceptions = [], { statements = [], bankAc
       id: `sxq_${lineId}`, invoice, queueItemId: null,
       question: heldQuestion(invoice, { cardAccount: isCardAccount(acct) }) || (moneyIn ? moneyInQuestion(invoice) : draftClientQuestion(invoice).question),
       statementLine: { lineId, statementId: e.statement_id, accountId: acct ? acct.id : null, accountCode: offset },
+      heldKind: notProfitAndLossKind(invoice, { cardAccount: isCardAccount(acct) }),   // C655 — the card offers the operator's treatment
       suggestedCode: null, suggestedName: null,
     };
   });

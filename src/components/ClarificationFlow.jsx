@@ -10,6 +10,7 @@ import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
 import { rightHalf } from "../lib/vendorIdentity";
 import { aiJson } from "../lib/aiJson";
 import { sortByUrgency } from "../lib/cardUrgency";
+import HeldLinePanel from "./HeldLinePanel";
 
 const money = fmtSignedMoney;
 
@@ -237,6 +238,10 @@ function ClarificationCard({ item }) {
   const [freeText, setFreeText] = React.useState("");
   const [interpreting, setInterpreting] = React.useState(false);   // AI thinking
   const [freeError, setFreeError] = React.useState(null);
+  // ★ C655 — a bank line that is the owner's money, a card payoff, a transfer or a loan: the card
+  // offers the operator's chosen treatment (HeldLinePanel) — from the line's own words, or from
+  // what the owner types.
+  const [heldKind, setHeldKind] = React.useState(item.heldKind || null);
   // ── Depreciation capture (GAAP capitalize option) — life (yrs) + salvage + in-service ──
   const depOpt = answers.gaap && answers.gaap.depreciate ? answers.gaap : null;
   const [depLifeYears, setDepLifeYears] = React.useState("");
@@ -471,6 +476,7 @@ function ClarificationCard({ item }) {
       const notIncome = notIncomeAnswer(text);
       if (notIncome) {
         const bankLine = !!item.statementLine && typeof inv.money_in === "boolean";
+        if (bankLine && notIncome !== "refund") { setFreeError(null); setHeldKind(notIncome); return; }   // C655
         if (notIncome === "refund" && bankLine) {
           const back = answerToAccount(text, { getAccountByRole, rules, vendor: answers.vendor || inv.vendor });
           if (back && back.gl_code && glIsExpense(String(back.gl_code))) {
@@ -494,6 +500,7 @@ function ClarificationCard({ item }) {
     // ★★ C650 — before the AI (which can only pick or create a spending/income category): an
     // answer that says this isn't spending at all is not recorded as spending.
     const notExpense = notExpenseAnswer(text);
+    if (notExpense && !!item.statementLine && typeof inv.money_in === "boolean") { setFreeError(null); setHeldKind(notExpense); return; }   // C655
     if (notExpense) { setFreeError(NOT_EXPENSE_COPY[notExpense]); return; }
     interpretFreeText(text);   // keyword map couldn't place it → let the AI read it
   };
@@ -684,6 +691,9 @@ function ClarificationCard({ item }) {
                 books immediately. No GL-account-category buttons (Cardinal Principle). */}
             {q.type === "freetext" && (
               <div>
+                {heldKind && item.statementLine && typeof inv.money_in === "boolean" && !done && (
+                  <HeldLinePanel kind={heldKind} item={item} inv={inv} run={withOneBooking} onDone={(text) => finishWithSuccess(text)} />
+                )}
                 {clarificationChips(inv).length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                     {clarificationChips(inv).map((chip, ci) => (

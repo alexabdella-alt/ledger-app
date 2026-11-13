@@ -92,6 +92,10 @@ describe("the plain names", () => {
     expect(ownerAccountName("accounts receivable")).toBe("Money owed to you");
     expect(ownerAccountName("Sales Tax Payable")).toBe("Sales tax you've collected");
     expect(ownerAccountName("Ace Equipment Loan")).toBe("Ace Equipment Loan");
+    // C655 — the accounts the new owner-money / card / loan answers record to
+    expect(ownerAccountName("Owner's Draw / Distributions")).toBe("Money you've taken out");
+    expect(ownerAccountName("Notes Payable")).toBe("Loans you owe");
+    expect(ownerAccountName("Credit Card Liability")).toBe("Owed on credit cards");
     expect(categoryLabel("2000", "Accounts Payable")).toBe("Bills you owe");
     expect(categoryLabel("2000", "Accounts Payable", { withCode: true })).toBe("2000 · Accounts Payable");
   });

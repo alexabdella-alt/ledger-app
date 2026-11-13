@@ -58,7 +58,7 @@ describe("the held line's question", () => {
     { kind: "line", id: "sxl_3", statement_id: "S", date: "2026-03-17", amount: -84.12, vendor: "Home Depot", description: "HOME DEPOT #123", reason: "low_confidence" },
   ], { cashCode: "1000" });
   it("★ a card payoff is asked as a card payoff, not 'what was this for?'", () => {
-    expect(cards[0].question).toBe("The $1,240.00 to CHASE CREDIT CRD AUTOPAY looks like paying off a credit card, which isn't new spending, so it hasn't been recorded. If it was something else, say what it was for.");
+    expect(cards[0].question).toBe("The $1,240.00 to CHASE CREDIT CRD AUTOPAY looks like paying off a credit card, which isn't new spending. If it was something else, say what it was for.");
   });
   it("★ money moved in from savings is asked as a transfer, not as a sale", () => {
     expect(cards[1].question).toMatch(/^The \$2,000\.00 from Savings looks like money moved between your own accounts/);
@@ -95,7 +95,7 @@ describe("a card's own statement", () => {
   it("★ its question says so, without 'from PAYMENT - THANK YOU'", () => {
     const [c] = bankLineQuestionCards([{ kind: "line", id: "sxl_9", statement_id: "S", bank_account_id: "C", date: "2026-03-20", amount: 1240, vendor: "Payment", description: "AUTOPAY PAYMENT - THANK YOU", reason: "low_confidence" }],
       { bankAccounts: [card], cashCode: "1000" });
-    expect(c.question).toBe("The $1,240.00 paid to this card looks like paying off a credit card, which isn't new spending, so it hasn't been recorded. If it was something else, say what it was for.");
+    expect(c.question).toBe("The $1,240.00 paid to this card looks like paying off a credit card, which isn't new spending. If it was something else, say what it was for.");
   });
   it("★ wired with the import's account", () => {
     expect(readFileSync("src/App.jsx", "utf8")).toMatch(/return t;\n\s*\}\), \{ account \}\);/);

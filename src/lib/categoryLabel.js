@@ -24,6 +24,14 @@ const OWNER_NAMES = {
   "retained earnings": "Profit kept in the business",
   "accumulated depreciation": "Wear and tear so far",
   "prepaid expenses": "Paid in advance",
+  // C655 — the accounts the owner's-money, card, transfer and loan answers write to
+  "notes payable": "Loans you owe",
+  "long-term debt": "Long-term loans",
+  "owner's draw / distributions": "Money you've taken out",
+  "additional paid-in capital": "Money put in by owners",
+  "owner contributions": "Money you've put in",
+  "credit card liability": "Owed on credit cards",
+  "loans": "Loans you owe",
 };
 export function ownerAccountName(name) {
   const n = name == null ? "" : String(name).trim();
