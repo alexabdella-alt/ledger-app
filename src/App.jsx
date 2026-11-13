@@ -2506,6 +2506,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // C418 — did the anomaly read RUN? `[]` from a failed read and `[]` from a clean company are
   // the same value; the trust header must not say "nothing needs your attention" over the first.
   const [anomaliesLoadOk, setAnomaliesLoadOk] = useState(true);
+  const anomaliesLoadOkRef = useRef(true); anomaliesLoadOkRef.current = anomaliesLoadOk;   // C725 — read by the notification sweep
   const anomalyScanBusyRef = useRef(false);
   const applyAnomalyRows = (rows) => { const r = Array.isArray(rows) ? rows : []; anomalyRowsRef.current = r; setAnomalyRows(r); };
   const anomalies = useMemo(
@@ -2762,18 +2763,34 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (!cid || !type || !title) return;
     try {
       const { data: existing } = await supabase.from("notifications")
-        .select("id").eq("company_id", cid).eq("type", type).eq("dismissed", false)
+        .select("id, title").eq("company_id", cid).eq("type", type).eq("dismissed", false)
         .order("created_at", { ascending: false }).limit(1);
       if (Array.isArray(existing) && existing.length) {
         const id = existing[0].id;
-        await supabase.from("notifications").update({ title, description, link_view }).eq("id", id);
-        setNotifications(prev => prev.map(n => n.id === id ? { ...n, title, description, link_view } : n));
+        // ★ C725 — A NEW MESSAGE IS NEW. Refreshed in place, a read alert stayed read: "Your November
+        // summary is ready" landed silently on October's, with no unread badge. When the WORDS change,
+        // it is unread again and moves to the top; a day count ticking over keeps the same title shape.
+        const fresh = String(existing[0].title || "").replace(/\d+/g, "#") !== String(title).replace(/\d+/g, "#");
+        const patch = { title, description, link_view, ...(fresh ? { read: false, created_at: new Date().toISOString() } : {}) };
+        await supabase.from("notifications").update(patch).eq("id", id);
+        setNotifications(prev => {
+          const next = prev.map(n => n.id === id ? { ...n, ...patch } : n);
+          return fresh ? [...next.filter(n => n.id === id), ...next.filter(n => n.id !== id)] : next;
+        });
         return;
       }
       const { data, error } = await supabase.from("notifications")
         .insert({ company_id: cid, type, title, description, link_view }).select("*").single();
       if (!error && data) setNotifications(prev => [data, ...prev]);
     } catch { /* best-effort */ }
+  };
+  // ★ C725 — an alert whose condition has gone is taken down (they stayed in the bell forever: "3 items
+  // need your input" after they were answered, a deadline already filed, books long since matched).
+  const clearNotificationType = async (type) => {
+    const cid = currentCompany?.id;
+    if (!cid || !type) return;
+    setNotifications(prev => prev.filter(n => n.type !== type));
+    try { await supabase.from("notifications").update({ dismissed: true }).eq("company_id", cid).eq("type", type).eq("dismissed", false); } catch { /* best-effort */ }
   };
   const markNotifRead = async (id) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
@@ -2819,8 +2836,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const est = waitingDue ? waitingDue.estimate : null;
       if (nextDue) {
         const amt = nextDue.est && est.quarterly > 0 ? ` — est. ${fmtApprox(est.quarterly)}` : "";
-        createNotification({ type: "tax_deadline", title: `${nextDue.label} due in ${nextDue.days} day${nextDue.days === 1 ? "" : "s"}${amt}`, description: nextDue.plain, link_view: "tax" });
-      }
+        createNotification({ type: "tax_deadline", title: `${nextDue.label} ${nextDue.days <= 0 ? "is due today" : `due in ${nextDue.days} day${nextDue.days === 1 ? "" : "s"}`}${amt}`, description: nextDue.plain, link_view: "tax" });   // C725 — not "due in 0 days"
+      } else clearNotificationType("tax_deadline");   // C725
       // Bank match overdue — C387: ONE definition, the same `bankMatchStatus` Home's list and
       // the trust panel read. The bell used to count from any reconciliation row's created_at
       // (an abandoned session counted as a match) and nagged a company with no books at all,
@@ -2828,13 +2845,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // of one fact, on two surfaces a person sees in the same minute.
       const bm = bankMatchStatus({ reconciliations: reconciliationsRef.current || [], invoices: invoicesRef.current || [], checked: !loadFailuresRef.current.reconciliations });   // C455
       if (bm.overdue) {
-        createNotification({ type: "reconciliation", title: bm.days == null ? "Your books haven't been matched to your bank yet" : `Books not matched to your bank in ${bm.days} days`, description: "Drop your latest bank statement and we'll match it to your books.", link_view: "recon" });
-      }
+        // C725 — its own type: "reconciliation" is also the opening-balance mismatch alert, which this overwrote
+        createNotification({ type: "bank_match_overdue", title: bm.days == null ? "Your books haven't been matched to your bank yet" : `Books not matched to your bank in ${bm.days} days`, description: "Drop your latest bank statement and we'll match it to your books.", link_view: "recon" });
+      } else clearNotificationType("bank_match_overdue");
       // Items waiting for review.
       const pendingClar = (clarificationQueueRef.current || []).filter(c => !c.resolved).length;
       if (pendingClar > 0) {
-        createNotification({ type: "needs_review", title: `${pendingClar} item${pendingClar === 1 ? "" : "s"} need your input`, description: "Some uploaded documents are waiting for a quick answer before they're booked.", link_view: "home" });
-      }
+        // C725 — its own type ("needs_review" has two other producers that overwrote it and it them)
+        createNotification({ type: "input_needed", title: `${pendingClar} item${pendingClar === 1 ? "" : "s"} need your input`, description: "Some uploaded documents are waiting for a quick answer before they're booked.", link_view: "home" });
+      } else clearNotificationType("input_needed");
       // High-severity anomalies — from the PERSISTED open rows (single source, so the bell
       // agrees with the table + the trust panel). Asserts a notification for an existing open
       // HIGH loaded from a prior session (runAnomalyScan only fires on NEW inserts).
@@ -2845,7 +2864,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // which openNotification opens in the detail panel. Falls back to home otherwise.
         const anomTxn = (topAnom.entity_refs || [])[0];
         createNotification({ type: "anomaly", title: topAnom.title, description: topAnom.detail, link_view: anomTxn != null ? `txn:${anomTxn}` : "home" });
-      }
+      } else if (anomaliesLoadOkRef.current !== false) clearNotificationType("anomaly");   // C725 — only when the anomalies actually loaded
     } catch (e) { console.warn("[notifications] generate failed:", e?.message || e); }
   };
 

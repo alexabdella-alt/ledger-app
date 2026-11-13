@@ -30,13 +30,14 @@ describe("★★ the clarification nudge", () => {
     expect(fn).toContain('new CustomEvent("sc:open-stepper")');
     expect(fn).toContain('getElementById("waiting-on-you")');
     expect(fn).not.toMatch(/review/i);
-    expect(src).toMatch(/const onNudge = nudge\?\.kind === "clarification" \? goQuestions : goReview;/);
+    expect(src).toMatch(/const onNudge = nudge\?\.kind === "clarification" \? goQuestions : cockpit \? goReview : nudge\?\.kind === "confidence" \? goNeedsLook : goReview;/);   // C725
   });
-  it("the confidence-flag nudge keeps its reviewer door: a button for a reviewer, status for a client", () => {
+  it("the confidence-flag nudge: Review for a reviewer; for the owner, Transactions → Needs a look (C725 — it was a status with no way to answer)", () => {
     const cpa = renderViewHtml(TrustPanel, { ...VIEW_CONTEXT["TrustPanel.jsx"], ownerTrust: trust("confidence"), navSeat: seat(true) });
     expect(cpa).toMatch(/<button[^>]*data-nudge="confidence"/);
     const owner = renderViewHtml(TrustPanel, { ...VIEW_CONTEXT["TrustPanel.jsx"], ownerTrust: trust("confidence"), navSeat: seat(false) });
-    expect(owner).not.toMatch(/data-nudge=/);
+    expect(owner).toMatch(/<button[^>]*data-nudge="confidence"/);
+    expect(src).toMatch(/const goNeedsLook = \(\) => \{ setBooksFilter && setBooksFilter\("review"\); return onViewChange \? onViewChange\("books"\)/);
     expect(owner).toMatch(/We(&#x27;|')ve asked you about 4 transactions/);
   });
   it("the stepper listens for the event the nudge dispatches (one contract)", () => {

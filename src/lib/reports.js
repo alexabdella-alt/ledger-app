@@ -743,7 +743,10 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
   const runwayInfinite = runwayRaw === null;
   const runway = runwayInfinite ? Infinity : Math.floor(runwayRaw);
 
-  const overdue = (invoices || []).filter(i => isLiveEntry(i) && arUnpaid(i) && i.due_date && daysOverdue(i.due_date, now) > 60);
+  // ★ C725 — what's still owed, from the books: an invoice a live payment settled is not overdue
+  // (whatever its flag says), and a part-paid one is overdue only for what's left.
+  const settledAR = settledBases(invoices);
+  const overdue = withPaidSoFar((invoices || []).filter(i => isLiveEntry(i) && arUnpaid(i) && i.due_date && daysOverdue(i.due_date, now) > 60 && !settledAR.has(entryBaseOf(i))), invoices);
   const overdueTotal = r2(overdue.reduce((s, i) => s + num(owedAmount(i)), 0));
 
   // burn trend — this month vs the previous month that has data
@@ -791,7 +794,7 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
     { key: "cash",   label: "Cash on hand",         value: money(cash),                                    tone: "neutral",                                                                     drill: "cash" },
     { key: "burn",   label: "Monthly burn",         value: money(burn),                                    tone: "neutral",                                                                     drill: "burn" },
     // Coverage on a profitable month is a fact, not a warning — no amber beside "You're profitable".
-    { key: "runway", label: profitable ? "Cash covers" : "Runway", value: runwayInfinite ? "No burn" : `~${runway} mo`,
+    { key: "runway", label: profitable ? "Cash covers" : "Runway", value: runwayInfinite ? "No burn" : cash < 0 ? "—" : runway < 1 ? "Under 1 mo" : `~${runway} mo`,   // C725 — never "~-3 mo"
       tone: (runwayInfinite || runway >= 6) ? "good" : profitable ? "neutral" : runway >= 3 ? "watch" : "concern", drill: "runway" },
     { key: "profit", label: `Net income · ${year}`, value: money(net),                                     tone: profitable ? "good" : "concern",                                               drill: "net" },
   ];
@@ -813,6 +816,10 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
   if (!profitable) concerns.push({ key: "profit", severity: "high", text: `You've spent more than you've brought in this year (${money(net)}).` });
   // Don't re-state the burn number here — it's already in the facts row above; reference it.
   if (runwayShort && !profitable) concerns.push({ key: "runway", severity: runway < 3 ? "high" : "med", text: runway < 1 ? "There isn't a month of cash on hand to cover it." : `At this pace your cash lasts about ${runway} month${runway === 1 ? "" : "s"}.`, actionLabel: "See where the money goes", actionView: "runway" });
+  // ★ C725 — CASH BELOW ZERO IN THE BOOKS is said as what it usually is (a starting balance or a
+  // statement not yet added), whatever the profit — a profitable company was told "your cash covers
+  // about -3 months … Everything looks healthy".
+  if (cash < 0) concerns.push({ key: "cash", severity: "med", text: `Your books show less than nothing in cash (${money(cash)}) — usually a starting balance or a bank statement that hasn't been added yet.`, actionLabel: "Check starting balances", actionView: "opening-balances" });
   if (overdue.length) concerns.push({ key: "ar", severity: overdueTotal >= 5000 ? "high" : "med", text: `${overdue.length} invoice${overdue.length > 1 ? "s are" : " is"} 60+ days overdue (${money(overdueTotal)}).`, actionLabel: "Chase overdue invoices", actionView: "ar" });
   if (burnUpPct) concerns.push({ key: "burn", severity: "med", text: `Spending is up ${burnUpPct}% versus last month.` });
 
@@ -825,7 +832,7 @@ export function businessHealth(invoices = [], { cash = 0, now = new Date(), owed
   // month is said as what it means.
   const lastsClause = runway < 1 ? " — and there isn't a month of cash on hand to cover it" : ` — at this pace your cash lasts about ${months(runway)}`;
   const lead = profitable
-    ? `You're making money.${runwayInfinite ? "" : ` Your cash covers about ${months(runway)} of spending at the current pace, even before new sales.`}`
+    ? `You're making money.${runwayInfinite || cash < 0 ? "" : runway < 1 ? " Cash on hand is under a month of spending at the current pace." : ` Your cash covers about ${months(runway)} of spending at the current pace, even before new sales.`}`
     : `You're spending more than you're bringing in${runwayInfinite ? "" : lastsClause}.`;
   const headline = !concerns.length
     ? `${lead} Everything looks healthy right now.`
@@ -946,11 +953,13 @@ function templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, 
   const M = formatPeriod(period);
   if (txns === 0) return `No transactions were recorded in ${M}. Once activity comes in, this summary will cover your revenue, expenses, cash position, and key metrics for the month.`;
   const s = [];
-  s.push(`In ${M} you brought in ${fmtMoney(revCur)} of revenue against ${fmtMoney(expCur)} of expenses, for ${netCur >= 0 ? "a net income of " + fmtMoney(netCur) : "a net loss of " + fmtMoney(-netCur)}.`);
-  if (netPrv !== 0) s.push(`That's ${netCur >= netPrv ? "up" : "down"} from ${fmtMoney(netPrv)} the prior month.`);
+  // ★ C725 — in the owner's words, and the runway warning only when the month LOST money (the C198·3b(e)
+  // alarm was back here: "your runway is about -1.7 months" on a profitable month).
+  s.push(`In ${M} you brought in ${fmtMoney(revCur)} in sales against ${fmtMoney(expCur)} of spending, for ${netCur >= 0 ? "a profit of " + fmtMoney(netCur) : "a loss of " + fmtMoney(-netCur)}.`);
+  if (netPrv !== 0) s.push(Math.abs(netCur - netPrv) < 0.005 ? `That's the same as the month before.` : `That's ${netCur > netPrv ? "up" : "down"} from ${fmtSignedMoney(netPrv)} the month before.`);
   if (topVendors[0]) s.push(`Your largest expense was ${topVendors[0].vendor} at ${fmtMoney(topVendors[0].total)}.`);
-  if (arTotal > 0) s.push(`You have ${fmtMoney(arTotal)} in receivables outstanding${arOverdue > 0 ? `, ${fmtMoney(arOverdue)} of it overdue` : ""}.`);
-  if (runway != null && runway < 6) s.push(`At the current burn rate your runway is about ${runway} months — worth keeping an eye on cash.`);
+  if (arTotal > 0) s.push(`Customers owe you ${fmtMoney(arTotal)}${arOverdue > 0 ? `, ${fmtMoney(arOverdue)} of it overdue` : ""}.`);
+  if (netCur < 0 && runway != null && runway >= 0 && runway < 6) s.push(runway < 1 ? `At this pace there's less than a month of cash on hand — worth keeping an eye on.` : `At this pace your cash covers about ${Math.floor(runway)} month${Math.floor(runway) === 1 ? "" : "s"} of spending — worth keeping an eye on.`);
   // (No 0–100 health score / letter grade — that system was removed; plain-language only.)
   return s.join(" ");
 }

@@ -233,7 +233,8 @@ export function ownerTrustState({
   } else if (!anomaliesOk) {
     // Something unusual is open (e.g. a possible duplicate payment). Not an owner task —
     // the accountant reviews it — so honest, reassuring, and NOT green. No jargon.
-    correctText = `${anomalyCount === 1 ? "Something looks" : `${anomalyCount} things look`} unusual — your accountant is taking a look.`;
+    // C725 — with no accountant on the company, nobody is "taking a look" (C574's rule)
+    correctText = `${anomalyCount === 1 ? "Something looks" : `${anomalyCount} things look`} unusual — ${hasAttester === false ? "ask the assistant about it, or invite your accountant." : "your accountant is taking a look."}`;
     correctStateVal = "attention";
   } else if (!accuracyOk) {
     // A control-total mismatch is a system/accountant concern, not an owner task — say so

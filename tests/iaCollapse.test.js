@@ -358,7 +358,7 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
   });
 
   it("the trust panel's REVIEW door is a button only in the cockpit — and the handler refuses too (C405: the clarification nudge opens the questions on either seat instead)", () => {
-    expect(trust).toMatch(/const nudgeIsButton = nudge\?\.kind === "clarification" \|\| cockpit;/);
+    expect(trust).toMatch(/const nudgeIsButton = nudge\?\.kind === "clarification" \|\| nudge\?\.kind === "confidence" \|\| cockpit;/);   // C725 — the owner's confidence nudge opens Transactions → Needs a look, never Review
     expect(trust).toMatch(/nudgeIsButton \? \(\s*<button onClick=\{onNudge\}/);
     expect(trust).toMatch(/const cockpit = navSeat \? navSeat\.isReviewerSeat : true;/);
     expect(trust).toMatch(/const goReview = \(\) => \{ if \(!cockpit\) return;/);

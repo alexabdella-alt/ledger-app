@@ -17,6 +17,7 @@ import { countByUrgency, queueBannerCopy } from "./cardUrgency";
 import { heldQuestionsCopy, heldUnreadableCopy, heldPartialCopy } from "./waitingOnYou";
 import { unknownSenderCopy } from "../../supabase/functions/_shared/mailChannel.js";
 import { fmtMoney } from "./format";
+import { owedAmount } from "./reports.js";
 
 export const WAIT = { STOPS: 0, NOW: 1, SOON: 2, INFO: 3 };
 const money = (n) => fmtMoney(Number(n) || 0);
@@ -29,7 +30,7 @@ export function dueSoonCopy({ n = 0, total = 0, next = null } = {}) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(next?.due_date || ""));
   const when = m ? `${DOW[new Date(+m[1], +m[2] - 1, +m[3]).getDay()]} ${MON[+m[2] - 1]} ${+m[3]}` : "soon";
   const head = n === 1 ? `1 bill is due in the next 7 days (${fmtMoney(total)}).` : `${n} bills are due in the next 7 days (${fmtMoney(total)}).`;
-  return next ? `${head} ${n === 1 ? "It's" : "Next:"} ${next.vendor || "a bill"}, ${fmtMoney(Number(next.amount) || 0)}, due ${when}.` : head;
+  return next ? `${head} ${n === 1 ? "It's" : "Next:"} ${next.vendor || "a bill"}, ${fmtMoney(owedAmount(next))}, due ${when}.` : head;   // C725 — what's left on it
 }
 
 // ★ C702 — CUSTOMERS WHO ARE LATE PAYING YOU. Home spoke up about bills YOU owe (C675) and said
@@ -155,7 +156,7 @@ export function homeWaitingList({
   // overdue. The next seven days, with the soonest named, so paying on time needs no searching.
   if ((dueSoonBills || []).length) {
     const list = [...dueSoonBills].sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)));
-    const n = list.length, total = list.reduce((t, i) => t + (Number(i.amount) || 0), 0), next = list[0];
+    const n = list.length, total = list.reduce((t, i) => t + owedAmount(i), 0), next = list[0];   // C725
     items.push({
       id: "bills_due_soon", urgency: WAIT.SOON,
       text: dueSoonCopy({ n, total, next }),

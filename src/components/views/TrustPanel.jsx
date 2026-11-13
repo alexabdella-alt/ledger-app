@@ -104,7 +104,7 @@ function TrustPanelNeutral({ headline, subtext }) {
 }
 
 export default function TrustPanel({ loading = false }) {
-  const { ownerTrust, onViewChange, setView, navSeat, canSoloAttest, selfAttestAcknowledgement, signOffPeriod, signOffReadinessFor, signoffs, invoices, clarificationQueue } = useERP();
+  const { ownerTrust, onViewChange, setView, navSeat, canSoloAttest, selfAttestAcknowledgement, signOffPeriod, signOffReadinessFor, signoffs, invoices, clarificationQueue, setBooksFilter } = useERP();
   // C197 — is this the CPA cockpit, or the client seat? (Absent context → cockpit,
   // so nothing regresses for any surface that renders the panel outside ERP.)
   const cockpit = navSeat ? navSeat.isReviewerSeat : true;
@@ -129,13 +129,16 @@ export default function TrustPanel({ loading = false }) {
   // click-through when cards are on screen, and otherwise scrolls to the waiting-on-you
   // list, whose row for held questions carries "Bring the questions back". Same door for
   // both seats; the confidence-flag nudge (a reviewer's queue) still goes to Review.
+  // ★ C725 — the owner's "quick answer" transactions are answered in Transactions → Needs a look (Review is the
+  // accountant's screen); the line used to be a status with no way to act on it.
+  const goNeedsLook = () => { setBooksFilter && setBooksFilter("review"); return onViewChange ? onViewChange("books") : setView && setView("books"); };
   const goQuestions = () => {
     const anyCard = (clarificationQueue || []).some((c) => c && !c.resolved);
     if (anyCard && typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("sc:open-stepper")); return; }
     if (typeof document !== "undefined") document.getElementById("waiting-on-you")?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
-  const onNudge = nudge?.kind === "clarification" ? goQuestions : goReview;
-  const nudgeIsButton = nudge?.kind === "clarification" || cockpit;
+  const onNudge = nudge?.kind === "clarification" ? goQuestions : cockpit ? goReview : nudge?.kind === "confidence" ? goNeedsLook : goReview;
+  const nudgeIsButton = nudge?.kind === "clarification" || nudge?.kind === "confidence" || cockpit;
   const signedLabel = monthLabel(reviewedThrough);
 
   return (

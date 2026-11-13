@@ -96,7 +96,7 @@ export default function DashboardView() {
   const [bizFye, setBizFye] = React.useState("12-31");
   const [bizForm, setBizForm] = React.useState(null);
   const [teachOpen, setTeachOpen] = React.useState(false);   // C563 — vendor teach-in from the setup checklist
-  const { isViewer, isOwner, hasAttester, taxAssets } = useERP();
+  const { isViewer, isOwner, hasAttester, taxAssets, cashGlCodes } = useERP();
   const hasAccountant = hasAttester !== false;   // C574 — unknown counts as "has one", so we never claim they have none on a failed read   // C563 — a viewer cannot write rules, so is not offered teach-in · C564 — only the owner can invite   // C559 — null = untouched, "" = "I'm not sure"
 
   // Navigate to a Settings view, then scroll to a specific section once it renders.
@@ -149,7 +149,7 @@ export default function DashboardView() {
     // the revenue/expenses/net DRILLS use these fiscal-year-scoped views so they tie to
     // the tile by construction (was all-time → pulled prior-period expenses).
     const fyYear = today.getFullYear();
-    const fyFrom = `${fyYear}-01-01`, fyTo = `${fyYear}-12-31`;
+    const fyFrom = `${fyYear}-01-01`, fyTo = ymdLocal(today);   // C725 — the tile's own window (Jan 1 to today): a future-dated entry was in the drill and not the tile
     const inFY = i => i.date && i.date >= fyFrom && i.date <= fyTo;
     const expFY = exp.filter(inFY);
     const revFY = rev.filter(inFY);
@@ -229,20 +229,25 @@ export default function DashboardView() {
         {clickableRow("exp", <span style={{ fontSize:14, color:"var(--sc-text-2)" }}>Total Expenses</span>, <span style={{ fontSize:14, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>({fmt(e)})</span>, ()=>setDashDrill({type:"expenses"}))}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px", borderTop:"2px solid var(--sc-border)", marginTop:4 }}>
           <span style={{ fontSize:16, fontWeight:700 }}>Net {r-e>=0?"Income":"Loss"}</span>
-          <span style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:r-e>=0?"var(--sc-success)":"var(--sc-error)" }}>{r-e<0?"-":""}{fmt(r-e)}</span>
+          <span style={{ fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace", color:r-e>=0?"var(--sc-success)":"var(--sc-error)" }}>{fmt(r-e)}</span>{/* C725 — the formatter prints its own minus ("--$3,000.00") */}
         </div>
         <div style={{ padding:"12px 18px" }}><button onClick={goReports} style={{ padding:"8px 16px", borderRadius:9, fontSize:12, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer" }}>Open full P&amp;L report →</button></div>
       </div>);
     } else if (d.type==="cash") {
-      const cashTxns = invoices.filter(i => (i.source==="bank_import" || i.source==="bank_feed" || i.payment_status==="paid" || i.payment_status==="collected") && i.status!=="voided");
-      title = "Cash & bank"; subtitle = `${(bankAccounts||[]).length} account${(bankAccounts||[]).length!==1?"s":""} · ${entryCount(cashTxns)} cash transactions`;
+      // ★ C725 — the money that went through the CASH accounts the tile adds up (was chosen by source or a paid flag:
+      // card lines and bills flagged paid were in, receipts booked straight to cash were out)
+      const cashSet = new Set([...(cashGlCodes || [])].map(String));
+      const cashTxns = invoices.filter(i => i.status !== "voided" && !i.deleted_at && (cashSet.has(String(i.gl_code)) || (!String(i.id).includes("_") && cashSet.has(String(i.secondary_gl_code)))));
+      const ACCOUNT_KIND = { checking: "Checking", savings: "Savings", credit_card: "Credit card", loan: "Loan", cash: "Cash" };
+      title = "Cash & bank"; subtitle = `${fmt(glCash)} in your books · ${(bankAccounts||[]).length} account${(bankAccounts||[]).length!==1?"s":""} · ${entryCount(cashTxns)} cash transactions`;   // C725 — the tile's own figure
       body = (<div>
         <div style={{ padding:"12px 18px", display:"flex", gap:10, flexWrap:"wrap" }}>
           {(bankAccounts||[]).length===0 ? <span style={{ fontSize:13, color:"var(--sc-text-2)" }}>No bank accounts yet — add one in Settings.</span> :
             (bankAccounts||[]).map((b,i)=>(
               <div key={b.id||i} onClick={()=>setView("settings")} style={{ cursor:"pointer", border:"1px solid var(--sc-border)", borderRadius:10, padding:"10px 14px", background:"var(--sc-bg)" }}>
                 <div style={{ fontSize:13, fontWeight:600 }}>{b.name||"Account"}</div>
-                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{b.type||"bank"} · Settings ›</div>
+                <div style={{ fontSize:12, fontFamily:"'DM Mono',monospace", marginTop:2 }}>{b.gl_code ? fmt(Math.abs(glAccountBalance(b.gl_code, invoices))) : "—"}{(b.type === "credit_card" || b.type === "loan") ? " owed" : ""}</div>
+                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{ACCOUNT_KIND[b.type] || "Bank account"} · Settings ›</div>
               </div>
             ))}
         </div>
@@ -982,13 +987,13 @@ export function HomeWaitingList({ navTo }) {
   const lateInvoices = openReceivablesGL(invoices || [], getAccountByRole?.("accounts_receivable")?.code)
     .filter(i => i.due_date && i.due_date < today)
     .map(i => {
-      const amount = i.ar_amount != null ? Number(i.ar_amount) : Number(i.amount) || 0;
+      const amount = owedAmount(i);   // C725 — what's still owed (a part-paid invoice's reminder asked the customer for the whole of it)
       const daysLate = Math.max(1, Math.round((new Date(`${today}T00:00:00`) - new Date(`${i.due_date}T00:00:00`)) / 86400000));
       return { customer: i.vendor || "", amount, daysLate,
         mailto: reminderMailto({ email: customerEmail(contacts || [], i.vendor), customer: i.vendor, amount, daysOverdue: daysLate, companyName: companySettings?.name }) };
     })
     .sort((a, b) => b.amount - a.amount);
-  const overdueTotal = overdueBills.reduce((t, i) => t + (Number(i.amount) || 0), 0);
+  const overdueTotal = overdueBills.reduce((t, i) => t + owedAmount(i), 0);   // C725 — what's left on each
   const weekOut = addDaysYMD(today, 7);   // C675
   const dueSoonBills = unpaid.filter(i => i.due_date && i.due_date >= today && i.due_date <= weekOut);
   // C618 — the first deadline that NEEDS something (C434/C435's rules), each estimate for the year
