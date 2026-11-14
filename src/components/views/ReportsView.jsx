@@ -1,4 +1,5 @@
 import React from "react";
+import TrustPanel from "./TrustPanel";
 import { reportTabsFor, ownerReportTabs, REPORT_GUIDE, REPORTS_PURPOSE, BASIS_LABELS, BASIS_EXPLAINER } from "../../lib/reportGuide";
 import { reminderMailto } from "../../lib/invoiceReminder";
 import { useERP } from "../ERPContext";
@@ -248,6 +249,9 @@ export default function ReportsView() {
 
             return (
               <div>
+                {/* ★ C729 — the owner's "are my books up to date" panel (and their own sign-off) lives here now,
+                    off Home: Home is the drop box and the key numbers. */}
+                {ownerSeat && ownerTrust?.lines?.captured && !drill && !plDrill && <TrustPanel loading={!companyDataLoaded} />}
                 <div style={{ marginBottom:24 }}>
                   <div style={{ fontSize:10, letterSpacing:3, color:"var(--sc-text-2)", marginBottom:8 }}>REPORTING</div>
                   <h1 style={{ fontSize:28, fontWeight:600, margin:0, letterSpacing:-0.5 }}>Reports</h1>

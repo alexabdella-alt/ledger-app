@@ -52,7 +52,7 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
   it("★ C636 — the owner's menu is four places and Settings (operator, 2026-11-12: brain dead simple)", () => {
     // C313/C314 gave the owner the accountant's eight record rows; C636 folds the lists into ONE
     // row — Money — and adds Ask. The records are still the owner's (next test); only the rows went.
-    expect(navItems(visibleNav(client))).toEqual(["home", "money", "reports", "ask", "settings"]);
+    expect(navItems(visibleNav(client))).toEqual(["home", "money", "tax", "reports", "ask", "settings"]);   // C729 — Taxes is a main place
     expect(visibleNav(client).seat).toBe("client");
     expect(visibleNav(client).sections.map(s => s.label)).toEqual([null, null]);
   });

@@ -11,8 +11,10 @@ const owner = { role: "owner" };
 const rows = (nav) => nav.sections.flatMap((s) => s.items.map(([id]) => id));
 
 describe("the owner's menu", () => {
-  it("★ is four places and Settings", () => {
-    expect(rows(visibleNav(owner))).toEqual(["home", "money", "reports", "ask", "settings"]);
+  it("★ is five places and Settings (C729 — Taxes joined the main menu)", () => {
+    expect(rows(visibleNav(owner))).toEqual(["home", "money", "tax", "reports", "ask", "settings"]);
+    // standing on Taxes doesn't open the Settings rows
+    expect(rows(visibleNav({ ...owner, inSettings: true, currentView: "tax" }))).toEqual(["home", "money", "tax", "reports", "ask", "settings"]);
   });
   it("★ every list the old menu had is still openable, and opening it highlights Money", () => {
     for (const v of ["books", "ap", "ar", "customers", "vendors", "docs", "send-invoice"]) {
@@ -24,9 +26,9 @@ describe("the owner's menu", () => {
     expect(rows(visibleNav({ role: "accountant" }))).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports", "review"]);
     expect(activeNavItem("ap", { seat: "reviewer" })).toBe("ap");
   });
-  it("★ in Settings, the owner sees four rows (C638) — and every setup page is still openable", () => {
+  it("★ in Settings, the owner sees three rows (C638; C729 — Taxes moved to the main menu) — and every setup page is still openable", () => {
     const r = rows(visibleNav({ ...owner, inSettings: true }));
-    expect(r.slice(-4)).toEqual(["settings", "team", "tax", "settings-more"]);
+    expect(r.slice(-3)).toEqual(["settings", "team", "settings-more"]);
     expect(r.filter((x) => x === "settings")).toHaveLength(1);
     for (const v of ["coa", "opening-balances", "rules", "recurring", "audit", "onboard", "tax1099"]) {
       expect([v, canSeeView(v, owner)]).toEqual([v, true]);

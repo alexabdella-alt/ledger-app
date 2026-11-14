@@ -485,7 +485,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // the setup rows are present exactly while you are standing in them (you arrive via
   // the header gear, not the sidebar) and never sit over the nav the rest of the time.
   const navSeat = useMemo(
-    () => visibleNav({ role: userRole, isPlatformAdmin, previewAsOwner, inSettings: SETTINGS_VIEW_IDS.includes(view) }),
+    () => visibleNav({ role: userRole, isPlatformAdmin, previewAsOwner, inSettings: SETTINGS_VIEW_IDS.includes(view), currentView: view }),
     [userRole, isPlatformAdmin, previewAsOwner, view]
   );
 

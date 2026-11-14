@@ -36,14 +36,14 @@ describe("★★ Home passes the owner bar, rendered", () => {
     });
   }
   it("the commitment block is present to be checked, and its rows are named by label (structure — the rows sit behind a Show toggle no SSR pass can flip)", () => {
-    const t = home(seats.owner);
+    const t = home(seats.reviewer);   // C729 — the accountant's Home; the owner's is the drop box and the numbers
     expect(t).toContain("active commitment");
     expect(t).toContain("Leases and ongoing agreements");
     const src = fs.readFileSync("src/components/views/DashboardView.jsx", "utf8");
     expect(src).toMatch(/CONTRACT_TYPES\[c\.contract_type\]\?\.label\) \|\| c\.contract_type/);
   });
   it("★ cash under a month's spending is not 'lasts about 0 months'", () => {
-    const t = home(seats.owner);   // the fixture's GL cash is 0 against a loss
+    const t = home(seats.reviewer);   // the fixture's GL cash is 0 against a loss (C729 — the health sentence is on the accountant's Home)
     expect(t).not.toMatch(/about 0 months/);
     expect(t).toContain("there isn't a month of cash on hand");
   });

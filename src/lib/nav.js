@@ -85,13 +85,14 @@ export const NAV_SECTION_REVIEW = { id: "review", label: null, items: [["review"
 // NOTHING IS REMOVED: every screen is still reachable from Money, from Settings, from the
 // assistant and from links — and the accountant's seat is unchanged.
 export const CLIENT_NAV_SECTIONS = [
-  { id: "main", label: null, items: [["home", "Home"], ["money", "Money"], ["reports", "Reports"], ["ask", "Ask"]] },
+  // C729 — Taxes is one of the owner's main places, not a Settings row (operator: "should taxes be on the main page")
+  { id: "main", label: null, items: [["home", "Home"], ["money", "Money"], ["tax", "Taxes"], ["reports", "Reports"], ["ask", "Ask"]] },
   { id: "settings-entry", label: null, items: [["settings", "Settings"]] },
 ];
 // ★ C638 — THE OWNER'S SETTINGS: FOUR ROWS, NOT TEN. "Your business", "Team", "Taxes", and one
 // "More settings" page that lists the rest with a line each on what it is for. The accountant
 // keeps every Settings row. Nothing is removed — every page is still one click from "More settings".
-export const OWNER_SETTINGS_ITEMS = [["settings", "Your business"], ["team", "Team"], ["tax", "Taxes"], ["settings-more", "More settings"]];
+export const OWNER_SETTINGS_ITEMS = [["settings", "Your business"], ["team", "Team"], ["settings-more", "More settings"]];   // C729 — Taxes moved to the main menu
 // The pages "More settings" opens — a client standing on any of them sees "More settings" highlighted.
 export const MORE_SETTINGS_GROUP = ["settings-more", "coa", "opening-balances", "rules", "recurring", "audit", "onboard", "legal"];
 // Rows that are ACTIONS, not pages: "Ask" opens the assistant beside whatever you are on.
@@ -185,8 +186,10 @@ export function isReviewerSeat({ role = "owner", isPlatformAdmin = false, previe
 // the chrome from the CURRENT view, so setup rows are present exactly while you are
 // standing in them. Settings itself is NOT part of the seat boundary: a client owns
 // their own company profile, taxes and audit trail, and always has.
-export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsOwner = false, inSettings = false } = {}) {
+export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsOwner = false, inSettings = false, currentView = null } = {}) {
   const reviewer = isReviewerSeat({ role, isPlatformAdmin, previewAsOwner });
+  // C729 — on the owner's seat Taxes is a main place, so standing on it doesn't open the Settings rows
+  if (!reviewer && (currentView === "tax" || currentView === "tax1099")) inSettings = false;
   // C636 — the owner gets the four-place menu; the accountant keeps every row (C312/C320).
   const sections = reviewer ? [...NAV_SECTIONS] : [...CLIENT_NAV_SECTIONS];
   if (reviewer) sections.push(NAV_SECTION_REVIEW);

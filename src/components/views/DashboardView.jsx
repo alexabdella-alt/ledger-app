@@ -30,7 +30,7 @@ import { currentPeriodRange, signedPL, businessHealth, cardBalanceOwed, computeN
 import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
-import { ownerAnomalyLine } from "../../lib/ownerTrust";
+// (C729 — ownerAnomalyLine moved off Home with the books panel)
 import ClarificationFlow, { ClarificationStepper } from "../ClarificationFlow";
 import TrustPanel from "./TrustPanel";
 import { t } from "../../lib/theme";
@@ -387,7 +387,9 @@ export default function DashboardView() {
                   (never a blank gap, never a false all-clear), then fills in once companyDataLoaded.
                   companyDataLoaded is the safe readiness signal — it guarantees the ledger +
                   reconciliations (the panel's inputs) are loaded, so no green flashes prematurely. */}
-              <TrustPanel loading={!companyDataLoaded} />
+              {/* ★ C729 — THE OWNER'S HOME IS THE DROP BOX AND THE KEY NUMBERS (operator, 2026-11-13: "brain dead
+                  simple … all that other clutter is daunting"). The books panel moves to Reports for the owner. */}
+              {cockpit && <TrustPanel loading={!companyDataLoaded} />}
               {/* Depreciation is deterministic → it AUTO-POSTS when due (App.jsx autoPostDepreciation),
                   no owner nudge. (Removed the "N months due · Run depreciation now" prompt — accounting
                   machinery is Shadow's job, not the owner's; incomplete schedules flag to CPA review.) */}
@@ -501,8 +503,6 @@ export default function DashboardView() {
               {/* ★ C639 — ON THE OWNER'S HOME, WHAT NEEDS THEM COMES FIRST. The list of things waiting on
                   the owner sat below the drop zone and the Ask box — the one part of the page that is
                   their job was the fourth thing they saw. The accountant's layout is unchanged. */}
-              {!cockpit && <HomeWaitingList navTo={navTo} />}
-
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
               <style>{`
                 .sc-dropzone{ transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
@@ -710,16 +710,17 @@ export default function DashboardView() {
 
               {/* ── U6 (C380) — ASK YOUR BOOKS. The thesis is "tell it what happened"; the chat was a
                   drawer behind a button. One line on Home opens the same chat with what you typed. */}
-              <form onSubmit={e => { e.preventDefault(); const t = String(askText || "").trim(); setChatOpen(true); if (t) setChatPrefill({ at: Date.now(), text: t, send: true }); setAskText(""); }}
+              {cockpit && <form onSubmit={e => { e.preventDefault(); const t = String(askText || "").trim(); setChatOpen(true); if (t) setChatPrefill({ at: Date.now(), text: t, send: true }); setAskText(""); }}
                 style={{ display:"flex", gap:8, alignItems:"center", marginBottom:24 }}>
                 <input value={askText} onChange={e => setAskText(e.target.value)} aria-label="Ask about your books"
                   placeholder="Ask about your books, or tell us what happened — “What did I spend on food in August?”, “Sysco paid me back $120”…"
                   style={{ flex:1, minWidth:0, height:44, borderRadius:12, border:"1px solid var(--sc-border-2)", background:"var(--sc-surface)", color:"var(--sc-text)", padding:"0 14px", fontSize:14, outline:"none" }} />
                 <button type="submit" style={{ height:44, padding:"0 16px", borderRadius:12, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>Ask</button>
-              </form>
+              </form>}
 
-              {/* ── U1 (C375) — ONE LIST OF THINGS WAITING ON YOU. Replaces nine banners; see lib/homeWaiting.js. ── */}
-              {cockpit && <HomeWaitingList navTo={navTo} />}
+              {/* ── U1 (C375) — ONE LIST OF THINGS WAITING ON YOU. Replaces nine banners; see lib/homeWaiting.js.
+                  C729 — for the owner too, right under the drop box (it renders nothing when nothing waits). ── */}
+              <HomeWaitingList navTo={navTo} />
 
               {/* ── CLARIFICATION QUEUE (conversational flow) ── */}
               <ClarificationStepper />
@@ -752,6 +753,31 @@ export default function DashboardView() {
                 const toneSoft  = bh.tone === "good" ? "var(--sc-success-soft)" : bh.tone === "watch" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)";
                 const toneLabel = bh.tone === "good" ? "Healthy" : bh.tone === "watch" ? "Worth a look" : "Needs attention";
                 const factColor = t => t === "good" ? "var(--sc-success)" : t === "watch" ? "var(--sc-warning)" : t === "concern" ? "var(--sc-error)" : "var(--sc-text)";
+                // ★ C729 — THE OWNER SEES THE NUMBERS, NOTHING ELSE: cash, profit, owed both ways, and what to
+                // keep back for taxes (a tile that opens Taxes). No headline paragraph, no concerns list — what
+                // needs them is in the list above; the rest is one tap away.
+                if (!cockpit) {
+                  const tiles = [...bh.ownerFacts, ...(setAside ? [{ key: "tax", label: "Set aside for taxes", value: fmtApprox(setAside.amount), tone: "neutral", go: "tax" }] : [])];
+                  return (
+                    <div data-owner-numbers className="sc-card" style={{ marginBottom:24, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"18px 22px" }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:16 }}>
+                        {tiles.map(f => {
+                          const open = f.go ? () => navTo(f.go) : f.drill ? () => setDashDrill({ type:f.drill }) : undefined;
+                          return (
+                            <div key={f.key} data-owner-tile={f.key} onClick={open}
+                              onMouseEnter={open ? e=>e.currentTarget.style.background="var(--sc-surface-2)" : undefined}
+                              onMouseLeave={open ? e=>e.currentTarget.style.background="transparent" : undefined}
+                              style={{ cursor:open?"pointer":"default", borderRadius:9, padding:"8px 10px", margin:"-8px -10px", transition:"background .1s" }}>
+                              <div style={{ fontSize:11, letterSpacing:0.6, color:"var(--sc-text-2)", fontWeight:600, textTransform:"uppercase" }}>{f.label}</div>
+                              <div style={{ fontSize:22, fontWeight:700, fontFamily:"'DM Mono',monospace", color:factColor(f.tone), marginTop:4 }}>{f.value}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {lastYearLine && <div data-last-year-tax style={{ marginTop:14, borderTop:"1px solid var(--sc-surface-2)", paddingTop:12, fontSize:13, color:"var(--sc-text)" }}>{lastYearLine.text}</div>}
+                    </div>
+                  );
+                }
                 return (
                   <div className="sc-card" style={{ marginBottom:24, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderLeft:`3px solid ${toneColor}`, borderRadius:14, padding:"18px 22px" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8, flexWrap:"wrap" }}>
@@ -795,18 +821,7 @@ export default function DashboardView() {
                 );
               })()}
 
-              {/* ── C198·3b (d) — THE OWNER SEAT HEARS ONE CALM LINE ──
-                  The amber box, the severity chips and the per-anomaly cards below are a
-                  REVIEWER's working queue. Rendered on the owner's home they contradicted
-                  the trust panel directly above them ("Nothing needs your attention" over
-                  "⚠ 5 unusual patterns detected"). One muted line, no colour, no cards. */}
-              {!cockpit && Array.isArray(anomalies) && anomalies.length > 0 && (() => {
-                const line = ownerAnomalyLine(anomalies, { hasAccountant });
-                if (!line) return null;
-                return (
-                  <div style={{ fontSize:12.5, color:"var(--sc-text-2)", marginBottom:24, paddingLeft:2 }}>{line}</div>
-                );
-              })()}
+              {/* C729 — the owner's one-line anomaly note moved with the books panel to Reports. */}
 
               {/* ── ANOMALY DETECTION (Item 32) — below the metric cards. CPA-only (C198·3b d). ── */}
               {cockpit && Array.isArray(anomalies) && anomalies.length > 0 && (() => {
@@ -853,8 +868,8 @@ export default function DashboardView() {
                 );
               })()}
 
-              {/* ── ACTIVE COMMITMENTS (contracts / leases) ── */}
-              {(() => {
+              {/* ── ACTIVE COMMITMENTS (contracts / leases) ── C729: the accountant's Home only */}
+              {cockpit && (() => {
                 const active = (contracts||[]).filter(c => c.end_date ? new Date(c.end_date) >= new Date() : true);
                 if (active.length===0) return null;
                 const monthly = active.reduce((s,c)=>s+(c.payment_amount||0),0);
@@ -894,8 +909,8 @@ export default function DashboardView() {
                 );
               })()}
 
-              {/* ── ACTIVITY FEED ── */}
-              {(() => {
+              {/* ── ACTIVITY FEED ── C729: the accountant's Home only (the owner's is on Money) */}
+              {cockpit && (() => {
                 const items = [];
                 const apCode = getAccountByRole?.("accounts_payable")?.code, arCode = getAccountByRole?.("accounts_receivable")?.code;
                 // C527 — one line per ENTRY at the entry's amount: a two-line bill listed as three

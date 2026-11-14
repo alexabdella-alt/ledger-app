@@ -67,7 +67,9 @@ describe("C574 — an owner with no accountant is never told 'your accountant wi
   it("the screens pass it through", () => {
     const dash = readFileSync("src/components/views/DashboardView.jsx", "utf8");
     expect(dash).toMatch(/hasAccountant: hasAttester !== false/);
-    expect(dash).toMatch(/ownerAnomalyLine\(anomalies, \{ hasAccountant \}\)/);
+    // C729 — the owner's anomaly note moved off Home into the books panel on Reports, which reads hasAttester (C725)
+    expect(dash).not.toMatch(/ownerAnomalyLine\(anomalies/);
+    expect(readFileSync("src/lib/ownerTrust.js", "utf8")).toMatch(/hasAttester === false \? "ask the assistant about it, or invite your accountant\."/);
     expect(dash).toMatch(/alreadyReconciled:!!item\.result\.alreadyReconciled, hasAccountant \}\)/);
     const trust = readFileSync("src/components/views/TrustPanel.jsx", "utf8");
     expect((trust.match(/hasAccountant: false/g) || []).length).toBe(2);

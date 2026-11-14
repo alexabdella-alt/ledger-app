@@ -14,7 +14,7 @@ describe("C527 — Home's activity feed is one line per entry", () => {
     expect(INVOICES.filter((r) => r.db_entry_id === "i7").length).toBe(3);
   });
   it("renders the bill once, at $520, with a lines hint — never its A/P leg", () => {
-    const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+    const navSeat = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS };   // C729 — the activity feed is on the accountant's Home
     const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, companyDataLoaded: true }));
     expect(t).toContain("Sysco — Food Cost · 3 lines");
     expect(t).toContain("520.00");
@@ -28,7 +28,7 @@ describe("C527 — Home's activity feed is one line per entry", () => {
 // of the January bill read "Payment — Accounts Payable −$824.60"; a collection would have read as
 // money OUT of "Cash".
 describe("C538 — Home's activity feed describes settlements", () => {
-  const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+  const navSeat = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS };   // C729 — the activity feed is on the accountant's Home
   it("the payment reads 'Paid Hill Country Milling Co.' as money out; the A/P leg's name never shows", () => {
     expect(INVOICES.find((r) => r.id === "i9").import_metadata.payment_for).toBe("i1");   // the shape under test
     const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
@@ -47,7 +47,7 @@ describe("C538 — Home's activity feed describes settlements", () => {
 // read 💰 "Bluebonnet Linen Service — Linen & Laundry +$145.00".
 describe("C540 — a correction is labelled as one", () => {
   it("reads '↩ Corrected: Bluebonnet Linen Service'", () => {
-    const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+    const navSeat = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS };   // C729 — the activity feed is on the accountant's Home
     expect(INVOICES.find((r) => r.id === "i10").import_metadata.reverses).toBe("i3");   // the shape under test
     const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
     expect(t).toContain("↩ Corrected: Bluebonnet Linen Service");
@@ -59,7 +59,7 @@ describe("C540 — a correction is labelled as one", () => {
 import ReportsView from "../src/components/views/ReportsView.jsx";
 describe("C543 — Reports counts entries", () => {
   it("the P&L subtitle counts one per entry", () => {
-    const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+    const navSeat = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS };   // C729 — the activity feed is on the accountant's Home
     const plRows = INVOICES.filter((r) => /^[4-8]/.test(String(r.gl_code)) && r.status !== "voided");
     const lines = plRows.length, entries = new Set(plRows.map((r) => r.db_entry_id)).size;
     expect(lines).toBeGreaterThan(entries);   // the fixture has multi-line entries, so the two differ

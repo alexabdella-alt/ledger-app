@@ -11,21 +11,30 @@ const cpa = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL
 const src = readFileSync("src/components/views/DashboardView.jsx", "utf8");
 
 describe("the owner's Home", () => {
-  it("★ the list of things waiting on them comes before the drop zone (owner seat only)", () => {
-    const ownerList = src.indexOf("{!cockpit && <HomeWaitingList navTo={navTo} />}");
+  // ★ C729 — operator, 2026-11-13: "maybe it's literally just the drop box and the key metrics … this should be
+  // brain dead simple". The owner's Home: the drop box, then (only when something waits) the list, then the numbers.
+  it("★ the drop box comes first; the waiting list sits right under it, for both seats", () => {
     const dropZone = src.indexOf("{/* ── UNIVERSAL UPLOAD ZONE ── */}");
-    const cpaList = src.indexOf("{cockpit && <HomeWaitingList navTo={navTo} />}");
-    expect(ownerList).toBeGreaterThan(-1);
-    expect(ownerList).toBeLessThan(dropZone);
-    expect(cpaList).toBeGreaterThan(dropZone);   // the accountant's layout is unchanged
+    const list = src.indexOf("              <HomeWaitingList navTo={navTo} />");
+    expect(dropZone).toBeGreaterThan(-1);
+    expect(list).toBeGreaterThan(dropZone);
+    expect(src).not.toMatch(/\{!cockpit && <HomeWaitingList/);
   });
-
-  it("★ recent activity shows the latest few and points at Money; the accountant keeps 'Load more'", () => {
-    expect(HOME_OWNER_ACTIVITY_COUNT).toBe(5);
+  it("★ the owner sees the key numbers — tax included — and none of the rest", () => {
     const o = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: owner, companyDataLoaded: true });
-    expect(o).toContain("See everything in Money →");
-    expect(o).not.toContain(">Load more<");
+    expect(o).toContain("data-owner-numbers");
+    for (const k of ["cash", "profit"]) expect(o).toContain(`data-owner-tile="${k}"`);
+    expect(o).not.toContain("How your business is doing");
+    expect(o).not.toContain("See everything in Money →");     // the activity feed is the accountant's
+    expect(o).not.toContain("Ask about your books");            // Ask is in the menu
+    expect(o).not.toMatch(/data-trust-panel|Your books, at a glance/);
+    expect(src).toMatch(/label: "Set aside for taxes", value: fmtApprox\(setAside\.amount\), tone: "neutral", go: "tax"/);
+  });
+  it("the accountant's Home is unchanged: books panel, health block, Ask box, activity", () => {
+    expect(HOME_OWNER_ACTIVITY_COUNT).toBe(5);
     const c = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: cpa, companyDataLoaded: true });
-    expect(c).not.toContain("See everything in Money →");
+    expect(c).toContain("How your business is doing");
+    expect(c).toContain("Ask about your books");
+    expect(c).not.toContain("data-owner-numbers");
   });
 });
