@@ -6,7 +6,7 @@ import { isCancelledOrCancelling, glIsRevenue, glIsExpense, glIsBalSheet, glPLTy
 import { initials, vendorColor, fmtDate, fmtSignedMoney, fmtMoney, todayLocal, ymdLocal } from "../../lib/format";
 import { ownerAccountName } from "../../lib/categoryLabel";
 import { getAuthHeaders } from "../../lib/supabase";
-import { signedPL, agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange, plLegs, cashBasisPLRows, glCashOnHand, isLiveEntry } from "../../lib/reports";
+import { signedPL, agingReport, trialBalance, computeKPIs, computeRevenue, computeExpenses, computeVendorTotals, fiscalYearSplit, glAccountBalance, currentPeriodRange, plLegs, cashBasisPLRows, glCashOnHand, isLiveEntry, cashFlowSection, cashCounterpart } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
 import { pill } from "../../lib/ui";
 import { reconBooksSet, cashLegSigned } from "../../lib/reconcile";
@@ -119,6 +119,7 @@ export default function ReportsView() {
             const cfCashCodes = [...(cashGlCodes || [])].map(String);
             const cfIsCashLeg = c => c != null && cfCashCodes.includes(String(c));
             const byMonth = {};
+            const bySection = { operating: 0, investing: 0, financing: 0 };   // C727
             for (const inv of reconBooksSet(filtered, { cashCodes: cfCashCodes })) {
               if (!inv.date) continue;
               if (inv.source === "opening_balance") continue;   // C716 — the starting balance is what you had, not money that came in
@@ -128,6 +129,7 @@ export default function ReportsView() {
               if (!byMonth[m]) byMonth[m] = { month:m, inflow:0, outflow:0 };
               const s = cashLegSigned(inv, cfCashCodes);
               if (s >= 0) byMonth[m].inflow += s; else byMonth[m].outflow += -s;
+              bySection[cashFlowSection(cashCounterpart(inv, cfCashCodes), CHART_OF_ACCOUNTS)] += s;   // C727
             }
             Object.values(byMonth).forEach(r => { r.inflow = Math.round(r.inflow*100)/100; r.outflow = Math.round(r.outflow*100)/100; });
             const cashRows = Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month));
@@ -761,6 +763,17 @@ export default function ReportsView() {
                           </div>
                           <div style={{ fontSize:12, color:"var(--sc-text-2)" }}>{rangeLabels[reportRange]}</div>
                         </div>
+                        {cashRows.length > 0 && (
+                          // ★ C727 — the three kinds of cash movement (ASC 230), in the owner's words on their seat
+                          <div data-cash-sections style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:10, padding:"14px 20px", borderBottom:"1px solid var(--sc-border)" }}>
+                            {[["operating", ownerSeat ? "From running the business" : "Operating activities"], ["investing", ownerSeat ? "Equipment bought or sold" : "Investing activities"], ["financing", ownerSeat ? "Loans and owner money" : "Financing activities"]].map(([k, l]) => (
+                              <div key={k}>
+                                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{l}</div>
+                                <div style={{ fontSize:15, fontWeight:600, fontFamily:"'DM Mono', monospace", color: bySection[k] < 0 ? "var(--sc-error)" : "var(--sc-text)" }}>{fmt(Math.round(bySection[k] * 100) / 100)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {cashRows.length===0 ? <div style={{ padding:24, color:"var(--sc-text-2)", fontSize:13 }}>No cash transactions recorded yet. Mark invoices as paid/collected to see cash flow.</div> : (
                           <table style={{ width:"100%", borderCollapse:"collapse" }}>
                             <thead><tr style={{ background:"var(--sc-surface-2)" }}>

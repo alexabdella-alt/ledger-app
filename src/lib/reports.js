@@ -967,3 +967,29 @@ function templatedSummary({ period, revCur, expCur, netCur, netPrv, topVendors, 
   // (No 0–100 health score / letter grade — that system was removed; plain-language only.)
   return s.join(" ");
 }
+
+
+// ★ C727 — WHICH KIND OF CASH MOVEMENT IT IS (the statement of cash flows' three sections, ASC 230).
+// Read from the OTHER side of the cash line — the account the money came from or went to:
+//   investing — equipment, intangibles, deposits (buying them, or selling them);
+//   financing — loans, and the owner's money in or out (anything in equity);
+//   operating — everything else (sales, spending, customers paying, bills, payroll, taxes, leases).
+// By role first (accounts are renumbered), by the code's range only for a custom account.
+const INVESTING_ROLES = new Set(["fixed_assets", "accumulated_depreciation", "intangible_assets", "security_deposits", "gain_loss_disposal"]);
+const FINANCING_ROLES = new Set(["notes_payable", "lease_liability_noncurrent"]);
+export function cashFlowSection(code, chart = []) {
+  const a = (chart || []).find((x) => x && String(x.code) === String(code));
+  const role = a && a.system_role;
+  if (role && INVESTING_ROLES.has(role)) return "investing";
+  if (role && FINANCING_ROLES.has(role)) return "financing";
+  const cat = (a && a.category) || (String(code)[0] === "3" ? "Equity" : null);
+  if (cat === "Equity") return "financing";
+  return "operating";
+}
+// The counterpart account of a cash row: the leg that is NOT cash.
+export function cashCounterpart(row, cashCodes = []) {
+  const cash = new Set((cashCodes || []).map(String));
+  if (!row) return null;
+  if (cash.has(String(row.gl_code))) return row.secondary_gl_code ?? null;
+  return row.gl_code ?? null;
+}
