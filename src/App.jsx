@@ -3226,9 +3226,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       return d;
     }));
     if (!currentCompany?.id) return;
+    // ★ C728 — checked: supabase-js RETURNS its error, so the catch never saw a refused relink; the
+    // document kept the in-session link and the transaction read "no source document" after a reload.
     try {
-      await supabase.from("documents").update({ linked_invoice_id: to })
-        .eq("company_id", currentCompany.id).eq("linked_invoice_id", from);
+      const { data: moved, error } = await supabase.from("documents").update({ linked_invoice_id: to })
+        .eq("company_id", currentCompany.id).eq("linked_invoice_id", from).select("id");
+      if (error || (hadLocal && !(moved || []).length)) {
+        console.error("[documents] relink failed:", error?.message || "no rows");
+        logAudit("document_relink_failed", `A document couldn't be linked to its entry — it will show as unattached after a reload`, null, { from, to, reason: error?.message || "no rows" });
+      }
     } catch (e) { if (hadLocal) console.warn("[documents] relink failed:", e?.message || e); }
   };
 
@@ -4371,11 +4377,18 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   };
 
   const applyGaapAnswer = async (item, opt) => {
-    const inv = item.invoice;
+    // ★ C728 — the date the person gave when the document showed none (the card asks it first now);
+    // never booked on "today" by default.
+    const inv = opt.date ? { ...item.invoice, date: opt.date } : item.invoice;
+    // ★ C728 — the card comes BACK when its booking fails. It was removed before the write and never
+    // restored, so a refused booking (the start date, a signed month, a failed write) left nothing to
+    // answer — and on a two-invoice document the other card's success marked the file "recorded".
+    const restore = () => setClarificationQueue(prev => prev.some(c => c.id === item.id) ? prev : [{ ...item, invoice: inv }, ...prev]);
+    if (!inv.date) { showNotification("We need the date on this document before it can be recorded — answer the date question first.", "error"); return; }
     setClarificationQueue(prev => prev.filter(c => c.id !== item.id));
     // C367 — each branch reports what it landed so the document's intake row can settle.
-    if (opt.prepaidMonths) { const capId = await bookPrepaid(inv, opt.prepaidMonths, opt); if (capId) settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId: capId }); return; }
-    if (opt.deferredRevenueReceipt) { const drId = await bookDeferredRevenueReceipt(inv, opt); if (drId) settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId: drId }); return; }
+    if (opt.prepaidMonths) { const capId = await bookPrepaid(inv, opt.prepaidMonths, opt); if (capId) settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId: capId }); else restore(); return; }
+    if (opt.deferredRevenueReceipt) { const drId = await bookDeferredRevenueReceipt(inv, opt); if (drId) settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId: drId }); else restore(); return; }
     if (opt.bookAsIs) {
       // Revenue earned now — book the receipt in its normal shape (Dr Cash/AR / Cr Revenue),
       // preserving the invoice's own coding rather than the expense-shaped path below.
@@ -4386,7 +4399,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // (cutoff, signed month, RPC) and the refusal is said by the writer; a ✓ on top of it
       // was a success sentence about a booking that did not happen.
       const jeId = await bookToDb(ri);
-      if (!jeId) return;
+      if (!jeId) { restore(); return; }   // C728
       settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId });
       if (ri._contact) createOrUpdateContact({ ...ri._contact, type: "customer", gl_code: ri.gl_code, gl_name: ri.gl_name });
       logAudit("invoice_booked", `${ri.vendor} · ${fmtMoney(ri.amount)} → ${ri.gl_name} (revenue recognized now)`, null, { vendor: ri.vendor, amount: ri.amount, gl_code: ri.gl_code });
@@ -4396,8 +4409,31 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     // Capitalize → book Dr Fixed Asset / Cr AP, then create the real fixed_assets
     // record + straight-line depreciation schedule (replaces the dead
     // `needs_depreciation` flag, which never produced any depreciation entry).
+    // ★ C728 — THE ANSWER CHANGES THE BOOKING. "Mostly personal use" and a vehicle's business share were
+    // set on the in-session object only and read by nothing: the full amount booked as a business cost
+    // while its stored reasoning said "not deductible". Personal use is money taken out of the business
+    // (Owner's Draw); a vehicle's personal share is too, and only the business share is a cost.
+    if (opt.vehiclePct && opt.vehiclePct < 100) {
+      const total = Math.round((Number(inv.amount) || 0) * 100) / 100;
+      const biz = Math.round(total * opt.vehiclePct) / 100, personal = Math.round((total - biz) * 100) / 100;
+      const je = buildJournalEntry({ lines: [
+          { code: opt.gl_code || inv.gl_code, debit: biz, credit: 0 },
+          { code: rc("owners_draw"), debit: personal, credit: 0 },
+          { code: rc("accounts_payable"), debit: 0, credit: total },
+        ], date: inv.date, description: `${inv.vendor || "Vehicle"} – ${inv.description || "vehicle cost"} (${opt.vehiclePct}% business)`,
+        source: "manual", meta: { ai_reasoning: opt.reasoning || inv.reasoning, ai_confidence: 100 } });
+      const jeId = je && je.balanced ? await persistMultiLineEntry(je) : null;
+      if (!jeId) { restore(); return; }
+      try { relinkDocsForInvoice(inv.id, jeId); } catch {}
+      logAudit("invoice_booked", `${inv.vendor} · ${fmtMoney(total)} — ${fmtMoney(biz)} as a business vehicle cost, ${fmtMoney(personal)} as personal use (money taken out)`, null, { vendor: inv.vendor, amount: total, business: biz, personal, pct: opt.vehiclePct });
+      settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId });
+      try { await loadAllData(); } catch {}
+      showNotification(`Recorded: ${fmtMoney(biz)} as a business cost, ${fmtMoney(personal)} as personal use ✓`);
+      return;
+    }
+    const personalUse = !!opt.nondeductible;
     const finalInv = { ...inv,
-      gl_code: opt.gl_code || inv.gl_code, gl_name: opt.gl_name || inv.gl_name,
+      gl_code: personalUse ? rc("owners_draw") : (opt.gl_code || inv.gl_code), gl_name: personalUse ? rn("owners_draw") : (opt.gl_name || inv.gl_name),
       secondary_gl_code:rc("accounts_payable"), secondary_gl_name:rn("accounts_payable"), debit_credit:"debit",
       confidence:100, status:"booked", booked_at:new Date().toISOString(), source:"gaap_classification",
       reasoning: opt.reasoning || inv.reasoning,
@@ -4420,6 +4456,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // same discipline as the payment-posting compensation. Never report success.
       if (!jeId) {
         showNotification("Couldn't record that purchase — nothing was saved. Please try again.", "error");
+        restore();   // C728
         return;
       }
       const res = await createFixedAssetWithSchedule({
@@ -4432,9 +4469,9 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId });
       showNotification(`Recorded — its cost will be spread over time ✓`);
     } else {
-      if (!jeId) return;   // the writer said why; the card was already removed, the row stays held
+      if (!jeId) { restore(); return; }   // C728 — the writer said why; the card comes back to answer again
       settleClarification(item, { kind: ANSWER_OUTCOME.BOOKED, jeId });
-      showNotification(`Booked to ${finalInv.gl_name} ✓`);
+      showNotification(personalUse ? `Recorded as personal use — money taken out of the business, not a business cost ✓` : `Booked to ${finalInv.gl_name} ✓`);
     }
   };
 
@@ -5403,9 +5440,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     const liveIntakeIds = (clarificationQueue || []).filter(c => !c.resolved)
       .map(c => (uploadQueue || []).find(q => q.id === c.queueItemId)?.intake_id).filter(Boolean);
     // a document already linked to an entry was answered (pre-C367 rows never moved) — never re-asked
-    const bookedDocumentIds = (docLibrary || []).filter(d => d && d.linked_invoice_id).map(d => d.id);
+    // ★ C728 — "answered" means linked to an entry THE BOOKS HOLD: a document whose question was never
+    // answered carried the card's in-session id as its link, read as answered, and after a reload the
+    // question vanished and the bill was never recorded. A deleted entry's document is not answered either.
+    const liveEntryIds = new Set((invoices || []).filter(i => i && i.status !== "voided" && !i.deleted_at && i.db_entry_id != null).map(i => String(i.db_entry_id)));
+    const bookedDocumentIds = (docLibrary || []).filter(d => d && d.linked_invoice_id && liveEntryIds.has(String(d.linked_invoice_id))).map(d => d.id);
     return heldQuestionRows(intakeRows, { liveIntakeIds, uploadQueue, bookedDocumentIds });
-  }, [intakeRows, clarificationQueue, uploadQueue, docLibrary]);
+  }, [intakeRows, clarificationQueue, uploadQueue, docLibrary, invoices]);   // C728 — "answered" reads the live books
   // C369 — documents a person has to deal with whose upload tile is gone (a reload).
   const heldUnreadable = useMemo(() => heldUnreadableRows(intakeRows, { uploadQueue }), [intakeRows, uploadQueue]);
   const heldPartial = useMemo(() => heldPartialRows(intakeRows, { uploadQueue }), [intakeRows, uploadQueue]);   // C390

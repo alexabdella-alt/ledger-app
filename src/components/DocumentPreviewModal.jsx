@@ -1,6 +1,8 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
+import { fmtDate } from "../lib/format";
+import { docTypeLabel } from "../lib/plainLabels";
 
 export const isImageDoc = m => (m || "").startsWith("image");
 export const isPdfDoc = m => m === "application/pdf";
@@ -35,8 +37,9 @@ export default function DocumentPreviewModal({ doc, onClose }) {
         {/* Sticky dark header bar — always visible above the document */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 18px", background: "var(--sc-surface)", flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-bg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 1 }}>{doc.uploaded_at?.slice(0, 10)} · {doc.type}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>
+            {/* C728 — readable (it was the page's background colour on the panel's), the type in words, the local day */}
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+            <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 1 }}>{doc.uploaded_at ? `Uploaded ${fmtDate(doc.uploaded_at)}` : ""}{doc.type ? ` · ${docTypeLabel(doc.type)}` : ""}</div>
           </div>
           {previewUrl && docHasFile(doc) && (
             <a href={previewUrl} download={doc.name} target="_blank" rel="noreferrer"
@@ -44,8 +47,8 @@ export default function DocumentPreviewModal({ doc, onClose }) {
           )}
           <button onClick={onClose} aria-label="Close preview" title="Close"
             onMouseEnter={e => { e.currentTarget.style.background = "var(--sc-error)"; e.currentTarget.style.color = "var(--sc-surface)"; e.currentTarget.style.borderColor = "var(--sc-error)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "var(--sc-bg)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
-            style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", color: "var(--sc-bg)", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "var(--sc-text)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
+            style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", color: "var(--sc-text)", fontSize: 24, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>×</button>
         </div>
 
         {/* Content area fills the rest; scrolls independently */}

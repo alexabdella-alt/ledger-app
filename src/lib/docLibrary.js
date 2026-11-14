@@ -1,4 +1,5 @@
 import { entryTotalOf } from "./txnPresent.js";
+import { ymdLocal } from "./format.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // THE DOCUMENT LIBRARY — three claims the screen made and did not keep.
 //
@@ -67,7 +68,10 @@ export function filterDocuments(docs = [], { query = "", type = "all", from = nu
     if (type !== "all" && d.type !== type) return false;
     if (from || to) {
       const { date } = documentDate(d, invoices);
-      const ymd = String(date || "").slice(0, 10);
+      // C728 — an upload TIME is filtered on the local day the card shows (its UTC day was the next one
+      // for an evening upload in the US); a document's own date is already a day
+      const raw = String(date || "");
+      const ymd = raw.length > 10 && !Number.isNaN(new Date(raw).getTime()) ? ymdLocal(new Date(raw)) : raw.slice(0, 10);
       if (!ymd) return false;                      // undated cannot satisfy a date filter
       if (from && ymd < from) return false;
       if (to && ymd > to) return false;

@@ -79,8 +79,8 @@ describe("the wiring in App.jsx (source)", () => {
   it("every applyGaapAnswer branch reports a landed id, and the plain branch is gated on one", () => {
     const i = app.indexOf("const applyGaapAnswer = async (item, opt) => {");
     const body = app.slice(i, app.indexOf("const compensateCapitalization", i));
-    expect((body.match(/settleClarification\(item, \{ kind: ANSWER_OUTCOME\.BOOKED, jeId/g) || []).length).toBe(5);
-    expect(body).toMatch(/\} else \{\s*if \(!jeId\) return;[\s\S]{0,200}settleClarification\(item, \{ kind: ANSWER_OUTCOME\.BOOKED, jeId \}\);\s*showNotification\(`Booked to \$\{finalInv\.gl_name\} ✓`\)/);
+    expect((body.match(/settleClarification\(item, \{ kind: ANSWER_OUTCOME\.BOOKED, jeId/g) || []).length).toBe(6);   // C728 — + the vehicle split
+    expect(body).toMatch(/\} else \{\s*if \(!jeId\) \{ restore\(\); return; \}[\s\S]{0,200}settleClarification\(item, \{ kind: ANSWER_OUTCOME\.BOOKED, jeId \}\);\s*showNotification\(personalUse \?/);   // C728 — a failed booking brings the card back
     expect(app).toMatch(/showNotification\(`Recorded as prepaid — spread over \$\{months\} months ✓`\);\s*return capId;/);
     expect(app).toMatch(/showNotification\("Recorded as money received in advance ✓"\);\s*return jeId;/);
   });

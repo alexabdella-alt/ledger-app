@@ -31,9 +31,7 @@ const EXCUSED = {
   // Upload telemetry. It records what happened for us, not for the user, and the intake
   // ledger (O60) is the durable record the completeness net actually reads.
   upload_log: "telemetry; the intake ledger is the durable record",
-  // Re-linking a document to a different entry. The document and the entry both survive; the
-  // link is a convenience the doc library re-derives.
-  documents: "a failed relink loses a convenience link, not a record",
+  // (documents' relink left this list in C728 — it is checked now.)
   // Flipping an asset to fully_depreciated once its last row posts. Derived from the
   // schedule, so the next run recomputes it.
   fixed_assets: "derived from the schedule and recomputed on the next run",

@@ -51,7 +51,7 @@ describe("Home's recurring suggestion card persists through the one writer", () 
 describe("booking ✓ sentences follow the awaited write", () => {
   it("GAAP card — book as is", () => {
     const body = fn("if (opt.bookAsIs) {", "// Capitalize →");
-    ordered(body, "setInvoices(prev => [ri, ...prev]);", "const jeId = await bookToDb(ri);", "if (!jeId) return;", "showNotification(`Booked to ${ri.gl_name} ✓`)");
+    ordered(body, "setInvoices(prev => [ri, ...prev]);", "const jeId = await bookToDb(ri);", "if (!jeId) { restore(); return; }", "showNotification(`Booked to ${ri.gl_name} ✓`)");   // C728
   });
   it("manual entry — the form is cleared and Home is shown only once the entry is in the books", () => {
     const body = fn("const doBookOnce = async () => {", "// Duplicate invoice number check");   // C433 — the gated body

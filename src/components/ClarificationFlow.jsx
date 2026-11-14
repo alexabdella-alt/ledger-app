@@ -5,7 +5,12 @@ import { callAIProxy } from "../lib/ai";
 import { draftClientQuestion, answerToAccount, describeBooking, clarificationChips } from "../lib/clarify";
 import { alignDirectionToAccount, incomeAccountForAnswer, notIncomeAnswer, NOT_INCOME_COPY, notExpenseAnswer, NOT_EXPENSE_COPY } from "../lib/bookingDirection";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
-import { makeOneInFlight } from "../lib/oneInFlight";
+import { makeOneInFlight, makeKeyedInFlight } from "../lib/oneInFlight";
+// ★ C728 — ONE BOOKING PER QUESTION, ACROSS EVERY PLACE IT IS SHOWN. The pop-up and the Home list render
+// separate cards for the same question, each with its own guard, so an answer pressed in one and again
+// in the other booked the invoice twice. Shared by question id, for the whole session: in flight, or done.
+const QUESTION_BOOKINGS = makeKeyedInFlight();
+const QUESTIONS_BOOKED = new Set();
 import { ASK_REASON, MATCH_EXCEPTION_KIND } from "../lib/invoicePayment";
 import { rightHalf } from "../lib/vendorIdentity";
 import { aiJson } from "../lib/aiJson";
@@ -31,7 +36,10 @@ function deriveSession(item) {
   if (item.gaap) {
     return {
       kind: "gaap",
-      questions: [{
+      questions: [
+        // C728 — a document with no readable date is asked its date first (it booked on today's date)
+        ...(!inv.date ? [{ field: "date", type: "date", prompt: "What date was this from?", default: todayLocal() }] : []),
+        {
         field: "gaap", type: "buttons", prompt: item.question, explanation: item.explanation,
         options: (item.options || []).map(o => ({ label: o.label, value: o })),
       }],
@@ -291,7 +299,13 @@ function ClarificationCard({ item }) {
   const doneRef = React.useRef(done); doneRef.current = done;
   const gate = React.useRef(null);
   if (!gate.current) gate.current = makeOneInFlight({ onBusy: setBusy, blocked: () => !!doneRef.current });
-  const withOneBooking = (fn) => gate.current.run(fn);
+  const withOneBooking = (fn) => gate.current.run(async () => {
+    const key = String(item.id);
+    if (QUESTIONS_BOOKED.has(key)) return false;   // C728 — already answered on another card
+    const r = await QUESTION_BOOKINGS.run(key, fn);
+    if (r === true) QUESTIONS_BOOKED.add(key);
+    return r;
+  });
   const inFlight = { get current() { return gate.current.isInFlight(); } };
   const bookAnswer = (finalInv, successText, audit = null) => withOneBooking(async () => {
     setInvoices(prev => [finalInv, ...prev]);
@@ -326,9 +340,9 @@ function ClarificationCard({ item }) {
       const sel = answers.gaap;
       if (sel && sel.depreciate) {
         const months = Math.max(1, Math.round((parseFloat(depLifeYears) || 5) * 12));
-        applyGaapAnswer(item, { ...sel, usefulLifeMonths: months, salvageValue: parseFloat(depSalvage) || 0, inServiceDate: depInService || inv.date });
+        applyGaapAnswer(item, { ...sel, usefulLifeMonths: months, salvageValue: parseFloat(depSalvage) || 0, inServiceDate: depInService || answers.date || inv.date, ...(answers.date ? { date: answers.date } : {}) });
       } else {
-        applyGaapAnswer(item, sel);
+        applyGaapAnswer(item, { ...sel, ...(answers.date ? { date: answers.date } : {}) });   // C728
       }
       return;
     }

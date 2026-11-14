@@ -42,7 +42,7 @@ describe("★ the card routes every booking through it and disables the controls
   const src = fs.readFileSync("src/components/ClarificationFlow.jsx", "utf8").replace(/^[ \t]*\/\/.*$/gm, "");
   it("bookAnswer IS a run under the gate; the pill and free-text entries check it; the buttons read busy", () => {
     expect(src).toMatch(/const bookAnswer = \(finalInv, successText, audit = null\) => withOneBooking\(async \(\) => \{/);
-    expect(src).toMatch(/const withOneBooking = \(fn\) => gate\.current\.run\(fn\);/);
+    expect(src).toMatch(/const withOneBooking = \(fn\) => gate\.current\.run\(async \(\) => \{[\s\S]{0,240}if \(QUESTIONS_BOOKED\.has\(key\)\) return false;[\s\S]{0,120}await QUESTION_BOOKINGS\.run\(key, fn\);/);   // C728 — and one per QUESTION, across every card showing it
     expect(src).toMatch(/if \(done \|\| inFlight\.current\) return;/);
     expect(src).toMatch(/if \(!text \|\| interpreting \|\| done \|\| inFlight\.current\) return;/);
     expect((src.match(/disabled=\{[^}]*\bbusy\b[^}]*\}/g) || []).length).toBeGreaterThanOrEqual(3);

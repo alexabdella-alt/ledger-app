@@ -58,8 +58,8 @@ describe("the wiring", () => {
   });
   it("the trust header counts held questions beside the in-session cards", () => {
     expect(app).toMatch(/openClarifications: \(clarificationQueue \|\| \[\]\)\.length \+ heldQuestions\.length/);
-    expect(app).toMatch(/const heldQuestions = useMemo\(\(\) => \{[\s\S]{0,700}heldQuestionRows\(intakeRows, \{ liveIntakeIds, uploadQueue, bookedDocumentIds \}\)/);
-    expect(app).toMatch(/const bookedDocumentIds = \(docLibrary \|\| \[\]\)\.filter\(d => d && d\.linked_invoice_id\)\.map\(d => d\.id\)/);
+    expect(app).toMatch(/const heldQuestions = useMemo\(\(\) => \{[\s\S]{0,1400}heldQuestionRows\(intakeRows, \{ liveIntakeIds, uploadQueue, bookedDocumentIds \}\)/);
+    expect(app).toMatch(/const bookedDocumentIds = \(docLibrary \|\| \[\]\)\.filter\(d => d && d\.linked_invoice_id && liveEntryIds\.has\(String\(d\.linked_invoice_id\)\)\)\.map\(d => d\.id\)/);   // C728 — linked to an entry the books hold
   });
   it("the live ids come from the cards' own upload items, so an on-screen question is never counted twice", () => {
     const i = app.indexOf("const heldQuestions = useMemo(");
