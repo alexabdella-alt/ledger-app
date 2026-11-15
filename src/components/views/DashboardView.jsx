@@ -753,14 +753,21 @@ export default function DashboardView() {
                 const toneSoft  = bh.tone === "good" ? "var(--sc-success-soft)" : bh.tone === "watch" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)";
                 const toneLabel = bh.tone === "good" ? "Healthy" : bh.tone === "watch" ? "Worth a look" : "Needs attention";
                 const factColor = t => t === "good" ? "var(--sc-success)" : t === "watch" ? "var(--sc-warning)" : t === "concern" ? "var(--sc-error)" : "var(--sc-text)";
-                // ★ C729 — THE OWNER SEES THE NUMBERS, NOTHING ELSE: cash, profit, owed both ways, and what to
-                // keep back for taxes (a tile that opens Taxes). No headline paragraph, no concerns list — what
-                // needs them is in the list above; the rest is one tap away.
+                // ★ C729/C730 — THE OWNER SEES THREE NUMBERS: cash, profit, and what to keep back for taxes
+                // (operator, 2026-11-15: "make it leaner, just cash profit and taxes"). Owed-to-you and
+                // you-owe are the first thing on Money; a credit-card balance rides under cash so card debt
+                // never drops out of sight. Taxes always shows (even at $0) so the place is learned.
                 if (!cockpit) {
-                  const tiles = [...bh.ownerFacts, ...(setAside ? [{ key: "tax", label: "Set aside for taxes", value: fmtApprox(setAside.amount), tone: "neutral", go: "tax" }] : [])];
+                  const fact = k => bh.ownerFacts.find(f => f.key === k);
+                  const cards = fact("cards");
+                  const tiles = [
+                    { ...fact("cash"), sub: cards ? `${cards.value} owed on credit cards` : null },
+                    fact("profit"),
+                    { key: "tax", label: "Set aside for taxes", value: fmtApprox(setAside ? setAside.amount : 0), tone: "neutral", go: "tax", sub: setAside ? null : "Nothing to keep back yet" },
+                  ].filter(t => t && t.key);
                   return (
-                    <div data-owner-numbers className="sc-card" style={{ marginBottom:24, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"18px 22px" }}>
-                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:16 }}>
+                    <div data-owner-numbers className="sc-card" style={{ marginBottom:24, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"20px 24px" }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:18 }}>
                         {tiles.map(f => {
                           const open = f.go ? () => navTo(f.go) : f.drill ? () => setDashDrill({ type:f.drill }) : undefined;
                           return (
@@ -768,8 +775,9 @@ export default function DashboardView() {
                               onMouseEnter={open ? e=>e.currentTarget.style.background="var(--sc-surface-2)" : undefined}
                               onMouseLeave={open ? e=>e.currentTarget.style.background="transparent" : undefined}
                               style={{ cursor:open?"pointer":"default", borderRadius:9, padding:"8px 10px", margin:"-8px -10px", transition:"background .1s" }}>
-                              <div style={{ fontSize:11, letterSpacing:0.6, color:"var(--sc-text-2)", fontWeight:600, textTransform:"uppercase" }}>{f.label}</div>
-                              <div style={{ fontSize:22, fontWeight:700, fontFamily:"'DM Mono',monospace", color:factColor(f.tone), marginTop:4 }}>{f.value}</div>
+                              <div style={{ fontSize:12, color:"var(--sc-text-2)", fontWeight:600 }}>{f.label}</div>
+                              <div style={{ fontSize:28, fontWeight:700, fontFamily:"'DM Mono',monospace", color:factColor(f.tone), marginTop:4, letterSpacing:-0.5 }}>{f.value}</div>
+                              {f.sub && <div data-owner-tile-sub style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:2 }}>{f.sub}</div>}
                             </div>
                           );
                         })}

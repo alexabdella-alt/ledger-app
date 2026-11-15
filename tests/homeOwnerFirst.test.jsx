@@ -23,12 +23,19 @@ describe("the owner's Home", () => {
   it("★ the owner sees the key numbers — tax included — and none of the rest", () => {
     const o = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: owner, companyDataLoaded: true });
     expect(o).toContain("data-owner-numbers");
-    for (const k of ["cash", "profit"]) expect(o).toContain(`data-owner-tile="${k}"`);
+    // ★ C730 — operator, 2026-11-15: "make it leaner, just cash profit and taxes" — exactly three, in that order
+    expect([...o.matchAll(/data-owner-tile="([a-z]+)"/g)].map((m) => m[1])).toEqual(["cash", "profit", "tax"]);
+    expect(o).not.toMatch(/data-owner-tile="(ar|ap|cards)"/);
     expect(o).not.toContain("How your business is doing");
     expect(o).not.toContain("See everything in Money →");     // the activity feed is the accountant's
     expect(o).not.toContain("Ask about your books");            // Ask is in the menu
     expect(o).not.toMatch(/data-trust-panel|Your books, at a glance/);
-    expect(src).toMatch(/label: "Set aside for taxes", value: fmtApprox\(setAside\.amount\), tone: "neutral", go: "tax"/);
+    expect(src).toMatch(/label: "Set aside for taxes", value: fmtApprox\(setAside \? setAside\.amount : 0\), tone: "neutral", go: "tax"/);
+  });
+  it("★ a credit-card balance rides under cash, never lost (C730)", () => {
+    const o = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: owner, companyDataLoaded: true });
+    expect(o).toContain("Nothing to keep back yet");          // the populated fixture has nothing to set aside: tile still shows, at $0
+    expect(src).toMatch(/sub: cards \? `\$\{cards\.value\} owed on credit cards` : null/);
   });
   it("the accountant's Home is unchanged: books panel, health block, Ask box, activity", () => {
     expect(HOME_OWNER_ACTIVITY_COUNT).toBe(5);
