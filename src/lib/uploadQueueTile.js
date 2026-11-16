@@ -134,3 +134,27 @@ export function queueSummaryCopy(census = {}) {
 export function keepUnanswered(items = []) {
   return (items || []).filter((q) => q && q.status === "done" && q.result?.to === "choose");
 }
+
+// ★ C734 — WHAT A TILE SAYS WHILE IT READS, AND FOR A FILE WE COULDN'T PLACE — in the reader's
+// words. The owner saw "⟳ Identifying document type…", "⟳ Processing as Invoice…" (for a receipt)
+// and "⚠ Unknown · Entry proposed — needs review". The accountant keeps the precise wording.
+// Returns null for states this does not describe (the outcome sentences live elsewhere).
+const OWNER_KIND = { invoice: "bill or receipt", bank_statement: "bank statement", contract: "agreement" };
+export function queueItemStatusCopy(item = {}, { cockpit = false, hasAccountant = true } = {}) {
+  const st = item.status;
+  if (st === "classifying") return cockpit ? "⟳ Identifying document type..." : "⟳ Reading…";
+  if (st === "processing") {
+    if (cockpit) {
+      const label = { invoice: "Invoice", bank_statement: "Bank Statement", contract: "Contract", unknown: "Not sure what this is" }[item.type] || "Document";
+      return `⟳ Processing as ${label}...`;
+    }
+    return OWNER_KIND[item.type] ? `⟳ Reading your ${OWNER_KIND[item.type]}…` : "⟳ Reading…";
+  }
+  if (st === "done" && item.type === "unknown" && item.result) {
+    if (cockpit) return `⚠ ${item.result.document_type || "Unknown"} · ${item.result.entry_needed ? "Entry proposed — needs review" : "No entry needed — flagged for review"}`;
+    return hasAccountant
+      ? "We couldn't tell what this is — it's saved in Documents, and your accountant will take a look."
+      : "We couldn't tell what this is — it's saved in Documents.";
+  }
+  return null;
+}

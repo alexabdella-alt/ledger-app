@@ -6,16 +6,16 @@ import { invoiceOutcomeCopy } from "../src/lib/uploadOutcome";
 describe("the tile counts what landed", () => {
   it("★ two of three booked, one refused → says both", () => {
     const t = invoiceOutcomeCopy({ invoiceCount: 2, amount: 300, refusedCount: 1, refusedVendor: "Roma Cheese" });
-    expect(t).toBe("✓ 2 invoices booked · $300.00 total · Roma Cheese couldn't be booked");
+    expect(t).toBe("✓ 2 bills added to your books · $300.00 total · Roma Cheese couldn't be added");
   });
 
   it("★ nothing landed → no ✓ at all", () => {
-    expect(invoiceOutcomeCopy({ invoiceCount: 0, refusedCount: 1, refusedVendor: "Roma Cheese" })).toBe("⚠ Roma Cheese couldn't be booked — see the message for why");
+    expect(invoiceOutcomeCopy({ invoiceCount: 0, refusedCount: 1, refusedVendor: "Roma Cheese" })).toBe("⚠ Roma Cheese couldn't be added — see the message for why");
   });
 
   it("★ a file with one invoice filed and one refused says both", () => {
     const t = invoiceOutcomeCopy({ invoiceCount: 0, attachedCount: 1, attachedAmount: 80, attachedVendor: "Toast", refusedCount: 1, refusedVendor: "Roma Cheese" });
-    expect(t).toMatch(/^✓ .*Toast.* · Roma Cheese couldn't be booked$/);
+    expect(t).toMatch(/^✓ .*Toast.* · Roma Cheese couldn't be added$/);
   });
 
   it("the source counts landed bookings, not attempts", () => {
@@ -29,10 +29,10 @@ describe("the tile counts what landed", () => {
 describe("an answered question is described by its answer", () => {
   const asked = { invoiceCount: 0, needsClarification: 1, reviewVendor: "Ace", reviewAmount: 50 };
   it.each([
-    [[{ kind: "booked", landed: true }], "✓ Booked: Ace · $50.00"],
-    [[{ kind: "skipped", landed: false }], "Set aside — not booked: Ace · $50.00"],
+    [[{ kind: "booked", landed: true }], "✓ Added to your books: Ace · $50.00"],
+    [[{ kind: "skipped", landed: false }], "Set aside — not added: Ace · $50.00"],
     [[{ kind: "deferred", landed: false }], "Sent to your accountant: Ace · $50.00"],
-    [[{ kind: "booked", landed: false }], "⚠ Not booked yet: Ace · $50.00 — open it again from Home"],
+    [[{ kind: "booked", landed: false }], "⚠ Not added yet: Ace · $50.00 — open it again from Home"],
     [[], "Answered: Ace · $50.00"],
   ])("%j → %s", (answers, want) => {
     expect(invoiceOutcomeCopy({ ...asked, answers }, { pendingReview: false })).toBe(want);

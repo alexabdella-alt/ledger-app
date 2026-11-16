@@ -39,7 +39,7 @@ import { useDrillStack } from "../../lib/useDrillStack";
 import DrillNav from "../ui/DrillNav";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 import { sortByUrgency } from "../../lib/cardUrgency";
-import { QUEUE_TONE, queueIsSettled, queueItemChip, queueItemIcon, queueItemTone, queueCensus, queueSummaryCopy } from "../../lib/uploadQueueTile";
+import { QUEUE_TONE, queueIsSettled, queueItemChip, queueItemIcon, queueItemTone, queueCensus, queueSummaryCopy, queueItemStatusCopy } from "../../lib/uploadQueueTile";
 import { budgetCopy } from "../../lib/aiBudget";
 
 // Breadcrumb label for a dashboard drill layer (used by the shared onion-nav stack).
@@ -638,8 +638,7 @@ export default function DashboardView() {
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontSize:13, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</div>
                             <div style={{ fontSize:11, marginTop:3, color:toneColor }}>
-                              {item.status==="classifying" && "⟳ Identifying document type..."}
-                              {item.status==="processing" && `⟳ Processing as ${tc.label}...`}
+                              {(item.status==="classifying" || item.status==="processing") && !(item.status==="processing" && item.type==="bank_statement" && item.result?.to==="pipeline") && queueItemStatusCopy(item, { cockpit, hasAccountant })}
                               {item.status==="error" && item.error}
                               {item.status==="done" && item.type==="invoice" && item.result &&
                                 // §9 — the sentence is a pure function of the recorded outcome
@@ -698,7 +697,7 @@ export default function DashboardView() {
                                 )
                               )}
                               {item.status==="done" && item.type==="contract" && item.result && `✓ ${tc.label} · ${item.result.counterparty} · ${item.result.entries} record${item.result.entries===1?"":"s"} created`}
-                              {item.status==="done" && item.type==="unknown" && item.result && `⚠ ${item.result.document_type||"Unknown"} · ${item.result.entry_needed?"Entry proposed — needs review":"No entry needed — flagged for review"}`}
+                              {item.status==="done" && item.type==="unknown" && item.result && queueItemStatusCopy(item, { cockpit, hasAccountant })}
                               {item.docError && (
                                 <div style={{ marginTop:5, fontSize:11, color:"var(--sc-error)", background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:7, padding:"6px 9px", lineHeight:1.45, whiteSpace:"normal" }}>
                                   ⚠ Document not saved to cloud: {item.docError}

@@ -25,8 +25,8 @@ export function attachPhrase(r = {}) {
   const n = Number(r.attachedCount) || 0;
   if (n <= 0) return null;
   return n === 1
-    ? `${r.attachedVendor || "This invoice"} · ${money(r.attachedAmount)} — filed with the payment we already had, not counted twice`
-    : `${n} invoices filed with payments we already had · ${money(r.attachedAmount)} — not counted twice`;
+    ? `${r.attachedVendor || "This bill"} · ${money(r.attachedAmount)} — filed with the payment we already had, not counted twice`
+    : `${n} bills filed with payments we already had · ${money(r.attachedAmount)} — not counted twice`;
 }
 
 // The whole line. `pendingReview` is the caller's live view of whether anything is still
@@ -35,16 +35,16 @@ export function attachPhrase(r = {}) {
 function answeredPhrase(r = {}) {
   const a = Array.isArray(r.answers) ? r.answers : [];
   const who = `${r.reviewVendor ? `: ${r.reviewVendor}` : ""}${r.reviewAmount != null ? ` · ${money(r.reviewAmount)}` : ""}`;
-  if (a.some((x) => (x.kind === "booked" || x.kind === "attached") && x.landed)) return `✓ Booked${who}`;
+  if (a.some((x) => (x.kind === "booked" || x.kind === "attached") && x.landed)) return `✓ Added to your books${who}`;
   if (a.some((x) => x.kind === "deferred")) return `Sent to your accountant${who}`;
-  if (a.length && a.every((x) => x.kind === "skipped")) return `Set aside — not booked${who}`;
-  if (a.length) return `⚠ Not booked yet${who} — open it again from Home`;
+  if (a.length && a.every((x) => x.kind === "skipped")) return `Set aside — not added${who}`;
+  if (a.length) return `⚠ Not added yet${who} — open it again from Home`;
   return `Answered${who}`;
 }
 function refusedPhrase(r = {}) {
   const n = Number(r.refusedCount) || 0;
   if (!n) return "";
-  return n === 1 ? `${r.refusedVendor || "1 invoice"} couldn't be booked` : `${n} couldn't be booked`;
+  return n === 1 ? `${r.refusedVendor || "1 bill"} couldn't be added` : `${n} couldn't be added`;
 }
 
 export function invoiceOutcomeCopy(r = {}, { pendingReview = false } = {}) {
@@ -72,8 +72,8 @@ export function invoiceOutcomeCopy(r = {}, { pendingReview = false } = {}) {
   // or a confidence score. `bookedAs` is read off the BOOKED ACCOUNT since O115 — it used
   // to keyword-match the vendor, and announced a 5000 Cost-of-Goods entry as a client meal.
   let txt = booked === 1
-    ? `✓ Booked: ${r.vendor || "entry"} · ${money(r.amount)}${r.bookedAs ? ` as ${r.bookedAs}` : ""}`
-    : `✓ ${booked} invoices booked · ${money(r.amount)} total`;
+    ? `✓ Added to your books: ${r.vendor || "entry"} · ${money(r.amount)}${r.bookedAs ? ` as ${r.bookedAs}` : ""}`   // C734 — the statement tile's words ("in your books"), not "Booked"
+    : `✓ ${booked} bills added to your books · ${money(r.amount)} total`;   // C734 — to an owner an "invoice" is one you send
   if (attach) txt += ` · ${attach}`;
   if (refused && booked > 0) txt += ` · ${refused}`;
   if (asking > 0 && pendingReview) txt += ` · ${asking} need${asking === 1 ? "s" : ""} your review`;

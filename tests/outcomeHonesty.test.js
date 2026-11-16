@@ -88,7 +88,7 @@ describe("★★ O128 — the best outcome this feature has is no longer announc
                                       attachedCount: 3, attachedAmount: 1439.05 });
     expect(copy).not.toMatch(/0 invoices booked/);
     expect(copy).not.toMatch(/\$0\.00/);
-    expect(copy).toMatch(/3 invoices filed with payments we already had/);
+    expect(copy).toMatch(/3 bills filed with payments we already had/);
     expect(copy).toMatch(/\$1,439\.05/);
     // It says the CONSEQUENCE — which is the part that makes it good news.
     expect(copy).toMatch(/not counted twice/);
@@ -103,7 +103,7 @@ describe("★★ O128 — the best outcome this feature has is no longer announc
   it("★ an attach ALONGSIDE bookings is still reported — not swallowed by the headline", () => {
     const copy = invoiceOutcomeCopy({ invoiceCount: 2, amount: 800, needsClarification: 0,
                                       attachedCount: 1, attachedAmount: 100, attachedVendor: "Roma" });
-    expect(copy).toMatch(/2 invoices booked/);
+    expect(copy).toMatch(/2 bills added to your books/);
     expect(copy).toMatch(/Roma .* filed with the payment we already had/);
   });
 
@@ -118,7 +118,7 @@ describe("★★ O128 — the best outcome this feature has is no longer announc
   it("no attach → the phrase is absent, not an empty clause", () => {
     expect(attachPhrase({ attachedCount: 0 })).toBe(null);
     expect(invoiceOutcomeCopy({ invoiceCount: 1, amount: 50, vendor: "Acme", bookedAs: "software" }))
-      .toBe("✓ Booked: Acme · $50.00 as software");
+      .toBe("✓ Added to your books: Acme · $50.00 as software");
   });
 
   it("★ every clause reads a field of the OUTCOME — none is recomputed from the invoice", () => {
