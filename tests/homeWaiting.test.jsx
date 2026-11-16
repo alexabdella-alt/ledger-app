@@ -79,7 +79,7 @@ describe("every old banner is a row, and the order is urgency", () => {
 describe("Home renders the list and none of the old banners", () => {
   const strip = (h) => h.replace(/<!-- -->/g, "").replace(/&#x27;/g, "'");
   it("the list is on Home with the fixture's rows, and the nine banners are gone from the source", () => {
-    const ctx = { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], heldQuestions: everything.heldQuestions, heldUnreadable: everything.heldUnreadable, heldInbound: everything.heldInbound, isOwner: true, bankMatch: { overdue: true, days: 41 } };
+    const ctx = { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], heldQuestions: everything.heldQuestions, heldUnreadable: everything.heldUnreadable, heldInbound: everything.heldInbound, isOwner: true, bankMatch: { overdue: true, days: 41 }, companySettings: { ...(POPULATED.companySettings || {}), onboardingComplete: true } };   // C733 — set up, so the list (not the checklist) asks for the statement
     const html = strip(renderViewHtml(DashboardView, ctx));
     expect(html).toContain('id="waiting-on-you"');
     expect(html).toContain("Bring the questions back");

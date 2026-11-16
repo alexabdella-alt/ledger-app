@@ -103,3 +103,11 @@ export const ONBOARDING_STEP_COPY = {
   upload:  { label: "Upload your first bank statement", hint: "Drag it onto the zone below — we'll read your starting cash from it" },
   opening: { label: "Confirm your starting balances",     hint: "We'll take them from your first statement — you just confirm. Or set them in Settings." },
 };
+
+// ★ C733 — the checklist's one line under its title: how many steps, how many done, where to start.
+export function onboardingProgressCopy({ done = 0, total = 3 } = {}) {
+  const n = Math.max(0, Math.min(total, Number(done) || 0));
+  if (n === 0) return `${total} quick steps — start with the highlighted one.`;
+  const left = total - n;
+  return `${n} of ${total} done — ${left === 1 ? "one step" : `${left} steps`} left.`;
+}

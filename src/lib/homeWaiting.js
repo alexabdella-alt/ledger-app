@@ -76,6 +76,7 @@ export function homeWaitingList({
   cockpit = false,           // reviewer seat: the accountant-side actions are theirs
   canInvite = true,          // C706 — a view-only teammate can't invite anyone (Team says "only the owner")
   hasAccountant = true,      // C574 — false: nobody else is on this company, so "your accountant will…" is a promise nobody keeps
+  onboarding = false,        // C733 — the setup checklist is on screen (it asks for the first statement itself)
   cashBelowZero = null,      // C731 — the books' cash when it is below zero (GL-derived by the caller), else null
 } = {}) {
   const items = [];
@@ -124,7 +125,7 @@ export function homeWaitingList({
       note: canDecideMail ? null : "An owner or admin can allow or ignore it.",
     });
   }
-  if (bankMatch && bankMatch.overdue) {
+  if (bankMatch && bankMatch.overdue && !onboarding) {   // C733 — not twice: the checklist already asks for the first statement
     items.push({
       id: "bank_match", urgency: WAIT.NOW,
       text: bankMatch.days == null

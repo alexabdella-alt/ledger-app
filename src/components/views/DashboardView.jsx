@@ -28,7 +28,7 @@ import PayFromSelect, { usePayFromOptions } from "../PayFromSelect";   // C710
 import { payFromByKey, payFromForMethod } from "../../lib/payFrom";
 import { reminderMailto, customerEmail } from "../../lib/invoiceReminder";   // C702
 import { currentPeriodRange, signedPL, businessHealth, cardBalanceOwed, computeNetIncome, computeRevenue, computeExpenses, computeBurnRate, burnRateDetail, computeRunway, computeAR, computeAP, glAccountBalance, owedAmount, openReceivablesGL, openPayablesGL } from "../../lib/reports";
-import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY } from "../../lib/onboarding";
+import { onboardingSteps, onboardingChecklistVisible, ONBOARDING_STEP_ORDER, ONBOARDING_OPTIONAL_STEPS, ONBOARDING_STEP_COPY, onboardingProgressCopy } from "../../lib/onboarding";
 import { statementSummaryCopy } from "../../lib/workbench";
 import { dropZoneOutcomeCopy } from "../../lib/statementLifecycle";
 // (C729 — ownerAnomalyLine moved off Home with the books panel)
@@ -437,14 +437,20 @@ export default function DashboardView() {
                     </div>
                   );
                 }
+                // ★ C733 — ONE STEP AT A TIME. Six rows looked equally important ("knock these out"); now the
+                // three that matter, the next one highlighted with a real button, the optional ones folded.
+                const nextKey = (steps.find(st => !st.done) || {}).key;
                 const renderStep = (s) => (
-                  <div key={s.key} onClick={()=>{ if(!s.done) s.go && s.go(); }} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid var(--sc-surface-2)", cursor:s.done?"default":"pointer" }}>
+                  <div key={s.key} data-onboarding-step={s.key} data-onboarding-next={s.key === nextKey ? "" : undefined} onClick={()=>{ if(!s.done) s.go && s.go(); }}
+                    style={{ display:"flex", alignItems:"center", gap:12, padding: s.key === nextKey ? "12px 12px" : "11px 0", margin: s.key === nextKey ? "6px -12px" : 0, background: s.key === nextKey ? "var(--sc-gold-soft)" : "transparent", borderRadius: s.key === nextKey ? 10 : 0, borderTop: s.key === nextKey ? "none" : "1px solid var(--sc-surface-2)", cursor:s.done?"default":"pointer" }}>
                     <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, background:s.done?"var(--sc-success)":"var(--sc-surface)", color:s.done?"var(--sc-surface)":"var(--sc-text-mut)", border:s.done?"none":"2px solid var(--sc-border-2)" }}>{s.done?"✓":""}</span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize: 13, fontWeight:500, color:s.done?"var(--sc-text-mut)":"var(--sc-text)", textDecoration:s.done?"line-through":"none" }}>{s.label}{s.optional?" (optional)":""}</div>
                       <div style={{ fontSize: 12, color:"var(--sc-text-mut)", marginTop:1 }}>{s.hint}</div>
                     </div>
-                    {!s.done && <span style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:600 }}>{s.actionLabel || "Set up →"}</span>}
+                    {!s.done && (s.key === nextKey
+                      ? <span style={{ fontSize:13, fontWeight:600, color:"var(--sc-on-accent)", background:"var(--sc-gold)", borderRadius:8, padding:"7px 14px", whiteSpace:"nowrap" }}>{s.actionLabel || "Start →"}</span>
+                      : <span style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:600 }}>{s.actionLabel || "Set up →"}</span>)}
                     {!s.done && s.optional && s.key === "accountant" && (
                       <span onClick={(e)=>{ e.stopPropagation(); dismissAccountantStep(); }} style={{ fontSize:12, color:"var(--sc-text-mut)", marginLeft:10, cursor:"pointer" }}>Not now</span>
                     )}
@@ -452,9 +458,12 @@ export default function DashboardView() {
                 );
                 return (
                   <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-gold)", borderRadius:16, padding:"20px 22px", marginBottom:20 }}>
-                    <div style={{ fontSize:17, fontWeight:700, color:"var(--sc-text)" }}>Welcome to Shadow — let's get your books set up</div>
-                    <div style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:3, marginBottom:6 }}>{required} of {steps.length} done. Knock these out and you're ready to roll.</div>
+                    <div style={{ fontSize:17, fontWeight:700, color:"var(--sc-text)" }}>Welcome to Shadow — let's set up your books</div>
+                    <div data-onboarding-progress style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:3, marginBottom:6 }}>{onboardingProgressCopy({ done: required, total: steps.length })}</div>
                     {steps.map(renderStep)}
+                    {/* C733 — the optional ones, folded: none of them is needed to start. */}
+                    <details data-onboarding-optional style={{ marginTop:6, borderTop:"1px solid var(--sc-surface-2)" }}>
+                    <summary style={{ padding:"11px 0 4px", fontSize:13, color:"var(--sc-text-2)", cursor:"pointer" }}>Optional — when you have a minute</summary>
                     {/* C563 — OPTIONAL, and offered here because the first month is when it pays. */}
                     {!isViewer && (
                       <div onClick={()=>setTeachOpen(true)} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderTop:"1px solid var(--sc-surface-2)", cursor:"pointer" }}>
@@ -469,6 +478,7 @@ export default function DashboardView() {
                     {/* C586 — optional: the first upload does not wait on it, and once named it simply ticks. */}
                     {ONBOARDING_OPTIONAL_STEPS.map(k => renderStep(stepByKey[k]))}
                     {isOwner && !accountantDismissed ? renderStep(optional) : null}
+                    </details>
                   </div>
                 );
               })()}
@@ -965,7 +975,8 @@ export function HomeWaitingList({ navTo }) {
     uploadQueue: uploadQueue || [], cockpit, hasAccountant: hasAttester !== false,   // C574 — defaults to "has one" while unknown
     ownerBankLines: bankQuestionCards.length,   // C641
     canInvite: !!(isOwner || isAdmin),   // C706 — a view-only teammate isn't offered an invite they can't send
-    cashBelowZero: companyDataLoaded && Number(glCash) < -0.005 ? Number(glCash) : null,   // C731 — was a line in the health block both Homes dropped
+    cashBelowZero: companyDataLoaded && Number(glCash) < -0.005 ? Number(glCash) : null,
+    onboarding: onboardingChecklistVisible({ companyDataLoaded, onboardingComplete: companySettings?.onboardingComplete }),   // C733   // C731 — was a line in the health block both Homes dropped
   });
   if (!items.length) return null;
   // Every door goes through `navTo` — the seat-aware one — never a bare setView (C313).
