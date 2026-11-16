@@ -1,5 +1,5 @@
 import React from "react";
-import { fmtMoney, fmtDate, todayLocal } from "../../lib/format";
+import { fmtMoney, fmtDate, todayLocal, fmtApprox } from "../../lib/format";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
 import { taxEstimate, getTaxDeadlines, deductionBreakdown, filedKey, taxYearFor1099, LEGAL_FORMS, taxProfileFrom, estimateTaxYearFor } from "../../lib/tax";
@@ -202,50 +202,134 @@ export default function TaxView() {
 
   const toggleFiled = key => save({ ...taxState, filed: { ...filed, [key]: !filed[key] } });
 
+  // ★ C732 — TAXES, ANSWER FIRST. The page opened on a spreadsheet download, then six tiles, a
+  // dozen inputs and paragraphs of rules, all open at once — the answer an owner came for ("how
+  // much do I keep aside, and what's due next?") was in the middle of a grid. Now: the answer and
+  // the next deadline at the top; the next three deadlines; then "Your tax details", "How we
+  // worked this out" and the deductions folded (native <details> — closed until opened, and the
+  // content stays in the page). The 1099 card rises to the top only when something needs filing.
+  // Nothing was removed.
+  const isFiledD = d => !!filed[filedKey(d)] || !!(filedDeadlinesPrev || {})[filedKey(d)];   // C704
+  const upcoming = deadlines.filter(d => !isFiledD(d)).slice(0, 3);
+  const laterDeadlines = deadlines.filter(d => !upcoming.includes(d));
+  const nextDl = upcoming[0] || null;
+  const nextEst = nextDl && nextDl.est ? (estimateTaxYearFor(nextDl) === year ? est : lastYearEst) : null;
+  const assumptions = [
+    ...(passThrough && profile.assumed ? ["you file single with no other income"] : []),
+    ...(!legalForm ? ["every deadline applies to you (you haven't said how your business files)"] : []),
+  ];
+  // open on arrival while the filing type is unknown — decided once, so answering it doesn't snap
+  // the section shut while the rest of it is being filled in
+  const [detailsOpenAtFirst] = React.useState(() => !legalForm);
+  const deductionsNeedInput = homeOfficeApplies && (!homeOfficeSqft || !profile.businessMiles);
+  const foldCard = { ...card, marginBottom: 16, padding: 0, overflow: "hidden" };
+  const foldSummary = { padding: "16px 20px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--sc-text)" };
+  const foldHint = { fontWeight: 400, color: "var(--sc-text-2)", fontSize: 12 };
+  const deadlineRow = d => {
+          const isFiled = !!filed[filedKey(d)] || !!(filedDeadlinesPrev || {})[filedKey(d)];   // C704 — a Q4 payment marked in December
+          return (
+            <div key={`${d.key}-${d.year}`} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--sc-surface-2)", opacity: isFiled ? 0.55 : 1 }}>
+              <div style={{ width: 6, height: 38, borderRadius: 3, background: isFiled ? "var(--sc-text-mut)" : d.color, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, textDecoration: isFiled ? "line-through" : "none" }}>{d.plain}</div>
+                <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
+                  {d.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  {d.est && (() => { const e = estimateTaxYearFor(d) === year ? est : lastYearEst; return e && e.quarterly > 0 ? <span> · est. {fmt(e.quarterly)}{e === lastYearEst ? ` (for ${year - 1})` : ""}</span> : null; })()}
+                  {" · "}<a href={d.url} target="_blank" rel="noreferrer" style={{ color: "var(--sc-gold)" }}>{d.form} ↗</a>
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: isFiled ? "var(--sc-text-mut)" : d.color }}>{isFiled ? "Done" : d.days === 0 ? "Due today" : `${d.days} days`}</div>
+              </div>
+              <button onClick={() => toggleFiled(`${d.key}-${d.year}`)} title="Mark as filed/paid"
+                style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", background: isFiled ? "var(--sc-success-soft)" : "var(--sc-surface-2)", border: `1px solid ${isFiled ? "var(--sc-success-soft)" : "var(--sc-border-2)"}`, color: isFiled ? "var(--sc-success)" : "var(--sc-text-2)" }}>
+                {isFiled ? "✓ Filed" : "Mark filed"}
+              </button>
+              {/* C579 — "Remind me" showed a toast and set nothing; a reminder that does not remind is
+                  worse than none. Deadlines inside the window already come to Home's waiting list. */}
+            </div>
+          );
+  };
+
   return (
     <div style={{ maxWidth: 960 }}>
       <div style={{ marginBottom: 22 }}>
-        <div style={{ fontSize: 10, letterSpacing: 3, color: "var(--sc-text-2)", marginBottom: 8 }}>TAX COMPLIANCE</div>
         <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Taxes</h1>
-        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Your estimated tax picture, deadlines, and deductions — all from your books.</div>
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>What to keep aside, what's due next, and what you can deduct — worked out from your books.</div>
       </div>
 
-      {/* ── ★ C699 — ONE FILE FOR THE TAX PREPARER ── */}
-      <div data-tax-packet style={{ ...card, marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>For your tax preparer</div>
-          <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 3 }}>One spreadsheet with your income, spending by tax-form line, miles, home office, equipment, estimated payments and 1099s — the things a preparer asks for.</div>
+      {/* ── ★ C732 — THE ANSWER: what to keep aside, and the next deadline ── */}
+      <div data-tax-answer style={{ ...card, marginBottom: 16, padding: "22px 24px" }}>
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", fontWeight: 600 }}>Keep aside for taxes · {year}</div>
+        <div data-tax-keep style={{ fontSize: 34, fontWeight: 700, fontFamily: "'DM Mono',monospace", marginTop: 4, letterSpacing: -0.5, color: est.owed > 0 ? "var(--sc-text)" : "var(--sc-success)" }}>{est.owed > 0 ? fmtApprox(est.owed) : "$0"}</div>
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 4 }}>
+          {est.owed > 0
+            ? `On this year's profit so far (${fmt(est.net)})${estPaid > 0 ? `, after the ${fmt(estPaid)} you've already paid` : ""}.`
+            : est.total > 0 ? "What you've already paid covers this year's profit so far." : "No taxable profit yet this year, so nothing to keep aside."}
         </div>
-        <select value={packetYear} onChange={e => setPacketYear(Number(e.target.value))}
-          style={{ background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)" }}>
-          {[year - 1, year].map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        <button onClick={downloadPacket} disabled={packetBusy}
-          style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: packetBusy ? "wait" : "pointer" }}>
-          {packetBusy ? "Preparing…" : "Download"}
-        </button>
-      </div>
-
-      {/* ── TAX PICTURE ── */}
-      <div style={{ ...card, marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Your estimated tax picture · {year}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
-          {[
-            ["Profit so far this year", fmt(est.net), est.net >= 0 ? "var(--sc-text)" : "var(--sc-error)"],
-            [legalForm === "c_corp" ? "Corporate income tax (21%)" : `Federal income tax (${year} brackets)`, fmt(est.federal), "var(--sc-text)"],   // C690
-            // C685 — an S corporation's or C corporation's profit carries no self-employment tax; the owner's payroll covers it
-            [legalForm === "s_corp" || legalForm === "c_corp" ? "Self-employment tax (none — your payroll covers it)" : "Self-Employment Tax (15.3%)", fmt(est.seTax), "var(--sc-text)"],
-            ["Estimated tax for the year", fmt(est.total), "var(--sc-gold)"],
-            ["Estimated Payments Made", fmt(estPaid), "var(--sc-success)"],
-            ["Still Owed", fmt(est.owed), est.owed > 0 ? "var(--sc-warning)" : "var(--sc-success)"],
-          ].map(([k, v, col]) => (
-            <div key={k} style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-surface-2)", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 5 }}>{k}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: col }}>{v}</div>
+        {nextDl && (
+          <div data-tax-next style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--sc-surface-2)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Next: {nextDl.plain}</div>
+              <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
+                {nextDl.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · {nextDl.days === 0 ? "due today" : `in ${nextDl.days} day${nextDl.days === 1 ? "" : "s"}`}
+                {nextEst && nextEst.quarterly > 0 ? ` · pay about ${fmt(nextEst.quarterly)}${nextEst === lastYearEst ? ` (for ${year - 1})` : ""}` : ""}
+              </div>
             </div>
-          ))}
-        </div>
+            {nextDl.url && <a href={nextDl.url} target="_blank" rel="noreferrer" style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", color: "var(--sc-on-accent)", textDecoration: "none" }}>Pay or file ↗</a>}
+          </div>
+        )}
+        {assumptions.length > 0 && <div data-tax-assumes style={{ fontSize: 12, color: "var(--sc-text-mut)", marginTop: 12 }}>This assumes {assumptions.join(" and ")} — open “Your tax details” below for a closer figure.</div>}
         {!loadOk && <div style={{ marginTop: 14 }}><LoadFailedNotice what="saved tax figures" table="tax_settings" /></div>}
+      </div>
+
+      {/* 1099s rise to the top only when something needs filing */}
+      {need1099 > 0 && (<>
+      {/* ── 1099 INTEGRATION ── */}
+      <div style={{ ...card, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>1099 contractors</div>
+          <div style={{ fontSize: 12, color: need1099 > 0 ? "var(--sc-warning)" : "var(--sc-text-2)", marginTop: 3 }}>
+            {plan1099Copy(plan, { year: year1099 })}
+          </div>
+        </div>
+        <button onClick={() => setView("tax1099")} style={{ padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer" }}>Open 1099 tracker →</button>
+      </div>
+      </>)}
+
+      {/* ── DEADLINE TRACKER — the next three; the rest folded ── */}
+      <div style={{ ...card, marginBottom: 16, padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--sc-surface-2)", fontSize: 13, fontWeight: 600 }}>Upcoming tax deadlines</div>
+        {upcoming.length ? upcoming.map(deadlineRow) : <div style={{ padding: "14px 20px", fontSize: 13, color: "var(--sc-text-2)" }}>Nothing due — every deadline here is marked done.</div>}
+        {laterDeadlines.length > 0 && (
+          <details data-tax-more-deadlines>
+            <summary style={{ ...foldSummary, fontWeight: 500, color: "var(--sc-gold)" }}>More deadlines ({laterDeadlines.length})</summary>
+            {laterDeadlines.map(deadlineRow)}
+          </details>
+        )}
+      </div>
+
+      {/* ── YOUR TAX DETAILS — open until the business's filing type is set ── */}
+      <details data-tax-details open={detailsOpenAtFirst} style={foldCard}>
+        <summary style={foldSummary}>Your tax details <span style={foldHint}>— how your business files, how you file, other income, payments made</span></summary>
+        {/* ★★ O140/C559 — THE CALENDAR NEEDS TO KNOW HOW THE BUSINESS FILES. Until it does it shows
+            every deadline (a partnership return to a sole owner, a personal return to a
+            corporation), and says so rather than leaving the reader to wonder. The control sits
+            beside the list it changes (O129). */}
+        <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <label htmlFor="tax-legal-form" style={{ fontSize: 12, color: "var(--sc-text-2)" }}>How does your business file taxes?</label>
+          <select id="tax-legal-form" value={legalForm} onChange={e => saveLegalForm && saveLegalForm(e.target.value)}
+            style={{ flex: "1 1 260px", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--sc-border-2)", fontSize: 13, color: "var(--sc-text)", background: "var(--sc-surface)" }}>
+            <option value="">I'm not sure</option>
+            {LEGAL_FORMS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+          {!legalForm && (
+            <div style={{ fontSize: 12, color: "var(--sc-text-mut)", flexBasis: "100%" }}>
+              Until you choose, we show every deadline — some of them won't apply to your business.
+            </div>
+          )}
+        </div>
+        <div style={{ padding: "0 20px 18px" }}>
         {passThrough && (
           <div data-tax-profile style={{ marginTop: 14, padding: "12px 14px", background: "var(--sc-bg)", border: "1px solid var(--sc-surface-2)", borderRadius: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>For a closer estimate</div>
@@ -287,7 +371,30 @@ export default function TaxView() {
           <label style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Estimated payments already made this year:</label>
           <input type="number" disabled={!loadOk} defaultValue={estPaid || ""} placeholder="0" onBlur={e => save({ ...taxState, estPaid: parseFloat(e.target.value) || 0 })}
             style={{ width: 140, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)", outline: "none" }} />
-          <span style={{ fontSize: 11, color: "var(--sc-text-mut)" }}>Updates "Still Owed" above.</span>
+          <span style={{ fontSize: 11, color: "var(--sc-text-mut)" }}>Updates what to keep aside, at the top.</span>
+        </div>
+        </div>
+      </details>
+
+      {/* ── HOW WE WORKED THIS OUT ── */}
+      <details data-tax-how style={foldCard}>
+        <summary style={foldSummary}>How we worked this out <span style={foldHint}>— the tax for the year, piece by piece, and what to pay each quarter</span></summary>
+        <div style={{ padding: "0 20px 18px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+          {[
+            ["Profit so far this year", fmt(est.net), est.net >= 0 ? "var(--sc-text)" : "var(--sc-error)"],
+            [legalForm === "c_corp" ? "Corporate income tax (21%)" : `Federal income tax (${year} brackets)`, fmt(est.federal), "var(--sc-text)"],   // C690
+            // C685 — an S corporation's or C corporation's profit carries no self-employment tax; the owner's payroll covers it
+            [legalForm === "s_corp" || legalForm === "c_corp" ? "Self-employment tax (none — your payroll covers it)" : "Self-Employment Tax (15.3%)", fmt(est.seTax), "var(--sc-text)"],
+            ["Estimated tax for the year", fmt(est.total), "var(--sc-gold)"],
+            ["Estimated Payments Made", fmt(estPaid), "var(--sc-success)"],
+            ["Still Owed", fmt(est.owed), est.owed > 0 ? "var(--sc-warning)" : "var(--sc-success)"],
+          ].map(([k, v, col]) => (
+            <div key={k} style={{ background: "var(--sc-bg)", border: "1px solid var(--sc-surface-2)", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginBottom: 5 }}>{k}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: col }}>{v}</div>
+            </div>
+          ))}
         </div>
         {/* ★ C695 — what to pay each quarter, by the IRS safe harbor */}
         {est.total > 0 && (
@@ -303,61 +410,13 @@ export default function TaxView() {
           </div>
         )}
         <div style={{ fontSize: 11, color: "var(--sc-text-mut)", marginTop: 10 }}>This is an estimate. Consult your tax advisor for exact amounts.</div>
-      </div>
-
-      {/* ── DEADLINE TRACKER ── */}
-      <div style={{ ...card, marginBottom: 16, padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--sc-surface-2)", fontSize: 13, fontWeight: 600 }}>Upcoming tax deadlines</div>
-        {/* ★★ O140/C559 — THE CALENDAR NEEDS TO KNOW HOW THE BUSINESS FILES. Until it does it shows
-            every deadline (a partnership return to a sole owner, a personal return to a
-            corporation), and says so rather than leaving the reader to wonder. The control sits
-            beside the list it changes (O129). */}
-        <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <label htmlFor="tax-legal-form" style={{ fontSize: 12, color: "var(--sc-text-2)" }}>How does your business file taxes?</label>
-          <select id="tax-legal-form" value={legalForm} onChange={e => saveLegalForm && saveLegalForm(e.target.value)}
-            style={{ flex: "1 1 260px", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--sc-border-2)", fontSize: 13, color: "var(--sc-text)", background: "var(--sc-surface)" }}>
-            <option value="">I'm not sure</option>
-            {LEGAL_FORMS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-          </select>
-          {!legalForm && (
-            <div style={{ fontSize: 12, color: "var(--sc-text-mut)", flexBasis: "100%" }}>
-              Until you choose, we show every deadline — some of them won't apply to your business.
-            </div>
-          )}
         </div>
-        {deadlines.map(d => {
-          const isFiled = !!filed[filedKey(d)] || !!(filedDeadlinesPrev || {})[filedKey(d)];   // C704 — a Q4 payment marked in December
-          return (
-            <div key={`${d.key}-${d.year}`} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--sc-surface-2)", opacity: isFiled ? 0.55 : 1 }}>
-              <div style={{ width: 6, height: 38, borderRadius: 3, background: isFiled ? "var(--sc-text-mut)" : d.color, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, textDecoration: isFiled ? "line-through" : "none" }}>{d.plain}</div>
-                <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
-                  {d.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                  {d.est && (() => { const e = estimateTaxYearFor(d) === year ? est : lastYearEst; return e && e.quarterly > 0 ? <span> · est. {fmt(e.quarterly)}{e === lastYearEst ? ` (for ${year - 1})` : ""}</span> : null; })()}
-                  {" · "}<a href={d.url} target="_blank" rel="noreferrer" style={{ color: "var(--sc-gold)" }}>{d.form} ↗</a>
-                </div>
-              </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: isFiled ? "var(--sc-text-mut)" : d.color }}>{isFiled ? "Done" : d.days === 0 ? "Due today" : `${d.days} days`}</div>
-              </div>
-              <button onClick={() => toggleFiled(`${d.key}-${d.year}`)} title="Mark as filed/paid"
-                style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", background: isFiled ? "var(--sc-success-soft)" : "var(--sc-surface-2)", border: `1px solid ${isFiled ? "var(--sc-success-soft)" : "var(--sc-border-2)"}`, color: isFiled ? "var(--sc-success)" : "var(--sc-text-2)" }}>
-                {isFiled ? "✓ Filed" : "Mark filed"}
-              </button>
-              {/* C579 — "Remind me" showed a toast and set nothing; a reminder that does not remind is
-                  worse than none. Deadlines inside the window already come to Home's waiting list. */}
-            </div>
-          );
-        })}
-      </div>
+      </details>
 
       {/* ── DEDUCTION TRACKER ── */}
-      <div style={{ ...card, marginBottom: 16, padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--sc-surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Deductions tracker · {year}</div>
-          <div style={{ fontSize: 12, color: "var(--sc-text-2)" }}>Est. tax savings ≈ <span style={{ color: "var(--sc-success)", fontWeight: 600 }}>{fmt(totalDeductible * est.marginalRate)}</span></div>
-        </div>
+      <details data-tax-deductions style={foldCard}>
+        <summary style={foldSummary}>Deductions tracker · {year} <span style={foldHint}>— {fmt(totalDeductible)} so far, est. tax savings ≈ <span style={{ color: "var(--sc-success)", fontWeight: 600 }}>{fmt(totalDeductible * est.marginalRate)}</span>{deductionsNeedInput ? " · add your home office and business miles here" : ""}</span></summary>
+        <div style={{ borderTop: "1px solid var(--sc-surface-2)" }}>
         {deductions.filter(d => !d.ask && d.line !== "none" && d.line !== "30" && d.line !== "personal").map(d => (   // C703 — personal-return items have their own rows
           <div key={d.key} data-deduction-line={d.line} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--sc-surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -450,8 +509,27 @@ export default function TaxView() {
             )}
           </div>
         ))}
+        </div>
+      </details>
+
+      {/* ── FOR YOUR TAX PREPARER ── */}
+      {/* ── ★ C699 — ONE FILE FOR THE TAX PREPARER ── */}
+      <div data-tax-packet style={{ ...card, marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>For your tax preparer</div>
+          <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 3 }}>One spreadsheet with your income, spending by tax-form line, miles, home office, equipment, estimated payments and 1099s — the things a preparer asks for.</div>
+        </div>
+        <select value={packetYear} onChange={e => setPacketYear(Number(e.target.value))}
+          style={{ background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 8, padding: "7px 10px", fontSize: 13, color: "var(--sc-text)" }}>
+          {[year - 1, year].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <button onClick={downloadPacket} disabled={packetBusy}
+          style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--sc-gold)", border: "none", color: "var(--sc-on-accent)", cursor: packetBusy ? "wait" : "pointer" }}>
+          {packetBusy ? "Preparing…" : "Download"}
+        </button>
       </div>
 
+      {need1099 <= 0 && (<>
       {/* ── 1099 INTEGRATION ── */}
       <div style={{ ...card, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div>
@@ -462,10 +540,11 @@ export default function TaxView() {
         </div>
         <button onClick={() => setView("tax1099")} style={{ padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer" }}>Open 1099 tracker →</button>
       </div>
+      </>)}
 
       {/* ── DISCLAIMERS ── */}
-      <div style={{ background: "var(--sc-warning-soft)", border: "1px solid var(--sc-warning-soft)", borderRadius: 14, padding: "16px 20px" }}>
-        <div style={{ fontSize: 12, color: "var(--sc-warning)", lineHeight: 1.6 }}>
+      <div data-tax-disclaimer style={{ padding: "4px 4px 0" }}>
+        <div style={{ fontSize: 12, color: "var(--sc-text-mut)", lineHeight: 1.6 }}>
           Tax estimates are for planning purposes only and are based on general federal tax rates. State taxes, deductions and your specific situation can change what you actually owe by a lot. Always consult a qualified tax professional before filing.
         </div>
         {/* ★★★ C550 — THIS PROMISED A REVIEW NOBODY MAY BE DOING, AND NAMED A PRODUCT THAT DOES
@@ -477,7 +556,7 @@ export default function TaxView() {
             screen about money owed to the IRS, it is the worst place in the product to overstate
             who is watching. `hasAttester` already answers this and DEFAULTS TRUE, so a failed
             membership read can never manufacture "you have no accountant" (O131's own rule). */}
-        <div style={{ fontSize: 12, color: "var(--sc-gold)", lineHeight: 1.6, marginTop: 10, fontWeight: 500 }}>
+        <div style={{ fontSize: 12, color: "var(--sc-text-2)", lineHeight: 1.6, marginTop: 6 }}>
           {hasAttester === false
             ? "Questions? Nobody is reviewing your books yet — add your accountant under Settings → Team and they can go through these with you."
             : "Questions? Your accountant can review your books and go through these figures with you."}
