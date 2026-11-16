@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import path from "path";
 import { resolveChatView } from "../src/lib/chatNav.js";
-import { NAV_SECTIONS, NAV_SECTION_SETTINGS, visibleNav } from "../src/lib/nav.js";
+import { NAV_SECTIONS, NAV_SECTION_SETTINGS, NAV_ACTIONS, visibleNav } from "../src/lib/nav.js";
 import { PROFILES } from "../supabase/functions/ai-proxy/aiProfiles.js";
 
-const sidebar = NAV_SECTIONS.flatMap((s) => s.items);
+const sidebar = NAV_SECTIONS.flatMap((s) => s.items).filter(([id]) => !NAV_ACTIONS.includes(id));   // C731 — "Ask" opens the chat itself; it is not a screen
 const settings = NAV_SECTION_SETTINGS.items;
 const prompt = PROFILES["chat-brain"].system;
 

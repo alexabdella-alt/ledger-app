@@ -22,8 +22,8 @@ describe("the owner's menu", () => {
       expect([v, activeNavItem(v, { seat: "client" })]).toEqual([v, "money"]);
     }
   });
-  it("the accountant's menu is unchanged, and their lists highlight themselves", () => {
-    expect(rows(visibleNav({ role: "accountant" }))).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports", "review"]);
+  it("the accountant's menu keeps every list, plus Ask (C731), and their lists highlight themselves", () => {
+    expect(rows(visibleNav({ role: "accountant" }))).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports", "ask", "review"]);
     expect(activeNavItem("ap", { seat: "reviewer" })).toBe("ap");
   });
   it("★ in Settings, the owner sees three rows (C638; C729 — Taxes moved to the main menu) — and every setup page is still openable", () => {

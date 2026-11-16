@@ -37,11 +37,17 @@ describe("the owner's Home", () => {
     expect(o).toContain("Nothing to keep back yet");          // the populated fixture has nothing to set aside: tile still shows, at $0
     expect(src).toMatch(/sub: cards \? `\$\{cards\.value\} owed on credit cards` : null/);
   });
-  it("the accountant's Home is unchanged: books panel, health block, Ask box, activity", () => {
+  // ★ C731 — operator, 2026-11-15: "we need to make it easy for the accountant too". Same shape as the
+  // owner's — drop box, the list, the same three numbers — then their books panel and what's changed.
+  it("★ the accountant's Home is the owner's shape: the same three numbers, then the books panel and what's changed", () => {
     expect(HOME_OWNER_ACTIVITY_COUNT).toBe(5);
     const c = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: cpa, companyDataLoaded: true });
-    expect(c).toContain("How your business is doing");
-    expect(c).toContain("Ask about your books");
-    expect(c).not.toContain("data-owner-numbers");
+    expect([...c.matchAll(/data-owner-tile="([a-z]+)"/g)].map((m) => m[1])).toEqual(["cash", "profit", "tax"]);
+    const numbers = c.indexOf("data-owner-numbers"), panel = c.search(/data-trust-panel|Your books, at a glance/), changes = c.indexOf("data-changes-header");
+    expect(numbers).toBeGreaterThan(-1);
+    expect(panel).toBeGreaterThan(numbers);       // the books panel under the numbers, not above the drop box
+    expect(changes).toBeGreaterThan(panel);
+    expect(c).toContain("What&#x27;s changed");
+    for (const gone of ["How your business is doing", "Ask about your books", "active commitment"]) expect(c).not.toContain(gone);
   });
 });

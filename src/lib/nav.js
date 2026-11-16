@@ -69,6 +69,7 @@ export const NAV_SECTIONS = [
     ["ap", "Bills to pay"], ["ar", "Money owed to you"],
     ["customers", "Customers"], ["vendors", "Vendors"],
     ["docs", "Documents"], ["reports", "Reports"],
+    ["ask", "Ask"],   // C731 — the accountant's door to the assistant (the Ask box left Home for both seats)
   ] },
 ];
 

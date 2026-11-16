@@ -104,7 +104,8 @@ describe("C574 — every door marked 'chase' chases", () => {
   });
   it("Home's 'Chase overdue invoices' opens the overdue list on Money owed to you, not a bare list", () => {
     const dash = readFileSync("src/components/views/DashboardView.jsx", "utf8");
-    expect(dash).toMatch(/if \(c\.key === "ar"\) \{ navTo\("ar", \(\) => setArView && setArView\("collections"\)\); return; \}/);
+    // C731 — the health block's "Chase" button went; the late-customers line on the waiting list is the door now
+    expect(dash).toMatch(/ar: \(\) => go\("ar", \(\) => setArView && setArView\("collections"\)\)/);
     expect(dash).not.toMatch(/Open accounts (payable|receivable)/);
     expect(readFileSync("src/components/views/ReportsView.jsx", "utf8")).toMatch(/href=\{reminderMailto\(/);
   });

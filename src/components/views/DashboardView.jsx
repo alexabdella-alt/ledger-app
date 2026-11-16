@@ -6,6 +6,7 @@ import { CHECKLIST_COPY, BUSINESS_MODAL_INTRO, BUSINESS_SAVE_HINT, DROPZONE_COPY
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { homeWaitingList, waitingHeadline, WAIT } from "../../lib/homeWaiting";
+import { markNewSince, sinceLastLookedHeader } from "../../lib/sinceLastLooked";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { invoiceOutcomeCopy } from "../../lib/uploadOutcome";
@@ -54,6 +55,8 @@ const drillLabel = (l) => {
 const entryCount = (rows) => new Set((rows || []).map((r) => String(r.db_entry_id != null ? r.db_entry_id : String(r.id ?? "").split("_")[0]))).size;
 // C639 — how many recent items an owner's Home lists before pointing at Money.
 export const HOME_OWNER_ACTIVITY_COUNT = 5;
+// C731 — the accountant's "what's changed" list shows this many, then "Show more".
+export const HOME_CHANGES_COUNT = 10;
 
 export default function DashboardView() {
   const { CHART_OF_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyGaapAnswer, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, glCash, chatBottomRef, chatHistory, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, getAccountByRole, handleBankFile, handleBookInvoice, handleChatSend, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, persistContact, persistContract, persistJournalEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, reconciliations, bankMatch, recurring, recurringNewRec, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, anomalies, dismissAnomaly, onboardingUploadDone, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, accountantDismissed, dismissAccountantStep, completeOnboarding, companyDataLoaded, reportDateFrom, reportDateTo, reportRange, reportType, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setReturnTo, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, aiBudget, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, view, navSeat, heldQuestions, heldUnreadable, reloadHeldIntake, setChatPrefill, filedDeadlines, filedDeadlinesPrev, cutoffDate, estPaidThisYear, estPaidPrevYear } = useERP();
@@ -84,7 +87,6 @@ export default function DashboardView() {
   };
   const [burnModalOpen, setBurnModalOpen] = React.useState(false);
   const [queueDetailsOpen, setQueueDetailsOpen] = React.useState(false);   // U2 (C376)
-  const [askText, setAskText] = React.useState("");                        // U6 (C380)
   const [burnDrill, setBurnDrill] = React.useState({ cat:null, vendor:null }); // expense drill-down path
   // Shared onion-layer drill navigation (drillStack) — drilling pushes a layer, Back pops
   // exactly one, Forward re-advances, the breadcrumb jumps to any level. setDashDrill is kept
@@ -118,9 +120,20 @@ export default function DashboardView() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obAllDone, companySettings.onboardingComplete]);
-  // C639 — the owner sees the latest 5 and a door to the full list on Money; the accountant keeps 20 + "Load more".
-  const [feedCount, setFeedCount] = React.useState(cockpit ? 20 : HOME_OWNER_ACTIVITY_COUNT);
-  const [showCommit, setShowCommit] = React.useState(false); // active commitments expander
+  // C731 — the accountant's "what's changed" list: the latest few, then "Show more".
+  const [feedCount, setFeedCount] = React.useState(HOME_CHANGES_COUNT);
+  // ★ C731 — when this person last opened this company's Home (per browser; may be missing).
+  // Read once per company, then stamped with now — so the marks show what's new since the
+  // previous visit, and stay put while they look around.
+  const seenKey = cockpit && currentCompany?.id ? `sc.homeSeen.${currentCompany.id}` : null;
+  const [lastSeen, setLastSeen] = React.useState(null);
+  React.useEffect(() => {
+    if (!seenKey) return;
+    let prev = null;
+    try { prev = window.localStorage.getItem(seenKey); } catch { prev = null; }
+    setLastSeen(prev);
+    try { window.localStorage.setItem(seenKey, new Date().toISOString()); } catch { /* storage blocked: nothing marked, header says "Latest changes" */ }
+  }, [seenKey]);
   const [apPayId, setApPayId] = React.useState(null); // inline "mark paid" row in the AP drill
   const [apPayMethod, setApPayMethod] = React.useState("ach");
   // ★ C710 — "Paid from" here too: Home's bills panel took every payment from Cash, so a bill paid
@@ -388,8 +401,9 @@ export default function DashboardView() {
                   companyDataLoaded is the safe readiness signal — it guarantees the ledger +
                   reconciliations (the panel's inputs) are loaded, so no green flashes prematurely. */}
               {/* ★ C729 — THE OWNER'S HOME IS THE DROP BOX AND THE KEY NUMBERS (operator, 2026-11-13: "brain dead
-                  simple … all that other clutter is daunting"). The books panel moves to Reports for the owner. */}
-              {cockpit && <TrustPanel loading={!companyDataLoaded} />}
+                  simple … all that other clutter is daunting"). The books panel moves to Reports for the owner.
+                  ★ C731 — the accountant's Home is the SAME shape (operator: "make it easy for the accountant
+                  too"): their books panel and "what's changed" come under the numbers, not above the drop box. */}
               {/* Depreciation is deterministic → it AUTO-POSTS when due (App.jsx autoPostDepreciation),
                   no owner nudge. (Removed the "N months due · Run depreciation now" prompt — accounting
                   machinery is Shadow's job, not the owner's; incomplete schedules flag to CPA review.) */}
@@ -708,15 +722,7 @@ export default function DashboardView() {
               })()}
 
 
-              {/* ── U6 (C380) — ASK YOUR BOOKS. The thesis is "tell it what happened"; the chat was a
-                  drawer behind a button. One line on Home opens the same chat with what you typed. */}
-              {cockpit && <form onSubmit={e => { e.preventDefault(); const t = String(askText || "").trim(); setChatOpen(true); if (t) setChatPrefill({ at: Date.now(), text: t, send: true }); setAskText(""); }}
-                style={{ display:"flex", gap:8, alignItems:"center", marginBottom:24 }}>
-                <input value={askText} onChange={e => setAskText(e.target.value)} aria-label="Ask about your books"
-                  placeholder="Ask about your books, or tell us what happened — “What did I spend on food in August?”, “Sysco paid me back $120”…"
-                  style={{ flex:1, minWidth:0, height:44, borderRadius:12, border:"1px solid var(--sc-border-2)", background:"var(--sc-surface)", color:"var(--sc-text)", padding:"0 14px", fontSize:14, outline:"none" }} />
-                <button type="submit" style={{ height:44, padding:"0 16px", borderRadius:12, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>Ask</button>
-              </form>}
+              {/* U6 (C380) — the Ask box left Home for both seats (C729 owner, C731 accountant): Ask is in the menu. */}
 
               {/* ── U1 (C375) — ONE LIST OF THINGS WAITING ON YOU. Replaces nine banners; see lib/homeWaiting.js.
                   C729 — for the owner too, right under the drop box (it renders nothing when nothing waits). ── */}
@@ -749,15 +755,12 @@ export default function DashboardView() {
                 // line above would vanish exactly when last year's bill is due)
                 const lastYearLine = new Date() <= new Date(yNow, 3, 15, 23, 59) ? lastYearBalanceLine(taxEstimate(invoices, yNow - 1, estPaidPrevYear || 0, { chart: CHART_OF_ACCOUNTS || [], legalForm: companySettings?.legalForm || "", assets: taxAssets || null,
                   ...profileForYear(yNow - 1, { current: filedDeadlines, prev: filedDeadlinesPrev }), cutoffDate: cutoffDate || null }), yNow - 1, { cutoffDate: cutoffDate || null }) : null;   // C706
-                const toneColor = bh.tone === "good" ? "var(--sc-success)" : bh.tone === "watch" ? "var(--sc-warning)" : "var(--sc-error)";
-                const toneSoft  = bh.tone === "good" ? "var(--sc-success-soft)" : bh.tone === "watch" ? "var(--sc-warning-soft)" : "var(--sc-error-soft)";
-                const toneLabel = bh.tone === "good" ? "Healthy" : bh.tone === "watch" ? "Worth a look" : "Needs attention";
                 const factColor = t => t === "good" ? "var(--sc-success)" : t === "watch" ? "var(--sc-warning)" : t === "concern" ? "var(--sc-error)" : "var(--sc-text)";
                 // ★ C729/C730 — THE OWNER SEES THREE NUMBERS: cash, profit, and what to keep back for taxes
                 // (operator, 2026-11-15: "make it leaner, just cash profit and taxes"). Owed-to-you and
                 // you-owe are the first thing on Money; a credit-card balance rides under cash so card debt
                 // never drops out of sight. Taxes always shows (even at $0) so the place is learned.
-                if (!cockpit) {
+                {   // ★ C731 — both seats: the accountant sees the same three numbers, in the same words
                   const fact = k => bh.ownerFacts.find(f => f.key === k);
                   const cards = fact("cards");
                   const tiles = [
@@ -786,48 +789,10 @@ export default function DashboardView() {
                     </div>
                   );
                 }
-                return (
-                  <div className="sc-card" style={{ marginBottom:24, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderLeft:`3px solid ${toneColor}`, borderRadius:14, padding:"18px 22px" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8, flexWrap:"wrap" }}>
-                      <span style={{ fontSize:15, fontWeight:700, color:"var(--sc-text)" }}>How your business is doing</span>
-                      <span style={{ fontSize:11, fontWeight:700, color:toneColor, background:toneSoft, border:`1px solid ${toneColor}33`, borderRadius:6, padding:"2px 9px" }}>{toneLabel}</span>
-                    </div>
-                    <div style={{ fontSize: 13, color:"var(--sc-text)", lineHeight:1.55 }}>{bh.headline}</div>
-                    {/* The four key numbers — clickable to drill, tone-colored, once (no metric-card row anymore). */}
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:14, marginTop:16, paddingTop:14, borderTop:"1px solid var(--sc-surface-2)" }}>
-                      {bh.ownerFacts.map(f => (
-                        <div key={f.key} onClick={f.drill ? ()=>setDashDrill({ type:f.drill }) : undefined}
-                          onMouseEnter={f.drill ? e=>e.currentTarget.style.background="var(--sc-surface-2)" : undefined}
-                          onMouseLeave={f.drill ? e=>e.currentTarget.style.background="transparent" : undefined}
-                          style={{ cursor:f.drill?"pointer":"default", borderRadius:9, padding:"6px 8px", margin:"-6px -8px", transition:"background .1s" }}>
-                          <div style={{ fontSize:10, letterSpacing:0.8, color:"var(--sc-text-2)", fontWeight:600, textTransform:"uppercase" }}>{f.label}</div>
-                          <div style={{ fontSize:20, fontWeight:700, fontFamily:"'DM Mono',monospace", color:factColor(f.tone), marginTop:3 }}>{f.value}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {lastYearLine && (
-                      <div data-last-year-tax style={{ marginTop:14, borderTop:"1px solid var(--sc-surface-2)", paddingTop:12, fontSize: 13, color:"var(--sc-text)" }}>{lastYearLine.text}</div>
-                    )}
-                    {setAside && (
-                      <div data-set-aside style={{ marginTop:14, borderTop:"1px solid var(--sc-surface-2)", paddingTop:12, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-                        <span style={{ fontSize: 13, color:"var(--sc-text)", flex:1, minWidth:160 }}>{setAside.text}</span>
-                        <button onClick={() => navTo("tax")} style={{ padding:"5px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text)", cursor:"pointer", flexShrink:0 }}>See taxes →</button>
-                      </div>
-                    )}
-                    {bh.concerns.length > 0 && (
-                      <div style={{ marginTop:14, borderTop:"1px solid var(--sc-surface-2)", paddingTop:12, display:"flex", flexDirection:"column", gap:9 }}>
-                        {bh.concerns.map(c => (
-                          <div key={c.key} style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-                            <span style={{ width:6, height:6, borderRadius:"50%", background: c.severity==="high"?"var(--sc-error)":"var(--sc-warning)", flexShrink:0 }} />
-                            <span style={{ fontSize: 13, color:"var(--sc-text-2)", flex:1, minWidth:120 }}>{c.text}</span>
-                            {c.actionView && <button onClick={()=>{ if (c.key === "ar") { navTo("ar", () => setArView && setArView("collections")); return; } setDashDrill({ type:c.actionView }); }} style={{ padding:"5px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"var(--sc-gold)", border:"none", color:"var(--sc-on-accent)", cursor:"pointer", flexShrink:0 }}>{c.actionLabel} →</button>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
               })()}
+
+              {/* ★ C731 — the accountant's books panel: what needs review, which months are signed off. */}
+              {cockpit && <TrustPanel loading={!companyDataLoaded} />}
 
               {/* C729 — the owner's one-line anomaly note moved with the books panel to Reports. */}
 
@@ -876,48 +841,10 @@ export default function DashboardView() {
                 );
               })()}
 
-              {/* ── ACTIVE COMMITMENTS (contracts / leases) ── C729: the accountant's Home only */}
-              {cockpit && (() => {
-                const active = (contracts||[]).filter(c => c.end_date ? new Date(c.end_date) >= new Date() : true);
-                if (active.length===0) return null;
-                const monthly = active.reduce((s,c)=>s+(c.payment_amount||0),0);
-                const monthsLeft = (c) => c.end_date ? monthsLeftYMD(todayLocal(), c.end_date) : null;   // C502 — calendar months, not ceil(days/30)
-                return (
-                  <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
-                    <div onClick={()=>setShowCommit(s=>!s)} style={{ padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-                      <div>
-                        <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)" }}>📋 {active.length} active {active.length===1?"commitment":"commitments"} · {fmtMoney(monthly)}/mo total</div>
-                        <div style={{ fontSize:11, color:"var(--sc-text-2)", marginTop:3 }}>Leases and ongoing agreements</div>
-                      </div>
-                      <span style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:600 }}>{showCommit?"Hide":"Show"} {showCommit?"▲":"▼"}</span>
-                    </div>
-                    {showCommit && (
-                      <div style={{ borderTop:"1px solid var(--sc-surface-2)" }}>
-                        {!cockpit && <div data-commit-note style={{ padding:"10px 20px 0", fontSize:12, color:"var(--sc-text-2)" }}>Each one is recorded for you every month. The agreements themselves are in Documents.</div>}
-                        {active.map((c,i)=>{
-                          const ml = monthsLeft(c);
-                          return (
-                            <div key={c.id||i} onClick={cockpit ? ()=>navTo("contracts", ()=>{ setSelectedContract(c); setContractView("detail"); }) : undefined}
-                              onMouseEnter={cockpit ? (e=>e.currentTarget.style.background="var(--sc-surface-2)") : undefined} onMouseLeave={cockpit ? (e=>e.currentTarget.style.background="transparent") : undefined}
-                              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 20px", borderTop: i?"1px solid var(--sc-surface-2)":"none", cursor: cockpit?"pointer":"default" }}>
-                              <div style={{ minWidth:0 }}>
-                                <div style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{c.counterparty||"Contract"}</div>
-                                <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>{(CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]?.label) || c.contract_type || "Agreement"}{ml!=null?` · ${ml} ${ml===1?"month":"months"} left`:""}</div>
-                              </div>
-                              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                                <span style={{ fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmtMoney(c.payment_amount||0)}/mo</span>
-                                {cockpit && <span style={{ color:"var(--sc-text-mut)" }}>›</span>}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              {/* C731 — upcoming contract payments left Home for both seats: they're on Contracts. */}
 
-              {/* ── ACTIVITY FEED ── C729: the accountant's Home only (the owner's is on Money) */}
+              {/* ── WHAT'S CHANGED (C731) — the accountant's activity feed, marked from their last visit.
+                  The owner's lists are on Money. ── */}
               {cockpit && (() => {
                 const items = [];
                 const apCode = getAccountByRole?.("accounts_payable")?.code, arCode = getAccountByRole?.("accounts_receivable")?.code;
@@ -948,10 +875,14 @@ export default function DashboardView() {
                 } });
                 items.sort((x,y)=>String(y.ts).localeCompare(String(x.ts)));
                 const ago = ts => { if(!ts) return ""; const s=(Date.now()-new Date(ts).getTime())/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; if(s<604800)return Math.floor(s/86400)+"d ago"; return fmtDate(ts); };
-                const shown = items.slice(0, feedCount);
+                const since = markNewSince(items, lastSeen);
+                const shown = since.items.slice(0, Math.max(feedCount, since.newCount));   // every new row shows
                 return (
                   <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, overflow:"hidden" }}>
-                    <div style={{ padding:"16px 24px", borderBottom:"1px solid var(--sc-border)", fontSize:14, fontWeight:600, color:"var(--sc-text)" }}>Activity</div>
+                    <div data-changes-header style={{ padding:"16px 24px", borderBottom:"1px solid var(--sc-border)", display:"flex", alignItems:"baseline", gap:10, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:14, fontWeight:600, color:"var(--sc-text)" }}>What's changed</span>
+                      <span style={{ fontSize:12, color: since.newCount ? "var(--sc-gold)" : "var(--sc-text-2)", fontWeight: since.newCount ? 600 : 400 }}>{sinceLastLookedHeader(since)}</span>
+                    </div>
                     {shown.length===0 ? <div style={{ padding:"44px", textAlign:"center", color:"var(--sc-text-mut)", fontSize:13 }}>{companyDataLoaded ? "Nothing yet — drop a document above to get started." : "Loading your activity…"}</div> :
                       shown.map((it,idx)=>(
                         <div key={idx} onClick={()=>{ if(it.inv){ setReturnTo({view:"home",label:"Home"}); setSelectedInvoice(it.inv); setView("detail"); } }}
@@ -960,21 +891,15 @@ export default function DashboardView() {
                           <div style={{ width:36, height:36, borderRadius:10, background: it.amount!=null?(it.rev?"var(--sc-success-soft)":"var(--sc-error-soft)"):"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{it.icon}</div>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontSize: 13, fontWeight:500, color:"var(--sc-text)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{it.text}</div>
-                            <div style={{ fontSize:12, color:"var(--sc-text-mut)", marginTop:2 }}>{ago(it.ts)}</div>
+                            <div style={{ fontSize:12, color:"var(--sc-text-mut)", marginTop:2 }}>{it.isNew && <span data-change-new style={{ color:"var(--sc-gold)", fontWeight:700, marginRight:6 }}>New</span>}{ago(it.ts)}</div>
                           </div>
                           {it.amount!=null && <div style={{ fontSize: 13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: it.rev?"var(--sc-success)":"var(--sc-error)", flexShrink:0 }}>{it.rev?"+":"−"}${Math.abs(it.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</div>}
                         </div>
                       ))
                     }
-                    {!cockpit && items.length > feedCount && (
-                      /* C639 — the full list lives on Money; Home is not a second copy of it. */
+                    {items.length > shown.length && (
                       <div style={{ padding:"14px", textAlign:"center", borderTop:"1px solid var(--sc-border)" }}>
-                        <button data-home-see-all onClick={()=>navTo("money")} style={{ background:"none", border:"none", color:"var(--sc-gold)", fontSize:13, fontWeight:600, cursor:"pointer" }}>See everything in Money →</button>
-                      </div>
-                    )}
-                    {cockpit && items.length > feedCount && (
-                      <div style={{ padding:"14px", textAlign:"center", borderTop:"1px solid var(--sc-border)" }}>
-                        <button onClick={()=>setFeedCount(c=>c+20)} style={{ background:"none", border:"none", color:"var(--sc-gold)", fontSize:13, fontWeight:600, cursor:"pointer" }}>Load more</button>
+                        <button onClick={()=>setFeedCount(c=>Math.max(c, shown.length)+HOME_CHANGES_COUNT)} style={{ background:"none", border:"none", color:"var(--sc-gold)", fontSize:13, fontWeight:600, cursor:"pointer" }}>Show more</button>
                       </div>
                     )}
                   </div>
@@ -995,7 +920,7 @@ export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
     uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo, fileHeldStatementTo, intakeRows, bankAccounts,
-    statementExceptions, setClarificationQueue, taxAssets, filedDeadlinesPrev, cutoffDate, estPaidThisYear, estPaidPrevYear, setArView } = useERP();
+    statementExceptions, setClarificationQueue, taxAssets, filedDeadlinesPrev, cutoffDate, estPaidThisYear, estPaidPrevYear, setArView, glCash, companyDataLoaded } = useERP();
   const [busy, setBusy] = React.useState(null);
   // C641 — for an owner with no accountant: the bank lines they can answer, as question cards.
   const soloOwner = !(navSeat ? navSeat.isReviewerSeat : true) && hasAttester === false;
@@ -1040,6 +965,7 @@ export function HomeWaitingList({ navTo }) {
     uploadQueue: uploadQueue || [], cockpit, hasAccountant: hasAttester !== false,   // C574 — defaults to "has one" while unknown
     ownerBankLines: bankQuestionCards.length,   // C641
     canInvite: !!(isOwner || isAdmin),   // C706 — a view-only teammate isn't offered an invite they can't send
+    cashBelowZero: companyDataLoaded && Number(glCash) < -0.005 ? Number(glCash) : null,   // C731 — was a line in the health block both Homes dropped
   });
   if (!items.length) return null;
   // Every door goes through `navTo` — the seat-aware one — never a bare setView (C313).

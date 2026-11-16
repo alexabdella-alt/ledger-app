@@ -37,7 +37,7 @@ describe("C697 — on Home, and the reminder refreshes with every input", () => 
   const src = readFileSync("src/components/views/DashboardView.jsx", "utf8");
   it("Home shows it with a door to Taxes", () => {
     expect(src).toMatch(/const setAside = setAsideLine\(taxEstimate\(invoices, yNow, estPaidThisYear \|\| 0, \{/);
-    expect(src).toMatch(/data-set-aside/);
+    expect(src).toMatch(/label: "Set aside for taxes", value: fmtApprox\(setAside \? setAside\.amount : 0\), tone: "neutral", go: "tax"/);   // C730/C731 — a tile on both Homes
   });
   it("the deadline reminder's memo lists last year's answers, the equipment and the bank accounts", () => {
     expect(src).toMatch(/\}\), \[filedDeadlines, filedDeadlinesPrev, taxAssets, bankAccounts, cutoffDate, estPaidThisYear, estPaidPrevYear, companySettings\?\.legalForm, invoices, contacts, CHART_OF_ACCOUNTS\]\);/);

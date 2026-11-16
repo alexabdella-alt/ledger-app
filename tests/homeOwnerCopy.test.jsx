@@ -35,16 +35,10 @@ describe("★★ Home passes the owner bar, rendered", () => {
       expect(t).not.toMatch(/undefined|\bNaN\b|\[object Object\]|subscription_paid|ASC 842/);
     });
   }
-  it("the commitment block is present to be checked, and its rows are named by label (structure — the rows sit behind a Show toggle no SSR pass can flip)", () => {
-    const t = home(seats.reviewer);   // C729 — the accountant's Home; the owner's is the drop box and the numbers
-    expect(t).toContain("active commitment");
-    expect(t).toContain("Leases and ongoing agreements");
-    const src = fs.readFileSync("src/components/views/DashboardView.jsx", "utf8");
-    expect(src).toMatch(/CONTRACT_TYPES\[c\.contract_type\]\?\.label\) \|\| c\.contract_type/);
+  it("upcoming contract payments left Home for both seats (C731 — they're on Contracts)", () => {
+    for (const s of Object.values(seats)) expect(home(s)).not.toContain("active commitment");
   });
-  it("★ cash under a month's spending is not 'lasts about 0 months'", () => {
-    const t = home(seats.reviewer);   // the fixture's GL cash is 0 against a loss (C729 — the health sentence is on the accountant's Home)
-    expect(t).not.toMatch(/about 0 months/);
-    expect(t).toContain("there isn't a month of cash on hand");
+  it("★ cash under a month's spending is not 'lasts about 0 months' (the health sentence left both Homes, C731)", () => {
+    for (const s of Object.values(seats)) expect(home(s)).not.toMatch(/about 0 months|How your business is doing/);
   });
 });

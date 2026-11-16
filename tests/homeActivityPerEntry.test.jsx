@@ -31,7 +31,7 @@ describe("C538 — Home's activity feed describes settlements", () => {
   const navSeat = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS };   // C729 — the activity feed is on the accountant's Home
   it("the payment reads 'Paid Hill Country Milling Co.' as money out; the A/P leg's name never shows", () => {
     expect(INVOICES.find((r) => r.id === "i9").import_metadata.payment_for).toBe("i1");   // the shape under test
-    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
+    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], invoices: POPULATED.invoices.filter((r) => /^i(1|9)(_|$)/.test(String(r.id))), navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C731 — the accountant sees the latest 10; just the bill and its payment
     expect(t).toContain("Paid Hill Country Milling Co.");
     expect(t).not.toContain("Accounts Payable");
     expect(t).not.toContain("Payment —");

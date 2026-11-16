@@ -20,9 +20,9 @@ describe("C502 · monthsLeftYMD", () => {
   it("the shipped expression — demonstrated: 365 days is 13 by ceil(days/30)", () => {
     expect(Math.ceil(365 / 30)).toBe(13);
   });
-  it("Home's card reads it", () => {
+  it("Home's commitments card is gone (C731) and no ceil(days/30) came back", () => {
     const src = fs.readFileSync("src/components/views/DashboardView.jsx", "utf8").replace(/^[ \t]*\/\/.*$/gm, "");
-    expect(src).toMatch(/const monthsLeft = \(c\) => c\.end_date \? monthsLeftYMD\(todayLocal\(\), c\.end_date\) : null;/);
+    expect(src).not.toMatch(/const monthsLeft = /);
     expect(src).not.toMatch(/86400000\*30/);
   });
 });

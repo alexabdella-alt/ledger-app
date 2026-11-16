@@ -16,7 +16,7 @@ import { statementAccountQuestion, heldStatementAddCopy, cardStatementQuestion }
 import { countByUrgency, queueBannerCopy } from "./cardUrgency";
 import { heldQuestionsCopy, heldUnreadableCopy, heldPartialCopy } from "./waitingOnYou";
 import { unknownSenderCopy } from "../../supabase/functions/_shared/mailChannel.js";
-import { fmtMoney } from "./format";
+import { fmtMoney, fmtSignedMoney } from "./format";
 import { owedAmount } from "./reports.js";
 
 export const WAIT = { STOPS: 0, NOW: 1, SOON: 2, INFO: 3 };
@@ -76,6 +76,7 @@ export function homeWaitingList({
   cockpit = false,           // reviewer seat: the accountant-side actions are theirs
   canInvite = true,          // C706 — a view-only teammate can't invite anyone (Team says "only the owner")
   hasAccountant = true,      // C574 — false: nobody else is on this company, so "your accountant will…" is a promise nobody keeps
+  cashBelowZero = null,      // C731 — the books' cash when it is below zero (GL-derived by the caller), else null
 } = {}) {
   const items = [];
 
@@ -152,6 +153,16 @@ export function homeWaitingList({
     });
   }
   { const late = lateCustomersItem(lateInvoices); if (late) items.push(late); }   // C702
+  // ★ C731 — CASH BELOW ZERO IN THE BOOKS (C725's sentence). It lived in the "how your business is
+  // doing" block, which both Homes dropped (C729, C731) — moved here so it is not lost. Almost always
+  // a starting balance or a statement not yet added; the statement is the first fix, so it leads.
+  if (Number(cashBelowZero) < 0) {
+    items.push({
+      id: "cash_below_zero", urgency: WAIT.SOON,
+      text: `Your books show less than nothing in cash (${fmtSignedMoney(Number(cashBelowZero))}) — usually a starting balance or a bank statement that hasn't been added yet.`,
+      actions: [{ kind: "upload", label: "Upload statement" }, { kind: "nav", label: "Check starting balances", view: "opening-balances", secondary: true }],
+    });
+  }
   // ★ C675 — BILLS COMING DUE, BEFORE THEY ARE LATE. Home only spoke up once a bill was already
   // overdue. The next seven days, with the soonest named, so paying on time needs no searching.
   if ((dueSoonBills || []).length) {

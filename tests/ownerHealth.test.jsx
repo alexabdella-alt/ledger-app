@@ -69,16 +69,19 @@ describe("the month-over-month spend trend", () => {
 });
 
 describe("Home renders the owner's numbers", () => {
-  it("the four labels are on screen and the startup words are not", () => {
+  it("the three labels are on screen (C730/C731, both seats) and the startup words are not", () => {
     const html = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"] }).replace(/<!-- -->/g, "");
     expect(html).toContain("Cash on hand");
     expect(html).toMatch(/Profit this year|Loss this year/);
-    expect(html).toContain("Owed to you");
-    expect(html).toContain("You owe");
+    expect(html).toContain("Set aside for taxes");
     expect(html).not.toContain("Monthly burn");
     expect(html).not.toMatch(/>Runway</);
     const src = fs.readFileSync(path.join(process.cwd(), "src/components/views/DashboardView.jsx"), "utf8");
-    expect(src).toMatch(/bh\.ownerFacts\.map/);
+    expect(src).toMatch(/const fact = k => bh\.ownerFacts\.find\(f => f\.key === k\);/);
+    // owed both ways moved to Money's top row, still GL-derived
+    const money = fs.readFileSync(path.join(process.cwd(), "src/components/views/MoneyView.jsx"), "utf8");
+    expect(money).toMatch(/owe: apCode \? glAccountBalance\(apCode/);
+    expect(money).toMatch(/owed: arCode \? glAccountBalance\(arCode/);
     expect(src).toMatch(/owedToYou: getAccountByRole\?\.\("accounts_receivable"\)\?\.code \? glAccountBalance\(/);
   });
 });

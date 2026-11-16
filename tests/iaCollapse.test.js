@@ -76,8 +76,8 @@ describe("(2) visibleNav truth table — every view id, both seats", () => {
     // what must still hold is that the owner can OPEN everything the accountant's rows show,
     // except the review layer.
     const cpa = navItems(visibleNav(reviewer));
-    expect(cpa).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports", "review"]);
-    for (const v of cpa.filter((x) => x !== "review")) expect([v, canSeeView(v, client)]).toEqual([v, true]);
+    expect(cpa).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports", "ask", "review"]);   // C731 — Ask, as the owner has it
+    for (const v of cpa.filter((x) => x !== "review" && x !== "ask")) expect([v, canSeeView(v, client)]).toEqual([v, true]);
     expect(navItems(visibleNav({ ...reviewer, isPlatformAdmin: true }))).toEqual([...cpa, "admin"]);
     expect(visibleNav(reviewer).sections.map(s => s.label)).toEqual([null, null]);
   });
@@ -352,7 +352,7 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
     expect(dash).toMatch(/const navTo = \(viewId, before\) => \{\s*\n\s*if \(navSeat && !navSeat\.viewIds\.includes\(viewId\)\) return;/);
     expect(dash).not.toMatch(/const goCockpit =/);
     // …and the door is actually used, for surfaces on both sides of the line.
-    for (const v of ["bank", "matching", "review", "contracts", "books"]) {
+    for (const v of ["bank", "matching", "review", "books"]) {   // C731 — "contracts" went with the commitments card
       expect([v, dash.includes(`navTo("${v}"`)]).toEqual([v, true]);
     }
   });

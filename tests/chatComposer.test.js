@@ -68,9 +68,7 @@ describe("★ Home's ask sends on arrival (C404)", () => {
     const eff = composer.slice(composer.indexOf("if (prefill.send"), composer.indexOf("}, [prefill]"));
     expect(eff).toMatch(/setText\(prefill\.text\);/);
   });
-  it("Home marks its prefill `send: true`; Reports' analysis button does NOT (the person may edit it first)", () => {
-    const home = require("fs").readFileSync("src/components/views/DashboardView.jsx", "utf8");
-    expect(home).toMatch(/setChatPrefill\(\{ at: Date\.now\(\), text: t, send: true \}\)/);
+  it("Reports' analysis button does NOT send on arrival (the person may edit it first) — Home's ask box left Home (C731)", () => {
     const reports = require("fs").readFileSync("src/components/views/ReportsView.jsx", "utf8");
     expect(reports).toMatch(/setChatPrefill\(\{ at: Date\.now\(\), text: `Give me a detai/);
     expect(reports).not.toMatch(/send: true/);
