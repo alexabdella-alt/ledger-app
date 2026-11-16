@@ -86,6 +86,15 @@ export default function OpeningBalancesView() {
                   </div>
                 )}
 
+                {/* ★ C733 — the statement's figure is the easy way: with it on offer, the full form folds
+                    behind "Or enter them yourself"; without one, we say where the easy way is. */}
+                {!offer && !openingPosted && (
+                  <div data-opening-easiest style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,padding:"14px 18px",marginBottom:16,fontSize:13,color:"var(--sc-text)",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                    <span style={{flex:1,minWidth:220}}><strong>Easiest way:</strong> upload your first bank statement on Home — we'll read your starting balance from it and you just confirm. Or fill in the form below.</span>
+                    <button onClick={()=>setView("home")} style={{background:"none",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",fontSize:13,fontWeight:600,color:"var(--sc-text)",cursor:"pointer",flexShrink:0}}>Go to Home →</button>
+                  </div>
+                )}
+                {(() => { const manual = (<>
                 {/* Cutoff (Day One) — editable until the opening entry is posted, then locked */}
                 <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
                   <div style={{fontSize:13,color:"var(--sc-text-2)",flexShrink:0}}>Start date:</div>
@@ -174,6 +183,9 @@ export default function OpeningBalancesView() {
                 <button onClick={post} disabled={!canPost} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:canPost?"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))":"var(--sc-border)",border:"none",color:canPost?"var(--sc-surface)":"var(--sc-text-2)",cursor:canPost?"pointer":"not-allowed"}}>
                   {openingPosted ? "Update starting balances" : "Save starting balances"}
                 </button> ); })()}
+                </>); return offer
+                  ? <details data-opening-manual style={{marginBottom:16}}><summary style={{fontSize:13,color:"var(--sc-text-2)",cursor:"pointer",padding:"4px 0"}}>Or enter them yourself</summary><div style={{marginTop:12}}>{manual}</div></details>
+                  : manual; })()}
               </div>
             );
 }
