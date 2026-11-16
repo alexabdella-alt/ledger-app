@@ -1018,7 +1018,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // AP state — apView persists across refresh (declared here, so its own persist effect)
   const [apView, setApView] = useState(() => ss("cfai_apView", "inbox")); // inbox | queue | approvals | aging
   useEffect(() => { try { sessionStorage.setItem("cfai_apView", apView); } catch {} }, [apView]);
-  const CHAT_GREETING = "Hey — I'm Shadow. Just upload your documents on Home and I'll handle the bookkeeping. Ask me anything — your burn rate, P&L, unpaid bills — or tell me what to do and I'll take you there. What do you need?";
+  // C734 — the owner's words (C444/C583): "burn rate" and "P&L" were still in the chat's first message
+  const CHAT_GREETING = "Hi — I'm Shadow. Drop your bills, receipts and bank statements on Home and I'll keep your books. Ask me anything about your money — what you're spending, whether you made money, who owes you — or tell me what happened and I'll record it.";
   const [chatOpen, setChatOpen] = useState(false);
   // ★ THE ONE THING THAT STILL HAS TO REACH THE CHAT BOX FROM OUTSIDE: a button elsewhere
   // (Reports) that pre-fills a question. It changes on a CLICK, not on a keystroke, so it
@@ -10102,7 +10103,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                 <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
                 <div>
                   <div style={{ fontSize:14, fontWeight:600 }}>Shadow</div>
-                  <div style={{ fontSize:11, color:"var(--sc-success)" }}>● Online · Your AI Controller</div>
+                  <div style={{ fontSize:11, color:"var(--sc-success)" }}>● Online · Your bookkeeping assistant</div>
                 </div>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
@@ -10121,7 +10122,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             <div onClick={()=>setAiInfoOpen(false)} style={{ position:"absolute", inset:0, zIndex:5, background:"rgba(16,24,40,0.45)", display:"flex", alignItems:"center", justifyContent:"center", padding:18 }}>
               <div onClick={e=>e.stopPropagation()} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, width:"100%", maxHeight:"100%", overflowY:"auto", boxShadow:"0 20px 60px rgba(16,24,40,0.25)" }}>
                 <div style={{ padding:"16px 18px", borderBottom:"1px solid var(--sc-surface-2)", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:"var(--sc-text)" }}>Your AI CFO</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:"var(--sc-text)" }}>What I can do</div>
                   <button onClick={()=>setAiInfoOpen(false)} style={{ background:"none", border:"none", fontSize:20, lineHeight:1, color:"var(--sc-text-2)", cursor:"pointer" }}>×</button>
                 </div>
                 <div style={{ padding:"14px 18px" }}>
