@@ -339,7 +339,7 @@ export default function BooksView({ embedded = false } = {}) {
                 <div style={{ padding:"56px 32px", textAlign:"center" }}>
                   <div style={{ width:52, height:52, borderRadius:14, background:"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:24 }}>{search||filter!=="all"||vendorScoped?"🔍":"📭"}</div>
                   <div style={{ fontSize:15, fontWeight:600, color:"var(--sc-text)", marginBottom:6 }}>{search||filter!=="all"||vendorScoped?"No matching transactions":"No transactions yet"}</div>
-                  <div style={{ fontSize:13, color:"var(--sc-text-mut)", marginBottom:20, maxWidth:340, marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>{search||filter!=="all"||vendorScoped?"Try clearing your search or switching filters to see more.":"Upload an invoice, receipt, or bank statement and it'll appear here, fully coded."}</div>
+                  <div style={{ fontSize:13, color:"var(--sc-text-mut)", marginBottom:20, maxWidth:340, marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>{search||filter!=="all"||vendorScoped?"Try clearing your search or switching filters to see more.":"Upload a bill, receipt, or bank statement and it'll appear here, already sorted into the right category."}</div>
                   {!(search||filter!=="all"||vendorScoped) && (
                     <button onClick={()=>setView("home")}
                       onMouseEnter={e=>e.currentTarget.style.background="var(--sc-gold-deep)"} onMouseLeave={e=>e.currentTarget.style.background="var(--sc-gold)"}

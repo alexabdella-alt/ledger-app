@@ -258,11 +258,12 @@ export default function ReportsView() {
                   <div data-reports-purpose style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:6 }}>{REPORTS_PURPOSE}</div>
                   {/* C343 — O104's core promise: a report never sounds surer than the books. One
                       line, from the sign-off rows, on every report. */}
-                  <div data-attestation style={{ fontSize:12.5, color:"var(--sc-text-2)", marginTop:8 }}>
+                  {/* C734 — nothing recorded yet: nothing to have signed off, so no warning about it */}
+                  {(invoices || []).some(i => i && i.status !== "voided" && !i.deleted_at) && <div data-attestation style={{ fontSize:12.5, color:"var(--sc-text-2)", marginTop:8 }}>
                     {signoffsLoadOk == null
                       ? "Checking which months have been signed off…"   // C429 — not "no month signed" while the read is in flight
                       : reportAttestationLine({ reviewedThrough, selfSigned: ownerTrust?.selfSigned, monthLabel, checked: signoffsLoadOk !== false })}
-                  </div>
+                  </div>}
                   {/* U4 (C379) — the period in plain words, read from the same derivations as the
                       tables below, so the paragraph cannot disagree with the table under it. */}
                   <div data-plain-summary style={{ fontSize:14, color:"var(--sc-text)", lineHeight:1.6, marginTop:12, padding:"12px 16px", background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, maxWidth:720 }}>
