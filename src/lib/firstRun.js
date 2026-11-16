@@ -83,3 +83,23 @@ export const DROPZONE_COPY = {
   choose: "or click to choose files from your computer or phone",
   reading: "READING YOUR FILES…",
 };
+
+// ★ C735 — the invite, emailed from the owner's own mail app (no sending domain needed): a mailto
+// with the link and the one rule that trips people up — the invite works only for the address it
+// was sent to. Pure.
+export function inviteMailto({ email = "", link = "", companyName = "", role = "accountant" } = {}) {
+  const biz = String(companyName || "").trim() || "my business";
+  const subject = `Join ${biz}'s books on Shadow`;
+  const body = [
+    "Hi,",
+    "",
+    `I've invited you to ${biz}'s books on Shadow as ${inviteRoleLabel(role)}.`,
+    "",
+    `Open this link to accept: ${link}`,
+    "",
+    `Please sign up (or sign in) with this email address — ${String(email).trim()} — the invite only works for it. The link works once and expires in 7 days.`,
+    "",
+    "Thanks!",
+  ].join("\n");
+  return `mailto:${encodeURIComponent(String(email).trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}

@@ -5,7 +5,9 @@ import { keepUnanswered } from "../../lib/uploadQueueTile";
 import { CHECKLIST_COPY, BUSINESS_MODAL_INTRO, BUSINESS_SAVE_HINT, DROPZONE_COPY } from "../../lib/firstRun";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
-import { homeWaitingList, waitingHeadline, WAIT } from "../../lib/homeWaiting";
+import { homeWaitingList, waitingHeadline, WAIT, monthReadyToSign } from "../../lib/homeWaiting";
+import { firstUnsignedMonth } from "../../lib/workbench";
+import { monthLabel as ownerMonthLabel } from "../../lib/ownerTrust";
 import { markNewSince, sinceLastLookedHeader } from "../../lib/sinceLastLooked";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
@@ -929,7 +931,8 @@ export function HomeWaitingList({ navTo }) {
   const { clarificationQueue, heldQuestions, heldUnreadable, heldPartial, heldInbound, releaseHeldInbound, ignoreHeldInbound,
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
     uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo, fileHeldStatementTo, intakeRows, bankAccounts,
-    statementExceptions, setClarificationQueue, taxAssets, filedDeadlinesPrev, cutoffDate, estPaidThisYear, estPaidPrevYear, setArView, glCash, companyDataLoaded } = useERP();
+    statementExceptions, setClarificationQueue, taxAssets, filedDeadlinesPrev, cutoffDate, estPaidThisYear, estPaidPrevYear, setArView, glCash, companyDataLoaded,
+    canSoloAttest, signoffs, signOffReadinessFor } = useERP();
   const [busy, setBusy] = React.useState(null);
   // C641 — for an owner with no accountant: the bank lines they can answer, as question cards.
   const soloOwner = !(navSeat ? navSeat.isReviewerSeat : true) && hasAttester === false;
@@ -975,7 +978,9 @@ export function HomeWaitingList({ navTo }) {
     ownerBankLines: bankQuestionCards.length,   // C641
     canInvite: !!(isOwner || isAdmin),   // C706 — a view-only teammate isn't offered an invite they can't send
     cashBelowZero: companyDataLoaded && Number(glCash) < -0.005 ? Number(glCash) : null,
-    onboarding: onboardingChecklistVisible({ companyDataLoaded, onboardingComplete: companySettings?.onboardingComplete }),   // C733   // C731 — was a line in the health block both Homes dropped
+    onboarding: onboardingChecklistVisible({ companyDataLoaded, onboardingComplete: companySettings?.onboardingComplete }),   // C733
+    monthReady: companyDataLoaded ? monthReadyToSign({ canSign: !cockpit && !!canSoloAttest, months: (invoices || []).map(i => String(i && i.date || "").slice(0, 7)), signoffs: signoffs || [], currentMonth: today.slice(0, 7),
+      isReady: (p) => { const r = signOffReadinessFor ? signOffReadinessFor(p) : null; return !!(r && r.ok); }, label: ownerMonthLabel, firstUnsigned: firstUnsignedMonth }) : null,   // C735   // C731 — was a line in the health block both Homes dropped
   });
   if (!items.length) return null;
   // Every door goes through `navTo` — the seat-aware one — never a bare setView (C313).

@@ -76,6 +76,7 @@ export function homeWaitingList({
   cockpit = false,           // reviewer seat: the accountant-side actions are theirs
   canInvite = true,          // C706 — a view-only teammate can't invite anyone (Team says "only the owner")
   hasAccountant = true,      // C574 — false: nobody else is on this company, so "your accountant will…" is a promise nobody keeps
+  monthReady = null,         // C735 — { label } — a finished month a solo owner can sign off now (monthReadyToSign)
   onboarding = false,        // C733 — the setup checklist is on screen (it asks for the first statement itself)
   cashBelowZero = null,      // C731 — the books' cash when it is below zero (GL-derived by the caller), else null
 } = {}) {
@@ -154,6 +155,16 @@ export function homeWaitingList({
     });
   }
   { const late = lateCustomersItem(lateInvoices); if (late) items.push(late); }   // C702
+  // ★ C735 — A FINISHED MONTH, READY TO SIGN OFF (a solo owner — nobody else can). The sign-off
+  // lives in the books panel on Reports since C729, and nothing on Home said a month was ready,
+  // so a solo owner's first month-end would pass unremarked.
+  if (monthReady && monthReady.label) {
+    items.push({
+      id: "month_ready", urgency: WAIT.SOON,
+      text: `${monthReady.label}'s books are ready — sign them off to lock them in.`,
+      actions: [{ kind: "nav", label: "Review and sign off", view: "reports" }],
+    });
+  }
   // ★ C731 — CASH BELOW ZERO IN THE BOOKS (C725's sentence). It lived in the "how your business is
   // doing" block, which both Homes dropped (C729, C731) — moved here so it is not lost. Almost always
   // a starting balance or a statement not yet added; the statement is the first fix, so it leads.
@@ -244,4 +255,19 @@ export function waitingHeadline(items = []) {
   if (stops) return `${now} ${now === 1 ? "thing needs" : "things need"} an answer from you${more}`;
   if (now) return `${now} ${now === 1 ? "thing is" : "things are"} waiting on you${more}`;
   return `${n} ${n === 1 ? "thing" : "things"} worth a look`;
+}
+
+// ★ C735 — which finished month (if any) a solo owner can sign off right now. Only when they are
+// the one who signs (`canSign`), the month is over (before `currentMonth`), it has entries, it is
+// the first unsigned one, and nothing blocks it (`isReady(period)` → true). Else null — a line
+// offering a sign-off that would then be refused is the "refusing on click" shape. Pure.
+export function monthReadyToSign({ canSign = false, months = [], signoffs = [], currentMonth = "", isReady = () => false, label = (p) => p, firstUnsigned } = {}) {
+  if (!canSign || !currentMonth || typeof firstUnsigned !== "function") return null;
+  const have = [...new Set((months || []).filter((m) => /^\d{4}-\d{2}$/.test(String(m))))];
+  if (!have.length) return null;
+  const period = firstUnsigned({ months: have, signoffs: signoffs || [], fallback: currentMonth });
+  if (!period || !(period < currentMonth) || !have.includes(period)) return null;
+  let ok = false;
+  try { ok = !!isReady(period); } catch { ok = false; }
+  return ok ? { period, label: label(period) } : null;
 }

@@ -1,6 +1,7 @@
 import { plainWriteError } from "../../lib/plainWriteError";
 import React from "react";
 import { useERP } from "../ERPContext";
+import { inviteMailto } from "../../lib/firstRun";
 
 // Team management (Item 20) — owner-only. Lists members, pending invites (with
 // revoke), and an invite form that produces a copyable invite link.
@@ -13,6 +14,7 @@ export default function TeamView() {
   const [role, setRole] = React.useState("viewer");   // the least-privilege default
   const [busy, setBusy] = React.useState(false);
   const [lastLink, setLastLink] = React.useState(null);
+  const [lastInvite, setLastInvite] = React.useState(null);   // C735 — { email, role } of the link just made, for "Email it"
   const [copied, setCopied] = React.useState(false);
 
   const load = React.useCallback(async () => {
@@ -51,7 +53,7 @@ export default function TeamView() {
         .insert({ company_id: currentCompany.id, email: e, role, invited_by: session.user.id })
         .select("*").single();
       if (error) throw error;
-      setLastLink(linkFor(data.token)); setCopied(false);
+      setLastLink(linkFor(data.token)); setLastInvite({ email: e, role }); setCopied(false);
       setEmail("");
       logAudit && logAudit("invite_sent", `Invited ${e} as ${role}`, null, { email: e, role });
       load();
@@ -132,12 +134,19 @@ export default function TeamView() {
             {busy ? "Creating…" : "Create invite"}
           </button>
         </div>
+        {/* ★ C735 — the two things that trip an owner up, said before they click */}
+        <div data-invite-hints style={{ marginTop: 10, fontSize: 12, color: "var(--sc-text-2)", lineHeight: 1.5 }}>
+          {role === "viewer" && <div data-invite-role-hint>Inviting your accountant? Choose “Accountant” so they can review and sign off your months.</div>}
+          <div>Use the email address they'll sign in with — the invite only works for that address.</div>
+        </div>
         {lastLink && (
           <div style={{ marginTop: 14, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold)", borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{ fontSize: 13, color: "var(--sc-gold)", marginBottom: 8 }}>Copy this link and send it to your teammate. It works once and expires in 7 days.</div>
+            <div style={{ fontSize: 13, color: "var(--sc-gold)", marginBottom: 8 }}>Send this link to {lastInvite?.email || "your teammate"} — “Email it” opens your email with the message written. It works once and expires in 7 days.</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <input readOnly value={lastLink} onFocus={e => e.target.select()} style={{ ...input, flex: "1 1 280px", fontSize: 13, fontFamily: "'DM Mono',monospace", background: "var(--sc-surface)" }} />
               <button onClick={() => copy(lastLink)} style={{ height: 40, padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, color: copied ? "var(--sc-success)" : "var(--sc-surface)", background: copied ? "var(--sc-success-soft)" : "var(--sc-gold)", border: copied ? "1px solid var(--sc-success-soft)" : "none", cursor: "pointer" }}>{copied ? "Copied ✓" : "Copy link"}</button>
+              {lastInvite && <a data-invite-email href={inviteMailto({ email: lastInvite.email, link: lastLink, companyName: currentCompany?.name, role: lastInvite.role })}
+                style={{ height: 40, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "var(--sc-text)", background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", textDecoration: "none" }}>Email it</a>}
             </div>
           </div>
         )}
