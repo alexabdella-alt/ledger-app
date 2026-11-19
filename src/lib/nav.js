@@ -10,17 +10,17 @@
 // may be opened. The chrome renders from it and the route guard enforces it,
 // so a stale link can never land a client on a surface that isn't theirs.
 //
-// The SEAT is derived from the SAME predicate as attestation (`canAttestPeriod`
-// = the DB's `is_company_reviewer`, migration 051). That is deliberate: the
-// separation-of-duties boundary and the IA-simplification boundary are ONE
-// boundary — every surface gated to a reviewer disappears from the client's
-// view for free, and the two can never drift apart into different answers.
+// The SEAT was derived from the SAME predicate as attestation (`canAttestPeriod`
+// = the DB's `is_company_reviewer`, migration 051), so the separation-of-duties
+// boundary and the IA boundary were one. ★ C758 split them on purpose: since C741
+// `admin` is a full-access PARTNER OR ASSISTANT, who belongs in the owner's app;
+// the cockpit is the `accountant` role and the Shadow team. Who may sign is
+// unchanged (still `canAttestPeriod`, enforced by the database).
 //
 // This module moves WALLS, not machinery: nothing here books, matches,
 // reconciles, or attests. It only decides what is on screen.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { canAttestPeriod } from "./signoff";
 
 // Every view id that lives BEHIND the "Books" tab (the workbench group). Kept
 // as one list so the tab's active-state, the sub-nav and the guard agree.
@@ -168,14 +168,21 @@ export const ALL_VIEW_IDS = [
 
 
 // Is this session sitting in the REVIEWER seat (the cockpit) or the CLIENT seat?
-// - reviewer roles (admin / accountant) → cockpit, exactly as `canAttestPeriod`.
+// - the accountant role → cockpit (C758: NOT `admin`, which is a full-access partner or assistant).
 // - platform admins → cockpit, so Support Mode can still reach every surface
 //   (mirrors the `is_company_member` platform-admin bypass, Option A).
 // - `previewAsOwner` → the client seat REGARDLESS of role: the demo toggle. It
 //   changes only what is rendered, never the role and never write permission.
+// ★ C758 — AN "ADMIN" TEAMMATE IS A PARTNER OR ASSISTANT, NOT OUR REVIEW TEAM. Since C741 the Team
+// screen's "Full access — a partner or assistant who helps run the books" invites with role `admin`,
+// and `admin` sat in the reviewer seat (via canAttestPeriod) — so the owner's business partner
+// landed in the accountant's workbench (account numbers, Review, Bank Import) instead of the owner's
+// app. The cockpit is for the Shadow team (platform admins) and the legacy `accountant` role only.
+// What a role may WRITE is unchanged (the database decides that); this is only which app it sees.
+export const REVIEWER_SEAT_ROLES = ["accountant"];
 export function isReviewerSeat({ role = "owner", isPlatformAdmin = false, previewAsOwner = false } = {}) {
   if (previewAsOwner) return false;
-  return canAttestPeriod(role) || !!isPlatformAdmin;
+  return REVIEWER_SEAT_ROLES.includes(role) || !!isPlatformAdmin;
 }
 
 // THE nav description for a seat. Pure — the chrome renders straight from it.

@@ -32,10 +32,15 @@ const CLIENT_ROLES = ["owner", "viewer", "member"];      // every non-reviewer r
 const REVIEWER_ROLES = ["admin", "accountant"];          // exactly is_company_reviewer (migration 051)
 
 describe("(1) the seat IS the attestation boundary — one gate, not two", () => {
-  it("reviewer seat === canAttestPeriod for every role (no second, drifting definition)", () => {
-    for (const role of [...CLIENT_ROLES, ...REVIEWER_ROLES]) {
-      expect(isReviewerSeat({ role })).toBe(canAttestPeriod(role));
-    }
+  // ★ C758 — NO LONGER THE SAME GATE, ON PURPOSE. Since C741 "Full access" on the Team screen invites
+  // a partner or assistant with role `admin`; tying the seat to `canAttestPeriod` put them in the
+  // accountant's workbench. The cockpit is the accountant role and the Shadow team (platform admins);
+  // an admin teammate gets the owner's app. Who may SIGN is still canAttestPeriod (the database's call).
+  it("★★ the accountant role sits in the cockpit; an admin (full-access partner) does NOT", () => {
+    expect(isReviewerSeat({ role: "accountant" })).toBe(true);
+    expect(isReviewerSeat({ role: "admin" })).toBe(false);
+    expect(canAttestPeriod("admin")).toBe(true);   // what the role may do is unchanged
+    for (const role of CLIENT_ROLES) expect(isReviewerSeat({ role })).toBe(false);
   });
   it("a platform admin keeps the cockpit whatever their company role (Support Mode)", () => {
     for (const role of CLIENT_ROLES) {
@@ -246,7 +251,7 @@ describe("(3) route guard — a stale link goes Home, never to an error", () => 
     expect(navRedirect("home", client)).toBeNull();       // and Home can never redirect to itself
   });
   it("a reviewer is never redirected off a workbench surface", () => {
-    for (const v of BOOKS_GROUP) expect([v, navRedirect(v, { role: "admin" })]).toEqual([v, null]);
+    for (const v of BOOKS_GROUP) expect([v, navRedirect(v, { role: "accountant" })]).toEqual([v, null]);   // C758 — an accountant (admin is a partner now)
   });
   it("the bounce copy assumes zero accounting knowledge", () => {
     expect(containsOwnerJargon(GATED_VIEW_REDIRECT_COPY)).toBe(false);

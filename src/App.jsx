@@ -463,7 +463,11 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // `is_company_member`). `previewAsOwner` is the demo toggle: pure state, never
   // persisted, changes ONLY what renders — never the role, never write access.
   const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
-  const [previewAsOwner, setPreviewAsOwner] = useState(false);
+  // ★ C758 — the owner preview is REMEMBERED on this device: it reset to the operator's view on every
+  // reload, so checking the app "as a client" meant switching back each time. Per-viewer convenience
+  // only (browser storage, guarded); it changes what is shown, never a role or a permission.
+  const [previewAsOwner, setPreviewAsOwner] = useState(() => { try { return window.localStorage.getItem("sc_previewAsOwner") === "1"; } catch { return false; } });
+  useEffect(() => { try { window.localStorage.setItem("sc_previewAsOwner", previewAsOwner ? "1" : "0"); } catch { /* storage blocked */ } }, [previewAsOwner]);
   // ★ C742 — an upload that didn't make it alerts the operator through Sentry (their alert rule emails
   // them). One issue per company and kind (the fingerprint), so a new client's problem is a new email.
   // Only ids travel — no filename, no contents.
