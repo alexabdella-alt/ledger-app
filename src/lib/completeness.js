@@ -54,7 +54,7 @@ const placeholderAccount = (b) => {
 };
 
 export function completenessReport({
-  companies = [], intake = [], accounts = [], statements = [], openLines = [], recons = [],
+  companies = [], intake = [], accounts = [], statements = [], openLines = [], recons = [], signoffs = [],
   now = new Date(), monthsBack = 6, stuckMinutes = STUCK_MINUTES,
 } = {}) {
   const today = localYmd(now);
@@ -70,7 +70,7 @@ export function completenessReport({
   return (companies || []).filter(Boolean).map((co) => {
     const cid = String(co.id);
     const items = [];   // { severity, period|null, text }
-    const add = (severity, period, text) => items.push({ severity, period: period || null, text });
+    const add = (severity, period, text, kind = null) => items.push({ severity, period: period || null, text, kind });
 
     // ── 1. Every arrival reached a resting place ──
     const arrivals = intakeBy.get(cid) || [];
@@ -79,9 +79,9 @@ export function completenessReport({
     const failed = arrivals.filter((r) => r.status === "failed");
     const held = arrivals.filter((r) => r.status === "held_for_review");
     const groupByMonth = (rows) => { const m = new Map(); for (const r of rows) { const p = ym(r.received_at) || current; if (!m.has(p)) m.set(p, []); m.get(p).push(r); } return m; };
-    for (const [p, rows] of groupByMonth(stuck)) add("problem", p, `${plural(rows.length, "upload", "uploads")} from ${monthName(p)} arrived and never reached the books or a question (${rows.slice(0, 3).map((r) => r.filename || "unnamed file").join(", ")}${rows.length > 3 ? "…" : ""}).`);
-    for (const [p, rows] of groupByMonth(failed)) add("problem", p, `${plural(rows.length, "upload", "uploads")} from ${monthName(p)} failed (${rows.slice(0, 3).map((r) => `${r.filename || "unnamed file"}${r.detail ? `: ${String(r.detail).slice(0, 80)}` : ""}`).join("; ")}${rows.length > 3 ? "…" : ""}).`);
-    for (const [p, rows] of groupByMonth(held)) add("attention", p, `${plural(rows.length, "document", "documents")} from ${monthName(p)} waiting on an answer.`);
+    for (const [p, rows] of groupByMonth(stuck)) add("problem", p, `${plural(rows.length, "upload", "uploads")} from ${monthName(p)} arrived and never reached the books or a question (${rows.slice(0, 3).map((r) => r.filename || "unnamed file").join(", ")}${rows.length > 3 ? "…" : ""}).`, "stuck");
+    for (const [p, rows] of groupByMonth(failed)) add("problem", p, `${plural(rows.length, "upload", "uploads")} from ${monthName(p)} failed (${rows.slice(0, 3).map((r) => `${r.filename || "unnamed file"}${r.detail ? `: ${String(r.detail).slice(0, 80)}` : ""}`).join("; ")}${rows.length > 3 ? "…" : ""}).`, "failed");
+    for (const [p, rows] of groupByMonth(held)) add("attention", p, `${plural(rows.length, "document", "documents")} from ${monthName(p)} waiting on an answer.`, "held");
 
     // ── 2. The bank backstop ──
     const stmts = stmtBy.get(cid) || [];
@@ -89,16 +89,16 @@ export function completenessReport({
     const companyStart = isYm(ym(co.cutoff_date)) ? ym(co.cutoff_date) : [...arrivals.map((r) => ym(r.received_at)), ...stmts.map((s) => ym(s.period_start))].filter(isYm).sort()[0] || null;
     const checkedMonths = new Set();   // months where at least one account's statement fully covered the month
     if (!stmts.length) {
-      if (arrivals.length) add("problem", null, "No bank statement yet — nothing checks these books against the bank.");
+      if (arrivals.length) add("problem", null, "No bank statement yet — nothing checks these books against the bank.", "no_statements");
     } else {
       const firstStmtMonth = stmts.map((s) => ym(s.period_start)).sort()[0];
       if (companyStart && companyStart < firstStmtMonth) {
-        add("problem", companyStart, `The books start in ${monthName(companyStart)} but the first bank statement is from ${monthName(firstStmtMonth)} — ${companyStart === prevMonth(firstStmtMonth) ? monthName(companyStart) : `${monthName(companyStart)} to ${monthName(prevMonth(firstStmtMonth))}`} haven't been checked against the bank.`);
+        add("problem", companyStart, `The books start in ${monthName(companyStart)} but the first bank statement is from ${monthName(firstStmtMonth)} — ${companyStart === prevMonth(firstStmtMonth) ? monthName(companyStart) : `${monthName(companyStart)} to ${monthName(prevMonth(firstStmtMonth))}`} haven't been checked against the bank.`, "pre_statement");
       }
       const lineMonth = (l) => ym(l.line_date) || ym(stmtById.get(String(l.statement_id))?.period_end);
       for (const a of accts) {
         const mine = stmts.filter((s) => String(s.bank_account_id) === String(a.id));
-        if (!mine.length) { add("attention", null, `${a.name || "An account"} has no statements yet — its spending isn't checked against the bank.`); continue; }
+        if (!mine.length) { add("attention", null, `${a.name || "An account"} has no statements yet — its spending isn't checked against the bank.`, "account_no_statements"); continue; }
         const spans = mine.map((s) => [String(s.period_start).slice(0, 10), String(s.period_end).slice(0, 10)]);
         const reconSpans = (reconBy.get(cid) || []).filter((r) => verifiedRecon(r) && String(r.account_id) === String(a.id)).map((r) => [String(r.period_start || "0000-01-01").slice(0, 10), String(r.period_end || "9999-12-31").slice(0, 10)]);
         const myLines = (linesBy.get(cid) || []).filter((l) => mine.some((s) => String(s.id) === String(l.statement_id)));
@@ -109,18 +109,19 @@ export function completenessReport({
             const late = p === lastFinished && Number(today.slice(8, 10)) < STATEMENT_GRACE_DAY;
             add(late ? "attention" : "problem", p, cov === "partial"
               ? `${a.name || "An account"}'s statements cover only part of ${monthName(p)}.`
-              : late ? `${a.name || "An account"}'s ${monthName(p)} statement isn't in yet.` : `No ${a.name || "account"} statement for ${monthName(p)}.`);
+              : late ? `${a.name || "An account"}'s ${monthName(p)} statement isn't in yet.` : `No ${a.name || "account"} statement for ${monthName(p)}.`, cov === "partial" ? "partial_statement" : late ? "statement_late" : "no_statement");
             continue;
           }
           checkedMonths.add(p);
           const open = myLines.filter((l) => lineMonth(l) === p);
-          if (open.length) { add("attention", p, `${plural(open.length, "line", "lines")} on the ${a.name || "account"} statement for ${monthName(p)} ${open.length === 1 ? "isn't" : "aren't"} in the books yet.`); continue; }
-          if (monthCoverage(reconSpans, p) !== "full") add("attention", p, `${a.name || "An account"} for ${monthName(p)} hasn't been matched to the penny yet.`);
+          if (open.length) { add("attention", p, `${plural(open.length, "line", "lines")} on the ${a.name || "account"} statement for ${monthName(p)} ${open.length === 1 ? "isn't" : "aren't"} in the books yet.`, "open_lines"); continue; }
+          if (monthCoverage(reconSpans, p) !== "full") add("attention", p, `${a.name || "An account"} for ${monthName(p)} hasn't been matched to the penny yet.`, "not_matched");
         }
       }
     }
 
     // ── per month, and overall ──
+    const lockedSet = new Set((signoffs || []).filter((x) => x && String(x.company_id) === cid && !x.revoked_at).map((x) => String(x.period)));
     const months = window.map((p) => {
       const mine = items.filter((it) => it.period === p);
       const sev = mine.some((i) => i.severity === "problem") ? "problem" : mine.some((i) => i.severity === "attention") ? "attention" : null;
@@ -129,7 +130,7 @@ export function completenessReport({
       else if (sev) status = sev;
       else if (p === current) status = "in_progress";
       else status = checkedMonths.has(p) ? "complete" : "unchecked";   // never green on nothing checked
-      return { period: p, status };
+      return { period: p, status, locked: lockedSet.has(p), items: mine };
     });
     const status = items.some((i) => i.severity === "problem") ? "problem"
       : items.some((i) => i.severity === "attention") ? "attention"
@@ -142,4 +143,29 @@ export function completenessReport({
 export function completenessSummary(report = []) {
   const n = (s) => report.filter((r) => r.status === s).length;
   return { total: report.length, problem: n("problem"), attention: n("attention"), complete: n("complete"), empty: n("empty") };
+}
+
+// ★ C740 — A MONTH, IN THE OWNER'S WORDS. The owner never sees the operator's list ("2 uploads arrived
+// and never reached the books…"); they see one line per month: done, waiting on them (only for what
+// they can actually do — drop a statement), or our team finishing it. Reads the same report, so the
+// owner's ✓ and the operator's ✓ cannot disagree. Pure.
+const YOU_CAN_FIX = new Set(["no_statement", "partial_statement", "statement_late", "no_statements", "pre_statement"]);
+export function ownerMonthLine(month = {}) {
+  const items = month.items || [];
+  const label = monthName(month.period);
+  if (month.locked && month.status !== "problem") return { tone: "closed", text: `${label} — closed. Every upload is in and it matches your bank.` };
+  if (month.status === "complete") return { tone: "done", text: `${label} — complete. Every upload is in and it matches your bank.` };
+  if (month.status === "before") return null;
+  const youFix = items.find((i) => YOU_CAN_FIX.has(i.kind));
+  if (youFix) {
+    const acct = /^No (.+?) statement for /.exec(youFix.text)?.[1] || /^(.+?)'s /.exec(youFix.text)?.[1] || "bank";
+    return { tone: "you", text: youFix.kind === "statement_late"
+      ? `${label} — waiting for your ${acct} statement. Drop it on Home when it arrives.`
+      : youFix.kind === "partial_statement" ? `${label} — your ${acct} statement only covers part of the month. Drop the rest on Home.`
+      : youFix.kind === "pre_statement" ? `${label} — not checked against your bank yet. Drop that month's bank statement on Home.`
+      : `${label} — waiting for your ${acct} statement. Drop it on Home.` };
+  }
+  if (month.status === "in_progress") return { tone: "progress", text: `${label} — in progress.` };
+  if (month.status === "unchecked") return { tone: "you", text: `${label} — not checked against your bank yet. Drop that month's bank statement on Home.` };
+  return { tone: "team", text: `${label} — our team is finishing this month.` };
 }

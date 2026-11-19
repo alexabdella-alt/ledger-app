@@ -14,7 +14,12 @@ describe("a brand-new company's screens", () => {
   it("★ Reports: no 'not signed off' line before anything is recorded — and it's back once there is", () => {
     const none = renderViewHtml(ReportsView, { ...POPULATED, ...(VIEW_CONTEXT["ReportsView.jsx"] || {}), ...empty });
     expect(none).not.toContain("data-attestation");
-    const some = renderViewHtml(ReportsView, { ...POPULATED, ...(VIEW_CONTEXT["ReportsView.jsx"] || {}), navSeat: owner, companyDataLoaded: true, signoffsLoadOk: true, reviewedThrough: null });
+    // C740 — the owner never sees sign-off wording (their months show instead); the reviewer's seat still does
+    const ownerSome = renderViewHtml(ReportsView, { ...POPULATED, ...(VIEW_CONTEXT["ReportsView.jsx"] || {}), navSeat: owner, companyDataLoaded: true, signoffsLoadOk: true, reviewedThrough: null });
+    expect(ownerSome).not.toContain("data-attestation");
+    expect(ownerSome).toContain("data-month-status");
+    const cpa = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: [] };
+    const some = renderViewHtml(ReportsView, { ...POPULATED, ...(VIEW_CONTEXT["ReportsView.jsx"] || {}), navSeat: cpa, companyDataLoaded: true, signoffsLoadOk: true, reviewedThrough: null });
     expect(some).toContain("data-attestation");
     expect(some).toContain("No month has been signed off yet");
   });

@@ -1,5 +1,6 @@
 import React from "react";
-import { completenessReport, completenessSummary, monthName } from "../../lib/completeness";
+import { completenessSummary, monthName } from "../../lib/completeness";
+import { loadCompleteness } from "../../lib/completenessLoad";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { fmtDate , fmtSignedMoney } from "../../lib/format";
@@ -99,16 +100,6 @@ const btnSm = (bg, color, border) => ({ padding: "4px 8px", borderRadius: 6, fon
 // lets the normal client see them — and says per client and per month what is missing
 // (lib/completeness.js). Paged, because PostgREST returns 1,000 rows at most. ★ A failed read is
 // NOT an empty one: if any table can't be read the page says so and shows no verdicts at all.
-async function pageAll(build) {
-  const rows = [];
-  for (let from = 0; from < 500000; from += 1000) {
-    const { data, error } = await build().range(from, from + 999);
-    if (error) return { ok: false, error: error.message || String(error), rows };
-    rows.push(...(data || []));
-    if (!data || data.length < 1000) break;
-  }
-  return { ok: true, rows };
-}
 const CELL = {
   complete:    { c: "var(--sc-success)", bg: "var(--sc-success-soft)", t: "✓", label: "Complete" },
   attention:   { c: "var(--sc-warning)", bg: "var(--sc-warning-soft)", t: "!", label: "In progress" },
@@ -117,22 +108,7 @@ const CELL = {
   unchecked:   { c: "var(--sc-text-mut)", bg: "transparent",           t: "—", label: "Nothing to check against" },
   before:      { c: "var(--sc-text-mut)", bg: "transparent",           t: "",  label: "Before the books start" },
 };
-// The read, separate from the screen so it can be tested against a fake client.
-export async function loadCompleteness(supabase, now = new Date()) {
-    const [companies, intake, accounts, statements, openLines, recons] = await Promise.all([
-      pageAll(() => supabase.from("companies").select("id, name, cutoff_date").order("id")),
-      pageAll(() => supabase.from("document_intake").select("company_id, status, received_at, updated_at, filename, detail").order("id")),
-      pageAll(() => supabase.from("bank_accounts").select("id, company_id, name, active, institution, last4, current_balance, created_at, updated_at").order("id")),
-      pageAll(() => supabase.from("bank_statements").select("id, company_id, bank_account_id, period_start, period_end, status").order("id")),
-      pageAll(() => supabase.from("bank_statement_lines").select("company_id, statement_id, line_date, status").in("status", ["pending", "excepted"]).order("id")),
-      pageAll(() => supabase.from("reconciliations").select("company_id, account_id, status, statement_balance, statement_balance_verified, period_start, period_end").order("id")),
-    ]);
-    const parts = { companies, uploads: intake, "bank accounts": accounts, "bank statements": statements, "statement lines": openLines, "bank matches": recons };
-    const failed = Object.entries(parts).filter(([, r]) => !r.ok).map(([k, r]) => `${k} (${r.error})`);
-    if (failed.length) return { loading: false, failed };
-    const report = completenessReport({ companies: companies.rows, intake: intake.rows, accounts: accounts.rows, statements: statements.rows, openLines: openLines.rows, recons: recons.rows, now });
-    return { loading: false, report, at: now };
-}
+export { loadCompleteness };   // C740 — moved to lib/completenessLoad.js (shared with the owner's month list)
 export function CompletenessTab({ supabase, enterSupport, initial = null }) {
   const [state, setState] = React.useState(initial || { loading: true });
   const [open, setOpen] = React.useState(null);
@@ -176,11 +152,11 @@ export function CompletenessTab({ supabase, enterSupport, initial = null }) {
                 <React.Fragment key={r.companyId}>
                   <tr data-completeness-row={r.status} onClick={() => setOpen(open === r.companyId ? null : r.companyId)} style={{ cursor: r.items.length ? "pointer" : "default", borderTop: "1px solid var(--sc-surface-2)" }}>
                     <td style={{ padding: "9px 10px", fontSize: 13, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap" }}>{r.name}</td>
-                    {r.months.map((m) => (
-                      <td key={m.period} title={`${monthName(m.period)} — ${CELL[m.status].label}`} style={{ padding: "6px 4px", textAlign: "center" }}>
-                        <span style={{ display: "inline-flex", width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: CELL[m.status].c, background: CELL[m.status].bg }}>{CELL[m.status].t}</span>
+                    {r.months.map((m) => { const cell = m.locked && m.status === "complete" ? { ...CELL.complete, t: "🔒", label: "Complete and closed" } : CELL[m.status]; return (   // C740 — a closed month
+                      <td key={m.period} title={`${monthName(m.period)} — ${cell.label}`} style={{ padding: "6px 4px", textAlign: "center" }}>
+                        <span style={{ display: "inline-flex", width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: cell.c, background: cell.bg }}>{cell.t}</span>
                       </td>
-                    ))}
+                    ); })}
                     <td style={{ padding: "9px 10px", fontSize: 12, color: r.items.length ? "var(--sc-text)" : A.muted }}>
                       {r.status === "empty" ? "Nothing uploaded yet" : r.items.length ? `${r.items[0].text}${r.items.length > 1 ? ` (+${r.items.length - 1} more)` : ""}` : "Nothing missing"}
                     </td>
