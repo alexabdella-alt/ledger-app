@@ -189,6 +189,7 @@ const PLURAL = [
   [/Drop it on Home/g, "Drop them on Home"],
   [/(your .+?) statement\./g, "$1 statements."],
   [/finishing this month/g, "finishing these months"],
+  [/statement only covers part of the month/g, "statements only cover part of those months"],   // C759
 ];
 export function ownerMonthLines(months = []) {
   const lines = [];

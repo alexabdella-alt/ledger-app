@@ -21,7 +21,7 @@ describe("C759 — the owner's books, in two answers", () => {
     const st = ownerBooksStatus(MONTHS, { current: "2026-11" });
     expect(st.need.map((l) => l.text)).toEqual([
       "September – October 2026 — waiting for your Primary Checking statements. Drop them on Home.",
-      "June – July 2026 — your Primary Checking statements only covers part of the month. Drop the rest on Home.".replace("statements only covers", "statement only covers"),
+      "June – July 2026 — your Primary Checking statements only cover part of those months. Drop the rest on Home.",
     ]);
     expect(st.matched).toBe("January – May 2026");
     expect(st.reviewing).toBe("August 2026");   // not November — it isn't over
