@@ -6,6 +6,7 @@ import { CHECKLIST_COPY, BUSINESS_MODAL_INTRO, BUSINESS_SAVE_HINT, DROPZONE_COPY
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { homeWaitingList, waitingHeadline, WAIT, monthReadyToSign } from "../../lib/homeWaiting";
+import ReceiptsToAdd from "../ReceiptsToAdd";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { monthLabel as ownerMonthLabel } from "../../lib/ownerTrust";
 import { markNewSince, sinceLastLookedHeader } from "../../lib/sinceLastLooked";
@@ -750,6 +751,9 @@ export default function DashboardView() {
               {/* ── U1 (C375) — ONE LIST OF THINGS WAITING ON YOU. Replaces nine banners; see lib/homeWaiting.js.
                   C729 — for the owner too, right under the drop box (it renders nothing when nothing waits). ── */}
               <HomeWaitingList navTo={navTo} />
+
+              {/* ★ C755 — receipts still to add: purchases told to the assistant, and recent spending of $75+ */}
+              <ReceiptsToAdd />
 
               {/* ── CLARIFICATION QUEUE (conversational flow) ── */}
               <ClarificationStepper />

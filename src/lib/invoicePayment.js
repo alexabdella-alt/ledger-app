@@ -28,6 +28,7 @@ import { matchDirectory } from "./vendorDirectory.js";
 // ── AMOUNTS ──────────────────────────────────────────────────────────────────
 
 import { applyAlias } from "./vendorAlias.js";
+import { isToldPurchase } from "./toldPurchase.js";   // C755
 import { classifyCadence, planSetSettlement, SET_ACTION, periodOf } from "./recurringVendor.js";
 
 export const AMOUNT_RELATION = { EXACT: "exact", NEAR: "near", NONE: "none" };
@@ -170,7 +171,9 @@ function canonicalise(key, raw, directory) {
 // An UNRECOGNISED source is EXCLUDED and COUNTED, never guessed at (C201).
 export function entityKeyOfEntry(entry = {}, { directory = [] } = {}) {
   const ident = identityForEntry({
-    description: entry.description ?? entry.vendor ?? null,
+    // C755 — a purchase TOLD to the assistant carries the store's name as its vendor and the item
+    // ("shelving") as its description until a reload rebuilds "Vendor – item"; its identity is the store.
+    description: isToldPurchase(entry) ? (entry.vendor ?? entry.description ?? null) : (entry.description ?? entry.vendor ?? null),
     source: entry.source,
   });
   if (ident.excluded) return { key: null, excluded: ident.excluded };
@@ -230,7 +233,9 @@ export function settlementCandidates(invoice = {}, entries = [], ctx = {}) {
   for (const e of entries || []) {
     if (!isLive(e)) { bump("not_live"); continue; }
     if (String(e.id) === String(invoice.id)) { bump("self"); continue; }
-    if (!isCashSettled(e, { cashCodes })) { bump("not_cash_settled"); continue; }
+    // C755 — a purchase the owner TOLD the assistant about is paid (bank, card or their own money)
+    // whatever account it came from: its receipt arriving later is filed with it, never booked again.
+    if (!isCashSettled(e, { cashCodes }) && !isToldPurchase(e)) { bump("not_cash_settled"); continue; }
     if (hasAttachedInvoice(e)) { bump("already_attached"); continue; }
 
     const { key, excluded } = entityKeyOfEntry(e, { directory });

@@ -13,6 +13,7 @@
 
 import { fmtMoney } from "./format";
 import { glIsRevenue } from "./gl";
+import { isToldPurchase, daysBetween, TOLD_MATCH_BEFORE_DAYS, TOLD_MATCH_AFTER_DAYS } from "./toldPurchase.js";   // C755
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const isNum = (n) => n != null && n !== "" && !isNaN(Number(n));
@@ -229,11 +230,46 @@ export function markAlreadyBooked(parsedLines = [], existingInvoices = [], { off
     const k = bankTxnKey({ date: inv.date, amount: inv.amount, direction: bookedLineDirection(inv, offsetCode) });
     seen.set(k, (seen.get(k) || 0) + 1);
   }
-  return (parsedLines || []).map((t) => {
+  const first = (parsedLines || []).map((t) => {
     const k = bankTxnKey({ date: t.date, amount: t.amount, direction: bankLineDirection(t) });
     const n = seen.get(k) || 0;
     if (n > 0) { seen.set(k, n - 1); return { ...t, already_booked: true }; }
     return { ...t, already_booked: false };
+  });
+  // ★ C755 — A PURCHASE THE OWNER TOLD THE ASSISTANT ABOUT is dated the day they told us; the
+  // bank posts it a day or several later (or earlier). The exact key misses that, so the
+  // statement would record the same purchase a second time. Second pass: a money-out line not
+  // matched above, the same amount to the cent on this account, within a few days of a told
+  // purchase that no line has claimed yet → it IS that purchase. Closest date wins; each told
+  // purchase claims one line.
+  const told = (existingInvoices || []).filter((inv) => inv && isToldPurchase(inv) && !inv.deleted_at && inv.status !== "voided" && inv.status !== "deleted"
+    && (!offsetCode || String(inv.secondary_gl_code) === String(offsetCode)) && bookedLineDirection(inv, offsetCode) === "out");
+  if (!told.length) return first;
+  const pool = told.map((inv) => ({ inv, key: bankTxnKey({ date: inv.date, amount: inv.amount, direction: "out" }) }))
+    .filter((c) => (seen.get(c.key) || 0) > 0);   // not already claimed by an exact match above
+  // Every (line, told purchase) pair that could be the same money, closest dates first; each side
+  // is claimed once. (Greedy by line order let the first line in the file take a purchase that a
+  // later, closer-dated line was the real match for.)
+  const pairs = [];
+  first.forEach((t, li) => {
+    if (t.already_booked || bankLineDirection(t) !== "out") return;
+    pool.forEach((c, ci) => {
+      if (r2(Math.abs(Number(t.amount) || 0)) !== r2(Math.abs(Number(c.inv.amount) || 0))) return;
+      const gap = daysBetween(c.inv.date, t.date);
+      if (gap == null || gap < -TOLD_MATCH_BEFORE_DAYS || gap > TOLD_MATCH_AFTER_DAYS) return;
+      pairs.push({ li, ci, gap: Math.abs(gap) });
+    });
+  });
+  pairs.sort((a, b) => a.gap - b.gap || a.li - b.li);
+  const lineTaken = new Map(), toldTaken = new Set();
+  for (const p of pairs) {
+    if (lineTaken.has(p.li) || toldTaken.has(p.ci)) continue;
+    lineTaken.set(p.li, p.ci); toldTaken.add(p.ci);
+  }
+  return first.map((t, li) => {
+    if (!lineTaken.has(li)) return t;
+    const inv = pool[lineTaken.get(li)].inv;
+    return { ...t, already_booked: true, told_match: String(inv.db_entry_id ?? inv.id) };
   });
 }
 

@@ -27,6 +27,7 @@ export function resolvePayFrom(a = {}, options = []) {
 import { glIsRevenue, glIsExpense, entryBaseOf } from "./gl.js";
 import { isDestructiveAIAction } from "./aiCapabilities";
 import { fmtMoney } from "./format";
+import { existingToldMatch, toldPurchaseDescription, checkToldPurchase } from "./toldPurchase.js";   // C755
 
 const money = (n) => (Number.isFinite(Number(n)) ? fmtMoney(n) : "");   // canonical magnitude cents
 const norm = (s) => String(s || "").toLowerCase();
@@ -198,6 +199,7 @@ const VERB = {
   update_contact: "change the details for",
   pause_recurring: "pause",
   record_payment: "record a payment for",   // C676
+  record_purchase: "record a purchase at",   // C755
 };
 
 // Build the confirmation proposal for a destructive action: a plain-English title,
@@ -218,7 +220,8 @@ export function recordPaymentDescription(a = {}, n = 0, payFrom = undefined) {
   return `Record ${n} bill${n === 1 ? "" : "s"} as paid${from}${when}. Nothing is sent — this only records a payment you made.`;
 }
 
-export function describeDestructiveAction(action, { invoices = [], contracts = [], rules = [], contactsList = [], payFromOptions = null, apCode = null, chart = null } = {}) {
+export function describeDestructiveAction(action, ctx = {}) {
+  const { invoices = [], contracts = [], rules = [], contactsList = [], payFromOptions = null, apCode = null, chart = null } = ctx;
   const a = action || {};
   const verb = VERB[a.type] || "change";
 
@@ -227,6 +230,20 @@ export function describeDestructiveAction(action, { invoices = [], contracts = [
     const r = replacesSavedValue(a, { rules, contacts: contactsList });
     const label = a.vendor || a.name || "this item";
     return { type: a.type, verb, count: 1, targets: [{ label }], description: r.what || `Change ${label}.` };
+  }
+
+  // ★ C755 — a purchase the owner told us about: one target, and a sentence read from what WILL be
+  // written (the category the code is, the account the money came from), or — when the statement
+  // already holds it — that it will only be marked "receipt to come".
+  if (a.type === "record_purchase") {
+    const existing = a.existing_entry_id != null
+      ? (perEntry(invoices || []).find((e) => entryBaseOf(e) === String(a.existing_entry_id)) || null)
+      : existingToldMatch(a, invoices, { today: ctx.today || "" });
+    const payFrom = payFromOptions ? (a.pay_from_key !== undefined || a.paid_from != null ? resolvePayFrom(a, payFromOptions) : (payFromOptions[0] || null)) : undefined;
+    const c = checkToldPurchase(a, { chart: chart || [], today: ctx.today || "" });
+    const label = `${a.vendor || "A purchase"}${Number(a.amount) > 0 ? ` · ${money(a.amount)}` : ""}`;
+    return { type: a.type, verb, count: existing || c.ok ? 1 : 0, targets: [{ label }],
+      description: toldPurchaseDescription(a, { chart: chart || [], payFrom, existing, today: ctx.today || "" }) };
   }
 
   if (a.type === "delete_rule") {
@@ -272,8 +289,18 @@ export function describeDestructiveAction(action, { invoices = [], contracts = [
 // Build the full pending-confirmation payload from the destructive actions to stage.
 export function buildPendingConfirmation(stageActions = [], ctx = {}) {
   // C687 — a payment carries the account its card names, so Confirm posts exactly there
-  const actions = stageActions.map((a) => (a && a.type === "record_payment" && ctx.payFromOptions
-    ? { ...a, pay_from_key: resolvePayFrom(a, ctx.payFromOptions)?.key ?? null } : a));
+  const actions = stageActions.map((a) => {
+    if (a && a.type === "record_payment" && ctx.payFromOptions) return { ...a, pay_from_key: resolvePayFrom(a, ctx.payFromOptions)?.key ?? null };
+    // C755 — the card and Confirm must do the same thing: the entry already in the books (if the
+    // statement holds this purchase) and the account the money came from are fixed HERE, at staging.
+    if (a && a.type === "record_purchase") {
+      const existing = existingToldMatch(a, ctx.invoices || [], { today: ctx.today || "" });
+      const opts = ctx.payFromOptions || null;
+      const from = opts ? (a.paid_from != null && String(a.paid_from).trim() ? resolvePayFrom(a, opts) : (opts[0] || null)) : null;
+      return { ...a, existing_entry_id: existing ? entryBaseOf(existing) : null, pay_from_key: existing ? null : (from ? from.key : null), date: a.date || ctx.today || "" };
+    }
+    return a;
+  });
   const items = actions.map((a) => ({ action: a, ...describeDestructiveAction(a, ctx) }));
   return { actions, items };
 }

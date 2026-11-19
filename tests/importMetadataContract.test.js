@@ -75,8 +75,8 @@ describe("★★★ every key read off import_metadata has a writer", () => {
     // Not a style rule: a new reader is exactly how each of the six defects above started,
     // and the cost of noticing late has been a release each time.
     expect([...read].sort()).toEqual([
-      "kind", "original_date", "payment_for", "rebooked_from_signed_period", "reverses", "tax_amount",
-    ]);
+      "kind", "original_date", "payment_for", "rebooked_from_signed_period", "receipt_to_come", "receipt_waived", "reverses", "tax_amount", "told",
+    ]);   // C755 — told / receipt_to_come (stamped after the post) and receipt_waived (waiveReceipt), each a checked write
   });
 
   it("★★★ and NONE of them is read without something writing it", () => {
@@ -105,7 +105,8 @@ describe("★★★ every key read off import_metadata has a writer", () => {
         const before = s.text.slice(Math.max(0, m.index - 300), m.index);
         // Either it is a checked write, or it is the pure builder in signedPeriod.js that
         // hands its object to a caller rather than to the database.
-        const ok = /checkedRowUpdate\(\{|checkedIdsUpdate\(\{/.test(before) || s.file.endsWith("signedPeriod.js");
+        // C755 — toldPurchase.js is the same kind of pure builder: persistJournalEntry's checked stamp carries its keys.
+        const ok = /checkedRowUpdate\(\{|checkedIdsUpdate\(\{/.test(before) || s.file.endsWith("signedPeriod.js") || s.file.endsWith("toldPurchase.js");
         expect(ok, `unchecked import_metadata write in ${s.file}`).toBe(true);
       }
     }
