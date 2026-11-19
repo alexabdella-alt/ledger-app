@@ -2,6 +2,12 @@
 
 What each applied migration's checks returned, verbatim as recorded at the time — newest first. The applied ledger itself stays on CLAUDE.md §6.
 
+> **★★★ `101` APPLIED & VERIFIED LIVE 2026-11-19 03:29 UTC — THE DATABASE LOOKS FOR LOST UPLOADS EVERY 15 MINUTES (C743).** Applied by the assistant on the operator's explicit go-ahead (*"yes apply it if that is what you recommend"*) via `supabase db query --linked -f`; file sha-256 begins `23a9e66e532f1ce4`.
+>   · **BEFORE:** (A) *"FAIL - missing: pg_cron, pg_net, ops.check_intake_holes, ops.intake_alerts"* · (C) *"FAIL - function not installed"*.
+>   · **AFTER:** (A) *"PASS - pg_cron, pg_net, ops.check_intake_holes and ops.intake_alerts all present"* · (B) *"PASS - job shadow-intake-check runs every 15 minutes"* · (C) *"PASS - anon and authenticated have no usage on ops and no execute on the check"* · (E) the rolled-back probe: *"PASS - a 2-hour-old unfinished upload is reported as upload_stuck"*, and **0 probe rows left** afterwards · (F) *"INFO - 0 delivered to Sentry, 0 awaiting confirmation"* — a dry run found **no current holes**, so the first run sent nothing.
+>   · **(D) THE TIMER FIRED:** *"PASS - last run succeeded at 2026-11-18 21:30 Central"* — the first scheduled run, one minute after applying. Without (D) the rest proves only that a job is *registered*.
+>   · **What a false pass would have looked like:** (B) passing on a job that never runs (cron not loaded) — which is why (D) reads `cron.job_run_details`, not `cron.job`.
+
 > **★★★ `100` APPLIED & VERIFIED LIVE 2026-11-13 — "OPENING BALANCE" NO LONGER OPENS A SIGNED MONTH (review S5a).** Applied by the assistant on the operator's explicit go-ahead; checksum `ab36d4fb…3489ba`. Ledger: through `061`, plus `063`, `064`, `066`, `068`–`087`, `091`–`094`, `096`–`100`.
 >   · **BEFORE:** (A) *"FAIL - an entry labelled opening balance was dated into a signed month"* · (C) *"FAIL - the opening entry was moved into a signed month"* · (B) PASS · (D) PASS.
 >   · **AFTER:** (A) *"PASS - refused: June 2026 has been signed off by your accountant, so its figures cannot be changed. Reopen that month first if a correction is genuinely needed."* · (C) *"PASS - refused: January 2026 has been signed off…"* · **the two legitimate writes that must keep working:** (B) *"PASS - an opening entry dated on the cutoff still saves"* · (D) *"PASS - the opening entry can still be retired (redo opening setup)"*. All rolled back. `098`'s (B)/(C) re-run: still PASS.
