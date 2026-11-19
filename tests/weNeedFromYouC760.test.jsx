@@ -25,7 +25,17 @@ describe("C760 — the statements we need, asked for on Home", () => {
   it("★★★ one ask per line, each with Upload statement; the generic 'not matched in N days' steps aside", () => {
     const items = homeWaitingList({ statementNeeds: need, bankMatch: { overdue: true, days: 101 } });
     expect(items.map((i) => i.id)).toEqual(["statement_need:0"]);
-    expect(items[0]).toMatchObject({ urgency: WAIT.NOW, text: need[0].text, actions: [{ kind: "upload", label: "Upload statement" }] });
+    expect(items[0]).toMatchObject({ urgency: WAIT.NOW, text: "September – October 2026 — waiting for your Primary Checking statements.", actions: [{ kind: "upload", label: "Upload statement" }] });
+  });
+  it("★ on Home the sentence doesn't say 'on Home' (the button is the upload); part-statements ask for the rest", () => {
+    const items = homeWaitingList({ statementNeeds: [
+      { text: "June – July 2026 — your Primary Checking statements only cover part of those months. Drop the rest on Home." },
+      { text: "October 2026 — waiting for your Chase statement. Drop it on Home when it arrives." },
+    ] });
+    expect(items.map((i) => [i.text, i.actions[0].label])).toEqual([
+      ["June – July 2026 — your Primary Checking statements only cover part of those months.", "Upload the rest"],
+      ["October 2026 — waiting for your Chase statement. Upload it when it arrives.", "Upload statement"],
+    ]);
   });
   it("★★ with nothing specific to ask, the generic line still shows", () => {
     expect(homeWaitingList({ statementNeeds: [], bankMatch: { overdue: true, days: 101 } }).map((i) => i.id)).toEqual(["bank_match"]);

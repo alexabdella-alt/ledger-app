@@ -130,7 +130,12 @@ export function homeWaitingList({
   // ★ C760 — THE SPECIFIC STATEMENTS WE NEED (the same lines as "Your books" on Reports), one ask each,
   // ahead of the generic "haven't been matched in N days" — which they replace when there are any.
   const needs = (statementNeeds || []).filter((l) => l && l.text);
-  needs.forEach((l, i) => items.push({ id: `statement_need:${i}`, urgency: WAIT.NOW, text: l.text, actions: [{ kind: "upload", label: "Upload statement" }] }));
+  // On Home the button IS the upload, so "Drop them on Home" is dropped from the sentence.
+  needs.forEach((l, i) => {
+    const rest = / Drop the rest on Home\.$/.test(l.text);
+    items.push({ id: `statement_need:${i}`, urgency: WAIT.NOW, text: l.text.replace(/ Drop (them|it|the rest) on Home( when it arrives)?\.$/, (m, _w, later) => (later ? " Upload it when it arrives." : "")),
+      actions: [{ kind: "upload", label: rest ? "Upload the rest" : "Upload statement" }] });
+  });
   if (!needs.length && bankMatch && bankMatch.overdue && !onboarding) {   // C733 — not twice: the checklist already asks for the first statement
     items.push({
       id: "bank_match", urgency: WAIT.NOW,
