@@ -51,12 +51,34 @@ export function scrubOwnerActivity(detail) {
 // The line to show, or null when this row is not an owner-facing event.
 // `action` is the fallback only when there is no human detail — and an action name is a
 // snake_case identifier, so it is humanised rather than printed raw.
-export function ownerActivityText(row = {}) {
+// ★ C747 — what older payment rows still say on the live feed, put in plain words:
+//   "alexabdella@… paid Nike, Inc. · $151.55 via BANK_TRANSFER"            (a COLLECTION, raw method)
+//   "Nike, Inc. · $151.55 auto-matched & marked collected from bank statement (n/a)"
+// The actor is "You" when it's the person reading, "Our team" for Support Mode; a raw method code
+// reads as words; "(n/a)" goes; a collection's "paid" becomes "received from". Current writers
+// already say "collected from" and pretty methods — this is for the rows already in the log.
+const METHOD_WORDS = { BANK_TRANSFER: "bank transfer", ACH: "ACH", CHECK: "check", WIRE: "wire", CARD: "card", CREDIT_CARD: "card", ZELLE: "Zelle", VENMO: "Venmo", PAYPAL: "PayPal", CASH: "cash", OTHER: "another method" };
+export function plainPaymentWords(detail, { action = "", viewerEmail = "" } = {}) {
+  let s = String(detail || "");
+  s = s.replace(/\s*\(n\/a\)/gi, "");
+  s = s.replace(/auto-matched & marked (collected|paid) from bank statement/i, (_, w) => `matched to your bank statement and marked ${w === "collected" ? "received" : "paid"}`);
+  s = s.replace(/\bvia ([A-Z][A-Z_]+)\b(?![a-z]|\s*\/)/g, (m, code) => code === "ACH" ? m : (METHOD_WORDS[code] ? `by ${METHOD_WORDS[code]}` : `by ${code.toLowerCase().replace(/_/g, " ")}`));
+  const lead = s.match(/^(Platform Admin - \S+|\S+@\S+) /);
+  if (lead) {
+    const who = lead[1];
+    const label = /^Platform Admin - /.test(who) ? "Our team" : (viewerEmail && who.toLowerCase() === String(viewerEmail).toLowerCase() ? "You" : who);
+    s = label + s.slice(who.length);
+  }
+  if (/collect/i.test(action)) s = s.replace(/^(\S+(?: team)?) paid /, "$1 received a payment from ");
+  return s;
+}
+
+export function ownerActivityText(row = {}, { viewerEmail = "" } = {}) {
   const action = String(row.action || "");
   if (!action && !row.detail) return null;
   if (SYSTEM_ACTIONS.test(action)) return null;
 
-  const detail = scrubOwnerActivity(row.detail);
+  const detail = plainPaymentWords(scrubOwnerActivity(row.detail), { action, viewerEmail });
   if (detail) return detail;
 
   // No detail: turn `invoice_collected` into "Invoice collected" rather than showing the

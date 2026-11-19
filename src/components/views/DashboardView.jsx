@@ -892,7 +892,7 @@ export default function DashboardView() {
                   // `ownerActivityText` returns null for rows that are machinery rather
                   // than an event a person did — a half-readable line about a control
                   // total is worse than no line.
-                  const text = ownerActivityText(a);
+                  const text = ownerActivityText(a, { viewerEmail: session?.user?.email || "" });   // C747
                   if (!text) return;
                   items.push({ ts:a.ts||a.created_at||"", icon: /paid/i.test(a.action)?"✅":/reject|void/i.test(a.action)?"🚫":/flag|info/i.test(a.action)?"⚠":"✦", text });
                 } });

@@ -8932,6 +8932,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     // instance and leave the class: any future audit detail with debit/credit wording
     // surfaces on Home exactly the same way.)
     const glPosted = postedPaymentId ? (side === "ar" ? "Dr Cash/Cr AR" : "Dr AP/Cr Cash") : null;
+    // ★ C747 — ALREADY PAID MEANS NOTHING HAPPENED, AND THE LOG MUST SAY SO. It wrote "X paid Google ·
+    // $99.59" a second time, and Home's feed showed two payments where the books had one (§9: describe
+    // from the record). The action name carries no "paid", so the owner's feed leaves it out.
+    if (alreadyPaid) {
+      logAudit("payment_already_recorded", `${who} marked ${inv.vendor} · ${fmtMoney(inv.amount || 0)} as ${side === "ar" ? "received" : "paid"} — it already was, so nothing new was recorded`,
+        { payment_status: snap.payment_status }, { payment_status: newStatus, by: who, already: true });
+      return "already";
+    }
     logAudit(side === "ar" ? "invoice_collected" : "invoice_paid",
       `${who} ${side === "ar" ? "collected from" : "paid"} ${inv.vendor} · ${fmtMoney(inv.amount || 0)} via ${methodPretty(method)}${refStr}${noteStr}`,
       { payment_status: snap.payment_status }, { payment_status: newStatus, method, reference: ref, notes: note, by: who, payment_entry_id: postedPaymentId ? String(postedPaymentId) : null, gl_posted: glPosted });
