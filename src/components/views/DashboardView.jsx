@@ -5,7 +5,8 @@ import { keepUnanswered } from "../../lib/uploadQueueTile";
 import { CHECKLIST_COPY, BUSINESS_MODAL_INTRO, BUSINESS_SAVE_HINT, DROPZONE_COPY } from "../../lib/firstRun";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
-import { homeWaitingList, waitingHeadline, WAIT, monthReadyToSign } from "../../lib/homeWaiting";
+import { homeWaitingList, waitingHeadline, ownerNeedHeadline, WAIT, monthReadyToSign } from "../../lib/homeWaiting";
+import { useCompletenessState, statementNeedsFrom } from "./MonthStatus";
 import ReceiptsToAdd from "../ReceiptsToAdd";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { monthLabel as ownerMonthLabel } from "../../lib/ownerTrust";
@@ -956,6 +957,7 @@ export function HomeWaitingList({ navTo }) {
     bankAccounts: Array.isArray(bankAccounts) ? bankAccounts : [], cashCode: getAccountByRole?.("cash")?.code || null, cashName: getAccountByRole?.("cash")?.name || null,
   }) : [];
   const cockpit = !!navSeat?.isReviewerSeat;
+  const booksState = useCompletenessState(!cockpit);   // C760 — the specific statements we need (owner seat)
   const today = todayLocal();
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const unpaid = openPayablesGL(invoices || [], apCode);
@@ -994,6 +996,7 @@ export function HomeWaitingList({ navTo }) {
     ownerBankLines: bankQuestionCards.length,   // C641
     canInvite: !!(isOwner || isAdmin),   // C706 — a view-only teammate isn't offered an invite they can't send
     cashBelowZero: companyDataLoaded && Number(glCash) < -0.005 ? Number(glCash) : null,
+    statementNeeds: cockpit ? [] : statementNeedsFrom(booksState),   // C760
     onboarding: onboardingChecklistVisible({ companyDataLoaded, onboardingComplete: companySettings?.onboardingComplete }),   // C733
     monthReady: companyDataLoaded ? monthReadyToSign({ canSign: !cockpit && !!canSoloAttest, months: (invoices || []).map(i => String(i && i.date || "").slice(0, 7)), signoffs: signoffs || [], currentMonth: today.slice(0, 7),
       isReady: (p) => { const r = signOffReadinessFor ? signOffReadinessFor(p) : null; return !!(r && r.ok); }, label: ownerMonthLabel, firstUnsigned: firstUnsignedMonth }) : null,   // C735   // C731 — was a line in the health block both Homes dropped
@@ -1025,7 +1028,7 @@ export function HomeWaitingList({ navTo }) {
   const tone = (u) => u === WAIT.STOPS ? "var(--sc-warning)" : u === WAIT.NOW ? "var(--sc-warning)" : u === WAIT.SOON ? "var(--sc-gold)" : "var(--sc-text-2)";
   return (
     <div id="waiting-on-you" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"14px 18px", marginBottom:24 }}>
-      <div style={{ fontSize:13, fontWeight:700, color:"var(--sc-text)", marginBottom:6 }}>{waitingHeadline(items)}</div>
+      <div style={{ fontSize:13, fontWeight:700, color:"var(--sc-text)", marginBottom:6 }}>{cockpit ? waitingHeadline(items) : ownerNeedHeadline(items)}</div>
       {items.map(item => (
         <div key={item.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap", padding:"10px 0", borderTop:"1px solid var(--sc-border)" }}>
           <div style={{ flex:"1 1 320px", minWidth:0, display:"flex", gap:10, alignItems:"flex-start" }}>

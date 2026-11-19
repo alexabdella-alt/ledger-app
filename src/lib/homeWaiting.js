@@ -79,6 +79,7 @@ export function homeWaitingList({
   monthReady = null,         // C735 — { label } — a finished month a solo owner can sign off now (monthReadyToSign)
   onboarding = false,        // C733 — the setup checklist is on screen (it asks for the first statement itself)
   cashBelowZero = null,      // C731 — the books' cash when it is below zero (GL-derived by the caller), else null
+  statementNeeds = [],       // C760 — ownerBooksStatus(...).need: the specific statements we need ("September – October 2026 — …")
 } = {}) {
   const items = [];
 
@@ -126,7 +127,11 @@ export function homeWaitingList({
       note: canDecideMail ? null : "An owner or admin can allow or ignore it.",
     });
   }
-  if (bankMatch && bankMatch.overdue && !onboarding) {   // C733 — not twice: the checklist already asks for the first statement
+  // ★ C760 — THE SPECIFIC STATEMENTS WE NEED (the same lines as "Your books" on Reports), one ask each,
+  // ahead of the generic "haven't been matched in N days" — which they replace when there are any.
+  const needs = (statementNeeds || []).filter((l) => l && l.text);
+  needs.forEach((l, i) => items.push({ id: `statement_need:${i}`, urgency: WAIT.NOW, text: l.text, actions: [{ kind: "upload", label: "Upload statement" }] }));
+  if (!needs.length && bankMatch && bankMatch.overdue && !onboarding) {   // C733 — not twice: the checklist already asks for the first statement
     items.push({
       id: "bank_match", urgency: WAIT.NOW,
       text: bankMatch.days == null
@@ -240,6 +245,19 @@ export function homeWaitingList({
 
   // Stable: urgency first, then the order the inputs arrived in.
   return items.map((it, i) => ({ ...it, _i: i })).sort((a, b) => a.urgency - b.urgency || a._i - b._i).map(({ _i, ...it }) => it);
+}
+
+// ★ C760 — THE OWNER'S HEADLINE SAYS WHO NEEDS WHAT: "We need 3 things from you". Everything that is
+// not for-your-information is something we need from them (an answer, a statement, a payment to make);
+// the rest is counted separately so the number is never padded.
+export function ownerNeedHeadline(items = []) {
+  const n = (items || []).length;
+  if (!n) return null;
+  const need = items.filter((i) => i.urgency !== WAIT.INFO).length;
+  const info = n - need;
+  const fyi = info ? ` · ${info} more for your information` : "";
+  if (need) return `We need ${need === 1 ? "one thing" : `${need} things`} from you${fyi}`;
+  return `${info} ${info === 1 ? "thing" : "things"} for your information`;
 }
 
 export function waitingHeadline(items = []) {

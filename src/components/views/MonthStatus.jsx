@@ -50,17 +50,31 @@ export function MonthStatusView({ state, now = new Date(), onUpload = null }) {
   );
 }
 
-export default function MonthStatus() {
-  const { supabase, currentCompany, setView } = useERP();
+// C760 — the completeness read for THIS company, shared by "Your books" (Reports) and Home's
+// "We need from you". `enabled: false` (the accountant's seat) reads nothing.
+export function useCompletenessState(enabled = true) {
+  const { supabase, currentCompany } = useERP();
   const [state, setState] = React.useState({ loading: true });
   React.useEffect(() => {
     let cancelled = false;
-    if (!currentCompany?.id || !supabase) return undefined;
+    if (!enabled || !currentCompany?.id || !supabase) return undefined;
     setState({ loading: true });
     loadCompleteness(supabase, new Date(), { companyId: currentCompany.id })
       .then((r) => { if (!cancelled) setState(r); })
       .catch((e) => { if (!cancelled) setState({ loading: false, failed: [String(e?.message || e)] }); });
     return () => { cancelled = true; };
-  }, [currentCompany?.id, supabase]);
+  }, [enabled, currentCompany?.id, supabase]);
+  return state;
+}
+
+// The specific statements we need from the owner, for Home (empty while loading or if the read failed).
+export function statementNeedsFrom(state, now = new Date()) {
+  const r = state && !state.loading && !state.failed ? (state.report || [])[0] : null;
+  return r ? ownerBooksStatus(r.months || [], { current: ymNow(now) }).need : [];
+}
+
+export default function MonthStatus() {
+  const { setView } = useERP();
+  const state = useCompletenessState(true);
   return <MonthStatusView state={state} onUpload={setView ? () => setView("home") : null} />;
 }
