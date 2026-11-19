@@ -20,8 +20,11 @@ describe("C539", () => {
     expect(displayParty({ ...pay, import_metadata: { kind: "ap_payment", payment_for: "nope" } }, INVOICES)).toBe("Hill Country Milling Co.");   // from "Payment – Hill Country Milling Co."
     expect(displayParty(INVOICES.find((r) => r.id === "i2"), INVOICES)).toBe("Hill Country Milling");
   });
+  // C744 — the OWNER's list folds a payment that fully settles its bill into the bill's row ("Paid ·
+  // DATE"), so the payment row is checked where it is still listed: the accountant's list. A part-
+  // payment still shows on the owner's list, under the same displayParty rule.
   it("the Transactions list shows the payment under the supplier's name, never 'Payment'", () => {
-    const navSeat = { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS };
+    const navSeat = { seat: "reviewer", isReviewerSeat: true, sections: [] };
     const t = text(renderViewHtml(BooksView, { ...POPULATED, navSeat, companyDataLoaded: true }));
     const i = t.indexOf("Payment – Hill Country Milling Co.");
     expect(i).toBeGreaterThan(-1);

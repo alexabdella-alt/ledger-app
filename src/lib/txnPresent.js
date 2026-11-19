@@ -13,7 +13,7 @@
 //   settleAction : "pay" | "collect" | null — show a settle button ONLY on a genuinely
 //                  OPEN bill/invoice; never on a settlement or an already-paid/collected item
 // ─────────────────────────────────────────────────────────────────────────────
-import { glIsRevenue, glIsExpense, isCancelledOrCancelling, isReversalEntry, entryBaseOf } from "./gl";
+import { glIsRevenue, glIsExpense, isCancelledOrCancelling, isReversalEntry, entryBaseOf, isLiveSettlement, settledBases, entryAmountsByBase } from "./gl";
 
 const eq = (a, b) => a != null && b != null && String(a) === String(b);
 
@@ -182,3 +182,36 @@ export const entryLineCount = (row, rows = []) => {
   const base = String(row.db_entry_id != null ? row.db_entry_id : String(row.id).split("_")[0]);
   return (rows || []).filter((r) => r && String(r.db_entry_id != null ? r.db_entry_id : String(r.id).split("_")[0]) === base).length;
 };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ★ C744 — THE OWNER'S LIST SHOWS EACH PURCHASE ONCE. Two things the books rightly record twice
+// read to an owner as money leaving twice:
+//   • a REMOVED entry and its correction ("REVERSAL: … +$145 · Correction") — the original already
+//     says "↩ Removed · DATE" (C207), so the correction row is hidden;
+//   • a PAID bill and its payment ("Payment – Hill Country · Bills you owe −$824.60") — the bill's
+//     row says "Paid · DATE" instead (and an invoice "Received · DATE").
+// Only when the other half is in the books: a correction whose original isn't loaded, and a payment
+// for a bill carried in the starting balances, stay visible. A PART-payment stays visible — the bill
+// is still open and the owner must see what went toward it. The accountant's list is unchanged.
+// ═════════════════════════════════════════════════════════════════════════════
+export function ownerListView(rows = [], invoices = []) {
+  const all = (invoices || []).filter((i) => i && !i.deleted_at && i.status !== "deleted");
+  const present = new Set(all.map(entryBaseOf));
+  const amounts = entryAmountsByBase(all);
+  const settled = settledBases(all);
+  const foldedPayment = (r) => {
+    if (!isLiveSettlement(r)) return null;
+    const t = String(r.import_metadata.payment_for);
+    return settled.has(t) && amounts.get(t) != null ? t : null;   // amounts holds only entries in the books
+  };
+  const foldedCorrection = (r) => {
+    const rev = r && r.import_metadata && r.import_metadata.reverses;
+    return rev != null && rev !== "" && present.has(String(rev));
+  };
+  const paidOn = new Map();
+  for (const i of all) {
+    const t = foldedPayment(i);
+    if (t && i.date && (!paidOn.has(t) || String(i.date) > paidOn.get(t))) paidOn.set(t, String(i.date));
+  }
+  return { rows: (rows || []).filter((r) => r && !foldedPayment(r) && !foldedCorrection(r)), paidOn };
+}

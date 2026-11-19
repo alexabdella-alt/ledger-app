@@ -13,7 +13,7 @@ import { initials, vendorColor, fmtDate , fmtMoney, todayLocal, readableDates } 
 import { reversalIndex, reversalFor } from "../../lib/ledger";
 import { planBulkRemoval } from "../../lib/signedPeriod";
 import { monthLabel as signedMonthLabel } from "../../lib/ownerTrust";
-import { classifyTxn, txnStatus, collapseExpandedRows, listAmount, displayParty } from "../../lib/txnPresent";
+import { classifyTxn, txnStatus, collapseExpandedRows, listAmount, displayParty, ownerListView } from "../../lib/txnPresent";
 import { pill } from "../../lib/ui";
 import { OWNER_MONEY_FILTERS } from "../../lib/moneyPage";
 import { ownerAccountName } from "../../lib/categoryLabel";
@@ -140,6 +140,11 @@ export default function BooksView({ embedded = false } = {}) {
     (i.invoice_number||"").toLowerCase().includes(q)
   );
 
+  // ★ C744 — the owner sees each purchase once: no separate correction row for a removed entry,
+  // no separate payment row for a paid bill (its row says "Paid · DATE"). The accountant sees all.
+  const ownerView = cockpit ? null : ownerListView(filtered, invoices || []);
+  const shown = ownerView ? ownerView.rows : filtered;
+
   // ── Sortable columns ──────────────────────────────────────────────
   const statusKey = i => i.status==="voided" ? "1voided" : needsReview(i) ? "2review" : i.payment_status==="paid" ? "3paid" : i.payment_status==="collected" ? "4collected" : "5booked";
   const sortVal = {
@@ -154,7 +159,7 @@ export default function BooksView({ embedded = false } = {}) {
     s.col!==col ? { col, dir:"asc" } : s.dir==="asc" ? { col, dir:"desc" } : { col:null, dir:null }
   );
   const rows = (() => {
-    const arr = [...filtered];
+    const arr = [...shown];
     if (!sort.col || !sortVal[sort.col]) {
       return arr.sort((a,b)=>(b.date||"").localeCompare(a.date||"")); // default: newest first
     }
@@ -181,7 +186,9 @@ export default function BooksView({ embedded = false } = {}) {
     if (i.status==="voided") return <span style={pill("var(--sc-text-mut)")}>Voided</span>;
     if (needsReview(i)) return <span title="We weren't sure about this one — open it to check the category" style={pill("var(--sc-warning)")}>Needs Review</span>;
     const cls = classifyTxn(i, { apCode, arCode, settled });
-    const st = txnStatus(i, cls);
+    const st0 = txnStatus(i, cls);
+    const paidDate = ownerView && (st0.label === "Paid" || st0.label === "Received") ? ownerView.paidOn.get(entryBaseOf(i)) : null;
+    const st = paidDate ? { ...st0, label: `${st0.label} · ${fmtDate(paidDate)}` } : st0;   // C744
     const tone = st.tone==="success" ? "var(--sc-success)" : st.tone==="warning" ? "var(--sc-warning)" : "var(--sc-info)";
     return <span style={pill(tone)} title={i.payment_method_used ? `${st.label} · ${methodLabel(i.payment_method_used)}` : st.label}>{st.label}</span>;
   };
