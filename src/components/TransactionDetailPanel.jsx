@@ -10,7 +10,7 @@ import { classifyTxn, settlementKind, entryTotalOf, entryLineCount, displayParty
 import { isCancelledOrCancelling, isReversalEntry, settledBases } from "../lib/gl";
 import { badge } from "../lib/ui";
 import { isDurableDocId } from "../lib/docLibrary";
-import { sourceDocFor, RECEIPT_ADD_COPY } from "../lib/sourceDoc";
+import { sourceDocFor, RECEIPT_ADD_COPY, fileKindWord, receiptHeading, canHaveReceipt } from "../lib/sourceDoc";
 import { shrinkImageFile, HEIC_UNREADABLE_COPY } from "../lib/phoneImage";
 import { planRecodeSweep } from "../lib/recodeSweep";
 import { signedPeriodForDate } from "../lib/signedPeriod";
@@ -85,7 +85,7 @@ function SourceDocPreview({ doc, onExpand }) {
         <span style={{ fontSize: 18, flexShrink: 0 }}>{isPdf ? "📄" : isImg ? "🖼" : docIcon(doc.type)}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
-          <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginTop: 1 }}>{doc.uploaded_at ? fmtDate(doc.uploaded_at) : ""}{doc.mediaType ? ` · ${doc.mediaType}` : ""}</div>
+          <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginTop: 1 }}>{doc.uploaded_at ? fmtDate(doc.uploaded_at) : ""}{doc.mediaType ? ` · ${fileKindWord(doc.mediaType)}` : ""}</div>
         </div>
         <button onClick={onExpand} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer", whiteSpace: "nowrap" }}>View full ↗</button>
       </div>
@@ -331,9 +331,11 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
               <div>
                 {(() => {
                   const srcDoc = findSourceDoc(sel);
+                  // C750 — a starting balance or a payment has no receipt of its own: no empty box asking for one.
+                  if (!srcDoc && !canHaveReceipt(sel, { settle })) return null;
                   return (
-                    <div style={{ marginTop: 16 }}>
-                      <div style={{ fontSize: 10, letterSpacing: 1, color: "var(--sc-gold)", marginBottom: 8, fontWeight: 600 }}>SOURCE DOCUMENT</div>
+                    <div data-src-section style={{ marginTop: 16 }}>
+                      <div style={{ fontSize: 10, letterSpacing: 1, color: "var(--sc-gold)", marginBottom: 8, fontWeight: 600 }}>{showCodes ? "SOURCE DOCUMENT" : receiptHeading(glIsRevenue(sel.gl_code))}</div>
                       {srcDoc ? (
                         <SourceDocPreview doc={srcDoc} onExpand={() => setSrcDocPreview(srcDoc)} />
                       ) : (

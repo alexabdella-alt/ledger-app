@@ -47,3 +47,26 @@ export const RECEIPT_ADD_COPY = {
   busy: "Saving…",
   saved: "Saved ✓ — it's attached to this entry",
 };
+
+// The file's kind in a word — never a MIME type like "application/pdf" on an owner's screen.
+export function fileKindWord(mediaType = "") {
+  const t = String(mediaType || "").toLowerCase();
+  if (t === "application/pdf") return "PDF";
+  if (t.startsWith("image/")) return "Photo";
+  if (/csv|excel|spreadsheet/.test(t)) return "Spreadsheet";
+  return "File";
+}
+
+// The section's heading on the owner's seat (the accountant keeps "SOURCE DOCUMENT").
+export function receiptHeading(isIncome = false) {
+  return isIncome ? "INVOICE" : "RECEIPT OR BILL";
+}
+
+// Whether an entry could have a receipt of its own. A starting balance or a payment (the bill it
+// pays carries the receipt) never does — so no empty "add one" box is offered on them.
+export function canHaveReceipt(inv, { settle = null } = {}) {
+  if (!inv) return false;
+  if (inv.source === "opening_balance") return false;
+  if (settle) return false;
+  return true;
+}

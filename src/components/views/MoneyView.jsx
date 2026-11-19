@@ -46,10 +46,11 @@ export default function MoneyView() {
             style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 12, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "12px 16px", cursor: "pointer", fontFamily: "var(--sc-font-ui)", color: "var(--sc-text)" }}>
             <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 10, background: "var(--sc-gold-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{l.icon}</span>
             <span style={{ minWidth: 0, flex: 1 }}>
-              <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{l.label}{l.count ? <span style={{ color: "var(--sc-text-2)", fontWeight: 500 }}> · {l.count}</span> : null}</span>
+              <span style={{ display: "block", fontSize: 15, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.label}</span>
               <span style={{ display: "block", fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>{l.sub}</span>
             </span>
-            <span aria-hidden="true" style={{ color: "var(--sc-text-mut)", fontSize: 16 }}>›</span>
+            {l.count ? <span data-money-link-count style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, color: "var(--sc-text-2)", background: "var(--sc-surface-2)", borderRadius: 12, padding: "2px 9px", fontFamily: "'DM Mono', monospace" }}>{l.count}</span>
+              : <span aria-hidden="true" style={{ color: "var(--sc-text-mut)", fontSize: 16 }}>›</span>}
           </button>
         ))}
       </div>

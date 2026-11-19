@@ -96,3 +96,31 @@ describe("C750 — documents and people at the top of Money", () => {
     expect(h).toContain("Every receipt, bill and statement you've sent");
   });
 });
+
+import { fileKindWord, receiptHeading, canHaveReceipt } from "../src/lib/sourceDoc.js";
+describe("C750 — the receipt section in an owner's words", () => {
+  it("★ a file kind in a word, never a MIME type", () => {
+    expect(fileKindWord("application/pdf")).toBe("PDF");
+    expect(fileKindWord("image/jpeg")).toBe("Photo");
+    expect(fileKindWord("text/csv")).toBe("Spreadsheet");
+    expect(fileKindWord("application/octet-stream")).toBe("File");
+    expect(fileKindWord()).toBe("File");
+  });
+  it("★ heading: a bill/receipt, or an invoice for money in", () => {
+    expect(receiptHeading(false)).toBe("RECEIPT OR BILL");
+    expect(receiptHeading(true)).toBe("INVOICE");
+  });
+  it("★★ no 'add a receipt' box on a starting balance or a payment", () => {
+    expect(canHaveReceipt({ source: "opening_balance" })).toBe(false);
+    expect(canHaveReceipt({ id: "p" }, { settle: "ap_payment" })).toBe(false);
+    expect(canHaveReceipt({ id: "b", source: "upload" })).toBe(true);
+    expect(canHaveReceipt(null)).toBe(false);
+  });
+  it("★★ the panel uses them (and keeps 'SOURCE DOCUMENT' for the accountant)", () => {
+    const panel = readFileSync(new URL("../src/components/TransactionDetailPanel.jsx", import.meta.url), "utf8");
+    expect(panel).toContain("if (!srcDoc && !canHaveReceipt(sel, { settle })) return null;");
+    expect(panel).toContain('{showCodes ? "SOURCE DOCUMENT" : receiptHeading(glIsRevenue(sel.gl_code))}');
+    expect(panel).toContain("fileKindWord(doc.mediaType)");
+    expect(panel).not.toContain("{doc.mediaType ? ` · ${doc.mediaType}` : \"\"}");
+  });
+});
