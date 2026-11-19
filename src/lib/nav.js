@@ -253,5 +253,5 @@ export const GATED_VIEW_REDIRECT_COPY = "Our team looks after that part — here
 export const PREVIEW_AS_OWNER_ENTER_LABEL = "Preview as owner";
 export const PREVIEW_AS_OWNER_EXIT_LABEL = "Viewing as owner — switch back";
 // C753 — the same toggle on a phone, short enough that the top bar fits the screen.
-export const PREVIEW_AS_OWNER_ENTER_SHORT = "Owner view";
-export const PREVIEW_AS_OWNER_EXIT_SHORT = "Owner view ✕";
+export const PREVIEW_AS_OWNER_ENTER_SHORT = "Owner";
+export const PREVIEW_AS_OWNER_EXIT_SHORT = "Owner ✕";   // C756 — shorter still, so the top bar has room

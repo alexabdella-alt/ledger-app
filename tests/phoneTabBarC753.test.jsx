@@ -14,6 +14,7 @@ import SettingsView from "../src/components/views/SettingsView.jsx";
 const css = readFileSync("src/styles.css", "utf8");
 const app = readFileSync("src/App.jsx", "utf8");
 const block = css.slice(css.indexOf("C753 — A PHONE THAT DOESN'T SLIDE SIDEWAYS"), css.indexOf("@media (max-width: 420px)"));
+// (C756 rebuilt the tab bar as its own layer — components/OwnerTabBar.jsx — and these tests follow it.)
 
 describe("C753 — nothing may widen the page on a phone", () => {
   it("★★ html and body never scroll sideways at phone width", () => {
@@ -23,7 +24,7 @@ describe("C753 — nothing may widen the page on a phone", () => {
     const h = renderToString(<CompanySwitcher companies={[]} currentCompany={{ id: "c", name: "Franklin Ave Pizza LLC" }} onSwitch={() => {}} onNew={() => {}} />);
     expect(h).toMatch(/class="sc-company-name"[^>]*white-space:nowrap;overflow:hidden;text-overflow:ellipsis/);
     expect(h).toContain('title="Franklin Ave Pizza LLC"');
-    expect(block).toMatch(/\.sc-company-name \{ display: block; max-width: 34vw; \}/);
+    expect(block).toMatch(/\.sc-topbar-right > \.sc-company \{ flex: 0 1 auto; min-width: 0; \}/);   // C756 — the name takes the room that's left
     expect(app).toMatch(/className="sc-topbar-right" style=\{\{ display:"flex", alignItems:"center", gap:14, minWidth:0 \}\}/);
   });
   it("★★ Sign out leaves the top bar on a phone — and is in Settings instead", () => {
@@ -52,20 +53,20 @@ describe("C753 — the owner's tab bar", () => {
     expect(app).toContain("data-navsec={section.id}");
     expect(app).toContain("{!navSeat.isReviewerSeat && <NavIcon id={id} />}");
   });
-  it("★★★ at phone width the main section is fixed to the bottom, items side by side, icon over name", () => {
-    expect(block).toMatch(/\.sc-owner-nav \[data-navsec="main"\] \{ position: fixed !important; left: 0; right: 0; bottom: 0;/);
-    expect(block).toMatch(/\.sc-owner-nav \[data-navsec="main"\] \.sc-navtab \{ flex: 1 1 0 !important; flex-direction: column !important;/);
-    expect(block).toMatch(/\.sc-owner-nav \.sc-navicon \{ display: flex !important; \}/);
+  it("★★★ C756 — at phone width the bar is its OWN layer, above the page; the menu's main rows are hidden there", () => {
+    expect(block).toMatch(/\.sc-tabbar \{ display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 1050;/);
+    expect(css).toMatch(/\.sc-tabbar \{ display: none; \}/);                     // not on a laptop
+    expect(block).toMatch(/\.sc-owner-nav \[data-navsec="main"\], \.sc-owner-nav \[data-navsec="settings-entry"\] \{ display: none !important; \}/);
+    expect(block).toMatch(/\.sc-tabbar \.sc-navicon \{ display: flex; \}/);
     expect(css).toMatch(/\.sc-navicon \{ display: none; \}/);                   // a laptop's menu stays words only
-    expect(block).toMatch(/env\(safe-area-inset-bottom\)/);                      // clear of the iPhone's home bar
+    expect(block).toMatch(/env\(safe-area-inset-bottom\)/);                        // clear of the iPhone's home bar
   });
-  it("★★ the page leaves room above the bar, and the gear (not a 'Settings' tab) opens Settings", () => {
-    expect(block).toMatch(/\.sc-owner-nav ~ #main-content \.sc-page \{ padding-bottom: calc\(96px \+ env\(safe-area-inset-bottom\)\) !important; \}/);
-    expect(block).toMatch(/\.sc-owner-nav \[data-navsec="settings-entry"\] \{ display: none !important; \}/);
+  it("★★ the page leaves room above the bar", () => {
+    expect(block).toMatch(/body:has\(\.sc-tabbar\) #main-content \.sc-page \{ padding-bottom: calc\(100px \+ env\(safe-area-inset-bottom\)\) !important; \}/);
   });
   it("★★ Ask is a tab, so the floating bubble steps aside — and the assistant can be closed from inside", () => {
-    expect(block).toMatch(/body:has\(\.sc-owner-nav\) \.sc-chat-fab \{ display: none !important; \}/);
-    expect(block).toMatch(/\.sc-chat-panel \.sc-chat-close \{ display: flex !important; \}/);
+    expect(block).toMatch(/body:has\(\.sc-tabbar\) \.sc-chat-fab \{ display: none !important; \}/);
+    expect(block).toMatch(/\.sc-chat-panel \.sc-chat-close \{ display: flex !important;/);
     expect(app).toMatch(/<button className="sc-chat-close" onClick=\{\(\)=>setChatOpen\(false\)\} aria-label="Close the assistant"/);
     expect(app).toMatch(/<button className="sc-chat-fab"/);
   });

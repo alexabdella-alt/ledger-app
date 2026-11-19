@@ -73,7 +73,7 @@ import { onboardingSteps } from "./lib/onboarding";
 import { notificationTarget } from "./lib/notificationDoor";
 import { makeKeyedInFlight } from "./lib/oneInFlight";
 import { readDeclinedRecurring, writeDeclinedRecurring } from "./lib/declinedRecurring";
-import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL, PREVIEW_AS_OWNER_ENTER_SHORT, PREVIEW_AS_OWNER_EXIT_SHORT } from "./lib/nav";
+import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, MONEY_GROUP, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL, PREVIEW_AS_OWNER_ENTER_SHORT, PREVIEW_AS_OWNER_EXIT_SHORT } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { ruleForVendor } from "./lib/vendorRules";   // C563 — one rule matcher
 import { splitCsvForParse, mergeParsedPieces, readInHalves } from "./lib/statementChunks";   // C562
@@ -115,6 +115,7 @@ import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
 import CompanySwitcher from "./components/CompanySwitcher";
 import NavIcon from "./components/NavIcon";
+import OwnerTabBar from "./components/OwnerTabBar";
 import LegalView from "./components/LegalView";
 import { ERPContext } from "./components/ERPContext";
 import { usePersistedView } from "./hooks/usePersistedView";
@@ -492,7 +493,20 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const [customProjects, setCustomProjects] = useState([]);
   // View is lifted to AppWrapper so it survives remounts — never resets on refresh or tab switch
   const [view, setViewRaw] = useState(persistedView || "dashboard");
-  const setView = (v) => { setViewRaw(v); onViewChange?.(v); };
+  // ★ C756 — EVERY PAGE CHANGE IS A STEP IN THE PHONE'S HISTORY. Views were plain state, so the
+  // iPhone's swipe-back (and the browser's back button) had nothing to go back to — a page felt
+  // like a dead end. Now each change pushes a history entry and going back restores the view
+  // (the popstate handler below). Same view → no entry, so a re-tap doesn't pile up steps.
+  const viewRef = useRef(persistedView || "dashboard");
+  const historyDepth = useRef(0);
+  const setView = (v) => {
+    if (v !== viewRef.current) {
+      try { window.history.pushState({ scView: v }, ""); historyDepth.current += 1; } catch { /* no history API (tests) */ }
+    }
+    viewRef.current = v;
+    setViewRaw(v); onViewChange?.(v);
+  };
+  useEffect(() => { viewRef.current = view; }, [view]);   // C756 — every way the view changes keeps the ref true
 
   // C312 — the SIDEBAR description. `inSettings` is derived from the current view so
   // the setup rows are present exactly while you are standing in them (you arrive via
@@ -1034,6 +1048,36 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // C734 — the owner's words (C444/C583): "burn rate" and "P&L" were still in the chat's first message
   const CHAT_GREETING = "Hi — I'm Shadow. Drop your bills, receipts and bank statements on Home and I'll keep your books. Ask me anything about your money — what you're spending, whether you made money, who owes you — or tell me what happened and I'll record it.";
   const [chatOpen, setChatOpen] = useState(false);
+  // ★ C756 — back/forward restore the page (and close the assistant); see setView.
+  useEffect(() => {
+    try { window.history.replaceState({ ...(window.history.state || {}), scView: viewRef.current }, ""); } catch { /* no history API */ }
+    const onPop = (e) => {
+      const st = (e && e.state) || {};
+      if (!st.scChat) setChatOpen(false);
+      historyDepth.current = Math.max(0, historyDepth.current - 1);
+      if (st.scView && st.scView !== viewRef.current) { viewRef.current = st.scView; setViewRaw(st.scView); onViewChange?.(st.scView); }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // ★ C756 — the assistant on a phone fills the VISIBLE screen: when the keyboard opens, the visible
+  // area shrinks and the panel follows it, so the box you type in is never under the keyboard.
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!chatOpen || !vv) return;
+    const root = document.documentElement;
+    const fit = () => { root.style.setProperty("--sc-vvh", `${vv.height}px`); root.style.setProperty("--sc-vvtop", `${vv.offsetTop}px`); };
+    fit(); vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit);
+    return () => { vv.removeEventListener("resize", fit); vv.removeEventListener("scroll", fit); root.style.removeProperty("--sc-vvh"); root.style.removeProperty("--sc-vvtop"); };
+  }, [chatOpen]);
+  // Opening the assistant is a step too, so swipe-back closes it instead of leaving the page.
+  useEffect(() => {
+    try {
+      const st = window.history.state || {};
+      if (chatOpen && !st.scChat) { window.history.pushState({ ...st, scView: viewRef.current, scChat: true }, ""); historyDepth.current += 1; }
+      else if (!chatOpen && st.scChat) window.history.back();
+    } catch { /* no history API */ }
+  }, [chatOpen]);
   // ★ THE ONE THING THAT STILL HAS TO REACH THE CHAT BOX FROM OUTSIDE: a button elsewhere
   // (Reports) that pre-fills a question. It changes on a CLICK, not on a keystroke, so it
   // costs one re-render when someone uses it rather than one per character typed.
@@ -4913,6 +4957,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   useEffect(() => {
     const to = navRedirect(view, { role: userRole, isPlatformAdmin, previewAsOwner });
     if (!to || to === view) return;
+    try { window.history.replaceState({ scView: to }, ""); } catch { /* no history API */ }   // C756 — back never returns to a page this seat can't see
     setViewRaw(to);
     onViewChange?.(to);
     showNotification(GATED_VIEW_REDIRECT_COPY);
@@ -9819,7 +9864,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         </div>
       )}
 
-      <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
+      <div className="sc-root" style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden" }}>
       {/* ★★ DOCUMENT READING IS PAUSED — SAY SO, ONCE, AT THE TOP.
           The O84 finding: the account ran out of credit mid-drive and every
           extraction-dependent feature failed with NO in-app explanation. Uploads still
@@ -9857,7 +9902,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         <div style={{ background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", flexShrink:0 }}>
           {/* Brand + Company + User row */}
           <div className="sc-topbar" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 32px", height:64 }}>
-            <div onClick={()=>setView("home")} title="Go to Home" style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer", flexShrink:0 }}>
+            {/* ★ C756 — on a phone, a page that isn't a main tab gets a back button (a home-screen app has no browser back) */}
+            {!(navSeat.isReviewerSeat ? ["home", "dashboard"] : ["home", "dashboard", "money", "tax", "reports"]).includes(view) && (
+              <button type="button" className="sc-backbtn" aria-label="Back"
+                onClick={() => { if (historyDepth.current > 0) window.history.back(); else setView(!navSeat.isReviewerSeat && MONEY_GROUP.includes(view) ? "money" : "home"); }}>‹</button>
+            )}
+            <div className="sc-logo" onClick={()=>setView("home")} title="Go to Home" style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer", flexShrink:0 }}>
               {/* Eclipse logomark — a gold disc partly eclipsed by a midnight disc → a "shadow" crescent */}
               <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
                 <defs>
@@ -9880,7 +9930,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               {/* ★ C742 — the operator's alert: a client with something missing, without going to look */}
               {isPlatformAdmin && !previewAsOwner && <OperatorAlertBadge supabase={supabase} onOpen={() => setView("admin")} />}   {/* C746 — shown on a phone too (short form) */}
               {canPreviewAsOwner && (
-                <button onClick={()=>setPreviewAsOwner(v=>!v)}
+                <button className="sc-preview-toggle" onClick={()=>setPreviewAsOwner(v=>!v)}
                   title={previewAsOwner ? "Return to your full view" : "See exactly what the business owner sees"}
                   style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px", borderRadius:9,
                     background: previewAsOwner ? "var(--sc-warning-soft)" : "transparent",
@@ -9892,7 +9942,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               )}
               {/* Notifications — moved into the header with the sidebar (C312); it lived
                   in the tab row, which no longer exists. */}
-              <button onClick={()=>setNotifOpen(o=>!o)} title="Notifications" aria-label="Notifications"
+              <button className="sc-iconbtn" onClick={()=>setNotifOpen(o=>!o)} title="Notifications" aria-label="Notifications"
                 style={{ position:"relative", width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background: notifOpen?"var(--sc-gold-soft)":"transparent", border:"none", borderRadius:10, cursor:"pointer", color: notifOpen?"var(--sc-gold)":"var(--sc-text-mut)", transition:"all .15s" }}
                 onMouseEnter={e=>{ if(!notifOpen){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
                 onMouseLeave={e=>{ if(!notifOpen){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--sc-text-mut)"; }}}>
@@ -9904,7 +9954,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                   <span style={{ position:"absolute", top:2, right:2, width:16, height:16, borderRadius:"50%", background:"var(--sc-error)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, border:"2px solid var(--sc-surface)" }}>{unreadNotifs>9?"9":unreadNotifs}</span>
                 )}
               </button>
-              <button onClick={()=>setView("settings")} title="Settings" aria-label="Settings"
+              <button className="sc-iconbtn" onClick={()=>setView("settings")} title="Settings" aria-label="Settings"
                 style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 12px", borderRadius:9, background: SETTINGS_VIEWS.includes(view)?"var(--sc-gold-soft)":"transparent", border:`1px solid ${SETTINGS_VIEWS.includes(view)?"var(--sc-gold-line)":"var(--sc-border)"}`, color: SETTINGS_VIEWS.includes(view)?"var(--sc-gold)":"var(--sc-text-mut)", cursor:"pointer", transition:"all .15s" }}
                 onMouseEnter={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="var(--sc-surface-2)"; e.currentTarget.style.color="var(--sc-text)"; }}}
                 onMouseLeave={e=>{ if(!SETTINGS_VIEWS.includes(view)){ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--sc-text-mut)"; }}}>
@@ -9963,7 +10013,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               if (id === "books") { setBooksFilter("all"); setView("books"); return; }
               setView(id);
             };
-            return (
+            // ★ C756 — on an owner's phone the main places are a tab bar rendered into <body>
+            // (components/OwnerTabBar.jsx), above the page; a tap on a tab closes the assistant.
+            const mainItems = (navSeat.sections.find((sec) => sec.id === "main") || { items: [] }).items;
+            const tabGo = (id) => { if (id === "ask") { setChatOpen((o) => !o); return; } setChatOpen(false); go(id); };
+            return (<>
+              {!navSeat.isReviewerSeat && <OwnerTabBar items={mainItems} activeId={active} onGo={tabGo} badgeFor={badgeFor} chatOpen={chatOpen} />}
               <nav aria-label="Main" className={navSeat.isReviewerSeat ? "sc-sidenav" : "sc-sidenav sc-owner-nav"} style={{ width:212, flexShrink:0, background:"var(--sc-surface)", borderRight:"1px solid var(--sc-border)", overflowY:"auto", padding:"14px 0 24px" }}>
                 {navSeat.sections.map((section, si) => (
                   <div key={section.id} data-navsec={section.id} style={{ marginTop: si ? 18 : 0 }}>
@@ -9999,7 +10054,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                   </div>
                 ))}
               </nav>
-            );
+            </>);
           })()}
 
         {/* Main Content */}

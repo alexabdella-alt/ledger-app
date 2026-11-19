@@ -292,32 +292,54 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
     bottom: 88px !important; height: min(560px, calc(100dvh - 150px)) !important; }
 }
 /* ★ C753 — A PHONE THAT DOESN'T SLIDE SIDEWAYS, AND A TAB BAR AT THE BOTTOM (operator's iPhone
-   screenshots, 2026-11-19). The top bar was wider than the screen — the business name wrapped onto
-   four lines and the gear and "Sign out" sat past the right edge — so the whole page could be pushed
-   sideways and cut off at both sides. Now the top bar fits (name on one line, cut with "…"; Sign out
-   moves into Settings; a short preview label), nothing may widen the page, and the owner's five main
-   places sit in a bar along the bottom, icon over name, the way phone apps work. Ask is a tab, so the
-   floating assistant bubble steps aside and the assistant gets its own close button. */
+   screenshots, 2026-11-19). The top bar was wider than the screen, so the whole page could be
+   pushed sideways. Now the top bar fits, nothing may widen the page, and the owner's main places
+   are a bar along the bottom.
+   ★ C756 — THE BAR IS ITS OWN LAYER (components/OwnerTabBar.jsx, rendered into <body>). C753 fixed
+   the menu's main section to the bottom from INSIDE the swipe strip; on an iPhone that strip is its
+   own layer, so the bar was drawn UNDER the page and taps never reached it. Also: the app is the
+   height of the VISIBLE screen (100dvh — 100vh includes the area behind Safari's toolbar, which hid
+   the bottom of every page), the top bar's buttons are one size, a page that isn't a main tab has a
+   back button, and the assistant fills the visible screen on a phone with a 16px text box (smaller
+   makes an iPhone zoom the page when you tap it). */
+.sc-tabbar { display: none; }
+.sc-backbtn { display: none; }
 @media (max-width: 760px) {
   html, body { overflow-x: hidden; max-width: 100%; }
-  .sc-topbar-right { flex-shrink: 1; }
-  .sc-company-name { display: block; max-width: 34vw; }
+  .sc-root { height: 100dvh !important; }
 
-  .sc-owner-nav [data-navsec="main"] { position: fixed !important; left: 0; right: 0; bottom: 0; z-index: 900;
-    display: flex !important; flex-direction: row !important; background: var(--sc-surface);
-    border-top: 1px solid var(--sc-border); box-shadow: 0 -6px 20px rgba(0,0,0,.22);
-    padding: 2px 2px calc(2px + env(safe-area-inset-bottom)) !important; }
-  .sc-owner-nav [data-navsec="main"] .sc-navtab { flex: 1 1 0 !important; flex-direction: column !important;
-    align-items: center !important; justify-content: center !important; gap: 3px !important; min-height: 56px !important;
-    padding: 6px 2px 4px !important; border-bottom: none !important; border-top: 2px solid transparent !important;
-    position: relative; font-size: 11px !important; }
-  .sc-owner-nav [data-navsec="main"] .sc-navtab.active { border-top-color: var(--sc-gold) !important; }
-  .sc-owner-nav [data-navsec="main"] .sc-navlabel { flex: none !important; font-size: 11px; }
-  .sc-owner-nav .sc-navicon { display: flex !important; }
-  .sc-owner-nav [data-navsec="main"] .sc-navbadge { position: absolute; top: 4px; left: calc(50% + 7px); }
-  .sc-owner-nav [data-navsec="settings-entry"] { display: none !important; }   /* the gear in the top bar is Settings */
-  .sc-owner-nav:not(:has([data-navsec="settings"])) { border-bottom: none !important; }
-  .sc-owner-nav ~ #main-content .sc-page { padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important; }
+  /* the top bar: one row, one height, even gaps */
+  .sc-topbar { height: 56px !important; padding: 0 10px !important; gap: 8px; }
+  .sc-topbar-right { flex: 1 1 auto; justify-content: flex-end; gap: 8px !important; }
+  .sc-topbar-right > * { flex-shrink: 0; }
+  .sc-topbar-right > .sc-company { flex: 0 1 auto; min-width: 0; }
+  .sc-company-btn { height: 40px; box-sizing: border-box; padding: 0 12px !important; }
+  .sc-company-name { display: block; }
+  .sc-iconbtn { width: 40px !important; height: 40px !important; padding: 0 !important; justify-content: center !important;
+    border: 1px solid var(--sc-border) !important; border-radius: 10px !important; box-sizing: border-box; }
+  .sc-preview-toggle { height: 40px; box-sizing: border-box; padding: 0 10px !important; }
+  .sc-backbtn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0;
+    background: none; border: 1px solid var(--sc-border); border-radius: 10px; color: var(--sc-text); font-size: 26px; line-height: 1;
+    padding: 0 0 3px; cursor: pointer; }
+  .sc-backbtn + .sc-logo { display: none !important; }
+
+  /* the owner's menu: the main places are the tab bar; the strip only carries the Settings pages */
+  .sc-owner-nav [data-navsec="main"], .sc-owner-nav [data-navsec="settings-entry"] { display: none !important; }
+  .sc-owner-nav:not(:has([data-navsec="settings"])) { display: none !important; }
+
+  /* the tab bar */
+  .sc-tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 1050; transform: translateZ(0);
+    background: var(--sc-surface); border-top: 1px solid var(--sc-border); box-shadow: 0 -6px 20px rgba(0,0,0,.22);
+    padding: 2px 2px calc(2px + env(safe-area-inset-bottom)); }
+  .sc-tab { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    min-height: 56px; background: none; border: none; border-top: 2px solid transparent; color: var(--sc-text-mut);
+    font-size: 11px; font-weight: 500; font-family: var(--sc-font-ui); position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .sc-tab.active { color: var(--sc-gold); border-top-color: var(--sc-gold); font-weight: 600; }
+  .sc-tabbar .sc-navicon { display: flex; }
+  .sc-tabbadge { position: absolute; top: 4px; left: calc(50% + 7px); background: var(--sc-warning); color: var(--sc-on-accent);
+    font-size: 10px; font-weight: 700; border-radius: 20px; padding: 1px 6px; line-height: 1.4; }
+  body:has(.sc-tabbar) #main-content .sc-page { padding-bottom: calc(100px + env(safe-area-inset-bottom)) !important; }
+  body:has(.sc-tabbar) .sc-chat-fab { display: none !important; }
 
   /* Money's Documents · Vendors · Customers: one compact row of three on a phone, not three tall cards */
   .sc-page [data-money-links] { grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
@@ -326,9 +348,13 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
   .sc-page [data-money-links] .sc-mlink-text { flex: none !important; width: 100%; }
   .sc-page [data-money-links] .sc-mlink-sub, .sc-page [data-money-links] .sc-mlink-arrow { display: none !important; }
   .sc-page [data-money-links] [data-money-link-count] { position: absolute; top: 6px; right: 6px; font-size: 11px !important; padding: 1px 6px !important; }
-  body:has(.sc-owner-nav) .sc-chat-fab { display: none !important; }
-  body:has(.sc-owner-nav) .sc-chat-panel { bottom: calc(66px + env(safe-area-inset-bottom)) !important;
-    height: min(600px, calc(100dvh - 140px)) !important; }
-  .sc-chat-panel .sc-chat-close { display: flex !important; }
+
+  /* the assistant: the whole visible screen, above the tab bar, a real close button, a 16px text box */
+  .sc-chat-panel { left: 0 !important; right: 0 !important; top: var(--sc-vvtop, 0px) !important; bottom: auto !important;
+    width: 100% !important; height: var(--sc-vvh, 100dvh) !important; border-radius: 0 !important; border: none !important;
+    z-index: 1100 !important; animation: none !important; padding-top: env(safe-area-inset-top); box-sizing: border-box; }
+  .sc-chat-panel .sc-chat-close { display: flex !important; width: 36px !important; height: 36px !important; font-size: 22px !important; }
+  .sc-chat-input { font-size: 16px !important; }
+  .sc-composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important; }
 }
 @media (max-width: 420px) { .sc-hide-tiny { display: none !important; } }   /* the wordmark; the logo stays */

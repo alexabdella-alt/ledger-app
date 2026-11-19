@@ -76,16 +76,18 @@ export default function ChatComposer({ onSend, loading = false, showSuggestions 
           ))}
         </div>
       )}
-      <div style={{ padding: "12px 16px", borderTop: "1px solid var(--sc-border)", display: "flex", gap: 8, flexShrink: 0 }}>
+      <div className="sc-composer" style={{ padding: "12px 16px", borderTop: "1px solid var(--sc-border)", display: "flex", gap: 8, flexShrink: 0 }}>
         <input
           ref={inputRef}
+          className="sc-chat-input"
+          enterKeyHint="send"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) send(); }}
           placeholder="Ask anything about your books..."
           style={{ flex: 1, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border-2)", borderRadius: 10, padding: "10px 14px", color: "var(--sc-text)", fontSize: 13, outline: "none", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}
         />
-        <button onClick={send} disabled={!canSend} style={{
+        <button onClick={send} disabled={!canSend} aria-label="Send" style={{
           width: 40, height: 40, borderRadius: 10,
           background: canSend ? "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))" : "var(--sc-border)",
           border: "none", color: "var(--sc-text)", cursor: canSend ? "pointer" : "not-allowed", fontSize: 16, flexShrink: 0,

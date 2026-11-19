@@ -14,8 +14,8 @@ function CompanySwitcher({ companies, currentCompany, onSwitch, onNew, userName 
     addBtn: { padding:"11px 16px", cursor:"pointer", fontSize:13, color:"var(--sc-gold)", borderTop:"1px solid var(--sc-border)", display:"flex", alignItems:"center", gap:8 },
   };
   return (
-    <div style={s.wrap}>
-      <div style={s.btn} onClick={()=>setOpen(o=>!o)}>
+    <div className="sc-company" style={s.wrap}>
+      <div className="sc-company-btn" style={s.btn} onClick={()=>setOpen(o=>!o)}>
         <div style={s.dot}/>
         {/* C753 — one line, cut short with "…" on a phone (it wrapped onto four lines and pushed the top bar off the screen) */}
         <span className="sc-company-name" title={currentCompany?.name || ""} style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{currentCompany?.name || "Select company"}</span>
