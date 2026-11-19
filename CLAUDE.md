@@ -190,6 +190,8 @@ Two-stage pipeline, both calls through the **`ai-proxy`** Edge Function (`supaba
 
 ### The frontend is LIVE at `ledger-app-five.vercel.app`, and `git push` IS the deploy (2026-09-10)
 
+> **★★ THE OFFICIAL ADDRESS IS https://www.shadowcfo.org (2026-11-18).** The operator bought `shadowcfo.org` on Vercel (same account/team as `ledger-app`, auto-renew to be ON — expires 2027-11-18) and connected it: `shadowcfo.org` **308-redirects to `www.shadowcfo.org`**, which serves Production; `ledger-app-five.vercel.app` still serves the same deployment. Verified the day it went live: the www address served the current bundle. **Supabase Auth must list it** — Site URL `https://www.shadowcfo.org`, redirect URLs `https://www.shadowcfo.org/**` and `https://shadowcfo.org/**` (the old vercel.app entry kept during the switch) — or sign-up confirmations and password resets send people to the old address. Sessions are per-origin: the first visit to the new address asks for a sign-in once. **Use the www address in the bundle checks below** (the old one still works, but it is not what customers see).
+
 > **★★★ THE APP IS DEPLOYED AT https://ledger-app-five.vercel.app/ AND NOTHING IN THIS REPO SAID SO.** No `vercel.json`, no `.vercel/`, no deploy script in `package.json`, no README, and not a word in this file — which documents the Supabase edge-function deploy in detail. **I searched the repo, found nothing, and told the operator there was no deployment. The repo not knowing where it ships is not the same as it not shipping**, and this file exists precisely because *"a file's presence proves only that it was written"*. The same rule cuts the other way: **an absence in the repo proves only that nobody wrote it down.**
 >
 > **★★★ AND THE CONSEQUENCE IS THE PART THAT MATTERS: VERCEL AUTO-DEPLOYS FROM `main`, SO EVERY `git push` IS A PRODUCTION RELEASE.** Three commits went out today (`C311`, `C312`, `C313`) and **all three were live before anyone looked** — including `C313`, which changed what a business owner can see. **§6's own rule says production actions are the operator's to trigger, and I had been treating `push` as a repo action.** It is not; it is a deploy. Recorded so the next session knows what a push costs.
@@ -200,8 +202,8 @@ Two-stage pipeline, both calls through the **`ai-proxy`** Edge Function (`supaba
 >
 > **★ VERIFY A FRONTEND DEPLOY THE WAY A MIGRATION IS VERIFIED — READ THE LIVE ARTEFACT, NEVER ASSUME THE PUSH LANDED.** Fetch the deployed bundle and grep it for a string only the new code contains:
 > ```bash
-> JS=$(curl -s https://ledger-app-five.vercel.app/ | grep -o '/assets/[^"]*\.js' | head -1)
-> curl -s "https://ledger-app-five.vercel.app$JS" | grep -c 'THE NEW STRING'
+> JS=$(curl -s https://www.shadowcfo.org/ | grep -o '/assets/[^"]*\.js' | head -1)
+> curl -s "https://www.shadowcfo.org$JS" | grep -c 'THE NEW STRING'
 > ```
 > **★★ AND CHOOSE THE STRING LIKE A VERIFICATION, NOT A HOPE: it must be ABSENT from the old build and present in the new**, or a pass proves nothing. Best of all is a PAIR — the new string present AND a removed one gone (`booksSubtabs` → 0 is what actually proved `C312` shipped rather than "Transactions" being present, which it always was). **A minified bundle keeps object PROPERTY names and string literals and discards local variable names**, so pin a property or a literal, never a function you declared inside a component.
 >
