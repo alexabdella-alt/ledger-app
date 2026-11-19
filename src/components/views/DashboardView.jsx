@@ -795,11 +795,11 @@ export default function DashboardView() {
                   ].filter(t => t && t.key);
                   return (
                     <div data-owner-numbers className="sc-card" style={{ marginBottom:24, background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:"20px 24px" }}>
-                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:18 }}>
+                      <div className="sc-owner-tiles" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:18 }}>
                         {tiles.map(f => {
                           const open = f.go ? () => navTo(f.go) : f.drill ? () => setDashDrill({ type:f.drill }) : undefined;
                           return (
-                            <div key={f.key} data-owner-tile={f.key} onClick={open}
+                            <div key={f.key} className="sc-owner-tile" data-owner-tile={f.key} onClick={open}
                               onMouseEnter={open ? e=>e.currentTarget.style.background="var(--sc-surface-2)" : undefined}
                               onMouseLeave={open ? e=>e.currentTarget.style.background="transparent" : undefined}
                               style={{ cursor:open?"pointer":"default", borderRadius:9, padding:"8px 10px", margin:"-8px -10px", transition:"background .1s" }}>

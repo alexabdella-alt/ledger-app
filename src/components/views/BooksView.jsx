@@ -305,7 +305,7 @@ export default function BooksView({ embedded = false } = {}) {
       {/* Table — contained: horizontal scroll instead of clipping the right edge (Status +
           action button were running off the page). overflowX:auto keeps it within the card. */}
       <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, overflowX:"auto", overflowY:"clip" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:760 }}>
+        <table className="sc-txn-table" style={{ width:"100%", borderCollapse:"collapse", minWidth:760 }}>
           <thead><tr style={{ background:"var(--sc-bg)" }}>
             {/* Selection column — no label; the header checkbox picks every VISIBLE row,
                 which is the filtered/searched set the person is actually looking at. */}
@@ -354,20 +354,20 @@ export default function BooksView({ embedded = false } = {}) {
               const reversedInfo = reversalFor(revIdx, inv);   // O8 — original was reversed
               return (
                 <React.Fragment key={inv.id}>
-                  <tr onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"var(--sc-gold-soft)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", opacity: (inv.status==="voided"||reversedInfo)?0.55:1, textDecoration: reversedInfo?"line-through":"none", textDecorationColor: reversedInfo?"var(--sc-error)":undefined, transition:"background 0.1s" }}
+                  <tr className="sc-txn-row" onClick={()=>setSelId(inv.id)} style={{ cursor:"pointer", height:52, background: selId===inv.id?"var(--sc-gold-soft)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", opacity: (inv.status==="voided"||reversedInfo)?0.55:1, textDecoration: reversedInfo?"line-through":"none", textDecorationColor: reversedInfo?"var(--sc-error)":undefined, transition:"background 0.1s" }}
                     onMouseEnter={e=>{ if(selId!==inv.id) e.currentTarget.style.background="var(--sc-surface-2)"; }} onMouseLeave={e=>{ if(selId!==inv.id) e.currentTarget.style.background="var(--sc-surface)"; }}>
-                    <td onClick={e=>e.stopPropagation()} style={{ padding:"0 0 0 14px", width:28 }}>
+                    <td className="sc-c-check" onClick={e=>e.stopPropagation()} style={{ padding:"0 0 0 14px", width:28 }}>
                       <input type="checkbox" aria-label={`Select ${inv.vendor || "transaction"}`} checked={picked.has(inv.id)}
                         onChange={()=>setPicked(prev => { const n = new Set(prev); n.has(inv.id) ? n.delete(inv.id) : n.add(inv.id); return n; })}
                         style={{ cursor:"pointer" }} />
                     </td>
-                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
-                    <td style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span></div></td>
-                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{readableDates(inv.description)||"—"}</td>
-                    <td style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cockpit && <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>}{cockpit ? cls.account.name : ownerAccountName(cls.account.name)}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
-                    <td style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>
-                    <td style={{ padding:"0 16px" }}>{statusBadge(inv)}</td>
-                    <td style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
+                    <td className="sc-c-date" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
+                    <td className="sc-c-party" style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span></div></td>
+                    <td className="sc-c-desc" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{readableDates(inv.description)||"—"}</td>
+                    <td className="sc-c-cat" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cockpit && <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>}{cockpit ? cls.account.name : ownerAccountName(cls.account.name)}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
+                    <td className="sc-c-amt" style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>
+                    <td className="sc-c-status" style={{ padding:"0 16px" }}>{statusBadge(inv)}</td>
+                    <td className="sc-c-act" style={{ padding:"0 16px", textAlign:"right", whiteSpace:"nowrap" }}>
                       {/* Settle action ONLY on a genuinely open item — never on a settlement/clearing entry. */}
                       {!isViewer && cls.settleAction==="pay" && (
                         <button onClick={e=>{ e.stopPropagation(); setPayRowId(payRowId===inv.id?null:inv.id); setPayMethod("ach"); setPayDate(todayLocal()); }}

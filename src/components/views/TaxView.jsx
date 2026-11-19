@@ -228,7 +228,7 @@ export default function TaxView() {
   const deadlineRow = d => {
           const isFiled = !!filed[filedKey(d)] || !!(filedDeadlinesPrev || {})[filedKey(d)];   // C704 — a Q4 payment marked in December
           return (
-            <div key={`${d.key}-${d.year}`} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--sc-surface-2)", opacity: isFiled ? 0.55 : 1 }}>
+            <div key={`${d.key}-${d.year}`} className="sc-deadline-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--sc-surface-2)", opacity: isFiled ? 0.55 : 1 }}>
               <div style={{ width: 6, height: 38, borderRadius: 3, background: isFiled ? "var(--sc-text-mut)" : d.color, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, textDecoration: isFiled ? "line-through" : "none" }}>{d.plain}</div>

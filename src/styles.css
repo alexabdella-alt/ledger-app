@@ -248,6 +248,36 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
   .sc-page .sc-stack-row { padding-bottom: 14px; margin-bottom: 4px; border-bottom: 1px solid var(--sc-border); }
   .sc-topbar button { white-space: nowrap; }
 
+  /* ★ C737 — MONEY'S LIST ON A PHONE: each transaction is a two-line row (who · amount, then
+     date · category · status) instead of a 760px table cut off at the right, amounts out of sight. */
+  .sc-page table.sc-txn-table { display: block !important; min-width: 0 !important; white-space: normal !important; overflow: visible !important; }
+  .sc-txn-table thead { display: none !important; }
+  .sc-txn-table tbody { display: block !important; }
+  .sc-txn-table tr.sc-txn-row { display: grid !important; height: auto !important; padding: 11px 14px !important;
+    grid-template-columns: auto 1fr auto; grid-template-areas: "party party amt" "date cat status" "act act act";
+    column-gap: 10px; row-gap: 3px; align-items: center; }
+  .sc-txn-table tr.sc-txn-row > td { padding: 0 !important; max-width: none !important; }
+  .sc-txn-table .sc-c-check, .sc-txn-table .sc-c-desc { display: none !important; }
+  .sc-txn-table .sc-c-party { grid-area: party; min-width: 0; }
+  .sc-txn-table .sc-c-amt { grid-area: amt; }
+  .sc-txn-table .sc-c-date { grid-area: date; font-size: 12px !important; padding-left: 38px !important; }
+  .sc-txn-table .sc-c-cat { grid-area: cat; font-size: 12px !important; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-txn-table .sc-c-status { grid-area: status; justify-self: end; }
+  .sc-txn-table .sc-c-act { grid-area: act; text-align: left !important; white-space: normal !important; }
+  .sc-txn-table .sc-c-act:empty { display: none !important; }
+  /* the two figures at the top of Money, side by side */
+  .sc-page [data-money-summary] { grid-template-columns: 1fr 1fr !important; }
+  /* Home's three numbers: one compact line each (label · figure), not three screens of big type */
+  .sc-owner-tiles { grid-template-columns: 1fr !important; gap: 4px !important; }
+  .sc-owner-tile { display: flex !important; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 12px; margin: 0 !important; padding: 8px 0 !important; }
+  .sc-owner-tile + .sc-owner-tile { border-top: 1px solid var(--sc-surface-2); }
+  .sc-owner-tile > div:nth-child(2) { font-size: 22px !important; margin-top: 0 !important; }
+  .sc-owner-tile > [data-owner-tile-sub] { flex-basis: 100%; }
+  /* a tax deadline: the words get the full width; the days and the button go underneath */
+  .sc-deadline-row { flex-wrap: wrap !important; row-gap: 8px !important; }
+  .sc-deadline-row > div:nth-child(2) { flex: 1 1 calc(100% - 30px) !important; }
+  .sc-deadline-row > div:nth-child(3) { margin-left: 20px; text-align: left !important; }
+
   /* the assistant: nearly full width, never taller than the screen */
   .sc-chat-panel { left: 8px !important; right: 8px !important; width: auto !important;
     bottom: 88px !important; height: min(560px, calc(100dvh - 150px)) !important; }
