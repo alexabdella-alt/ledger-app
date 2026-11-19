@@ -215,3 +215,16 @@ export function ownerListView(rows = [], invoices = []) {
   }
   return { rows: (rows || []).filter((r) => r && !foldedPayment(r) && !foldedCorrection(r)), paidOn };
 }
+
+// ★ C745 — THE DESCRIPTION DOESN'T REPEAT THE NAME BESIDE IT. Bookings are described "Vendor – what"
+// ("Corner Market – ice, paid by card"), and the list shows the vendor in the cell to its left, so an
+// owner read every name twice. Owner list only: the part after the name; nothing when that is all
+// the description was. A description that doesn't start with the name is left exactly as it is.
+export function descAfterParty(desc, party) {
+  const d = String(desc || ""), p = String(party || "").trim();
+  if (!d || !p || d.slice(0, p.length).toLowerCase() !== p.toLowerCase()) return d;
+  const rest = d.slice(p.length);
+  if (!rest.trim()) return "";
+  const m = rest.match(/^\s*[–—:-]\s*(.*)$/s);
+  return m ? m[1].trim() : d;
+}

@@ -68,3 +68,26 @@ describe("C744 — ownerListView rules", () => {
     }
   });
 });
+
+import { descAfterParty } from "../src/lib/txnPresent.js";
+describe("C745 — the description doesn't repeat the name beside it (owner list)", () => {
+  it("★★ drops a leading 'Name –' and keeps what follows", () => {
+    expect(descAfterParty("Corner Market – ice, paid by card", "Corner Market")).toBe("ice, paid by card");
+    expect(descAfterParty("Gusto Payroll — Mar 14, 2026 – Mar 27, 2026", "Gusto Payroll")).toBe("Mar 14, 2026 – Mar 27, 2026");
+    expect(descAfterParty("sysco: produce", "Sysco")).toBe("produce");
+  });
+  it("★★ leaves anything else exactly as it is", () => {
+    expect(descAfterParty("Payment – Hill Country Milling Co.", "Hill Country Milling Co.")).toBe("Payment – Hill Country Milling Co.");
+    expect(descAfterParty("Corner Market Catering – sale", "Corner Market")).toBe("Corner Market Catering – sale");   // a longer name, not a separator
+    expect(descAfterParty("", "X")).toBe("");
+    expect(descAfterParty("Rent", "")).toBe("Rent");
+  });
+  it("★ nothing when the description was only the name", () => {
+    expect(descAfterParty("Opening balances as of Jan 1, 2026", "Opening balances as of Jan 1, 2026")).toBe("");
+  });
+  it("★★ rendered: the owner's row reads the name once; the accountant's row is unchanged", () => {
+    expect(ownerHtml()).not.toMatch(/Corner Market – ice/);
+    expect(ownerHtml()).toContain(">ice, paid by card<");
+    expect(cockpitHtml()).toMatch(/Corner Market – ice, paid by card/);
+  });
+});
